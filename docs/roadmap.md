@@ -8,7 +8,7 @@ Last reviewed: 2026-11-15. Which apps still lag behind the framework, and which 
 
 What each capability has actually proven, from "has an API" to "recorded working on an iPhone", is tracked in the [capability ledger](capability-ledger.md).
 
-What the demos have built that should move into the framework, and in what order, is in the [framework extraction audit](framework-extraction-audit.md).
+What the demos have built that should move into the framework, and in what order, is in the [framework extraction audit](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/framework-extraction-audit.md).
 
 ## Apps first: prove, complete, then extract
 
@@ -112,7 +112,7 @@ Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust 
 | Priority | Work | Status |
 |---|---|---|
 | P0 | Existing runtime and native integration stability | Maintain |
-| P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md), [guide](forgeui.md)) | **0.1 done: run on an iPhone 2026-11-10** |
+| P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md), [guide](forgeui.md)) | **0.1 done: run on an iPhone 2026-11-10** |
 | P2 | **ForgeAppKit 0.1**: alerts and confirmations as model values, destinations, load and submission state, form errors ([guide](forgeappkit.md)) | **In progress: 0.1 built and used by Pocket Library, Commonplace, FieldKit, Relay, Sketchbook and Soundscape; not yet recorded on an iPhone** |
 | P3 | Rust application foundations: saved documents and validation ([guide](app-foundations.md)); repositories and query later (modules in existing crates first) | **Built: persistence guarantees (#159) and Pocket Library on the runtime (#176); iPhone check open** |
 | P4 | A complete reference app (personal library) built only on the above | Required proof |
@@ -180,7 +180,7 @@ An agent takes a real task on an existing app, changes it, checks it on the iPho
 
 ### iPhone acceptance of the integrated framework — Partly done
 
-The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](archive/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. Pocket Library has run on an iPhone (UI test m0, 11/11, 2026-11-07) and now runs inside Device Lab, installed over the air ([status](status.md)). A fresh app from the current starter and the services check app have not been recorded on an iPhone; the services check's capabilities are the largest part of the "built, not yet run on an iPhone" list.
+The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](https://github.com/GeneralKnowledge/ixOS/blob/b5276a2a20cb5aa110d3cafa56bdc2596371a34c/docs/archive/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. Pocket Library has run on an iPhone (UI test m0, 11/11, 2026-11-07) and now runs inside Device Lab, installed over the air ([status](status.md)). A fresh app from the current starter and the services check app have not been recorded on an iPhone; the services check's capabilities are the largest part of the "built, not yet run on an iPhone" list.
 
 ### Native iOS UI — Done, device check open
 

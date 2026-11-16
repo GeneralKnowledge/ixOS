@@ -183,7 +183,7 @@ Items 1, 2, 3 and 6 need the device; 4 and 5 also have unit tests against a fake
 |---|---|---|---|
 | 13 | **Readable text from a web page** into a reader document | Rust, alongside the reader | Feeds the reader for Commonplace |
 | 14 | **HTTP cache** with expiry, ETag and Last-Modified revalidation | Rust module in `forge-net` | Commonplace, Weather, Pocket Library covers |
-| 15 | **Durable work queue** (stored before the network call, retried with `Backoff`, recovered after termination) | Rust, from Chat's outbox | Extract on the second user, per the [extraction audit](framework-extraction-audit.md) |
+| 15 | **Durable work queue** (stored before the network call, retried with `Backoff`, recovered after termination) | Rust, from Chat's outbox | Extract on the second user, per the [extraction audit](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/framework-extraction-audit.md) |
 | 16 | **Backup and export archive** of an app's data | Rust (`forge-storage`) plus `ShareLink` | Already a "No" row in the ledger |
 | 17 | **Search history** and **navigation restoration** | ForgeAppKit | Stored through `forge_app::document` |
 | 18 | **Vision**: text recognition (OCR), document scanning, barcode and QR detection, live scanning | Optional service for still images (Rust gets text and codes); helper for the live scanner | Vision, VisionKit (`DataScannerViewController`, `VNDocumentCameraViewController`). Investigate before writing any image processing of our own. Live scanning needs the `camera` permission |

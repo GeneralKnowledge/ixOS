@@ -2,7 +2,7 @@
 
 ForgeAppKit is the layer between ForgeUI (how things look) and your app's model (what it does). It gives the presentation state every app writes the same few shapes: an error alert, "are you sure?", which sheet is open, a busy Save button, a list that is loading or failed, and which form fields are wrong. Each is a plain value the view model owns, so a test on Linux can check it, and a SwiftUI modifier presents it.
 
-It is optional. An app can use ForgeUI alone, or plain SwiftUI, and adopt ForgeAppKit one screen at a time. It depends only on ForgeUI: no Rust core, no generated bindings, no ForgeKit runtime. Why it exists, with counts of how often the apps rewrote each pattern, is in the [ForgeUI proposal](research/forgeui-proposal.md#what-the-apps-reinvent).
+It is optional. An app can use ForgeUI alone, or plain SwiftUI, and adopt ForgeAppKit one screen at a time. It depends only on ForgeUI: no Rust core, no generated bindings, no ForgeKit runtime. Why it exists, with counts of how often the apps rewrote each pattern, is in the [ForgeUI proposal](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/research/forgeui-proposal.md#what-the-apps-reinvent).
 
 ForgeAppKit 0.1 is new (2026-11). Its model values are tested on Linux; its SwiftUI side is compiled in CI and has not been run on an iPhone yet (see the [capability ledger](capability-ledger.md)).
 

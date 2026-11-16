@@ -1,4 +1,4 @@
-.PHONY: check-app-crates check-app-parity check-boundaries chat-server test check check-template check-fresh-app test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
+.PHONY: check-app-crates check-app-parity check-boundaries check-doc-links chat-server test check check-template check-fresh-app test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
 
 test:
 	cargo test --workspace
@@ -55,6 +55,10 @@ check-app-parity:
 check-boundaries:
 	./scripts/check-boundaries.sh
 
+# Every relative Markdown link points at a file that exists.
+check-doc-links:
+	./scripts/check-doc-links.sh
+
 check-app-crates:
 	./scripts/check-app-crates.sh
 
@@ -75,4 +79,4 @@ package-ios:
 package-android:
 	./scripts/package-android-library.sh $(or $(APP),examples/pocket-library-android)/Generated
 
-validate: fmt clippy test check-bindings check-template check-app-parity check-boundaries
+validate: fmt clippy test check-bindings check-template check-app-parity check-boundaries check-doc-links

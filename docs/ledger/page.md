@@ -30,7 +30,7 @@ The core demo sequence is fixed: Chat, Good Dog, FieldKit, Soundscape, Relay, Sk
 
 ## Modules
 
-This table is the capability registry: one row per framework module, saying what it provides, what it needs and how far it has got. The capability rows further down are the evidence for each module's status. The modules and their order come from the [framework extraction audit](framework-extraction-audit.md); the rules for what becomes a module are in [architecture.md](architecture.md#framework-principles).
+This table is the capability registry: one row per framework module, saying what it provides, what it needs and how far it has got. The capability rows further down are the evidence for each module's status. The modules and their order come from the [framework extraction audit](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/framework-extraction-audit.md) (2026-11-07, retired); the rules for what becomes a module are in [architecture.md](architecture.md#framework-principles).
 
 Layers: **Core** (any app may need it), **Optional** (a substantial system an app opts into). Status: **Stable** (main capabilities proven on a physical iPhone and documented), **Experimental** (used by an app, not yet proven on the phone), **Planned** (only in a plan or an open PR). Platforms: **Yes**, **Partial**, **WIP** (Android: builds and tests, no new features), **Planned**, **No**. "Desktop" means a Linux, macOS or Windows app host; today Rust code runs on Linux only in tests and tools.
 
