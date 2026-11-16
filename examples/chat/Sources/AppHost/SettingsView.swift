@@ -69,7 +69,7 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings.signOut")
             } footer: {
                 Text(
-                    "Removes the account from this iPhone's Keychain and its chats from this iPhone. Messages stay on the server."
+                    "Removes the account and its chats from this iPhone. Chat has no sign-in, so you can't use this account again: you'd sign up as someone new. Your sent messages stay on the server."
                 )
             }
         }
@@ -79,6 +79,8 @@ struct SettingsView: View {
         ) {
             Button("Sign Out", role: .destructive) { model.signOut() }
                 .accessibilityIdentifier("settings.confirmSignOut")
+        } message: {
+            Text("You can't sign back in to this account later.")
         }
     }
 }
