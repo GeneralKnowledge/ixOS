@@ -133,9 +133,18 @@ final class LoopEngine {
             if strip.clipPath != clip.path || timingChanged {
                 strip.buffer = Self.loopBuffer(clip, seconds: project.loopSeconds)
                 strip.clipPath = clip.path
-                // A recording's sample rate decides the player's format.
+                // A recording's format (the microphone's: often one
+                // channel) runs through the whole strip. Effect units must
+                // have the same format in and out, so connecting only the
+                // player in mono to a tone wired in the mixer's stereo threw
+                // an exception and ended the app after every new take
+                // (crash on the phone, 2026-11-16). The main mixer converts.
                 engine.disconnectNodeOutput(strip.player)
                 if let buffer = strip.buffer {
+                    engine.disconnectNodeOutput(strip.tone)
+                    engine.disconnectNodeOutput(strip.echo)
+                    engine.connect(strip.echo, to: engine.mainMixerNode, format: buffer.format)
+                    engine.connect(strip.tone, to: strip.echo, format: buffer.format)
                     engine.connect(strip.player, to: strip.tone, format: buffer.format)
                 }
                 reloaded = true
@@ -302,8 +311,7 @@ final class LoopEngine {
         engine.attach(strip.player)
         engine.attach(strip.tone)
         engine.attach(strip.echo)
-        engine.connect(strip.tone, to: strip.echo, format: nil)
-        engine.connect(strip.echo, to: engine.mainMixerNode, format: nil)
+        // Wired in `load`, in the recording's format.
         return strip
     }
 
