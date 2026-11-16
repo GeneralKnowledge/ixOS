@@ -65,7 +65,7 @@ side by side showed, most useful first. Each says why it waited.
 | 9 | The Noise channel out of `forge-devproto` (A16) | Relay | Relay is moving to iroh, which may make it moot |
 | 10 | UniFFI enums without data aren't `CaseIterable`, so pickers keep hand lists (Good Dog 6) | Good Dog | Bindings post-processing; Swift |
 | 11 | `forge init` names: `--library`, and folders and test target still called `AppHost` (A7) | FieldKit, every new app | Done (wave 4): `--library`; `AppHost` folders kept as the fixed convention |
-| 12 | Ids are `i64` in SQLite apps and `u64` in file apps (A3) | FieldKit, Commonplace, Checklist | Docs and template; touches the starter's API |
+| 12 | Ids are `i64` in SQLite apps and `u64` in file apps (A3) | FieldKit, Commonplace, Checklist | Done (wave 4): persistence.md and the iOS starters use `i64`; file apps keep `u64` |
 | 13 | `Document`-backed `start_fresh` in the template (rest of A15) | Sketchbook, Soundscape, Relay | Template change |
 | 14 | Commonplace maps every `StorageError` to `Storage`, so corrupt data shows as an internal error with no recovery offer; the other apps say `Corrupt` | Commonplace | App behaviour, wants Reuben's eye |
 | 15 | Relay keeps its own error conversions | Relay | Its stage 1 work is in flight |
@@ -81,7 +81,7 @@ follow it now.
 |---|---|---|---|---|
 | A1 | FieldKit | The template on main still names every library `forge_ffi`, so a new app can't start in the hostable shape | Limit | Waits for #167, which changes the template |
 | A2 | FieldKit | `sha256_file` is public in forge-storage but not exported, and `import_hashed` drops the file extension | Limit | Fixed (with A14) |
-| A3 | FieldKit | SQLite can't store `u64`, so SQLite apps use `i64` ids and file-based apps use `u64` | Annoyance | Open |
+| A3 | FieldKit | SQLite can't store `u64`, so SQLite apps use `i64` ids and file-based apps use `u64` | Annoyance | Fixed: new apps and the iOS starters use `i64`; file apps keep `u64` until they move to SQLite (2026-11-16) |
 | A4 | FieldKit | Great-circle distance lives in `forge_services::sensors`, so a pure Rust core depends on the native services crate | Annoyance | Open |
 | A5 | FieldKit | The runtime has no way to read data the command thread owns without a command, and every command raises the revision | Limit | Open |
 | A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Fixed: `forge_runtime::time` (second use: Weather) |
@@ -151,6 +151,12 @@ Swift that is `Int64` in some apps and `UInt64` in others.
 
 **Framework.** Say in [persistence.md](../persistence.md) that ids are
 `i64`, and use `i64` in the template, so every app matches.
+
+**Done (2026-11-16, wave 4).** persistence.md says a new app's ids are
+`i64`, and why, and the iOS starters use `i64`, so a new app starts that
+way. The apps already on JSON files keep `u64`: changing them would change
+their Swift API with no user benefit, so each changes only if it moves to
+SQLite. The Android starter is frozen and keeps `u64`.
 
 ## A4. Distance needs the native services crate
 

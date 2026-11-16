@@ -36,7 +36,7 @@ struct NoteListView: View {
             }
             .overlay { emptyState }
             .navigationTitle("FORGE_APP_NAME")
-            .navigationDestination(for: UInt64.self) { id in
+            .navigationDestination(for: Int64.self) { id in
                 NoteDetailView(model: model, noteID: id)
             }
             .searchable(text: $model.searchText, prompt: "Search")

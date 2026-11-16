@@ -6,7 +6,7 @@ import SwiftUI
 /// leave the screen or leave the app, like Notes. Deleting asks first.
 struct NoteDetailView: View {
     let model: NotesModel
-    let noteID: UInt64
+    let noteID: Int64
 
     @State private var text = ""
     @State private var isConfirmingDelete = false

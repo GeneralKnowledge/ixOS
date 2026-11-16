@@ -47,6 +47,12 @@ Put a file in `rust/fixtures/` exactly as each released schema version wrote it 
 
 Fixtures prove the code reads old files, on Linux. They don't replace a release's update check on the iPhone (install version N, add data, update to N+1, and check the data survives). That stays one Device Lab check per release.
 
+### 4. Ids: `i64` in a new app
+
+Give a new record's id the type `i64` (Swift `Int64`). rusqlite has no `ToSql` for `u64`, so an app on SQLite can't use `u64` without a conversion at every query, and an app that starts on a JSON file and moves to SQLite later then keeps its ids as they are. FieldKit, Commonplace and the iOS starters (`forge init`) use `i64`.
+
+Apps that already use `u64` on a JSON file (Checklist, Good Dog, Pocket Library, and the frozen Android starter) keep it: a JSON number reads the same either way, but changing the type would change their Swift API for no user benefit. Change it only when such an app moves to SQLite.
+
 ## Schema changes
 
 - **JSON** (`JsonFile`, `Document`): additive changes use `#[serde(default)]` and keep the version. A change that old files can't be read as raises it and adds a step to the migration function. The migrated value is written at the next save, after the `.v<N>` copy is kept.
