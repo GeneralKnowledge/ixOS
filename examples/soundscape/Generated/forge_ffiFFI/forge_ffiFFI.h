@@ -243,6 +243,130 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD1
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod1)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD2
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod2)(uint64_t, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod3)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
+typedef void (*UniffiCallbackInterfacePermissionProviderMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD1
+typedef void (*UniffiCallbackInterfacePermissionProviderMethod1)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD0
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD1
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod1)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD2
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod1)(uint64_t, RustBuffer, uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod2)(uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
+typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceLocalNotifierMethod0 _Nonnull schedule;
+    UniffiCallbackInterfaceLocalNotifierMethod1 _Nonnull cancel;
+    UniffiCallbackInterfaceLocalNotifierMethod2 _Nonnull pending;
+    UniffiCallbackInterfaceLocalNotifierMethod3 _Nonnull setCategories;
+} UniffiVTableCallbackInterfaceLocalNotifier;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PERMISSION_PROVIDER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PERMISSION_PROVIDER
+typedef struct UniffiVTableCallbackInterfacePermissionProvider {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfacePermissionProviderMethod0 _Nonnull status;
+    UniffiCallbackInterfacePermissionProviderMethod1 _Nonnull request;
+} UniffiVTableCallbackInterfacePermissionProvider;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SECURE_STORE
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SECURE_STORE
+typedef struct UniffiVTableCallbackInterfaceSecureStore {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceSecureStoreMethod0 _Nonnull get;
+    UniffiCallbackInterfaceSecureStoreMethod1 _Nonnull set;
+    UniffiCallbackInterfaceSecureStoreMethod2 _Nonnull delete;
+} UniffiVTableCallbackInterfaceSecureStore;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+typedef struct UniffiVTableCallbackInterfaceHttpTransport {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceHttpTransportMethod0 _Nonnull send;
+    UniffiCallbackInterfaceHttpTransportMethod1 _Nonnull openStream;
+    UniffiCallbackInterfaceHttpTransportMethod2 _Nonnull cancel;
+} UniffiVTableCallbackInterfaceHttpTransport;
+
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_SOUNDSCAPECORE
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_SOUNDSCAPECORE
 uint64_t uniffi_soundscape_core_fn_clone_soundscapecore(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -308,9 +432,29 @@ RustBuffer uniffi_soundscape_core_fn_method_soundscapecore_events(uint64_t ptr, 
 RustBuffer uniffi_soundscape_core_fn_method_soundscapecore_launch_report(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LISTEN_SERVER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LISTEN_SERVER
+RustBuffer uniffi_soundscape_core_fn_method_soundscapecore_listen_server(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LISTEN_SONG
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LISTEN_SONG
+uint64_t uniffi_soundscape_core_fn_method_soundscapecore_listen_song(uint64_t ptr, RustBuffer slug, RustBuffer cancellation
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LISTEN_SONGS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LISTEN_SONGS
+uint64_t uniffi_soundscape_core_fn_method_soundscapecore_listen_songs(uint64_t ptr, int8_t fresh, RustBuffer cancellation
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LOOP_FRAMES
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LOOP_FRAMES
 uint64_t uniffi_soundscape_core_fn_method_soundscapecore_loop_frames(uint64_t ptr, uint64_t id, uint32_t sample_rate, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_MARK_TAKE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_MARK_TAKE
+uint64_t uniffi_soundscape_core_fn_method_soundscapecore_mark_take(uint64_t ptr, RustBuffer slug, RustBuffer take_id, RustBuffer mark
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_MIXDOWN
@@ -358,6 +502,11 @@ uint64_t uniffi_soundscape_core_fn_method_soundscapecore_revision(uint64_t ptr, 
 uint64_t uniffi_soundscape_core_fn_method_soundscapecore_set_clip(uint64_t ptr, uint64_t id, uint64_t track_id, RustBuffer source_path
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_SET_LISTEN_SERVER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_SET_LISTEN_SERVER
+uint64_t uniffi_soundscape_core_fn_method_soundscapecore_set_listen_server(uint64_t ptr, RustBuffer address
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_SET_METRONOME
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_SET_METRONOME
 uint64_t uniffi_soundscape_core_fn_method_soundscapecore_set_metronome(uint64_t ptr, uint64_t id, int8_t on
@@ -388,6 +537,151 @@ void uniffi_soundscape_core_fn_method_soundscapecore_shutdown(uint64_t ptr, Rust
 uint64_t uniffi_soundscape_core_fn_method_soundscapecore_waveform(uint64_t ptr, uint64_t id, uint64_t track_id, uint32_t buckets, RustBuffer cancellation
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_LOCALNOTIFIER
+uint64_t uniffi_soundscape_core_fn_clone_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_LOCALNOTIFIER
+void uniffi_soundscape_core_fn_free_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_INIT_CALLBACK_VTABLE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_INIT_CALLBACK_VTABLE_LOCALNOTIFIER
+void uniffi_soundscape_core_fn_init_callback_vtable_localnotifier(const UniffiVTableCallbackInterfaceLocalNotifier* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_LOCALNOTIFIER_SCHEDULE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_LOCALNOTIFIER_SCHEDULE
+uint64_t uniffi_soundscape_core_fn_method_localnotifier_schedule(uint64_t ptr, RustBuffer notification
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_LOCALNOTIFIER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_LOCALNOTIFIER_CANCEL
+void uniffi_soundscape_core_fn_method_localnotifier_cancel(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_LOCALNOTIFIER_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_LOCALNOTIFIER_PENDING
+uint64_t uniffi_soundscape_core_fn_method_localnotifier_pending(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+void uniffi_soundscape_core_fn_method_localnotifier_set_categories(uint64_t ptr, RustBuffer categories, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_PERMISSIONPROVIDER
+uint64_t uniffi_soundscape_core_fn_clone_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_PERMISSIONPROVIDER
+void uniffi_soundscape_core_fn_free_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_INIT_CALLBACK_VTABLE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_INIT_CALLBACK_VTABLE_PERMISSIONPROVIDER
+void uniffi_soundscape_core_fn_init_callback_vtable_permissionprovider(const UniffiVTableCallbackInterfacePermissionProvider* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_PERMISSIONPROVIDER_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_PERMISSIONPROVIDER_STATUS
+uint64_t uniffi_soundscape_core_fn_method_permissionprovider_status(uint64_t ptr, RustBuffer permission
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_PERMISSIONPROVIDER_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_PERMISSIONPROVIDER_REQUEST
+uint64_t uniffi_soundscape_core_fn_method_permissionprovider_request(uint64_t ptr, RustBuffer permission
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_SECURESTORE
+uint64_t uniffi_soundscape_core_fn_clone_securestore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_SECURESTORE
+void uniffi_soundscape_core_fn_free_securestore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_INIT_CALLBACK_VTABLE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_INIT_CALLBACK_VTABLE_SECURESTORE
+void uniffi_soundscape_core_fn_init_callback_vtable_securestore(const UniffiVTableCallbackInterfaceSecureStore* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SECURESTORE_GET
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SECURESTORE_GET
+RustBuffer uniffi_soundscape_core_fn_method_securestore_get(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SECURESTORE_SET
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SECURESTORE_SET
+void uniffi_soundscape_core_fn_method_securestore_set(uint64_t ptr, RustBuffer key, RustBuffer value, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SECURESTORE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SECURESTORE_DELETE
+void uniffi_soundscape_core_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_HTTPSTREAMBODY
+uint64_t uniffi_soundscape_core_fn_clone_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_HTTPSTREAMBODY
+void uniffi_soundscape_core_fn_free_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+void uniffi_soundscape_core_fn_method_httpstreambody_fail(uint64_t ptr, RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+void uniffi_soundscape_core_fn_method_httpstreambody_finish(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+void uniffi_soundscape_core_fn_method_httpstreambody_receive(uint64_t ptr, RustBuffer data, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_CLONE_HTTPTRANSPORT
+uint64_t uniffi_soundscape_core_fn_clone_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FREE_HTTPTRANSPORT
+void uniffi_soundscape_core_fn_free_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+void uniffi_soundscape_core_fn_init_callback_vtable_httptransport(const UniffiVTableCallbackInterfaceHttpTransport* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPTRANSPORT_SEND
+RustBuffer uniffi_soundscape_core_fn_method_httptransport_send(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+RustBuffer uniffi_soundscape_core_fn_method_httptransport_open_stream(uint64_t ptr, RustBuffer request, uint64_t body, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_HTTPTRANSPORT_CANCEL
+void uniffi_soundscape_core_fn_method_httptransport_cancel(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_FORGE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_FORGE_LOG
 void uniffi_soundscape_core_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
@@ -398,9 +692,46 @@ void uniffi_soundscape_core_fn_func_forge_log(RustBuffer level, RustBuffer categ
 int8_t uniffi_soundscape_core_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_LOUDNESS_MATCH
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_LOUDNESS_MATCH
+RustBuffer uniffi_soundscape_core_fn_func_loudness_match(RustBuffer a_lufs, RustBuffer b_lufs, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_SOUNDSCAPE_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_SOUNDSCAPE_ERROR_KIND
 RustBuffer uniffi_soundscape_core_fn_func_soundscape_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+void uniffi_soundscape_core_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
+void uniffi_soundscape_core_fn_func_install_native_services(RustBuffer directories, uint64_t secure_store, uint64_t notifier, uint64_t permissions, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_NATIVE_SERVICES_INSTALLED
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_NATIVE_SERVICES_INSTALLED
+int8_t uniffi_soundscape_core_fn_func_native_services_installed(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_NATIVE_SERVICES_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_NATIVE_SERVICES_VERSION
+uint32_t uniffi_soundscape_core_fn_func_native_services_version(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_PARSE_DEEP_LINK
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_PARSE_DEEP_LINK
+RustBuffer uniffi_soundscape_core_fn_func_parse_deep_link(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
+void uniffi_soundscape_core_fn_func_install_native_http(uint64_t transport, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_SOUNDSCAPE_CORE_RUSTBUFFER_ALLOC
@@ -675,9 +1006,51 @@ uint16_t uniffi_soundscape_core_checksum_func_forge_log_enabled(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_LOUDNESS_MATCH
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_LOUDNESS_MATCH
+uint16_t uniffi_soundscape_core_checksum_func_loudness_match(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_SOUNDSCAPE_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_SOUNDSCAPE_ERROR_KIND
 uint16_t uniffi_soundscape_core_checksum_func_soundscape_error_kind(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+uint16_t uniffi_soundscape_core_checksum_func_deliver_notification_response(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
+uint16_t uniffi_soundscape_core_checksum_func_install_native_services(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_INSTALLED
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_INSTALLED
+uint16_t uniffi_soundscape_core_checksum_func_native_services_installed(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_VERSION
+uint16_t uniffi_soundscape_core_checksum_func_native_services_version(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
+uint16_t uniffi_soundscape_core_checksum_func_parse_deep_link(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+uint16_t uniffi_soundscape_core_checksum_func_install_native_http(void
     
 );
 #endif
@@ -735,9 +1108,33 @@ uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_launch_report(voi
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_SERVER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_SERVER
+uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_listen_server(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_SONG
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_SONG
+uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_listen_song(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_SONGS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_SONGS
+uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_listen_songs(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LOOP_FRAMES
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LOOP_FRAMES
 uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_loop_frames(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_MARK_TAKE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_MARK_TAKE
+uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_mark_take(void
     
 );
 #endif
@@ -795,6 +1192,12 @@ uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_set_clip(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_SET_LISTEN_SERVER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_SET_LISTEN_SERVER
+uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_set_listen_server(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_SET_METRONOME
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_SET_METRONOME
 uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_set_metronome(void
@@ -828,6 +1231,96 @@ uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_shutdown(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_WAVEFORM
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_WAVEFORM
 uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_waveform(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
+uint16_t uniffi_soundscape_core_checksum_method_localnotifier_schedule(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_CANCEL
+uint16_t uniffi_soundscape_core_checksum_method_localnotifier_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
+uint16_t uniffi_soundscape_core_checksum_method_localnotifier_pending(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+uint16_t uniffi_soundscape_core_checksum_method_localnotifier_set_categories(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
+uint16_t uniffi_soundscape_core_checksum_method_permissionprovider_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_REQUEST
+uint16_t uniffi_soundscape_core_checksum_method_permissionprovider_request(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SECURESTORE_GET
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SECURESTORE_GET
+uint16_t uniffi_soundscape_core_checksum_method_securestore_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SECURESTORE_SET
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SECURESTORE_SET
+uint16_t uniffi_soundscape_core_checksum_method_securestore_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
+uint16_t uniffi_soundscape_core_checksum_method_securestore_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+uint16_t uniffi_soundscape_core_checksum_method_httpstreambody_fail(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+uint16_t uniffi_soundscape_core_checksum_method_httpstreambody_finish(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+uint16_t uniffi_soundscape_core_checksum_method_httpstreambody_receive(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+uint16_t uniffi_soundscape_core_checksum_method_httptransport_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+uint16_t uniffi_soundscape_core_checksum_method_httptransport_open_stream(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+uint16_t uniffi_soundscape_core_checksum_method_httptransport_cancel(void
     
 );
 #endif

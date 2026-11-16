@@ -44,9 +44,9 @@ apps = ["../weather", "../checklist", "../pocket-library", "../good-dog", "../co
 location_when_in_use = "Device Lab shows your position, altitude, speed and true-north heading while it is open, and Weather uses it for the forecast where you are. Nothing else leaves your phone."
 motion = "Device Lab reads the barometer for air pressure and height changes."
 bluetooth = "Device Lab shows whether Bluetooth is on. It does not connect to anything."
-# Three hosted apps use the local network, and two the microphone; one
+# Four hosted apps use the local network, and two the microphone; one
 # text for each.
-local_network = "Chat connects to the demo chat server, Commonplace reads feeds, and Relay finds your paired devices and sends to them, on your local network."
+local_network = "Chat connects to the demo chat server, Commonplace reads feeds, Soundscape plays song takes from your computer, and Relay finds your paired devices and sends to them, on your local network."
 microphone = "Chat records voice messages for you to send, and Soundscape records the loops you layer, which stay on this phone."
 camera = "Relay scans another device's pairing code."
 

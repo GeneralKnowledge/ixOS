@@ -9,6 +9,8 @@ struct ForgeAppXtool: App {
     @State private var host = makeAppHost()
 
     init() {
+        // URLSession for Listen's requests (AppServices.swift).
+        AppServices.install()
         // Reports the application lifecycle to Rust, and tells the screen to
         // re-read when the app comes back.
         #if canImport(UIKit)

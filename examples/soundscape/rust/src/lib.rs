@@ -17,8 +17,13 @@
 //!   answer; **queries** (`projects`, `project`) read a published copy.
 //! - **Waveforms** are on-screen work; the **mixdown** is finishing work,
 //!   which keeps going when the app leaves the screen while iOS allows.
+//! - **Listen** ([`listen`]) plays, compares and picks song takes kept on
+//!   another computer's take server. Rust keeps the address, asks the
+//!   server (URLSession on iOS) and works out matched loudness; AVPlayer
+//!   streams the audio.
 
 pub mod dsp;
+pub mod listen;
 mod model;
 pub mod project;
 
@@ -27,9 +32,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use forge_app::{Cancellation, DataDirectory, Document, ErrorKind, Published, Runtime};
+use forge_net::{HttpClient, UreqClient};
 use forge_runtime::now_ms;
 use forge_storage::{files, FileStore};
 
+pub use listen::{
+    loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongSummary, Take, TakeMark,
+};
 pub use model::{
     soundscape_error_kind, Clip, Echo, Mixdown, ProjectDetail, ProjectSummary, SoundscapeError,
     Track, TrackMix, TrackSettings, MAX_BARS, MAX_GAIN_DB, MAX_NAME_CHARS, MAX_TEMPO, MAX_TRACKS,
@@ -43,7 +52,17 @@ uniffi::setup_scaffolding!();
 // log as Rust.
 forge_runtime::log_export!();
 
+// Native services the host implements, as `crate::native`; `http` sends
+// Listen's requests through URLSession on iOS, so they follow the phone's
+// VPN (Tailscale) and network settings.
+forge_services::native_services!(http);
+
 const SAVE_FILE: &str = "soundscape.json";
+/// Listen's settings (the take server's address), apart from the projects.
+const LISTEN_FILE: &str = "listen.json";
+/// The largest answer the take server may give (a library of a few hundred
+/// songs is well under this).
+const MAX_ANSWER_BYTES: u64 = 4 * 1024 * 1024;
 /// Recordings bigger than this are refused (five minutes of 48 kHz stereo
 /// 32-bit float is about 115 MB).
 const MAX_CLIP_BYTES: u64 = 128 * 1024 * 1024;
@@ -57,6 +76,8 @@ struct State {
     projects: Document<Projects>,
     recordings: FileStore,
     published: Arc<Published<Projects>>,
+    listen: Document<ListenSettings>,
+    listen_published: Arc<Published<ListenSettings>>,
 }
 
 impl State {
@@ -85,6 +106,8 @@ pub struct SoundscapeCore {
     projects: Arc<Published<Projects>>,
     recordings: PathBuf,
     caches: PathBuf,
+    listen: Arc<Published<ListenSettings>>,
+    http: Arc<dyn HttpClient>,
 }
 
 #[uniffi::export]
@@ -100,7 +123,7 @@ impl SoundscapeCore {
         caches_directory: String,
     ) -> Result<Arc<Self>, SoundscapeError> {
         forge_runtime::logging::init();
-        Self::open(&data_directory, &caches_directory, false)
+        Self::open(&data_directory, &caches_directory, false, default_http())
     }
 
     /// Opens with no projects in place of a file that can't be read, which
@@ -111,7 +134,7 @@ impl SoundscapeCore {
         caches_directory: String,
     ) -> Result<Arc<Self>, SoundscapeError> {
         forge_runtime::logging::init();
-        Self::open(&data_directory, &caches_directory, true)
+        Self::open(&data_directory, &caches_directory, true, default_http())
     }
 
     /// Every project, most recently changed first. Never waits for a
@@ -440,13 +463,122 @@ impl SoundscapeCore {
             })
             .await
     }
+
+    // MARK: Listen
+
+    /// The take server's address (`http://100.101.102.103:8642`), or `None`
+    /// before the person has set one.
+    pub fn listen_server(&self) -> Option<String> {
+        self.listen.get().server.clone()
+    }
+
+    /// Saves the take server's address after tidying it (a bare
+    /// `100.101.102.103` gets `http://` and port 8642). Plain http needs a
+    /// numeric address, since iOS refuses plain http to a host name. An
+    /// empty address forgets the server. Returns what was saved.
+    pub async fn set_listen_server(
+        &self,
+        address: String,
+    ) -> Result<Option<String>, SoundscapeError> {
+        let server = if address.trim().is_empty() {
+            None
+        } else {
+            Some(listen::normalize_server(&address)?)
+        };
+        self.rt
+            .command("set-listen-server", move |state| {
+                state.listen.change(|s| {
+                    s.server = server.clone();
+                    Ok::<_, SoundscapeError>(())
+                })?;
+                state.listen_published.set(state.listen.value().clone());
+                Ok(server)
+            })
+            .await
+    }
+
+    /// The songs on the take server, newest first. `fresh` asks the server
+    /// to look for new takes now rather than within 20 seconds. On-screen
+    /// work.
+    pub async fn listen_songs(
+        &self,
+        fresh: bool,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<SongSummary>, SoundscapeError> {
+        let server = self.server()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("listen-songs", work, move |cancel| {
+                listen::fetch_library(http.as_ref(), &server, fresh, cancel)
+            })
+            .await
+    }
+
+    /// A song's takes, with their stream URLs, loudness, stars, notes and
+    /// which one is picked. On-screen work.
+    pub async fn listen_song(
+        &self,
+        slug: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<SongDetail, SoundscapeError> {
+        let server = self.server()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("listen-song", work, move |cancel| {
+                listen::fetch_song(http.as_ref(), &server, &slug, cancel)
+            })
+            .await
+    }
+
+    /// Picks a take, rates it (0 to 5 stars) or notes something on it, on
+    /// the server, and returns the song as it now is. Finishing work: a
+    /// pick made just before leaving the app still arrives.
+    pub async fn mark_take(
+        &self,
+        slug: String,
+        take_id: String,
+        mark: TakeMark,
+    ) -> Result<SongDetail, SoundscapeError> {
+        let server = self.server()?;
+        listen::mark_body(&slug, &take_id, &mark)?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.finishing(None);
+        self.rt
+            .run("mark-take", work, move |cancel| {
+                listen::send_mark(http.as_ref(), &server, &slug, &take_id, &mark, cancel)?;
+                listen::fetch_song(http.as_ref(), &server, &slug, cancel)
+            })
+            .await
+    }
 }
 
 impl SoundscapeCore {
+    /// A core whose Listen requests go through `http`, for tests.
+    pub fn open_with_http(
+        data_directory: &str,
+        caches_directory: &str,
+        http: Arc<dyn HttpClient>,
+    ) -> Result<Arc<Self>, SoundscapeError> {
+        Self::open(data_directory, caches_directory, false, http)
+    }
+
+    fn server(&self) -> Result<String, SoundscapeError> {
+        self.listen
+            .get()
+            .server
+            .clone()
+            .ok_or_else(|| SoundscapeError::BadAddress {
+                reason: "set the take server's address first".into(),
+            })
+    }
+
     fn open(
         data_directory: &str,
         caches_directory: &str,
         fresh: bool,
+        http: Arc<dyn HttpClient>,
     ) -> Result<Arc<Self>, SoundscapeError> {
         let directory = DataDirectory::open(data_directory)?;
         let path = directory.path().join(SAVE_FILE);
@@ -471,16 +603,35 @@ impl SoundscapeCore {
         recordings.sweep(|name| saved.contains(name));
         let published = Arc::new(Published::new(projects.value().clone()));
         let root = recordings.root().to_path_buf();
+        // Only an address: an unreadable file is set aside rather than
+        // keeping the projects from opening.
+        let (listen, kept) = Document::<ListenSettings>::start_fresh(
+            directory.path().join(LISTEN_FILE),
+            listen::SETTINGS_VERSION,
+            None,
+            now_ms(),
+        )?;
+        if let Some(kept) = kept {
+            forge_runtime::logging::warn!(
+                "unreadable Listen settings set aside as {}",
+                kept.display()
+            );
+        }
+        let listen_published = Arc::new(Published::new(listen.value().clone()));
         let state = State {
             projects,
             recordings,
             published: Arc::clone(&published),
+            listen,
+            listen_published: Arc::clone(&listen_published),
         };
         Ok(Arc::new(Self {
             rt: Runtime::with_directory("soundscape", directory, state),
             projects: published,
             recordings: root,
             caches: PathBuf::from(caches_directory),
+            listen: listen_published,
+            http,
         }))
     }
 
@@ -538,6 +689,15 @@ fn summary(p: &Project) -> ProjectSummary {
         metronome: p.metronome,
         track_count: p.tracks.len() as u32,
     }
+}
+
+/// URLSession once the host has installed its services (on iOS, just after
+/// the core is made); ureq before that and in Linux tests.
+fn default_http() -> Arc<dyn HttpClient> {
+    Arc::new(native::http::HttpService::prefer_installed(
+        Arc::new(UreqClient::with_user_agent("Soundscape/0.1 (ixOS)")),
+        |client| client.max_body_bytes(MAX_ANSWER_BYTES),
+    ))
 }
 
 fn stopped() -> SoundscapeError {

@@ -21,7 +21,8 @@ public struct ContentView: View {
     }
 }
 
-/// Owns the screens' model for as long as the core is open.
+/// Owns the screens' model for as long as the core is open: the projects,
+/// and the Listen tab.
 private struct SoundscapeScreen: View {
     @State private var model: SoundscapeModel
     let changes: UInt64
@@ -32,8 +33,25 @@ private struct SoundscapeScreen: View {
     }
 
     var body: some View {
-        ProjectListView(model: model, changes: changes)
-            .onChange(of: changes) { model.reload() }
+        TabView {
+            ProjectListView(model: model, changes: changes)
+                .onChange(of: changes) { model.reload() }
+                .tabItem { Label("Projects", systemImage: "waveform") }
+                .accessibilityIdentifier("tab.projects")
+            listen
+                .tabItem { Label("Listen", systemImage: "music.note.list") }
+                .accessibilityIdentifier("tab.listen")
+        }
+    }
+
+    /// Generated song takes on another computer's take server: play,
+    /// compare, rate and pick them (ListenView.swift).
+    @ViewBuilder private var listen: some View {
+        #if os(iOS)
+        ListenView(core: model.core)
+        #else
+        Text("Listening needs an iPhone.")
+        #endif
     }
 }
 

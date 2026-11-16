@@ -1,0 +1,286 @@
+#if os(iOS)
+@preconcurrency import SoundscapeFFI
+@preconcurrency import ForgeKit
+import AVFoundation
+import MediaPlayer
+import Observation
+
+private let log = ForgeLog("Listen")
+
+/// Plays takes streamed from the take server: one take to listen to, or two
+/// side by side to compare. In a comparison both play together, in step,
+/// and switching only changes which one you hear, so A and B are heard at
+/// the same moment of the song. Volumes come from Rust's loudness match.
+///
+/// Keeps playing with the screen locked (`background_modes = ["audio"]`)
+/// and shows on the lock screen with play, pause and seeking.
+@Observable
+@MainActor
+final class TakePlayer {
+    enum Side: Equatable { case a, b }
+
+    struct Loaded: Equatable {
+        let song: String
+        let take: Take
+    }
+
+    /// What is loaded: one take, or two when comparing.
+    private(set) var a: Loaded?
+    private(set) var b: Loaded?
+    /// Which side you hear while comparing.
+    private(set) var active: Side = .a
+    private(set) var match: LoudnessMatch?
+    private(set) var isPlaying = false
+    private(set) var isBuffering = false
+    private(set) var time: Double = 0
+    private(set) var duration: Double = 0
+    /// Set when a take couldn't be streamed.
+    var failure: String?
+
+    var isComparing: Bool { b != nil }
+    var current: Loaded? { active == .b ? b ?? a : a }
+
+    @ObservationIgnored private let playerA = AVPlayer()
+    @ObservationIgnored private let playerB = AVPlayer()
+    @ObservationIgnored private var timeObserver: Any?
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    @ObservationIgnored private var remoteReady = false
+
+    init() {
+        for player in [playerA, playerB] {
+            player.automaticallyWaitsToMinimizeStalling = true
+            player.actionAtItemEnd = .pause
+        }
+        timeObserver = playerA.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+    }
+
+    // MARK: Loading
+
+    /// Plays one take from the start.
+    func play(_ take: Take, of song: String) {
+        load(a: Loaded(song: song, take: take), b: nil, match: nil)
+        resume()
+    }
+
+    /// Loads two takes to compare, A heard first, both from the start.
+    func compare(_ first: Take, _ second: Take, of song: String, match: LoudnessMatch) {
+        load(a: Loaded(song: song, take: first), b: Loaded(song: song, take: second), match: match)
+        resume()
+    }
+
+    func stop() {
+        playerA.pause()
+        playerB.pause()
+        playerA.replaceCurrentItem(with: nil)
+        playerB.replaceCurrentItem(with: nil)
+        a = nil
+        b = nil
+        match = nil
+        isPlaying = false
+        time = 0
+        duration = 0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        ForgeAudioSession.deactivate()
+    }
+
+    private func load(a: Loaded, b: Loaded?, match: LoudnessMatch?) {
+        failure = nil
+        self.a = a
+        self.b = b
+        self.match = match
+        active = .a
+        time = 0
+        duration = 0
+        playerA.replaceCurrentItem(with: Self.item(a.take))
+        playerB.replaceCurrentItem(with: b.map { Self.item($0.take) })
+        applyVolumes()
+        observeEnds()
+        setUpRemoteCommands()
+    }
+
+    private static func item(_ take: Take) -> AVPlayerItem? {
+        guard let url = URL(string: take.audioUrl) else { return nil }
+        let item = AVPlayerItem(url: url)
+        item.preferredForwardBufferDuration = 30
+        return item
+    }
+
+    // MARK: Transport
+
+    func toggle() {
+        isPlaying ? pause() : resume()
+    }
+
+    func resume() {
+        guard a != nil else { return }
+        do {
+            // Music, not speech: the "playback" category with default mode,
+            // so it plays with the silent switch on and over other apps.
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default)
+            try session.setActive(true)
+        } catch {
+            log.warn("audio session: \(error)")
+        }
+        if isComparing { resync() }
+        playerA.play()
+        if isComparing { playerB.play() }
+        isPlaying = true
+        updateNowPlaying()
+    }
+
+    func pause() {
+        playerA.pause()
+        playerB.pause()
+        isPlaying = false
+        updateNowPlaying()
+    }
+
+    func seek(to seconds: Double) {
+        let target = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        playerA.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        if isComparing {
+            playerB.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        time = seconds
+        updateNowPlaying()
+    }
+
+    func skip(_ seconds: Double) {
+        seek(to: min(max(0, time + seconds), duration > 0 ? duration : time + seconds))
+    }
+
+    /// Switches which take you hear in a comparison, at the same moment.
+    func hear(_ side: Side) {
+        guard isComparing, side != active else { return }
+        active = side
+        resync()
+        applyVolumes()
+        updateNowPlaying()
+    }
+
+    // MARK: Inside
+
+    private func applyVolumes() {
+        guard isComparing else {
+            playerA.volume = 1
+            return
+        }
+        let m = match ?? loudnessMatch(aLufs: nil, bLufs: nil)
+        playerA.volume = active == .a ? m.aVolume : 0
+        playerB.volume = active == .b ? m.bVolume : 0
+    }
+
+    /// Streaming can stall one player and not the other; before switching,
+    /// line the one about to be heard up with the one heard now.
+    private func resync() {
+        let target = active == .a ? playerA : playerB
+        let reference = active == .a ? playerB : playerA
+        guard reference.currentItem != nil, target.currentItem != nil else { return }
+        let now = reference.currentTime()
+        guard now.isValid, now.seconds.isFinite else { return }
+        if abs(target.currentTime().seconds - now.seconds) > 0.15 {
+            target.seek(to: now, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+    }
+
+    private func tick() {
+        let heard = active == .b && isComparing ? playerB : playerA
+        let seconds = heard.currentTime().seconds
+        if seconds.isFinite { time = seconds }
+        if let d = heard.currentItem?.duration.seconds, d.isFinite, d > 0 { duration = d }
+        isBuffering = heard.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        if let item = heard.currentItem, item.status == .failed, failure == nil {
+            failure = item.error?.localizedDescription ?? "The take couldn't be played."
+            log.warn("stream failed: \(failure ?? "")")
+            pause()
+        }
+        // Paused by the system (a call, headphones unplugged).
+        if isPlaying, heard.timeControlStatus == .paused, heard.currentItem?.status == .readyToPlay,
+           time < duration - 0.5 {
+            isPlaying = false
+            updateNowPlaying()
+        }
+    }
+
+    private func observeEnds() {
+        for o in observers { NotificationCenter.default.removeObserver(o) }
+        observers = []
+        for side in [Side.a, Side.b] {
+            guard let item = (side == .a ? playerA : playerB).currentItem else { continue }
+            observers.append(NotificationCenter.default.addObserver(
+                forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.ended(side) }
+            })
+        }
+    }
+
+    /// The take you hear came to its end: back to the start, paused.
+    private func ended(_ side: Side) {
+        let heard: Side = isComparing ? active : .a
+        guard side == heard else { return }
+        pause()
+        seek(to: 0)
+    }
+
+    // MARK: Lock screen
+
+    private func updateNowPlaying() {
+        guard let current else { return }
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: isComparing
+                ? "\(active == .a ? "A" : "B"): \(current.take.label)"
+                : current.take.label,
+            MPMediaItemPropertyAlbumTitle: current.song,
+            MPMediaItemPropertyArtist: "Soundscape Listen",
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: time,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+        ]
+        if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    private func setUpRemoteCommands() {
+        guard !remoteReady else { return }
+        remoteReady = true
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.resume() }
+            return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.pause() }
+            return .success
+        }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.toggle() }
+            return .success
+        }
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            let position = event.positionTime
+            MainActor.assumeIsolated { self?.seek(to: position) }
+            return .success
+        }
+        center.skipBackwardCommand.preferredIntervals = [10]
+        center.skipBackwardCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.skip(-10) }
+            return .success
+        }
+        // In a comparison, "next track" on headphones or the lock screen
+        // switches between A and B.
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isComparing else { return }
+                self.hear(self.active == .a ? .b : .a)
+            }
+            return .success
+        }
+    }
+}
+#endif
