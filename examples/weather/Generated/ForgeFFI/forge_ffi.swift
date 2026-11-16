@@ -3,6 +3,7 @@
 
 // swiftlint:disable all
 import Foundation
+@preconcurrency import ForgeApp
 
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
@@ -460,7 +461,13 @@ fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
 
 
 // Public interface members begin here.
-
+// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
+private let IDX_CALLBACK_FREE: Int32 = 0
+// Callback return codes
+private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
+private let UNIFFI_CALLBACK_ERROR: Int32 = 1
+private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -644,6 +651,24 @@ fileprivate struct FfiConverterString: FfiConverter {
     }
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+    typealias SwiftType = Data
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        let len: Int32 = try readInt(&buf)
+        return Data(try readBytes(&buf, count: Int(len)))
+    }
+
+    public static func write(_ value: Data, into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        writeBytes(&buf, value)
+    }
+}
+
 
 
 
@@ -656,6 +681,17 @@ public protocol ForgeWeatherAppProtocol: AnyObject, Sendable {
      * The refresh in flight, if any.
      */
     func activeRefresh()  -> WeatherOperation?
+    
+    /**
+     * The host's background time ran out: finishing work stops.
+     */
+    func backgroundTimeExpired() 
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+    func backgroundWorkPending()  -> Bool
     
     /**
      * The last successfully fetched report, marked `Cached` with its age, or
@@ -674,7 +710,21 @@ public protocol ForgeWeatherAppProtocol: AnyObject, Sendable {
      */
     func cachedReports()  -> [WeatherReport]
     
-    func isShutDown()  -> Bool
+    /**
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
+     */
+    func events()  -> RuntimeEvents?
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+    func launchReport()  -> LaunchReport
+    
+    /**
+     * The phase last reported.
+     */
+    func phase()  -> AppPhase
     
     /**
      * Starts fetching weather for `place`, cancelling any refresh already in
@@ -683,17 +733,35 @@ public protocol ForgeWeatherAppProtocol: AnyObject, Sendable {
     func refresh(place: Place) throws  -> WeatherOperation
     
     /**
+     * The last committed revision.
+     */
+    func revision()  -> UInt64
+    
+    /**
      * Looks places up by name ("Paris", "Springfield, IL"). Returns up to 10
      * matches, best first; an empty list means no match.
+     * On-screen work: leaving the screen or shutdown stops it.
      */
     func searchPlaces(query: String) async throws  -> [Place]
     
     /**
-     * Cancels the refresh in flight; later calls fail with `ShutDown`.
-     * Idempotent. Workers still running finish in the background without
-     * touching the cache.
+     * The host reports the application lifecycle phase.
+     */
+    func setPhase(phase: AppPhase) 
+    
+    /**
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
      */
     func shutdown() 
+    
+    /**
+     * Where the device is. Asks for "when in use" permission the first
+     * time; `LocationDenied` when the person said no, `LocationUnavailable`
+     * when no fix arrives. City-level accuracy: fast and cheap on battery.
+     * On-screen work: leaving the screen cancels it.
+     */
+    func currentLocation() async throws  -> DeviceFix
     
     /**
      * Moves the saved place at `from` to `to` (indexes in `saved_places()`).
@@ -764,10 +832,11 @@ open class ForgeWeatherApp: ForgeWeatherAppProtocol, @unchecked Sendable {
     /**
      * Opens the app with Open-Meteo defaults. `storage_directory` holds the
      * offline cache; it is created if missing.
+     * Fails with `InUse` when another core has the folder open.
      */
-public convenience init(storageDirectory: String) {
+public convenience init(storageDirectory: String)throws  {
     let handle =
-        try! rustCall() {
+        try rustCallWithError(FfiConverterTypeWeatherError_lift) {
         uniffiCallStatus in
     uniffi_weather_core_fn_constructor_forgeweatherapp_new(
         FfiConverterString.lower(storageDirectory),uniffiCallStatus
@@ -815,6 +884,30 @@ open func activeRefresh() -> WeatherOperation?  {
 }
     
     /**
+     * The host's background time ran out: finishing work stops.
+     */
+open func backgroundTimeExpired()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_forgeweatherapp_background_time_expired(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+open func backgroundWorkPending() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_forgeweatherapp_background_work_pending(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * The last successfully fetched report, marked `Cached` with its age, or
      * `None`. Never waits for the network; use it to fill the screen at launch.
      */
@@ -853,10 +946,38 @@ open func cachedReports() -> [WeatherReport]  {
 })
 }
     
-open func isShutDown() -> Bool  {
-    return try!  FfiConverterBool.lift(try! rustCall() {
+    /**
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
+     */
+open func events() -> RuntimeEvents?  {
+    return try!  FfiConverterOptionTypeRuntimeEvents.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_weather_core_fn_method_forgeweatherapp_is_shut_down(
+    uniffi_weather_core_fn_method_forgeweatherapp_events(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+open func launchReport() -> LaunchReport  {
+    return try!  FfiConverterTypeLaunchReport_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_forgeweatherapp_launch_report(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The phase last reported.
+     */
+open func phase() -> AppPhase  {
+    return try!  FfiConverterTypeAppPhase_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_forgeweatherapp_phase(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -877,8 +998,21 @@ open func refresh(place: Place)throws  -> WeatherOperation  {
 }
     
     /**
+     * The last committed revision.
+     */
+open func revision() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_forgeweatherapp_revision(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Looks places up by name ("Paris", "Springfield, IL"). Returns up to 10
      * matches, best first; an empty list means no match.
+     * On-screen work: leaving the screen or shutdown stops it.
      */
 open func searchPlaces(query: String)async throws  -> [Place]  {
     return
@@ -897,9 +1031,20 @@ open func searchPlaces(query: String)async throws  -> [Place]  {
 }
     
     /**
-     * Cancels the refresh in flight; later calls fail with `ShutDown`.
-     * Idempotent. Workers still running finish in the background without
-     * touching the cache.
+     * The host reports the application lifecycle phase.
+     */
+open func setPhase(phase: AppPhase)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_forgeweatherapp_set_phase(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
@@ -907,6 +1052,28 @@ open func shutdown()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Where the device is. Asks for "when in use" permission the first
+     * time; `LocationDenied` when the person said no, `LocationUnavailable`
+     * when no fix arrives. City-level accuracy: fast and cheap on battery.
+     * On-screen work: leaving the screen cancels it.
+     */
+open func currentLocation()async throws  -> DeviceFix  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_weather_core_fn_method_forgeweatherapp_current_location(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_weather_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_weather_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_weather_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeDeviceFix_lift,
+            errorHandler: FfiConverterTypeWeatherError_lift
+        )
 }
     
     /**
@@ -1007,6 +1174,1954 @@ public func FfiConverterTypeForgeWeatherApp_lift(_ handle: UInt64) throws -> For
 #endif
 public func FfiConverterTypeForgeWeatherApp_lower(_ value: ForgeWeatherApp) -> UInt64 {
     return FfiConverterTypeForgeWeatherApp.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+public protocol HttpStreamBodyProtocol: AnyObject, Sendable {
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */
+    func fail(error: HttpTransportError) 
+    
+    /**
+     * The server closed the body normally.
+     */
+    func finish() 
+    
+    /**
+     * The next bytes of the body.
+     */
+    func receive(data: Data) 
+    
+}
+/**
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+open class HttpStreamBody: HttpStreamBodyProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_weather_core_fn_clone_httpstreambody(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_weather_core_fn_free_httpstreambody(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */
+open func fail(error: HttpTransportError)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_httpstreambody_fail(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpTransportError_lower(error),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The server closed the body normally.
+     */
+open func finish()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_httpstreambody_finish(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The next bytes of the body.
+     */
+open func receive(data: Data)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_httpstreambody_receive(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(data),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpStreamBody: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = HttpStreamBody
+
+    public static func lift(_ handle: UInt64) throws -> HttpStreamBody {
+        return HttpStreamBody(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: HttpStreamBody) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpStreamBody {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: HttpStreamBody, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamBody_lift(_ handle: UInt64) throws -> HttpStreamBody {
+    return try FfiConverterTypeHttpStreamBody.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamBody_lower(_ value: HttpStreamBody) -> UInt64 {
+    return FfiConverterTypeHttpStreamBody.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
+ */
+public protocol HttpTransport: AnyObject, Sendable {
+    
+    func send(request: HttpRequest) throws  -> HttpResponse
+    
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+    func openStream(request: HttpRequest, body: HttpStreamBody) throws  -> HttpStreamHead
+    
+    func cancel(id: UInt64) 
+    
+}
+/**
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
+ */
+open class HttpTransportImpl: HttpTransport, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_weather_core_fn_clone_httptransport(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_weather_core_fn_free_httptransport(handle, $0) }
+    }
+
+    
+
+    
+open func send(request: HttpRequest)throws  -> HttpResponse  {
+    return try  FfiConverterTypeHttpResponse_lift(try rustCallWithError(FfiConverterTypeHttpTransportError_lift) {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_httptransport_send(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpRequest_lower(request),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+open func openStream(request: HttpRequest, body: HttpStreamBody)throws  -> HttpStreamHead  {
+    return try  FfiConverterTypeHttpStreamHead_lift(try rustCallWithError(FfiConverterTypeHttpTransportError_lift) {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_httptransport_open_stream(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpRequest_lower(request),
+        FfiConverterTypeHttpStreamBody_lower(body),uniffiCallStatus
+    )
+})
+}
+    
+open func cancel(id: UInt64)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_httptransport_cancel(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceHttpTransport {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceHttpTransport = UniffiVTableCallbackInterfaceHttpTransport(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeHttpTransport.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface HttpTransport: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeHttpTransport.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface HttpTransport: handle missing in uniffiClone")
+            }
+        },
+        send: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> HttpResponse in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.send(
+                     request: try FfiConverterTypeHttpRequest_lift(request)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHttpResponse_lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHttpTransportError_lower
+            )
+        },
+        openStream: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            body: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> HttpStreamHead in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.openStream(
+                     request: try FfiConverterTypeHttpRequest_lift(request),
+                     body: try FfiConverterTypeHttpStreamBody_lift(body)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHttpStreamHead_lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHttpTransportError_lower
+            )
+        },
+        cancel: { (
+            uniffiHandle: UInt64,
+            id: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.cancel(
+                     id: try FfiConverterUInt64.lift(id)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceHttpTransport> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceHttpTransport>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitHttpTransport() {
+    uniffi_weather_core_fn_init_callback_vtable_httptransport(UniffiCallbackInterfaceHttpTransport.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpTransport: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<HttpTransport>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = HttpTransport
+
+    public static func lift(_ handle: UInt64) throws -> HttpTransport {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return HttpTransportImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: HttpTransport) -> UInt64 {
+         if let rustImpl = value as? HttpTransportImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpTransport {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: HttpTransport, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransport_lift(_ handle: UInt64) throws -> HttpTransport {
+    return try FfiConverterTypeHttpTransport.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransport_lower(_ value: HttpTransport) -> UInt64 {
+    return FfiConverterTypeHttpTransport.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Local notifications (no push server involved).
+ */
+public protocol LocalNotifier: AnyObject, Sendable {
+    
+    /**
+     * Schedules (or replaces) a notification. Fails with
+     * `PermissionDenied` when notifications are off for the app.
+     */
+    func schedule(notification: LocalNotification) async throws 
+    
+    /**
+     * Cancels a pending notification and removes it from the
+     * notification list if it was delivered.
+     */
+    func cancel(id: String) 
+    
+    /**
+     * Ids of the notifications that are scheduled and not yet
+     * delivered.
+     */
+    func pending() async  -> [String]
+    
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+    func setCategories(categories: [NotificationCategory]) 
+    
+}
+/**
+ * Local notifications (no push server involved).
+ */
+open class LocalNotifierImpl: LocalNotifier, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_weather_core_fn_clone_localnotifier(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_weather_core_fn_free_localnotifier(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Schedules (or replaces) a notification. Fails with
+     * `PermissionDenied` when notifications are off for the app.
+     */
+open func schedule(notification: LocalNotification)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_weather_core_fn_method_localnotifier_schedule(
+                        self.uniffiCloneHandle(),FfiConverterTypeLocalNotification_lower(notification)
+                )
+            },
+            pollFunc: ffi_weather_core_rust_future_poll_void,
+            completeFunc: ffi_weather_core_rust_future_complete_void,
+            freeFunc: ffi_weather_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeNativeServiceError_lift
+        )
+}
+    
+    /**
+     * Cancels a pending notification and removes it from the
+     * notification list if it was delivered.
+     */
+open func cancel(id: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_localnotifier_cancel(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Ids of the notifications that are scheduled and not yet
+     * delivered.
+     */
+open func pending()async  -> [String]  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_weather_core_fn_method_localnotifier_pending(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_weather_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_weather_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_weather_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceString.lift,
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+open func setCategories(categories: [NotificationCategory])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_localnotifier_set_categories(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeNotificationCategory.lower(categories),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceLocalNotifier {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceLocalNotifier = UniffiVTableCallbackInterfaceLocalNotifier(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeLocalNotifier.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface LocalNotifier: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeLocalNotifier.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface LocalNotifier: handle missing in uniffiClone")
+            }
+        },
+        schedule: { (
+            uniffiHandle: UInt64,
+            notification: RustBuffer,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteVoid,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try await uniffiObj.schedule(
+                     notification: try FfiConverterTypeLocalNotification_lift(notification)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: ()) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsyncWithError(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                lowerError: FfiConverterTypeNativeServiceError_lower,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        cancel: { (
+            uniffiHandle: UInt64,
+            id: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.cancel(
+                     id: try FfiConverterString.lift(id)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        pending: { (
+            uniffiHandle: UInt64,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> [String] in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return await uniffiObj.pending(
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: [String]) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterSequenceString.lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        setCategories: { (
+            uniffiHandle: UInt64,
+            categories: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.setCategories(
+                     categories: try FfiConverterSequenceTypeNotificationCategory.lift(categories)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceLocalNotifier> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceLocalNotifier>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitLocalNotifier() {
+    uniffi_weather_core_fn_init_callback_vtable_localnotifier(UniffiCallbackInterfaceLocalNotifier.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocalNotifier: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<LocalNotifier>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = LocalNotifier
+
+    public static func lift(_ handle: UInt64) throws -> LocalNotifier {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return LocalNotifierImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: LocalNotifier) -> UInt64 {
+         if let rustImpl = value as? LocalNotifierImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocalNotifier {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: LocalNotifier, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalNotifier_lift(_ handle: UInt64) throws -> LocalNotifier {
+    return try FfiConverterTypeLocalNotifier.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalNotifier_lower(_ value: LocalNotifier) -> UInt64 {
+    return FfiConverterTypeLocalNotifier.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Where the host sends fixes and headings.
+ */
+public protocol LocationSinkProtocol: AnyObject, Sendable {
+    
+    func send(event: LocationEvent) 
+    
+}
+/**
+ * Where the host sends fixes and headings.
+ */
+open class LocationSink: LocationSinkProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_weather_core_fn_clone_locationsink(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_weather_core_fn_free_locationsink(handle, $0) }
+    }
+
+    
+
+    
+open func send(event: LocationEvent)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_locationsink_send(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeLocationEvent_lower(event),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocationSink: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = LocationSink
+
+    public static func lift(_ handle: UInt64) throws -> LocationSink {
+        return LocationSink(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: LocationSink) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocationSink {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: LocationSink, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationSink_lift(_ handle: UInt64) throws -> LocationSink {
+    return try FfiConverterTypeLocationSink.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationSink_lower(_ value: LocationSink) -> UInt64 {
+    return FfiConverterTypeLocationSink.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Implemented by the host (iOS: `CLLocationManager`).
+ */
+public protocol LocationSource: AnyObject, Sendable {
+    
+    /**
+     * The last fix the system has, possibly old; check its
+     * timestamp.
+     */
+    func lastKnown()  -> LocationFix?
+    
+    /**
+     * False when the user turned off Precise Location for the
+     * app: fixes are then a few kilometres off on purpose.
+     */
+    func isPrecise()  -> Bool
+    
+    func headingAvailable()  -> Bool
+    
+    /**
+     * Send fixes (and headings, if asked) to `sink` until
+     * `stop`. Fails with `PermissionDenied` when location is
+     * not allowed.
+     */
+    func start(options: LocationOptions, sink: LocationSink) throws 
+    
+    func stop() 
+    
+}
+/**
+ * Implemented by the host (iOS: `CLLocationManager`).
+ */
+open class LocationSourceImpl: LocationSource, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_weather_core_fn_clone_locationsource(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_weather_core_fn_free_locationsource(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The last fix the system has, possibly old; check its
+     * timestamp.
+     */
+open func lastKnown() -> LocationFix?  {
+    return try!  FfiConverterOptionTypeLocationFix.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_locationsource_last_known(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * False when the user turned off Precise Location for the
+     * app: fixes are then a few kilometres off on purpose.
+     */
+open func isPrecise() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_locationsource_is_precise(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func headingAvailable() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_locationsource_heading_available(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Send fixes (and headings, if asked) to `sink` until
+     * `stop`. Fails with `PermissionDenied` when location is
+     * not allowed.
+     */
+open func start(options: LocationOptions, sink: LocationSink)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_locationsource_start(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeLocationOptions_lower(options),
+        FfiConverterTypeLocationSink_lower(sink),uniffiCallStatus
+    )
+}
+}
+    
+open func stop()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_locationsource_stop(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceLocationSource {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceLocationSource = UniffiVTableCallbackInterfaceLocationSource(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeLocationSource.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface LocationSource: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeLocationSource.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface LocationSource: handle missing in uniffiClone")
+            }
+        },
+        lastKnown: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> LocationFix? in
+                guard let uniffiObj = try? FfiConverterTypeLocationSource.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.lastKnown(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterOptionTypeLocationFix.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        isPrecise: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Bool in
+                guard let uniffiObj = try? FfiConverterTypeLocationSource.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.isPrecise(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        headingAvailable: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Bool in
+                guard let uniffiObj = try? FfiConverterTypeLocationSource.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.headingAvailable(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        start: { (
+            uniffiHandle: UInt64,
+            options: RustBuffer,
+            sink: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocationSource.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.start(
+                     options: try FfiConverterTypeLocationOptions_lift(options),
+                     sink: try FfiConverterTypeLocationSink_lift(sink)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        },
+        stop: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocationSource.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.stop(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceLocationSource> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceLocationSource>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitLocationSource() {
+    uniffi_weather_core_fn_init_callback_vtable_locationsource(UniffiCallbackInterfaceLocationSource.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocationSource: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<LocationSource>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = LocationSource
+
+    public static func lift(_ handle: UInt64) throws -> LocationSource {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return LocationSourceImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: LocationSource) -> UInt64 {
+         if let rustImpl = value as? LocationSourceImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocationSource {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: LocationSource, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationSource_lift(_ handle: UInt64) throws -> LocationSource {
+    return try FfiConverterTypeLocationSource.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationSource_lower(_ value: LocationSource) -> UInt64 {
+    return FfiConverterTypeLocationSource.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Permission status and requests, one interface for every
+ * permission.
+ */
+public protocol PermissionProvider: AnyObject, Sendable {
+    
+    func status(permission: NativePermission) async  -> PermissionStatus
+    
+    /**
+     * Shows the system prompt if the user has not been asked
+     * yet; otherwise returns the current status. Call it in
+     * response to something the user did.
+     */
+    func request(permission: NativePermission) async  -> PermissionStatus
+    
+}
+/**
+ * Permission status and requests, one interface for every
+ * permission.
+ */
+open class PermissionProviderImpl: PermissionProvider, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_weather_core_fn_clone_permissionprovider(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_weather_core_fn_free_permissionprovider(handle, $0) }
+    }
+
+    
+
+    
+open func status(permission: NativePermission)async  -> PermissionStatus  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_weather_core_fn_method_permissionprovider_status(
+                        self.uniffiCloneHandle(),FfiConverterTypeNativePermission_lower(permission)
+                )
+            },
+            pollFunc: ffi_weather_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_weather_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_weather_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePermissionStatus_lift,
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * Shows the system prompt if the user has not been asked
+     * yet; otherwise returns the current status. Call it in
+     * response to something the user did.
+     */
+open func request(permission: NativePermission)async  -> PermissionStatus  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_weather_core_fn_method_permissionprovider_request(
+                        self.uniffiCloneHandle(),FfiConverterTypeNativePermission_lower(permission)
+                )
+            },
+            pollFunc: ffi_weather_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_weather_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_weather_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePermissionStatus_lift,
+            errorHandler: nil
+            
+        )
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfacePermissionProvider {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfacePermissionProvider = UniffiVTableCallbackInterfacePermissionProvider(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypePermissionProvider.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface PermissionProvider: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypePermissionProvider.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface PermissionProvider: handle missing in uniffiClone")
+            }
+        },
+        status: { (
+            uniffiHandle: UInt64,
+            permission: RustBuffer,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> PermissionStatus in
+                guard let uniffiObj = try? FfiConverterTypePermissionProvider.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return await uniffiObj.status(
+                     permission: try FfiConverterTypeNativePermission_lift(permission)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: PermissionStatus) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterTypePermissionStatus_lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        request: { (
+            uniffiHandle: UInt64,
+            permission: RustBuffer,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> PermissionStatus in
+                guard let uniffiObj = try? FfiConverterTypePermissionProvider.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return await uniffiObj.request(
+                     permission: try FfiConverterTypeNativePermission_lift(permission)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: PermissionStatus) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterTypePermissionStatus_lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfacePermissionProvider> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfacePermissionProvider>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitPermissionProvider() {
+    uniffi_weather_core_fn_init_callback_vtable_permissionprovider(UniffiCallbackInterfacePermissionProvider.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePermissionProvider: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<PermissionProvider>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = PermissionProvider
+
+    public static func lift(_ handle: UInt64) throws -> PermissionProvider {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return PermissionProviderImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: PermissionProvider) -> UInt64 {
+         if let rustImpl = value as? PermissionProviderImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PermissionProvider {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: PermissionProvider, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePermissionProvider_lift(_ handle: UInt64) throws -> PermissionProvider {
+    return try FfiConverterTypePermissionProvider.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePermissionProvider_lower(_ value: PermissionProvider) -> UInt64 {
+    return FfiConverterTypePermissionProvider.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Secrets (tokens, keys, passwords), stored by the platform's
+ * secure store: the iOS Keychain, readable after the first
+ * unlock and never synced or restored to another device.
+ * Survives app updates; on iOS it can survive deleting the app.
+ */
+public protocol SecureStore: AnyObject, Sendable {
+    
+    /**
+     * The value stored under `key`, or `None`.
+     */
+    func get(key: String) throws  -> Data?
+    
+    /**
+     * Stores `value` under `key`, replacing any old value.
+     */
+    func set(key: String, value: Data) throws 
+    
+    /**
+     * Removes `key`. Removing a missing key is not an error.
+     */
+    func delete(key: String) throws 
+    
+}
+/**
+ * Secrets (tokens, keys, passwords), stored by the platform's
+ * secure store: the iOS Keychain, readable after the first
+ * unlock and never synced or restored to another device.
+ * Survives app updates; on iOS it can survive deleting the app.
+ */
+open class SecureStoreImpl: SecureStore, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_weather_core_fn_clone_securestore(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_weather_core_fn_free_securestore(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The value stored under `key`, or `None`.
+     */
+open func get(key: String)throws  -> Data?  {
+    return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_securestore_get(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Stores `value` under `key`, replacing any old value.
+     */
+open func set(key: String, value: Data)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_securestore_set(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(key),
+        FfiConverterData.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Removes `key`. Removing a missing key is not an error.
+     */
+open func delete(key: String)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_securestore_delete(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceSecureStore {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceSecureStore = UniffiVTableCallbackInterfaceSecureStore(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeSecureStore.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface SecureStore: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeSecureStore.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface SecureStore: handle missing in uniffiClone")
+            }
+        },
+        get: { (
+            uniffiHandle: UInt64,
+            key: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Data? in
+                guard let uniffiObj = try? FfiConverterTypeSecureStore.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.get(
+                     key: try FfiConverterString.lift(key)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterOptionData.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        },
+        set: { (
+            uniffiHandle: UInt64,
+            key: RustBuffer,
+            value: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeSecureStore.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.set(
+                     key: try FfiConverterString.lift(key),
+                     value: try FfiConverterData.lift(value)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        },
+        delete: { (
+            uniffiHandle: UInt64,
+            key: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeSecureStore.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.delete(
+                     key: try FfiConverterString.lift(key)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceSecureStore> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceSecureStore>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitSecureStore() {
+    uniffi_weather_core_fn_init_callback_vtable_securestore(UniffiCallbackInterfaceSecureStore.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSecureStore: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<SecureStore>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = SecureStore
+
+    public static func lift(_ handle: UInt64) throws -> SecureStore {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return SecureStoreImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: SecureStore) -> UInt64 {
+         if let rustImpl = value as? SecureStoreImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SecureStore {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: SecureStore, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSecureStore_lift(_ handle: UInt64) throws -> SecureStore {
+    return try FfiConverterTypeSecureStore.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSecureStore_lower(_ value: SecureStore) -> UInt64 {
+    return FfiConverterTypeSecureStore.lower(value)
 }
 
 
@@ -1216,6 +3331,99 @@ public func FfiConverterTypeWeatherOperation_lower(_ value: WeatherOperation) ->
 }
 
 
+
+
+/**
+ * Where the app may keep files. Absolute paths, given by the host
+ * at launch. On iOS the container path changes between installs,
+ * so store paths relative to one of these, never absolute ones.
+ */
+public struct AppDirectories: Equatable, Hashable {
+    /**
+     * User-visible documents (shown in the Files app when the app
+     * opts in). Backed up.
+     */
+    public var documents: String
+    /**
+     * The app's own data. Backed up, never shown to the user.
+     */
+    public var applicationSupport: String
+    /**
+     * Re-creatable data. The system may delete it when space is low.
+     */
+    public var caches: String
+    /**
+     * Scratch space, cleared by the system between launches.
+     */
+    public var temporary: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * User-visible documents (shown in the Files app when the app
+         * opts in). Backed up.
+         */documents: String, 
+        /**
+         * The app's own data. Backed up, never shown to the user.
+         */applicationSupport: String, 
+        /**
+         * Re-creatable data. The system may delete it when space is low.
+         */caches: String, 
+        /**
+         * Scratch space, cleared by the system between launches.
+         */temporary: String) {
+        self.documents = documents
+        self.applicationSupport = applicationSupport
+        self.caches = caches
+        self.temporary = temporary
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AppDirectories: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAppDirectories: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppDirectories {
+        return
+            try AppDirectories(
+                documents: FfiConverterString.read(from: &buf), 
+                applicationSupport: FfiConverterString.read(from: &buf), 
+                caches: FfiConverterString.read(from: &buf), 
+                temporary: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AppDirectories, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.documents, into: &buf)
+        FfiConverterString.write(value.applicationSupport, into: &buf)
+        FfiConverterString.write(value.caches, into: &buf)
+        FfiConverterString.write(value.temporary, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppDirectories_lift(_ buf: RustBuffer) throws -> AppDirectories {
+    return try FfiConverterTypeAppDirectories.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppDirectories_lower(_ value: AppDirectories) -> RustBuffer {
+    return FfiConverterTypeAppDirectories.lower(value)
+}
 
 
 /**
@@ -1453,6 +3661,268 @@ public func FfiConverterTypeDailyForecast_lower(_ value: DailyForecast) -> RustB
 }
 
 
+/**
+ * A URL the app was opened with (custom scheme, universal link
+ * or notification tap), split into parts.
+ */
+public struct DeepLink: Equatable, Hashable {
+    /**
+     * The URL as received.
+     */
+    public var url: String
+    /**
+     * Lowercased, e.g. `myapp` or `https`.
+     */
+    public var scheme: String
+    /**
+     * Lowercased host, if the URL has one.
+     */
+    public var host: String?
+    /**
+     * Decoded path segments, empty ones dropped.
+     */
+    public var path: [String]
+    public var query: [QueryItem]
+    public var fragment: String?
+    /**
+     * What to route on. For `http(s)` links the path; for custom
+     * schemes the host followed by the path, so
+     * `myapp://note/42` and `https://example.com/note/42` both
+     * give `["note", "42"]`.
+     */
+    public var route: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The URL as received.
+         */url: String, 
+        /**
+         * Lowercased, e.g. `myapp` or `https`.
+         */scheme: String, 
+        /**
+         * Lowercased host, if the URL has one.
+         */host: String?, 
+        /**
+         * Decoded path segments, empty ones dropped.
+         */path: [String], query: [QueryItem], fragment: String?, 
+        /**
+         * What to route on. For `http(s)` links the path; for custom
+         * schemes the host followed by the path, so
+         * `myapp://note/42` and `https://example.com/note/42` both
+         * give `["note", "42"]`.
+         */route: [String]) {
+        self.url = url
+        self.scheme = scheme
+        self.host = host
+        self.path = path
+        self.query = query
+        self.fragment = fragment
+        self.route = route
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DeepLink: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDeepLink: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DeepLink {
+        return
+            try DeepLink(
+                url: FfiConverterString.read(from: &buf), 
+                scheme: FfiConverterString.read(from: &buf), 
+                host: FfiConverterOptionString.read(from: &buf), 
+                path: FfiConverterSequenceString.read(from: &buf), 
+                query: FfiConverterSequenceTypeQueryItem.read(from: &buf), 
+                fragment: FfiConverterOptionString.read(from: &buf), 
+                route: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DeepLink, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterString.write(value.scheme, into: &buf)
+        FfiConverterOptionString.write(value.host, into: &buf)
+        FfiConverterSequenceString.write(value.path, into: &buf)
+        FfiConverterSequenceTypeQueryItem.write(value.query, into: &buf)
+        FfiConverterOptionString.write(value.fragment, into: &buf)
+        FfiConverterSequenceString.write(value.route, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeepLink_lift(_ buf: RustBuffer) throws -> DeepLink {
+    return try FfiConverterTypeDeepLink.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeepLink_lower(_ value: DeepLink) -> RustBuffer {
+    return FfiConverterTypeDeepLink.lower(value)
+}
+
+
+/**
+ * One position for "My Location".
+ */
+public struct DeviceFix: Equatable, Hashable {
+    public var coordinate: Coordinate
+    /**
+     * Radius of uncertainty, metres.
+     */
+    public var horizontalAccuracyM: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(coordinate: Coordinate, 
+        /**
+         * Radius of uncertainty, metres.
+         */horizontalAccuracyM: Double) {
+        self.coordinate = coordinate
+        self.horizontalAccuracyM = horizontalAccuracyM
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DeviceFix: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDeviceFix: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DeviceFix {
+        return
+            try DeviceFix(
+                coordinate: FfiConverterTypeCoordinate.read(from: &buf), 
+                horizontalAccuracyM: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DeviceFix, into buf: inout [UInt8]) {
+        FfiConverterTypeCoordinate.write(value.coordinate, into: &buf)
+        FfiConverterDouble.write(value.horizontalAccuracyM, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceFix_lift(_ buf: RustBuffer) throws -> DeviceFix {
+    return try FfiConverterTypeDeviceFix.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceFix_lower(_ value: DeviceFix) -> RustBuffer {
+    return FfiConverterTypeDeviceFix.lower(value)
+}
+
+
+/**
+ * Where the top of the device points.
+ */
+public struct Heading: Equatable, Hashable {
+    /**
+     * Degrees from magnetic north, 0 to 360.
+     */
+    public var magneticDegrees: Double
+    /**
+     * Degrees from true north; `None` until a location is known.
+     */
+    public var trueDegrees: Double?
+    /**
+     * Maximum error, degrees; `None` when the heading is
+     * unreliable (calibrate by moving the phone in a figure 8).
+     */
+    public var accuracyDegrees: Double?
+    public var timestampMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Degrees from magnetic north, 0 to 360.
+         */magneticDegrees: Double, 
+        /**
+         * Degrees from true north; `None` until a location is known.
+         */trueDegrees: Double?, 
+        /**
+         * Maximum error, degrees; `None` when the heading is
+         * unreliable (calibrate by moving the phone in a figure 8).
+         */accuracyDegrees: Double?, timestampMs: Int64) {
+        self.magneticDegrees = magneticDegrees
+        self.trueDegrees = trueDegrees
+        self.accuracyDegrees = accuracyDegrees
+        self.timestampMs = timestampMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Heading: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHeading: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Heading {
+        return
+            try Heading(
+                magneticDegrees: FfiConverterDouble.read(from: &buf), 
+                trueDegrees: FfiConverterOptionDouble.read(from: &buf), 
+                accuracyDegrees: FfiConverterOptionDouble.read(from: &buf), 
+                timestampMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Heading, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.magneticDegrees, into: &buf)
+        FfiConverterOptionDouble.write(value.trueDegrees, into: &buf)
+        FfiConverterOptionDouble.write(value.accuracyDegrees, into: &buf)
+        FfiConverterInt64.write(value.timestampMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHeading_lift(_ buf: RustBuffer) throws -> Heading {
+    return try FfiConverterTypeHeading.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHeading_lower(_ value: Heading) -> RustBuffer {
+    return FfiConverterTypeHeading.lower(value)
+}
+
+
 public struct HourlyPoint: Equatable, Hashable {
     /**
      * Local time, ISO 8601 without offset.
@@ -1532,6 +4002,811 @@ public func FfiConverterTypeHourlyPoint_lift(_ buf: RustBuffer) throws -> Hourly
 #endif
 public func FfiConverterTypeHourlyPoint_lower(_ value: HourlyPoint) -> RustBuffer {
     return FfiConverterTypeHourlyPoint.lower(value)
+}
+
+
+public struct HttpHeader: Equatable, Hashable {
+    public var name: String
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpHeader: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpHeader: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpHeader {
+        return
+            try HttpHeader(
+                name: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpHeader, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpHeader_lift(_ buf: RustBuffer) throws -> HttpHeader {
+    return try FfiConverterTypeHttpHeader.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpHeader_lower(_ value: HttpHeader) -> RustBuffer {
+    return FfiConverterTypeHttpHeader.lower(value)
+}
+
+
+/**
+ * One request for the host to send. `id` names it for
+ * `HttpTransport::cancel`.
+ */
+public struct HttpRequest: Equatable, Hashable {
+    public var id: UInt64
+    /**
+     * `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+     */
+    public var method: String
+    public var url: String
+    public var headers: [HttpHeader]
+    public var body: Data
+    /**
+     * Send this file as the body instead (an upload); `body` is
+     * then empty.
+     */
+    public var bodyFile: String?
+    public var timeoutMs: UInt64
+    /**
+     * Stop and fail with `Transport` once the response body
+     * grows past this.
+     */
+    public var maxBodyBytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: UInt64, 
+        /**
+         * `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+         */method: String, url: String, headers: [HttpHeader], body: Data, 
+        /**
+         * Send this file as the body instead (an upload); `body` is
+         * then empty.
+         */bodyFile: String?, timeoutMs: UInt64, 
+        /**
+         * Stop and fail with `Transport` once the response body
+         * grows past this.
+         */maxBodyBytes: UInt64) {
+        self.id = id
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.body = body
+        self.bodyFile = bodyFile
+        self.timeoutMs = timeoutMs
+        self.maxBodyBytes = maxBodyBytes
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpRequest {
+        return
+            try HttpRequest(
+                id: FfiConverterUInt64.read(from: &buf), 
+                method: FfiConverterString.read(from: &buf), 
+                url: FfiConverterString.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf), 
+                body: FfiConverterData.read(from: &buf), 
+                bodyFile: FfiConverterOptionString.read(from: &buf), 
+                timeoutMs: FfiConverterUInt64.read(from: &buf), 
+                maxBodyBytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpRequest, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.method, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+        FfiConverterData.write(value.body, into: &buf)
+        FfiConverterOptionString.write(value.bodyFile, into: &buf)
+        FfiConverterUInt64.write(value.timeoutMs, into: &buf)
+        FfiConverterUInt64.write(value.maxBodyBytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpRequest_lift(_ buf: RustBuffer) throws -> HttpRequest {
+    return try FfiConverterTypeHttpRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpRequest_lower(_ value: HttpRequest) -> RustBuffer {
+    return FfiConverterTypeHttpRequest.lower(value)
+}
+
+
+public struct HttpResponse: Equatable, Hashable {
+    public var status: UInt16
+    public var headers: [HttpHeader]
+    public var body: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(status: UInt16, headers: [HttpHeader], body: Data) {
+        self.status = status
+        self.headers = headers
+        self.body = body
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpResponse: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpResponse {
+        return
+            try HttpResponse(
+                status: FfiConverterUInt16.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf), 
+                body: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpResponse, into buf: inout [UInt8]) {
+        FfiConverterUInt16.write(value.status, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+        FfiConverterData.write(value.body, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpResponse_lift(_ buf: RustBuffer) throws -> HttpResponse {
+    return try FfiConverterTypeHttpResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpResponse_lower(_ value: HttpResponse) -> RustBuffer {
+    return FfiConverterTypeHttpResponse.lower(value)
+}
+
+
+/**
+ * The status and headers of a streamed response.
+ */
+public struct HttpStreamHead: Equatable, Hashable {
+    public var status: UInt16
+    public var headers: [HttpHeader]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(status: UInt16, headers: [HttpHeader]) {
+        self.status = status
+        self.headers = headers
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpStreamHead: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpStreamHead: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpStreamHead {
+        return
+            try HttpStreamHead(
+                status: FfiConverterUInt16.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpStreamHead, into buf: inout [UInt8]) {
+        FfiConverterUInt16.write(value.status, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamHead_lift(_ buf: RustBuffer) throws -> HttpStreamHead {
+    return try FfiConverterTypeHttpStreamHead.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamHead_lower(_ value: HttpStreamHead) -> RustBuffer {
+    return FfiConverterTypeHttpStreamHead.lower(value)
+}
+
+
+/**
+ * A local notification. Scheduling one with an `id` that is
+ * already pending replaces it.
+ */
+public struct LocalNotification: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var body: String
+    public var subtitle: String?
+    /**
+     * Groups related notifications (iOS `threadIdentifier`).
+     */
+    public var threadId: String?
+    /**
+     * Opened when the user taps the notification, through the
+     * same path as any other deep link.
+     */
+    public var deepLink: String?
+    public var trigger: NotificationTrigger
+    /**
+     * The category whose action buttons the notification shows
+     * (`set_notification_categories`). None: no buttons.
+     */
+    public var category: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, body: String, subtitle: String?, 
+        /**
+         * Groups related notifications (iOS `threadIdentifier`).
+         */threadId: String?, 
+        /**
+         * Opened when the user taps the notification, through the
+         * same path as any other deep link.
+         */deepLink: String?, trigger: NotificationTrigger, 
+        /**
+         * The category whose action buttons the notification shows
+         * (`set_notification_categories`). None: no buttons.
+         */category: String? = nil) {
+        self.id = id
+        self.title = title
+        self.body = body
+        self.subtitle = subtitle
+        self.threadId = threadId
+        self.deepLink = deepLink
+        self.trigger = trigger
+        self.category = category
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LocalNotification: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocalNotification: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocalNotification {
+        return
+            try LocalNotification(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterOptionString.read(from: &buf), 
+                threadId: FfiConverterOptionString.read(from: &buf), 
+                deepLink: FfiConverterOptionString.read(from: &buf), 
+                trigger: FfiConverterTypeNotificationTrigger.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LocalNotification, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.body, into: &buf)
+        FfiConverterOptionString.write(value.subtitle, into: &buf)
+        FfiConverterOptionString.write(value.threadId, into: &buf)
+        FfiConverterOptionString.write(value.deepLink, into: &buf)
+        FfiConverterTypeNotificationTrigger.write(value.trigger, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalNotification_lift(_ buf: RustBuffer) throws -> LocalNotification {
+    return try FfiConverterTypeLocalNotification.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalNotification_lower(_ value: LocalNotification) -> RustBuffer {
+    return FfiConverterTypeLocalNotification.lower(value)
+}
+
+
+/**
+ * One position fix. Optional fields are `None` when the device
+ * could not measure them.
+ */
+public struct LocationFix: Equatable, Hashable {
+    public var latitude: Double
+    public var longitude: Double
+    /**
+     * Radius of uncertainty, metres.
+     */
+    public var horizontalAccuracyM: Double
+    /**
+     * Metres above sea level.
+     */
+    public var altitudeM: Double?
+    public var verticalAccuracyM: Double?
+    /**
+     * Metres per second.
+     */
+    public var speedMps: Double?
+    public var speedAccuracyMps: Double?
+    /**
+     * Direction of travel, degrees from true north.
+     */
+    public var courseDegrees: Double?
+    public var courseAccuracyDegrees: Double?
+    /**
+     * Building floor, where the venue provides it.
+     */
+    public var floor: Int32?
+    /**
+     * When the fix was taken (Unix milliseconds).
+     */
+    public var timestampMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(latitude: Double, longitude: Double, 
+        /**
+         * Radius of uncertainty, metres.
+         */horizontalAccuracyM: Double, 
+        /**
+         * Metres above sea level.
+         */altitudeM: Double?, verticalAccuracyM: Double?, 
+        /**
+         * Metres per second.
+         */speedMps: Double?, speedAccuracyMps: Double?, 
+        /**
+         * Direction of travel, degrees from true north.
+         */courseDegrees: Double?, courseAccuracyDegrees: Double?, 
+        /**
+         * Building floor, where the venue provides it.
+         */floor: Int32?, 
+        /**
+         * When the fix was taken (Unix milliseconds).
+         */timestampMs: Int64) {
+        self.latitude = latitude
+        self.longitude = longitude
+        self.horizontalAccuracyM = horizontalAccuracyM
+        self.altitudeM = altitudeM
+        self.verticalAccuracyM = verticalAccuracyM
+        self.speedMps = speedMps
+        self.speedAccuracyMps = speedAccuracyMps
+        self.courseDegrees = courseDegrees
+        self.courseAccuracyDegrees = courseAccuracyDegrees
+        self.floor = floor
+        self.timestampMs = timestampMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LocationFix: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocationFix: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocationFix {
+        return
+            try LocationFix(
+                latitude: FfiConverterDouble.read(from: &buf), 
+                longitude: FfiConverterDouble.read(from: &buf), 
+                horizontalAccuracyM: FfiConverterDouble.read(from: &buf), 
+                altitudeM: FfiConverterOptionDouble.read(from: &buf), 
+                verticalAccuracyM: FfiConverterOptionDouble.read(from: &buf), 
+                speedMps: FfiConverterOptionDouble.read(from: &buf), 
+                speedAccuracyMps: FfiConverterOptionDouble.read(from: &buf), 
+                courseDegrees: FfiConverterOptionDouble.read(from: &buf), 
+                courseAccuracyDegrees: FfiConverterOptionDouble.read(from: &buf), 
+                floor: FfiConverterOptionInt32.read(from: &buf), 
+                timestampMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LocationFix, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.latitude, into: &buf)
+        FfiConverterDouble.write(value.longitude, into: &buf)
+        FfiConverterDouble.write(value.horizontalAccuracyM, into: &buf)
+        FfiConverterOptionDouble.write(value.altitudeM, into: &buf)
+        FfiConverterOptionDouble.write(value.verticalAccuracyM, into: &buf)
+        FfiConverterOptionDouble.write(value.speedMps, into: &buf)
+        FfiConverterOptionDouble.write(value.speedAccuracyMps, into: &buf)
+        FfiConverterOptionDouble.write(value.courseDegrees, into: &buf)
+        FfiConverterOptionDouble.write(value.courseAccuracyDegrees, into: &buf)
+        FfiConverterOptionInt32.write(value.floor, into: &buf)
+        FfiConverterInt64.write(value.timestampMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationFix_lift(_ buf: RustBuffer) throws -> LocationFix {
+    return try FfiConverterTypeLocationFix.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationFix_lower(_ value: LocationFix) -> RustBuffer {
+    return FfiConverterTypeLocationFix.lower(value)
+}
+
+
+public struct LocationOptions: Equatable, Hashable {
+    public var accuracy: LocationAccuracy
+    /**
+     * Only report after moving this many metres; `None` for
+     * every update.
+     */
+    public var distanceFilterM: Double?
+    /**
+     * Also report compass headings (where the top of the phone
+     * points).
+     */
+    public var includeHeading: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(accuracy: LocationAccuracy, 
+        /**
+         * Only report after moving this many metres; `None` for
+         * every update.
+         */distanceFilterM: Double?, 
+        /**
+         * Also report compass headings (where the top of the phone
+         * points).
+         */includeHeading: Bool) {
+        self.accuracy = accuracy
+        self.distanceFilterM = distanceFilterM
+        self.includeHeading = includeHeading
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LocationOptions: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocationOptions: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocationOptions {
+        return
+            try LocationOptions(
+                accuracy: FfiConverterTypeLocationAccuracy.read(from: &buf), 
+                distanceFilterM: FfiConverterOptionDouble.read(from: &buf), 
+                includeHeading: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LocationOptions, into buf: inout [UInt8]) {
+        FfiConverterTypeLocationAccuracy.write(value.accuracy, into: &buf)
+        FfiConverterOptionDouble.write(value.distanceFilterM, into: &buf)
+        FfiConverterBool.write(value.includeHeading, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationOptions_lift(_ buf: RustBuffer) throws -> LocationOptions {
+    return try FfiConverterTypeLocationOptions.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationOptions_lower(_ value: LocationOptions) -> RustBuffer {
+    return FfiConverterTypeLocationOptions.lower(value)
+}
+
+
+/**
+ * One action button on a notification.
+ */
+public struct NotificationAction: Equatable, Hashable {
+    /**
+     * Comes back in `NotificationResponse::action_id`.
+     */
+    public var id: String
+    public var title: String
+    public var kind: NotificationActionKind
+    /**
+     * iOS asks the person to unlock the phone first.
+     */
+    public var requiresUnlock: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Comes back in `NotificationResponse::action_id`.
+         */id: String, title: String, kind: NotificationActionKind, 
+        /**
+         * iOS asks the person to unlock the phone first.
+         */requiresUnlock: Bool) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.requiresUnlock = requiresUnlock
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationAction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationAction {
+        return
+            try NotificationAction(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeNotificationActionKind.read(from: &buf), 
+                requiresUnlock: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationAction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterTypeNotificationActionKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.requiresUnlock, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lift(_ buf: RustBuffer) throws -> NotificationAction {
+    return try FfiConverterTypeNotificationAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lower(_ value: NotificationAction) -> RustBuffer {
+    return FfiConverterTypeNotificationAction.lower(value)
+}
+
+
+/**
+ * A set of action buttons notifications can name.
+ */
+public struct NotificationCategory: Equatable, Hashable {
+    public var id: String
+    public var actions: [NotificationAction]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, actions: [NotificationAction]) {
+        self.id = id
+        self.actions = actions
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationCategory: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationCategory: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationCategory {
+        return
+            try NotificationCategory(
+                id: FfiConverterString.read(from: &buf), 
+                actions: FfiConverterSequenceTypeNotificationAction.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationCategory, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterSequenceTypeNotificationAction.write(value.actions, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lift(_ buf: RustBuffer) throws -> NotificationCategory {
+    return try FfiConverterTypeNotificationCategory.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lower(_ value: NotificationCategory) -> RustBuffer {
+    return FfiConverterTypeNotificationCategory.lower(value)
+}
+
+
+/**
+ * What the person did with a notification: tapped it
+ * (`action_id` is [`NOTIFICATION_OPENED`]), dismissed it
+ * ([`NOTIFICATION_DISMISSED`], only for categories) or chose an
+ * action.
+ */
+public struct NotificationResponse: Equatable, Hashable {
+    public var notificationId: String
+    public var actionId: String
+    /**
+     * What they typed, for a `TextInput` action.
+     */
+    public var text: String?
+    public var category: String?
+    /**
+     * The notification's `thread_id` (its group: a chat room, a
+     * list).
+     */
+    public var threadId: String?
+    public var deepLink: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(notificationId: String, actionId: String, 
+        /**
+         * What they typed, for a `TextInput` action.
+         */text: String?, category: String?, 
+        /**
+         * The notification's `thread_id` (its group: a chat room, a
+         * list).
+         */threadId: String?, deepLink: String?) {
+        self.notificationId = notificationId
+        self.actionId = actionId
+        self.text = text
+        self.category = category
+        self.threadId = threadId
+        self.deepLink = deepLink
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationResponse: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationResponse {
+        return
+            try NotificationResponse(
+                notificationId: FfiConverterString.read(from: &buf), 
+                actionId: FfiConverterString.read(from: &buf), 
+                text: FfiConverterOptionString.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf), 
+                threadId: FfiConverterOptionString.read(from: &buf), 
+                deepLink: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationResponse, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.notificationId, into: &buf)
+        FfiConverterString.write(value.actionId, into: &buf)
+        FfiConverterOptionString.write(value.text, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
+        FfiConverterOptionString.write(value.threadId, into: &buf)
+        FfiConverterOptionString.write(value.deepLink, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lift(_ buf: RustBuffer) throws -> NotificationResponse {
+    return try FfiConverterTypeNotificationResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResponse) -> RustBuffer {
+    return FfiConverterTypeNotificationResponse.lower(value)
 }
 
 
@@ -1637,6 +4912,63 @@ public func FfiConverterTypePlace_lift(_ buf: RustBuffer) throws -> Place {
 #endif
 public func FfiConverterTypePlace_lower(_ value: Place) -> RustBuffer {
     return FfiConverterTypePlace.lower(value)
+}
+
+
+/**
+ * One `name=value` pair of a URL query, decoded.
+ */
+public struct QueryItem: Equatable, Hashable {
+    public var name: String
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension QueryItem: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeQueryItem: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> QueryItem {
+        return
+            try QueryItem(
+                name: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: QueryItem, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQueryItem_lift(_ buf: RustBuffer) throws -> QueryItem {
+    return try FfiConverterTypeQueryItem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
+    return FfiConverterTypeQueryItem.lower(value)
 }
 
 
@@ -2133,6 +5465,96 @@ public func FfiConverterTypeFetchProblem_lower(_ value: FetchProblem) -> RustBuf
 
 
 /**
+ * A log level for [`forge_log`].
+ */
+
+public enum ForgeLogLevel: Equatable, Hashable {
+    
+    case trace
+    case debug
+    case info
+    case warn
+    case error
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ForgeLogLevel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeForgeLogLevel: FfiConverterRustBuffer {
+    typealias SwiftType = ForgeLogLevel
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ForgeLogLevel {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .trace
+        
+        case 2: return .debug
+        
+        case 3: return .info
+        
+        case 4: return .warn
+        
+        case 5: return .error
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ForgeLogLevel, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .trace:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .debug:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .info:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .warn:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .error:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lift(_ buf: RustBuffer) throws -> ForgeLogLevel {
+    return try FfiConverterTypeForgeLogLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lower(_ value: ForgeLogLevel) -> RustBuffer {
+    return FfiConverterTypeForgeLogLevel.lower(value)
+}
+
+
+
+/**
  * How current a [`WeatherReport`] is.
  */
 
@@ -2214,6 +5636,136 @@ public func FfiConverterTypeFreshness_lower(_ value: Freshness) -> RustBuffer {
 
 
 /**
+ * Why a request got no response. A non-2xx status is a
+ * response, not an error.
+ */
+public 
+enum HttpTransportError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * No route, DNS failure, connection refused, no network.
+     */
+    case Offline(reason: String
+    )
+    /**
+     * The server's certificate was rejected.
+     */
+    case Certificate(reason: String
+    )
+    case Timeout
+    case Cancelled
+    case InvalidRequest(reason: String
+    )
+    /**
+     * Anything else (TLS protocol errors, a body too large).
+     */
+    case Transport(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension HttpTransportError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpTransportError: FfiConverterRustBuffer {
+    typealias SwiftType = HttpTransportError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpTransportError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Offline(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Certificate(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Timeout
+        case 4: return .Cancelled
+        case 5: return .InvalidRequest(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .Transport(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HttpTransportError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Offline(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Certificate(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Timeout:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(4))
+        
+        
+        case let .InvalidRequest(reason):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Transport(reason):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransportError_lift(_ buf: RustBuffer) throws -> HttpTransportError {
+    return try FfiConverterTypeHttpTransportError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransportError_lower(_ value: HttpTransportError) -> RustBuffer {
+    return FfiConverterTypeHttpTransportError.lower(value)
+}
+
+
+/**
  * Rain, drizzle and snow strength as WMO weather codes report it.
  */
 
@@ -2285,6 +5837,740 @@ public func FfiConverterTypeIntensity_lift(_ buf: RustBuffer) throws -> Intensit
 #endif
 public func FfiConverterTypeIntensity_lower(_ value: Intensity) -> RustBuffer {
     return FfiConverterTypeIntensity.lower(value)
+}
+
+
+
+/**
+ * How precise fixes should be. Finer costs more battery.
+ */
+
+public enum LocationAccuracy: Equatable, Hashable {
+    
+    /**
+     * The best the device can do (GPS when outdoors).
+     */
+    case best
+    case nearestTenMeters
+    case hundredMeters
+    case kilometer
+    /**
+     * City-level: what the user gets when they turned off
+     * Precise Location.
+     */
+    case reduced
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LocationAccuracy: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocationAccuracy: FfiConverterRustBuffer {
+    typealias SwiftType = LocationAccuracy
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocationAccuracy {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .best
+        
+        case 2: return .nearestTenMeters
+        
+        case 3: return .hundredMeters
+        
+        case 4: return .kilometer
+        
+        case 5: return .reduced
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LocationAccuracy, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .best:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .nearestTenMeters:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .hundredMeters:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .kilometer:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .reduced:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationAccuracy_lift(_ buf: RustBuffer) throws -> LocationAccuracy {
+    return try FfiConverterTypeLocationAccuracy.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationAccuracy_lower(_ value: LocationAccuracy) -> RustBuffer {
+    return FfiConverterTypeLocationAccuracy.lower(value)
+}
+
+
+
+
+public enum LocationEvent: Equatable, Hashable {
+    
+    case fix(fix: LocationFix
+    )
+    case heading(heading: Heading
+    )
+    /**
+     * Updates failed. With `permission_denied`, no more follow
+     * until the user allows location again.
+     */
+    case failed(reason: String, permissionDenied: Bool
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LocationEvent: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocationEvent: FfiConverterRustBuffer {
+    typealias SwiftType = LocationEvent
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocationEvent {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .fix(fix: try FfiConverterTypeLocationFix.read(from: &buf)
+        )
+        
+        case 2: return .heading(heading: try FfiConverterTypeHeading.read(from: &buf)
+        )
+        
+        case 3: return .failed(reason: try FfiConverterString.read(from: &buf), permissionDenied: try FfiConverterBool.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LocationEvent, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .fix(fix):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeLocationFix.write(fix, into: &buf)
+            
+        
+        case let .heading(heading):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeHeading.write(heading, into: &buf)
+            
+        
+        case let .failed(reason,permissionDenied):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+            FfiConverterBool.write(permissionDenied, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationEvent_lift(_ buf: RustBuffer) throws -> LocationEvent {
+    return try FfiConverterTypeLocationEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationEvent_lower(_ value: LocationEvent) -> RustBuffer {
+    return FfiConverterTypeLocationEvent.lower(value)
+}
+
+
+
+/**
+ * A permission the app can ask the user for. More cases (camera,
+ * photos, microphone) are added as their adapters are; see
+ * docs/native-services.md. A permission whose service the app
+ * did not select reports `Unsupported`.
+ */
+
+public enum NativePermission: Equatable, Hashable {
+    
+    /**
+     * Alerts, sounds and badges from local notifications.
+     */
+    case notifications
+    /**
+     * Location while the app is in use (`location` service).
+     */
+    case location
+    /**
+     * Motion & Fitness: the barometer, pedometer and activity
+     * (`motion` service). The other motion sensors need none.
+     */
+    case motion
+    /**
+     * Bluetooth (`bluetooth` service).
+     */
+    case bluetooth
+    /**
+     * Recording audio (`audio` service, since interface v3).
+     * Needs `microphone` under `[ios.permissions]` in forge.toml.
+     */
+    case microphone
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativePermission: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
+    typealias SwiftType = NativePermission
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativePermission {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .notifications
+        
+        case 2: return .location
+        
+        case 3: return .motion
+        
+        case 4: return .bluetooth
+        
+        case 5: return .microphone
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativePermission, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .notifications:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .location:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .motion:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .bluetooth:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .microphone:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePermission_lift(_ buf: RustBuffer) throws -> NativePermission {
+    return try FfiConverterTypeNativePermission.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePermission_lower(_ value: NativePermission) -> RustBuffer {
+    return FfiConverterTypeNativePermission.lower(value)
+}
+
+
+
+/**
+ * Errors from the native services. `reason` fields are
+ * diagnostics, not UI copy.
+ */
+public 
+enum NativeServiceError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * The host has not called `install_native_services` (on iOS,
+     * `ForgeServices.install()`), or this platform has no
+     * implementation yet.
+     */
+    case NotInstalled(service: String
+    )
+    /**
+     * The arguments were rejected before reaching the platform.
+     */
+    case InvalidInput(reason: String
+    )
+    /**
+     * The user has not allowed this (for example notifications
+     * are turned off for the app).
+     */
+    case PermissionDenied(reason: String
+    )
+    /**
+     * The service cannot work in this process (for example no
+     * notification centre under `swift test`).
+     */
+    case Unavailable(reason: String
+    )
+    /**
+     * The platform reported an error. On iOS `code` is the
+     * `OSStatus` or `NSError` code.
+     */
+    case Platform(code: Int64, reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension NativeServiceError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeServiceError: FfiConverterRustBuffer {
+    typealias SwiftType = NativeServiceError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeServiceError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .NotInstalled(
+            service: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .InvalidInput(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .PermissionDenied(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .Unavailable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .Platform(
+            code: try FfiConverterInt64.read(from: &buf), 
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeServiceError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .NotInstalled(service):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(service, into: &buf)
+            
+        
+        case let .InvalidInput(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .PermissionDenied(reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Unavailable(reason):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Platform(code,reason):
+            writeInt(&buf, Int32(5))
+            FfiConverterInt64.write(code, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeServiceError_lift(_ buf: RustBuffer) throws -> NativeServiceError {
+    return try FfiConverterTypeNativeServiceError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeServiceError_lower(_ value: NativeServiceError) -> RustBuffer {
+    return FfiConverterTypeNativeServiceError.lower(value)
+}
+
+
+/**
+ * What an action button does.
+ */
+
+public enum NotificationActionKind: Equatable, Hashable {
+    
+    /**
+     * A button handled without opening the app (Mark as Read,
+     * Snooze); `destructive` shows it in red.
+     */
+    case button(destructive: Bool
+    )
+    /**
+     * A button that opens the app (View, Open).
+     */
+    case opensApp
+    /**
+     * A text field, for a quick reply.
+     */
+    case textInput(sendTitle: String, placeholder: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NotificationActionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationActionKind: FfiConverterRustBuffer {
+    typealias SwiftType = NotificationActionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationActionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .button(destructive: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .opensApp
+        
+        case 3: return .textInput(sendTitle: try FfiConverterString.read(from: &buf), placeholder: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NotificationActionKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .button(destructive):
+            writeInt(&buf, Int32(1))
+            FfiConverterBool.write(destructive, into: &buf)
+            
+        
+        case .opensApp:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .textInput(sendTitle,placeholder):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(sendTitle, into: &buf)
+            FfiConverterString.write(placeholder, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lift(_ buf: RustBuffer) throws -> NotificationActionKind {
+    return try FfiConverterTypeNotificationActionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lower(_ value: NotificationActionKind) -> RustBuffer {
+    return FfiConverterTypeNotificationActionKind.lower(value)
+}
+
+
+
+/**
+ * When a local notification fires.
+ */
+
+public enum NotificationTrigger: Equatable, Hashable {
+    
+    /**
+     * Straight away (shown as a banner even while the app is open).
+     */
+    case now
+    /**
+     * After `seconds`. Repeating needs at least 60 seconds on iOS.
+     */
+    case after(seconds: UInt32, repeats: Bool
+    )
+    /**
+     * At a moment in time (Unix milliseconds), in the device's
+     * time zone at that moment. Must be in the future.
+     */
+    case at(unixMs: Int64
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NotificationTrigger: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationTrigger: FfiConverterRustBuffer {
+    typealias SwiftType = NotificationTrigger
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationTrigger {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .now
+        
+        case 2: return .after(seconds: try FfiConverterUInt32.read(from: &buf), repeats: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 3: return .at(unixMs: try FfiConverterInt64.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NotificationTrigger, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .now:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .after(seconds,repeats):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt32.write(seconds, into: &buf)
+            FfiConverterBool.write(repeats, into: &buf)
+            
+        
+        case let .at(unixMs):
+            writeInt(&buf, Int32(3))
+            FfiConverterInt64.write(unixMs, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationTrigger_lift(_ buf: RustBuffer) throws -> NotificationTrigger {
+    return try FfiConverterTypeNotificationTrigger.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationTrigger_lower(_ value: NotificationTrigger) -> RustBuffer {
+    return FfiConverterTypeNotificationTrigger.lower(value)
+}
+
+
+
+/**
+ * The same states on every platform.
+ */
+
+public enum PermissionStatus: Equatable, Hashable {
+    
+    /**
+     * Never asked. A request shows the system prompt.
+     */
+    case notDetermined
+    case granted
+    /**
+     * iOS provisional notifications: delivered quietly, without
+     * asking first.
+     */
+    case provisional
+    /**
+     * The user said no. Only the Settings app can change it.
+     */
+    case denied
+    /**
+     * Blocked by parental controls or device management.
+     */
+    case restricted
+    /**
+     * This platform or process has no such permission.
+     */
+    case unsupported
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PermissionStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePermissionStatus: FfiConverterRustBuffer {
+    typealias SwiftType = PermissionStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PermissionStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .notDetermined
+        
+        case 2: return .granted
+        
+        case 3: return .provisional
+        
+        case 4: return .denied
+        
+        case 5: return .restricted
+        
+        case 6: return .unsupported
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PermissionStatus, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .notDetermined:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .granted:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .provisional:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .denied:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .restricted:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .unsupported:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePermissionStatus_lift(_ buf: RustBuffer) throws -> PermissionStatus {
+    return try FfiConverterTypePermissionStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) -> RustBuffer {
+    return FfiConverterTypePermissionStatus.lower(value)
 }
 
 
@@ -2463,6 +6749,96 @@ public func FfiConverterTypeRefreshPhase_lift(_ buf: RustBuffer) throws -> Refre
 #endif
 public func FfiConverterTypeRefreshPhase_lower(_ value: RefreshPhase) -> RustBuffer {
     return FfiConverterTypeRefreshPhase.lower(value)
+}
+
+
+
+/**
+ * Something the user can share through the system share sheet.
+ * The host presents it (on iOS `ForgeShareLink`).
+ */
+
+public enum ShareItem: Equatable, Hashable {
+    
+    case text(text: String
+    )
+    case url(url: String
+    )
+    /**
+     * A file the app wrote, by absolute path.
+     */
+    case file(path: String, title: String?
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ShareItem: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeShareItem: FfiConverterRustBuffer {
+    typealias SwiftType = ShareItem
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ShareItem {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .text(text: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .url(url: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .file(path: try FfiConverterString.read(from: &buf), title: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ShareItem, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .text(text):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(text, into: &buf)
+            
+        
+        case let .url(url):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(url, into: &buf)
+            
+        
+        case let .file(path,title):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(path, into: &buf)
+            FfiConverterOptionString.write(title, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeShareItem_lift(_ buf: RustBuffer) throws -> ShareItem {
+    return try FfiConverterTypeShareItem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeShareItem_lower(_ value: ShareItem) -> RustBuffer {
+    return FfiConverterTypeShareItem.lower(value)
 }
 
 
@@ -2881,8 +7257,21 @@ enum WeatherError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      */
     case Network(reason: String
     )
+    /**
+     * The person said no to location, or turned it off for the app.
+     */
+    case LocationDenied
+    /**
+     * No position could be found (indoors, no signal, timed out).
+     */
+    case LocationUnavailable(reason: String
+    )
     case Cancelled
     case ShutDown
+    /**
+     * Another Weather core already has this data folder open.
+     */
+    case InUse
     case Internal(reason: String
     )
 
@@ -2934,9 +7323,14 @@ public struct FfiConverterTypeWeatherError: FfiConverterRustBuffer {
         case 7: return .Network(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 8: return .Cancelled
-        case 9: return .ShutDown
-        case 10: return .Internal(
+        case 8: return .LocationDenied
+        case 9: return .LocationUnavailable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 10: return .Cancelled
+        case 11: return .ShutDown
+        case 12: return .InUse
+        case 13: return .Internal(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -2986,16 +7380,29 @@ public struct FfiConverterTypeWeatherError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .Cancelled:
+        case .LocationDenied:
             writeInt(&buf, Int32(8))
         
         
-        case .ShutDown:
+        case let .LocationUnavailable(reason):
             writeInt(&buf, Int32(9))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .InUse:
+            writeInt(&buf, Int32(12))
         
         
         case let .Internal(reason):
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(13))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -3161,6 +7568,30 @@ fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionInt32: FfiConverterRustBuffer {
+    typealias SwiftType = Int32?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterInt32.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
     typealias SwiftType = UInt64?
 
@@ -3233,6 +7664,54 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
+    typealias SwiftType = Data?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterData.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterData.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeRuntimeEvents: FfiConverterRustBuffer {
+    typealias SwiftType = RuntimeEvents?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeRuntimeEvents.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeRuntimeEvents.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeWeatherOperation: FfiConverterRustBuffer {
     typealias SwiftType = WeatherOperation?
 
@@ -3273,6 +7752,30 @@ fileprivate struct FfiConverterOptionTypeDailyForecast: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeDailyForecast.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeLocationFix: FfiConverterRustBuffer {
+    typealias SwiftType = LocationFix?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeLocationFix.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeLocationFix.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -3377,6 +7880,31 @@ fileprivate struct FfiConverterOptionTypeIntensity: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeDailyForecast: FfiConverterRustBuffer {
     typealias SwiftType = [DailyForecast]
 
@@ -3427,6 +7955,81 @@ fileprivate struct FfiConverterSequenceTypeHourlyPoint: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeHttpHeader: FfiConverterRustBuffer {
+    typealias SwiftType = [HttpHeader]
+
+    public static func write(_ value: [HttpHeader], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHttpHeader.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HttpHeader] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HttpHeader]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHttpHeader.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationAction]
+
+    public static func write(_ value: [NotificationAction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationAction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationAction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationAction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationAction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationCategory]
+
+    public static func write(_ value: [NotificationCategory], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationCategory.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationCategory] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationCategory]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypePlace: FfiConverterRustBuffer {
     typealias SwiftType = [Place]
 
@@ -3444,6 +8047,31 @@ fileprivate struct FfiConverterSequenceTypePlace: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypePlace.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
+    typealias SwiftType = [QueryItem]
+
+    public static func write(_ value: [QueryItem], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeQueryItem.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [QueryItem] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [QueryItem]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeQueryItem.read(from: &buf))
         }
         return seq
     }
@@ -3546,6 +8174,210 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
         print("uniffiFutureContinuationCallback invalid handle")
     }
 }
+private func uniffiTraitInterfaceCallAsync<T>(
+    makeCall: @escaping () async throws -> T,
+    handleSuccess: @escaping (T) -> (),
+    handleError: @escaping (Int8, RustBuffer) -> (),
+    droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+) {
+    let task = Task {
+        // Note: it's important we call either `handleSuccess` or `handleError` exactly once.  Each
+        // call consumes an Arc reference, which means there should be no possibility of a double
+        // call.  The following code is structured so that will will never call both `handleSuccess`
+        // and `handleError`, even in the face of weird errors.
+        //
+        // On platforms that need extra machinery to make C-ABI calls, like JNA or ctypes, it's
+        // possible that we fail to make either call.  However, it doesn't seem like this is
+        // possible on Swift since swift can just make the C call directly.
+        var callResult: T
+        do {
+            callResult = try await makeCall()
+        } catch {
+            handleError(CALL_UNEXPECTED_ERROR, FfiConverterString.lower(String(describing: error)))
+            return
+        }
+        handleSuccess(callResult)
+    }
+    let handle = UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.insert(obj: task)
+    droppedCallback.pointee = UniffiForeignFutureDroppedCallbackStruct(
+        handle: handle,
+        free: uniffiForeignFutureDroppedCallback
+    )
+}
+
+private func uniffiTraitInterfaceCallAsyncWithError<T, E>(
+    makeCall: @escaping () async throws -> T,
+    handleSuccess: @escaping (T) -> (),
+    handleError: @escaping (Int8, RustBuffer) -> (),
+    lowerError: @escaping (E) -> RustBuffer,
+    droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+) {
+    let task = Task {
+        // See the note in uniffiTraitInterfaceCallAsync for details on `handleSuccess` and
+        // `handleError`.
+        var callResult: T
+        do {
+            callResult = try await makeCall()
+        } catch let error as E {
+            handleError(CALL_ERROR, lowerError(error))
+            return
+        } catch {
+            handleError(CALL_UNEXPECTED_ERROR, FfiConverterString.lower(String(describing: error)))
+            return
+        }
+        handleSuccess(callResult)
+    }
+    let handle = UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.insert(obj: task)
+    droppedCallback.pointee = UniffiForeignFutureDroppedCallbackStruct(
+        handle: handle,
+        free: uniffiForeignFutureDroppedCallback
+    )
+}
+
+// Borrow the callback handle map implementation to store foreign future handles
+// TODO: consolidate the handle-map code (https://github.com/mozilla/uniffi-rs/pull/1823)
+fileprivate let UNIFFI_FOREIGN_FUTURE_HANDLE_MAP = UniffiHandleMap<UniffiForeignFutureTask>()
+
+// Protocol for tasks that handle foreign futures.
+//
+// Defining a protocol allows all tasks to be stored in the same handle map.  This can't be done
+// with the task object itself, since has generic parameters.
+fileprivate protocol UniffiForeignFutureTask {
+    func cancel()
+}
+
+extension Task: UniffiForeignFutureTask {}
+
+private func uniffiForeignFutureDroppedCallback(handle: UInt64) {
+    do {
+        let task = try UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.remove(handle: handle)
+        // Set the cancellation flag on the task.  If it's still running, the code can check the
+        // cancellation flag or call `Task.checkCancellation()`.  If the task has completed, this is
+        // a no-op.
+        task.cancel()
+    } catch {
+        print("uniffiForeignFutureDroppedCallback: handle missing from handlemap")
+    }
+}
+
+// For testing
+public func uniffiForeignFutureHandleCountWeatherCore() -> Int {
+    UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
+}
+/**
+ * Writes one record from host code into Forge's log, with
+ * `category` as its target. Never log secrets.
+ */
+public func forgeLog(level: ForgeLogLevel, category: String, message: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_forge_log(
+        FfiConverterTypeForgeLogLevel_lower(level),
+        FfiConverterString.lower(category),
+        FfiConverterString.lower(message),uniffiCallStatus
+    )
+}
+}
+/**
+ * Whether a record at `level` would be kept, so the host can skip
+ * building a message nobody will see.
+ */
+public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_forge_log_enabled(
+        FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
+    )
+})
+}
+/**
+ * Called by the host when the person responds to a
+ * notification. Kept until the app sets a handler with
+ * [`on_notification_response`].
+ */
+public func deliverNotificationResponse(response: NotificationResponse)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_deliver_notification_response(
+        FfiConverterTypeNotificationResponse_lower(response),uniffiCallStatus
+    )
+}
+}
+/**
+ * Called once by the host at launch (on iOS by
+ * `ForgeServices.install()`). Installing again replaces the
+ * previous services.
+ */
+public func installNativeServices(directories: AppDirectories, secureStore: SecureStore, notifier: LocalNotifier, permissions: PermissionProvider)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_install_native_services(
+        FfiConverterTypeAppDirectories_lower(directories),
+        FfiConverterTypeSecureStore_lower(secureStore),
+        FfiConverterTypeLocalNotifier_lower(notifier),
+        FfiConverterTypePermissionProvider_lower(permissions),uniffiCallStatus
+    )
+}
+}
+/**
+ * True once the host has installed the services. For
+ * diagnostics and tests.
+ */
+public func nativeServicesInstalled() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_native_services_installed(uniffiCallStatus
+    )
+})
+}
+/**
+ * The services interface version these bindings were built
+ * with. The host's adapters check it at install time.
+ */
+public func nativeServicesVersion() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_native_services_version(uniffiCallStatus
+    )
+})
+}
+/**
+ * Splits a URL the app was opened with into its parts.
+ */
+public func parseDeepLink(url: String)throws  -> DeepLink  {
+    return try  FfiConverterTypeDeepLink_lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_parse_deep_link(
+        FfiConverterString.lower(url),uniffiCallStatus
+    )
+})
+}
+/**
+ * Called by the host at launch (`ForgeServices.install()`).
+ */
+public func installNativeHttp(transport: HttpTransport)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_install_native_http(
+        FfiConverterTypeHttpTransport_lower(transport),uniffiCallStatus
+    )
+}
+}
+public func installNativeLocation(source: LocationSource)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_install_native_location(
+        FfiConverterTypeLocationSource_lower(source),uniffiCallStatus
+    )
+}
+}
+/**
+ * The framework kind of an error, so ForgeKit presents every app's errors
+ * alike (`ForgeKindedError` in Swift).
+ */
+public func weatherErrorKind(error: WeatherError) -> ErrorKind  {
+    return try!  FfiConverterTypeErrorKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_func_weather_error_kind(
+        FfiConverterTypeWeatherError_lower(error),uniffiCallStatus
+    )
+})
+}
 /**
  * Works out what to show for `report` at `now_unix` (Unix seconds). Hours
  * and days already past at the place are dropped, so a cached report reads
@@ -3577,10 +8409,109 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_weather_core_checksum_func_forge_log() != 21979) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_func_forge_log_enabled() != 55462) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_func_deliver_notification_response() != 34360) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_func_install_native_services() != 44830) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_func_native_services_installed() != 38594) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_func_native_services_version() != 19999) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_func_parse_deep_link() != 41527) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_func_install_native_http() != 39257) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_func_install_native_location() != 65442) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_func_weather_error_kind() != 7701) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_weather_core_checksum_func_weather_overview() != 64414) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_weather_core_checksum_method_localnotifier_schedule() != 28348) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_localnotifier_cancel() != 7937) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_localnotifier_pending() != 46608) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_localnotifier_set_categories() != 62617) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_permissionprovider_status() != 960) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_permissionprovider_request() != 37462) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_securestore_get() != 10008) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_securestore_set() != 15407) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_securestore_delete() != 57704) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_httpstreambody_fail() != 23241) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_httpstreambody_finish() != 21971) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_httpstreambody_receive() != 40191) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_httptransport_send() != 15321) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_httptransport_open_stream() != 27473) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_httptransport_cancel() != 945) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_locationsink_send() != 19579) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_locationsource_last_known() != 36688) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_locationsource_is_precise() != 60037) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_locationsource_heading_available() != 42110) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_locationsource_start() != 26628) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_locationsource_stop() != 60180) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_weather_core_checksum_method_forgeweatherapp_active_refresh() != 46564) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_background_time_expired() != 41721) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_background_work_pending() != 30943) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_weather_core_checksum_method_forgeweatherapp_cached_report() != 51928) {
@@ -3592,16 +8523,31 @@ private let initializationResult: InitializationResult = {
     if (uniffi_weather_core_checksum_method_forgeweatherapp_cached_reports() != 17392) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_weather_core_checksum_method_forgeweatherapp_is_shut_down() != 45590) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_events() != 21405) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_launch_report() != 21037) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_phase() != 44861) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_weather_core_checksum_method_forgeweatherapp_refresh() != 3413) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_weather_core_checksum_method_forgeweatherapp_search_places() != 4668) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_revision() != 3145) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_weather_core_checksum_method_forgeweatherapp_shutdown() != 36742) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_search_places() != 12490) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_set_phase() != 2419) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_shutdown() != 55325) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_current_location() != 25339) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_weather_core_checksum_method_forgeweatherapp_move_saved_place() != 52410) {
@@ -3634,13 +8580,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_weather_core_checksum_method_weatheroperation_result() != 31989) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_weather_core_checksum_constructor_forgeweatherapp_new() != 8788) {
+    if (uniffi_weather_core_checksum_constructor_forgeweatherapp_new() != 27436) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_weather_core_checksum_constructor_forgeweatherapp_with_config() != 6083) {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitHttpTransport()
+    uniffiCallbackInitLocalNotifier()
+    uniffiCallbackInitLocationSource()
+    uniffiCallbackInitPermissionProvider()
+    uniffiCallbackInitSecureStore()
+    uniffiEnsureForgeAppInitialized()
     return InitializationResult.ok
 }()
 

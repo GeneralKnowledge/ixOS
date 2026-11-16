@@ -1,12 +1,11 @@
 import SwiftUI
-import WeatherBridge
 import WeatherFFI
 
 /// One place: the big current-conditions header over its sky, then frosted
 /// cards for the summary and hours, the days ahead, and details.
 struct ForecastPage: View {
     let page: WeatherPage
-    @ObservedObject var model: WeatherViewModel
+    @Bindable var model: WeatherViewModel
     let showLocations: () -> Void
 
     var body: some View {
@@ -521,7 +520,7 @@ private struct Footer: View {
 
 private struct EmptyPage: View {
     let page: WeatherPage
-    @ObservedObject var model: WeatherViewModel
+    @Bindable var model: WeatherViewModel
     let showLocations: () -> Void
 
     var body: some View {
@@ -535,11 +534,14 @@ private struct EmptyPage: View {
             if page.isMyLocation {
                 Button("Use My Location") { model.useCurrentLocation() }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("forecast.useLocation")
             } else {
                 Button("Try Again") { model.refresh(page.id) }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("forecast.retry")
             }
             Button("Search for a City", action: showLocations)
+                .accessibilityIdentifier("forecast.search")
         }
         .foregroundStyle(.white)
     }

@@ -16,12 +16,11 @@ import Foundation
 public final class WeatherClient: @unchecked Sendable {
     // @unchecked: the generated class is not marked Sendable, but the Rust
     // object behind it is (`Send + Sync`), and the class holds nothing else.
-    private let app: ForgeWeatherApp
+    public let app: ForgeWeatherApp
 
-    /// Uses Open-Meteo with default settings. `storageDirectory` holds the
-    /// offline cache and is created if missing.
-    public init(storageDirectory: String) {
-        app = ForgeWeatherApp(storageDirectory: storageDirectory)
+    /// The core the app's `ForgeHost` opened (`makeAppHost()`).
+    public init(core: ForgeWeatherApp) {
+        app = core
     }
 
     /// Overrides endpoints or timeouts (tests point these at local hosts).
@@ -60,7 +59,7 @@ public final class WeatherClient: @unchecked Sendable {
 
     public var isRefreshing: Bool { app.activeRefresh() != nil }
 
-    public var isShutDown: Bool { app.isShutDown() }
+    public var isShutDown: Bool { app.phase() == .terminated }
 
     // MARK: Commands
 
@@ -112,6 +111,7 @@ public final class WeatherClient: @unchecked Sendable {
     // MARK: Lifecycle
 
     /// Cancels any refresh and refuses new work (`.closed`). Idempotent.
+    /// In the app the host does this when iOS ends it.
     public func shutdown() {
         app.shutdown()
     }

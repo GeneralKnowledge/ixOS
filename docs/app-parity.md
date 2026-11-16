@@ -37,7 +37,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | relay | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
 | sketchbook | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
 | soundscape | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| weather | Yes | No (wave 3) | Yes | Yes | No (wave 3) | No (wave 3) | No (wave 3) | n/a | No (wave 3) | Yes | Yes |
+| weather | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 
 ## Known lag
 
@@ -45,11 +45,6 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 |---|---|---|---|---|
 | chat | `appkit-alerts` | missing | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | chat | `forge-host` | missing | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
-| weather | `forge-host` | missing | Rust core predates the forge-app runtime | 3 |
-| weather | `location` | missing | Its own LocationProvider.swift predates the location service (FieldKit is now the second user) | 3 |
-| weather | `requirements` | missing | Written with its move to the framework | 3 |
-| weather | `ui-test` | missing | Written with its move to the framework | 3 |
-| weather | `urlsession` | missing | Open-Meteo requests still go through ureq | 3 |
 | checklist | `device-checks` | missing | CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt | 4 |
 | commonplace | `device-checks` | missing | CP-5 (error words) needs the fixture server offline; written with slice 2 | 4 |
 | good-dog | `device-checks` | missing | GD requirements without a scenario yet; written with GD2b's phone run | 4 |

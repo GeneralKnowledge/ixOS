@@ -1,16 +1,23 @@
 //! `ForgeWeatherApp`: the Weather example's Rust side.
 //!
-//! Concurrency contract (compare `crate::app` for the Counter):
+//! It runs on the application runtime (`forge_app::Runtime`): the host
+//! (ForgeKit's `ForgeHost`) opens one core per process, holds the data folder
+//! so a second core is refused (`InUse`), reports the lifecycle, and shuts it
+//! down. Refreshes and searches are on-screen work: the app leaving the
+//! screen, or shutdown, cancels them, and the page refreshes again on return.
 //!
-//! * There is no serial command thread. Weather has no state to mutate except
-//!   the cache, and HTTP can take seconds, so each refresh and each search runs
-//!   on its own short-lived worker thread. Callers are never blocked.
+//! Concurrency contract:
+//!
+//! * Weather has no state to mutate except the cache, and HTTP can take
+//!   seconds, so each refresh and each search runs on its own short-lived
+//!   worker thread, not the runtime's command thread. Callers are never
+//!   blocked.
 //! * **One refresh at a time.** Starting a refresh cancels the one in flight
 //!   (pull-to-refresh twice, or switching places, never shows stale results).
 //! * **Cancellation is immediate for the caller.** `cancel()` resolves
-//!   `result()` with `Cancelled` at once. The blocking HTTP call cannot be
-//!   interrupted, so the worker finishes in the background and its response
-//!   is discarded: it neither resolves the operation nor touches the cache.
+//!   `result()` with `Cancelled` at once and aborts the request. A response
+//!   that still arrives is discarded: it neither resolves the operation nor
+//!   touches the cache.
 //!   (The one wait: if the worker is already writing the cache, `cancel()`
 //!   waits for that write, and the refresh counts as having succeeded.)
 //! * A successful refresh writes the cache *before* resolving, so
@@ -33,7 +40,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use forge_net::{HttpClient, Request, UreqClient};
+use forge_app::{DataDirectory, Runtime};
+use forge_net::{CancelHandle, HttpClient, Request, UreqClient};
 use serde::{Deserialize, Serialize};
 
 use super::error::WeatherError;
@@ -77,7 +85,6 @@ pub(crate) struct Shared {
     pub(crate) places: Mutex<Vec<Place>>,
     active: Mutex<Option<Arc<RefreshState>>>,
     next_id: AtomicU64,
-    shut_down: AtomicBool,
 }
 
 struct RefreshState {
@@ -86,6 +93,8 @@ struct RefreshState {
     phase: AtomicU8,
     cancel_requested: AtomicBool,
     completion: Arc<Completion<RefreshResult>>,
+    /// Cancelled with the refresh: aborts its request.
+    abort: CancelHandle,
     /// Serialises "cancel" against "write the cache, then resolve", so a
     /// cancelled refresh never touches the cache and a successful one has
     /// written it before any caller sees the result.
@@ -100,6 +109,8 @@ impl RefreshState {
         self.cancel_requested.store(true, Ordering::SeqCst);
         let _commit = lock(&self.commit);
         self.completion.complete(Err(WeatherError::Cancelled));
+        drop(_commit);
+        self.abort.cancel();
     }
 
     fn phase(&self) -> RefreshPhase {
@@ -117,7 +128,12 @@ impl RefreshState {
 #[derive(uniffi::Object)]
 pub struct ForgeWeatherApp {
     pub(crate) shared: Arc<Shared>,
+    pub(crate) rt: Runtime<()>,
 }
+
+// `events()`, `set_phase()`, `shutdown()` and the rest of the runtime's
+// half of the interface, which ForgeHost calls.
+forge_app::export_runtime!(ForgeWeatherApp, rt);
 
 /// Handle to one refresh. Releasing it does not cancel the refresh.
 #[derive(uniffi::Object)]
@@ -161,14 +177,10 @@ impl WeatherOperation {
 impl ForgeWeatherApp {
     /// Opens the app with Open-Meteo defaults. `storage_directory` holds the
     /// offline cache; it is created if missing.
+    /// Fails with `InUse` when another core has the folder open.
     #[uniffi::constructor]
-    pub fn new(storage_directory: String) -> Self {
-        Self::build(
-            Arc::new(UreqClient::with_user_agent(USER_AGENT)),
-            Some(PathBuf::from(storage_directory)),
-            WeatherConfig::default(),
-        )
-        .expect("default config is valid")
+    pub fn new(storage_directory: String) -> Result<Arc<Self>, WeatherError> {
+        Self::with_config(storage_directory, WeatherConfig::default())
     }
 
     /// Opens the app with overrides (alternative endpoints, timeouts). Tests
@@ -179,7 +191,7 @@ impl ForgeWeatherApp {
         config: WeatherConfig,
     ) -> Result<Arc<Self>, WeatherError> {
         Self::build(
-            Arc::new(UreqClient::with_user_agent(USER_AGENT)),
+            default_client(),
             Some(PathBuf::from(storage_directory)),
             config,
         )
@@ -190,7 +202,7 @@ impl ForgeWeatherApp {
     /// flight. Returns at once; await `result()` on the returned handle.
     pub fn refresh(&self, place: Place) -> Result<Arc<WeatherOperation>, WeatherError> {
         let shared = &self.shared;
-        if shared.shut_down.load(Ordering::SeqCst) {
+        if self.rt.is_shut_down() {
             return Err(WeatherError::ShutDown);
         }
         open_meteo::validate_coordinate(place.coordinate)?;
@@ -204,17 +216,31 @@ impl ForgeWeatherApp {
             phase: AtomicU8::new(PHASE_FETCHING),
             cancel_requested: AtomicBool::new(false),
             completion: Completion::new(),
+            abort: CancelHandle::new(),
             commit: Mutex::new(()),
         });
         if let Some(previous) = lock(&shared.active).replace(Arc::clone(&state)) {
             previous.cancel();
         }
+        // On-screen work: leaving the screen or shutdown cancels it, which
+        // resolves the caller with `Cancelled` at once.
+        let work = self.rt.foreground(None);
+        let weak = Arc::downgrade(&state);
+        let registration = work.handle().on_cancel(move || {
+            if let Some(state) = weak.upgrade() {
+                state.cancel();
+            }
+        });
 
         let worker_shared = Arc::clone(shared);
         let worker_state = Arc::clone(&state);
         let spawned = thread::Builder::new()
             .name(format!("forge-weather-refresh-{}", state.id))
-            .spawn(move || run_refresh(&worker_shared, &worker_state));
+            .spawn(move || {
+                run_refresh(&worker_shared, &worker_state);
+                drop(registration);
+                drop(work);
+            });
         if let Err(err) = spawned {
             state.completion.complete(Err(WeatherError::Internal {
                 reason: format!("could not start refresh thread: {err}"),
@@ -237,25 +263,15 @@ impl ForgeWeatherApp {
 
     /// Looks places up by name ("Paris", "Springfield, IL"). Returns up to 10
     /// matches, best first; an empty list means no match.
+    /// On-screen work: leaving the screen or shutdown stops it.
     pub async fn search_places(&self, query: String) -> Result<Vec<Place>, WeatherError> {
         let shared = Arc::clone(&self.shared);
-        if shared.shut_down.load(Ordering::SeqCst) {
-            return Err(WeatherError::ShutDown);
-        }
         let query = open_meteo::validate_query(&query)?.to_string();
-        let completion: Arc<Completion<Result<Vec<Place>, WeatherError>>> = Completion::new();
-        let worker_completion = Arc::clone(&completion);
-        let spawned = thread::Builder::new()
-            .name("forge-weather-search".into())
-            .spawn(move || {
-                worker_completion.complete(run_search(&shared, &query));
-            });
-        if let Err(err) = spawned {
-            return Err(WeatherError::Internal {
-                reason: format!("could not start search thread: {err}"),
-            });
-        }
-        completion.wait().await
+        self.rt
+            .run("weather-search", self.rt.foreground(None), move |cancel| {
+                run_search(&shared, &query, cancel)
+            })
+            .await
     }
 
     /// The last successfully fetched report, marked `Cached` with its age, or
@@ -279,23 +295,23 @@ impl ForgeWeatherApp {
             .map(|r| as_cached(r.clone(), None))
             .collect()
     }
+}
 
-    /// Cancels the refresh in flight; later calls fail with `ShutDown`.
-    /// Idempotent. Workers still running finish in the background without
-    /// touching the cache.
-    pub fn shutdown(&self) {
-        self.shared.shut_down.store(true, Ordering::SeqCst);
-        if let Some(active) = lock(&self.shared.active).take() {
-            active.cancel();
-        }
-    }
-
-    pub fn is_shut_down(&self) -> bool {
-        self.shared.shut_down.load(Ordering::SeqCst)
-    }
+/// URLSession once the host has installed its services (on iOS, just after
+/// the core is made); ureq before that, and in Linux tests.
+fn default_client() -> Arc<dyn HttpClient> {
+    Arc::new(crate::native::http::HttpService::prefer_installed(
+        Arc::new(UreqClient::with_user_agent(USER_AGENT)),
+        |client| client,
+    ))
 }
 
 impl ForgeWeatherApp {
+    /// After `shutdown()`, every call that would start work is refused.
+    pub(crate) fn is_shut_down(&self) -> bool {
+        self.rt.is_shut_down()
+    }
+
     pub(crate) fn build(
         client: Arc<dyn HttpClient>,
         storage_directory: Option<PathBuf>,
@@ -324,6 +340,12 @@ impl ForgeWeatherApp {
                 .max_cache_age_seconds
                 .unwrap_or(DEFAULT_MAX_CACHE_AGE_SECONDS),
         };
+        // Held until the core is dropped, so a second core on the same
+        // folder is refused.
+        let rt = match &storage_directory {
+            Some(dir) => Runtime::with_directory("weather", DataDirectory::open(dir)?, ()),
+            None => Runtime::new("weather", ()),
+        };
         let cache_path = storage_directory
             .as_ref()
             .map(|dir| dir.join(CACHE_FILENAME));
@@ -345,8 +367,8 @@ impl ForgeWeatherApp {
                 places: Mutex::new(places),
                 active: Mutex::new(None),
                 next_id: AtomicU64::new(0),
-                shut_down: AtomicBool::new(false),
             }),
+            rt,
         })
     }
 }
@@ -362,7 +384,7 @@ fn run_refresh(shared: &Shared, state: &RefreshState) {
     .header("Accept", "application/json")
     .timeout(shared.settings.timeout);
 
-    let fetched = shared.client.send(&request);
+    let fetched = shared.client.send_cancellable(&request, &state.abort);
     if state.completion.get().is_some() {
         return; // Cancelled while waiting: discard the response.
     }
@@ -380,9 +402,7 @@ fn run_refresh(shared: &Shared, state: &RefreshState) {
             let _commit = lock(&state.commit);
             // A cancel that got here first wins: discard the report.
             if state.completion.get().is_none() {
-                if !shared.shut_down.load(Ordering::SeqCst) {
-                    store_cache(shared, report.clone());
-                }
+                store_cache(shared, report.clone());
                 state.completion.complete(Ok(report));
             }
         }
@@ -395,14 +415,18 @@ fn run_refresh(shared: &Shared, state: &RefreshState) {
     }
 }
 
-fn run_search(shared: &Shared, query: &str) -> Result<Vec<Place>, WeatherError> {
+fn run_search(
+    shared: &Shared,
+    query: &str,
+    cancel: &CancelHandle,
+) -> Result<Vec<Place>, WeatherError> {
     let request = Request::get(open_meteo::geocoding_url(
         &shared.settings.geocoding_base,
         query,
     ))
     .header("Accept", "application/json")
     .timeout(shared.settings.timeout);
-    let response = shared.client.send(&request)?;
+    let response = shared.client.send_cancellable(&request, cancel)?;
     if !response.is_success() {
         return Err(open_meteo::status_error(response.status, &response.body));
     }
@@ -637,6 +661,7 @@ mod tests {
             app.cached_report().unwrap().freshness,
             Freshness::Cached { problem: None, .. }
         ));
+        drop(app);
         let reopened = self::app(NoopClientForTests, Some(dir.path()));
         let restored = reopened.cached_report().unwrap();
         assert_eq!(restored.current, report.current);
@@ -843,6 +868,30 @@ mod tests {
     }
 
     #[test]
+    fn leaving_the_screen_cancels_the_refresh_and_a_second_core_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let (client, entered, release) = gated(StaticClient::new());
+        let app = app(client, Some(dir.path()));
+        app.set_phase(forge_app::AppPhase::Active);
+        let op = app.refresh(paris()).unwrap();
+        entered.recv().unwrap();
+        app.set_phase(forge_app::AppPhase::Background);
+        assert_eq!(block_on(op.result()), Err(WeatherError::Cancelled));
+        release.send(()).unwrap();
+
+        let second = ForgeWeatherApp::build(
+            Arc::new(StaticClient::new()),
+            Some(dir.path().to_path_buf()),
+            WeatherConfig::default(),
+        );
+        assert!(matches!(second, Err(WeatherError::InUse)));
+        drop(app);
+        assert!(self::app(StaticClient::new(), Some(dir.path()))
+            .saved_places()
+            .is_empty());
+    }
+
+    #[test]
     fn refresh_validates_its_input() {
         let app = app(StaticClient::new(), None);
         let mut bad = paris();
@@ -997,7 +1046,7 @@ mod tests {
     #[ignore = "needs network access to open-meteo.com"]
     fn live_open_meteo() {
         let dir = tempfile::tempdir().unwrap();
-        let app = ForgeWeatherApp::new(dir.path().display().to_string());
+        let app = ForgeWeatherApp::new(dir.path().display().to_string()).unwrap();
         let places = block_on(app.search_places("Paris".into())).unwrap();
         let place = places.into_iter().next().expect("Paris exists");
         let report = block_on(app.refresh(place).unwrap().result()).unwrap();

@@ -1,21 +1,34 @@
 import SwiftUI
-import WeatherBridge
+import ForgeKit
+@preconcurrency import WeatherFFI
 
-/// The whole app: a page per place ("My Location" first, then saved
-/// places) that you swipe between, each drawn over its own sky, and a list
-/// of places for adding, removing and reordering them.
+/// The whole app: ForgeKit opens the core (a spinner meanwhile, a recovery
+/// screen if it can't), then the pager.
+public struct WeatherRoot: View {
+    @Bindable private var host: ForgeHost<ForgeWeatherApp>
+
+    public init(host: ForgeHost<ForgeWeatherApp>) {
+        self.host = host
+    }
+
+    public var body: some View {
+        ForgeRoot(host) { core in
+            WeatherView(model: WeatherViewModel(client: WeatherClient(core: core)))
+        }
+    }
+}
+
+/// A page per place ("My Location" first, then saved places) that you swipe
+/// between, each drawn over its own sky, and a list of places for adding,
+/// removing and reordering them.
 public struct WeatherView: View {
-    @StateObject private var model: WeatherViewModel
+    @State private var model: WeatherViewModel
     /// `-WeatherShowPlaces YES` opens the places list at launch (screenshots).
     @State private var showingLocations = UserDefaults.standard.bool(forKey: "WeatherShowPlaces")
     @Environment(\.scenePhase) private var scenePhase
 
-    public init() {
-        _model = StateObject(wrappedValue: WeatherViewModel())
-    }
-
     public init(model: WeatherViewModel) {
-        _model = StateObject(wrappedValue: model)
+        _model = State(initialValue: model)
     }
 
     public var body: some View {
@@ -64,7 +77,7 @@ public struct WeatherView: View {
 
 /// Page dots (an arrow for "My Location"), refresh, and the places list.
 private struct BottomBar: View {
-    @ObservedObject var model: WeatherViewModel
+    @Bindable var model: WeatherViewModel
     @Binding var showingLocations: Bool
 
     var body: some View {
@@ -77,6 +90,7 @@ private struct BottomBar: View {
                         ProgressView().tint(.white)
                     }
                     .accessibilityLabel("Cancel refresh")
+                    .accessibilityIdentifier("weather.cancelRefresh")
                 } else {
                     Button {
                         model.refresh()
@@ -84,6 +98,7 @@ private struct BottomBar: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh")
+                    .accessibilityIdentifier("weather.refresh")
                     .disabled(model.place == nil)
                 }
             }
@@ -100,6 +115,7 @@ private struct BottomBar: View {
                 Image(systemName: "list.bullet")
             }
             .accessibilityLabel("Places")
+            .accessibilityIdentifier("weather.places")
             .frame(width: 48, height: 48)
             .background(.ultraThinMaterial, in: Circle())
         }
@@ -115,7 +131,7 @@ private struct BottomBar: View {
 }
 
 private struct PageDots: View {
-    @ObservedObject var model: WeatherViewModel
+    @Bindable var model: WeatherViewModel
 
     var body: some View {
         HStack(spacing: 9) {
@@ -137,6 +153,7 @@ private struct PageDots: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(page.place?.name ?? "My Location")
                 .accessibilityAddTraits(selected ? .isSelected : [])
+                .accessibilityIdentifier("weather.page.\(page.isMyLocation ? "here" : page.place?.name ?? "place")")
             }
         }
         .padding(.horizontal, 16)

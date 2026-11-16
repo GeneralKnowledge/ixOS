@@ -539,6 +539,32 @@ Both were fixed in the build thread's PRs (#200, #202).
 compiled, and build it with `scripts/check-ios-xtool.sh` before merging. The
 two traps are worth a line each in ios-ui.md if they come up again.
 
+## A29. Moving an old app onto ForgeHost (Weather)
+
+Weather was the first app written before the runtime to move onto it
+(wave 3). Three things cost time:
+
+- **The test copy has no fixtures.** `forge check swift` copies
+  `Tests/AppHostTests` into `.forge/swift-check`, so a test that reads
+  `rust/src/.../fixtures/*.json` by `#filePath` finds nothing. The
+  load-failure test inlines the forecast fixture in a Swift file instead.
+  (annoyance)
+- **Every app's library is `forge_ffi`.** Building several app crates into
+  one `CARGO_TARGET_DIR` overwrites `libforge_ffi`, and the bindings check
+  then reports another app's bindings as stale. Build each app in its own
+  target folder (the scripts already do). (annoyance)
+- **FFI names shadow Swift names.** The core's `LocationFix` record clashed
+  with the app's own Swift `LocationFix`; the Swift one became
+  `LocationReading`. (annoyance)
+
+**Framework.** Accept the last two. For the first, `forge check swift`
+could copy a `Tests/AppHostTests/Fixtures` folder if a second app needs
+fixtures.
+
+**Measure (Weather).** The move deleted the app's own bridge target and
+location provider; hosting it in Device Lab is now one host line, one
+services install and one lifecycle attach in `AppsView.swift`.
+
 ## A30. Moving Good Dog onto ForgeHost
 
 Good Dog's core had its own lock, event hub, lifecycle and shutdown flag;

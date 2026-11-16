@@ -21,6 +21,10 @@ public enum WeatherClientError: Error, Sendable, Equatable {
     case network(detail: String)
     /// The client has been shut down.
     case closed
+    /// Another copy of Weather has its data open.
+    case inUse
+    /// "My Location": not allowed, or no position found.
+    case location(LocationError)
     case internalFailure(detail: String)
 
     /// Short text suitable for showing to the user.
@@ -36,6 +40,8 @@ public enum WeatherClientError: Error, Sendable, Equatable {
         case .certificate: return "The weather service's security certificate isn't trusted."
         case .network: return "A secure connection to the weather service failed."
         case .closed: return "Weather has been closed. Reopen the app to continue."
+        case .inUse: return "Weather's data is open in another copy of the app. Close it and try again."
+        case let .location(error): return error.userMessage
         case .internalFailure: return "Something went wrong in the weather engine."
         }
     }
@@ -52,6 +58,9 @@ public enum WeatherClientError: Error, Sendable, Equatable {
         // Callers translate `.Cancelled` to `CancellationError` first.
         case .Cancelled: self = .internalFailure(detail: "unexpected cancellation")
         case .ShutDown: self = .closed
+        case .InUse: self = .inUse
+        case .LocationDenied: self = .location(.denied)
+        case let .LocationUnavailable(reason): self = .location(.unavailable(detail: reason))
         case let .Internal(reason): self = .internalFailure(detail: reason)
         }
     }

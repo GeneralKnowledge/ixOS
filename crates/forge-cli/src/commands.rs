@@ -1767,8 +1767,7 @@ fn refuse_xtool_signed(bundle_id: &str) -> Result<(), String> {
     Err(format!(
         "this .ipa is already signed by xtool (bundle id {bundle_id}). Installing it \
          again would sign it a second time and add a separate copy of the app \
-         instead of updating yours. Install it from the Install page \
-         (`forge publish ios`), or build and install from the checkout with \
+         instead of updating yours. Build and install from the checkout with \
          `forge run ios`"
     ))
 }

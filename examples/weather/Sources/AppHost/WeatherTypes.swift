@@ -29,7 +29,7 @@ extension Place {
     /// A place for a device location fix. Rust only needs the coordinate;
     /// the name is what the UI shows: the locality the platform found for
     /// the fix, else "My Location".
-    public static func currentLocation(_ fix: LocationFix) -> Place {
+    public static func currentLocation(_ fix: LocationReading) -> Place {
         Place(
             name: fix.placeName ?? "My Location",
             region: nil,

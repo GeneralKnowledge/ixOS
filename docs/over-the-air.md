@@ -1,16 +1,18 @@
 # Over-the-air installs
 
-`forge publish ios` builds your app, signs it, and adds it to one Install page on your tailnet. On the iPhone you open the page in Safari and tap **Install**, and iOS installs that build over the one on the phone, keeping its data. The first install of each app goes over the cable (see [below](#first-install-by-cable)); after that no cable is needed, and the phone can be anywhere it can reach your tailnet: on your home Wi-Fi, on mobile data, or across town.
+`forge publish ios` builds your app, signs it, and adds it to one Install page on your tailnet. On the iPhone you open the page in Safari and tap **Install**. Builds never replace each other on the page: each one is listed under its app with the branch it came from, its commit and when its signature runs out.
 
-This is the default way to get a build onto the phone: publish every build you want to try. Builds never replace each other on the page. Each one is listed under its app with the branch it came from, its commit and when its signature runs out, so builds from different branches (or different agents) sit side by side and you pick which to install.
+**Parked (2026-11-16): with a free Apple team, an install from the page has never been seen to put a new build on the phone.** Install builds over the cable with `forge run ios` instead (it builds and signs before it looks for the phone, so no build waits on it). The page and `forge publish ios` stay, because a paid team may make them work, but don't rely on them for testing.
 
-It works with a free Apple team. On 2026-11-14 a free-team build of Device Lab, signed on the laptop with no phone connected, installed this way on Cati (iPhone 15 Pro Max, iOS 26.3.1), as an update to a copy installed by cable.
+## What was seen with a free team
 
-## First install by cable
+All on Cati (iPhone 15 Pro Max, iOS 26.3.1), with builds signed by a free team's development profile that listed the phone:
 
-With a free Apple team, the page **updates** apps; it can't put a new app on the phone. Install each app once with `forge run ios` over the cable and trust the developer (Settings > General > VPN & Device Management). From then on, every build of that app installs from the page.
+- **A new app** (one not on the phone): the phone downloads the whole `.ipa`, then shows "Unable to Install … Please try again later" and leaves a grey icon with a cloud badge (2026-11-15).
+- **An update** to an app installed by cable: the phone fetches the manifest and the whole `.ipa` (the server log shows every byte served to `appstored`), shows no error, and keeps the old app. Device Lab's **Apps > This Build** still shows the cable build's number after a full relaunch. This happened with a compressed and an uncompressed `.ipa`, both valid (`unzip -t`, same bundle id, profile listing the phone, signature not expired) (2026-11-16).
+- **The install does replace the provisioning profile.** `forge device apps` reports the newest profile's expiry, so after an attempt from the page it shows the new build's date even though the app wasn't replaced. Earlier notes (2026-11-14 and 2026-11-15) took that date as proof that updates from the page worked; they hadn't checked the build number, so treat those results as unproven.
 
-This was found on 2026-11-15 on Cati (iOS 26.3.1). After every free-team app had been deleted, each install from the page downloaded in full and then failed with "Unable to Install … Please try again later", leaving a grey icon with a cloud badge. That included the exact file that had installed the day before. The signing certificate was valid and not revoked, and the profile listed the phone. Installing Device Lab by cable fixed Device Lab's updates from the page, but Weather, never installed by cable, still failed with the developer trusted. So the cable install is needed per app, not once per team. If you delete an app to make room under the 3-app limit, it goes back on by cable.
+The likely cause is the free team itself. A free (personal) team gets only short-lived development profiles, and sideloading tools built on free teams (AltStore, SideStore, xtool) install through the phone's installation service over USB or Wi-Fi sync, never through `itms-services` links. No Apple document found says this outright, and the phone's install log during a failed update hasn't been captured yet, so it isn't proven. Over-the-air pages are the normal route with a paid team's ad hoc or development profiles; that is untested here ([ios-signing.md](ios-signing.md)).
 
 ## How it works
 
@@ -41,7 +43,7 @@ On the iPhone, install **Tailscale** from the App Store and sign in to the same 
 
 Every build `forge publish ios` makes, and every build `forge run ios` installs over the cable, gets a new, higher build number (CFBundleVersion: the app's `build_number`, then the minute it was built, such as `1.29911107`), so iOS always treats an install as an update. Its Info.plist also records the commit (`+changes` if the checkout had uncommitted changes), the branch and the time (`ForgeBuildCommit`, `ForgeBuildBranch`, `ForgeBuildDate`). The stamp is only for that build: Forge puts the generated Info.plist back afterwards, so the checkout stays clean.
 
-The page shows each build's version and build number. In the app, ForgeKit's `ForgeBuildInfo.current` reads the same keys (`versionLine`, `sourceLine`), so an app can show which build is running. Device Lab shows it under **This Build** on its Apps screen. If the numbers match the page's newest build, the update arrived.
+The page shows each build's version and build number. In the app, ForgeKit's `ForgeBuildInfo.current` reads the same keys (`versionLine`, `sourceLine`), so an app can show which build is running. Device Lab shows it under **This Build** on its Apps screen. This number, not the expiry `forge device apps` shows, tells you which build is running.
 
 ## Publishing a build
 
@@ -53,7 +55,7 @@ It prints the page's address, for example `https://create.taila09abe.ts.net:8443
 
 1. On the iPhone, turn Tailscale on.
 2. Open the page in Safari and tap **Install**, then **Install** again in the prompt.
-3. Go to the Home Screen. The app's icon shows progress, and then the app opens with the new build.
+3. Go to the Home Screen. The app's icon shows progress. Check **This Build** afterwards: with a free team the old build stays (see the top of this page).
 
 Bookmark the page or add it to the Home Screen. Each publish adds to it.
 
@@ -77,7 +79,7 @@ With `--json`, `data` has `page_url`, `install_url` (this build's), `build_id`, 
 ## Limits
 
 - **Same signing rules as a cable install.** The build installs only on the devices in its profile, a free team's signature lasts 7 days (the page says when, and says when it has run out), and the 3-app limit still applies. Publishing again renews the 7 days.
-- **Updates only.** Each app's first install is by cable ([above](#first-install-by-cable)).
+- **No working installs with a free team** ([above](#what-was-seen-with-a-free-team)): a new app fails with "Unable to Install", and an update leaves the old app in place. Install by cable with `forge run ios`.
 - **Install only.** Logs, crash reports and `forge ui` tests still use the cable. iOS 17 and later don't offer the phone's device services over a VPN, so `forge device` can't reach a phone over Tailscale.
 - **The laptop must be on**, with the server running: `forge publish enable` starts it with the computer, and `forge publish ios` starts it if it isn't running.
 - **Each build is signed when it is published,** so an older build on the page expires 7 days after its own publish (the page marks it).
@@ -91,7 +93,7 @@ With `--json`, `data` has `page_url`, `install_url` (this build's), `build_id`, 
 | `port … already serves …, and Forge won't replace it` or `listener already exists for port …` | Another `tailscale serve` uses that port. Forge never takes it over: `forge publish ios --port 9443` (and `forge publish stop --port 9443` later) |
 | `tailscale serve` waits, or says HTTPS isn't enabled | Turn on HTTPS Certificates in the admin console (DNS page) |
 | Safari can't open the page | Tailscale isn't on on the phone, or the laptop is asleep |
-| "Unable to Install … Please try again later", grey icon with a cloud badge | The app isn't on the phone yet: its first install has to go over the cable (`forge run ios`, see [First install by cable](#first-install-by-cable)). Delete the grey placeholder first |
+| "Unable to Install … Please try again later", grey icon with a cloud badge | Seen for every new app with a free team ([above](#what-was-seen-with-a-free-team)). Delete the grey placeholder and install with `forge run ios` over the cable |
 | "Unable to install" on an update | The profile doesn't list this iPhone (`forge publish` prints the devices it does list), or the app's 3-slot limit is full. Build once with `forge run ios` over the cable to register a new phone |
-| The app still shows the old build after Install | The download was cut off and iOS kept the old app (seen 2026-11-14 while the laptop was busy with several builds: the 46 MB download dropped mid-transfer). Compare Device Lab's **Apps > This Build** with the page, and tap Install again. The server answers range requests, so iOS can resume a download |
+| The app still shows the old build after Install | With a free team this is what happens even when the whole download arrives ([above](#what-was-seen-with-a-free-team)): install with `forge run ios` over the cable. A download cut off mid-transfer (seen 2026-11-14) has the same symptom; the server answers range requests, so iOS can resume one |
 | The app won't open after a week | The free team's signature expired: publish again and reinstall |

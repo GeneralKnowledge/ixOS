@@ -45,36 +45,6 @@ wave = 4
 reason = "Written as the Soundscape and Sketchbook features are finished"
 
 [[lag]]
-app = "weather"
-rule = "forge-host"
-wave = 3
-reason = "Rust core predates the forge-app runtime"
-
-[[lag]]
-app = "weather"
-rule = "location"
-wave = 3
-reason = "Its own LocationProvider.swift predates the location service (FieldKit is now the second user)"
-
-[[lag]]
-app = "weather"
-rule = "requirements"
-wave = 3
-reason = "Written with its move to the framework"
-
-[[lag]]
-app = "weather"
-rule = "ui-test"
-wave = 3
-reason = "Written with its move to the framework"
-
-[[lag]]
-app = "weather"
-rule = "urlsession"
-wave = 3
-reason = "Open-Meteo requests still go through ureq"
-
-[[lag]]
 app = "checklist"
 rule = "device-checks"
 wave = 4
