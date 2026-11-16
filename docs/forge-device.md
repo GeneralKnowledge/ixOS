@@ -4,7 +4,7 @@
 
 The app needs no changes: its logs come from the system log, where `forge_runtime::logging` writes ([architecture.md](architecture.md#layers)). The live connection to a development build (pairing, the app's own log stream, state probes and commands) moved to the [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project on 2026-11-15.
 
-To install builds without the cable, use `forge publish ios` ([over-the-air.md](over-the-air.md)). The commands here still need USB: iOS 17 and later don't offer the phone's device services over a VPN such as Tailscale.
+Install builds by cable with `forge run ios`; over-the-air installs are [parked](over-the-air.md) because a free Apple team cannot install from the Install page. The commands here need USB too: iOS 17 and later don't offer the phone's device services over a VPN such as Tailscale.
 
 ## Before you start
 

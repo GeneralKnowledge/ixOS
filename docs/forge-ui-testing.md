@@ -58,7 +58,7 @@ go-ios has `ios runwda`, `ios tunnel start --userspace` (no root on iOS 17.4 and
 The question was whether the Forge Device connection could carry the automation. It splits into two parts:
 
 - **The device transport: yes.** Forge Device reaches the phone through usbmuxd with the `idevice` crate. The same crate, at the same pinned version, provides `xctest` (runner launch through `testmanagerd`), `wda` (a WDA client that connects to the phone's port 8100 through usbmuxd), `mobile_image_mounter` (personalised DDI mounting, with Apple's TSS signing), and `core_device` services (`screencaptureservices` screenshots, `app_service` launch). Forge UI Testing adds features to that dependency; it doesn't add a new one.
-- **The app session from PR #57 (`forge-devtools`): yes, but for state, not touches.** An app can't synthesise touches into itself or into system alerts through public API. That is why XCTest runs in a separate runner. But the devtools session is the right channel for the second half of the problem, *observing whether the app behaved correctly*. Tests can assert on Rust state through probes (`forge device snapshot`), stream app logs, and run dev-only commands such as resetting data or seeding fixtures. Forge UI Testing uses both: WDA for the UI, devtools for state and setup.
+- **The app session from PR #57 (`forge-devtools`, which moved to [forge-lab](https://github.com/GeneralKnowledge/forge-lab) on 2026-11-15): yes, but for state, not touches.** An app can't synthesise touches into itself or into system alerts through public API. That is why XCTest runs in a separate runner. But the devtools session is the right channel for the second half of the problem, *observing whether the app behaved correctly*. Tests can assert on Rust state through probes (`forge device snapshot`), stream app logs, and run dev-only commands such as resetting data or seeding fixtures. Forge UI Testing uses both: WDA for the UI, devtools for state and setup.
 
 **Verdict: build on `idevice` and Forge Device. Keep go-ios as a manual cross-check when something fails.**
 
@@ -98,7 +98,7 @@ Linux
   forge-uitest                          test runner, locators, assertions, reports, screenshot diff
     ├─ Driver trait ── WdaDriver        WebDriver calls over usbmuxd (idevice `wda`)
     ├─ Runner                           DDI mount + XCTest runner launch (idevice `xctest`, `mobile_image_mounter`)
-    └─ AppState (optional)              forge-devtools probes and commands (PR #57)
+    └─ AppState (optional)              forge-devtools probes and commands (PR #57; now in forge-lab)
           │  usbmuxd (USB), the phone's pairing record
 iPhone
   WebDriverAgentRunner (XCTest)  ── accessibility tree, touches, keys, alerts, screenshots

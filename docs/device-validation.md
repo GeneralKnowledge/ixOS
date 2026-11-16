@@ -11,8 +11,8 @@ Rules:
 
 The questions, in order:
 
-1. **Compiles**: the app builds for an iPhone (`forge publish ios --project examples/device-lab`, or `scripts/check-ios-xtool.sh`).
-2. **Installs**: the build installs on the iPhone (over the air from the Install page, or by cable).
+1. **Compiles**: the app builds for an iPhone (`scripts/check-ios-xtool.sh`, or `forge run ios --project examples/device-lab`, which builds before it looks for the phone).
+2. **Installs**: the build installs on the iPhone (by cable with `forge run ios`; over-the-air installs are [parked](over-the-air.md)).
 3. **Launches**: it opens from Device Lab's Apps screen without crashing.
 4. **Main interactions**: the few things the app is for work by hand (listed per app below).
 5. **Problems**: anything obviously wrong with layout, permissions or lifecycle (backgrounding, relaunch, locking the phone).

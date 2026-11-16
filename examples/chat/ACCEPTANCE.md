@@ -256,9 +256,9 @@ M5 moves message notifications into the Rust core: it keeps every room live whil
 
 ## M6: one sitting for M2 to M5
 
-One Device Lab sitting, over the air, about ten minutes, covering the M2, M3, M4 and M5 device runs that were never done (F, G, H above, and the new notification steps). The laptop side (the other person, through `chat-cli` against the project's server) is run for you; you only do the phone steps.
+One Device Lab sitting, about ten minutes, covering the M2, M3, M4 and M5 device runs that were never done (F, G, H above, and the new notification steps). The laptop side (the other person, through `chat-cli` against the project's server) is run for you; you only do the phone steps.
 
-Before you start (done for you): Device Lab published from this branch and installed from the Install page; the chat server running on the Hetzner server behind Tailscale; `chat-cli` signed up there as "Laptop". On the phone: Tailscale on.
+Before you start (done for you): Device Lab built from this branch and installed by cable (`forge run ios --project examples/device-lab`); the chat server running on the Hetzner server behind Tailscale; `chat-cli` signed up there as "Laptop". On the phone: Tailscale on.
 
 | # | Step (phone) | Expected | Covers | Status |
 |---|---|---|---|---|

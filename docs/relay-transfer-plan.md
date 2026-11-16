@@ -343,7 +343,7 @@ code (about 1 in 65,000), a wrong guess ends the code, and the sender sees
 | **3. Product polish** | Share extension ("Send with Relay" from Photos), a browser receiver page for devices without the app (Floe's idea; iroh in the browser or WebRTC, decided by a spike), drag and drop, clipboard text, Android app beyond the emulator when the phone is back, optional `relay wormhole` and LocalSend bridges | Everyday use | as chosen |
 
 Each stage has one short phone check (about 10 minutes, batched with
-others), built and published over the air before the phone is needed.
+others), built with `forge run ios` before the phone is needed, so only the install waits for it.
 Capability changes update the ledger (`docs/ledger/`) in the same PR.
 
 ## Where it lives

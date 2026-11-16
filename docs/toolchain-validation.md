@@ -148,6 +148,8 @@ Running `xtool dev` without Darwin SDK may fail immediately. In Cloud Agent sand
 
 Automated coverage stops at the JVM: Rust tests run real TLS handshakes against local servers (`cargo test -p forge-net --features ureq`, `cargo test -p chat-server --test https_end_to_end`), and the Chat JVM tests call the real `ForgeAndroid.nativeInit` JNI export. Android's own trust store is only exercised on a device or emulator. Record the phone model, Android version, NDK and the commit for every run.
 
+Chat's Android client was removed on 2026-11-15, so this check can't be run until an Android app with a server URL setting exists again. The steps are kept for that app.
+
 1. Build and install Chat: `forge build android --project examples/chat-android --install` (USB debugging on; `adb devices` lists the phone).
 2. In the app, change the server URL to each of these in turn. None of them is a chat server, so the result to look for is *which* error the app shows:
 

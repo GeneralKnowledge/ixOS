@@ -40,7 +40,7 @@ Going further:
 The view-model tests call the real Rust core through the generated bindings, so they catch binding and error-mapping mistakes that `cargo test` cannot.
 
 - **Android (any OS with a JDK and Android SDK):** `cargo build --manifest-path examples/pocket-library-android/rust/Cargo.toml`, then `cd examples/pocket-library-android && ./gradlew :app:testDebugUnitTest` (or `make test-android-host`, or `forge test --project examples/pocket-library-android`).
-- **iOS (macOS only):** `./scripts/test-swift-host.sh examples/counter` (or `make test-swift-host` for every example). It builds the app's Rust crate for the Mac and runs `swift test` in the app.
+- **iOS (macOS only):** `./scripts/test-swift-host.sh examples/checklist` (or `make test-swift-host` for every example). It builds the app's Rust crate for the Mac and runs `swift test` in the app.
 
 CI runs both, plus unsigned `xcodebuild` device builds; see [CI](#ci) for when.
 
@@ -61,7 +61,7 @@ Anything path-filtered can be run by hand on any branch: Actions tab, pick the w
 
 ## Pull requests
 
-- Keep Rust domain logic free of Swift/iOS and UniFFI dependencies (the Counter's `examples/counter/rust/src/domain` is the model).
+- Keep Rust domain logic free of Swift/iOS and UniFFI dependencies (Checklist's `examples/checklist/rust/src/checklist.rs` is a small example).
 - Do not edit UniFFI-generated Swift/C files by hand.
 - Document behavioral changes in `docs/` when they affect developers.
 - When you bump a toolchain or build-tool version, update [docs/compatibility.md](docs/compatibility.md) in the same PR.
