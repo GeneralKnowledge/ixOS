@@ -166,6 +166,10 @@ final class WeatherViewModelTests: XCTestCase {
         clock += 5 * 60
         model.becameActive()
         XCTAssertEqual(location.lookups, 1)
+        // That refreshed the forecast instead (offline here); let it end.
+        for _ in 0..<500 where model.selectedPage?.isRefreshing == true {
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         // Back after a long time away: the phone may have moved.
         clock += 60 * 60
@@ -191,19 +195,18 @@ final class WeatherViewModelTests: XCTestCase {
         let paris = LocationReading(
             coordinate: Coordinate(latitude: 48.86, longitude: 2.34), placeName: "Paris")
 
+        // One client for both: its storage stays open until the process
+        // ends, as on the phone.
+        let client = try WeatherClient(storageDirectory: url.path, configuration: config)
+
         // A first run finds the phone and keeps its forecast.
-        let first = WeatherViewModel(
-            client: try WeatherClient(storageDirectory: url.path, configuration: config),
-            location: FakeLocation(result: .success(paris)))
+        let first = WeatherViewModel(client: client, location: FakeLocation(result: .success(paris)))
         await first.start()
         XCTAssertNotNil(first.report)
         XCTAssertNil(first.notice(for: try XCTUnwrap(first.selectedPage)))
-        first.close()
 
         // The next run can't use location: the last place stays, and says why.
-        let second = WeatherViewModel(
-            client: try WeatherClient(storageDirectory: url.path, configuration: config),
-            location: FakeLocation(result: .failure(.denied)))
+        let second = WeatherViewModel(client: client, location: FakeLocation(result: .failure(.denied)))
         await second.start()
         let page = try XCTUnwrap(second.selectedPage)
         XCTAssertTrue(page.isMyLocation)
