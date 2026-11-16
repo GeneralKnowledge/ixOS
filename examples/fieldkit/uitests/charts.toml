@@ -1,0 +1,36 @@
+# Charts: record a short trip, stop it, open it, and see the Elevation and
+# Pace sections (a trip of a few seconds shows their empty states; a walk of
+# a kilometre or more shows the charts). Starts on temporary data.
+# Run with the phone plugged in:  forge ui run uitests/charts.toml
+name = "Charts: a finished trip shows elevation and pace"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+tap = { id = "trips.recordFirst" }
+
+[[step]]
+tap = { id = "start.go" }
+
+[[step]]
+tap = { id = "recording.stop" }
+
+[[step]]
+tap = { id = "recording.confirmStop" }
+
+[[step]]
+tap = { id = "trips.row" }
+
+[[step]]
+expect = { id = "trip.elevationChart" }
+
+[[step]]
+expect = { id = "trip.paceChart" }
+
+[[step]]
+screenshot = "1-trip-charts"
