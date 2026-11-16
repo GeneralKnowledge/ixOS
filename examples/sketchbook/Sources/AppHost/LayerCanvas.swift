@@ -23,6 +23,10 @@ struct LayerCanvas: UIViewRepresentable {
         let canvas = RustUndoCanvas()
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
+        // The paper is always warm white. In dark mode PencilKit would show
+        // black ink as white, which vanishes on it; exports already render
+        // in light colours, so the screen now matches them.
+        canvas.overrideUserInterfaceStyle = .light
         // Finger drawing: the iPhone has no Pencil.
         canvas.drawingPolicy = .anyInput
         canvas.isScrollEnabled = false

@@ -24,6 +24,8 @@ struct SketchView: View {
     @State private var picker: PKToolPicker = {
         let picker = PKToolPicker()
         picker.selectedTool = PKInkingTool(.pen, color: .black, width: 4)
+        // Colours as they look on the light paper, even in dark mode.
+        picker.colorUserInterfaceStyle = .light
         return picker
     }()
 

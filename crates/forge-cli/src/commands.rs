@@ -1164,16 +1164,39 @@ pub fn build_signed_ipa(
     let (project_dir, cfg) = ios_project(root, project)?;
     ios_preflight(runner, builder, Purpose::Build)?;
     let _lock = crate::build_lock::acquire("forge publish ios", &project_dir)?;
+    package_ios(runner, root, &project_dir, &cfg, configuration, false)?;
+    let (stamp, built) = with_build_stamp(runner, &project_dir, &cfg, |stamp| {
+        println!(
+            "[forge] Building and signing the Swift app ({}), build {}; no iPhone needed",
+            configuration.name(),
+            stamp.build
+        );
+        builder.build_signed_ipa(
+            runner,
+            &project_dir,
+            configuration,
+            &app_config::xtool_product(&cfg),
+        )
+    })?;
+    Ok((built?, stamp))
+}
+
+/// The stamp for a build made now: a new CFBundleVersion (the app's
+/// `build_number`, then the minute), and the commit, branch and time.
+/// Call it after `package_ios`, which regenerates Forge's files, so a stamp
+/// left by a killed build doesn't count as a change.
+fn build_stamp(
+    runner: &dyn CommandRunner,
+    project_dir: &Path,
+    cfg: &ForgeConfig,
+) -> crate::publish::Stamp {
     let git = |args: &[&str]| {
         runner
-            .capture(&Cmd::new("git").args(args).cwd(&project_dir))
+            .capture(&Cmd::new("git").args(args).cwd(project_dir))
             .ok()
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
     };
-    package_ios(runner, root, &project_dir, &cfg, configuration, false)?;
-    // After packaging, which regenerates Forge's files (so a stamp left by a
-    // killed publish doesn't count as a change).
     let changes = git(&["status", "--porcelain", "--untracked-files=no", "--", "."])
         .is_some_and(|s| !s.is_empty());
     let commit = git(&["rev-parse", "--short", "HEAD"])
@@ -1185,7 +1208,21 @@ pub fn build_signed_ipa(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let stamp = crate::publish::Stamp::new(app_config::build_number(&cfg), now, commit, branch);
+    crate::publish::Stamp::new(app_config::build_number(cfg), now, commit, branch)
+}
+
+/// Runs `build` with the app's Info.plist stamped for this build only, then
+/// puts the generated Info.plist back so the checkout stays clean. Every
+/// build that goes onto a phone (`forge publish ios` and `forge run ios`)
+/// is stamped, so the app shows which build it is and a later build always
+/// has a higher number.
+fn with_build_stamp<T>(
+    runner: &dyn CommandRunner,
+    project_dir: &Path,
+    cfg: &ForgeConfig,
+    build: impl FnOnce(&crate::publish::Stamp) -> T,
+) -> Result<(crate::publish::Stamp, T), String> {
+    let stamp = build_stamp(runner, project_dir, cfg);
     let info_path = project_dir.join("Info.plist");
     let original =
         fs::read(&info_path).map_err(|e| format!("cannot read {}: {e}", info_path.display()))?;
@@ -1194,23 +1231,10 @@ pub fn build_signed_ipa(
         crate::publish::stamp_info_plist(&original, &stamp)?,
     )
     .map_err(|e| format!("cannot write {}: {e}", info_path.display()))?;
-    println!(
-        "[forge] Building and signing the Swift app ({}), build {}; no iPhone needed",
-        configuration.name(),
-        stamp.build
-    );
-    let built = builder.build_signed_ipa(
-        runner,
-        &project_dir,
-        configuration,
-        &app_config::xtool_product(&cfg),
-    );
-    // Put the generated Info.plist back, so the checkout stays clean.
-    let restored = fs::write(&info_path, &original)
-        .map_err(|e| format!("cannot restore {}: {e}", info_path.display()));
-    let ipa = built?;
-    restored?;
-    Ok((ipa, stamp))
+    let built = build(&stamp);
+    fs::write(&info_path, &original)
+        .map_err(|e| format!("cannot restore {}: {e}", info_path.display()))?;
+    Ok((stamp, built))
 }
 
 /// Builds and installs on a connected device. xtool does not launch the
@@ -1310,11 +1334,15 @@ fn run_ios_steps(
     let lock = crate::build_lock::acquire("forge run ios", &project_dir)?;
     status.phase("building");
     package_ios(runner, root, &project_dir, cfg, configuration, devtools)?;
-    println!(
-        "[forge] Building the Swift app ({}) before looking for the iPhone",
-        configuration.name()
-    );
-    builder.build(runner, &project_dir, configuration)?;
+    let (_, built) = with_build_stamp(runner, &project_dir, cfg, |stamp| {
+        println!(
+            "[forge] Building the Swift app ({}), build {}, before looking for the iPhone",
+            configuration.name(),
+            stamp.build
+        );
+        builder.build(runner, &project_dir, configuration)
+    })?;
+    built?;
     drop(lock);
     let product = crate::app_config::xtool_product(cfg);
     status.phase("waiting_for_device");
@@ -1720,7 +1748,29 @@ pub fn install_ios(
     builder: &dyn IosBuilder,
     ipa: &Path,
 ) -> Result<(), String> {
+    if builder.name() == "xtool" {
+        if let Ok(info) = crate::publish::read_ipa(ipa) {
+            refuse_xtool_signed(&info.bundle_id)?;
+        }
+    }
     builder.install(runner, ipa)
+}
+
+/// xtool signs every app it installs and puts `XTL-<team>.` in front of the
+/// bundle id. An `.ipa` it already signed (`forge publish ios` makes these)
+/// would get the prefix twice and install as a second, separate copy of
+/// the app, with its own empty data and one of a free team's 3 app slots.
+fn refuse_xtool_signed(bundle_id: &str) -> Result<(), String> {
+    if !bundle_id.starts_with("XTL-") {
+        return Ok(());
+    }
+    Err(format!(
+        "this .ipa is already signed by xtool (bundle id {bundle_id}). Installing it \
+         again would sign it a second time and add a separate copy of the app \
+         instead of updating yours. Install it from the Install page \
+         (`forge publish ios`), or build and install from the checkout with \
+         `forge run ios`"
+    ))
 }
 
 pub(crate) fn which_program(runner: &dyn CommandRunner, program: &str) -> bool {
@@ -2321,6 +2371,76 @@ ios_device = true
         fn devices_command(&self) -> Option<Cmd> {
             None
         }
+    }
+
+    #[test]
+    fn an_ipa_xtool_already_signed_is_not_installed_again() {
+        // The duplicate Device Lab of 2026-11-15: a published .ipa installed
+        // by cable came out as XTL-ND4P87PX52.XTL-ND4P87PX52.org….
+        let err = refuse_xtool_signed("XTL-ND4P87PX52.org.forgemobile.devicelab").unwrap_err();
+        assert!(err.contains("separate copy"), "{err}");
+        assert!(refuse_xtool_signed("org.forgemobile.devicelab").is_ok());
+    }
+
+    /// Keeps the app's Info.plist as it was when the Swift build ran.
+    #[derive(Default)]
+    struct PlistAtBuild(std::sync::Mutex<Option<String>>);
+
+    impl IosBuilder for PlistAtBuild {
+        fn name(&self) -> &'static str {
+            "fake"
+        }
+        fn ensure_available(&self, _: &dyn CommandRunner) -> Result<(), String> {
+            Ok(())
+        }
+        fn build(
+            &self,
+            _: &dyn CommandRunner,
+            dir: &Path,
+            _: IosConfiguration,
+        ) -> Result<(), String> {
+            *self.0.lock().unwrap() = Some(read(dir.join("Info.plist")));
+            Ok(())
+        }
+        fn install_build(&self, _: &dyn CommandRunner, _: &Path, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn install(&self, _: &dyn CommandRunner, _: &Path) -> Result<(), String> {
+            Ok(())
+        }
+        fn devices_command(&self) -> Option<Cmd> {
+            None
+        }
+    }
+
+    #[test]
+    fn run_ios_numbers_the_build_and_leaves_the_checkout_clean() {
+        let (_tmp, root) = workspace(IOS_TOML, &[]);
+        let mock = MockRunner::default();
+        mock.respond("bash", 0, "");
+        let fake = PlistAtBuild::default();
+        run_ios(
+            &mock,
+            &fake,
+            &root,
+            Path::new("apps/demo"),
+            IosConfiguration::Debug,
+            false,
+        )
+        .unwrap();
+        // A cable install gets a build number like a published build, so
+        // the app on the phone says which build it is.
+        let built = fake.0.lock().unwrap().clone().expect("the Swift build ran");
+        assert!(built.contains("<key>ForgeBuildDate</key>"), "{built}");
+        let version = built
+            .split("<key>CFBundleVersion</key>")
+            .nth(1)
+            .and_then(|rest| rest.split("<string>").nth(1))
+            .and_then(|rest| rest.split("</string>").next())
+            .expect("CFBundleVersion");
+        assert!(version.starts_with("1.") && version.len() > 2, "{version}");
+        let after = read(root.join("apps/demo/Info.plist"));
+        assert!(!after.contains("ForgeBuildDate"), "{after}");
     }
 
     #[test]

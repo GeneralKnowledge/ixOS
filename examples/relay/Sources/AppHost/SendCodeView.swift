@@ -17,6 +17,7 @@ struct SendCodeSheet: View {
 
     @State private var picking = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -71,6 +72,9 @@ struct SendCodeSheet: View {
                     model.codeSendersNearby(senders)
                 }
             }
+            .onChange(of: scenePhase) {
+                if scenePhase == .active { network.readvertiseCode(model.codeAdvert) }
+            }
             .onDisappear {
                 network.stopWatchingCodeSenders()
                 if !model.isSendingCode { network.advertiseCode(nil) }
@@ -104,7 +108,7 @@ struct SendCodeSheet: View {
                     .textSelection(.enabled)
                     .accessibilityLabel("Code \(code.replacingOccurrences(of: "-", with: " "))")
                     .accessibilityIdentifier("sendCode.code")
-                Text("\(name), \(RelayFormat.size(size)). Waiting for the receiver…")
+                Text("\(name), \(RelayFormat.size(size)). Waiting for the receiver… Keep Relay open: others can only find this code while it's on screen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Copy Code", systemImage: "doc.on.doc") {
