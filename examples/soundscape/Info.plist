@@ -9,6 +9,11 @@
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Soundscape's Listen tab plays song takes from the take server on your computer.</string>
 	<key>NSMicrophoneUsageDescription</key>

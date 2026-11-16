@@ -59,3 +59,8 @@ local_network = "Soundscape's Listen tab plays song takes from the take server o
 # Built and installed with a free Apple account; no paid-only entitlements.
 team_type = "free"
 # team_id = "ABCDE12345"            # for the Xcode project (macOS, optional)
+
+[ios.info.NSAppTransportSecurity]
+# Listen streams takes from a take server on the laptop over plain http
+# (a Tailscale 100.x address); ATS exceptions cannot name an IP address.
+NSAllowsArbitraryLoads = true

@@ -96,7 +96,7 @@ final class TakePlayer {
         time = 0
         duration = 0
         playerA.replaceCurrentItem(with: Self.item(a.take))
-        playerB.replaceCurrentItem(with: b.map { Self.item($0.take) })
+        playerB.replaceCurrentItem(with: b.flatMap { Self.item($0.take) })
         applyVolumes()
         observeEnds()
         setUpRemoteCommands()
