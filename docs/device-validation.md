@@ -25,13 +25,13 @@ The first combined build of main after #226 and #227. Sketchbook, Soundscape and
 |---|---|---|---|---|---|---|---|---|
 | Sketchbook | New sketch, draw with the tool picker, add a layer, export PNG and Share | | Not yet | Not yet | Not yet | Not yet | | |
 | Soundscape | New project, record a take with the count-in, play it back with the metronome, mix two tracks | | Not yet | Not yet | Not yet | Not yet | | |
-| Relay | Pair by QR code, send a note and a file, open the received file in Quick Look | | Not yet | Not yet | Not yet | Not yet | | |
-| Pocket Library | Add a book, open the reader, read aloud, catalogue search | | Not yet | Not yet | Not yet | Not yet | | |
+| Relay | Pair by QR code, send a note and a file, open the received file in Quick Look | Device Lab 1.29914001 (main 413e486) | Yes | Yes (cable) | Yes | Partly: sent a file to itself, and it arrived; opening one sheet straight after closing another worked ("Relay is working"). Pairing two devices not tried | None reported | 2026-11-16 |
+| Pocket Library | Add a book, open the reader, read aloud, catalogue search | Device Lab 1.29914001 (main 413e486) | Yes | Yes (cable) | Yes | Partly: opened the reader and a summary; chapters can't be switched while a summary is open, which is fine. Read aloud and catalogue search not tried | None reported | 2026-11-16 |
 | Commonplace | Add a feed, read an article in the reader, search articles, change a setting | Device Lab 1.29913703 (#245, db37cdb) | Yes | Yes (cable) | Yes | Yes: "looks good. Everything seems to be working" | None reported | 2026-11-16 |
 | Chat | Join a room, send a message and a photo, open a notification | | Not yet | Not yet | Not yet | Not yet | | |
 | Good Dog | Set up a dog, start a goal, open a lesson, see a safety rule hold a stage | | Not yet | Not yet | Not yet | Not yet | | |
 | FieldKit | Record a short track, see it on the map, add a note, export GPX | Device Lab 1.29913703 (#245, db37cdb), then 1.29913748 (#250) | Yes | Yes (cable) | Yes | Yes: recorded and stopped a trip; the elevation and pace charts "look pretty good" (FK-2); GPX and GeoJSON export, rename and delete "all worked" (export checked: a 16-point track) | The Stop confirmation showed behind the recording screen; fixed in #250 (alerts on the stack in every app) and passed on Device Lab 1.29913748: "We are all good now" | 2026-11-16 |
-| Checklist | Add, tick and search items | | Not yet | Not yet | Not yet | Not yet | | |
+| Checklist | Add, tick and search items | Device Lab 1.29914001 (main 413e486) | Yes | Yes (cable) | Yes | Partly: ticked items; Clear Done Items now asks first and works (#253). Search not tried | None reported | 2026-11-16 |
 | Weather | Add a place, see its forecast | | Not yet | Not yet | Not yet | Not yet | | |
 
 ## Wave 3
