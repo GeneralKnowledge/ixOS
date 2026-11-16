@@ -2,6 +2,8 @@
 
 Research and planning only, written 2026-11-16 against main `451a2af` for Reuben's "Forge everyday capabilities" review. No code was changed for it. It proposes; [roadmap.md](../roadmap.md) decides.
 
+Revised the same day after Reuben's review: the backup analysis now says what is really backed up today, Phase 1 requires a typed open failure, Phase 3 separates background transfers from durable operations and retry, and Phase 4 starts with an investigation.
+
 Forge has the right primitives and, since the forge-app runtime, a real application core; what it lacks is a handful of complete everyday workflows that every app currently finishes by hand or skips. The fix is not new layers. It is about six small, app-proven completions inside the existing crates and ForgeKit products, each pulled by a feature an app already wants.
 
 Evidence base: main at `451a2af` (2026-11-16), every crate under `crates/`, `forgekit/Sources`, the starter templates, the ten apps under `examples/`, PRs #242 to #271, the friction log (A1 to A35), app-parity, device-validation and the ledger. Nothing was built or run for this review. "Verified" below means a person recorded it on the iPhone; everything else is labelled as Linux-tested, built only, or assumption.
@@ -20,12 +22,12 @@ Evidence base: main at `451a2af` (2026-11-16), every crate under `crates/`, `for
 
 1. **Recovery flows stop at the error kind.** `Corrupt` and `NewerData` exist, but `ForgeRoot` only offers Try Again (`ForgeRoot.swift`, 38 lines). Pocket Library wrote its own Start Fresh; Sketchbook, Soundscape and Relay have none (A15). The data is safe; the user is stuck.
 2. **Permissions are a status enum, not a lifecycle.** At least six apps ask for a protected resource (Weather and FieldKit location, Soundscape microphone, Sketchbook Photos add-only, Relay camera and local network, Chat photos and microphone). Each asks its own way; no shared denied-state view or Settings link; no re-check on resume (review P2, still open).
-3. **Data protection and backup policy are absent.** No file anywhere sets `isExcludedFromBackup` or a `FileProtectionType` (searched `crates`, `forgekit`, every app). Caches and re-downloadable song files will be backed up. Review S5, open since 2026-11-08.
+3. **No backup or protection policy for app data that isn't a cache.** `ForgeEnvironment.standard(app:)` already puts data in Application Support (backed up) and gives a real Caches folder (never backed up, may be purged), so caches are not the problem. What is missing is a way to keep re-downloadable files that must not be purged (offline songs, next) out of backups: nothing sets `isExcludedFromBackup` or chooses a `FileProtectionType` (searched `crates`, `forgekit`, every app), and every file keeps the protection class iOS applies by default. Review S5, open since 2026-11-08.
 4. **Two ways to install native services.** The starter and Good Dog use `forge-native` (Swift ships in ForgeKit's ForgeNative); the other eight apps use the `native_services!` macro, which copies adapters into `Generated/`. Optional adapters (http, location, transfers, background, audio) exist only as copied files, so the published ForgeKit package alone cannot give an outside app URLSession or location.
 5. **Localisation is tooling without users.** `forge` compiles String Catalogs on Linux, but no app ships a catalog, ForgeKit's own strings (`ForgeFailure`, `ForgeRoot`) are plain `String`s, and user-facing text produced in Rust bypasses catalogs entirely.
 6. **Background and offline work is built, barely used.** The `transfers` service is used only by Device Lab; `connectivity` only by Device Lab; Chat's outbox is still the only durable operation queue; no retry policy beyond `Backoff` (review N2).
 
-**Biggest opportunities**, each with a waiting app feature: an open-failure recovery screen (Sketchbook, Soundscape, Relay); a permission-denied pattern (FieldKit background location, Soundscape and Relay); storage classes for backup and protection (Soundscape offline downloads, Commonplace article cache); one native-services route so ForgeKit works outside ixOS; and Soundscape's offline downloads as the first real user of background transfers.
+**Biggest opportunities**, each with a waiting app feature: an open-failure recovery screen (Sketchbook, Soundscape, Relay); a permission-denied pattern (FieldKit background location, Soundscape and Relay); a backup-excluded storage class for re-downloadable files (Soundscape offline downloads); one native-services route so ForgeKit works outside ixOS; and Soundscape's offline downloads as the first real user of background transfers.
 
 ## Part 2: Current architecture map
 
@@ -85,7 +87,7 @@ App abbreviations: CH Chat, CL Checklist, CP Commonplace, FK FieldKit, GD Good D
 | **B. Data** Persistence, transactions, migrations | All | JSON `Document` or SQLite `Database` | forge-storage | Complete (mechanics) | Tested: JSON snapshot (Chat); SQLite untested | None | No Rust data-migration hook for SQLite (S7) | Forge | Keep; add the hook with the first SQLite data migration | Low | A real migration |
 | Import and export | CL (CSV), FK (GPX, GeoJSON), PL (CSV, backup), SK (PNG, PDF), SS, RL (Files), WE | Per app, through `ShareLink` and `fileImporter` | `csv`, `ForgeDocuments`, `ForgeShareLink`, `FileStore` staging | Partial | Untested (CSV, backup) | Formats are app-specific, as they should be | None severe | App (formats) + Apple (sheets) | Keep app-owned | Low | None |
 | Backup and restore | PL | `forge_storage::backup` zip with manifest and hashes | forge-storage `backup` | Complete for one app | Untested | None | Only one user | Forge | Keep; second user only when an app asks (FieldKit trips are a candidate) | Low | None |
-| Backup exclusion and file protection classes | All | Nothing | `AppDirectories` names caches and temporary only | **Absent** | n/a | n/a | Caches, downloaded songs and model files are backed up; no protection class beyond the entitlement (S5) | Forge | **Improve**: storage classes on `FileStore`/directories | **High** | SS offline downloads |
+| Backup exclusion and file protection classes | SS offline songs (next); any later re-downloadable data kept in Application Support | `ForgeEnvironment` separates Application Support (backed up) from Caches (not backed up, purgeable); nothing sets exclusion or an explicit protection class | `ForgeEnvironment`, `AppDirectories` | **Absent** for the middle case: kept, but not backed up | n/a | n/a | No current file is wrongly backed up (verified: Chat, Good Dog and Pocket Library keep no caches; Commonplace's articles are in its database; no app stores downloaded AI models yet). The gap appears with Soundscape's offline songs. Files use iOS's default protection class (S5) | Forge | **Improve**: one backup-excluded class, applied to a folder so atomic replaces keep it | **High** | SS offline downloads |
 | Data deletion (erase everything) | PL, GD (reset) | App code | `FileStore::sweep`, Keychain | Partial | Untested | Two apps, different meaning | Keychain items outlive the app's data | App + Forge (Keychain reconcile) | Defer the UI; fix Keychain reconcile with storage classes | Low | Storage classes |
 | Conflict handling, sync | CH | Chat outbox, server ids | None (by design) | App | Partly (Chat) | None | None | App | Reject a sync engine | n/a | n/a |
 | **C. Permissions** Status and request | CH, FK, WE, SS, SK, RL, GD (notifications) | `PermissionProvider` + adapters (notifications, location, mic); SK, SS, RL ask Apple directly | forge-native, forge-services | Primitive | Partly (Weather location fix) | 3 apps ask directly; WE has its own `LocationProvider` | No denied view, no Settings link (only DL has one), no re-check on resume (P2) | ForgeAppKit (view) + Apple | **Improve**: one SwiftUI denied-state pattern, re-check on `resumed` | **High** | FK background location, SS microphone |
@@ -142,13 +144,13 @@ Six gaps are worth closing; each already has real consumers and an app feature t
 ### Critical foundational gaps
 
 1. **Opening saved data that can't be read.** *Evidence:* `ForgeRoot.swift` shows Try Again for every open failure; `ErrorKind::Corrupt` says "offer recovery" and `NewerData` says "never offer a reset", but nothing in ForgeKit acts on either. Pocket Library built its own Start Fresh (`SettingsView.swift`, `LibraryModel.swift`); friction log A15 lists Sketchbook, Soundscape and Relay without one. *Harm:* a user whose file is damaged, or who restored a newer backup, is stuck in a retry loop. *Consumers:* every app on `ForgeHost` (ten).
-2. **Backup and protection classes for files.** *Evidence:* no `isExcludedFromBackup` or `FileProtectionType` anywhere in the repository; foundation review S5 open since 2026-11-08. *Harm:* re-downloadable songs (Soundscape offline, next), article caches (Commonplace) and AI models (Chat, Pocket Library) fill iCloud backups; nothing marks secrets-adjacent data as protected. App Review also flags apps that back up re-creatable content. *Consumers:* Soundscape, Commonplace, Chat, Pocket Library, FieldKit.
+2. **Re-downloadable files that must stay but not be backed up.** *Evidence:* `ForgeEnvironment.standard(app:)` gives Application Support (backed up by iOS) and Caches (not backed up, and purgeable under storage pressure); no `isExcludedFromBackup` or explicit `FileProtectionType` anywhere in the repository; foundation review S5 open since 2026-11-08. Checked today: Chat, Good Dog and Pocket Library pass their data folder as the caches folder and keep no caches; Commonplace's articles live in its database (user data); no app stores downloaded AI models yet; Soundscape's Listen streams and stores nothing. So **nothing is wrongly backed up today.** *Harm when it arrives:* offline songs can't go in Caches (iOS may delete them when space is low, losing the person's offline music), and in Application Support they would be backed up. Apple's guidance is to exclude them, and ordinary file operations (a replace or an atomic rename) can drop the per-file flag, so it has to be set on the folder or reapplied after each write. *Consumers:* Soundscape first; any later re-downloadable store (a model download, a feed's offline images) second.
 
 ### High-value shared capabilities
 
 3. **The permission lifecycle.** *Evidence:* six apps need a protected resource; Sketchbook (`ExportSheet.swift:82`), Soundscape (`LoopEngine.swift:225`) and Relay (VisionKit) ask Apple directly; Weather keeps its own `LocationProvider.swift` beside the `location` service; only Device Lab links to Settings. Review P2 (no re-check on resume) is open. *Harm:* a refused permission leaves a blank or broken screen, which the roadmap's own completeness rule forbids ("a useful screen when they are refused"). *Consumers:* FieldKit, Weather, Sketchbook, Relay, Chat, Good Dog (Soundscape's microphone use leaves with the Studio removal).
 4. **One route for native services.** *Evidence:* `forge-native` (starter, Good Dog) and `native_services!` (eight apps) coexist; optional adapters are only copied from the checkout by `scripts/generate-bindings.sh`, so the released ForgeKit can't give an outside app `http`, `location` or `transfers`. Soundscape had to take nine generated files and an `AppServices.swift` to make one URLSession request (A35). *Harm:* developer experience outside ixOS, and two code paths to maintain. *Consumers:* every app and every external user.
-5. **A real user of background transfers and retry.** *Evidence:* `transfers` and `connectivity` are used by Device Lab only; Chat's outbox is the only durable operation; `Backoff` has no attempt limit or `Retry-After` (N2). *Harm:* the code that matters most for offline reliability has never carried a real feature. *Consumers:* Soundscape offline downloads (planned PR 3), then Relay resume or Chat attachments.
+5. **A real user of background transfers.** *Evidence:* `transfers` and `connectivity` are used by Device Lab only. *Harm:* the code that matters most for offline reliability has never carried a real feature. *Consumers:* Soundscape offline downloads (planned PR 3). This is a separate question from durable operations and retry: Chat's outbox is still the only durable operation queue and `Backoff` has no attempt limit or `Retry-After` (N2), and Soundscape's downloads don't answer either (Phase 3 says what they do and don't prove).
 
 ### Quality improvements
 
@@ -165,7 +167,7 @@ Every recommendation fits an existing crate or Swift product; none needs a new c
 | Concept | Verdict | Apps that need it | What it replaces | Rust, Swift or both | Where it lives | Extract now? | Validated by |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Common error and recovery semantics | **Exists** (`ErrorKind`, `ForgeFailure`); missing piece is the open-failure flow | All ten | PL's own Start Fresh; Try Again loops elsewhere | Both: Rust says `Corrupt`/`NewerData` and keeps the set-aside copy; Swift shows choices | forge-app (an `open_fresh` that sets the old file aside) + ForgeKit `ForgeRoot` | **Yes**: platform-level, ten consumers, one existing app copy | Sketchbook opening a deliberately damaged file in Device Lab |
-| Data lifecycle contract (storage classes) | **Justified** | SS, CP, CH, PL, FK | Nothing (gap) | Rust declares the class per store; Swift adapter sets backup exclusion and protection | forge-storage `FileStore` option + ForgeNative directories adapter | **Yes**, with Soundscape offline downloads as first real user; it is platform-level (Apple's API, same for every app) | Song cache absent from Settings › iCloud › Backups size; files unreadable while locked if marked `complete` |
+| Data lifecycle contract (storage classes) | **Justified, narrowly** | SS first; later re-downloadable stores | Nothing (gap) | Rust names the folder's class; the Swift adapter sets `isExcludedFromBackup` on that folder (so atomic replaces inside it keep the exclusion) and leaves protection at iOS's default unless an app asks | forge-storage `FileStore` option + ForgeNative directories adapter | **Yes**, with Soundscape offline downloads as first real user; it is platform-level (Apple's API, same for every app). Only three places: Application Support (backed up), Caches (already excluded by iOS), and one kept-but-excluded folder | Songs absent from the app's size in Settings › iCloud › Manage Storage; still present after the phone runs low on space |
 | Capability and permission contract | **Justified, Swift-first** | FK, WE, SS, SK, RL, CH, GD | DL's Settings link; three direct Apple calls with no denied state | Swift. Rust only for permissions the core reads (location, notifications), which already exist | ForgeAppKit: a denied-state view with a Settings button; ForgeKit: re-check registered permissions on `resumed` | Partly: the view now (seven apps); the re-check after FieldKit background location shows a real change | FieldKit with location turned off in Settings, then on, without relaunch |
 | Consistent operation lifecycle (durable, retryable work) | **Justified, but wait** | CH outbox; SS downloads; RL resume | Chat's outbox later | Rust | forge-net (`RetryPolicy`) + forge-services `transfers` | No: second user (SS downloads) must merge and pass first; then compare with Chat's outbox (review N1) | SS download survives force quit and airplane mode |
 | Application diagnostics | **Exists for developers**; reject an in-app layer now | None yet | n/a | n/a | Tools | No | n/a |
@@ -221,7 +223,7 @@ Six phases, one PR stream at a time, each carried by an app feature that is alre
 | 0 | Docs tell the truth | none (docs only) | 1 small PR |
 | 1 | Unreadable data has a way forward | Sketchbook, then Pocket Library moves onto it | 1 to 2 PRs |
 | 2 | A refused permission never leaves a dead screen | FieldKit background location; Sketchbook save to Photos; Relay camera | 2 PRs |
-| 3 | Re-creatable files stay out of backups; background transfers carry a real feature | Soundscape offline downloads (its planned PR 3) | Inside SS PR 3 + 1 framework PR |
+| 3 | Offline songs are kept but not backed up; background transfers carry a real feature | Soundscape offline downloads (its planned PR 3) | Inside SS PR 3 + 1 framework PR |
 | 4 | One way to add a native service, usable outside ixOS | Soundscape and Weather first, then the rest | 1 framework PR + 1 per app wave, ForgeKit 0.7 |
 | 5 | Music and spoken audio share one Now Playing helper | Soundscape player, Pocket Library read-aloud | 1 PR |
 
@@ -234,10 +236,11 @@ Six phases, one PR stream at a time, each carried by an app feature that is alre
 ### Phase 1: Recovery when saved data can't be opened
 
 - **Objective:** `Corrupt` offers "Start Fresh" (keeping the unreadable file aside and saying where); `NewerData` says "update the app" and offers nothing destructive.
+- **Design requirement:** the open contract must carry a typed failure classification across the Rust/Swift boundary, and `ForgeRoot` must never infer corrupt or newer data from an error message. Today `ForgeHost.start()` catches the error thrown by the app's `open` closure and stores `Status.failed(String)` from `ForgeErrors.describe(error)`. The kind is available at that moment when the thrown error conforms to `ForgeKindedError`, and is then thrown away. Investigate first, before any code: (a) whether each app's open error conforms to `ForgeKindedError` (the generated errors need the one-line conformance); (b) a `Status.failed` that keeps the `ErrorKind` (or a `ForgeFailure` built from it) beside the words, which changes ForgeKit's public API and needs a release; (c) what a non-kinded error maps to (`Internal`, so never a destructive offer); (d) where Start Fresh runs: a second open that sets the old file aside in Rust, not a Swift file deletion.
 - **Scope:** `forge-app`: one documented way to open fresh with the old file set aside (generalising `save_over_corrupt` and the A15 `start_fresh` boilerplate). ForgeKit `ForgeRoot`: show the right screen by `ErrorKind`. Sketchbook adopts it; Pocket Library's own copy is deleted in a follow-up. Parity rule `open-recovery`.
 - **Evidence apps:** Pocket Library (existing copy), Sketchbook, Soundscape, Relay (none).
-- **Dependencies:** none. ForgeKit release for outside apps.
-- **Acceptance:** Linux tests open a damaged and a newer fixture for each app on `Document`; twin test shows both screens; parity check names apps without it.
+- **Dependencies:** the investigation above. ForgeKit release for outside apps.
+- **Acceptance:** Linux tests open a damaged and a newer fixture for each app on `Document` and assert the kind that reaches `ForgeHost.status`, not its words; twin test shows both screens; a plain Swift error never offers Start Fresh; parity check names apps without it.
 - **Device:** in Device Lab, a debug launch option that corrupts Sketchbook's file; Start Fresh works and the old file is still in the container (seen with `forge device` or Files). One person-recorded row.
 - **Excludes:** automatic repair, sending the damaged file anywhere.
 
@@ -253,27 +256,40 @@ Six phases, one PR stream at a time, each carried by an app feature that is alre
 
 ### Phase 3: Storage classes and background transfers, proven by offline songs
 
-- **Objective:** downloaded songs survive suspension and force quit, are excluded from backup, and resume.
-- **Scope:** inside Soundscape PR 3, downloads go through the `transfers` service (its first real user). Framework PR: a storage class on `FileStore` (user data, re-downloadable, cache) that the iOS adapter maps to `isExcludedFromBackup`; protection class left at the system default unless an app asks.
-- **Evidence apps:** Soundscape (first), Commonplace article cache and Chat/Pocket Library models (second users).
+- **Objective:** downloaded songs survive suspension and force quit, are kept when the phone is low on space, are excluded from backup, and resume.
+- **First step:** decide where the songs live. Not Caches (iOS may purge them, losing offline music); a folder under Application Support excluded from backup. Confirm that the `transfers` service's own ledger (Application Support/ForgeTransfers) and inbox stay small enough not to matter.
+- **Scope:** inside Soundscape PR 3, downloads go through the `transfers` service (its first real user). Framework PR: one kept-but-excluded class on `FileStore`, applied by the iOS adapter as `isExcludedFromBackup` on the folder, reapplied after the folder is created or replaced, since copies, replaces and atomic renames can drop the flag. File protection stays at iOS's default class unless an app asks for another.
+- **What this proves, and what it doesn't:**
+
+    | Capability | What Soundscape proves |
+    | --- | --- |
+    | Background transfers | Real application use, progress and completion |
+    | Interrupted downloads | Recovery and resumption after suspension, force quit and relaunch |
+    | Durable operations | Only that the `transfers` ledger survives termination, not a general operation queue |
+    | Generic retry policy | Nothing yet: it waits for a second app with genuinely similar retry needs |
+
+- **Evidence apps:** Soundscape (first). A second user of the excluded class comes only when another app keeps re-downloadable data.
 - **Dependencies:** Soundscape PRs 1 and 2 merged (1 is merged as #264).
 - **Acceptance:** requirements for download, resume after relaunch, airplane mode, and "not in backup"; Rust tests on the ledger; parity rule for caches without a class.
 - **Device:** download an album, force quit mid-way, relaunch, it completes; airplane mode plays offline; Settings › iCloud › Manage Storage shows the app's backup size without the songs.
-- **Excludes:** a generic sync engine, `RetryPolicy` (waits for a second durable operation), CloudKit.
+- **Excludes:** a generic sync engine, a durable operation queue, `RetryPolicy` (waits for a second app with similar retry needs), CloudKit, explicit protection classes nobody asked for.
 
 ### Phase 4: One native-services route
 
+This changes Forge's distribution model, not only where generated files go, so it starts with an investigation and becomes an implementation commitment only when that answers the questions below.
+
+- **Investigate first:** whether optional UniFFI services can sit behind Cargo features of `forge-native` without bloating the core (binary size and the Swift a disabled service still needs); how an app selects services (Cargo features plus imports, and how that stays in step with `forge.toml` permissions, review P1); whether ForgeNative can ship each adapter so an outside app needs no ixOS checkout (SwiftPM has no per-feature compilation, so an unused adapter must still compile and link without its Rust symbols); how the copying route retires app by app without breaking any app mid-way; and whether the result is a clean release boundary for ForgeKit. Output: a short design note and a yes or no.
 - **Objective:** an app adds a service by enabling a Cargo feature of `forge-native` and importing ForgeNative; nothing is copied into `Generated/`.
 - **Scope:** optional services become features of `forge-native` with adapters in ForgeNative; a parity rule `forge-native`; apps move in waves (Soundscape and Weather, whose needs are small, first); the copying in `generate-bindings.sh` is removed when the last app moves. Platform limits (`MIN_REPEAT_SECONDS`) move to adapters in the same PR as notifications.
 - **Evidence apps:** all; A35 is the motivating case.
-- **Dependencies:** a ForgeKit release (0.7) and `forge-release.toml` update; Phase 3 should land first so `transfers` moves once.
+- **Dependencies:** the investigation above; a ForgeKit release (0.7) and `forge-release.toml` update; Phase 3 should land first so `transfers` moves once.
 - **Acceptance:** a fresh `forge init` app outside the checkout uses `http` and `location` with only the ForgeKit release; `check-ios-xtool.sh affected` green for moved apps.
 - **Device:** Device Lab build with the moved apps; Soundscape plays and Weather finds location.
 - **Excludes:** splitting ForgeNative into many packages; Android adapters.
 
 ### Phase 5: Now Playing helper
 
-- **Scope:** Swift helper in forge-services helpers for `MPNowPlayingInfoCenter` and remote commands, and a `.music` use in `ForgeAudioSession`; Soundscape and Pocket Library move onto it.
+- **Scope:** first compare the two: Soundscape's queue (next, previous, seek, artwork) against Pocket Library's read-aloud (play, pause, skip by section). Extract only the interface they genuinely share; if it is just the info dictionary and play/pause, the helper is that small. Then a `.music` use in `ForgeAudioSession`; Soundscape and Pocket Library move onto it.
 - **Acceptance and device:** lock-screen controls work for a song and for read-aloud in one sitting.
 - **Excludes:** a Forge audio player; playback stays AVPlayer and AVSpeechSynthesizer.
 
@@ -304,11 +320,11 @@ Wave 5 (search into forge-storage after Pocket Library, chart shaping after Good
 
 ## Part 9: Immediate next steps
 
-Three small pieces, in this order, each one PR, none waiting on the phone to start. They follow the merge of the open PRs (#268 to #271), keeping one thing at a time.
+Don't start all six phases. Merge this audit as the research baseline, then do Phase 0 before any implementation, so the next wave starts from documentation that matches the code. They follow the merge of the open PRs (#268 to #271), keeping one thing at a time.
 
-1. **Docs truth pass (Phase 0).** Fix the nine drift rows in Part 2 and add the foundation-review status update. Docs only; about an hour of review for Reuben.
-2. **Open-failure recovery, proven in Sketchbook (Phase 1).** The smallest framework change with the widest reach: one `forge-app` function, one `ForgeRoot` screen, one app, one parity rule. Phone check: a forced corrupt file in Device Lab.
-3. **Storage class for re-downloadable files, inside Soundscape's offline downloads (Phase 3).** Soundscape PR 3 is already planned; it adds `transfers` as its download path and the backup exclusion it needs, so the framework change arrives with its first user.
+1. **Docs truth pass (Phase 0).** Fix the drift rows in Part 2 and add the foundation-review status update. Docs only.
+2. **Phase 1's investigation: how a typed open failure reaches `ForgeRoot`.** A short design note (no code) answering the four questions in Phase 1, then the recovery screen proven in Sketchbook.
+3. **Where Soundscape's offline songs live (Phase 3's first step),** decided inside Soundscape PR 3 when it starts, with the excluded class arriving with its first user.
 
 Then Phase 2 (permissions) with FieldKit's next feature, Phase 4 (one native-services route) when no app PR is mid-flight, and Phase 5 (Now Playing) whenever Soundscape or Pocket Library next touches playback.
 
