@@ -60,6 +60,7 @@ fn onboarding_validates_and_tidies_the_profile() {
     spaced.name = " Moss   the  Collie ".into();
     let saved = block_on(app.save_dog(spaced, at(NINE_AM))).unwrap();
     assert_eq!(saved.name, "Moss the Collie");
+    drop(app);
     assert_eq!(open(dir.path()).dog().unwrap().name, "Moss the Collie");
 }
 
@@ -81,6 +82,7 @@ fn a_new_dog_gets_a_starter_plan_that_stays_the_same_all_day() {
     // Later the same day, and after a relaunch: the same plan.
     let later = block_on(app.today(at(NINE_AM + 6 * 3_600_000))).unwrap();
     assert_eq!(later, plan);
+    drop(app);
     assert_eq!(block_on(open(dir.path()).today(at(NINE_AM))).unwrap(), plan);
 }
 
@@ -330,12 +332,20 @@ fn erase_all_starts_again_and_survives_a_relaunch() {
     let dir = tempfile::tempdir().unwrap();
     let app = onboarded(dir.path());
     let events = app.events().unwrap();
+    let before = app.revision();
     block_on(app.today(at(NINE_AM))).unwrap();
-    assert_eq!(block_on(events.next()), Some(AppEvent::DataChanged));
+    assert_eq!(
+        block_on(events.next()),
+        Some(forge_app::RuntimeEvent::Changed {
+            revision: before + 1
+        })
+    );
     block_on(app.erase_all()).unwrap();
     assert_eq!(app.dog(), None);
-    assert_eq!(open(dir.path()).dog(), None);
     assert!(app.history(10).is_empty());
+    // A relaunch: the first core lets go of the folder first.
+    drop(app);
+    assert_eq!(open(dir.path()).dog(), None);
 }
 
 #[test]
@@ -358,16 +368,32 @@ fn shutdown_refuses_new_work_and_ends_streams() {
     let dir = tempfile::tempdir().unwrap();
     let app = onboarded(dir.path());
     let events = app.events().unwrap();
-    app.set_phase(AppPhase::Terminated);
-    assert_eq!(
-        block_on(events.next()),
-        Some(AppEvent::PhaseChanged {
-            phase: AppPhase::Terminated,
-            resumed: false
-        })
-    );
-    assert_eq!(block_on(events.next()), None);
+    app.shutdown();
+    // The stream may say Terminated first; it then ends.
+    while block_on(events.next()).is_some() {}
     assert_eq!(block_on(app.today(at(NINE_AM))), Err(AppError::ShutDown));
+    assert_eq!(app.phase(), forge_app::AppPhase::Terminated);
+}
+
+#[test]
+fn a_second_core_on_the_same_data_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    assert!(matches!(
+        AppCore::new(dir.path().to_string_lossy().into_owned()),
+        Err(AppError::InUse { .. })
+    ));
+    assert_eq!(
+        app_error_kind(AppError::InUse {
+            reason: String::new()
+        }),
+        ErrorKind::Unavailable
+    );
+    drop(app);
+    assert!(
+        open(dir.path()).dog().is_some(),
+        "free once the first core is gone"
+    );
 }
 
 // MARK: Goals (GD2a)
@@ -646,7 +672,7 @@ fn pausing_resuming_and_setting_aside_keep_the_stage_and_history() {
     );
 
     // All of it survives a relaunch.
-    app.shutdown();
+    drop(app);
     let app = open_with_goals(dir.path());
     let again = app.goal(id, tomorrow).unwrap();
     assert_eq!(again.summary.stage_number, 2);
@@ -965,7 +991,7 @@ fn leaving_a_guided_session_part_way_records_nothing_and_the_next_starts_again()
     assert_eq!(app.progress(at(NINE_AM)).sessions_total, 0);
 
     // The app terminated part way: the reopened app knows nothing of it.
-    app.shutdown();
+    drop(app);
     let reopened = open(dir.path());
     assert!(reopened.history(10).is_empty());
     let again = reopened
@@ -1037,7 +1063,8 @@ fn the_ui_tests_sample_dog_starts_today_on_a_four_step_exercise() {
 // MARK: Reminder (GD5)
 
 fn reminder_days(app: &AppCore, now: LocalTime) -> Vec<i64> {
-    lock(&app.state)
+    app.data
+        .get()
         .reminders(now)
         .iter()
         .map(|n| reminders::day_of(&n.id).unwrap())
@@ -1060,7 +1087,7 @@ fn the_reminder_skips_a_day_already_practised_or_set_aside() {
     assert_eq!(app.reminder_minute(), Some(18 * 60));
     let week: Vec<i64> = (today..today + 7).collect();
     assert_eq!(reminder_days(&app, at(NINE_AM)), week);
-    let first = &lock(&app.state).reminders(at(NINE_AM))[0];
+    let first = &app.data.get().reminders(at(NINE_AM))[0];
     assert_eq!(
         first.trigger,
         native::NotificationTrigger::At {
@@ -1114,7 +1141,7 @@ fn rescheduling_replaces_the_week_and_cancels_what_is_no_longer_wanted() {
     block_on(app.set_reminder(Some(18 * 60), now)).unwrap();
     block_on(reminders::schedule(
         &services,
-        lock(&app.state).reminders(now),
+        app.data.get().reminders(now),
         now,
     ));
     let week = fakes.notifier.scheduled().len();
@@ -1123,7 +1150,7 @@ fn rescheduling_replaces_the_week_and_cancels_what_is_no_longer_wanted() {
     block_on(app.set_reminder(None, now)).unwrap();
     block_on(reminders::schedule(
         &services,
-        lock(&app.state).reminders(now),
+        app.data.get().reminders(now),
         now,
     ));
     assert!(fakes.notifier.scheduled().is_empty());

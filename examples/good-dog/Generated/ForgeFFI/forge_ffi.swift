@@ -3,6 +3,7 @@
 
 // swiftlint:disable all
 import Foundation
+@preconcurrency import ForgeApp
 @preconcurrency import ForgeNative
 
 // Depending on the consumer's build setup, the low-level FFI code
@@ -620,6 +621,17 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func answerLesson(goalId: UInt64, lessonId: String, choice: UInt32, now: LocalTime) async throws  -> LessonAnswer
     
     /**
+     * The host's background time ran out: finishing work stops.
+     */
+    func backgroundTimeExpired() 
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+    func backgroundWorkPending()  -> Bool
+    
+    /**
      * Marks a learn or everyday lesson of the goal's current stage done.
      * Lessons unlock one by one: a locked one is refused, as are practise
      * lessons (recording a session finishes them) and checks (answer them).
@@ -638,9 +650,10 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func eraseAll() async throws 
     
     /**
-     * A new event stream. Each consumer takes its own.
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
      */
-    func events() throws  -> AppEvents
+    func events()  -> RuntimeEvents?
     
     /**
      * One exercise in full, with the dog's progress on its skill.
@@ -666,6 +679,11 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * Recorded sessions, newest first.
      */
     func history(limit: UInt32)  -> [SessionRecord]
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+    func launchReport()  -> LaunchReport
     
     /**
      * The Learn topics, each with the exercises that suit the dog's age
@@ -696,6 +714,9 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      */
     func pauseGoal(goalId: UInt64, now: LocalTime) async throws  -> GoalDetail
     
+    /**
+     * The phase last reported.
+     */
     func phase()  -> AppPhase
     
     func progress(now: LocalTime)  -> ProgressSummary
@@ -734,6 +755,11 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func resumeGoal(goalId: UInt64, now: LocalTime) async throws  -> GoalDetail
     
     /**
+     * The last committed revision.
+     */
+    func revision()  -> UInt64
+    
+    /**
      * Creates or changes the profile. The name is trimmed; an empty or
      * over-long name is `InvalidInput`. A plan not yet started is rebuilt.
      */
@@ -757,8 +783,7 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func setNotToday(notToday: Bool, now: LocalTime) async throws  -> TodayPlan
     
     /**
-     * The host reports a lifecycle change. Coming back from the background
-     * emits `PhaseChanged { resumed: true }`; `Terminated` is `shutdown()`.
+     * The host reports the application lifecycle phase.
      */
     func setPhase(phase: AppPhase) 
     
@@ -776,8 +801,8 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func shortenToday(now: LocalTime) async throws  -> TodayPlan
     
     /**
-     * Refuses new commands with `ShutDown` and ends every event stream.
-     * Saves already running finish. Idempotent.
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
      */
     func shutdown() 
     
@@ -935,6 +960,30 @@ open func answerLesson(goalId: UInt64, lessonId: String, choice: UInt32, now: Lo
 }
     
     /**
+     * The host's background time ran out: finishing work stops.
+     */
+open func backgroundTimeExpired()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_good_dog_app_fn_method_appcore_background_time_expired(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+open func backgroundWorkPending() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_good_dog_app_fn_method_appcore_background_work_pending(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Marks a learn or everyday lesson of the goal's current stage done.
      * Lessons unlock one by one: a locked one is refused, as are practise
      * lessons (recording a session finishes them) and checks (answer them).
@@ -988,10 +1037,11 @@ open func eraseAll()async throws   {
 }
     
     /**
-     * A new event stream. Each consumer takes its own.
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
      */
-open func events()throws  -> AppEvents  {
-    return try  FfiConverterTypeAppEvents_lift(try rustCallWithError(FfiConverterTypeAppError_lift) {
+open func events() -> RuntimeEvents?  {
+    return try!  FfiConverterOptionTypeRuntimeEvents.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_good_dog_app_fn_method_appcore_events(
             self.uniffiCloneHandle(),uniffiCallStatus
@@ -1059,6 +1109,18 @@ open func history(limit: UInt32) -> [SessionRecord]  {
     uniffi_good_dog_app_fn_method_appcore_history(
             self.uniffiCloneHandle(),
         FfiConverterUInt32.lower(limit),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+open func launchReport() -> LaunchReport  {
+    return try!  FfiConverterTypeLaunchReport_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_good_dog_app_fn_method_appcore_launch_report(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1141,6 +1203,9 @@ open func pauseGoal(goalId: UInt64, now: LocalTime)async throws  -> GoalDetail  
         )
 }
     
+    /**
+     * The phase last reported.
+     */
 open func phase() -> AppPhase  {
     return try!  FfiConverterTypeAppPhase_lift(try! rustCall() {
         uniffiCallStatus in
@@ -1258,6 +1323,18 @@ open func resumeGoal(goalId: UInt64, now: LocalTime)async throws  -> GoalDetail 
 }
     
     /**
+     * The last committed revision.
+     */
+open func revision() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_good_dog_app_fn_method_appcore_revision(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Creates or changes the profile. The name is trimmed; an empty or
      * over-long name is `InvalidInput`. A plan not yet started is rebuilt.
      */
@@ -1331,8 +1408,7 @@ open func setNotToday(notToday: Bool, now: LocalTime)async throws  -> TodayPlan 
 }
     
     /**
-     * The host reports a lifecycle change. Coming back from the background
-     * emits `PhaseChanged { resumed: true }`; `Terminated` is `shutdown()`.
+     * The host reports the application lifecycle phase.
      */
 open func setPhase(phase: AppPhase)  {try! rustCall() {
         uniffiCallStatus in
@@ -1385,8 +1461,8 @@ open func shortenToday(now: LocalTime)async throws  -> TodayPlan  {
 }
     
     /**
-     * Refuses new commands with `ShutDown` and ends every event stream.
-     * Saves already running finish. Idempotent.
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
@@ -1562,303 +1638,6 @@ public func FfiConverterTypeAppCore_lift(_ handle: UInt64) throws -> AppCore {
 #endif
 public func FfiConverterTypeAppCore_lower(_ value: AppCore) -> UInt64 {
     return FfiConverterTypeAppCore.lower(value)
-}
-
-
-
-
-
-
-/**
- * One consumer's events. Await `next()` in a loop; `None` means it ended.
- */
-public protocol AppEventsProtocol: AnyObject, Sendable {
-    
-    /**
-     * Ends this stream; a pending `next()` returns `None`.
-     */
-    func cancel() 
-    
-    /**
-     * The next event, or `None` once this stream has ended.
-     */
-    func next() async  -> AppEvent?
-    
-}
-/**
- * One consumer's events. Await `next()` in a loop; `None` means it ended.
- */
-open class AppEvents: AppEventsProtocol, @unchecked Sendable {
-    fileprivate let handle: UInt64
-
-    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public struct NoHandle {
-        public init() {}
-    }
-
-    // TODO: We'd like this to be `private` but for Swifty reasons,
-    // we can't implement `FfiConverter` without making this `required` and we can't
-    // make it `required` without making it `public`.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    required public init(unsafeFromHandle handle: UInt64) {
-        self.handle = handle
-    }
-
-    // This constructor can be used to instantiate a fake object.
-    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
-    //
-    // - Warning:
-    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public init(noHandle: NoHandle) {
-        self.handle = 0
-    }
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_good_dog_app_fn_clone_appevents(self.handle, $0) }
-    }
-    // No primary constructor declared for this class.
-
-    deinit {
-        if handle == 0 {
-            // Mock objects have handle=0 don't try to free them
-            return
-        }
-
-        try! rustCall { uniffi_good_dog_app_fn_free_appevents(handle, $0) }
-    }
-
-    
-
-    
-    /**
-     * Ends this stream; a pending `next()` returns `None`.
-     */
-open func cancel()  {try! rustCall() {
-        uniffiCallStatus in
-    uniffi_good_dog_app_fn_method_appevents_cancel(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-}
-}
-    
-    /**
-     * The next event, or `None` once this stream has ended.
-     */
-open func next()async  -> AppEvent?  {
-    return
-        try!  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_good_dog_app_fn_method_appevents_next(
-                        self.uniffiCloneHandle()
-                )
-            },
-            pollFunc: ffi_good_dog_app_rust_future_poll_rust_buffer,
-            completeFunc: ffi_good_dog_app_rust_future_complete_rust_buffer,
-            freeFunc: ffi_good_dog_app_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterOptionTypeAppEvent.lift,
-            errorHandler: nil
-            
-        )
-}
-    
-
-    
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeAppEvents: FfiConverter {
-    typealias FfiType = UInt64
-    typealias SwiftType = AppEvents
-
-    public static func lift(_ handle: UInt64) throws -> AppEvents {
-        return AppEvents(unsafeFromHandle: handle)
-    }
-
-    public static func lower(_ value: AppEvents) -> UInt64 {
-        return value.uniffiCloneHandle()
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppEvents {
-        let handle: UInt64 = try readInt(&buf)
-        return try lift(handle)
-    }
-
-    public static func write(_ value: AppEvents, into buf: inout [UInt8]) {
-        writeInt(&buf, lower(value))
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppEvents_lift(_ handle: UInt64) throws -> AppEvents {
-    return try FfiConverterTypeAppEvents.lift(handle)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppEvents_lower(_ value: AppEvents) -> UInt64 {
-    return FfiConverterTypeAppEvents.lower(value)
-}
-
-
-
-
-
-
-/**
- * Lets the host stop one request part way. Swift: create one per
- * call and cancel it from `withTaskCancellationHandler`, because
- * cancelling a Swift `Task` does not reach Rust on its own. Kotlin:
- * cancelling the coroutine is enough; pass `null`.
- */
-public protocol CancellationProtocol: AnyObject, Sendable {
-    
-    /**
-     * Stops the request: it fails with `Cancelled` at once, even
-     * while waiting for a slow server. Idempotent.
-     */
-    func cancel() 
-    
-}
-/**
- * Lets the host stop one request part way. Swift: create one per
- * call and cancel it from `withTaskCancellationHandler`, because
- * cancelling a Swift `Task` does not reach Rust on its own. Kotlin:
- * cancelling the coroutine is enough; pass `null`.
- */
-open class Cancellation: CancellationProtocol, @unchecked Sendable {
-    fileprivate let handle: UInt64
-
-    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public struct NoHandle {
-        public init() {}
-    }
-
-    // TODO: We'd like this to be `private` but for Swifty reasons,
-    // we can't implement `FfiConverter` without making this `required` and we can't
-    // make it `required` without making it `public`.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    required public init(unsafeFromHandle handle: UInt64) {
-        self.handle = handle
-    }
-
-    // This constructor can be used to instantiate a fake object.
-    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
-    //
-    // - Warning:
-    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public init(noHandle: NoHandle) {
-        self.handle = 0
-    }
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_good_dog_app_fn_clone_cancellation(self.handle, $0) }
-    }
-public convenience init() {
-    let handle =
-        try! rustCall() {
-        uniffiCallStatus in
-    uniffi_good_dog_app_fn_constructor_cancellation_new(uniffiCallStatus
-    )
-}
-    self.init(unsafeFromHandle: handle)
-}
-
-    deinit {
-        if handle == 0 {
-            // Mock objects have handle=0 don't try to free them
-            return
-        }
-
-        try! rustCall { uniffi_good_dog_app_fn_free_cancellation(handle, $0) }
-    }
-
-    
-
-    
-    /**
-     * Stops the request: it fails with `Cancelled` at once, even
-     * while waiting for a slow server. Idempotent.
-     */
-open func cancel()  {try! rustCall() {
-        uniffiCallStatus in
-    uniffi_good_dog_app_fn_method_cancellation_cancel(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-}
-}
-    
-
-    
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeCancellation: FfiConverter {
-    typealias FfiType = UInt64
-    typealias SwiftType = Cancellation
-
-    public static func lift(_ handle: UInt64) throws -> Cancellation {
-        return Cancellation(unsafeFromHandle: handle)
-    }
-
-    public static func lower(_ value: Cancellation) -> UInt64 {
-        return value.uniffiCloneHandle()
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Cancellation {
-        let handle: UInt64 = try readInt(&buf)
-        return try lift(handle)
-    }
-
-    public static func write(_ value: Cancellation, into buf: inout [UInt8]) {
-        writeInt(&buf, lower(value))
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeCancellation_lift(_ handle: UInt64) throws -> Cancellation {
-    return try FfiConverterTypeCancellation.lift(handle)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeCancellation_lower(_ value: Cancellation) -> UInt64 {
-    return FfiConverterTypeCancellation.lower(value)
 }
 
 
@@ -4559,6 +4338,11 @@ enum AppError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case Storage(reason: String
     )
     /**
+     * Another core already has this data folder open.
+     */
+    case InUse(reason: String
+    )
+    /**
      * `shutdown()` was called; the instance accepts no more work.
      */
     case ShutDown
@@ -4602,7 +4386,10 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
         case 5: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 6: return .ShutDown
+        case 6: return .InUse(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 7: return .ShutDown
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4638,8 +4425,13 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .ShutDown:
+        case let .InUse(reason):
             writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(7))
         
         }
     }
@@ -4659,208 +4451,6 @@ public func FfiConverterTypeAppError_lift(_ buf: RustBuffer) throws -> AppError 
 public func FfiConverterTypeAppError_lower(_ value: AppError) -> RustBuffer {
     return FfiConverterTypeAppError.lower(value)
 }
-
-
-/**
- * Something the host may want to react to.
- */
-
-public enum AppEvent: Equatable, Hashable {
-    
-    /**
-     * Saved data changed: re-read whatever is on screen.
-     */
-    case dataChanged
-    /**
-     * This subscriber fell behind and missed `count` events; re-read everything.
-     */
-    case eventsDropped(count: UInt64
-    )
-    /**
-     * The app changed phase. `resumed` is true on the way back from the
-     * background, which may be a new day: re-read today's plan.
-     */
-    case phaseChanged(phase: AppPhase, resumed: Bool
-    )
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension AppEvent: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeAppEvent: FfiConverterRustBuffer {
-    typealias SwiftType = AppEvent
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppEvent {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .dataChanged
-        
-        case 2: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
-        )
-        
-        case 3: return .phaseChanged(phase: try FfiConverterTypeAppPhase.read(from: &buf), resumed: try FfiConverterBool.read(from: &buf)
-        )
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: AppEvent, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .dataChanged:
-            writeInt(&buf, Int32(1))
-        
-        
-        case let .eventsDropped(count):
-            writeInt(&buf, Int32(2))
-            FfiConverterUInt64.write(count, into: &buf)
-            
-        
-        case let .phaseChanged(phase,resumed):
-            writeInt(&buf, Int32(3))
-            FfiConverterTypeAppPhase.write(phase, into: &buf)
-            FfiConverterBool.write(resumed, into: &buf)
-            
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppEvent_lift(_ buf: RustBuffer) throws -> AppEvent {
-    return try FfiConverterTypeAppEvent.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppEvent_lower(_ value: AppEvent) -> RustBuffer {
-    return FfiConverterTypeAppEvent.lower(value)
-}
-
-
-
-/**
- * Where the app is in its lifecycle. The host reports it with
- * `set_phase`: iOS from SwiftUI's `scenePhase` (and
- * `willTerminate`), Android from the activity's `onStart`,
- * `onResume`, `onPause` and `onStop`.
- */
-
-public enum AppPhase: Equatable, Hashable {
-    
-    /**
-     * Created, not on screen yet. The phase before the first report.
-     */
-    case launching
-    /**
-     * On screen and receiving input.
-     */
-    case active
-    /**
-     * On screen without input: an alert, the app switcher, a dialog.
-     */
-    case inactive
-    /**
-     * Not visible; the OS may suspend or kill the process from here.
-     * Work started on screen is stopped.
-     */
-    case background
-    /**
-     * Going away: same as `shutdown()`. iOS does not always report it.
-     */
-    case terminated
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension AppPhase: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeAppPhase: FfiConverterRustBuffer {
-    typealias SwiftType = AppPhase
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppPhase {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .launching
-        
-        case 2: return .active
-        
-        case 3: return .inactive
-        
-        case 4: return .background
-        
-        case 5: return .terminated
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: AppPhase, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .launching:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .active:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .inactive:
-            writeInt(&buf, Int32(3))
-        
-        
-        case .background:
-            writeInt(&buf, Int32(4))
-        
-        
-        case .terminated:
-            writeInt(&buf, Int32(5))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppPhase_lift(_ buf: RustBuffer) throws -> AppPhase {
-    return try FfiConverterTypeAppPhase.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppPhase_lower(_ value: AppPhase) -> RustBuffer {
-    return FfiConverterTypeAppPhase.lower(value)
-}
-
 
 
 /**
@@ -6141,6 +5731,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeRuntimeEvents: FfiConverterRustBuffer {
+    typealias SwiftType = RuntimeEvents?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeRuntimeEvents.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeRuntimeEvents.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeDogProfile: FfiConverterRustBuffer {
     typealias SwiftType = DogProfile?
 
@@ -6325,30 +5939,6 @@ fileprivate struct FfiConverterOptionTypeWhyItWorks: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeWhyItWorks.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionTypeAppEvent: FfiConverterRustBuffer {
-    typealias SwiftType = AppEvent?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeAppEvent.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeAppEvent.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -6851,6 +6441,17 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
     }
 }
 /**
+ * [`AppError::kind`] for the host (ForgeKit's `ForgeKindedError`).
+ */
+public func appErrorKind(error: AppError) -> ErrorKind  {
+    return try!  FfiConverterTypeErrorKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_good_dog_app_fn_func_app_error_kind(
+        FfiConverterTypeAppError_lower(error),uniffiCallStatus
+    )
+})
+}
+/**
  * Writes one record from host code into Forge's log, with
  * `category` as its target. Never log secrets.
  */
@@ -6891,6 +6492,9 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_good_dog_app_checksum_func_app_error_kind() != 46350) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_good_dog_app_checksum_func_forge_log() != 14528) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6903,6 +6507,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_method_appcore_answer_lesson() != 56843) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_good_dog_app_checksum_method_appcore_background_time_expired() != 53628) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_good_dog_app_checksum_method_appcore_background_work_pending() != 13799) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_good_dog_app_checksum_method_appcore_complete_lesson() != 46091) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6912,7 +6522,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_method_appcore_erase_all() != 59952) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_good_dog_app_checksum_method_appcore_events() != 32979) {
+    if (uniffi_good_dog_app_checksum_method_appcore_events() != 33233) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_exercise() != 18832) {
@@ -6930,6 +6540,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_method_appcore_history() != 3986) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_good_dog_app_checksum_method_appcore_launch_report() != 17204) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_good_dog_app_checksum_method_appcore_learn_topics() != 2600) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6945,7 +6558,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_method_appcore_pause_goal() != 22980) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_good_dog_app_checksum_method_appcore_phase() != 62569) {
+    if (uniffi_good_dog_app_checksum_method_appcore_phase() != 12409) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_progress() != 34348) {
@@ -6966,6 +6579,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_method_appcore_resume_goal() != 55985) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_good_dog_app_checksum_method_appcore_revision() != 7857) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_good_dog_app_checksum_method_appcore_save_dog() != 42691) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6978,7 +6594,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_method_appcore_set_not_today() != 32623) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_good_dog_app_checksum_method_appcore_set_phase() != 5404) {
+    if (uniffi_good_dog_app_checksum_method_appcore_set_phase() != 55972) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_set_reminder() != 32087) {
@@ -6987,7 +6603,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_method_appcore_shorten_today() != 3401) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_good_dog_app_checksum_method_appcore_shutdown() != 12756) {
+    if (uniffi_good_dog_app_checksum_method_appcore_shutdown() != 2957) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_start_goal() != 11405) {
@@ -7009,15 +6625,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_today() != 23507) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_good_dog_app_checksum_method_appevents_cancel() != 50079) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_good_dog_app_checksum_method_appevents_next() != 19670) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_good_dog_app_checksum_method_cancellation_cancel() != 64330) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_guidedsession_activity_id() != 31010) {
@@ -7047,10 +6654,8 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_constructor_appcore_new() != 36388) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_good_dog_app_checksum_constructor_cancellation_new() != 7533) {
-        return InitializationResult.apiChecksumMismatch
-    }
 
+    uniffiEnsureForgeAppInitialized()
     return InitializationResult.ok
 }()
 

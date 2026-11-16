@@ -1,5 +1,6 @@
 @preconcurrency import GoodDogFFI
 import ForgeUI
+import ForgeAppKit
 import SwiftUI
 
 /// Which goal to show.
@@ -75,7 +76,7 @@ struct GoalPathView: View {
         } message: {
             Text("Its stages and history are kept. You can pick it up again from My Dog.")
         }
-        .errorAlert(LocalizedStringKey(model.actionErrorTitle), message: $model.actionError)
+        .forgeAlert(failure: $model.actionError)
         .sheet(item: $openLesson) { lesson in
             LessonView(model: model, goalId: goalId, lesson: lesson)
                 .presentationDetents([.medium, .large])
@@ -621,7 +622,7 @@ struct GoalPickerView: View {
     let model: GoodDogModel
     @Environment(\.dismiss) private var dismiss
     @State private var ownWords = ""
-    @State private var error: String?
+    @State private var error: ForgeFailure?
     @State private var starting = false
 
     private var suggestions: [PathwaySummary] { model.suggestGoals(ownWords) }
@@ -662,7 +663,7 @@ struct GoalPickerView: View {
                 }
             }
             .disabled(starting)
-            .errorAlert("Can't Start That Goal", message: $error)
+            .forgeAlert(failure: $error)
         }
     }
 
@@ -698,7 +699,7 @@ struct GoalPickerView: View {
             try await model.startGoal(pathwayId: pathway.id, ownWords: ownWords)
             dismiss()
         } catch {
-            self.error = GoodDogModel.describe(error)
+            self.error = GoodDogModel.failure(error, title: "Can't Start That Goal")
         }
     }
 }

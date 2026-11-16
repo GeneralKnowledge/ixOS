@@ -19,6 +19,9 @@ crate-type = ["staticlib", "lib"]
 [dependencies]
 # Forge's runtime crates, from the Forge checkout this app was created with.
 forge-runtime = { path = "../../../crates/forge-runtime" }
+# The application runtime: one core per data folder, serial commands,
+# revisions, lifecycle, shutdown. ForgeKit hosts it (ForgeHost).
+forge-app = { path = "../../../crates/forge-app" }
 forge-storage = { path = "../../../crates/forge-storage" }
 # The plan engine, dog-training rules and bundled content (GD0).
 good-dog-core = { path = "../../good-dog-core" }

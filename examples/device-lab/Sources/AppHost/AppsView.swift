@@ -125,7 +125,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .weather: WeatherRoot(host: EmbeddedApps.weather)
         case .checklist: ChecklistRoot(host: EmbeddedApps.checklist)
         case .library: PocketLibraryApp.ContentView(model: EmbeddedApps.library)
-        case .goodDog: GoodDogApp.ContentView()
+        case .goodDog: GoodDogApp.ContentView(host: EmbeddedApps.goodDog)
         case .commonplace: CommonplaceApp.ContentView(host: EmbeddedApps.commonplace)
         case .chat: ChatApp.ContentView(model: EmbeddedApps.chat)
         case .fieldKit: FieldKitApp.ContentView(host: EmbeddedApps.fieldKit)
@@ -179,10 +179,11 @@ private struct AppRow: View {
 /// What the embedded apps need for the life of the process.
 @MainActor
 public enum EmbeddedApps {
-    /// Weather, Checklist, Pocket Library, Commonplace, FieldKit, Sketchbook, Soundscape and Relay run on the application
+    /// Weather, Good Dog, Checklist, Pocket Library, Commonplace, FieldKit, Sketchbook, Soundscape and Relay run on the application
     /// runtime: each host owns its Rust core for the whole process, as in
     /// the standalone app, so closing the sheet doesn't close the core.
     static let weather = WeatherApp.makeAppHost()
+    static let goodDog = GoodDogApp.makeAppHost()
     static let checklist = Checklist.makeHost()
     static let library = LibraryModel()
     static let commonplace = CommonplaceApp.makeAppHost()
@@ -221,6 +222,7 @@ public enum EmbeddedApps {
         WeatherFFI.ForgeServices.install(keychainService: "\(bundle).weather")
         #if canImport(UIKit)
             ForgeLifecycle.attach(weather)
+            ForgeLifecycle.attach(goodDog)
             ForgeLifecycle.attach(checklist)
             ForgeLifecycle.attach(commonplace)
             ForgeLifecycle.attach(fieldKit)

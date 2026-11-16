@@ -1,13 +1,17 @@
 @preconcurrency import GoodDogFFI
+import ForgeKit
 import ForgeUI
 import SwiftUI
 
-/// The app's root. It owns the model, opens the Rust core once, and shows
-/// onboarding, the tabs, a spinner while opening, or a recovery screen.
+/// The app's root. It owns the model over the process's host, opens the
+/// Rust core once, and shows onboarding, the tabs, a spinner while opening,
+/// or a recovery screen. The App attaches the host to the lifecycle.
 public struct ContentView: View {
-    @State private var model = GoodDogModel()
+    @State private var model: GoodDogModel
 
-    public init() {}
+    public init(host: ForgeHost<AppCore>) {
+        _model = State(initialValue: GoodDogModel(host: host))
+    }
 
     public var body: some View {
         Group {
@@ -30,7 +34,16 @@ public struct ContentView: View {
         }
         .forgeTheme(.standard)
         .task { await model.open() }
-        .forgeLifecycle { model.setPhase($0) }
+        // A commit, missed events or a return from the background.
+        .onChange(of: model.host.changes) { _, _ in
+            Task { await model.hostChanged() }
+        }
+        // Back from the background: the reminders' week moves on.
+        .onChange(of: model.host.phase) { old, new in
+            if old == .background, new == .active || new == .inactive {
+                Task { await model.resumed() }
+            }
+        }
     }
 }
 
