@@ -4,6 +4,15 @@ Review of the ixOS platform base at `91fa41c` (main, 2026-11-08), done as the "i
 
 **Verdict in one paragraph.** ixOS does not need a rewrite. The individual primitives are good and, where this review could test them on Linux, correct: event streams, cancellation scopes, the lifecycle state machine, atomic JSON writes and SQLite transactions all held under model-based tests and repeated `SIGKILL`s. What is missing is the layer that turns primitives into a platform: nothing in the framework owns *work* (who runs it, in what order, with what priority and budget), nothing models the *fate of the process* (must-finish work, suspension, relaunch recovery), and nothing owns *data as a whole* (one writer per directory, files and records committed together, backup and protection classes). Today each app answers those questions itself, and the answers differ. One storage bug is serious enough to fix before anything else: a locked SQLite file is treated as corrupt, and the user's data is moved aside (S1).
 
+**Status (2026-11-16).** Since the follow-up below, more findings have been closed or narrowed by later work. The tables keep their original wording.
+
+- **R1 fixed:** `forge-app`'s `Runtime` is the framework command model (serial command thread, published snapshots, commit then publish), and every app is on it.
+- **R4 partly fixed:** a `finishing` work scope gets the time iOS grants after the app leaves the screen, and the launch report says when that work didn't finish. The `background` service wraps `BGTaskScheduler`. No data-protection phase yet.
+- **N4 built:** the `transfers` service runs downloads in a background `URLSession`, with a Rust ledger, and recovers after a relaunch. It is partly checked on an iPhone and used by Device Lab only.
+- **S4 fixed and S7 partly fixed,** as marked in their rows.
+- **Still open, now scheduled** in the [everyday capabilities plan](research/everyday-capabilities.md): S5 (a kept-but-excluded storage class, phase 3) and P2 (re-checking permissions on resume, phase 2).
+- **Still open, deferred until a measured need:** R3 and E1 (an executor with priorities and pressure budgets), N1 and N2 (an operation contract and a retry policy, after a second durable queue), S3, P1 and P4.
+
 **Status (follow-up PR, 2026-11-08).** Fixed: S1, S2, S6, N3, R2 and P3 (marked **Fixed** below); their tests now run in the normal suite. S3 is still an open `gap_*` test. Everything else is unchanged and waits for the Phase 4 decision.
 
 Contents: [Phase 1, the foundation as built](#phase-1-the-foundation-as-built) · [Phase 2, tests](#phase-2-testing-the-foundations) · [Phase 3, findings](#phase-3-findings) · [Phase 4, roadmap options](#phase-4-roadmap-options) · [Where Lean helps](#where-lean-helps-and-where-it-does-not) · [iPhone checks](#checks-that-need-the-iphone)
