@@ -12,8 +12,8 @@
 //!
 //! | Request | Answer |
 //! |---|---|
-//! | `GET /api/library` | `{"songs": [{slug, title, takes, updated, pick, pickLabel, rated}]}` |
-//! | `GET /api/song?slug=S` | `{slug, title, pick, takes: [{id, file, label, seed, model, bpm, key, caption, lyrics, lufs, stars, note}]}` |
+//! | `GET /api/library` | `{"songs": [{slug, title, act?, actTitle?, takes, updated, pick, pickLabel, rated}]}` |
+//! | `GET /api/song?slug=S` | `{slug, title, actTitle?, pick, takes: [{id, file, label, seed, model, bpm, key, caption, lyrics, lufs, stars, note}]}` |
 //! | `GET /audio/<file>` | the audio, with byte ranges |
 //! | `POST /api/pick` | `{song, take, pick?, stars?, note?}` |
 
@@ -58,6 +58,17 @@ pub struct SongSummary {
     pub pick_label: Option<String>,
     /// How many of its takes have stars.
     pub rated_count: u32,
+    /// The act or album it belongs to ("AFTER HOURS"), when the server
+    /// knows; the list is sectioned by it.
+    pub act: Option<String>,
+}
+
+/// One section of the song list: an act's songs, newest first.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct SongGroup {
+    /// `None` for songs the server puts in no act.
+    pub act: Option<String>,
+    pub songs: Vec<SongSummary>,
 }
 
 /// One take of a song.
@@ -254,6 +265,10 @@ struct SongJson {
     pick_label: Option<String>,
     #[serde(default)]
     rated: u32,
+    #[serde(default)]
+    act: Option<String>,
+    #[serde(default, rename = "actTitle")]
+    act_title: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -261,6 +276,8 @@ struct DetailJson {
     slug: String,
     #[serde(default)]
     title: Option<String>,
+    #[serde(default, rename = "actTitle")]
+    act_title: Option<String>,
     #[serde(default)]
     pick: Option<String>,
     #[serde(default)]
@@ -320,13 +337,17 @@ pub fn parse_library(body: &[u8]) -> Result<Vec<SongSummary>, SoundscapeError> {
     let mut songs: Vec<SongSummary> = library
         .songs
         .into_iter()
-        .map(|s| SongSummary {
-            title: non_empty(s.title).unwrap_or_else(|| s.slug.clone()),
-            slug: s.slug,
-            take_count: s.takes,
-            updated_ms: (s.updated * 1000.0) as i64,
-            pick_label: non_empty(s.pick_label),
-            rated_count: s.rated,
+        .map(|s| {
+            let act = non_empty(s.act_title).or_else(|| non_empty(s.act));
+            SongSummary {
+                title: song_title(s.title, act.as_deref(), &s.slug),
+                act,
+                slug: s.slug,
+                take_count: s.takes,
+                updated_ms: (s.updated * 1000.0) as i64,
+                pick_label: non_empty(s.pick_label),
+                rated_count: s.rated,
+            }
         })
         .collect();
     songs.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms).then(a.title.cmp(&b.title)));
@@ -361,12 +382,62 @@ pub fn parse_song(body: &[u8], server: &str) -> Result<SongDetail, SoundscapeErr
     let caption = most_common(takes.iter().map(|t| t.caption.clone()));
     let lyrics = most_common(takes.iter().map(|t| t.lyrics.clone()));
     Ok(SongDetail {
-        title: non_empty(song.title).unwrap_or_else(|| song.slug.clone()),
+        title: song_title(song.title, non_empty(song.act_title).as_deref(), &song.slug),
         slug: song.slug,
         takes,
         caption,
         lyrics,
     })
+}
+
+/// The song's own title: the server may put the act in front ("AFTER HOURS ·
+/// One More Night") for players without sections; the act is shown apart.
+fn song_title(title: Option<String>, act: Option<&str>, slug: &str) -> String {
+    let title = non_empty(title).unwrap_or_else(|| slug.to_string());
+    if let Some(act) = act {
+        for sep in [" · ", " - ", ": "] {
+            if let Some(rest) = title.strip_prefix(&format!("{act}{sep}")) {
+                if !rest.trim().is_empty() {
+                    return rest.trim().to_string();
+                }
+            }
+        }
+    }
+    title
+}
+
+/// The song list in sections by act. Sections are ordered by their newest
+/// song, songs within one newest first (then by title); songs with no act
+/// come last. `unpicked_only` keeps the songs that have no pick yet, and
+/// drops sections left empty.
+#[uniffi::export]
+pub fn group_songs(songs: Vec<SongSummary>, unpicked_only: bool) -> Vec<SongGroup> {
+    let mut groups: Vec<SongGroup> = Vec::new();
+    for song in songs {
+        if unpicked_only && song.pick_label.is_some() {
+            continue;
+        }
+        match groups.iter_mut().find(|g| g.act == song.act) {
+            Some(g) => g.songs.push(song),
+            None => groups.push(SongGroup {
+                act: song.act.clone(),
+                songs: vec![song],
+            }),
+        }
+    }
+    for g in &mut groups {
+        g.songs
+            .sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms).then(a.title.cmp(&b.title)));
+    }
+    let newest = |g: &SongGroup| g.songs.first().map_or(i64::MIN, |s| s.updated_ms);
+    groups.sort_by(|a, b| {
+        a.act
+            .is_none()
+            .cmp(&b.act.is_none())
+            .then(newest(b).cmp(&newest(a)))
+            .then(a.act.cmp(&b.act))
+    });
+    groups
 }
 
 fn most_common(values: impl Iterator<Item = Option<String>>) -> Option<String> {

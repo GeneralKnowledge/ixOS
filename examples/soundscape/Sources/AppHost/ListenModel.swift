@@ -157,6 +157,23 @@ public final class ListenModel {
 
     // MARK: Comparing
 
+    // MARK: The list
+
+    /// The songs in sections by act (Rust decides the order), narrowed to
+    /// those matching `search` and, with `unpickedOnly`, to those without a
+    /// pick yet.
+    public func groups(search: String = "", unpickedOnly: Bool = false) -> [SongGroup] {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        let matching = q.isEmpty ? songs : songs.filter {
+            $0.title.localizedCaseInsensitiveContains(q) || $0.slug.localizedCaseInsensitiveContains(q)
+                || ($0.act?.localizedCaseInsensitiveContains(q) ?? false)
+        }
+        return groupSongs(songs: matching, unpickedOnly: unpickedOnly)
+    }
+
+    /// How many songs have no pick yet, for the filter's label.
+    public var unpickedCount: Int { songs.filter { $0.pickLabel == nil }.count }
+
     /// AVPlayer volumes for two takes at matched loudness (Rust decides).
     public func match(_ a: Take, _ b: Take) -> LoudnessMatch {
         loudnessMatch(aLufs: a.lufs, bLufs: b.lufs)
@@ -191,6 +208,10 @@ extension SongSummary: Identifiable {
 }
 
 extension Take: Identifiable {}
+
+extension SongGroup: Identifiable {
+    public var id: String { act ?? "" }
+}
 
 // MARK: Formatting (Foundation only, so it tests on Linux)
 

@@ -11,6 +11,7 @@ struct ListenView: View {
     @State private var player = TakePlayer()
     @State private var editingServer = false
     @State private var search = ""
+    @AppStorage("listen.unpickedOnly") private var unpickedOnly = false
 
     init(core: SoundscapeCore) {
         _model = State(initialValue: ListenModel(core: core))
@@ -24,6 +25,15 @@ struct ListenView: View {
                     SongView(model: model, player: player, slug: slug)
                 }
                 .toolbar {
+                    if model.server != nil, model.phase == .ready {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Toggle(isOn: $unpickedOnly) {
+                                Label("Unpicked Only", systemImage: "line.3.horizontal.decrease.circle")
+                            }
+                            .toggleStyle(.button)
+                            .accessibilityIdentifier("listen.unpickedOnly")
+                        }
+                    }
                     if model.server != nil {
                         ToolbarItem(placement: .primaryAction) {
                             Button("Take Server", systemImage: "server.rack") { editingServer = true }
@@ -69,27 +79,14 @@ struct ListenView: View {
     }
 
     private var songList: some View {
-        List(filtered) { song in
-            NavigationLink(value: song.slug) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(song.title).font(.headline)
-                        if song.pickLabel != nil {
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundStyle(.tint)
-                                .accessibilityLabel("Picked")
-                        }
-                    }
-                    Text(TakeFormat.summary(song))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text(SoundFormat.date(song.updatedMs), format: .relative(presentation: .named))
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+        List {
+            ForEach(groups) { group in
+                Section {
+                    ForEach(group.songs) { song in songRow(song) }
+                } header: {
+                    Text(group.act ?? "Other")
                 }
-                .accessibilityElement(children: .combine)
             }
-            .accessibilityIdentifier("listen.song")
         }
         .overlay {
             if model.songs.isEmpty {
@@ -97,18 +94,44 @@ struct ListenView: View {
                     "No Takes Yet", systemImage: "music.note.list",
                     description: "The server found no audio in its folders. New renders show up here when you pull down."
                 )
-            } else if filtered.isEmpty {
+            } else if groups.isEmpty && !search.trimmingCharacters(in: .whitespaces).isEmpty {
                 ForgeStateView.noResults(for: search)
+            } else if groups.isEmpty {
+                ForgeStateView.empty(
+                    "Every Song Is Picked", systemImage: "checkmark.seal",
+                    description: "Turn off Unpicked Only to see them all."
+                )
             }
         }
-        .searchable(text: $search, prompt: "Songs")
+        .searchable(text: $search, prompt: "Songs or acts")
         .refreshable { await model.loadSongs(fresh: true) }
     }
 
-    private var filtered: [SongSummary] {
-        let q = search.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return model.songs }
-        return model.songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.slug.localizedCaseInsensitiveContains(q) }
+    private func songRow(_ song: SongSummary) -> some View {
+        NavigationLink(value: song.slug) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(song.title).font(.headline)
+                    if song.pickLabel != nil {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(.tint)
+                            .accessibilityLabel("Picked")
+                    }
+                }
+                Text(TakeFormat.summary(song))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(SoundFormat.date(song.updatedMs), format: .relative(presentation: .named))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .accessibilityElement(children: .combine)
+        }
+        .accessibilityIdentifier("listen.song")
+    }
+
+    private var groups: [SongGroup] {
+        model.groups(search: search, unpickedOnly: unpickedOnly)
     }
 }
 
