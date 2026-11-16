@@ -267,3 +267,60 @@ fn failures_say_what_went_wrong() {
         Err(SoundscapeError::Server { .. })
     ));
 }
+
+#[test]
+fn songs_are_sectioned_by_act() {
+    let body = r#"{"songs": [
+      {"slug": "ah-one-more-night", "title": "AFTER HOURS · One More Night", "act": "after-hours",
+       "actTitle": "AFTER HOURS", "takes": 2, "updated": 300, "pickLabel": "seed 1501"},
+      {"slug": "ah-everybody-knows", "title": "AFTER HOURS · Everybody Knows", "act": "after-hours",
+       "actTitle": "AFTER HOURS", "takes": 2, "updated": 100},
+      {"slug": "nc-swim", "title": "Natural Capital · Swim at Your Own Risk", "act": "natural-capital",
+       "actTitle": "Natural Capital", "takes": 3, "updated": 200},
+      {"slug": "swim", "title": "swim", "takes": 1, "updated": 900},
+      {"slug": "lone", "title": "Lone", "act": "lowbridge", "takes": 1, "updated": 50}
+    ]}"#;
+    let songs = listen::parse_library(body.as_bytes()).unwrap();
+    let swim = songs.iter().find(|s| s.slug == "nc-swim").unwrap();
+    // the act is shown apart, so it comes off the title
+    assert_eq!(swim.title, "Swim at Your Own Risk");
+    assert_eq!(swim.act.as_deref(), Some("Natural Capital"));
+    // no actTitle: the act's id stands in
+    assert_eq!(
+        songs
+            .iter()
+            .find(|s| s.slug == "lone")
+            .unwrap()
+            .act
+            .as_deref(),
+        Some("lowbridge")
+    );
+
+    let groups = listen::group_songs(songs.clone(), false);
+    let shape: Vec<(Option<&str>, Vec<&str>)> = groups
+        .iter()
+        .map(|g| {
+            (
+                g.act.as_deref(),
+                g.songs.iter().map(|s| s.slug.as_str()).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        shape,
+        vec![
+            (
+                Some("AFTER HOURS"),
+                vec!["ah-one-more-night", "ah-everybody-knows"]
+            ),
+            (Some("Natural Capital"), vec!["nc-swim"]),
+            (Some("lowbridge"), vec!["lone"]),
+            (None, vec!["swim"]),
+        ]
+    );
+
+    let unpicked = listen::group_songs(songs, true);
+    assert_eq!(unpicked[0].act.as_deref(), Some("Natural Capital"));
+    assert_eq!(unpicked.iter().map(|g| g.songs.len()).sum::<usize>(), 4);
+    assert!(listen::group_songs(Vec::new(), true).is_empty());
+}

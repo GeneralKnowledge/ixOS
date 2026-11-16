@@ -80,6 +80,10 @@ and saves picks to `~/band/picks.json`.
   are heard at the same moment; Blind hides which is which. Playback goes on
   with the screen locked, with lock-screen controls; "next track" on
   headphones switches A and B.
+- The song list is in sections by act when the server says which act a
+  song belongs to (`group_songs` in Rust; the act comes off the title if the
+  server put it in front), and **Unpicked Only** keeps the songs still
+  waiting for a pick. Search matches songs and acts.
 - The address must be numeric for plain http (iOS refuses plain http to a
   host name): use the computer's Tailscale address, which starts with 100.
 

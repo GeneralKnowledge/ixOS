@@ -4367,6 +4367,69 @@ public func FfiConverterTypeSongDetail_lower(_ value: SongDetail) -> RustBuffer 
 
 
 /**
+ * One section of the song list: an act's songs, newest first.
+ */
+public struct SongGroup: Equatable, Hashable {
+    /**
+     * `None` for songs the server puts in no act.
+     */
+    public var act: String?
+    public var songs: [SongSummary]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `None` for songs the server puts in no act.
+         */act: String?, songs: [SongSummary]) {
+        self.act = act
+        self.songs = songs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SongGroup: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSongGroup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SongGroup {
+        return
+            try SongGroup(
+                act: FfiConverterOptionString.read(from: &buf), 
+                songs: FfiConverterSequenceTypeSongSummary.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SongGroup, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.act, into: &buf)
+        FfiConverterSequenceTypeSongSummary.write(value.songs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSongGroup_lift(_ buf: RustBuffer) throws -> SongGroup {
+    return try FfiConverterTypeSongGroup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSongGroup_lower(_ value: SongGroup) -> RustBuffer {
+    return FfiConverterTypeSongGroup.lower(value)
+}
+
+
+/**
  * One song on the server, for the list.
  */
 public struct SongSummary: Equatable, Hashable {
@@ -4385,6 +4448,11 @@ public struct SongSummary: Equatable, Hashable {
      * How many of its takes have stars.
      */
     public var ratedCount: UInt32
+    /**
+     * The act or album it belongs to ("AFTER HOURS"), when the server
+     * knows; the list is sectioned by it.
+     */
+    public var act: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -4397,13 +4465,18 @@ public struct SongSummary: Equatable, Hashable {
          */pickLabel: String?, 
         /**
          * How many of its takes have stars.
-         */ratedCount: UInt32) {
+         */ratedCount: UInt32, 
+        /**
+         * The act or album it belongs to ("AFTER HOURS"), when the server
+         * knows; the list is sectioned by it.
+         */act: String?) {
         self.slug = slug
         self.title = title
         self.takeCount = takeCount
         self.updatedMs = updatedMs
         self.pickLabel = pickLabel
         self.ratedCount = ratedCount
+        self.act = act
     }
 
     
@@ -4427,7 +4500,8 @@ public struct FfiConverterTypeSongSummary: FfiConverterRustBuffer {
                 takeCount: FfiConverterUInt32.read(from: &buf), 
                 updatedMs: FfiConverterInt64.read(from: &buf), 
                 pickLabel: FfiConverterOptionString.read(from: &buf), 
-                ratedCount: FfiConverterUInt32.read(from: &buf)
+                ratedCount: FfiConverterUInt32.read(from: &buf), 
+                act: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -4438,6 +4512,7 @@ public struct FfiConverterTypeSongSummary: FfiConverterRustBuffer {
         FfiConverterInt64.write(value.updatedMs, into: &buf)
         FfiConverterOptionString.write(value.pickLabel, into: &buf)
         FfiConverterUInt32.write(value.ratedCount, into: &buf)
+        FfiConverterOptionString.write(value.act, into: &buf)
     }
 }
 
@@ -6463,6 +6538,31 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeSongGroup: FfiConverterRustBuffer {
+    typealias SwiftType = [SongGroup]
+
+    public static func write(_ value: [SongGroup], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSongGroup.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SongGroup] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SongGroup]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSongGroup.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeSongSummary: FfiConverterRustBuffer {
     typealias SwiftType = [SongSummary]
 
@@ -6698,6 +6798,21 @@ public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
 })
 }
 /**
+ * The song list in sections by act. Sections are ordered by their newest
+ * song, songs within one newest first (then by title); songs with no act
+ * come last. `unpicked_only` keeps the songs that have no pick yet, and
+ * drops sections left empty.
+ */
+public func groupSongs(songs: [SongSummary], unpickedOnly: Bool) -> [SongGroup]  {
+    return try!  FfiConverterSequenceTypeSongGroup.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_group_songs(
+        FfiConverterSequenceTypeSongSummary.lower(songs),
+        FfiConverterBool.lower(unpickedOnly),uniffiCallStatus
+    )
+})
+}
+/**
  * Volumes for an A/B comparison at matched loudness.
  */
 public func loudnessMatch(aLufs: Double?, bLufs: Double?) -> LoudnessMatch  {
@@ -6810,6 +6925,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_func_forge_log_enabled() != 19347) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_group_songs() != 16503) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_func_loudness_match() != 37068) {

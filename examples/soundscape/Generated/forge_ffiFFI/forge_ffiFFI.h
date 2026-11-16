@@ -692,6 +692,11 @@ void uniffi_soundscape_core_fn_func_forge_log(RustBuffer level, RustBuffer categ
 int8_t uniffi_soundscape_core_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_GROUP_SONGS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_GROUP_SONGS
+RustBuffer uniffi_soundscape_core_fn_func_group_songs(RustBuffer songs, int8_t unpicked_only, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_LOUDNESS_MATCH
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_LOUDNESS_MATCH
 RustBuffer uniffi_soundscape_core_fn_func_loudness_match(RustBuffer a_lufs, RustBuffer b_lufs, RustCallStatus *_Nonnull out_status
@@ -1003,6 +1008,12 @@ uint16_t uniffi_soundscape_core_checksum_func_forge_log(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 uint16_t uniffi_soundscape_core_checksum_func_forge_log_enabled(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_GROUP_SONGS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_GROUP_SONGS
+uint16_t uniffi_soundscape_core_checksum_func_group_songs(void
     
 );
 #endif
