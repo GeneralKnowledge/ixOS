@@ -64,7 +64,7 @@ side by side showed, most useful first. Each says why it waited.
 | 8 | A file-backed Keychain stand-in for Linux and tests (A17) | Relay | One use; Relay stage 1 decides where secrets live |
 | 9 | The Noise channel out of `forge-devproto` (A16) | Relay | Relay is moving to iroh, which may make it moot |
 | 10 | UniFFI enums without data aren't `CaseIterable`, so pickers keep hand lists (Good Dog 6) | Good Dog | Bindings post-processing; Swift |
-| 11 | `forge init` names: `--library`, and folders and test target still called `AppHost` (A7) | FieldKit, every new app | CLI and template change; small, next pass |
+| 11 | `forge init` names: `--library`, and folders and test target still called `AppHost` (A7) | FieldKit, every new app | Done (wave 4): `--library`; `AppHost` folders kept as the fixed convention |
 | 12 | Ids are `i64` in SQLite apps and `u64` in file apps (A3) | FieldKit, Commonplace, Checklist | Docs and template; touches the starter's API |
 | 13 | `Document`-backed `start_fresh` in the template (rest of A15) | Sketchbook, Soundscape, Relay | Template change |
 | 14 | Commonplace maps every `StorageError` to `Storage`, so corrupt data shows as an internal error with no recovery offer; the other apps say `Corrupt` | Commonplace | App behaviour, wants Reuben's eye |
@@ -85,7 +85,7 @@ follow it now.
 | A4 | FieldKit | Great-circle distance lives in `forge_services::sensors`, so a pure Rust core depends on the native services crate | Annoyance | Open |
 | A5 | FieldKit | The runtime has no way to read data the command thread owns without a command, and every command raises the revision | Limit | Open |
 | A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Fixed: `forge_runtime::time` (second use: Weather) |
-| A7 | FieldKit | `forge init FieldKit` names the library `field_kit_core`, and the template's folders and test target are still called `AppHost` | Annoyance | Open |
+| A7 | FieldKit | `forge init FieldKit` names the library `field_kit_core`, and the template's folders and test target are still called `AppHost` | Annoyance | Fixed: `forge init --library`; `AppHost` names kept as the convention (2026-11-16) |
 | A8 | FieldKit | `PermissionStatus::allows_use` is Rust only, so each app redefines `allowsUse` in Swift | Annoyance | Open |
 | A9 | FieldKit | Feeding a native service's events into commands has no documented pattern: a listener queues a command and drops the future | Limit | Documented on `Runtime::command` and pinned by a test (2026-11-15); `rt.post` waits for a second use |
 | A10 | FieldKit | The location adapter can't keep recording in the background (no `allowsBackgroundLocationUpdates`, no background mode) | Limit | Open, needed by F3 |
@@ -97,7 +97,7 @@ follow it now.
 | A18 | Relay | The runtime has no shape for a long-lived listener: a raw thread, a stop flag and `block_on(command)` from connection threads | Limit | Open, like A9 |
 | A19 | Relay | `ErrorKind` has no network or refused kind, so connection failures are `Unavailable` and a refused pairing is `Invalid` | Annoyance | Open |
 | A20 | Soundscape | No audio file reading in the framework: the core brings `hound` for WAV, and Chat's audio service is Swift only | Annoyance | Accept for now |
-| A21 | Sketchbook | `forge init` leaves the template's items model, its test and its smoke test behind, to delete by hand | Annoyance | Open |
+| A21 | Sketchbook | `forge init` leaves the template's items model, its test and its smoke test behind, to delete by hand | Annoyance | Fixed: the starters' READMEs list the example files to replace (2026-11-16) |
 | A22 | Sketchbook | The app package also builds for macOS (host tests), so every PencilKit and UIKit file needs `#if os(iOS)` | Annoyance | Accept |
 | A23 | Sketchbook | Rust owns undo, but each `PKCanvasView` brings UIKit's undo manager (tool picker, shake), which would undo behind Rust's back | Limit | Open: document the pattern |
 | A24 | Soundscape | Recording in time with playback needs host-time scheduling and latency trimming written by hand; ForgeKit's audio service only records voice notes | Limit | Open |
@@ -215,6 +215,12 @@ module names changed.
 **Framework.** Let `forge init` take a `--library` name, and name the
 folders and test target after the app too, so nothing in a new app says
 `AppHost`.
+
+**Done (2026-11-16, wave 4).** `forge init --library <name>` names the
+library. The folders stay `AppHost`: since this entry, `forge check swift`,
+the build scripts and Device Lab all rely on those names, and wave 3 moved
+Weather and Checklist onto them, so renaming would be churn with no user
+benefit. project-generation.md and the starters' READMEs say so.
 
 ## A8. `allowsUse` in Swift
 
@@ -426,6 +432,11 @@ model, its view, its test and a smoke test that taps `items.add`.
 
 **Framework.** `forge init` could take `--empty`, or the template could keep
 its example in one file that the README says to delete.
+
+**Done (2026-11-16, wave 4).** The smaller of the two: both starters'
+READMEs have a "Making it your app" section that lists the example's files
+to replace and the ones to keep. No `--empty`: an app with no screen and
+no test teaches nothing, and `--minimal` is already the small start.
 
 ## A22. `#if os(iOS)` around every PencilKit file
 
