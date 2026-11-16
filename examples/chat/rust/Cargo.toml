@@ -22,6 +22,9 @@ crate-type = ["staticlib", "lib"]
 chat-core = { path = "../../chat-core", features = ["ureq"] }
 # Forge's runtime crates, from this checkout.
 forge-runtime = { path = "../../../crates/forge-runtime" }
+# The application runtime: one core per data folder, lifecycle, shutdown.
+# ForgeKit hosts it (ForgeHost).
+forge-app = { path = "../../../crates/forge-app" }
 forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
 # Native services: the account token lives in the iOS Keychain, and requests
 # (including the live stream) go through URLSession.

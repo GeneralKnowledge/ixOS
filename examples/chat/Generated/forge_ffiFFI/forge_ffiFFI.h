@@ -517,6 +517,16 @@ uint64_t uniffi_chat_app_fn_method_chatcore_assistant(uint64_t ptr, RustCallStat
 RustBuffer uniffi_chat_app_fn_method_chatcore_attachment_file(uint64_t ptr, RustBuffer attachment_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_BACKGROUND_TIME_EXPIRED
+void uniffi_chat_app_fn_method_chatcore_background_time_expired(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_BACKGROUND_WORK_PENDING
+int8_t uniffi_chat_app_fn_method_chatcore_background_work_pending(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_CACHED_CONVERSATIONS
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_CACHED_CONVERSATIONS
 RustBuffer uniffi_chat_app_fn_method_chatcore_cached_conversations(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -525,6 +535,11 @@ RustBuffer uniffi_chat_app_fn_method_chatcore_cached_conversations(uint64_t ptr,
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_CACHED_MESSAGES
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_CACHED_MESSAGES
 RustBuffer uniffi_chat_app_fn_method_chatcore_cached_messages(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_CHAT_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_CHAT_EVENTS
+uint64_t uniffi_chat_app_fn_method_chatcore_chat_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_CHECK_ACCOUNT
@@ -554,12 +569,17 @@ uint64_t uniffi_chat_app_fn_method_chatcore_edit_message(uint64_t ptr, RustBuffe
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_EVENTS
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_EVENTS
-uint64_t uniffi_chat_app_fn_method_chatcore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_chat_app_fn_method_chatcore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_FETCH_ATTACHMENT
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_FETCH_ATTACHMENT
 uint64_t uniffi_chat_app_fn_method_chatcore_fetch_attachment(uint64_t ptr, RustBuffer attachment_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_LAUNCH_REPORT
+RustBuffer uniffi_chat_app_fn_method_chatcore_launch_report(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_LIST_CONVERSATIONS
@@ -590,6 +610,11 @@ RustBuffer uniffi_chat_app_fn_method_chatcore_phase(uint64_t ptr, RustCallStatus
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_RETRY_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_RETRY_MESSAGE
 uint64_t uniffi_chat_app_fn_method_chatcore_retry_message(uint64_t ptr, RustBuffer message_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_REVISION
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_REVISION
+uint64_t uniffi_chat_app_fn_method_chatcore_revision(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_SEARCH
@@ -1195,6 +1220,11 @@ void uniffi_chat_app_fn_func_install_native_http(uint64_t transport, RustCallSta
 RustBuffer uniffi_chat_app_fn_func_chat_delivery(RustBuffer message, RustBuffer conversation, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_CHAT_ERROR_KIND
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_CHAT_ERROR_KIND
+RustBuffer uniffi_chat_app_fn_func_chat_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_STORAGE_ENGINE
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_STORAGE_ENGINE
 RustBuffer uniffi_chat_app_fn_func_storage_engine(RustCallStatus *_Nonnull out_status
@@ -1563,6 +1593,12 @@ uint16_t uniffi_chat_app_checksum_func_chat_delivery(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_CHAT_ERROR_KIND
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_CHAT_ERROR_KIND
+uint16_t uniffi_chat_app_checksum_func_chat_error_kind(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_STORAGE_ENGINE
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_STORAGE_ENGINE
 uint16_t uniffi_chat_app_checksum_func_storage_engine(void
@@ -1593,6 +1629,18 @@ uint16_t uniffi_chat_app_checksum_method_chatcore_attachment_file(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_BACKGROUND_TIME_EXPIRED
+uint16_t uniffi_chat_app_checksum_method_chatcore_background_time_expired(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_BACKGROUND_WORK_PENDING
+uint16_t uniffi_chat_app_checksum_method_chatcore_background_work_pending(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_CACHED_CONVERSATIONS
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_CACHED_CONVERSATIONS
 uint16_t uniffi_chat_app_checksum_method_chatcore_cached_conversations(void
@@ -1602,6 +1650,12 @@ uint16_t uniffi_chat_app_checksum_method_chatcore_cached_conversations(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_CACHED_MESSAGES
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_CACHED_MESSAGES
 uint16_t uniffi_chat_app_checksum_method_chatcore_cached_messages(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_CHAT_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_CHAT_EVENTS
+uint16_t uniffi_chat_app_checksum_method_chatcore_chat_events(void
     
 );
 #endif
@@ -1647,6 +1701,12 @@ uint16_t uniffi_chat_app_checksum_method_chatcore_fetch_attachment(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_LAUNCH_REPORT
+uint16_t uniffi_chat_app_checksum_method_chatcore_launch_report(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_LIST_CONVERSATIONS
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_LIST_CONVERSATIONS
 uint16_t uniffi_chat_app_checksum_method_chatcore_list_conversations(void
@@ -1680,6 +1740,12 @@ uint16_t uniffi_chat_app_checksum_method_chatcore_phase(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_RETRY_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_RETRY_MESSAGE
 uint16_t uniffi_chat_app_checksum_method_chatcore_retry_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_REVISION
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_REVISION
+uint16_t uniffi_chat_app_checksum_method_chatcore_revision(void
     
 );
 #endif

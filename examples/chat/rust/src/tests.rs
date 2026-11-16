@@ -73,7 +73,7 @@ fn wait_until(what: &str, cond: impl Fn() -> bool) {
 
 /// A core whose account is kept by the Keychain adapter over the
 /// forge-services fakes, so the real Keychain code path runs.
-fn keychain_core(dir: &std::path::Path) -> (ChatCore, Arc<dyn Credentials>) {
+fn keychain_core(dir: &std::path::Path) -> (Arc<ChatCore>, Arc<dyn Credentials>) {
     let (services, _fakes) = NativeServices::for_tests(dir.join("services"));
     let credentials: Arc<dyn Credentials> = Arc::new(KeychainCredentials::new(services));
     let core = ChatCore::open(dir.join("chats"), credentials.clone()).unwrap();
@@ -90,7 +90,7 @@ fn sign_up_keeps_the_account_in_the_keychain_not_in_files() {
         block_on(core.list_conversations()),
         Err(ChatError::NotSignedIn)
     ));
-    let events = core.events().unwrap();
+    let events = core.chat_events().unwrap();
 
     let account = block_on(core.sign_up(format!("{}/", server.url), "  Reuben ".into())).unwrap();
     assert_eq!(account.display_name, "Reuben");
@@ -113,6 +113,7 @@ fn sign_up_keeps_the_account_in_the_keychain_not_in_files() {
 
     // A relaunch is signed in at once, without the network.
     core.shutdown();
+    drop(core);
     drop(server);
     let again = ChatCore::open(dir.path().join("chats"), credentials).unwrap();
     assert_eq!(again.account(), Some(account));
@@ -143,7 +144,7 @@ fn two_accounts_chat_and_own_messages_are_marked_by_account() {
     block_on(ana.sign_up(server.url.clone(), "Sam".into())).unwrap();
     block_on(ben.sign_up(server.url.clone(), "Sam".into())).unwrap();
 
-    let ben_events = ben.events().unwrap();
+    let ben_events = ben.chat_events().unwrap();
     let rooms = block_on(ben.list_conversations()).unwrap();
     assert_eq!(rooms[0].id, "general");
     ben.watch("general".into()).unwrap();
@@ -183,7 +184,7 @@ fn background_stops_streams_and_resume_catches_up() {
             .unwrap();
     block_on(me.sign_up(server.url.clone(), "Me".into())).unwrap();
     block_on(other.sign_up(server.url.clone(), "Other".into())).unwrap();
-    let events = me.events().unwrap();
+    let events = me.chat_events().unwrap();
     me.set_phase(AppPhase::Active);
     block_on(me.list_conversations()).unwrap();
     me.subscribe("general".into()).unwrap();
@@ -259,7 +260,7 @@ fn a_server_that_forgot_the_account_is_reported_not_hidden() {
         .await
     });
 
-    let events = core.events().unwrap();
+    let events = core.chat_events().unwrap();
     assert!(matches!(
         block_on(core.list_conversations()),
         Err(ChatError::Unauthorized { .. })
@@ -289,7 +290,7 @@ fn sign_out_forgets_the_account_and_its_chats() {
         .iter()
         .any(|p| p.to_string_lossy().contains(&account.user_id)));
 
-    let events = core.events().unwrap();
+    let events = core.chat_events().unwrap();
     core.sign_out().unwrap();
     next_matching(&events, "AccountChanged(None)", |e| {
         matches!(e, ChatEvent::AccountChanged { account: None })
@@ -366,7 +367,7 @@ fn read_receipts_new_rooms_and_mute_through_the_ffi() {
             .unwrap();
     block_on(me.sign_up(server.url.clone(), "Me".into())).unwrap();
     block_on(other.sign_up(server.url.clone(), "Other".into())).unwrap();
-    let events = me.events().unwrap();
+    let events = me.chat_events().unwrap();
 
     // A new room, created here and found by the other account.
     let room = block_on(me.create_conversation("  Plans ".into())).unwrap();
@@ -442,8 +443,8 @@ fn message_changes_drafts_and_search_through_the_ffi() {
     block_on(ben.sign_up(server.url.clone(), "Ben".into())).unwrap();
     block_on(ana.list_conversations()).unwrap();
     block_on(ben.list_conversations()).unwrap();
-    let ana_events = ana.events().unwrap();
-    let ben_events = ben.events().unwrap();
+    let ana_events = ana.chat_events().unwrap();
+    let ben_events = ben.chat_events().unwrap();
     ana.subscribe("general".into()).unwrap();
     next_matching(&ana_events, "Ana connected", |e| {
         matches!(e, ChatEvent::StreamConnected { .. })
@@ -498,6 +499,7 @@ fn message_changes_drafts_and_search_through_the_ffi() {
     ana.set_draft("general".into(), "see you".into()).unwrap();
     assert_eq!(ana.draft("general".into()).as_deref(), Some("see you"));
     ana.shutdown();
+    drop(ana);
     let ana = ChatCore::open(dir.path().join("ana").join("chats"), ana_credentials).unwrap();
     assert_eq!(ana.draft("general".into()).as_deref(), Some("see you"));
     // Accents and case are ignored; words match as prefixes.
@@ -624,7 +626,6 @@ fn notifying_core(
         Arc::new(MemoryCredentials::default()),
         Some(services),
     )
-    .map(Arc::new)
     .unwrap();
     block_on(core.sign_up(server.url.clone(), name.into())).unwrap();
     core.set_phase(AppPhase::Active);
@@ -761,4 +762,23 @@ fn a_refresh_signed_out_does_nothing() {
     .unwrap();
     assert_eq!(core.catch_up_in_background(&|| false).unwrap(), 0);
     assert!(fakes.notifier.scheduled().is_empty());
+}
+
+#[test]
+fn a_second_core_on_the_same_data_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().to_string_lossy().into_owned();
+    let first = ChatCore::with_memory_credentials(path.clone()).unwrap();
+    let second = ChatCore::with_memory_credentials(path.clone());
+    assert!(matches!(second.err(), Some(ChatError::InUse { .. })));
+    assert_eq!(
+        chat_error_kind(ChatError::InUse {
+            reason: String::new()
+        }),
+        forge_app::ErrorKind::Unavailable
+    );
+    first.shutdown();
+    assert_eq!(first.phase(), AppPhase::Terminated);
+    drop(first);
+    assert!(ChatCore::with_memory_credentials(path).is_ok());
 }

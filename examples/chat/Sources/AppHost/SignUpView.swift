@@ -1,4 +1,5 @@
 @preconcurrency import ChatFFI
+import ForgeAppKit
 import SwiftUI
 
 /// The chat servers the sign-up screen suggests.
@@ -19,7 +20,7 @@ struct SignUpView: View {
     @AppStorage("chat.lastServerURL") private var serverURL = ChatServers.hosted ?? ChatServers.local
     @State private var displayName = ""
     @State private var isWorking = false
-    @State private var error: String?
+    @State private var error: ForgeFailure?
     @State private var showingAssistant = false
 
     private var canSubmit: Bool {
@@ -95,7 +96,7 @@ struct SignUpView: View {
                     AssistantTab(model: assistant)
                 }
             }
-            .errorAlert("Couldn't Create the Account", message: $error)
+            .forgeAlert(failure: $error)
         }
     }
 
@@ -107,7 +108,7 @@ struct SignUpView: View {
             do {
                 try await model.signUp(serverURL: serverURL, displayName: displayName)
             } catch {
-                self.error = ChatModel.describe(error)
+                self.error = ChatModel.failure(error, title: "Couldn't Create the Account")
             }
         }
     }

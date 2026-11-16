@@ -76,3 +76,8 @@ id = "CH-11"
 statement = "The on-device assistant works signed out, streams its answer and stops when asked."
 twin = ["AssistantModelTests.testTheAssistantWorksSignedOutAndStreamsAnAnswer", "AssistantModelTests.testStopKeepsTheText"]
 device = ["uitests/messaging.toml"]
+
+[[requirement]]
+id = "CH-12"
+statement = "When Chat's data can't be opened (another core holds it), it says why, and Try Again opens it once the data is free."
+twin = ["ChatModelTests.testALoadFailureShowsWhyAndTryAgainOpens"]

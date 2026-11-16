@@ -86,6 +86,6 @@ final class AssistantModelTests: XCTestCase {
         XCTAssertNil(assistant.engine)
         let id = try XCTUnwrap(assistant.start(characterId: "boyfriend"))
         XCTAssertFalse(assistant.send("Hi Leo", in: id))
-        XCTAssertEqual(assistant.actionError, "No on-device model is installed in this build.")
+        XCTAssertEqual(assistant.actionError?.message, "No on-device model is installed in this build.")
     }
 }

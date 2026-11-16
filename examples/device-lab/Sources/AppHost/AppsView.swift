@@ -229,6 +229,7 @@ public enum EmbeddedApps {
             ForgeLifecycle.attach(sketchbook)
             ForgeLifecycle.attach(soundscape)
             ForgeLifecycle.attach(relay)
+            ForgeLifecycle.attach(chat.host)
         #endif
         library.attachToLifecycle()
     }

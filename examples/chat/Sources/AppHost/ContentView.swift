@@ -1,4 +1,6 @@
 @preconcurrency import ChatFFI
+import ForgeAppKit
+import ForgeKit
 import SwiftUI
 
 /// The app's root. It owns the model, opens the Rust core once, and shows
@@ -6,13 +8,11 @@ import SwiftUI
 public struct ContentView: View {
     @State private var model: ChatModel
 
-    public init() {
-        _model = State(initialValue: Self.makeModel())
-    }
-
-    /// Shows `model`, which the host keeps for the whole process: Device
-    /// Lab opens Chat in a sheet many times, and one core (one set of room
-    /// connections and notifications) must outlive each sheet.
+    /// Shows `model`, which the app keeps for the whole process (the app's
+    /// entry point, or Device Lab, which opens Chat in a sheet many times):
+    /// one core (one set of room connections and notifications) must
+    /// outlive each sheet. The entry point attaches `model.host` to
+    /// `ForgeLifecycle`, which reports the scene phase to Rust.
     public init(model: ChatModel) {
         _model = State(initialValue: model)
     }
@@ -53,8 +53,10 @@ public struct ContentView: View {
         }
         // Opens Rust off the main thread; does nothing when already open.
         .task { await model.open() }
-        // Reports the scene phase to Rust (see AppLifecycle.swift).
-        .forgeLifecycle { model.setPhase($0) }
+        // Back on screen: Apple Intelligence may have been turned on.
+        .onChange(of: model.host.phase) { _, phase in
+            if phase == .active { model.becameActive() }
+        }
     }
 }
 
@@ -93,6 +95,6 @@ struct MainTabs: View {
             chatPath = [route]
         }
         // Failed swipes and menu actions, from either tab.
-        .errorAlert("Something Went Wrong", message: Bindable(model).actionError)
+        .forgeAlert(failure: Bindable(model).actionError)
     }
 }

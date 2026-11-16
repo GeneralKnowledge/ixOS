@@ -1,4 +1,5 @@
 @preconcurrency import ChatFFI
+import ForgeAppKit
 import Foundation
 import Observation
 
@@ -18,7 +19,7 @@ public final class AssistantModel {
     /// The engine and whether it can run now.
     public private(set) var engine: AiModelInfo?
     /// A failed action, for an alert. The view clears it when dismissed.
-    public var actionError: String?
+    public var actionError: ForgeFailure?
 
     public let characters: [AssistantCharacter]
     private let core: AssistantCore
@@ -41,7 +42,7 @@ public final class AssistantModel {
         do {
             conversations = try core.conversations()
         } catch {
-            actionError = Self.describe(error)
+            actionError = ForgeFailure(title: "Assistant", message: Self.describe(error))
         }
         // An answer started before this screen existed: follow it.
         if generation == nil, let current = core.currentGeneration() {
@@ -58,7 +59,7 @@ public final class AssistantModel {
         do {
             messages[conversationId] = try core.messages(conversationId: conversationId)
         } catch {
-            actionError = Self.describe(error)
+            actionError = ForgeFailure(title: "Assistant", message: Self.describe(error))
         }
     }
 
@@ -69,7 +70,7 @@ public final class AssistantModel {
             conversations.insert(conversation, at: 0)
             return conversation.id
         } catch {
-            actionError = Self.describe(error)
+            actionError = ForgeFailure(title: "Assistant", message: Self.describe(error))
             return nil
         }
     }
@@ -80,7 +81,7 @@ public final class AssistantModel {
             conversations.removeAll { $0.id == conversationId }
             messages[conversationId] = nil
         } catch {
-            actionError = Self.describe(error)
+            actionError = ForgeFailure(title: "Assistant", message: Self.describe(error))
         }
     }
 
@@ -96,7 +97,7 @@ public final class AssistantModel {
             return true
         } catch {
             engine = core.engineInfo()
-            actionError = Self.describe(error)
+            actionError = ForgeFailure(title: "Assistant", message: Self.describe(error))
             return false
         }
     }
