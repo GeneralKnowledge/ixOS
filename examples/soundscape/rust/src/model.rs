@@ -160,6 +160,16 @@ pub enum SoundscapeError {
     NewerData,
     #[error("storage error: {reason}")]
     Storage { reason: String },
+    /// Listen: the typed server address can't be used.
+    #[error("{reason}")]
+    BadAddress { reason: String },
+    /// Listen: the take server couldn't be reached.
+    #[error("can't reach the take server: {reason}")]
+    Unreachable { reason: String },
+    /// Listen: the address isn't usable, or the server answered with
+    /// something other than what was asked.
+    #[error("{reason}")]
+    Server { reason: String },
     /// Stopped by the runtime: cancelled, interrupted by the background,
     /// or shut down. `kind` says which.
     #[error("stopped ({kind:?})")]
@@ -175,8 +185,11 @@ pub fn soundscape_error_kind(error: SoundscapeError) -> ErrorKind {
         | SoundscapeError::TooManyTracks { .. }
         | SoundscapeError::OutOfRange { .. }
         | SoundscapeError::Audio { .. }
-        | SoundscapeError::Silent => ErrorKind::Invalid,
+        | SoundscapeError::Silent
+        | SoundscapeError::BadAddress { .. } => ErrorKind::Invalid,
         SoundscapeError::NotFound { .. } => ErrorKind::NotFound,
+        SoundscapeError::Unreachable { .. } => ErrorKind::Network,
+        SoundscapeError::Server { .. } => ErrorKind::Refused,
         SoundscapeError::InUse => ErrorKind::Unavailable,
         SoundscapeError::Corrupt { .. } => ErrorKind::Corrupt,
         SoundscapeError::NewerData => ErrorKind::NewerData,

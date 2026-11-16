@@ -23,6 +23,13 @@ forge-runtime = { path = "../../../crates/forge-runtime" }
 # Projects are one JSON document; recordings are files named by their
 # SHA-256.
 forge-storage = { path = "../../../crates/forge-storage", features = ["hash"] }
+# Listen: the take server's API through URLSession on iOS (ureq in Linux
+# tests), so it follows the phone's VPN (Tailscale).
+forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
+forge-services = { path = "../../../crates/forge-services", features = ["http"] }
+serde_json = "1.0"
+# The native_services! macro expands to async traits.
+async-trait = "0.1"
 # WAV reading and writing (AVAudioFile records WAV; the mixdown is WAV).
 hound = "3.5"
 # Must match the uniffi-bindgen Forge generates bindings with.

@@ -45,6 +45,9 @@ background_modes = ["audio"]
 [ios.permissions]
 # camera = "Scan barcodes to add items."
 microphone = "Soundscape records the loops you layer into a project. Recordings stay on this phone."
+# Listen plays song takes from a take server on your computer (over the
+# local network or Tailscale).
+local_network = "Soundscape's Listen tab plays song takes from the take server on your computer."
 # location_when_in_use = "Show places near you."
 
 [ios.entitlements]

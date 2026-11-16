@@ -16,6 +16,7 @@ import PocketLibraryFFI
 import RelayApp
 import SketchbookApp
 import SoundscapeApp
+import SoundscapeFFI
 import SwiftUI
 import WeatherApp
 import WeatherFFI
@@ -97,7 +98,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .chat: "Messaging through the Forge chat server, with an on-device assistant."
         case .fieldKit: "A field notebook: record a GPS track and take notes along the way."
         case .sketchbook: "Draw with your finger in layers, with undo, and export to PNG or PDF."
-        case .soundscape: "Record loops, layer them, shape each one and mix down to a WAV file."
+        case .soundscape: "Record loops, layer them and mix down to a WAV file; listen to, compare and pick song takes from your computer."
         case .relay: "Pair by QR code, then send notes and files straight to a nearby device, encrypted."
         case .forgeUI: "Every ForgeUI component, with example screens."
         }
@@ -220,6 +221,8 @@ public enum EmbeddedApps {
         ChatFFI.ForgeServices.install(keychainService: "\(bundle).chat")
         FieldKitFFI.ForgeServices.install(keychainService: "\(bundle).fieldkit")
         WeatherFFI.ForgeServices.install(keychainService: "\(bundle).weather")
+        // Soundscape's Listen tab asks its take server through URLSession.
+        SoundscapeFFI.ForgeServices.install(keychainService: "\(bundle).soundscape")
         #if canImport(UIKit)
             ForgeLifecycle.attach(weather)
             ForgeLifecycle.attach(goodDog)

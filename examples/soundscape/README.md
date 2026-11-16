@@ -1,7 +1,8 @@
 # Soundscape
 
 A small multi-track sound sketchpad: record loops, layer them, shape each
-with tone and echo, and mix down to a WAV file to share. The third of the
+with tone and echo, and mix down to a WAV file to share. Its **Listen** tab
+plays, compares and picks song takes kept on another computer (see below). The third of the
 remaining demo apps ([friction log](../../docs/research/app-friction-log.md));
 it runs inside Device Lab (Apps, then Soundscape) and on its own.
 
@@ -11,6 +12,7 @@ it runs inside Device Lab (Apps, then Soundscape) and on its own.
 |---|---|---|
 | SS1 | Rust core (`rust/`): projects, tracks, settings checked and mapped to AVAudioEngine units, waveforms, offline mixdown | Done, tested on Linux |
 | SS2 | SwiftUI app: project list, recorder, mixer with Canvas waveforms, AVAudioEngine playback, background audio, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
+| L1 | Listen tab: songs and takes from a take server, A/B at matched loudness, stars, notes and picks, lock-screen playback | Rust tested on Linux, also against the real server; Swift written, not yet built with xtool or run on a phone |
 | S4 | Spike: one effect in Rust on the real-time audio thread, measured on the phone | Not started; decides whether live effects move to Rust |
 
 ## How the work is split
@@ -58,6 +60,34 @@ cargo test --manifest-path examples/soundscape/rust/Cargo.toml
 Recording starts with the loop and skips the input and output latency
 `AVAudioSession` reports, so a part played along to the loop lines up. It
 writes 16-bit PCM at the microphone's rate, which Rust reads.
+
+## Listen
+
+Listen is for generated songs that live on another computer, such as the
+band laptop's renders (GeneralKnowledge/JewGrass). That computer runs a
+**take server** (`python3 tools/player/serve.py` in JewGrass, standard
+library only), which finds the takes, streams them, measures their loudness
+and saves picks to `~/band/picks.json`.
+
+- **Rust (`rust/src/listen.rs`)** keeps the server's address (in
+  `listen.json`, apart from the projects), asks the server for songs and
+  takes through the `http` native service (URLSession on iOS, so it follows
+  Tailscale), sends picks, stars and notes, and works out the volumes for
+  an A/B comparison at matched loudness (`loudness_match`: the louder take
+  is turned down, never by more than 24 dB).
+- **Swift** streams with AVPlayer (`TakePlayer.swift`). Comparing plays both
+  takes in step and switching only changes which one you hear, so A and B
+  are heard at the same moment; Blind hides which is which. Playback goes on
+  with the screen locked, with lock-screen controls; "next track" on
+  headphones switches A and B.
+- The address must be numeric for plain http (iOS refuses plain http to a
+  host name): use the computer's Tailscale address, which starts with 100.
+
+| File | What |
+|---|---|
+| `Sources/AppHost/ListenModel.swift` | Songs, a song's takes, picks and ratings, the server address. Foundation only |
+| `Sources/AppHost/ListenView.swift` | The song list, the server form, a song's takes, the comparison panel, the now-playing bar |
+| `Sources/AppHost/TakePlayer.swift` | AVPlayer: one take, or two in step for A/B; the lock screen |
 
 Build and install on its own (it uses the free team's sandbox id):
 

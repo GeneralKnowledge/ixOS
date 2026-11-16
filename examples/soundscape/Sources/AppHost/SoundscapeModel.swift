@@ -253,8 +253,18 @@ public final class SoundscapeModel {
         case .Corrupt: return "Your projects couldn't be read."
         case .NewerData: return "Your projects were saved by a newer version of Soundscape."
         case .Storage: return "Couldn't save. Try again."
+        case .BadAddress(let reason): return Self.sentence(reason)
+        case .Unreachable: return "Can't reach the take server. Check that it's running on the computer and that this phone is on Tailscale (or the same network)."
+        case .Server(let reason): return Self.sentence(reason)
         case .Stopped: return "Stopped."
         }
+    }
+
+    /// Rust's reasons start lower case; the screen shows a sentence.
+    nonisolated static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let capital = first.uppercased() + text.dropFirst()
+        return capital.hasSuffix(".") || capital.hasSuffix("?") ? capital : capital + "."
     }
 
     nonisolated public static func title(_ error: SoundscapeError) -> String {
@@ -266,6 +276,9 @@ public final class SoundscapeModel {
         case .Silent: return "Nothing to Export"
         case .InUse: return "Already Open"
         case .Corrupt, .NewerData, .Storage: return "Couldn't Save"
+        case .BadAddress: return "Check the Address"
+        case .Unreachable: return "Can't Reach the Server"
+        case .Server: return "The Server Said No"
         case .Stopped: return "Stopped"
         }
     }
@@ -275,7 +288,7 @@ extension SoundscapeError: ForgeDescribedError {
     public var failure: ForgeFailure {
         let retryable: Bool
         switch self {
-        case .Storage: retryable = true
+        case .Storage, .Unreachable: retryable = true
         default: retryable = false
         }
         return ForgeFailure(

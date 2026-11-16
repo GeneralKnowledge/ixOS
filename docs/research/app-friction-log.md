@@ -691,3 +691,26 @@ Reuben asked for a sweep for small bugs of A33's kind. Real ones found:
 **Measure.** A parity rule, `errors-shown`, fails on `try?` around a call
 that changes something and on an empty catch-all, in every app and starter.
 On the code before the sweep it named FieldKit, Weather, Chat and Relay.
+
+## A35. Streaming music in Soundscape's Listen tab
+
+Listen plays, compares and picks song takes kept on another computer (a
+take server such as JewGrass's `tools/player/serve.py`). Rust keeps the
+address and talks to the server through the `http` service; AVPlayer
+streams the audio. What took work:
+
+- **Native services for one request type.** Soundscape had no
+  `native_services!`, so using URLSession meant the whole core set (nine
+  generated Swift files), an `AppServices` file, three entry points and a
+  line in Device Lab. Fine once; worth a smaller path if a third app needs
+  only `http`.
+- **No music mode in `ForgeAudioSession`.** Its `.playback` is
+  `spokenAudio`, which suits read-aloud, not music. Listen sets
+  `.playback` with the default mode itself. A second music player would be
+  the reason to add a `.music` use.
+- **Now Playing and remote commands** are hand-written
+  (`MPNowPlayingInfoCenter`, `MPRemoteCommandCenter`); Pocket Library's
+  read-aloud would be the second user.
+- **ATS and Tailscale names.** Plain http to a host name is refused, so the
+  address must be numeric (a Tailscale `100.` address); Rust says so when
+  the person types a name.
