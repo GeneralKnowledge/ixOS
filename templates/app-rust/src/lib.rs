@@ -54,7 +54,7 @@ const STORE_VERSION: u32 = 1;
 /// One note.
 #[derive(uniffi::Record, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Note {
-    pub id: u64,
+    pub id: i64,
     pub text: String,
     /// Unix time in milliseconds.
     pub created_at_ms: i64,
@@ -67,7 +67,7 @@ pub enum AppError {
     #[error("invalid input: {reason}")]
     InvalidInput { reason: String },
     #[error("no note with id {id}")]
-    NotFound { id: u64 },
+    NotFound { id: i64 },
     /// The notes file could not be read or written.
     #[error("storage error: {reason}")]
     Storage { reason: String },
@@ -163,7 +163,7 @@ pub fn app_error_kind(error: AppError) -> ErrorKind {
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct StoredNotes {
-    next_id: u64,
+    next_id: i64,
     notes: Vec<Note>,
 }
 
@@ -274,7 +274,7 @@ impl AppCore {
 
     /// Replaces a note's text and saves. `NotFound` if there is no such
     /// note, `InvalidInput` if `text` is blank.
-    pub async fn update_note(&self, id: u64, text: String) -> Result<Note, AppError> {
+    pub async fn update_note(&self, id: i64, text: String) -> Result<Note, AppError> {
         let text = note_text(text)?;
         self.rt
             .command("update-note", move |state| {
@@ -292,7 +292,7 @@ impl AppCore {
     }
 
     /// Deletes a note and saves. `NotFound` if there is no such note.
-    pub async fn delete_note(&self, id: u64) -> Result<(), AppError> {
+    pub async fn delete_note(&self, id: i64) -> Result<(), AppError> {
         self.rt
             .command("delete-note", move |state| {
                 state.change(|stored| {

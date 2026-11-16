@@ -32,7 +32,7 @@ const SAVE_VERSION: u32 = 1;
 /// with the same fields (`item.title`, `item.done`).
 #[derive(uniffi::Record, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Item {
-    pub id: u64,
+    pub id: i64,
     pub title: String,
     pub done: bool,
 }
@@ -43,7 +43,7 @@ pub enum AppError {
     #[error("invalid input: {reason}")]
     InvalidInput { reason: String },
     #[error("no item with id {id}")]
-    NotFound { id: u64 },
+    NotFound { id: i64 },
     /// The list could not be read or saved.
     #[error("storage error: {reason}")]
     Storage { reason: String },
@@ -96,7 +96,7 @@ pub fn app_error_kind(error: AppError) -> ErrorKind {
 /// What is written to `items.json`.
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct Saved {
-    next_id: u64,
+    next_id: i64,
     items: Vec<Item>,
 }
 
@@ -188,7 +188,7 @@ impl AppCore {
     }
 
     /// Ticks an item off, or back on. Returns the new list.
-    pub async fn toggle_item(&self, id: u64) -> Result<Vec<Item>, AppError> {
+    pub async fn toggle_item(&self, id: i64) -> Result<Vec<Item>, AppError> {
         self.rt
             .command("toggle-item", move |state| {
                 state.change(|saved| {
@@ -201,7 +201,7 @@ impl AppCore {
     }
 
     /// Removes an item. Returns the new list.
-    pub async fn delete_item(&self, id: u64) -> Result<Vec<Item>, AppError> {
+    pub async fn delete_item(&self, id: i64) -> Result<Vec<Item>, AppError> {
         self.rt
             .command("delete-item", move |state| {
                 state.change(|saved| {
@@ -217,7 +217,7 @@ impl AppCore {
 // events(), set_phase(), phase(), revision() and shutdown(), for ForgeKit.
 forge_app::export_runtime!(AppCore, rt);
 
-fn find(saved: &mut Saved, id: u64) -> Result<&mut Item, AppError> {
+fn find(saved: &mut Saved, id: i64) -> Result<&mut Item, AppError> {
     saved
         .items
         .iter_mut()

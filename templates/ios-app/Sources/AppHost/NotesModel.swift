@@ -30,8 +30,8 @@ public final class NotesModel {
     /// What the list's alerts can ask the model to do: delete after the
     /// person confirms, or try a failed save or delete again.
     public enum Action: Equatable, Sendable {
-        case delete(UInt64)
-        case update(UInt64, String)
+        case delete(Int64)
+        case update(Int64, String)
     }
 
     /// The list's alert: a delete confirmation, or a failed action (with Try
@@ -70,7 +70,7 @@ public final class NotesModel {
     }
 
     /// The current version of a note, or nil once it has been deleted.
-    public func note(id: UInt64) -> Note? {
+    public func note(id: Int64) -> Note? {
         notes.first { $0.id == id }
     }
 
@@ -92,7 +92,7 @@ public final class NotesModel {
     }
 
     @discardableResult
-    private func update(id: UInt64, text: String) async -> Bool {
+    private func update(id: Int64, text: String) async -> Bool {
         await perform(retry: .update(id, text)) { core in
             _ = try await core.updateNote(id: id, text: text)
         }
@@ -115,7 +115,7 @@ public final class NotesModel {
         await delete(id: note.id)
     }
 
-    private func delete(id: UInt64) async {
+    private func delete(id: Int64) async {
         await perform(retry: .delete(id)) { core in
             try await core.deleteNote(id: id)
         }
