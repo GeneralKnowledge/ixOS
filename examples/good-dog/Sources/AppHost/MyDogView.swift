@@ -1,5 +1,6 @@
 @preconcurrency import GoodDogFFI
 import ForgeUI
+import ForgeAppKit
 import SwiftUI
 
 /// The dog's details, progress in plain English, recent sessions, and erasing everything.
@@ -184,7 +185,7 @@ struct MyDogView: View {
             } message: {
                 Text("This deletes your dog's details, plans, sessions and progress. It can't be undone.")
             }
-            .errorAlert(LocalizedStringKey(model.actionErrorTitle), message: $model.actionError)
+            .forgeAlert(failure: $model.actionError)
         }
     }
 }

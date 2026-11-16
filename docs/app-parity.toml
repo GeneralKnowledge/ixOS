@@ -28,21 +28,9 @@ reason = "LabModel's state is lab services (sensors, permissions, hosting the ot
 
 [[lag]]
 app = "good-dog"
-rule = "appkit-alerts"
-wave = 3
-reason = "Its own ErrorAlert.swift predates ForgeAppKit"
-
-[[lag]]
-app = "good-dog"
 rule = "device-checks"
 wave = 4
 reason = "GD requirements without a scenario yet; written with GD2b's phone run"
-
-[[lag]]
-app = "good-dog"
-rule = "forge-host"
-wave = 3
-reason = "Keeps its own state model from before ForgeHost (friction log rank 1)"
 
 [[lag]]
 app = "sketchbook"

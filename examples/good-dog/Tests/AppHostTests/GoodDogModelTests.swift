@@ -1,4 +1,5 @@
 import GoodDogApp
+@preconcurrency import ForgeKit  // ForgeKit builds in Swift 5 mode; `forge check swift` builds tests in 6
 @preconcurrency import GoodDogFFI
 import Foundation
 import XCTest
@@ -28,6 +29,46 @@ final class GoodDogModelTests: XCTestCase {
     private let moss = DogProfile(
         name: " Moss ", lifeStage: .adult, dailyTime: .aboutTenMinutes, goal: .recall, experience: .new
     )
+
+    /// Data the core can't read: the host fails to open it, the app shows
+    /// why, and Try Again opens it once it can be read.
+    @MainActor
+    func testALoadFailureShowsWhyAndTryAgainOpens() async throws {
+        let dir = try makeDirectory()
+        let file = dir.appendingPathComponent("gooddog.json")
+        try Data(#"{"schema_version": 99, "data": {}}"#.utf8).write(to: file)
+        let model = await openModel(dir)
+        guard case .failed(let message) = model.phase else {
+            return XCTFail("opened unreadable data: \(model.phase)")
+        }
+        XCTAssertFalse(message.isEmpty)
+        XCTAssertNil(model.core)
+
+        try FileManager.default.removeItem(at: file)
+        await model.retry()
+        XCTAssertEqual(model.phase, .needsDog)
+        XCTAssertNotNil(model.core)
+        model.close()
+    }
+
+    /// One core per data folder: a second host on the same folder is
+    /// refused until the first closes.
+    @MainActor
+    func testASecondCoreOnTheSameDataIsRefused() async throws {
+        let dir = try makeDirectory()
+        let first = await openModel(dir)
+        XCTAssertEqual(first.phase, .needsDog)
+        let second = await openModel(dir)
+        guard case .failed = second.phase else {
+            return XCTFail("a second core opened the same data")
+        }
+        XCTAssertEqual(
+            appErrorKind(error: AppError.InUse(reason: "")), .unavailable)
+        first.close()
+        await second.retry()
+        XCTAssertEqual(second.phase, .needsDog)
+        second.close()
+    }
 
     @MainActor
     func testTryAgainWorksWhileTheCoreIsOpen() async throws {

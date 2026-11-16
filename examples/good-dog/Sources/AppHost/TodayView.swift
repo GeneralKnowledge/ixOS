@@ -1,5 +1,6 @@
 @preconcurrency import GoodDogFFI
 import ForgeUI
+import ForgeAppKit
 import SwiftUI
 
 /// Today's plan: two or three short activities, each with why it was chosen.
@@ -119,7 +120,7 @@ struct TodayView: View {
                 GoalPathView(model: model, goalId: route.goalId)
             }
             .sheet(isPresented: $choosingGoal) { GoalPickerView(model: model) }
-            .errorAlert(LocalizedStringKey(model.actionErrorTitle), message: $model.actionError)
+            .forgeAlert(failure: $model.actionError)
         }
     }
 }

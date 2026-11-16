@@ -268,6 +268,16 @@ uint64_t uniffi_good_dog_app_fn_method_appcore_answer_gate(uint64_t ptr, uint64_
 uint64_t uniffi_good_dog_app_fn_method_appcore_answer_lesson(uint64_t ptr, uint64_t goal_id, RustBuffer lesson_id, uint32_t choice, RustBuffer now
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_BACKGROUND_TIME_EXPIRED
+void uniffi_good_dog_app_fn_method_appcore_background_time_expired(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_BACKGROUND_WORK_PENDING
+int8_t uniffi_good_dog_app_fn_method_appcore_background_work_pending(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_COMPLETE_LESSON
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_COMPLETE_LESSON
 uint64_t uniffi_good_dog_app_fn_method_appcore_complete_lesson(uint64_t ptr, uint64_t goal_id, RustBuffer lesson_id, RustBuffer now
@@ -285,7 +295,7 @@ uint64_t uniffi_good_dog_app_fn_method_appcore_erase_all(uint64_t ptr
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_EVENTS
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_EVENTS
-uint64_t uniffi_good_dog_app_fn_method_appcore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_good_dog_app_fn_method_appcore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_EXERCISE
@@ -311,6 +321,11 @@ RustBuffer uniffi_good_dog_app_fn_method_appcore_goals(uint64_t ptr, RustCallSta
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_HISTORY
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_HISTORY
 RustBuffer uniffi_good_dog_app_fn_method_appcore_history(uint64_t ptr, uint32_t limit, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_LAUNCH_REPORT
+RustBuffer uniffi_good_dog_app_fn_method_appcore_launch_report(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_LEARN_TOPICS
@@ -371,6 +386,11 @@ RustBuffer uniffi_good_dog_app_fn_method_appcore_reminder_minute(uint64_t ptr, R
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_RESUME_GOAL
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_RESUME_GOAL
 uint64_t uniffi_good_dog_app_fn_method_appcore_resume_goal(uint64_t ptr, uint64_t goal_id, RustBuffer now
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_REVISION
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_REVISION
+uint64_t uniffi_good_dog_app_fn_method_appcore_revision(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SAVE_DOG
@@ -448,47 +468,6 @@ RustBuffer uniffi_good_dog_app_fn_method_appcore_term(uint64_t ptr, RustBuffer t
 uint64_t uniffi_good_dog_app_fn_method_appcore_today(uint64_t ptr, RustBuffer now
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_CLONE_APPEVENTS
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_CLONE_APPEVENTS
-uint64_t uniffi_good_dog_app_fn_clone_appevents(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_FREE_APPEVENTS
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_FREE_APPEVENTS
-void uniffi_good_dog_app_fn_free_appevents(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPEVENTS_CANCEL
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPEVENTS_CANCEL
-void uniffi_good_dog_app_fn_method_appevents_cancel(uint64_t ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPEVENTS_NEXT
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPEVENTS_NEXT
-uint64_t uniffi_good_dog_app_fn_method_appevents_next(uint64_t ptr
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_CLONE_CANCELLATION
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_CLONE_CANCELLATION
-uint64_t uniffi_good_dog_app_fn_clone_cancellation(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_FREE_CANCELLATION
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_FREE_CANCELLATION
-void uniffi_good_dog_app_fn_free_cancellation(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_CONSTRUCTOR_CANCELLATION_NEW
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_CONSTRUCTOR_CANCELLATION_NEW
-uint64_t uniffi_good_dog_app_fn_constructor_cancellation_new(RustCallStatus *_Nonnull out_status
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_CANCELLATION_CANCEL
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_CANCELLATION_CANCEL
-void uniffi_good_dog_app_fn_method_cancellation_cancel(uint64_t ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_CLONE_GUIDEDSESSION
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_CLONE_GUIDEDSESSION
 uint64_t uniffi_good_dog_app_fn_clone_guidedsession(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -537,6 +516,11 @@ RustBuffer uniffi_good_dog_app_fn_method_guidedsession_safety_note(uint64_t ptr,
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_GUIDEDSESSION_TITLE
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_GUIDEDSESSION_TITLE
 RustBuffer uniffi_good_dog_app_fn_method_guidedsession_title(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_FUNC_APP_ERROR_KIND
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_FUNC_APP_ERROR_KIND
+RustBuffer uniffi_good_dog_app_fn_func_app_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_FUNC_FORGE_LOG
@@ -809,6 +793,12 @@ void ffi_good_dog_app_rust_future_free_void(uint64_t handle
 void ffi_good_dog_app_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_FUNC_APP_ERROR_KIND
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_FUNC_APP_ERROR_KIND
+uint16_t uniffi_good_dog_app_checksum_func_app_error_kind(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_FUNC_FORGE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_FUNC_FORGE_LOG
 uint16_t uniffi_good_dog_app_checksum_func_forge_log(void
@@ -830,6 +820,18 @@ uint16_t uniffi_good_dog_app_checksum_method_appcore_answer_gate(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_ANSWER_LESSON
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_ANSWER_LESSON
 uint16_t uniffi_good_dog_app_checksum_method_appcore_answer_lesson(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_BACKGROUND_TIME_EXPIRED
+uint16_t uniffi_good_dog_app_checksum_method_appcore_background_time_expired(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_BACKGROUND_WORK_PENDING
+uint16_t uniffi_good_dog_app_checksum_method_appcore_background_work_pending(void
     
 );
 #endif
@@ -884,6 +886,12 @@ uint16_t uniffi_good_dog_app_checksum_method_appcore_goals(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_HISTORY
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_HISTORY
 uint16_t uniffi_good_dog_app_checksum_method_appcore_history(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_LAUNCH_REPORT
+uint16_t uniffi_good_dog_app_checksum_method_appcore_launch_report(void
     
 );
 #endif
@@ -956,6 +964,12 @@ uint16_t uniffi_good_dog_app_checksum_method_appcore_reminder_minute(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_RESUME_GOAL
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_RESUME_GOAL
 uint16_t uniffi_good_dog_app_checksum_method_appcore_resume_goal(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_REVISION
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_REVISION
+uint16_t uniffi_good_dog_app_checksum_method_appcore_revision(void
     
 );
 #endif
@@ -1049,24 +1063,6 @@ uint16_t uniffi_good_dog_app_checksum_method_appcore_today(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPEVENTS_CANCEL
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPEVENTS_CANCEL
-uint16_t uniffi_good_dog_app_checksum_method_appevents_cancel(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPEVENTS_NEXT
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPEVENTS_NEXT
-uint16_t uniffi_good_dog_app_checksum_method_appevents_next(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_CANCELLATION_CANCEL
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_CANCELLATION_CANCEL
-uint16_t uniffi_good_dog_app_checksum_method_cancellation_cancel(void
-    
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_GUIDEDSESSION_ACTIVITY_ID
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_GUIDEDSESSION_ACTIVITY_ID
 uint16_t uniffi_good_dog_app_checksum_method_guidedsession_activity_id(void
@@ -1118,12 +1114,6 @@ uint16_t uniffi_good_dog_app_checksum_method_guidedsession_title(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_CONSTRUCTOR_APPCORE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_CONSTRUCTOR_APPCORE_NEW
 uint16_t uniffi_good_dog_app_checksum_constructor_appcore_new(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_CONSTRUCTOR_CANCELLATION_NEW
-#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_CONSTRUCTOR_CANCELLATION_NEW
-uint16_t uniffi_good_dog_app_checksum_constructor_cancellation_new(void
     
 );
 #endif

@@ -538,3 +538,22 @@ Both were fixed in the build thread's PRs (#200, #202).
 **Framework.** Accept. The rule is already in AGENTS.md: say Swift wasn't
 compiled, and build it with `scripts/check-ios-xtool.sh` before merging. The
 two traps are worth a line each in ios-ui.md if they come up again.
+
+## A30. Moving Good Dog onto ForgeHost
+
+Good Dog's core had its own lock, event hub, lifecycle and shutdown flag;
+all of it was one `change()` helper and a handful of exports, so the move
+was mostly mechanical: `Runtime<State>` with a `Published` copy for reads,
+`export_runtime!`, and `From<Stopped>`/`From<OpenError>`.
+
+- **Shutdown keeps the folder.** `shutdown()` stops new work, but the data
+  folder stays locked until the core is dropped, so tests that "relaunch"
+  after `shutdown()` got `InUse`; they now drop the first core. A host that
+  reopens after `close()` is fine, because ForgeHost lets go of the core.
+  (annoyance)
+- **Main-actor statics.** The model's error text helpers are static
+  methods on a `@MainActor` class; `ForgeDescribedError.failure` is
+  nonisolated, so they had to be marked `nonisolated`. (annoyance)
+
+**Framework.** Accept both. The first is worth a line in app-crate.md if a
+third app trips on it.
