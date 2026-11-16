@@ -32,6 +32,12 @@ struct ChatView: View {
     @State private var searching = false
     @State private var jumpTarget: String?
     @State private var highlighted: String?
+    /// Whether the end of the transcript is on screen. A new message
+    /// scrolls into view only then (or when it is your own), so reading
+    /// back through the conversation isn't interrupted.
+    @State private var atBottom = true
+    /// A message came in while you were reading further up.
+    @State private var newBelow = false
     /// Photos and documents picked for the next message.
     @State private var staged: [StagedFile] = []
     @State private var pickingPhotos = false
@@ -65,6 +71,19 @@ struct ChatView: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             scrolling(transcriptList, proxy: proxy)
+                .overlay(alignment: .bottom) {
+                    if newBelow {
+                        Button("New Messages", systemImage: "arrow.down") {
+                            withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.small)
+                        .padding(.bottom, 8)
+                        .transition(.opacity)
+                        .accessibilityIdentifier("chat.newMessages")
+                    }
+                }
         }
     }
 
@@ -75,6 +94,11 @@ struct ChatView: View {
                     transcriptRow(row)
                 }
                 Color.clear.frame(height: 1).id(Self.bottom)
+                    .onAppear {
+                        atBottom = true
+                        newBelow = false
+                    }
+                    .onDisappear { atBottom = false }
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -109,6 +133,10 @@ struct ChatView: View {
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: messages.last?.id) { _, _ in
                 guard jumpTarget == nil, highlighted == nil else { return }
+                guard atBottom || messages.last?.isMine == true else {
+                    withAnimation { newBelow = true }
+                    return
+                }
                 withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
             }
             .onChange(of: composing) { _, focused in

@@ -31,6 +31,9 @@ struct ConversationListView: View {
     @State private var creating = false
     @State private var query = ""
     @State private var results: [ChatMessage] = []
+    /// The query `results` answer: "No Results" waits for the search of
+    /// what is typed now instead of flashing on every keystroke.
+    @State private var resultsFor = ""
 
     var body: some View {
         Group {
@@ -44,7 +47,10 @@ struct ConversationListView: View {
         .task(id: query) {
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
-            results = await model.search(query)
+            let found = await model.search(query)
+            guard !Task.isCancelled else { return }
+            results = found
+            resultsFor = query
         }
         .navigationTitle("Chats")
         .toolbar {
@@ -73,7 +79,11 @@ struct ConversationListView: View {
         }
         .overlay {
             if results.isEmpty {
-                ContentUnavailableView.search(text: query)
+                if resultsFor == query {
+                    ContentUnavailableView.search(text: query)
+                } else {
+                    ProgressView()
+                }
             }
         }
     }
@@ -117,7 +127,13 @@ struct ConversationListView: View {
         }
         .overlay {
             if model.conversations.isEmpty && model.listError == nil {
-                ProgressView()
+                if model.hasListed {
+                    ContentUnavailableView(
+                        "No Conversations", systemImage: "bubble.left.and.bubble.right",
+                        description: Text("Start one with the New Conversation button."))
+                } else {
+                    ProgressView()
+                }
             }
         }
         .refreshable { await model.refresh() }

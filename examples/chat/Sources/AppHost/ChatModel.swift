@@ -77,6 +77,9 @@ public final class ChatModel {
     public private(set) var messages: [String: [ChatMessage]] = [:]
     public private(set) var connection: [String: ConnectionState] = [:]
     public private(set) var isRefreshing = false
+    /// Whether the server has answered a listing since this account was
+    /// shown, so an empty list means "no chats" rather than "still asking".
+    public private(set) var hasListed = false
     /// Why the last refresh failed (stored conversations stay on screen).
     public private(set) var listError: String?
     /// Why the last send or retry failed, per room.
@@ -222,6 +225,7 @@ public final class ChatModel {
         } catch {
             listError = Self.describe(error)
         }
+        hasListed = true
     }
 
     public func title(of conversationId: String) -> String {
@@ -591,6 +595,7 @@ public final class ChatModel {
         connection = [:]
         sendError = [:]
         listError = nil
+        hasListed = false
         conversations = core?.cachedConversations() ?? []
         updateWaitingCount()
         phase = newAccount == nil ? .signedOut : .ready
@@ -621,26 +626,30 @@ public final class ChatModel {
         ForgeFailure(title: title, message: describe(error))
     }
 
-    /// Text for the screen; `reason` fields are diagnostics from Rust.
+    /// Text for the screen. Most `reason` fields are diagnostics from Rust:
+    /// they go to the device log (`forge device logs`), and the screen gets
+    /// words instead. `InvalidInput`'s reason is written for people (an
+    /// empty or too long name, say).
     nonisolated public static func describe(_ error: Error) -> String {
         guard let error = error as? ChatError else { return error.localizedDescription }
+        NSLog("[chat] %@", String(describing: error))
         switch error {
-        case .Network(let reason):
-            return "Can't reach the chat server. Is it running, and is the phone on the same network? (\(reason))"
-        case .Certificate(let reason): return "The server's certificate was rejected: \(reason)"
-        case .Http(let status, let reason): return "The server answered \(status): \(reason)"
-        case .BadResponse(let reason): return "The server sent something unexpected: \(reason)"
+        case .Network:
+            return "Can't reach the chat server. Check your connection and try again."
+        case .Certificate: return "The chat server's identity couldn't be checked, so Chat didn't connect."
+        case .Http(let status, _): return "The chat server had a problem (error \(status)). Try again later."
+        case .BadResponse: return "The chat server sent something Chat doesn't understand. Try again later."
         case .Cancelled: return "Cancelled."
         case .NotFound: return "That conversation no longer exists."
-        case .UnsupportedOnHost(let detail): return "Not available here: \(detail)"
+        case .UnsupportedOnHost: return "This isn't available on this iPhone."
         case .InvalidInput(let reason): return "Check your input: \(reason)"
         case .NotSignedIn: return "Sign up first."
         case .Unauthorized:
             return "The server no longer knows this account. Sign out and sign up again."
-        case .Storage(let reason): return "Your chats couldn't be read or saved (\(reason))."
+        case .Storage: return "Your chats couldn't be read or saved on this iPhone."
         case .InUse: return "Chat's data is open somewhere else in this app. Close it there and try again."
         case .ShutDown: return "The app is closing."
-        case .Internal(let reason): return "Something went wrong: \(reason)"
+        case .Internal: return "Something went wrong in Chat. Try again."
         }
     }
 
