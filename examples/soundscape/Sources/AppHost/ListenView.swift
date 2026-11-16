@@ -44,8 +44,10 @@ struct ListenView: View {
                 .sheet(isPresented: $editingServer) {
                     ServerSheet(model: model)
                 }
-                .safeAreaInset(edge: .bottom) { NowPlayingBar(player: player) }
         }
+        // On the stack, not its first screen, so the bar stays in front on
+        // a song's screen too.
+        .safeAreaInset(edge: .bottom) { NowPlayingBar(player: player) }
         // On the stack, so an alert from a song's screen shows above it.
         .forgeAlert(Binding(
             get: { editingServer ? nil : model.alert },
