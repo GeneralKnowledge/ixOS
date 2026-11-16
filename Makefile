@@ -1,4 +1,4 @@
-.PHONY: check-app-crates check-app-parity chat-server test check check-template check-fresh-app test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
+.PHONY: check-app-crates check-app-parity check-boundaries chat-server test check check-template check-fresh-app test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
 
 test:
 	cargo test --workspace
@@ -51,6 +51,10 @@ check-bindings:
 check-app-parity:
 	./scripts/check-app-parity.sh
 
+# Dependencies run one way between framework, tools and apps (docs/areas.md).
+check-boundaries:
+	./scripts/check-boundaries.sh
+
 check-app-crates:
 	./scripts/check-app-crates.sh
 
@@ -71,4 +75,4 @@ package-ios:
 package-android:
 	./scripts/package-android-library.sh $(or $(APP),examples/pocket-library-android)/Generated
 
-validate: fmt clippy test check-bindings check-template check-app-parity
+validate: fmt clippy test check-bindings check-template check-app-parity check-boundaries

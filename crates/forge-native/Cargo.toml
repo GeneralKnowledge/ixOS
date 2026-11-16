@@ -23,3 +23,7 @@ async-trait = "0.1"
 [dev-dependencies]
 forge-runtime = { workspace = true }
 tempfile = "3.14"
+
+[package.metadata.forge]
+# Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
+area = "framework"

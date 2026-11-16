@@ -12,3 +12,7 @@ path = "uniffi-bindgen.rs"
 
 [dependencies]
 uniffi = { workspace = true }
+
+[package.metadata.forge]
+# Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
+area = "tools"

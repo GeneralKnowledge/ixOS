@@ -50,3 +50,7 @@ required-features = ["http"]
 [[test]]
 name = "ai"
 required-features = ["ai"]
+
+[package.metadata.forge]
+# Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
+area = "framework"

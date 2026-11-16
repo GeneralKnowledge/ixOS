@@ -21,3 +21,7 @@ jni = { version = "0.22", default-features = false }
 [dev-dependencies]
 # Same pin the app crates use in their model tests.
 proptest = "=1.12.0"
+
+[package.metadata.forge]
+# Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
+area = "framework"

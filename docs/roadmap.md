@@ -267,7 +267,7 @@ Forge UI Testing's routes (WebDriverAgent, Apple's accessibility service, `idevi
 
 ### Split Forge into focused projects — Future
 
-ixOS carries several products in one repository. The idea is to separate them by purpose, each with one user and one measure of success: **Forge** (the framework: Rust core, ForgeKit, ForgeUI, ForgeAppKit, releases), **Forge CLI** (the development workflow), **Forge Device** (device access, UI testing, exploration), **Forge Agents** (MCP server and agent setup, optional) and **Forge Examples** (demo apps and benchmarks). The framework would depend on none of the others, and apps would use Forge without cloning this repository. Boundaries would come first (a scope page per project), and code would move only where a release cycle needs it. One question comes before any restructuring: is Forge Device a general testing product or a Forge subsystem? The proposal, with how today's code maps onto it, is in the [Forge product boundaries](https://claude.ai/artifact/YBwLCg9UewZtk5cfkYwNNY) document. Nothing is scheduled.
+Revived 2026-11-16 as four areas, framework, tools, infrastructure and apps, with ownership split before anything moves. [areas.md](areas.md) has the map, the dependency rule and the plan: boundaries and a check first, then the listed crossings fixed, then `examples/` renamed to `apps/`. Separate repositories wait until Forge Tools has its own release cycle. The earlier five-project proposal is in [Forge product boundaries](https://claude.ai/artifact/YBwLCg9UewZtk5cfkYwNNY).
 
 ### Future ideas with no AI needed — Future (P5)
 
