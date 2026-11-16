@@ -115,8 +115,10 @@ struct FeedListView: View {
             } message: {
                 Text("Its articles are removed from this device, bookmarked ones too.")
             }
-            .forgeAlert($model.alert)
         }
+        // On the stack, not its first screen: an article that fails to open
+        // asks from a pushed screen, and an alert on the root showed behind it.
+        .forgeAlert($model.alert)
     }
 
     /// Matching articles, newest first, opening like timeline rows.

@@ -120,7 +120,6 @@ struct TodayView: View {
                 GoalPathView(model: model, goalId: route.goalId)
             }
             .sheet(isPresented: $choosingGoal) { GoalPickerView(model: model) }
-            .forgeAlert(failure: $model.actionError)
         }
     }
 }

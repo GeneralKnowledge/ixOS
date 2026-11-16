@@ -650,3 +650,23 @@ what it is given. It went smoothly; two small things:
 progress over time is the second chart; if both end up shaping series the
 same way in Rust (thinning, bucketing by time or distance), that shaping is
 the candidate, not a chart view.
+
+## A33. Alerts behind pushed screens (every app from the starter)
+
+On the phone, FieldKit's "Stop recording?" alert appeared behind the
+recording screen: the app-wide `.forgeAlert($model.alert)` sat on the trip
+list, the first screen of the navigation stack, and iOS showed it there,
+under the screen pushed over it. The starter put it in the same place, so
+every app copied it: Commonplace (failures from an open article), Good Dog
+(a goal's path), Relay (Forget on a device's screen), Sketchbook and
+Soundscape (both on their root and pushed screens). (bug)
+
+**Fix.** The alert goes on the `NavigationStack` (or the `TabView`) in the
+starter and every app; Sketchbook and Soundscape keep the pushed screen's
+own alert and show the list's only while the path is empty. Good Dog's
+lesson sheet got its own, since nothing under a sheet can present.
+
+**Measure.** `scripts/check-app-parity.sh` has a rule, `alerts-on-top`, that
+fails on an app-wide alert inside a stack that pushes screens, in every app
+and in the starters; run against the code before the fix, it named exactly
+the six apps above.

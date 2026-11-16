@@ -185,7 +185,6 @@ struct MyDogView: View {
             } message: {
                 Text("This deletes your dog's details, plans, sessions and progress. It can't be undone.")
             }
-            .forgeAlert(failure: $model.actionError)
         }
     }
 }

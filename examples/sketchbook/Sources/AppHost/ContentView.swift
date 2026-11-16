@@ -105,7 +105,12 @@ struct SketchListView: View {
                 Button("Cancel", role: .cancel) {}
                     .accessibilityIdentifier("rename.cancel")
             }
-            .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
+            // Only while the list is on screen: the sketch screen it pushes
+            // shows its own alerts, and this one would show behind it.
+            .forgeAlert(Binding(
+                get: { path.isEmpty ? model.alert : nil },
+                set: { model.alert = $0 }
+            )) { action in Task { await model.handle(action) } }
             .sensoryFeedback(.success, trigger: model.saveCount)
         }
     }
