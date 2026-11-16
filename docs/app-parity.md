@@ -32,7 +32,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | device-lab | Yes | Not applicable | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
 | fieldkit | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
 | forgeui-showcase | Yes | n/a | Yes | Yes | n/a | n/a | n/a | n/a | Yes | Yes | Yes |
-| good-dog | Yes | No (wave 3) | No (wave 3) | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| good-dog | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | pocket-library | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 | relay | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
 | sketchbook | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
@@ -45,8 +45,6 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 |---|---|---|---|---|
 | chat | `appkit-alerts` | missing | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | chat | `forge-host` | missing | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
-| good-dog | `appkit-alerts` | missing | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
-| good-dog | `forge-host` | missing | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
 | checklist | `device-checks` | missing | CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt | 4 |
 | commonplace | `device-checks` | missing | CP-5 (error words) needs the fixture server offline; written with slice 2 | 4 |
 | good-dog | `device-checks` | missing | GD requirements without a scenario yet; written with GD2b's phone run | 4 |

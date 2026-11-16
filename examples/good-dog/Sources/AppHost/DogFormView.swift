@@ -1,4 +1,5 @@
 @preconcurrency import GoodDogFFI
+import ForgeAppKit
 import SwiftUI
 
 /// The dog's details, for onboarding and for editing on My Dog. The form
@@ -65,7 +66,7 @@ struct OnboardingView: View {
     @State private var dailyTime: DailyTime = .aboutTenMinutes
     @State private var goal: TrainingGoal = .general
     @State private var experience: OwnerExperience = .new
-    @State private var error: String?
+    @State private var error: ForgeFailure?
     @State private var saving = false
     @FocusState private var nameFocused: Bool
 
@@ -96,7 +97,7 @@ struct OnboardingView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Welcome to Good Dog")
-            .errorAlert("Couldn't Save", message: $error)
+            .forgeAlert(failure: $error)
         }
     }
 
@@ -109,7 +110,7 @@ struct OnboardingView: View {
                 goal: goal, experience: experience
             ))
         } catch {
-            self.error = GoodDogModel.describe(error)
+            self.error = GoodDogModel.failure(error, title: "Couldn't Save")
         }
     }
 }
@@ -124,7 +125,7 @@ struct EditDogView: View {
     @State private var dailyTime: DailyTime
     @State private var goal: TrainingGoal
     @State private var experience: OwnerExperience
-    @State private var error: String?
+    @State private var error: ForgeFailure?
     @State private var saving = false
     @FocusState private var nameFocused: Bool
 
@@ -174,7 +175,7 @@ struct EditDogView: View {
                                     try await model.saveDog(edited)
                                     dismiss()
                                 } catch {
-                                    self.error = GoodDogModel.describe(error)
+                                    self.error = GoodDogModel.failure(error, title: "Couldn't Save")
                                 }
                             }
                         }
@@ -184,7 +185,7 @@ struct EditDogView: View {
                 }
             }
             .interactiveDismissDisabled(edited != dog)
-            .errorAlert("Couldn't Save", message: $error)
+            .forgeAlert(failure: $error)
         }
     }
 }

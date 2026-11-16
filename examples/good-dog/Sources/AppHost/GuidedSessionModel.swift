@@ -1,4 +1,5 @@
 @preconcurrency import GoodDogFFI
+import ForgeAppKit
 import Foundation
 import Observation
 
@@ -17,7 +18,7 @@ public final class GuidedSessionModel {
     public let ifDifficult: LinkedText
     public let safetyNote: LinkedText?
     /// A failed record, for an alert. The view clears it when dismissed.
-    public var error: String?
+    public var error: ForgeFailure?
 
     @ObservationIgnored private let session: GuidedSession
     @ObservationIgnored private let app: GoodDogModel
