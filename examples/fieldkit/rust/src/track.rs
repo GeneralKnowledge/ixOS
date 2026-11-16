@@ -146,6 +146,117 @@ impl Totals {
     }
 }
 
+/// The most points the elevation chart is given. A day's walk can keep
+/// thousands of fixes; a phone screen shows a few hundred at most.
+pub const MAX_PROFILE_POINTS: usize = 300;
+
+/// A split shorter than this at the end of a track is left out: its pace
+/// would be noise.
+pub const MIN_LAST_SPLIT_M: f64 = 100.0;
+
+/// One point of a track's elevation profile.
+#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq)]
+pub struct ElevationPoint {
+    /// How far along the track, in metres.
+    pub distance_m: f64,
+    pub altitude_m: f64,
+}
+
+/// One kilometre of a track (the last may be shorter) and how long it took.
+#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq)]
+pub struct PaceSplit {
+    /// 1 for the first kilometre.
+    pub number: u32,
+    /// The split's length: 1000 m, or less for the last.
+    pub distance_m: f64,
+    pub seconds: f64,
+    /// Seconds per kilometre, so a short last split compares with the rest.
+    pub seconds_per_km: f64,
+}
+
+/// What a trip's charts show: altitude over distance, and pace per
+/// kilometre. Both are empty when the track has nothing to show.
+#[derive(uniffi::Record, Clone, Debug, Default, PartialEq)]
+pub struct Profile {
+    pub elevation: Vec<ElevationPoint>,
+    pub splits: Vec<PaceSplit>,
+}
+
+/// The profile of a kept track, in order.
+pub fn profile(track: &[TrackPoint]) -> Profile {
+    let mut elevation = Vec::new();
+    let mut splits = Vec::new();
+    let mut along = 0.0;
+    let mut split_start_m = 0.0;
+    let mut split_start_ms = track.first().map(|p| p.timestamp_ms);
+    for (i, point) in track.iter().enumerate() {
+        if i > 0 {
+            let last = &track[i - 1];
+            let step = distance_m(
+                last.latitude,
+                last.longitude,
+                point.latitude,
+                point.longitude,
+            );
+            // Where along this step each kilometre was crossed, assuming a
+            // steady speed between the two fixes.
+            while along + step >= split_start_m + 1000.0 {
+                let into = split_start_m + 1000.0 - along;
+                let fraction = if step > 0.0 { into / step } else { 1.0 };
+                let at_ms = last.timestamp_ms as f64
+                    + fraction * (point.timestamp_ms - last.timestamp_ms) as f64;
+                let start = split_start_ms.unwrap_or(last.timestamp_ms) as f64;
+                splits.push(split(splits.len(), 1000.0, (at_ms - start) / 1000.0));
+                split_start_m += 1000.0;
+                split_start_ms = Some(at_ms.round() as i64);
+            }
+            along += step;
+        }
+        if let Some(altitude) = point.altitude_m {
+            elevation.push(ElevationPoint {
+                distance_m: along,
+                altitude_m: altitude,
+            });
+        }
+    }
+    let rest = along - split_start_m;
+    if let (Some(last), Some(start)) = (track.last(), split_start_ms) {
+        if rest >= MIN_LAST_SPLIT_M {
+            splits.push(split(
+                splits.len(),
+                rest,
+                (last.timestamp_ms - start) as f64 / 1000.0,
+            ));
+        }
+    }
+    // One altitude is not a profile.
+    if elevation.len() < 2 {
+        elevation.clear();
+    }
+    Profile {
+        elevation: thin(elevation, MAX_PROFILE_POINTS),
+        splits,
+    }
+}
+
+fn split(index: usize, distance_m: f64, seconds: f64) -> PaceSplit {
+    PaceSplit {
+        number: index as u32 + 1,
+        distance_m,
+        seconds,
+        seconds_per_km: seconds * 1000.0 / distance_m,
+    }
+}
+
+/// At most `max` points, evenly spread, always keeping the first and last.
+fn thin(points: Vec<ElevationPoint>, max: usize) -> Vec<ElevationPoint> {
+    if points.len() <= max || max < 2 {
+        return points;
+    }
+    let last = points.len() - 1;
+    (0..max).map(|i| points[i * last / (max - 1)]).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +331,67 @@ mod tests {
             totals.distance_m
         );
         assert_eq!(totals.climb_m, 14.0);
+    }
+
+    /// A straight walk north: `n` fixes `STEP` apart, `secs` seconds apart.
+    fn walk(n: usize, secs: i64, altitude: impl Fn(usize) -> Option<f64>) -> Vec<TrackPoint> {
+        (0..n)
+            .map(|i| {
+                let mut s = sample(51.5 + STEP * i as f64, -0.12, i as i64 * secs);
+                s.altitude_m = altitude(i);
+                TrackPoint::from(s)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_profile_has_altitude_over_distance_and_a_pace_per_kilometre() {
+        // 300 fixes about 11.1 m apart (about 3.3 km), 10 s apart: about
+        // 15 minutes a kilometre.
+        let track = walk(300, 10, |i| Some(100.0 + i as f64 / 10.0));
+        let p = profile(&track);
+        assert_eq!(p.elevation.len(), 300);
+        assert_eq!(p.elevation[0].distance_m, 0.0);
+        assert!((p.elevation[299].distance_m - 3324.0).abs() < 10.0);
+        assert_eq!(p.elevation[299].altitude_m, 129.9);
+        // Three whole kilometres and a last split of about 320 m.
+        assert_eq!(p.splits.len(), 4);
+        assert_eq!(
+            p.splits.iter().map(|s| s.number).collect::<Vec<_>>(),
+            [1, 2, 3, 4]
+        );
+        for s in &p.splits[..3] {
+            assert_eq!(s.distance_m, 1000.0);
+            assert!((s.seconds_per_km - 900.0).abs() < 2.0, "{s:?}");
+        }
+        let last = p.splits[3];
+        assert!((last.distance_m - 324.0).abs() < 10.0, "{last:?}");
+        assert!((last.seconds_per_km - 900.0).abs() < 10.0, "{last:?}");
+        // The splits add up to the whole walk.
+        let total: f64 = p.splits.iter().map(|s| s.seconds).sum();
+        assert!((total - 2990.0).abs() < 1.0, "{total}");
+    }
+
+    #[test]
+    fn a_short_or_flat_track_has_nothing_to_chart() {
+        assert_eq!(profile(&[]), Profile::default());
+        // 50 m without altitude: no elevation, and too short for a split.
+        let p = profile(&walk(5, 10, |_| None));
+        assert!(p.elevation.is_empty());
+        assert!(p.splits.is_empty());
+        // One altitude is not a profile.
+        let p = profile(&walk(5, 10, |i| (i == 2).then_some(100.0)));
+        assert!(p.elevation.is_empty());
+    }
+
+    #[test]
+    fn a_long_track_is_thinned_for_the_chart() {
+        let track = walk(5000, 5, |i| Some(i as f64));
+        let p = profile(&track);
+        assert_eq!(p.elevation.len(), MAX_PROFILE_POINTS);
+        assert_eq!(p.elevation[0].altitude_m, 0.0);
+        assert_eq!(p.elevation[MAX_PROFILE_POINTS - 1].altitude_m, 4999.0);
+        // About 55.6 km: 55 whole kilometres and a last split of about 600 m.
+        assert_eq!(p.splits.len(), 56);
     }
 }

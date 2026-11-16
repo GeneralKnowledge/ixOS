@@ -630,3 +630,23 @@ onto it.
 **Measure (Chat).** The move deleted `AppLifecycle.swift` and
 `ErrorAlert.swift`; the app's entry points keep one model for the process
 and attach its host to `ForgeLifecycle`, as Device Lab does.
+
+## A32. The first charts (FieldKit)
+
+FieldKit's trip screen now shows altitude over distance and a pace bar for
+each kilometre, with Apple's Swift Charts. The rules are in Rust
+(`track::profile`): kilometre crossings interpolated inside a step, a last
+split of 100 m or more drawn at its rate per kilometre, and the elevation
+thinned to 300 points so the chart never draws thousands. Swift only plots
+what it is given. It went smoothly; two small things:
+
+- Nothing on Linux shows a chart. `forge check swift` tests the data the
+  charts draw and syntax-checks the view, but the first look at the charts
+  is the iPhone build. (annoyance)
+- UniFFI records get no default in Swift, so an empty `Profile` is spelled
+  out by hand in the view's initial state. (minor)
+
+**Framework.** Nothing to extract: Swift Charts is the wrapper. Good Dog's
+progress over time is the second chart; if both end up shaping series the
+same way in Rust (thinning, bucketing by time or distance), that shaping is
+the candidate, not a chart view.

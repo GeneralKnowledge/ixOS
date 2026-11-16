@@ -263,3 +263,34 @@ fn reading_a_trip_changes_nothing_and_exports_write_files() {
         .contains("\"LineString\""));
     assert_eq!(core.revision(), revision);
 }
+
+#[test]
+fn a_trip_has_an_elevation_profile_and_a_pace_per_kilometre() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir).unwrap();
+    let trip = block_on(core.start_trip("Hill".into())).unwrap();
+    // 120 fixes about 11 m apart: about 1.3 km, climbing 1 m a fix.
+    block_on(core.record(walk(0, 120))).unwrap();
+    block_on(core.stop_trip()).unwrap();
+    let revision = core.revision();
+
+    let profile = block_on(core.profile(trip.id, None)).unwrap();
+    assert_eq!(profile.elevation.len(), 120);
+    assert_eq!(profile.elevation[0].distance_m, 0.0);
+    assert_eq!(profile.elevation[0].altitude_m, 20.0);
+    assert_eq!(profile.elevation[119].altitude_m, 139.0);
+    // One whole kilometre, then the last 300 m or so.
+    assert_eq!(profile.splits.len(), 2);
+    let first = &profile.splits[0];
+    assert_eq!(first.number, 1);
+    assert!((first.distance_m - 1000.0).abs() < 0.01);
+    // About 90 steps of 5 s.
+    assert!((first.seconds_per_km - 450.0).abs() < 5.0, "{first:?}");
+    assert!(profile.splits[1].distance_m > 250.0);
+    assert_eq!(core.revision(), revision, "reading changes nothing");
+
+    assert_eq!(
+        block_on(core.profile(999, None)),
+        Err(FieldKitError::NotFound { id: 999 })
+    );
+}

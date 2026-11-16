@@ -463,6 +463,11 @@ RustBuffer uniffi_fieldkit_core_fn_method_fieldkitcore_location_problem(uint64_t
 RustBuffer uniffi_fieldkit_core_fn_method_fieldkitcore_phase(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FIELDKIT_CORE_FN_METHOD_FIELDKITCORE_PROFILE
+#define UNIFFI_FFIDEF_UNIFFI_FIELDKIT_CORE_FN_METHOD_FIELDKITCORE_PROFILE
+uint64_t uniffi_fieldkit_core_fn_method_fieldkitcore_profile(uint64_t ptr, int64_t trip_id, RustBuffer cancellation
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FIELDKIT_CORE_FN_METHOD_FIELDKITCORE_RECORD
 #define UNIFFI_FFIDEF_UNIFFI_FIELDKIT_CORE_FN_METHOD_FIELDKITCORE_RECORD
 uint64_t uniffi_fieldkit_core_fn_method_fieldkitcore_record(uint64_t ptr, RustBuffer samples
@@ -1114,6 +1119,12 @@ uint16_t uniffi_fieldkit_core_checksum_method_fieldkitcore_location_problem(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FIELDKIT_CORE_CHECKSUM_METHOD_FIELDKITCORE_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_FIELDKIT_CORE_CHECKSUM_METHOD_FIELDKITCORE_PHASE
 uint16_t uniffi_fieldkit_core_checksum_method_fieldkitcore_phase(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FIELDKIT_CORE_CHECKSUM_METHOD_FIELDKITCORE_PROFILE
+#define UNIFFI_FFIDEF_UNIFFI_FIELDKIT_CORE_CHECKSUM_METHOD_FIELDKITCORE_PROFILE
+uint16_t uniffi_fieldkit_core_checksum_method_fieldkitcore_profile(void
     
 );
 #endif

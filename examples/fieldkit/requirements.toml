@@ -8,3 +8,9 @@ id = "FK-1"
 statement = "A trip can be started with a title, take notes while it records, and stop into the list of trips, with its time shown as minutes and seconds (hours past an hour); without location it still records and says why there is no track."
 twin = ["TripsModelTests.testStartAddNoteAndStop", "TripsModelTests.testFormatting"]
 device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "FK-2"
+statement = "A finished trip shows its altitude over distance and its time for each kilometre (a short last stretch at the same rate), and says so when it has no altitude or is under 100 m."
+twin = ["TripsModelTests.testATripHasElevationAndPaceCharts", "TripsModelTests.testFormatting"]
+device = ["uitests/charts.toml"]

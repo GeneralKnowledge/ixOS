@@ -41,7 +41,7 @@ pub use model::{
     TripSummary, MAX_NOTE_CHARS, MAX_TITLE_CHARS,
 };
 use store::{NewNote, Store};
-pub use track::{LocationSample, TrackPoint};
+pub use track::{ElevationPoint, LocationSample, PaceSplit, Profile, TrackPoint};
 use track::{Skip, Totals};
 
 uniffi::setup_scaffolding!();
@@ -382,6 +382,24 @@ impl FieldKitCore {
         self.rt
             .run("track", work, move |_| {
                 store::track(&lock(&reader), trip_id)
+            })
+            .await
+    }
+
+    /// A trip's charts: altitude over distance and the time for each
+    /// kilometre (see [`track::profile`]). On-screen work, like `trip`.
+    pub async fn profile(
+        &self,
+        trip_id: i64,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Profile, FieldKitError> {
+        self.summary(trip_id)?;
+        let reader = Arc::clone(&self.reader);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("profile", work, move |_| {
+                let points = store::track(&lock(&reader), trip_id)?;
+                Ok(track::profile(&points))
             })
             .await
     }

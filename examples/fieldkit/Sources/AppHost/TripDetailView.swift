@@ -11,6 +11,7 @@ struct TripDetailView: View {
 
     @State private var track: [TrackPoint] = []
     @State private var notes: [Note] = []
+    @State private var profile = Profile(elevation: [], splits: [])
     @State private var loadFailed = false
     @State private var isAddingNote = false
     @State private var isRenaming = false
@@ -31,6 +32,12 @@ struct TripDetailView: View {
                         Stat(title: "Time", value: TripFormat.elapsed(trip))
                         Stat(title: "Climb", value: TripFormat.distance(trip.climbM))
                     }
+                }
+                Section("Elevation") {
+                    ElevationChart(points: profile.elevation)
+                }
+                Section("Pace") {
+                    PaceChart(splits: profile.splits)
                 }
                 Section("Notes") {
                     if notes.isEmpty {
@@ -103,6 +110,7 @@ struct TripDetailView: View {
             let loaded = try await model.load(tripID)
             track = loaded.track
             notes = loaded.detail.notes
+            profile = loaded.profile
             loadFailed = false
         } catch {
             loadFailed = true

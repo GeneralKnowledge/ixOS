@@ -125,11 +125,14 @@ public final class TripsModel {
         await perform { core in try await core.removeNote(noteId: note.id) }
     }
 
-    /// A trip's notes and track, read off Rust's command thread.
-    public func load(_ tripID: Int64) async throws -> (detail: TripDetail, track: [TrackPoint]) {
+    /// A trip's notes, track and charts, read off Rust's command thread.
+    public func load(_ tripID: Int64) async throws
+        -> (detail: TripDetail, track: [TrackPoint], profile: Profile)
+    {
         async let detail = core.trip(tripId: tripID, cancellation: nil)
         async let track = core.track(tripId: tripID, cancellation: nil)
-        return try await (detail, track)
+        async let profile = core.profile(tripId: tripID, cancellation: nil)
+        return try await (detail, track, profile)
     }
 
     /// Writes the trip as a file to share.
@@ -229,6 +232,12 @@ public enum TripFormat {
         return h > 0
             ? String(format: "%d:%02d:%02d", h, m, s)
             : String(format: "%d:%02d", m, s)
+    }
+
+    /// A kilometre's time as minutes and seconds: "7:30 /km".
+    public static func pace(secondsPerKm: Double) -> String {
+        let total = max(0, Int(secondsPerKm.rounded()))
+        return String(format: "%d:%02d /km", total / 60, total % 60)
     }
 
     public static func date(_ ms: Int64) -> Date {

@@ -720,6 +720,12 @@ public protocol FieldKitCoreProtocol: AnyObject, Sendable {
     func phase()  -> AppPhase
     
     /**
+     * A trip's charts: altitude over distance and the time for each
+     * kilometre (see [`track::profile`]). On-screen work, like `trip`.
+     */
+    func profile(tripId: Int64, cancellation: Cancellation?) async throws  -> Profile
+    
+    /**
      * Adds location fixes to the recording trip, keeping the good ones
      * (see [`track::check`]), in the order Core Location gave them. The
      * core follows the location service itself while a trip records; this
@@ -1075,6 +1081,26 @@ open func phase() -> AppPhase  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * A trip's charts: altitude over distance and the time for each
+     * kilometre (see [`track::profile`]). On-screen work, like `trip`.
+     */
+open func profile(tripId: Int64, cancellation: Cancellation?)async throws  -> Profile  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fieldkit_core_fn_method_fieldkitcore_profile(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(tripId),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_fieldkit_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_fieldkit_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_fieldkit_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeProfile_lift,
+            errorHandler: FfiConverterTypeFieldKitError_lift
+        )
 }
     
     /**
@@ -3049,6 +3075,69 @@ public func FfiConverterTypeDeepLink_lower(_ value: DeepLink) -> RustBuffer {
 
 
 /**
+ * One point of a track's elevation profile.
+ */
+public struct ElevationPoint: Equatable, Hashable {
+    /**
+     * How far along the track, in metres.
+     */
+    public var distanceM: Double
+    public var altitudeM: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * How far along the track, in metres.
+         */distanceM: Double, altitudeM: Double) {
+        self.distanceM = distanceM
+        self.altitudeM = altitudeM
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ElevationPoint: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeElevationPoint: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ElevationPoint {
+        return
+            try ElevationPoint(
+                distanceM: FfiConverterDouble.read(from: &buf), 
+                altitudeM: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ElevationPoint, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.distanceM, into: &buf)
+        FfiConverterDouble.write(value.altitudeM, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeElevationPoint_lift(_ buf: RustBuffer) throws -> ElevationPoint {
+    return try FfiConverterTypeElevationPoint.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeElevationPoint_lower(_ value: ElevationPoint) -> RustBuffer {
+    return FfiConverterTypeElevationPoint.lower(value)
+}
+
+
+/**
  * Where the top of the device points.
  */
 public struct Heading: Equatable, Hashable {
@@ -3830,6 +3919,89 @@ public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResp
 
 
 /**
+ * One kilometre of a track (the last may be shorter) and how long it took.
+ */
+public struct PaceSplit: Equatable, Hashable {
+    /**
+     * 1 for the first kilometre.
+     */
+    public var number: UInt32
+    /**
+     * The split's length: 1000 m, or less for the last.
+     */
+    public var distanceM: Double
+    public var seconds: Double
+    /**
+     * Seconds per kilometre, so a short last split compares with the rest.
+     */
+    public var secondsPerKm: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 1 for the first kilometre.
+         */number: UInt32, 
+        /**
+         * The split's length: 1000 m, or less for the last.
+         */distanceM: Double, seconds: Double, 
+        /**
+         * Seconds per kilometre, so a short last split compares with the rest.
+         */secondsPerKm: Double) {
+        self.number = number
+        self.distanceM = distanceM
+        self.seconds = seconds
+        self.secondsPerKm = secondsPerKm
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PaceSplit: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePaceSplit: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PaceSplit {
+        return
+            try PaceSplit(
+                number: FfiConverterUInt32.read(from: &buf), 
+                distanceM: FfiConverterDouble.read(from: &buf), 
+                seconds: FfiConverterDouble.read(from: &buf), 
+                secondsPerKm: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PaceSplit, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.number, into: &buf)
+        FfiConverterDouble.write(value.distanceM, into: &buf)
+        FfiConverterDouble.write(value.seconds, into: &buf)
+        FfiConverterDouble.write(value.secondsPerKm, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePaceSplit_lift(_ buf: RustBuffer) throws -> PaceSplit {
+    return try FfiConverterTypePaceSplit.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePaceSplit_lower(_ value: PaceSplit) -> RustBuffer {
+    return FfiConverterTypePaceSplit.lower(value)
+}
+
+
+/**
  * A place, without the details of a track point.
  */
 public struct Position: Equatable, Hashable {
@@ -3883,6 +4055,64 @@ public func FfiConverterTypePosition_lift(_ buf: RustBuffer) throws -> Position 
 #endif
 public func FfiConverterTypePosition_lower(_ value: Position) -> RustBuffer {
     return FfiConverterTypePosition.lower(value)
+}
+
+
+/**
+ * What a trip's charts show: altitude over distance, and pace per
+ * kilometre. Both are empty when the track has nothing to show.
+ */
+public struct Profile: Equatable, Hashable {
+    public var elevation: [ElevationPoint]
+    public var splits: [PaceSplit]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(elevation: [ElevationPoint], splits: [PaceSplit]) {
+        self.elevation = elevation
+        self.splits = splits
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Profile: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProfile: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Profile {
+        return
+            try Profile(
+                elevation: FfiConverterSequenceTypeElevationPoint.read(from: &buf), 
+                splits: FfiConverterSequenceTypePaceSplit.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Profile, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeElevationPoint.write(value.elevation, into: &buf)
+        FfiConverterSequenceTypePaceSplit.write(value.splits, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProfile_lift(_ buf: RustBuffer) throws -> Profile {
+    return try FfiConverterTypeProfile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProfile_lower(_ value: Profile) -> RustBuffer {
+    return FfiConverterTypeProfile.lower(value)
 }
 
 
@@ -5769,6 +5999,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeElevationPoint: FfiConverterRustBuffer {
+    typealias SwiftType = [ElevationPoint]
+
+    public static func write(_ value: [ElevationPoint], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeElevationPoint.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ElevationPoint] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ElevationPoint]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeElevationPoint.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLocationSample: FfiConverterRustBuffer {
     typealias SwiftType = [LocationSample]
 
@@ -5861,6 +6116,31 @@ fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRus
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeNotificationCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePaceSplit: FfiConverterRustBuffer {
+    typealias SwiftType = [PaceSplit]
+
+    public static func write(_ value: [PaceSplit], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePaceSplit.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PaceSplit] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PaceSplit]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePaceSplit.read(from: &buf))
         }
         return seq
     }
@@ -6261,6 +6541,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fieldkit_core_checksum_method_fieldkitcore_phase() != 38295) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fieldkit_core_checksum_method_fieldkitcore_profile() != 45545) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fieldkit_core_checksum_method_fieldkitcore_record() != 46675) {
