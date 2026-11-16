@@ -22,7 +22,7 @@ Left out: accounts and sync services (Feedbin, iCloud and the like), widgets, sh
 
 ## Running the comparison
 
-A person walks both apps side by side with [walk.md](walk.md): about ten minutes, no cable, no explorer. Commonplace is in Device Lab (Apps > Commonplace), installed over the air; NetNewsWire comes from the App Store.
+A person walks both apps side by side with [walk.md](walk.md): about ten minutes, no explorer. Commonplace is in Device Lab (Apps > Commonplace), installed by cable with `forge run ios`; NetNewsWire comes from the App Store.
 
 1. **Fixture feeds.** On the laptop, `python3 docs/benchmarks/netnewswire/fixtures/serve.py` serves [the fixtures](fixtures/) and prints the address. Both apps subscribe to the same feeds, so they show the same content. The phone must reach the laptop (same Wi-Fi, or the tailnet address); Commonplace asks for local network access the first time.
 2. **Walk** the steps in [walk.md](walk.md), doing each in NetNewsWire and then in Commonplace, and mark each Same, Different (one line on how) or Missing.

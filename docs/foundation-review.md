@@ -18,8 +18,8 @@ Contents: [Phase 1, the foundation as built](#phase-1-the-foundation-as-built) Â
 | `forge-storage` | 1.4k | none | `write_atomic`, `JsonFile` (versioned envelope, migrations), `FileStore` (relative names, temp-then-rename, sweep, SHA-256 naming), `Database` (bundled SQLite, WAL, migrations, move-aside recovery) |
 | `forge-net` | 2.5k | none | `HttpClient` trait, `UreqClient` (blocking, rustls with platform verifier), streaming, `CancelHandle` (the runtime's cancellation primitive lives here), `Backoff`, `download_to_file` |
 | `forge-services` | 3.6k + 2.3k Swift | none (UniFFI via macro in the app crate) | `native_services!` foreign traits (Keychain, directories, notifications, permissions, deep links, sharing) always installed; optional `connectivity`, `device_status`, `motion`, `location`, `bluetooth`, `audio`; `Feed`/`Watch` fan-out for host values; process-global install slots |
-| `forge-devtools`, `forge-devproto` | 0.8k, 1.3k | runtime; none | In-app development server (loopback, paired, Noise-encrypted), only with the app crate's `devtools` feature |
-| `forge-device`, `forge-crash`, `forge-uitest`, `forge-mcp`, `forge-cli` | 2.1k, 1.9k, 10.9k, 4.4k, 16.6k | tooling only | Host-side tooling; never linked into an app |
+| `forge-devtools` (in forge-lab since 2026-11-15), `forge-devproto` | 0.8k, 1.3k | runtime; none | In-app development server (loopback, paired, Noise-encrypted), only with the app crate's `devtools` feature |
+| `forge-device`, `forge-crash`, `forge-uitest`, `forge-mcp` (in forge-lab since 2026-11-15), `forge-cli` | 2.1k, 1.9k, 10.9k, 4.4k, 16.6k | tooling only | Host-side tooling; never linked into an app |
 
 About 9k lines are platform; about 36k are tooling. That ratio is the clearest evidence for Reuben's point that Forge has had more attention than the platform.
 
