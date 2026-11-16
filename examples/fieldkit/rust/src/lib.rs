@@ -599,6 +599,9 @@ impl FieldKitCore {
             // Closer fixes are dropped anyway (track::MIN_STEP_M).
             distance_filter_m: Some(2.0),
             include_heading: false,
+            // Keeps recording with the phone locked (forge.toml
+            // background_modes); the watch ends when the trip stops.
+            background: true,
         };
         let me = self.me.clone();
         let started = service.watch(options, move |event| {
@@ -721,6 +724,10 @@ mod tests {
         let trip = block_on(core.start_trip("Walk".into())).unwrap();
         assert!(core.is_following_location());
         assert_eq!(fake.options().unwrap().accuracy, LocationAccuracy::Best);
+        assert!(
+            fake.options().unwrap().background,
+            "a trip records with the phone locked"
+        );
         for i in 0..5 {
             fake.send(fix(i));
         }

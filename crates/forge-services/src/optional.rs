@@ -1016,6 +1016,14 @@ macro_rules! __native_location {
                 /// Also report compass headings (where the top of the phone
                 /// points).
                 pub include_heading: bool,
+                /// Keep reporting while the app is in the background or the
+                /// phone is locked, for a recording that must not have gaps
+                /// (FieldKit's trips). iOS shows a blue location indicator
+                /// meanwhile. Start the watch while the app is on screen: the
+                /// "when in use" permission covers it then. Needs
+                /// `background_modes = ["location"]` in forge.toml; without it
+                /// updates stop in the background as if this were `false`.
+                pub background: bool,
             }
 
             /// One position fix. Optional fields are `None` when the device

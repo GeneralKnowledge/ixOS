@@ -209,7 +209,7 @@ forge_services::native_services!(connectivity, device_status, motion, location, 
 | `connectivity` | `ConnectivityService`: `current()`, `watch(..)`; `ConnectivityStatus` (online, interfaces, metered, Low Data Mode, offline reason), `allows(TransferPolicy::Unmetered)` | `ForgeConnectivityMonitor` (`NWPathMonitor`) | None |
 | `device_status` | `DeviceStatusService`: `info()` (model, iOS version, cores, RAM, screen), `status()` (battery, Low Power Mode, thermal state, storage, memory left), `watch(..)`; `DeviceStatus::defer_heavy_work(memory)` | `ForgeDeviceStatus` (`UIDevice`, `ProcessInfo`, file system, `os_proc_available_memory`) | None |
 | `motion` | `MotionService`: `availability()`, `watch(sensor, interval_ms, ..)` for the accelerometer, gyroscope, magnetometer, fused device motion (attitude, gravity, user acceleration, heading) and the barometer | `ForgeMotionSensors` (Core Motion) | The barometer needs `NativePermission::Motion` and `[ios.permissions] motion`; the other sensors need nothing |
-| `location` | `LocationService`: `watch(LocationOptions, ..)` for fixes and compass headings, `last_known()`, `is_precise()`; `LocationFix::distance_to` | `ForgeLocationSource` (`CLLocationManager`, when in use) | `NativePermission::Location` and `[ios.permissions] location_when_in_use` |
+| `location` | `LocationService`: `watch(LocationOptions, ..)` for fixes and compass headings, `last_known()`, `is_precise()`; `LocationFix::distance_to` | `ForgeLocationSource` (`CLLocationManager`, when in use; `background: true` carries on in the background) | `NativePermission::Location` and `[ios.permissions] location_when_in_use` |
 | `bluetooth` | `BluetoothService`: `state()`, `watch(..)` (on, off, unauthorised, unsupported) | `ForgeBluetoothMonitor` (`CBCentralManager`) | `NativePermission::Bluetooth` and `[ios.permissions] bluetooth` |
 | `audio` | `AudioService`: `duration(path)` | `ForgeAudioFiles`; for the UI `ForgeAudioRecorder`, `ForgeAudioPlayer`, `ForgeAudio.waveform` (and the `ForgeAudioSession` helper every app has) (AVFoundation) | `NativePermission::Microphone` and `[ios.permissions] microphone` |
 | `transfers` | `TransferService`: `start(TransferRequest)`, `cancel`, `retry`, `remove`, `list`, `get`, `deliver_to(key, FileStore)`, `watch(..)`. Needs forge-services' `transfers` feature | `ForgeTransfers` (background `URLSession`), plus an app delegate hook | None; see [below](#background-transfers-transfers) |
@@ -227,7 +227,7 @@ let native = NativeServices::installed()?;
 if native.request_permission(NativePermission::Location).await.allows_use() {
     let location = LocationService::installed()?;
     let watch = location.watch(
-        LocationOptions { accuracy: LocationAccuracy::Best, distance_filter_m: Some(5.0), include_heading: false },
+        LocationOptions { accuracy: LocationAccuracy::Best, distance_filter_m: Some(5.0), include_heading: false, background: false },
         move |event| if let LocationEvent::Fix { fix } = event { /* store it */ },
     )?;
     // keep `watch`; drop it to stop
@@ -408,7 +408,7 @@ Cancelling a `CancelHandle` cancels the `URLSessionTask`. The response body is l
 
 Unlike ureq, `URLSession` applies App Transport Security: plain `http://` to a host name is refused unless the app allows it, while numeric IP addresses on the local network are not blocked by ATS (the local network permission still applies).
 
-**Foreground only.** Apart from `transfers`, nothing here runs in the background. Background location needs the "always" permission and the `location` background mode, which no service asks for yet.
+**Foreground only.** Apart from `transfers` and location, nothing here runs in the background. A location watch with `LocationOptions { background: true, .. }` keeps its fixes coming with the app in the background or the phone locked (iOS shows a blue location indicator), when `forge.toml` has `background_modes = ["location"]`. Start it while the app is on screen, from a button, and "when in use" covers it; FieldKit records trips this way. Starting location from the background would need the "always" permission, which no service asks for.
 
 **What iOS does not give apps,** whatever the account: signal strength, carrier name (retired API), the ambient light sensor, MAC addresses. The Wi-Fi network name needs the paid-team Access Wi-Fi Information entitlement; the device's own name needs an entitlement Apple grants on request (apps see "iPhone"). [examples/device-lab](../examples/device-lab) shows all of it in one app.
 

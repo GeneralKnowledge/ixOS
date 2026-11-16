@@ -4,6 +4,9 @@
 //
 // "When in use" only. Needs NSLocationWhenInUseUsageDescription (forge.toml
 // `[ios.permissions] location_when_in_use`) and NativePermission.location.
+// `LocationOptions.background` keeps updates going while the app is in the
+// background or the phone is locked; that needs `background_modes =
+// ["location"]` too, and the updates must start while the app is on screen.
 
 import Foundation
 
@@ -64,9 +67,18 @@ extension ForgeServices {
             lock.lock()
             self.sink = sink
             lock.unlock()
+            let background = options.background && Self.hasLocationBackgroundMode
+            if options.background && !background {
+                print("[forge] location: background updates need background_modes = [\"location\"] in forge.toml")
+            }
             onMain { [manager] in
                 manager.desiredAccuracy = Self.accuracy(options.accuracy)
                 manager.distanceFilter = options.distanceFilterM ?? kCLDistanceFilterNone
+                // Setting this without the background mode ends the app.
+                manager.allowsBackgroundLocationUpdates = background
+                manager.showsBackgroundLocationIndicator = background
+                // A recording must not pause itself when the phone sits still.
+                manager.pausesLocationUpdatesAutomatically = !background
                 manager.startUpdatingLocation()
                 if options.includeHeading && CLLocationManager.headingAvailable() {
                     manager.headingFilter = 1
@@ -82,8 +94,14 @@ extension ForgeServices {
             onMain { [manager] in
                 manager.stopUpdatingLocation()
                 manager.stopUpdatingHeading()
+                manager.allowsBackgroundLocationUpdates = false
             }
         }
+
+        /// Whether Info.plist lists the `location` background mode.
+        static let hasLocationBackgroundMode: Bool =
+            (Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String])?
+            .contains("location") ?? false
 
         // MARK: Permission
 

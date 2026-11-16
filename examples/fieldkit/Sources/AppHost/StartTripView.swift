@@ -55,7 +55,7 @@ struct StartTripView: View {
         case .notDetermined:
             Label("FieldKit asks for your location when you start.", systemImage: "location")
         default:
-            Label("Your track is recorded while FieldKit is open.", systemImage: "location")
+            Label("Your track keeps recording with the phone locked, until you stop the trip.", systemImage: "location")
         }
     }
 

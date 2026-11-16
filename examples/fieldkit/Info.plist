@@ -10,7 +10,11 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>FieldKit records your track while you record a trip.</string>
+	<string>FieldKit records your track while you record a trip, also with the phone locked. It stops when you stop the trip.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UIDeviceFamily</key>
 	<array>
 		<integer>1</integer>

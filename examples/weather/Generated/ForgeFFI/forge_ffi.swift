@@ -4524,6 +4524,16 @@ public struct LocationOptions: Equatable, Hashable {
      * points).
      */
     public var includeHeading: Bool
+    /**
+     * Keep reporting while the app is in the background or the
+     * phone is locked, for a recording that must not have gaps
+     * (FieldKit's trips). iOS shows a blue location indicator
+     * meanwhile. Start the watch while the app is on screen: the
+     * "when in use" permission covers it then. Needs
+     * `background_modes = ["location"]` in forge.toml; without it
+     * updates stop in the background as if this were `false`.
+     */
+    public var background: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -4535,10 +4545,20 @@ public struct LocationOptions: Equatable, Hashable {
         /**
          * Also report compass headings (where the top of the phone
          * points).
-         */includeHeading: Bool) {
+         */includeHeading: Bool, 
+        /**
+         * Keep reporting while the app is in the background or the
+         * phone is locked, for a recording that must not have gaps
+         * (FieldKit's trips). iOS shows a blue location indicator
+         * meanwhile. Start the watch while the app is on screen: the
+         * "when in use" permission covers it then. Needs
+         * `background_modes = ["location"]` in forge.toml; without it
+         * updates stop in the background as if this were `false`.
+         */background: Bool) {
         self.accuracy = accuracy
         self.distanceFilterM = distanceFilterM
         self.includeHeading = includeHeading
+        self.background = background
     }
 
     
@@ -4559,7 +4579,8 @@ public struct FfiConverterTypeLocationOptions: FfiConverterRustBuffer {
             try LocationOptions(
                 accuracy: FfiConverterTypeLocationAccuracy.read(from: &buf), 
                 distanceFilterM: FfiConverterOptionDouble.read(from: &buf), 
-                includeHeading: FfiConverterBool.read(from: &buf)
+                includeHeading: FfiConverterBool.read(from: &buf), 
+                background: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -4567,6 +4588,7 @@ public struct FfiConverterTypeLocationOptions: FfiConverterRustBuffer {
         FfiConverterTypeLocationAccuracy.write(value.accuracy, into: &buf)
         FfiConverterOptionDouble.write(value.distanceFilterM, into: &buf)
         FfiConverterBool.write(value.includeHeading, into: &buf)
+        FfiConverterBool.write(value.background, into: &buf)
     }
 }
 
