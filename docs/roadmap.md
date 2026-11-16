@@ -73,7 +73,7 @@ Expected from the first picks: full-text search (Commonplace, then Pocket Librar
      2. Pocket Library builds and validates its own search across books and notes.
      3. The two are compared, and only what they genuinely share moves into forge-storage.
   2. FieldKit's elevation and pace charts and Good Dog's progress over time, then Weather's hourly chart.
-  3. FieldKit's photo notes, after Chat's photo picker.
+  3. FieldKit's photo notes, after Chat's photo picker. **The photo picker is the next framework extraction in the queue** (noted 2026-11-16): once FieldKit's picker passes on the iPhone, the part it shares with Chat's moves into the framework, and Soundscape's song artwork is the first feature built on the extracted picker rather than its own copy.
 
   The shared part moves into the framework after both features have been validated on an iPhone.
 

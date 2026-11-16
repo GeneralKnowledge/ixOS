@@ -1,4 +1,5 @@
 @preconcurrency import FORGE_MODULE_NAMEFFI
+import ForgeAppKit
 import SwiftUI
 
 /// The Settings sheet: what is stored, and a network check that runs an
@@ -68,6 +69,9 @@ struct SettingsView: View {
                 await model.checkURL()
             }
         }
+        // A setting you add here that fails says so here: the list's alert
+        // can't show over this sheet.
+        .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
     }
 
     private func startCheck() {
