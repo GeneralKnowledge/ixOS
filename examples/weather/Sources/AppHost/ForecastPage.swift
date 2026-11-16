@@ -19,12 +19,8 @@ struct ForecastPage: View {
                 ScrollView {
                     VStack(spacing: 12) {
                         Header(page: page, report: report, overview: overview)
-                        if let message = page.errorMessage ?? page.staleNotice {
-                            Notice(
-                                text: message,
-                                systemImage: page.errorMessage == nil && report.isOfflineFallback == false
-                                    ? "clock" : "wifi.slash",
-                                palette: palette)
+                        if let message = model.notice(for: page) {
+                            Notice(text: message, systemImage: noticeSymbol(report), palette: palette)
                         }
                         if !overview.timeline.isEmpty || !overview.summary.isEmpty {
                             HourlyCard(overview: overview, palette: palette)
@@ -55,6 +51,16 @@ struct ForecastPage: View {
                 EmptyPage(page: page, model: model, showLocations: showLocations)
             }
         }
+    }
+}
+
+extension ForecastPage {
+    /// Wi-Fi for a failed refresh or an offline fallback, a crossed-out
+    /// arrow when "My Location" couldn't be found, a clock for an old report.
+    fileprivate func noticeSymbol(_ report: WeatherReport) -> String {
+        if page.errorMessage != nil || report.isOfflineFallback { return "wifi.slash" }
+        if page.isMyLocation, model.locationMessage != nil { return "location.slash" }
+        return "clock"
     }
 }
 
