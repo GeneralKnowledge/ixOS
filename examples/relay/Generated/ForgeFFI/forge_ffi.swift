@@ -736,6 +736,14 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func phase()  -> AppPhase
     
     /**
+     * Saves what later code receives bring into `folder` (made if missing)
+     * instead of Relay's own `codes/received`. The app passes a folder in
+     * its Documents so received files show in the Files app; what was
+     * received before stays where it is, and stays in the history.
+     */
+    func receiveInto(folder: String) throws 
+    
+    /**
      * Receives the file or folder a sender offers with a word code such as
      * `37-grasp-gag-drum` (Relay M1; the sender is another Relay or
      * `relay-spike send`). `addresses` and `endpoint_id` come from the
@@ -771,6 +779,13 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * Bonjour), or where it was last reached when there are none.
      */
     func sendNote(deviceId: String, text: String, addresses: [String], cancellation: Cancellation?) async throws  -> Transfer
+    
+    /**
+     * Starts sending several files and folders as one transfer with a new
+     * word code, like `send_with_code`. The receiver gets them in one
+     * folder named "N items"; two items with the same name are refused.
+     */
+    func sendPathsWithCode(paths: [String]) throws 
     
     /**
      * Starts sending the file or folder at `path` with a new word code, in
@@ -1114,6 +1129,21 @@ open func phase() -> AppPhase  {
 }
     
     /**
+     * Saves what later code receives bring into `folder` (made if missing)
+     * instead of Relay's own `codes/received`. The app passes a folder in
+     * its Documents so received files show in the Files app; what was
+     * received before stays where it is, and stays in the history.
+     */
+open func receiveInto(folder: String)throws   {try rustCallWithError(FfiConverterTypeRelayError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_receive_into(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(folder),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Receives the file or folder a sender offers with a word code such as
      * `37-grasp-gag-drum` (Relay M1; the sender is another Relay or
      * `relay-spike send`). `addresses` and `endpoint_id` come from the
@@ -1225,6 +1255,20 @@ open func sendNote(deviceId: String, text: String, addresses: [String], cancella
             liftFunc: FfiConverterTypeTransfer_lift,
             errorHandler: FfiConverterTypeRelayError_lift
         )
+}
+    
+    /**
+     * Starts sending several files and folders as one transfer with a new
+     * word code, like `send_with_code`. The receiver gets them in one
+     * folder named "N items"; two items with the same name are refused.
+     */
+open func sendPathsWithCode(paths: [String])throws   {try rustCallWithError(FfiConverterTypeRelayError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_send_paths_with_code(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceString.lower(paths),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -2938,6 +2982,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_phase() != 61654) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_receive_into() != 33604) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_receive_with_code() != 43026) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2954,6 +3001,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_send_note() != 59564) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_send_paths_with_code() != 4107) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_send_with_code() != 8349) {

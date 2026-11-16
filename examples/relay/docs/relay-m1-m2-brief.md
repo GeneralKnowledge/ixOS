@@ -95,6 +95,11 @@ batched, built before the phone is needed). No test-only PRs.
 - **Phone check:** a folder each way between the iPhone and the laptop,
   one interrupted and resumed, and the peak memory read from the sheet.
   This closes the M1 gate.
+- **Built (2026-11-16):** Send and Receive sit in the main screen's bottom
+  bar; Send takes several files, photos or a folder (several items arrive
+  as one folder named "N items"). Received files go to Documents/Relay,
+  which the Files app shows under On My iPhone. `send-code` stays as an
+  alias, and `receive-code` for a sender mDNS can't see.
 
 ### 3. Trusted devices
 

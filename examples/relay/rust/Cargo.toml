@@ -22,7 +22,7 @@ required-features = ["cli"]
 
 [features]
 # The `relay` command for Linux and macOS. Never built for iOS.
-cli = ["dep:qrcode", "dep:forge-net"]
+cli = ["dep:qrcode", "dep:forge-net", "dep:mdns-sd"]
 
 [dependencies]
 # The application runtime: one core per process, serial commands, revisions,
@@ -66,6 +66,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"
 log = "0.4"
 # The `relay` command prints its pairing code as a QR code in the terminal.
 qrcode = { version = "0.14", default-features = false, optional = true }
+# The `relay` command advertises and finds word codes with mDNS, as the app
+# does with Bonjour (`_forgerelay._udp`). The same crate as the M0 spike.
+mdns-sd = { version = "0.13", optional = true }
 
 [dev-dependencies]
 tempfile = "3.14"

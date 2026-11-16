@@ -58,3 +58,10 @@ camera = "Scan another device's pairing code."
 # Built and installed with a free Apple account; no paid-only entitlements.
 team_type = "free"
 # team_id = "ABCDE12345"            # for the Xcode project (macOS, optional)
+
+[ios.info]
+# Files received with a code go to Documents/Relay; these two keys show
+# Documents in the Files app (On My iPhone), so files Relay receives are
+# there.
+UIFileSharingEnabled = true
+LSSupportsOpeningDocumentsInPlace = true

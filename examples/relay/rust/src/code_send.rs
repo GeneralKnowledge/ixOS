@@ -135,11 +135,23 @@ impl CodeSendShared {
 /// Called once when a send ends, with its last status (`Sent` or `Failed`).
 pub(crate) type OnEnd = Box<dyn FnOnce(&CodeSend) + Send>;
 
-/// Starts sending `path`, a file or a folder, with a word code in the
-/// background; follow it in `shared.status`. The node's store keeps the
-/// hashes, so sending the same thing again need not hash it again.
+/// What a send of `paths` is called: the one item's name, or how many.
+pub(crate) fn send_name(paths: &[PathBuf]) -> String {
+    match paths {
+        [one] => one
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file")
+            .to_string(),
+        many => format!("{} items", many.len()),
+    }
+}
+
+/// Starts sending `paths` (files and folders, as one transfer) with a word
+/// code in the background; follow it in `shared.status`. The node's store
+/// keeps the hashes, so sending the same thing again need not hash it again.
 pub(crate) fn start(
-    path: PathBuf,
+    paths: Vec<PathBuf>,
     node: Arc<NodeCell>,
     shared: Arc<CodeSendShared>,
     on_end: OnEnd,
@@ -147,16 +159,14 @@ pub(crate) fn start(
     shared.stop.store(false, Ordering::SeqCst);
     // Set before returning, so the app's first read already sees the send
     // running: it stops polling once the status is no longer running.
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("file")
-        .to_string();
-    let size = std::fs::metadata(&path)
-        .ok()
+    let name = send_name(&paths);
+    // Files' sizes now; a folder's once it has been walked.
+    let size = paths
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).ok())
         .filter(|m| m.is_file())
         .map(|m| m.len())
-        .unwrap_or(0);
+        .sum();
     shared.set(CodeSend::Preparing {
         name: name.clone(),
         size,
@@ -164,7 +174,7 @@ pub(crate) fn start(
     TOKIO.spawn(async move {
         let outcome = match node.get().await {
             Ok(node) => {
-                let outcome = send(&path, name, &node, &shared).await;
+                let outcome = send(&paths, name, &node, &shared).await;
                 *lock(&node.sending) = None;
                 lock(&node.allowed).clear();
                 outcome
@@ -374,14 +384,14 @@ impl CodeHandler {
 }
 
 async fn send(
-    path: &Path,
+    paths: &[PathBuf],
     name: String,
     node: &Arc<Node>,
     shared: &Arc<CodeSendShared>,
 ) -> Result<(), RelayError> {
     let started = Instant::now();
     // Held for the whole send, so what it offers stays in the store.
-    let (offer, _tags) = prepare(path, name.clone(), node).await?;
+    let (offer, _tags) = prepare(paths, name.clone(), node).await?;
     log::info!(
         "code send: hashed {} bytes in {:.1}s",
         offer.size,
@@ -512,30 +522,22 @@ async fn send(
     Ok(())
 }
 
-/// Hashes what `path` holds into the store, where it lies (nothing is
-/// copied): a file as one blob, a folder as a collection of its files with
-/// their paths inside it. Returns the offer and the tags that keep it.
+/// Hashes what `paths` hold into the store, where it lies (nothing is
+/// copied): one file as one blob; anything else as a collection of files
+/// with their paths inside the transfer (a lone folder's files relative to
+/// it; several items each under its own name). Returns the offer and the
+/// tags that keep it.
 async fn prepare(
-    path: &Path,
+    paths: &[PathBuf],
     name: String,
     node: &Node,
 ) -> Result<(Offer, Vec<TempTag>), RelayError> {
-    let meta = std::fs::metadata(path).map_err(file_error)?;
-    let import = |file: PathBuf| async move {
-        node.store
-            .blobs()
-            .add_path_with_opts(AddPathOptions {
-                path: std::path::absolute(file).map_err(file_error)?,
-                format: BlobFormat::Raw,
-                // Hash the file where it is instead of copying it.
-                mode: ImportMode::TryReference,
-            })
-            .temp_tag()
-            .await
-            .map_err(file_error)
+    let [path] = paths else {
+        return prepare_files(items_in(paths).map_err(file_error)?, name, node).await;
     };
+    let meta = std::fs::metadata(path).map_err(file_error)?;
     if meta.is_file() {
-        let tag = import(path.to_path_buf()).await?;
+        let tag = import(node, path.to_path_buf()).await?;
         let hash = tag.hash();
         let offer = Offer {
             hash,
@@ -546,10 +548,34 @@ async fn prepare(
         };
         return Ok((offer, vec![tag]));
     }
-    let files = files_in(path).map_err(file_error)?;
+    prepare_files(files_in(path).map_err(file_error)?, name, node).await
+}
+
+/// A file's blob, hashed where it lies.
+async fn import(node: &Node, file: PathBuf) -> Result<TempTag, RelayError> {
+    node.store
+        .blobs()
+        .add_path_with_opts(AddPathOptions {
+            path: std::path::absolute(file).map_err(file_error)?,
+            format: BlobFormat::Raw,
+            // Hash the file where it is instead of copying it.
+            mode: ImportMode::TryReference,
+        })
+        .temp_tag()
+        .await
+        .map_err(file_error)
+}
+
+/// The collection of `files` (path inside the transfer, file, size).
+async fn prepare_files(
+    files: Vec<(String, PathBuf, u64)>,
+    name: String,
+    node: &Node,
+) -> Result<(Offer, Vec<TempTag>), RelayError> {
+    let import = |file: PathBuf| import(node, file);
     if files.is_empty() {
         return Err(RelayError::File {
-            reason: "the folder has no files".into(),
+            reason: "there are no files to send".into(),
         });
     }
     let mut tags = Vec::with_capacity(files.len() + 1);
@@ -581,6 +607,36 @@ async fn prepare(
         hashes,
     };
     Ok((offer, tags))
+}
+
+/// The files of several items sent together: a file under its name, a
+/// folder's files under the folder's name. Two items with one name are an
+/// error rather than one hiding the other.
+pub(crate) fn items_in(paths: &[PathBuf]) -> std::io::Result<Vec<(String, PathBuf, u64)>> {
+    let mut found = Vec::new();
+    let mut names = HashSet::new();
+    for path in paths {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| std::io::Error::other(format!("{} has no name", path.display())))?
+            .to_string();
+        if !names.insert(name.clone()) {
+            return Err(std::io::Error::other(format!(
+                "two of the items are called {name}"
+            )));
+        }
+        let meta = std::fs::metadata(path)?;
+        if meta.is_dir() {
+            for (inside, file, size) in files_in(path)? {
+                found.push((format!("{name}/{inside}"), file, size));
+            }
+        } else {
+            found.push((name, path.clone(), meta.len()));
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(found)
 }
 
 /// The files under `root` with their paths inside it (`/`-separated) and
@@ -653,9 +709,13 @@ mod tests {
     }
 
     fn sending(path: PathBuf, node: &Arc<NodeCell>) -> Arc<CodeSendShared> {
+        sending_all(vec![path], node)
+    }
+
+    fn sending_all(paths: Vec<PathBuf>, node: &Arc<NodeCell>) -> Arc<CodeSendShared> {
         let shared = Arc::new(CodeSendShared::default());
         start(
-            path,
+            paths,
             Arc::clone(node),
             Arc::clone(&shared),
             Box::new(|_| {}),
@@ -780,6 +840,37 @@ mod tests {
             let got = dir.path().join("inbox-a").join("Reply/thanks.txt");
             assert_eq!(std::fs::read(got).unwrap(), b"thanks");
         });
+    }
+
+    /// Several files and a folder go as one transfer, each under its name.
+    #[test]
+    fn several_items_go_as_one_transfer() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (device(dir.path(), "a"), device(dir.path(), "b"));
+        let one = dir.path().join("one.txt");
+        std::fs::write(&one, b"1").unwrap();
+        let album = dir.path().join("Album");
+        let files = folder(&album);
+        TOKIO.block_on(async {
+            let shared = sending_all(vec![one, album], &a);
+            let waiting = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
+            let inbox = dir.path().join("inbox");
+            let receipt = take(&waiting, &b, &inbox, Arc::default()).await.unwrap();
+            assert_eq!(receipt.name, "2 items");
+            let got = Path::new(&receipt.path);
+            assert_eq!(std::fs::read(got.join("one.txt")).unwrap(), b"1");
+            for (inside, data) in &files {
+                assert_eq!(
+                    &std::fs::read(got.join("Album").join(inside)).unwrap(),
+                    data
+                );
+            }
+        });
+        // Two items with one name: refused, never one hiding the other.
+        std::fs::create_dir_all(dir.path().join("other")).unwrap();
+        std::fs::write(dir.path().join("other/one.txt"), b"2").unwrap();
+        let clash = vec![dir.path().join("one.txt"), dir.path().join("other/one.txt")];
+        assert!(items_in(&clash).is_err());
     }
 
     /// The receiver stops halfway and Relay closes (its node shuts down);

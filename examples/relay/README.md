@@ -19,6 +19,7 @@ can be a Linux machine running the `relay` command, so one iPhone is enough.
 | R2 | SwiftUI app: pair by scanning (VisionKit) or showing a QR code, Bonjour (NetService advertises Rust's port, NWBrowser finds devices), notes and files from the file picker, received files in Quick Look, hosted in Device Lab | Built with xtool and installed on an iPhone in Device Lab (2026-11-15); pairing, notes and Quick Look not yet tried on the phone. Secrets stay in Rust's file (friction A17) |
 | M1 start | Word codes on iroh (`code.rs`, `code_send.rs`): "Receive with a Code" and "Send with a Code" in the app, `relay send-code` on Linux, `relay-spike` from [spike/](spike/) | Passed on an iPhone 15 Pro Max on 2026-11-15: 1 GB Linux to iPhone at 9.5 MB/s and iPhone to Linux, each at the first code and verified ([results](docs/relay-stage0-spike.md#iphone-start-of-m1-2026-11-15)). Not yet a production transfer: no folders, no history, separate from paired transfers |
 | M1 PR 1 | The transfer core: one iroh endpoint per device with a key kept in `device.key` (0600), one blob store in `codes/store` for sending and receiving, folders as one transfer (an iroh-blobs collection), resume after a relaunch, both directions in the history, stopping the sender stops the receiver ([brief](docs/relay-m1-m2-brief.md#1-production-transfer-core)) | Done on Linux (tests: a folder both ways, a transfer stopped halfway resumes after a relaunch and verifies); not yet on a phone |
+| M1 PR 2 | Send and Receive in the app's bottom bar (several files, photos or a folder with one word code; a progress bar and Stop; a folder opens in the Files app), received files in Documents/Relay where the Files app shows them (On My iPhone), and `relay send PATH...` / `relay receive <code>` finding each other with mDNS ([brief](docs/relay-m1-m2-brief.md#2-native-transfer-screens-and-cli)) | Rust and the command done and tested on Linux (a folder both ways between two `relay` commands); the Swift is not yet compiled or tried on a phone |
 | R3 | Resume, background transfers, a share extension (costs an App ID) | Later, within M1 and the plan's milestones |
 | AI A1 | Ask a paired device's language model (protocol 2): `relay serve-ai` answers with an OpenAI-compatible server, `relay ask` asks from a terminal ([forge-ai-plan.md](../../docs/forge-ai-plan.md)) | Done in Rust and the command, tested on Linux; the app gets it with the AI Lab (A2) |
 
@@ -52,8 +53,9 @@ $R peers
 $R send <name> --note "Hello from the laptop"
 $R send <name> ~/Pictures/harbour.jpg
 $R history
-$R send-code ~/Pictures/Trip          # a file or a folder; prints a word code
-$R receive-code <code> <host:port> <endpoint-id>
+$R send ~/Pictures/Trip notes.txt    # files and folders; prints a word code
+$R receive <code>                     # finds the sender with mDNS on this network
+$R receive-code <code> <host:port> <endpoint-id>   # without mDNS
 ```
 
 ### Asking a model on another device
