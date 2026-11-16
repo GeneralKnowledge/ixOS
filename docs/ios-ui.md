@@ -112,7 +112,7 @@ Display helpers belong in the same Swift extension: a `Date` built from Rust's m
 
 Every Rust command is `async throws`, and the error is the crate's `AppError` enum. Two patterns cover most screens:
 
-- **Fire-and-forget actions** (swipe to delete, save on leaving a screen) catch the error into the model's `alert` (`alert = .failure(error)`, a ForgeAppKit `ForgeAlert`). The list presents it with `.forgeAlert($model.alert)`.
+- **Fire-and-forget actions** (swipe to delete, save on leaving a screen) catch the error into the model's `alert` (`alert = .failure(error)`, a ForgeAppKit `ForgeAlert`). The stack presents it: attach `.forgeAlert($model.alert)` to the `NavigationStack` (or the `TabView`), not to the list inside it, because an alert on a stack's first screen shows behind any screen pushed over it. `scripts/check-app-parity.sh` (rule `alerts-on-top`) fails on that placement in every app and starter.
 - **Form submissions** run through a `ForgeSubmission` (`await saving.run { try await model.add(text:) }`): the button shows a spinner while it works, a second tap does nothing, and on failure the sheet stays open with the text intact and presents the error itself (`.forgeAlert(failure: $saving.failure)`). A view covered by a sheet can't present an alert, so every presented screen needs its own `.forgeAlert`.
 
 `NotesModel.describe(_:)` turns an `AppError` into user-facing text, and `AppError`'s `ForgeDescribedError` conformance hands it to every alert. A cancelled request is not shown. For forms with several fields, return `FieldError`s from Rust (`forge_app::Validator`) and show each under its field; see [forgeappkit.md](forgeappkit.md#form-errors-forgefielderrors). The `reason` fields are diagnostics from Rust, not finished copy.

@@ -109,7 +109,9 @@ struct ProjectListView: View {
                     .accessibilityIdentifier("rename.cancel")
             }
             .forgeAlert(Binding(
-                get: { creating ? nil : model.alert },
+                // The project screen it pushes shows its own alerts, and this
+                // one would show behind it.
+                get: { creating || !path.isEmpty ? nil : model.alert },
                 set: { model.alert = $0 }
             )) { action in Task { await model.handle(action) } }
             .sensoryFeedback(.success, trigger: model.saveCount)

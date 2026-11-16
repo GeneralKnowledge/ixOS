@@ -149,10 +149,6 @@ struct DevicesView: View {
             } message: {
                 Text("Other devices see this name.")
             }
-            .forgeAlert(Binding(
-                get: { showingCode || scanning || receivingCode || sendingCode ? nil : model.alert },
-                set: { model.alert = $0 }
-            )) { action in Task { await model.handle(action) } }
             .quickLookPreview($preview)
             .sensoryFeedback(.success, trigger: model.saveCount)
             // Progress of what is on its way, twice a second.
@@ -162,6 +158,13 @@ struct DevicesView: View {
                 }
             }
         }
+        // On the stack, not its first screen: the device screen it pushes asks
+        // to forget a device, and an alert on the root showed behind it.
+        // While a sheet is up, the sheet shows the alerts.
+        .forgeAlert(Binding(
+            get: { showingCode || scanning || receivingCode || sendingCode ? nil : model.alert },
+            set: { model.alert = $0 }
+        )) { action in Task { await model.handle(action) } }
         .onAppear(perform: open)
         .onDisappear(perform: close)
         .onChange(of: scenePhase) {

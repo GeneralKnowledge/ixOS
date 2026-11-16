@@ -193,10 +193,58 @@ def rule_device_family(app):
     return ok, "" if ok else "Info.plist doesn't set UIDeviceFamily"
 
 
+def stack_alert_problems(text):
+    """App-wide alerts attached to the first screen of a navigation stack
+    that pushes other screens. iOS shows such an alert behind the pushed
+    screen (FieldKit's Stop, 2026-11-16). An alert bound to the model (shared
+    by every screen) belongs on the stack itself, on the tabs, or gated on
+    the stack's path being empty."""
+    lines = text.splitlines()
+    found = []
+    open_stacks = []  # (indent, first line, pushes)
+    for i, line in enumerate(lines):
+        indent = len(line) - len(line.lstrip())
+        stripped = line.strip()
+        while open_stacks and stripped.startswith("}") and indent == open_stacks[-1][0]:
+            open_stacks.pop()
+        if re.search(r"\bNavigationStack\s*(\(|\{)", line):
+            end = next(
+                (j for j in range(i + 1, len(lines))
+                 if lines[j].startswith(" " * indent + "}")
+                 and len(lines[j]) - len(lines[j].lstrip()) == indent),
+                len(lines),
+            )
+            block = "\n".join(lines[i:end])
+            pushes = bool(re.search(r"navigationDestination|NavigationLink", block))
+            open_stacks.append((indent, i, pushes))
+            continue
+        if not open_stacks or not open_stacks[-1][2]:
+            continue
+        if not re.match(r"\.(forgeAlert|alert|confirmationDialog)\(", stripped):
+            continue
+        binding = " ".join(l.strip() for l in lines[i : i + 4])
+        binding = binding.split(") {")[0]
+        shared = re.search(r"\$model\.|Bindable\(model\)|model\.(alert|actionError|errorMessage)", binding)
+        if shared and "path" not in binding:
+            found.append(i + 1)
+    return found
+
+
+def rule_alerts_on_top(app):
+    bad = []
+    for path in swift_sources(app):
+        for line in stack_alert_problems(read(path)):
+            bad.append(f"{path.name}:{line}")
+    if bad:
+        return False, "app-wide alert on a screen that pushes others (shows behind them): " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
     ("appkit-alerts", "Errors shown with ForgeAppKit's `forgeAlert`, no own ErrorAlert.swift", rule_appkit_alerts),
+    ("alerts-on-top", "App-wide alerts on the navigation stack or tabs, never on a first screen that pushes others", rule_alerts_on_top),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
     ("location", "Location through the `location` service", rule_location),
@@ -258,6 +306,16 @@ for name in apps:
             )
         if ok and listed:
             problems.append(f"{name}: {rule_id} passes now; remove it from docs/app-parity.toml")
+
+# The starters are where every app's screens begin, so they meet the screen
+# rules too (no lag list for them).
+for template in sorted((root / "templates").glob("ios-*")):
+    for path in sorted((template / "Sources").rglob("*.swift")):
+        for line in stack_alert_problems(read(path)):
+            problems.append(
+                f"{path.relative_to(root)}:{line}: alerts-on-top: app-wide alert on a "
+                "screen that pushes others; put it on the NavigationStack"
+            )
 
 
 def wave_label(entry):
