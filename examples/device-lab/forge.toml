@@ -41,7 +41,7 @@ apps = ["../weather", "../checklist", "../pocket-library", "../good-dog", "../co
 # The text iOS shows when the app asks. Each one is asked only when the user
 # taps the matching "Allow" button on the dashboard.
 [ios.permissions]
-location_when_in_use = "Device Lab shows your position, altitude, speed and true-north heading while it is open, and Weather uses it for the forecast where you are. Nothing else leaves your phone."
+location_when_in_use = "Device Lab shows your position, altitude, speed and true-north heading while it is open, Weather uses it for the forecast where you are, and FieldKit records a trip's track until you stop it, also with the phone locked. Nothing else leaves your phone."
 motion = "Device Lab reads the barometer for air pressure and height changes."
 bluetooth = "Device Lab shows whether Bluetooth is on. It does not connect to anything."
 # Three hosted apps use the local network, and two the microphone; one

@@ -1055,15 +1055,18 @@ pub fn warnings(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
     if modes.iter().any(|m| m == "remote-notification") && !ent.contains_key("aps-environment") {
         out.push("background_modes has \"remote-notification\" but [ios.entitlements] push_notifications is not set, so the app will not receive remote pushes".into());
     }
+    // "When in use" covers updates started on screen that carry on in the
+    // background (LocationOptions.background); "always" is only for
+    // starting them from the background.
     if modes.iter().any(|m| m == "location")
         && !ios
             .permissions
             .keys()
-            .any(|n| permission_key(n) == permission_key("location_always"))
+            .any(|n| permission_key(n) == permission_key("location_when_in_use"))
     {
         out.push(format!(
-            "background_modes has \"location\"; background location also needs [ios.permissions] location_always. {}",
-            add_permission_line("location_always")
+            "background_modes has \"location\"; background location also needs [ios.permissions] location_when_in_use. {}",
+            add_permission_line("location_when_in_use")
         ));
     }
     if modes.iter().any(|m| m == "processing")

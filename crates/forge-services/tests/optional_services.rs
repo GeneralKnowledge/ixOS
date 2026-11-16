@@ -215,6 +215,7 @@ fn location_watch_permission_and_distance() {
         accuracy: LocationAccuracy::Best,
         distance_filter_m: Some(-1.0),
         include_heading: true,
+        background: false,
     };
     assert!(matches!(
         service.watch(options, |_| {}),

@@ -677,6 +677,7 @@ impl DeviceLab {
                     accuracy: LocationAccuracy::Best,
                     distance_filter_m: None,
                     include_heading: true,
+                    background: false,
                 };
                 match service.watch(options, move |event| {
                     lock(&state).apply_location(event);

@@ -89,6 +89,7 @@ fn first_fix(
         accuracy: LocationAccuracy::Kilometer,
         distance_filter_m: None,
         include_heading: false,
+        background: false,
     };
     // Dropping the watch stops Core Location.
     let _watch = service

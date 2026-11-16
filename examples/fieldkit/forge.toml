@@ -27,9 +27,11 @@ test_data_args = ["-ForgeTemporaryData"]
 devices = ["iphone"]
 xtool_product = "FieldKitXtool"
 orientations = ["portrait"]
+# A trip keeps recording with the phone locked in a pocket.
+background_modes = ["location"]
 
 [ios.permissions]
-location_when_in_use = "FieldKit records your track while you record a trip."
+location_when_in_use = "FieldKit records your track while you record a trip, also with the phone locked. It stops when you stop the trip."
 
 [ios.signing]
 # Built and installed with a free Apple account; no paid-only entitlements.
