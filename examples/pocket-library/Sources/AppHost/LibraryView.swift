@@ -263,7 +263,8 @@ struct BookRow: View {
             if let rating = book.rating {
                 Text(String(repeating: "★", count: Int(rating)))
                     .font(.caption2)
-                    .foregroundStyle(.yellow)
+                    // Readable on white too; plain yellow was faint.
+                    .forgeForeground(.warning)
                     .accessibilityLabel("\(rating) stars")
             }
         }
