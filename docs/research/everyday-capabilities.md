@@ -169,7 +169,7 @@ Every recommendation fits an existing crate or Swift product; none needs a new c
 | Common error and recovery semantics | **Exists** (`ErrorKind`, `ForgeFailure`); missing piece is the open-failure flow | All ten | PL's own Start Fresh; Try Again loops elsewhere | Both: Rust says `Corrupt`/`NewerData` and keeps the set-aside copy; Swift shows choices | forge-app (an `open_fresh` that sets the old file aside) + ForgeKit `ForgeRoot` | **Yes**: platform-level, ten consumers, one existing app copy | Sketchbook opening a deliberately damaged file in Device Lab |
 | Data lifecycle contract (storage classes) | **Justified, narrowly** | SS first; later re-downloadable stores | Nothing (gap) | Rust names the folder's class; the Swift adapter sets `isExcludedFromBackup` on that folder (so atomic replaces inside it keep the exclusion) and leaves protection at iOS's default unless an app asks | forge-storage `FileStore` option + ForgeNative directories adapter | **Yes**, with Soundscape offline downloads as first real user; it is platform-level (Apple's API, same for every app). Only three places: Application Support (backed up), Caches (already excluded by iOS), and one kept-but-excluded folder | Songs absent from the app's size in Settings › iCloud › Manage Storage; still present after the phone runs low on space |
 | Capability and permission contract | **Justified, Swift-first** | FK, WE, SS, SK, RL, CH, GD | DL's Settings link; three direct Apple calls with no denied state | Swift. Rust only for permissions the core reads (location, notifications), which already exist | ForgeAppKit: a denied-state view with a Settings button; ForgeKit: re-check registered permissions on `resumed` | Partly: the view now (seven apps); the re-check after FieldKit background location shows a real change | FieldKit with location turned off in Settings, then on, without relaunch |
-| Consistent operation lifecycle (durable, retryable work) | **Justified, but wait** | CH outbox; SS downloads; RL resume | Chat's outbox later | Rust | forge-net (`RetryPolicy`) + forge-services `transfers` | No: second user (SS downloads) must merge and pass first; then compare with Chat's outbox (review N1) | SS download survives force quit and airplane mode |
+| Consistent operation lifecycle (durable, retryable work) | **Not proven yet; wait** | CH outbox; RL resume; SS downloads only for transfers | Chat's outbox later | Rust | forge-net (`RetryPolicy`) + forge-services `transfers` | No. Soundscape's downloads can prove a reliable transfer-specific recovery (the `transfers` ledger, `Failure::Interrupted`, `retry`), not a generic durable-operation or retry framework. That needs a second app with similar needs, compared with Chat's outbox (review N1) | A second durable queue, not Soundscape |
 | Application diagnostics | **Exists for developers**; reject an in-app layer now | None yet | n/a | n/a | Tools | No | n/a |
 | External event handling | **Exists** (`DeepLink`, notification inbox) | CH, CP, FK, GD | n/a | n/a | forge-native | No new work; redact the URL log (P4) | n/a |
 | Testable system integrations | **Exists** (`FixedPermissions`, `RecordingNotifier`, `StaticClient`, headless twin) | All | n/a | n/a | forge-native, forge-net | No. A shared clock is not justified: passing `now` works and two apps already do | n/a |
@@ -256,7 +256,8 @@ Six phases, one PR stream at a time, each carried by an app feature that is alre
 
 ### Phase 3: Storage classes and background transfers, proven by offline songs
 
-- **Objective:** downloaded songs survive suspension and force quit, are kept when the phone is low on space, are excluded from backup, and resume.
+- **Objective:** downloads continue while the app is suspended or ended by iOS; after a force quit, the next launch finds the unfinished ones and starts them again; songs are kept when the phone is low on space and excluded from backup.
+- **iOS behaviour this must respect:** when iOS ends the app, the background session keeps running and iOS relaunches the app to reconnect it. When the person force-quits from the app switcher, iOS cancels every background transfer and does not relaunch the app. Recovery after a force quit is therefore the app's own: on the next manual launch, the `transfers` ledger reports the task as `Failure::Interrupted` (already built) and Soundscape calls `retry`, which schedules a new transfer. Nothing resumes the original task.
 - **First step:** decide where the songs live. Not Caches (iOS may purge them, losing offline music); a folder under Application Support excluded from backup. Confirm that the `transfers` service's own ledger (Application Support/ForgeTransfers) and inbox stay small enough not to matter.
 - **Scope:** inside Soundscape PR 3, downloads go through the `transfers` service (its first real user). Framework PR: one kept-but-excluded class on `FileStore`, applied by the iOS adapter as `isExcludedFromBackup` on the folder, reapplied after the folder is created or replaced, since copies, replaces and atomic renames can drop the flag. File protection stays at iOS's default class unless an app asks for another.
 - **What this proves, and what it doesn't:**
@@ -264,14 +265,22 @@ Six phases, one PR stream at a time, each carried by an app feature that is alre
     | Capability | What Soundscape proves |
     | --- | --- |
     | Background transfers | Real application use, progress and completion |
-    | Interrupted downloads | Recovery and resumption after suspension, force quit and relaunch |
-    | Durable operations | Only that the `transfers` ledger survives termination, not a general operation queue |
+    | Interrupted downloads | Continuation while suspended, reconnection after iOS ends the app, and app-managed rescheduling after a force quit |
+    | Durable operations | Only that the `transfers` ledger survives termination and drives a transfer-specific recovery, not a general operation queue |
     | Generic retry policy | Nothing yet: it waits for a second app with genuinely similar retry needs |
 
 - **Evidence apps:** Soundscape (first). A second user of the excluded class comes only when another app keeps re-downloadable data.
 - **Dependencies:** Soundscape PRs 1 and 2 merged (1 is merged as #264).
 - **Acceptance:** requirements for download, resume after relaunch, airplane mode, and "not in backup"; Rust tests on the ledger; parity rule for caches without a class.
-- **Device:** download an album, force quit mid-way, relaunch, it completes; airplane mode plays offline; Settings › iCloud › Manage Storage shows the app's backup size without the songs.
+- **Device:** three scenarios, recorded separately:
+
+    | Scenario | Expected behaviour |
+    | --- | --- |
+    | App suspended (Home, screen locked) | The existing background transfer continues and completes |
+    | App ended by iOS (hard to force; record if seen, else mark untested) | iOS relaunches the app in the background, the session is reconnected and the download is delivered |
+    | Person force-quits mid-download | The task is cancelled; on the next manual launch the unfinished download shows as interrupted and a new transfer is scheduled and completes |
+
+    Then: airplane mode plays the downloaded songs; Settings › iCloud › Manage Storage shows the app's backup size without them.
 - **Excludes:** a generic sync engine, a durable operation queue, `RetryPolicy` (waits for a second app with similar retry needs), CloudKit, explicit protection classes nobody asked for.
 
 ### Phase 4: One native-services route
