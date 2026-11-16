@@ -41,3 +41,4 @@ One row per app as its move lands, before the next app starts ([roadmap](roadmap
 | App | PR | Build | Compiles | Installs | Launches | Main interactions | Problems | Sitting |
 |---|---|---|---|---|---|---|---|---|
 | Weather | [#230](https://github.com/GeneralKnowledge/ixOS/pull/230) | Device Lab 1.29913589, main 59249ca + #230 (local merge 455a445) | Yes | Yes (cable) | Yes | Yes: current weather, add Prague | None reported (short check) | 2026-11-16 |
+| Chat | [#240](https://github.com/GeneralKnowledge/ixOS/pull/240) | Device Lab 1.29913636, main + #239 + #240 (branch claude/project-thread-yz7ms9-gd-chat, 04786c8) | Yes | Yes (cable) | Yes | Yes: opens and looks right; with the chat server running, works (short check) | None reported for Chat. Live features need the chat server up | 2026-11-16 |
