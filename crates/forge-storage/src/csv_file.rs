@@ -35,6 +35,9 @@ pub struct CsvProblem {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CsvImport<T> {
     pub rows: Vec<T>,
+    /// The line in the file of each row in `rows` (the header is line 1),
+    /// so an app that refuses a row can say where it is.
+    pub row_lines: Vec<u64>,
     pub problems: Vec<CsvProblem>,
 }
 
@@ -91,6 +94,7 @@ pub fn from_csv<T: DeserializeOwned>(bytes: &[u8]) -> Result<CsvImport<T>, Stora
     }
     reader.set_headers(headers.clone());
     let mut rows = Vec::new();
+    let mut row_lines = Vec::new();
     let mut problems = Vec::new();
     for (index, record) in reader.records().enumerate() {
         if index >= MAX_IMPORT_ROWS {
@@ -117,14 +121,21 @@ pub fn from_csv<T: DeserializeOwned>(bytes: &[u8]) -> Result<CsvImport<T>, Stora
             continue;
         }
         match record.deserialize::<T>(Some(&headers)) {
-            Ok(row) => rows.push(row),
+            Ok(row) => {
+                rows.push(row);
+                row_lines.push(line);
+            }
             Err(e) => problems.push(CsvProblem {
                 line,
                 reason: describe(&e),
             }),
         }
     }
-    Ok(CsvImport { rows, problems })
+    Ok(CsvImport {
+        rows,
+        row_lines,
+        problems,
+    })
 }
 
 /// The line a record starts on, counted from the bytes (the reader's own
