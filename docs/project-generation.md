@@ -2,7 +2,9 @@
 
 ## Contract
 
-`forge init <Name> --bundle-id org.example.app [--platform ios|android] [--path <dir>] [--minimal]` creates an app at `<dir>`. Without `--path` it creates `./<Name>` in the current directory, or `examples/<Name>/` when you run it inside the Forge checkout. It then prints the next commands to run, and the app gets a `README.md` describing its layout.
+`forge init <Name> --bundle-id org.example.app [--platform ios|android] [--path <dir>] [--minimal] [--library <name>]` creates an app at `<dir>`. Without `--path` it creates `./<Name>` in the current directory, or `examples/<Name>/` when you run it inside the Forge checkout. It then prints the next commands to run, and the app gets a `README.md` describing its layout and listing the starter's example files to replace with your own.
+
+The Rust library is named after the app: the name in snake case plus `_core` (`FieldKit` gives `field_kit_core`). `--library <name>` sets another name, for an app that adopts an existing crate (friction log A7). The Swift folders and test target keep the names `Sources/AppHost`, `Sources/AppHostXtoolApp`, `Sources/AppHostLauncher` and `Tests/AppHostTests` in every app: `forge check swift`, the build scripts and Device Lab rely on them, so they are a fixed convention, not leftovers. Only the Swift module names (`<Name>App`, `<Name>FFI`) follow the app's name.
 
 The app **owns its Rust logic**: `rust/` is its own crate, with its own `Cargo.toml`, lock file and target directory, and `forge.toml` names it (`[rust] path = "rust"`). It depends on Forge's runtime crates (`forge-runtime`, `forge-storage`, `forge-net`) by path, and the Forge checkout supplies the build scripts and `uniffi-bindgen`. So an app is not fully standalone yet: it needs a Forge checkout on the same machine, but nothing of the app lives inside that checkout. See [app-crate.md](app-crate.md) for how to work in the crate.
 

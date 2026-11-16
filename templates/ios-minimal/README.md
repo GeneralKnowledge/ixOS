@@ -25,6 +25,10 @@ Rust owns the state and the rules; Swift shows them. Each change is a Rust comma
 
 [docs/first-app.md](https://github.com/GeneralKnowledge/ixOS/blob/main/docs/first-app.md) in the Forge checkout walks through adding a feature to this app.
 
+## Making it your app
+
+The checklist is an example. When you start your own app, replace the `Item` record and its commands in `rust/src/lib.rs`, `ItemsModel.swift`, the list in `ContentView.swift`, `Tests/AppHostTests/ItemsModelTests.swift` and `uitests/smoke.toml`. Keep `AppHost.swift`. The folder names (`Sources/AppHost`, `Tests/AppHostTests`) stay as they are in every Forge app: the tools rely on them.
+
 ## Files
 
 | Path | What it is |

@@ -37,6 +37,16 @@ The first time you run on an iPhone:
 | `build/`, `rust/target/` | Build output. Safe to delete. |
 | `AGENTS.md`, `CLAUDE.md`, `.mcp.json` | Not here by default. If you use an AI coding agent, `forge agent setup` adds its instructions (with a place for your project notes) and tool setup; nothing else needs them. |
 
+## Making it your app
+
+The starter is a notes app, there to show the patterns. When you start your own app, replace its example with your own:
+
+- `rust/src/lib.rs`: `Note`, the notes commands and their tests.
+- `Sources/AppHost/`: `NotesModel.swift`, `Note+Display.swift`, `NoteListView.swift`, `NoteDetailView.swift` and `ComposeNoteView.swift`. Keep `AppHost.swift`, `AppServices.swift` and `ContentView.swift` and change what they show.
+- `Tests/AppHostTests/NotesModelTests.swift` and `uitests/smoke.toml`, which drive the notes screens.
+
+The folder names (`Sources/AppHost`, `Tests/AppHostTests`) stay as they are in every Forge app: the tools rely on them.
+
 ## The loop
 
 1. Change the Rust in `rust/src/lib.rs`. `cargo test --manifest-path rust/Cargo.toml` tests it in seconds, with no SDK or phone.

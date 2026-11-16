@@ -195,10 +195,13 @@ pub fn init(
     platform: &str,
     path: Option<&Path>,
 ) -> Result<(), String> {
-    init_with(runner, root, name, bundle_id, platform, path, false).map(|_| ())
+    init_with(runner, root, name, bundle_id, platform, path, false, None).map(|_| ())
 }
 
-/// `forge init`, with `minimal` for the one-screen starter (iOS only).
+/// `forge init`, with `minimal` for the one-screen starter (iOS only) and
+/// `library` for the Rust library's name when it isn't `<name>_core` (an
+/// existing crate the app adopts).
+#[allow(clippy::too_many_arguments)]
 pub fn init_with(
     runner: &dyn CommandRunner,
     root: &Path,
@@ -207,9 +210,17 @@ pub fn init_with(
     platform: &str,
     path: Option<&Path>,
     minimal: bool,
+    library: Option<&str>,
 ) -> Result<PathBuf, String> {
     if minimal && platform != "ios" {
         return Err("--minimal is for iOS apps only (Android is work in progress)".into());
+    }
+    if let Some(lib) = library {
+        if !is_valid_library_name(lib) {
+            return Err(format!(
+                "invalid library name '{lib}': use lowercase letters, digits and underscores, starting with a letter (like fieldkit_core)"
+            ));
+        }
     }
     if !config::is_valid_project_name(name) {
         return Err(
@@ -318,6 +329,7 @@ android = true
         &workspace,
         release.as_ref(),
         minimal,
+        library,
     )
     .and_then(|()| fs::rename(&staging, &dest).map_err(|e| e.to_string()));
     if let Err(err) = result {
@@ -392,6 +404,7 @@ fn populate_app(
     workspace: &WorkspaceRef,
     release: Option<&Release>,
     minimal: bool,
+    library: Option<&str>,
 ) -> Result<(), String> {
     copy_template(template, dir)?;
     // The app's own Rust crate, with the workspace's lock file and toolchain
@@ -423,7 +436,7 @@ fn populate_app(
     if toolchain.is_file() {
         fs::copy(&toolchain, dir.join("rust-toolchain.toml")).map_err(|e| e.to_string())?;
     }
-    substitute_placeholders(dir, name, bundle_id)?;
+    substitute_placeholders(dir, name, bundle_id, library)?;
     rewrite_workspace_paths(dir, platform, workspace, release)?;
     if platform == "ios" {
         relocate_ios_xcode_host(dir, name)?;
@@ -758,9 +771,15 @@ fn copy_template(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn substitute_placeholders(dest: &Path, name: &str, bundle_id: &str) -> Result<(), String> {
+fn substitute_placeholders(
+    dest: &Path,
+    name: &str,
+    bundle_id: &str,
+    library: Option<&str>,
+) -> Result<(), String> {
     let support_dir = name;
-    walk_substitute(dest, name, bundle_id, support_dir, bundle_id)
+    let library = library.map_or_else(|| library_name(name), str::to_string);
+    walk_substitute(dest, name, bundle_id, support_dir, bundle_id, &library)
 }
 
 fn walk_substitute(
@@ -769,6 +788,7 @@ fn walk_substitute(
     bundle_id: &str,
     support_dir: &str,
     java_package: &str,
+    library: &str,
 ) -> Result<(), String> {
     for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -777,12 +797,19 @@ fn walk_substitute(
             continue;
         }
         if entry.file_type().map_err(|e| e.to_string())?.is_dir() {
-            walk_substitute(&path, package_name, bundle_id, support_dir, java_package)?;
+            walk_substitute(
+                &path,
+                package_name,
+                bundle_id,
+                support_dir,
+                java_package,
+                library,
+            )?;
         } else if is_text_template(&path) {
             let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
             let updated = content
                 .replace(PLACEHOLDER_MODULE, &module_name(package_name))
-                .replace(PLACEHOLDER_LIB, &library_name(package_name))
+                .replace(PLACEHOLDER_LIB, library)
                 .replace(PLACEHOLDER_PACKAGE, package_name)
                 .replace(PLACEHOLDER_APP_NAME, package_name)
                 .replace(PLACEHOLDER_BUNDLE, bundle_id)
@@ -800,6 +827,15 @@ fn module_name(name: &str) -> String {
     name.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect()
+}
+
+/// Whether `name` can be a Rust library name: lowercase ASCII letters,
+/// digits and underscores, starting with a letter.
+fn is_valid_library_name(name: &str) -> bool {
+    name.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
 /// The app's Rust library name: `name` in snake case plus `_core`
@@ -2716,9 +2752,45 @@ ios_device = true
             "android",
             None,
             true,
+            None,
         )
         .unwrap_err();
         assert!(err.contains("iOS"), "{err}");
+    }
+
+    #[test]
+    fn a_library_name_must_be_a_rust_name() {
+        let err = init_with(
+            &crate::runner::MockRunner::default(),
+            &workspace_root(),
+            "FieldTrip",
+            "org.example.fieldtrip",
+            "ios",
+            None,
+            false,
+            Some("Field-Trip"),
+        )
+        .unwrap_err();
+        assert!(err.contains("library name"), "{err}");
+        assert!(is_valid_library_name("fieldkit_core"));
+        assert!(!is_valid_library_name("_core"));
+        assert!(!is_valid_library_name("2d_core"));
+    }
+
+    #[test]
+    fn a_library_name_replaces_the_default() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("Package.swift"), "lib FORGE_LIB_NAME").unwrap();
+        substitute_placeholders(
+            dir.path(),
+            "FieldKit",
+            "org.example.fk",
+            Some("fieldkit_core"),
+        )
+        .unwrap();
+        let text = fs::read_to_string(dir.path().join("Package.swift")).unwrap();
+        assert_eq!(text, "lib fieldkit_core");
+        substitute_placeholders(dir.path(), "FieldKit", "org.example.fk", None).unwrap();
     }
 
     #[test]

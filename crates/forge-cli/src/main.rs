@@ -84,6 +84,11 @@ enum Commands {
         /// which shows every pattern a larger app needs
         #[arg(long)]
         minimal: bool,
+        /// The Rust library's name (default: the app's name in snake case
+        /// plus `_core`, so `FieldKit` gives `field_kit_core`). Set it when
+        /// the app adopts an existing crate
+        #[arg(long, value_name = "NAME")]
+        library: Option<String>,
         /// Also write the optional AI coding agent files (AGENTS.md,
         /// CLAUDE.md), as `forge agent setup` does
         #[arg(long)]
@@ -1485,6 +1490,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             platform,
             path,
             minimal,
+            library,
             agent,
         } => {
             if agent && platform != "ios" {
@@ -1503,6 +1509,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 &platform,
                 path.as_deref(),
                 minimal,
+                library.as_deref(),
             )?;
             if agent {
                 agent::run(&root, &dest, false)?;
