@@ -1,4 +1,5 @@
 @preconcurrency import CommonplaceFFI
+import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
@@ -54,6 +55,9 @@ struct SettingsView: View {
                 }
             }
         }
+        // A setting that fails to save says so here: the feed list's alert
+        // can't show over this sheet.
+        .forgeAlert(Bindable(model).alert)
     }
 
     /// A toggle on one of Rust's settings.

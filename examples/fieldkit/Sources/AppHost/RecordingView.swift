@@ -2,6 +2,8 @@
 import ForgeAppKit
 import SwiftUI
 
+private let log = ForgeLog("Recording")
+
 /// The trip being recorded: the track so far on a map, the live totals,
 /// Add Note and Stop.
 struct RecordingView: View {
@@ -9,6 +11,8 @@ struct RecordingView: View {
     @State private var track: [TrackPoint] = []
     @State private var notes: [Note] = []
     @State private var isAddingNote = false
+    /// Map reads that failed in a row; from the third, the screen says so.
+    @State private var failedReads = 0
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -35,6 +39,12 @@ struct RecordingView: View {
 
     private func stats(_ trip: TripSummary) -> some View {
         VStack(spacing: 12) {
+            if failedReads >= 3 {
+                Label("The map can't be updated right now. Recording carries on.", systemImage: "map")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("recording.mapProblem")
+            }
             if let problem = model.locationProblem {
                 HStack {
                     Label(problem, systemImage: "location.slash")
@@ -73,9 +83,14 @@ struct RecordingView: View {
             let loaded = try await model.load(tripID)
             track = loaded.track
             notes = loaded.detail.notes
+            failedReads = 0
+        } catch is CancellationError {
+            // A newer fix started the next read.
         } catch {
-            // The list shows the totals; a failed read of the map data is
-            // retried on the next fix.
+            // The totals stay on screen and the next fix reads again; after
+            // three failures in a row the screen says the map is stuck.
+            failedReads += 1
+            log.warn("Couldn't read the recording's map data (\(failedReads) in a row): \(TripsModel.describe(error))")
         }
     }
 }

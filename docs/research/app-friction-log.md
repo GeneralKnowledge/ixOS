@@ -670,3 +670,24 @@ lesson sheet got its own, since nothing under a sheet can present.
 fails on an app-wide alert inside a stack that pushes screens, in every app
 and in the starters; run against the code before the fix, it named exactly
 the six apps above.
+
+## A34. Failures nobody sees (a sweep after A33)
+
+Reuben asked for a sweep for small bugs of A33's kind. Real ones found:
+
+- FieldKit's Rename used `try?`, so a refused rename did nothing and said
+  nothing; now it shows the failure like Share does. A failed map read while
+  recording is logged, and after three in a row the screen says the map is
+  stuck (recording carries on).
+- Weather dropped a failed remove or reorder of a saved place (`try?`); the
+  row came back with no reason. The places list now says why.
+- Chat dropped a failed draft save, and Relay a scanner that didn't start:
+  both are logged now (an alert per keystroke would be worse).
+- Checklist's Clear Done Items deleted every done item with no question; it
+  asks first now. A file the importer couldn't open was ignored; it says so.
+- Commonplace's Settings sheet changed settings whose failures showed on the
+  feed list, under the sheet, so never; the sheet shows them now.
+
+**Measure.** A parity rule, `errors-shown`, fails on `try?` around a call
+that changes something and on an empty catch-all, in every app and starter.
+On the code before the sweep it named FieldKit, Weather, Chat and Relay.

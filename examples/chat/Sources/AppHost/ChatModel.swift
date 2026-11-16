@@ -41,6 +41,7 @@ public func makeAppHost(storageDirectory: String? = nil, useKeychain: Bool? = ni
 /// Swift-side attachment failures, in the same log as Rust's
 /// (`forge device logs`, the live stream).
 let attachmentLog = ForgeLog("Attachments")
+private let draftLog = ForgeLog("Drafts")
 
 /// The state of a room's live connection, as the chat screen shows it.
 public enum ConnectionState: Equatable, Sendable {
@@ -457,7 +458,13 @@ public final class ChatModel {
 
     /// Saves the composer's text (empty clears the draft).
     public func saveDraft(_ text: String, for conversationId: String) {
-        try? core?.setDraft(conversationId: conversationId, text: text)
+        // Saved on every edit, so no alert per keystroke: a failure is
+        // logged, and the text stays in the composer.
+        do {
+            try core?.setDraft(conversationId: conversationId, text: text)
+        } catch {
+            draftLog.warn("Couldn't save a draft: \(Self.describe(error))")
+        }
     }
 
     /// Messages on this iPhone containing every word of `query` (as word

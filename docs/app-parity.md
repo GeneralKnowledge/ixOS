@@ -11,6 +11,7 @@ When the framework gains a better way to do something, every app moves to it, or
 | `forgekit` | Uses the ForgeKit package |
 | `forge-host` | Rust core on the forge-app runtime, hosted by ForgeHost |
 | `appkit-alerts` | Errors shown with ForgeAppKit's `forgeAlert`, no own ErrorAlert.swift |
+| `errors-shown` | A failed action says so: no `try?` on a change, no empty catch-all |
 | `alerts-on-top` | App-wide alerts on the navigation stack or tabs, never on a first screen that pushes others |
 | `forgeui-appearance` | Launch appearance from ForgeUI, no own LaunchAppearance.swift |
 | `urlsession` | iOS requests through the URLSession `http` service |
@@ -25,20 +26,20 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 ## Apps
 
-| App | `forgekit` | `forge-host` | `appkit-alerts` | `alerts-on-top` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| chat | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| checklist | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| device-lab | Yes | Not applicable | Yes | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
-| fieldkit | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
-| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | n/a | n/a | n/a | n/a | Yes | Yes | Yes |
-| good-dog | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| relay | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
-| sketchbook | Yes | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| soundscape | Yes | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| weather | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| chat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| checklist | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
+| fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
+| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | n/a | n/a | n/a | n/a | Yes | Yes | Yes |
+| good-dog | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| relay | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
+| sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| soundscape | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 
 ## Known lag
 

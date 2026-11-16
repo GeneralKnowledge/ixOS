@@ -240,10 +240,60 @@ def rule_alerts_on_top(app):
     return True, ""
 
 
+# A user's action that fails must say so (FieldKit's Rename, 2026-11-16).
+# `try?` throws the reason away, so it may wrap reads and clean-up but not a
+# call that changes something; a catch-all `catch` that does nothing hides
+# every failure (catching CancellationError alone is fine).
+CHANGING_CALL = re.compile(
+    r"try\?\s*(?:await\s+)?(?!FileManager)[\w.?]*?\b"
+    r"(rename|remove|delete|move|save|add|set|update|create|record|start|stop|send|import|export|pair|forget)\w*\("
+)
+
+
+def dropped_error_problems(text):
+    lines = text.splitlines()
+    found = []
+    for i, line in enumerate(lines):
+        code = line.split("//", 1)[0]
+        if CHANGING_CALL.search(code):
+            found.append(i + 1)
+            continue
+        m = re.search(r"\bcatch\s*\{(.*)$", code)
+        if not m:
+            continue
+        rest = m.group(1)
+        if rest.strip().startswith("}"):
+            found.append(i + 1)
+            continue
+        if rest.strip():
+            continue
+        body = []
+        for later in lines[i + 1 :]:
+            stripped = later.strip()
+            if stripped.startswith("}"):
+                break
+            if stripped and not stripped.startswith("//"):
+                body.append(stripped)
+        if not body:
+            found.append(i + 1)
+    return found
+
+
+def rule_errors_shown(app):
+    bad = []
+    for path in swift_sources(app):
+        for line in dropped_error_problems(read(path)):
+            bad.append(f"{path.name}:{line}")
+    if bad:
+        return False, "a failed action is dropped (`try?` on a change, or an empty catch): " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
     ("appkit-alerts", "Errors shown with ForgeAppKit's `forgeAlert`, no own ErrorAlert.swift", rule_appkit_alerts),
+    ("errors-shown", "A failed action says so: no `try?` on a change, no empty catch-all", rule_errors_shown),
     ("alerts-on-top", "App-wide alerts on the navigation stack or tabs, never on a first screen that pushes others", rule_alerts_on_top),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
@@ -311,10 +361,15 @@ for name in apps:
 # rules too (no lag list for them).
 for template in sorted((root / "templates").glob("ios-*")):
     for path in sorted((template / "Sources").rglob("*.swift")):
-        for line in stack_alert_problems(read(path)):
+        text = read(path)
+        for line in stack_alert_problems(text):
             problems.append(
                 f"{path.relative_to(root)}:{line}: alerts-on-top: app-wide alert on a "
                 "screen that pushes others; put it on the NavigationStack"
+            )
+        for line in dropped_error_problems(text):
+            problems.append(
+                f"{path.relative_to(root)}:{line}: errors-shown: a failed action is dropped"
             )
 
 

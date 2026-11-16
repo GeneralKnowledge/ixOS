@@ -17,7 +17,8 @@ struct TripDetailView: View {
     @State private var isRenaming = false
     @State private var newTitle = ""
     @State private var exported: ExportedFile?
-    @State private var exporting = ForgeSubmission()
+    /// Share and Rename: a failure is shown, never dropped.
+    @State private var acting = ForgeSubmission()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -68,10 +69,10 @@ struct TripDetailView: View {
                 TextField("Name", text: $newTitle)
                     .accessibilityIdentifier("trip.renameField")
                 Button("Cancel", role: .cancel) {}
-                Button("Rename") { Task { try? await model.rename(trip, to: newTitle) } }
+                Button("Rename") { Task { await rename(trip) } }
                     .accessibilityIdentifier("trip.renameSave")
             }
-            .forgeAlert(failure: $exporting.failure)
+            .forgeAlert(failure: $acting.failure)
         } else {
             Color.clear.onAppear { dismiss() }
         }
@@ -117,9 +118,14 @@ struct TripDetailView: View {
         }
     }
 
+    private func rename(_ trip: TripSummary) async {
+        let title = newTitle
+        _ = await acting.run { try await model.rename(trip, to: title) }
+    }
+
     private func export(_ format: ExportFormat) async {
         var url: URL?
-        _ = await exporting.run { url = try await model.export(tripID, as: format) }
+        _ = await acting.run { url = try await model.export(tripID, as: format) }
         if let url { exported = ExportedFile(url: url) }
     }
 }
