@@ -7,6 +7,8 @@ import UIKit
 import Vision
 import VisionKit
 
+private let scanLog = ForgeLog("Scanner")
+
 /// Shows this device's pairing code as a QR code for the other device to
 /// scan. The code works once, for five minutes; it closes itself when the
 /// other device has paired.
@@ -170,7 +172,12 @@ private struct CodeScanner: UIViewControllerRepresentable {
             isHighlightingEnabled: true
         )
         scanner.delegate = context.coordinator
-        try? scanner.startScanning()
+        do {
+            try scanner.startScanning()
+        } catch {
+            // Checked as available just before; pasting a code still works.
+            scanLog.warn("The camera scanner didn't start: \(error)")
+        }
         return scanner
     }
 

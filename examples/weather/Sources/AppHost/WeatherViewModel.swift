@@ -63,6 +63,9 @@ public final class WeatherViewModel {
     public private(set) var searchResults: [Place] = []
     public private(set) var isSearching = false
     public private(set) var searchMessage: String?
+    /// Why removing or reordering a saved place failed; the places list
+    /// shows it, and clears it when dismissed.
+    public var placesError: String?
 
     public let client: WeatherClient
     /// How the summary and the wind tile state wind speed.
@@ -275,8 +278,10 @@ public final class WeatherViewModel {
             refreshTasks[page.id]?.cancel()
             refreshTasks[page.id] = nil
             refreshTokens[page.id] = nil
-            if let saved = try? client.removeSaved(place) {
-                rebuildPages(saved: saved)
+            do {
+                rebuildPages(saved: try client.removeSaved(place))
+            } catch {
+                placesError = Self.message(error, doing: "remove \(place.name)")
             }
         }
         if selectedPage == nil { selection = pages.first?.id ?? WeatherPage.myLocationID }
@@ -284,9 +289,18 @@ public final class WeatherViewModel {
 
     /// Moves a saved page; indexes count saved places only (not "My Location").
     public func moveSaved(from: Int, to: Int) {
-        if let saved = try? client.moveSaved(from: from, to: to) {
-            rebuildPages(saved: saved)
+        do {
+            rebuildPages(saved: try client.moveSaved(from: from, to: to))
+        } catch {
+            placesError = Self.message(error, doing: "move the place")
         }
+    }
+
+    /// "Couldn't remove Paris." and why, for the places list's alert.
+    nonisolated static func message(_ error: Error, doing action: String) -> String {
+        let reason = (error as? WeatherClientError)?.userMessage
+            ?? WeatherClientError.internalFailure(detail: "\(error)").userMessage
+        return "Couldn't \(action). \(reason)"
     }
 
     // MARK: Search

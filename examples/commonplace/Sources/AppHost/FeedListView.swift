@@ -118,7 +118,11 @@ struct FeedListView: View {
         }
         // On the stack, not its first screen: an article that fails to open
         // asks from a pushed screen, and an alert on the root showed behind it.
-        .forgeAlert($model.alert)
+        // While Settings is open, it shows the alerts.
+        .forgeAlert(Binding(
+            get: { showingSettings ? nil : model.alert },
+            set: { model.alert = $0 }
+        ))
     }
 
     /// Matching articles, newest first, opening like timeline rows.

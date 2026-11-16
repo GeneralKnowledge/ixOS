@@ -33,6 +33,18 @@ struct LocationsView: View {
                 }
             }
         }
+        .alert(
+            "Couldn't Change Your Places",
+            isPresented: Binding(
+                get: { model.placesError != nil },
+                set: { if !$0 { model.placesError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+                .accessibilityIdentifier("places.errorOK")
+        } message: {
+            Text(model.placesError ?? "")
+        }
     }
 
     @ViewBuilder private var places: some View {

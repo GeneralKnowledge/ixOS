@@ -30,6 +30,7 @@ struct ChecklistScreen: View {
     @State private var export: ExportFile?
     @State private var importing = false
     @State private var imported: CsvImportSummary?
+    @State private var confirmingClear = false
     @FocusState private var addFocused: Bool
 
     init(core: ChecklistCore, changes: UInt64) {
@@ -68,9 +69,24 @@ struct ChecklistScreen: View {
                 ShareSheet(file: file)
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText]) { result in
-                if case .success(let url) = result {
+                switch result {
+                case .success(let url):
                     Task { imported = await model.importCSV(at: url) }
+                case .failure(let error):
+                    model.errorMessage = "The file couldn't be opened. \(error.localizedDescription)"
                 }
+            }
+            // Clearing removes every done item at once and can't be undone.
+            .confirmationDialog(
+                "Clear \(model.summary.done) done \(model.summary.done == 1 ? "item" : "items")?",
+                isPresented: $confirmingClear, titleVisibility: .visible
+            ) {
+                Button("Clear Done Items", role: .destructive) {
+                    Task { await model.clearDone() }
+                }
+                .accessibilityIdentifier("checklist.clearDone.confirm")
+            } message: {
+                Text("They're deleted from this iPhone. This can't be undone.")
             }
             .alert(
                 importTitle,
@@ -198,7 +214,7 @@ struct ChecklistScreen: View {
                 }
                 .accessibilityIdentifier("checklist.importCSV")
                 Button(role: .destructive) {
-                    Task { await model.clearDone() }
+                    confirmingClear = true
                 } label: {
                     Label("Clear Done Items", systemImage: "checkmark.circle.badge.xmark")
                 }
