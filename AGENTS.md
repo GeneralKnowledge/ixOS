@@ -73,7 +73,7 @@ Every doc is listed by task in [docs/README.md](docs/README.md).
 | Task | Read |
 |---|---|
 | A new app or app feature | [getting-started.md](docs/getting-started.md), [app-crate.md](docs/app-crate.md), [ios-ui.md](docs/ios-ui.md), [forgeui.md](docs/forgeui.md) |
-| A native iOS capability | [native-services.md](docs/native-services.md), the ledger, [framework-extraction-audit.md](docs/framework-extraction-audit.md) |
+| A native iOS capability | [native-services.md](docs/native-services.md), the ledger (its Modules table), [areas.md](docs/areas.md) |
 | Saving app data (files, documents, databases, schema changes) | [persistence.md](docs/persistence.md) |
 | App settings, permissions, entitlements | [app-config.md](docs/app-config.md) |
 | Proving a feature works (requirements, evidence) | [evidence.md](docs/evidence.md) |

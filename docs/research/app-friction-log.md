@@ -3,7 +3,7 @@
 Started 2026-11-11. The remaining demo apps (FieldKit, Sketchbook,
 Soundscape, Relay, in that order) are built one at a time, and each one
 writes down where the framework got in the way. This log continues the
-[showcase friction log](showcase-friction-log.md), which covers putting the
+[showcase friction log](https://github.com/GeneralKnowledge/ixOS/blob/6de2125c63803063e706f511abe15ecf05025d3c/docs/research/showcase-friction-log.md), which covers putting the
 existing apps into Device Lab.
 
 How it is used:
@@ -48,7 +48,7 @@ in #226). Against the ranked list below:
 Every crate, example and app crate was built, linted and tested on Linux
 (all green before and after the fixes above); the Swift was not compiled.
 These are the open items from this log, the
-[showcase log](showcase-friction-log.md) and the
+[showcase log](https://github.com/GeneralKnowledge/ixOS/blob/6de2125c63803063e706f511abe15ecf05025d3c/docs/research/showcase-friction-log.md) and the
 [Good Dog log](../good-dog-pain-points.md), plus what reading all the apps
 side by side showed, most useful first. Each says why it waited.
 

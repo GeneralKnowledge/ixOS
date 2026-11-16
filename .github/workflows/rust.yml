@@ -60,6 +60,8 @@ jobs:
         run: ./scripts/test-native-rebuild.sh
       - name: Dependencies run one way between framework, tools and apps (docs/areas.md)
         run: ./scripts/check-boundaries.sh
+      - name: Markdown links point at files that exist
+        run: ./scripts/check-doc-links.sh
       # Apps made with forge init (examples/pocket-library) have their own
       # Cargo workspace, so the steps above do not reach them.
       - name: Every app keeps up with the framework (docs/app-parity.md)

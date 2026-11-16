@@ -6,12 +6,12 @@ Accepted (2026-11-09, Reuben).
 
 ## Context
 
-ixOS is becoming a native application framework with a SwiftUI design system ([proposal](../research/forgeui-proposal.md)). ForgeUI (the design system) and later Forge AppKit (application composition) are Swift libraries that every app should be able to depend on, inside the checkout and outside it.
+ixOS is becoming a native application framework with a SwiftUI design system ([proposal](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/research/forgeui-proposal.md)). ForgeUI (the design system) and later Forge AppKit (application composition) are Swift libraries that every app should be able to depend on, inside the checkout and outside it.
 
 What already exists:
 
 - ForgeKit, the Swift half of the application runtime, is a SwiftPM package whose only source is `forgekit/` in ixOS. `scripts/forgekit.sh release` copies it into the `GeneralKnowledge/ForgeKit` repository and tags it with forge-app's version. That repository holds releases only.
-- SwiftPM needs `Package.swift` at the root of a repository to resolve a package by URL (Phase 0, [finding 3](../archive/phase0-results.md)). A package in a subfolder of ixOS can be used by path inside the checkout, but not by apps outside it.
+- SwiftPM needs `Package.swift` at the root of a repository to resolve a package by URL (Phase 0, [finding 3](https://github.com/GeneralKnowledge/ixOS/blob/b5276a2a20cb5aa110d3cafa56bdc2596371a34c/docs/archive/phase0-results.md)). A package in a subfolder of ixOS can be used by path inside the checkout, but not by apps outside it.
 - `forge init` pins new apps to one framework version (`forge-release.toml`), which already covers ForgeKit.
 
 Options:

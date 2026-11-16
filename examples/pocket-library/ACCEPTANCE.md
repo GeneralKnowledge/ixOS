@@ -1,6 +1,6 @@
 # Pocket Library acceptance report
 
-What has been checked, where, and what is still to do. Results are kept apart by kind: **automated** (runs in CI on every PR), **local build** (run by hand on a development machine), and **physical device** (an iPhone). The device steps are now part of the framework-wide runbook, [docs/integration/iphone-acceptance.md](../../docs/integration/iphone-acceptance.md) (section E); record results there and in the table below. Nothing here was tested on the iOS Simulator, which Forge does not support. (macOS CI renders screenshots in the simulator for UI review only, `scripts/pocket-library-screenshots.sh`; they are not acceptance results.)
+What has been checked, where, and what is still to do. Results are kept apart by kind: **automated** (runs in CI on every PR), **local build** (run by hand on a development machine), and **physical device** (an iPhone). The device steps are now part of the framework-wide runbook, [docs/integration/iphone-acceptance.md](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/integration/iphone-acceptance.md) (section E); record results there and in the table below. Nothing here was tested on the iOS Simulator, which Forge does not support. (macOS CI renders screenshots in the simulator for UI review only, `scripts/pocket-library-screenshots.sh`; they are not acceptance results.)
 
 Status as of 2026-11-07. A step is marked done only when it was actually performed.
 
@@ -47,4 +47,4 @@ Still open:
 
 ## Manual acceptance on an iPhone (Linux)
 
-The steps (first launch, adding by hand and from the catalogue, EPUB import, progress, edit and delete, search, persistence, offline, settings and export, the release build, and a Rust change reaching the phone) are in [docs/integration/iphone-acceptance.md](../../docs/integration/iphone-acceptance.md), sections E and F.
+The steps (first launch, adding by hand and from the catalogue, EPUB import, progress, edit and delete, search, persistence, offline, settings and export, the release build, and a Rust change reaching the phone) are in [docs/integration/iphone-acceptance.md](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/integration/iphone-acceptance.md), sections E and F.

@@ -85,7 +85,7 @@ With a paid team:
 
 Not built: Forge does not make distribution builds, TestFlight uploads or App Store submissions. A paid team makes them allowed by Apple, but nothing in Forge or xtool's development commands produces them.
 
-**Status:** team detection is tested against recorded xtool output only. Signing with a paid team has not yet been run with Forge; the first check is step 3 of the [iPhone session](archive/iphone-session-2026-11-07.md).
+**Status:** team detection is tested against recorded xtool output only. Signing with a paid team has not yet been run with Forge; the first check is step 3 of the [iPhone session](https://github.com/GeneralKnowledge/ixOS/blob/b5276a2a20cb5aa110d3cafa56bdc2596371a34c/docs/archive/iphone-session-2026-11-07.md).
 
 ## The iPhone, the first time
 

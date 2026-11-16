@@ -24,7 +24,7 @@ import WeatherFFI
 /// (Device Lab's, which links their Rust cores) and one ForgeKit, so the
 /// showcase checks that they all run on the same system. Each app is its own
 /// Swift package (examples/<app>), unchanged. What was hard
-/// about putting them together is in docs/research/showcase-friction-log.md.
+/// about putting them together is in https://github.com/GeneralKnowledge/ixOS/blob/6de2125c63803063e706f511abe15ecf05025d3c/docs/research/showcase-friction-log.md.
 struct AppsView: View {
     @Binding var open: EmbeddedApp?
     @AppStorage(EmbeddedApp.launchKey) private var launchApp = ""

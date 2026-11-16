@@ -2,7 +2,7 @@
 
 Forge Mobile splits **portable Rust application logic** from **thin platform hosts** and a **typed UniFFI boundary**.
 
-> The application model is `forge-app` plus ForgeKit ([app-model-review.md](app-model-review.md)). [architecture-assessment.md](archive/architecture-assessment.md) assesses the design's trade-offs and where it should improve.
+> The application model is `forge-app` plus ForgeKit ([app-model-review.md](app-model-review.md)). [architecture-assessment.md](https://github.com/GeneralKnowledge/ixOS/blob/b5276a2a20cb5aa110d3cafa56bdc2596371a34c/docs/archive/architecture-assessment.md) assesses the design's trade-offs and where it should improve.
 
 ## Framework principles
 
@@ -47,7 +47,7 @@ In practice:
 | Audio | Application logic | AVFoundation, the audio session, Now Playing |
 | Local AI | Model lifecycle, prompts, conversations | Foundation Models, Core ML inference |
 
-The [framework extraction audit](framework-extraction-audit.md) applies these rules to the current demos and lists what should move, in order.
+The [framework extraction audit](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/framework-extraction-audit.md) applies these rules to the current demos and lists what should move, in order.
 
 ## Layers
 
