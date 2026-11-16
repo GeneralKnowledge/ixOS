@@ -1,5 +1,5 @@
 //! `cargo run -p chat-server [-- --bind 0.0.0.0:8787] [--data FILE]` (or
-//! `make chat-server`). See `src/lib.rs` and `docs/chat-demo.md`.
+//! `make chat-server`). See `src/lib.rs` and `examples/chat/docs/chat-demo.md`.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

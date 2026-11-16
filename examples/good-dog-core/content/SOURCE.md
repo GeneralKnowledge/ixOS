@@ -8,14 +8,14 @@
 
 Exercise text uses glossary links written `[[term-id]]` or `[[term-id|shown text]]`.
 The glossary, guides, referrals and Ask answers are not exported yet; they come with
-the milestones that need them (docs/good-dog-demo.md).
+the milestones that need them (examples/good-dog/docs/good-dog-demo.md).
 
 Known gap in the web app's content: exercises `ex-down-comfort`, `ex-toilet-routine`
 and `ex-puppy-mouthing` use learning objectives (`down`, `housetraining`,
 `puppy-mouthing`) that have no entry in `learning-objectives.json`, so they have no
 label. `tests/content.rs` allows exactly these three.
 
-`pathways.json` holds goal pathways (docs/good-dog-demo.md, "Pathway format"). They are
+`pathways.json` holds goal pathways (examples/good-dog/docs/good-dog-demo.md, "Pathway format"). They are
 written in [GeneralKnowledge/DogResearch](https://github.com/GeneralKnowledge/DogResearch)
 first (Reuben, 2026-11-08) and exported here. The current file is the `pathways` array of
 DogResearch's `dist/good-dog-pathways.json` (`npm run export:good-dog`) from DogResearch PR #9

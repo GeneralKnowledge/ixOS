@@ -5,11 +5,11 @@ specification (transfer, messages, rooms) under the canonical
 [Relay platform plan](relay-platform-plan.md),
 whose milestones M0 to M7 replace the stages below (stage 0 is M0, stage 1 is
 M1 and M3, stage 2 is M2, M4 and M5, stage 3 is M7). Stage 0 on Linux is done
-([results](research/relay-stage0-spike.md)); its iPhone half waits for the
+([results](relay-stage0-spike.md)); its iPhone half waits for the
 laptop.
 
 Relay today sends notes and files between devices that paired once by QR
-code, on the same network ([examples/relay](../examples/relay/README.md)).
+code, on the same network ([examples/relay](../README.md)).
 This plan grows it into a product of its own: send any file to any of your
 devices, first on the local network and later over the internet, with the
 "send, get a short code, type it on the other device" flow that
@@ -270,7 +270,7 @@ admin keeps it open. When the host closes it, it's gone.
 - **Built on Nostr** (Reuben, 2026-11-14: servers as "types of relays", an
   IRC and Discord hybrid where each server chooses what it supports, on
   existing infrastructure). After comparing Matrix, IRC, XMTP, Nostr and
-  iroh-gossip ([research/relay-rooms-protocols.md](research/relay-rooms-protocols.md)),
+  iroh-gossip ([relay-rooms-protocols.md](relay-rooms-protocols.md)),
   rooms speak Nostr: a plain relay carries end to end rooms (Marmot, which
   is MLS over Nostr) and sees only ciphertext; a relay that hosts NIP-29
   groups can offer "sub-servers" and rooms the host can read; each relay
@@ -392,6 +392,6 @@ Open since then:
   <https://github.com/coder/wush>; derphole:
   <https://shayne.github.io/derphole/>; Taildrop:
   <https://tailscale.com/docs/features/taildrop>
-- Relay today: [examples/relay/README.md](../examples/relay/README.md),
+- Relay today: [examples/relay/README.md](../README.md),
   friction A16 to A19 and A26 to A27 in
-  [research/app-friction-log.md](research/app-friction-log.md)
+  [research/app-friction-log.md](../../../docs/research/app-friction-log.md)

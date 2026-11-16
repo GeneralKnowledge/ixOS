@@ -7,10 +7,10 @@
 > (see Verification in the platform plan).
 
 2026-11-14. Answers the stage 0 questions in
-[relay-transfer-plan.md](../relay-transfer-plan.md) on Linux. The iPhone half
+[relay-transfer-plan.md](relay-transfer-plan.md) on Linux. The iPhone half
 waits for the laptop, where builds are paused.
 
-Code: [examples/relay/spike](../../examples/relay/spike/README.md), about 450
+Code: [examples/relay/spike](../spike/README.md), about 450
 lines, its own workspace, not part of the app.
 
 ## What was built

@@ -3,7 +3,7 @@
 # (`forge check swift` runs them on Linux). `device`: UI scenarios for
 # `forge ui run`; their verdicts come only from a run on an iPhone. The
 # subscribe and mark-read scenarios need the fixture feed server
-# (docs/benchmarks/netnewswire/fixtures/serve.py).
+# (examples/commonplace/docs/benchmark/fixtures/serve.py).
 
 [[requirement]]
 id = "CP-1"

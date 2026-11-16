@@ -1,7 +1,7 @@
 //! The chat server for the Chat example: a small, real server you run on
 //! your own computer. It keeps accounts and messages on disk, so a phone,
 //! the `chat-cli` and the tests all talk to the same thing a real app would.
-//! It serves the wire protocol in `docs/chat-demo.md` and behaves like
+//! It serves the wire protocol in `examples/chat/docs/chat-demo.md` and behaves like
 //! `chat_core::InMemoryRepo`:
 //!
 //! - `POST /accounts`                       ← `{"display_name"}` → `201` `{"user_id","display_name","token"}`

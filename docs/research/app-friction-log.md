@@ -49,7 +49,7 @@ Every crate, example and app crate was built, linted and tested on Linux
 (all green before and after the fixes above); the Swift was not compiled.
 These are the open items from this log, the
 [showcase log](https://github.com/GeneralKnowledge/ixOS/blob/6de2125c63803063e706f511abe15ecf05025d3c/docs/research/showcase-friction-log.md) and the
-[Good Dog log](../good-dog-pain-points.md), plus what reading all the apps
+[Good Dog log](../../examples/good-dog/docs/good-dog-pain-points.md), plus what reading all the apps
 side by side showed, most useful first. Each says why it waited.
 
 | Rank | What | Seen in | Why not tonight |

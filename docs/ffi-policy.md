@@ -129,7 +129,7 @@ Chat's `ChatCore` (`examples/chat/rust/src/lib.rs`) is the reference for a strea
 - **Async commands are not cancellable from the host.** Leaving a room must not cancel a send already on the wire; dropping the future only ignores the answer, the store and the event stream still get the outcome.
 - **Every event, every error is typed.** `ChatError` adds `Storage`/`Internal` to the core's variants; fields are `reason`/`detail` (never `message`, which Kotlin's `Throwable` owns).
 
-The design and the reasons are in [chat-demo.md](chat-demo.md).
+The design and the reasons are in [chat-demo.md](../examples/chat/docs/chat-demo.md).
 
 ## Lifecycle and ownership
 

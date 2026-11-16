@@ -1,6 +1,6 @@
-# The benchmark's F9 (docs/benchmarks/netnewswire/spec.md): Hide Read
+# The benchmark's F9 (examples/commonplace/docs/benchmark/spec.md): Hide Read
 # Articles in Settings empties a feed whose articles are all read. Needs
-# the fixture server on the laptop (docs/benchmarks/netnewswire/fixtures/
+# the fixture server on the laptop (examples/commonplace/docs/benchmark/fixtures/
 # serve.py); replace the address with the laptop's. Starts on an empty,
 # throwaway library. Search has no scenario: SwiftUI's search field takes
 # no identifier (gap `searchable-identifier`), so a person checks it.

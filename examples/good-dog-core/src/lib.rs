@@ -1,4 +1,4 @@
-//! Domain core of the Good Dog demo ([docs/good-dog-demo.md]).
+//! Domain core of the Good Dog demo ([examples/good-dog/docs/good-dog-demo.md]).
 //!
 //! A port of the Good Dog web app's plan engine (GD0). It has two parts with a
 //! one-way dependency, as in the web app:
@@ -16,7 +16,7 @@
 //! them. `tests/golden.rs` and `tests/parity.rs` check the output against
 //! plans recorded from the TypeScript engine.
 //!
-//! [docs/good-dog-demo.md]: https://github.com/GeneralKnowledge/ixOS/blob/main/docs/good-dog-demo.md
+//! [examples/good-dog/docs/good-dog-demo.md]: https://github.com/GeneralKnowledge/ixOS/blob/main/examples/good-dog/docs/good-dog-demo.md
 
 pub mod coaching;
 pub mod dog_training;

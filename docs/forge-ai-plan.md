@@ -23,7 +23,7 @@ This plan does two things:
 | Rust around it | characters, history trimming, invented-turn cutting, `assistant.db` | parts of ≤900 tokens, reader → writer → editor, cast keeper, acts, three overview writers, refusal/preamble/echo/cut-off checker, saved progress per chapter |
 | Swift around it | | `BookBackgroundTask` (`BGContinuedProcessingTask`, iOS 26) |
 
-The two adapters are the same wrapper written twice, and each fixed problems the other still has: Chat's misses `refusal`, `rateLimited` and `assetsUnavailable`; Pocket Library's has no transcript support. Good Dog's planned GD7 "Ask" ([good-dog-demo.md](good-dog-demo.md)) would write a third. That is the extraction signal ([architecture.md](architecture.md#framework-principles), rule 2).
+The two adapters are the same wrapper written twice, and each fixed problems the other still has: Chat's misses `refusal`, `rateLimited` and `assetsUnavailable`; Pocket Library's has no transcript support. Good Dog's planned GD7 "Ask" ([good-dog-demo.md](../examples/good-dog/docs/good-dog-demo.md)) would write a third. That is the extraction signal ([architecture.md](architecture.md#framework-principles), rule 2).
 
 ## 2. Forge AI, the module
 

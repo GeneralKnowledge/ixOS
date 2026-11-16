@@ -4,7 +4,7 @@ A replication benchmark takes a real iOS app as a behavioural reference and rebu
 
 | Benchmark | Reference | Our app | Status |
 |---|---|---|---|
-| [netnewswire/](netnewswire/README.md) | NetNewsWire (MIT, App Store) | [Commonplace](../../examples/commonplace/README.md) | B0: slice 1 built, reference not yet walked |
+| [netnewswire/](README.md) | NetNewsWire (MIT, App Store) | [Commonplace](../../README.md) | B0: slice 1 built, reference not yet walked |
 
 ## Rules
 
@@ -40,7 +40,7 @@ blocks = false        # did it stop the feature, or only slow it down
 second_use = "Another app that needs it, or 'none yet'"
 ```
 
-A gap becomes ixOS work only with a second use, the same test as extracting framework code ([architecture.md](../architecture.md#framework-principles)). Things plain SwiftUI or Apple's frameworks already do are not gaps.
+A gap becomes ixOS work only with a second use, the same test as extracting framework code ([architecture.md](../../../../docs/architecture.md#framework-principles)). Things plain SwiftUI or Apple's frameworks already do are not gaps.
 
 ## Pattern records
 

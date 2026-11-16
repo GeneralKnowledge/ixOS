@@ -2,7 +2,7 @@
 
 A person's side-by-side walk of NetNewsWire and Commonplace, about ten minutes. Do each step in NetNewsWire, then in Commonplace (Device Lab > Apps > Commonplace), and write **Same**, **Different: …** (one line) or **Missing** beside it. Nothing here needs the cable or the laptop beyond the fixture server.
 
-**Before:** the fixture server is running on the laptop (`python3 docs/benchmarks/netnewswire/fixtures/serve.py`, which prints the address), and both apps are subscribed to `http://<address>:8765/rss.xml`. Subscribing is step 1 if they aren't.
+**Before:** the fixture server is running on the laptop (`python3 examples/commonplace/docs/benchmark/fixtures/serve.py`, which prints the address), and both apps are subscribed to `http://<address>:8765/rss.xml`. Subscribing is step 1 if they aren't.
 
 | # | Step | Spec | NetNewsWire | Commonplace |
 |---|---|---|---|---|

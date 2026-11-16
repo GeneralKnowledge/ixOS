@@ -4,7 +4,7 @@
 //!
 //! Pathways are written in GeneralKnowledge/DogResearch, in the shape of its
 //! Foundation course (`kb/meta/uk-lite-course.json`), and exported into
-//! `content/pathways.json` like the exercises. See docs/good-dog-demo.md,
+//! `content/pathways.json` like the exercises. See examples/good-dog/docs/good-dog-demo.md,
 //! "Pathway format".
 //!
 //! A gate never passes on a count of completed sessions. [`stage_readiness`]

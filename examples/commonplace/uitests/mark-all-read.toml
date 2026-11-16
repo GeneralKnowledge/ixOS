@@ -1,7 +1,7 @@
-# The benchmark's F4 (docs/benchmarks/netnewswire/spec.md): subscribe to
+# The benchmark's F4 (examples/commonplace/docs/benchmark/spec.md): subscribe to
 # the fixture feed (4 articles, all unread), mark them all read from its
 # timeline, and see the unread count go. Needs the fixture server on the
-# laptop (docs/benchmarks/netnewswire/fixtures/serve.py); replace the
+# laptop (examples/commonplace/docs/benchmark/fixtures/serve.py); replace the
 # address with the laptop's. Starts on an empty, throwaway library.
 
 name = "Mark all as read"

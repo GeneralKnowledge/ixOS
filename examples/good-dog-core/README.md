@@ -1,6 +1,6 @@
 # good-dog-core
 
-The Rust core of the Good Dog demo ([plan](../../docs/good-dog-demo.md)): the plan engine
+The Rust core of the Good Dog demo ([plan](../good-dog/docs/good-dog-demo.md)): the plan engine
 ported from the Good Dog web app, its dog-training policy, and the exercise content.
 This is milestone GD0. There is no app, storage or FFI yet.
 
