@@ -2,7 +2,7 @@
 
 An offline-first reading tracker for iPhone, built with Forge from Linux. Keep a list of the books you want to read, are reading and have finished; record the page you're on; see what you've read this week.
 
-It is ixOS's reference app: it draws with [ForgeUI](../../docs/forgeui.md), keeps its alerts, confirmations, sheets, search state and form errors as [ForgeAppKit](../../docs/forgeappkit.md) values, and validates its forms with `forge_app::Validator` ([app-foundations.md](../../docs/app-foundations.md)). It is also Forge's acceptance test for real apps: it was created with `forge init`, owns its Rust crate, talks to SwiftUI only through generated UniFFI bindings, and is built and installed with xtool. [ACCEPTANCE.md](ACCEPTANCE.md) records what has been checked and how.
+It is ixOS's reference app: it draws with [ForgeUI](../../docs/forgeui.md), keeps its alerts, confirmations, sheets, search state and form errors as [ForgeAppKit](../../docs/forgeappkit.md) values, and validates its forms with `forge_app::Validator` ([app-crate.md](../../docs/app-crate.md#saved-documents-and-validation)). It is also Forge's acceptance test for real apps: it was created with `forge init`, owns its Rust crate, talks to SwiftUI only through generated UniFFI bindings, and is built and installed with xtool. [ACCEPTANCE.md](ACCEPTANCE.md) records what has been checked and how.
 
 <!-- Screenshots go here once the app has run on a device: docs/images/pocket-library-*.png -->
 

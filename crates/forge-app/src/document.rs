@@ -1,5 +1,5 @@
 //! An app's saved state as one versioned JSON document, with the rules
-//! every app needs and none should rewrite (docs/app-foundations.md):
+//! every app needs and none should rewrite (docs/app-crate.md#saved-documents-and-validation):
 //!
 //! - **Change a copy, save, then keep it.** [`Document::change`] edits a
 //!   copy and replaces the value only once the save succeeded, which is

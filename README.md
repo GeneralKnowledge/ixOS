@@ -43,7 +43,7 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 4. Edit `rust/src/lib.rs`, and the SwiftUI or Compose screens. `forge run` / `forge build` rebuild the Rust and regenerate the bindings. See [docs/app-crate.md](docs/app-crate.md) for the Rust side and [docs/ios-ui.md](docs/ios-ui.md) for building a native iOS interface.
 5. Set the app's name, version, icon, permission prompts, URL schemes and entitlements in `forge.toml`; Forge writes Info.plist, App.entitlements and xtool.yml from it ([docs/app-config.md](docs/app-config.md)).
 
-All the docs, by task, are listed in [docs/README.md](docs/README.md), and [docs/status.md](docs/status.md) says what works on an iPhone today.
+The docs have one entry page per area, [framework](docs/framework.md), [tools](docs/tools.md), [infrastructure](docs/infrastructure.md) and [apps](examples/README.md), all listed in [docs/README.md](docs/README.md), and [docs/status.md](docs/status.md) says what works on an iPhone today.
 
 `--minimal` starts from a one-screen app to learn from, and [docs/first-app.md](docs/first-app.md) adds a feature to it in about 20 minutes. Leave it out for the full starter, a multi-screen notes app that shows events, networking, the app lifecycle and native services. [docs/getting-started.md](docs/getting-started.md) walks through all of this from a bare Linux machine to the app on your iPhone, including the one-time iPhone steps (Trust, Developer Mode, Apple sign-in).
 
@@ -78,7 +78,7 @@ templates/android-rust    # Android's starter crate (work in progress, the shape
 templates/ios-app         # `forge init --platform ios`
 templates/android-app     # (Android, work in progress) `forge init --platform android`
 scripts/               # Toolchain and build scripts
-docs/                  # Architecture, setup, validation
+docs/                  # Docs: framework.md, tools.md and infrastructure.md are the entry pages
 ```
 
 ## Forge CLI

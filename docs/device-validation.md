@@ -30,7 +30,7 @@ The first combined build of main after #226 and #227. Sketchbook, Soundscape and
 | Commonplace | Add a feed, read an article in the reader, search articles, change a setting | Device Lab 1.29913703 (#245, db37cdb) | Yes | Yes (cable) | Yes | Yes: "looks good. Everything seems to be working" | None reported | 2026-11-16 |
 | Chat | Join a room, send a message and a photo, open a notification | | Not yet | Not yet | Not yet | Not yet | | |
 | Good Dog | Set up a dog, start a goal, open a lesson, see a safety rule hold a stage | | Not yet | Not yet | Not yet | Not yet | | |
-| FieldKit | Record a short track, see it on the map, add a note, export GPX | Device Lab 1.29913703 (#245, db37cdb) | Yes | Yes (cable) | Yes | Yes: recorded and stopped a trip; the elevation and pace charts "look pretty good" (FK-2); GPX and GeoJSON export, rename and delete "all worked" (export checked: a 16-point track) | The Stop confirmation showed behind the recording screen; fixed in #245 (4013869), not yet checked on the phone | 2026-11-16 |
+| FieldKit | Record a short track, see it on the map, add a note, export GPX | Device Lab 1.29913703 (#245, db37cdb), then 1.29913748 (#250) | Yes | Yes (cable) | Yes | Yes: recorded and stopped a trip; the elevation and pace charts "look pretty good" (FK-2); GPX and GeoJSON export, rename and delete "all worked" (export checked: a 16-point track) | The Stop confirmation showed behind the recording screen; fixed in #250 (alerts on the stack in every app) and passed on Device Lab 1.29913748: "We are all good now" | 2026-11-16 |
 | Checklist | Add, tick and search items | | Not yet | Not yet | Not yet | Not yet | | |
 | Weather | Add a place, see its forecast | | Not yet | Not yet | Not yet | Not yet | | |
 
