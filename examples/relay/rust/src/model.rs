@@ -133,6 +133,38 @@ pub enum RelayError {
     Stopped { kind: ErrorKind },
 }
 
+impl RelayError {
+    /// Why a transfer failed, in words for its row in the history. The
+    /// diagnostic inside (an OS error, a protocol detail) goes to the log
+    /// instead: it means nothing on the screen.
+    pub fn saved_reason(&self) -> String {
+        let words = match self {
+            RelayError::Unreachable { .. } => "Couldn't reach the other device",
+            RelayError::Connection { .. } => "The connection broke",
+            RelayError::File { .. } => "The file couldn't be read or saved",
+            RelayError::Storage { .. } | RelayError::Corrupt { .. } => {
+                "Relay couldn't save it on this device"
+            }
+            RelayError::Stopped {
+                kind: ErrorKind::Cancelled,
+            } => "Cancelled",
+            RelayError::Stopped { .. } => "Stopped before it finished",
+            // The rest are already plain words (a declined reason is the
+            // other person's, a word code's says what to fix).
+            other => {
+                let text = other.to_string();
+                let mut chars = text.chars();
+                return match chars.next() {
+                    Some(first) => first.to_uppercase().chain(chars).collect(),
+                    None => text,
+                };
+            }
+        };
+        forge_runtime::logging::info!("relay transfer failed: {self}");
+        words.to_string()
+    }
+}
+
 /// The framework kind of a Relay error.
 #[uniffi::export]
 pub fn relay_error_kind(error: RelayError) -> ErrorKind {

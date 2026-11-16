@@ -103,27 +103,37 @@ struct DevicesView: View {
                 }
             }
             .toolbar {
+                // Code transfers need no pairing, so they get their own
+                // button rather than sitting under Pair a Device.
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Send with a Code", systemImage: "arrow.up.circle") { sendingCode = true }
+                            .accessibilityIdentifier("devices.sendCode")
+                        Button("Receive with a Code", systemImage: "arrow.down.circle") { receivingCode = true }
+                            .accessibilityIdentifier("devices.receiveCode")
+                    } label: {
+                        Label("Send or Receive with a Code", systemImage: "arrow.up.arrow.down.circle")
+                    }
+                    .accessibilityIdentifier("devices.codeTransfer")
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button("Show My Code", systemImage: "qrcode") { showingCode = true }
                             .accessibilityIdentifier("devices.showCode")
                         Button("Scan a Code", systemImage: "qrcode.viewfinder") { scanning = true }
                             .accessibilityIdentifier("devices.scan")
-                        Divider()
-                        Button("Receive with a Code", systemImage: "arrow.down.circle") { receivingCode = true }
-                            .accessibilityIdentifier("devices.receiveCode")
-                        Button("Send with a Code", systemImage: "arrow.up.circle") { sendingCode = true }
-                            .accessibilityIdentifier("devices.sendCode")
                     } label: {
                         Label("Pair a Device", systemImage: "plus")
                     }
                     .accessibilityIdentifier("devices.pair")
                 }
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Rename This Device", systemImage: "pencil") {
+                    // A bare pencil didn't say what it renames.
+                    Button("Rename") {
                         newName = model.identity.name
                         renaming = true
                     }
+                    .accessibilityLabel("Rename This Device")
                     .accessibilityIdentifier("devices.rename")
                 }
             }
