@@ -19,3 +19,7 @@ snow = { version = "0.10", default-features = false, features = [
 ciborium = "0.2"
 serde = { workspace = true }
 thiserror = { workspace = true }
+
+[package.metadata.forge]
+# Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
+area = "tools"

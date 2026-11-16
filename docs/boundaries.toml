@@ -1,0 +1,49 @@
+# Known crossings between the project's areas (docs/areas.md).
+# scripts/check-boundaries.sh fails on a crossing that isn't listed here and on
+# a listed one that no longer exists, so this list only shrinks.
+#
+# kind:   "depends" (the default: `from` depends on `to`) or "workspace" (an
+#         app crate that is a member of the root Cargo workspace; `to = "root"`)
+# to:     a crate name, or "*" for every app crate `from` depends on
+# status: "fix" (the default: to be removed; name the plan) or "keep" (an
+#         allowed exception, with the reason)
+
+[[crossing]]
+from = "device-lab-core"
+to = "*"
+status = "keep"
+reason = "Device Lab is the test bed on the phone and hosts every app (decided 2026-11-15), so it links each app's crate"
+
+[[crossing]]
+from = "relay-core"
+to = "forge-devproto"
+reason = "Relay's encrypted channel (Noise XXpsk3 + CBOR) is the dev-connection protocol crate, which tools own"
+plan = "Wave 4: the encrypted channel moves into forge-net"
+
+[[crossing]]
+kind = "workspace"
+from = "chat-core"
+to = "root"
+reason = "Chat's core crates predate app-owned workspaces, so cargo test --workspace also tests Chat"
+plan = "Step 2 of the boundaries plan: move them into examples/chat/ as Chat's own workspace"
+
+[[crossing]]
+kind = "workspace"
+from = "chat-server"
+to = "root"
+reason = "As chat-core"
+plan = "Step 2 of the boundaries plan: move into examples/chat/"
+
+[[crossing]]
+kind = "workspace"
+from = "chat-cli"
+to = "root"
+reason = "As chat-core"
+plan = "Step 2 of the boundaries plan: move into examples/chat/"
+
+[[crossing]]
+kind = "workspace"
+from = "good-dog-core"
+to = "root"
+reason = "Good Dog's content core predates app-owned workspaces"
+plan = "Step 2 of the boundaries plan: move into examples/good-dog/ as part of Good Dog's own workspace"

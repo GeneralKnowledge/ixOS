@@ -58,6 +58,8 @@ jobs:
           cargo test -p forge-storage --features sqlite,hash,csv,backup
       - name: native rebuild regression
         run: ./scripts/test-native-rebuild.sh
+      - name: Dependencies run one way between framework, tools and apps (docs/areas.md)
+        run: ./scripts/check-boundaries.sh
       # Apps made with forge init (examples/pocket-library) have their own
       # Cargo workspace, so the steps above do not reach them.
       - name: Every app keeps up with the framework (docs/app-parity.md)

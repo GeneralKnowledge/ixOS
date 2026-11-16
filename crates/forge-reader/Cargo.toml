@@ -25,3 +25,7 @@ serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 uniffi = { workspace = true }
+
+[package.metadata.forge]
+# Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
+area = "framework"

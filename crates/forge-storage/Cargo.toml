@@ -42,3 +42,7 @@ required-features = ["sqlite", "hash"]
 [[test]]
 name = "backup_and_csv"
 required-features = ["sqlite", "csv", "backup"]
+
+[package.metadata.forge]
+# Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
+area = "framework"
