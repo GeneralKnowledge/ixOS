@@ -3097,6 +3097,7 @@ dependencies = [
  "iroh-blobs",
  "libc",
  "log",
+ "n0-future",
  "qrcode",
  "serde",
  "serde_json",

@@ -31,6 +31,7 @@ mod code_send;
 mod code_session;
 pub mod link;
 mod model;
+mod node;
 mod record;
 pub mod wire;
 
@@ -50,6 +51,7 @@ use code::CodeProgress;
 pub use code::{CodeReceipt, CODE_SERVICE_TYPE};
 use code_send::CodeSendShared;
 pub use code_send::{CodeSend, NearbySender};
+use node::NodeCell;
 
 pub use link::AskReport;
 use link::{Inbound, Link, Me, Outgoing, Them};
@@ -109,7 +111,10 @@ pub struct RelayCore {
     listening: Mutex<Option<Listening>>,
     /// The model this device answers paired devices' asks with.
     answers_with: Mutex<Option<Arc<dyn LanguageModel>>>,
-    /// Receiving with a word code (`code`): where blobs and files go, how
+    /// This device on iroh (`node`): its lasting key, endpoint and blob
+    /// store, started on first use.
+    node: Arc<NodeCell>,
+    /// Receiving with a word code (`code`): where files and folders go, how
     /// far it has got, and the stop switch.
     code_dir: PathBuf,
     code_progress: Arc<CodeProgress>,
@@ -154,7 +159,15 @@ impl RelayCore {
         inbox.sweep_temporaries();
         let published = Arc::new(Published::new(record.value().clone()));
         let inbox_root = inbox.root().to_path_buf();
-        let code_dir = directory.path().join("codes");
+        // Absolute, so the history can tell a code receive's path.
+        let code_dir = std::path::absolute(directory.path().join("codes"))
+            .unwrap_or_else(|_| directory.path().join("codes"));
+        // Sends kept their own store before one store served both.
+        let _ = std::fs::remove_dir_all(code_dir.join("send-store"));
+        let node = Arc::new(NodeCell::new(
+            directory.path().to_path_buf(),
+            code_dir.join("store"),
+        ));
         let state = State {
             record,
             inbox,
@@ -168,6 +181,7 @@ impl RelayCore {
             progress: Mutex::new(HashMap::new()),
             listening: Mutex::new(None),
             answers_with: Mutex::new(None),
+            node,
             code_dir,
             code_progress: Arc::new(CodeProgress::default()),
             code_stop: Mutex::new(Arc::new(AtomicBool::new(false))),
@@ -176,13 +190,15 @@ impl RelayCore {
         }))
     }
 
-    /// Receives the file a sender offers with a word code such as
-    /// `37-grasp-gag-drum` (Relay M1; the sender is `relay-spike send` on a
-    /// computer for now). `addresses` and `endpoint_id` come from the
+    /// Receives the file or folder a sender offers with a word code such as
+    /// `37-grasp-gag-drum` (Relay M1; the sender is another Relay or
+    /// `relay-spike send`). `addresses` and `endpoint_id` come from the
     /// sender's Bonjour advertisement (`CODE_SERVICE_TYPE`, TXT `n` = the
-    /// code's number, `id` = the endpoint id). The file is verified chunk by
-    /// chunk and saved in Relay's `codes/received` folder; a dropped receive
-    /// resumes with the sender's next code. One at a time.
+    /// code's number, `id` = the endpoint id). Every chunk is verified, and
+    /// it is saved in Relay's `codes/received` folder; a dropped receive
+    /// resumes with the sender's next code, also after a relaunch. Once the
+    /// sender has named what it sends, the receive goes into the history.
+    /// One at a time.
     pub async fn receive_with_code(
         &self,
         code: String,
@@ -196,16 +212,54 @@ impl RelayCore {
         }
         let stop = Arc::new(AtomicBool::new(false));
         *lock(&self.code_stop) = Arc::clone(&stop);
-        code::receive(
+        let node = match self.node().await {
+            Ok(node) => node,
+            Err(err) => {
+                self.code_progress.active.store(false, Ordering::SeqCst);
+                return Err(err);
+            }
+        };
+        let result = code::receive(
             &code,
             &addresses,
             &endpoint_id,
-            &self.code_dir.join("store"),
+            node,
             &self.code_dir.join("received"),
             Arc::clone(&self.code_progress),
             stop,
         )
-        .await
+        .await;
+        let entry = match &result {
+            Ok(r) => Some((
+                r.name.clone(),
+                r.size,
+                Some(r.path.clone()),
+                SavedStatus::Done,
+            )),
+            Err(failed) => failed.offered.as_ref().map(|o| {
+                (
+                    o.name.clone(),
+                    o.size,
+                    None,
+                    SavedStatus::Failed {
+                        reason: failed.error.to_string(),
+                    },
+                )
+            }),
+        };
+        if let Some((name, size, file, status)) = entry {
+            let item = SavedItem::File { name, size, file };
+            if let Err(err) = self
+                .rt
+                .command("code-receive", move |state| {
+                    state.change(|r| Ok(r.code_transfer(false, item, status, now_ms())))
+                })
+                .await
+            {
+                forge_runtime::logging::warn!("relay couldn't save a code receive: {err}");
+            }
+        }
+        result.map_err(|f| f.error)
     }
 
     /// Stops the receive in progress, if any; it ends with an error, and
@@ -225,19 +279,21 @@ impl RelayCore {
         (total > 0).then(|| CodeSize {
             total,
             already: self.code_progress.already.load(Ordering::SeqCst),
+            done: self.code_progress.done.load(Ordering::SeqCst),
         })
     }
 
-    /// Starts sending the file at `path` with a new word code, in the
-    /// background (Relay M1). Follow it with `code_send_status`: while it
+    /// Starts sending the file or folder at `path` with a new word code, in
+    /// the background (Relay M1). Follow it with `code_send_status`: while it
     /// has a code, the app advertises it with Bonjour and reports other
     /// senders it sees with `code_send_nearby`. The receiver is another
-    /// Relay or `relay-spike receive <code>` on a computer. One at a time.
+    /// Relay, or `relay-spike receive <code>` for a file. When it ends it
+    /// goes into the history. One at a time.
     pub fn send_with_code(&self, path: String) -> Result<(), RelayError> {
         let path = PathBuf::from(path);
-        if !path.is_file() {
+        if !path.is_file() && !path.is_dir() {
             return Err(RelayError::File {
-                reason: "there is no file there".into(),
+                reason: "there is no file or folder there".into(),
             });
         }
         if self.code_send.running() {
@@ -245,10 +301,48 @@ impl RelayCore {
                 reason: "already sending".into(),
             });
         }
+        let weak = self.me.clone();
+        let sent = path.clone();
+        let on_end: code_send::OnEnd = Box::new(move |end: &CodeSend| {
+            let status = match end {
+                CodeSend::Sent { .. } => SavedStatus::Done,
+                CodeSend::Failed { reason } => SavedStatus::Failed {
+                    reason: reason.clone(),
+                },
+                _ => return,
+            };
+            // Off Relay's iroh runtime: saving waits for the command thread.
+            std::thread::spawn(move || {
+                let Some(core) = weak.upgrade() else { return };
+                let name = sent
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "file".into());
+                let size = if sent.is_dir() {
+                    code_send::files_in(&sent)
+                        .map(|f| f.iter().map(|(_, _, n)| n).sum())
+                        .unwrap_or(0)
+                } else {
+                    std::fs::metadata(&sent).map(|m| m.len()).unwrap_or(0)
+                };
+                let item = SavedItem::File {
+                    name,
+                    size,
+                    file: Some(sent.to_string_lossy().into_owned()),
+                };
+                let saved = forge_runtime::block_on(core.rt.command("code-send", move |state| {
+                    state.change(|r| Ok(r.code_transfer(true, item, status, now_ms())))
+                }));
+                if let Err(err) = saved {
+                    forge_runtime::logging::warn!("relay couldn't save a code send: {err}");
+                }
+            });
+        });
         code_send::start(
             path,
-            self.code_dir.join("send-store"),
+            Arc::clone(&self.node),
             Arc::clone(&self.code_send),
+            on_end,
         );
         Ok(())
     }
@@ -319,13 +413,17 @@ impl RelayCore {
         let progress = lock(&self.progress).clone();
         let inbox = FileStore::new(&self.inbox);
         self.record.get().transfers(
-            |name| inbox.get(name).map(|p| p.to_string_lossy().into_owned()),
+            |name| match self.code_received(name) {
+                Some(path) => path.exists().then(|| name.to_string()),
+                None => inbox.get(name).map(|p| p.to_string_lossy().into_owned()),
+            },
             |id| progress.get(&id).copied().unwrap_or(0),
         )
     }
 
     /// Removes a history entry and, for a received file, the file.
     pub async fn remove_transfer(&self, id: u64) -> Result<(), RelayError> {
+        let received = CodeReceived(self.code_dir.join("received"));
         self.rt
             .command("remove-transfer", move |state| {
                 let gone = state.change(|r| {
@@ -349,7 +447,18 @@ impl RelayCore {
                     })
                 })?;
                 if let Some(name) = gone {
-                    state.inbox.remove(&name);
+                    match received.code_received(&name) {
+                        // A file or folder received with a code.
+                        Some(path) if path.is_dir() => {
+                            let _ = std::fs::remove_dir_all(path);
+                        }
+                        Some(path) => {
+                            let _ = std::fs::remove_file(path);
+                        }
+                        None => {
+                            state.inbox.remove(&name);
+                        }
+                    }
                 }
                 Ok(())
             })
@@ -540,11 +649,26 @@ impl RelayCore {
     }
 }
 
-/// The file a code receive is fetching.
+/// The file or folder a code receive is fetching.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct CodeSize {
     pub total: u64,
+    /// Bytes that were here before this try (a resume).
     pub already: u64,
+    /// Bytes here so far, counting `already`.
+    pub done: u64,
+}
+
+/// Where code receives land (`codes/received`).
+struct CodeReceived(PathBuf);
+
+impl CodeReceived {
+    /// The received file or folder a history entry names, when it is one
+    /// (a code receive saves its full path; the old inbox saves a name).
+    fn code_received(&self, name: &str) -> Option<PathBuf> {
+        let path = std::path::Path::new(name);
+        (path.is_absolute() && path.starts_with(&self.0)).then(|| path.to_path_buf())
+    }
 }
 
 /// The number a word code starts with (what the sender advertises), or why
@@ -740,6 +864,21 @@ impl RelayCore {
             .into_iter()
             .find(|t| t.id == id)
             .ok_or(RelayError::NotFound { id })
+    }
+}
+
+impl RelayCore {
+    /// This device's iroh node, started on Relay's runtime on first use.
+    async fn node(&self) -> Result<Arc<node::Node>, RelayError> {
+        let cell = Arc::clone(&self.node);
+        code::TOKIO
+            .spawn(async move { cell.get().await })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)))
+    }
+
+    fn code_received(&self, name: &str) -> Option<PathBuf> {
+        CodeReceived(self.code_dir.join("received")).code_received(name)
     }
 }
 

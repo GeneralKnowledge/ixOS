@@ -736,13 +736,15 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func phase()  -> AppPhase
     
     /**
-     * Receives the file a sender offers with a word code such as
-     * `37-grasp-gag-drum` (Relay M1; the sender is `relay-spike send` on a
-     * computer for now). `addresses` and `endpoint_id` come from the
+     * Receives the file or folder a sender offers with a word code such as
+     * `37-grasp-gag-drum` (Relay M1; the sender is another Relay or
+     * `relay-spike send`). `addresses` and `endpoint_id` come from the
      * sender's Bonjour advertisement (`CODE_SERVICE_TYPE`, TXT `n` = the
-     * code's number, `id` = the endpoint id). The file is verified chunk by
-     * chunk and saved in Relay's `codes/received` folder; a dropped receive
-     * resumes with the sender's next code. One at a time.
+     * code's number, `id` = the endpoint id). Every chunk is verified, and
+     * it is saved in Relay's `codes/received` folder; a dropped receive
+     * resumes with the sender's next code, also after a relaunch. Once the
+     * sender has named what it sends, the receive goes into the history.
+     * One at a time.
      */
     func receiveWithCode(code: String, addresses: [String], endpointId: String) async throws  -> CodeReceipt
     
@@ -771,11 +773,12 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func sendNote(deviceId: String, text: String, addresses: [String], cancellation: Cancellation?) async throws  -> Transfer
     
     /**
-     * Starts sending the file at `path` with a new word code, in the
-     * background (Relay M1). Follow it with `code_send_status`: while it
+     * Starts sending the file or folder at `path` with a new word code, in
+     * the background (Relay M1). Follow it with `code_send_status`: while it
      * has a code, the app advertises it with Bonjour and reports other
      * senders it sees with `code_send_nearby`. The receiver is another
-     * Relay or `relay-spike receive <code>` on a computer. One at a time.
+     * Relay, or `relay-spike receive <code>` for a file. When it ends it
+     * goes into the history. One at a time.
      */
     func sendWithCode(path: String) throws 
     
@@ -1111,13 +1114,15 @@ open func phase() -> AppPhase  {
 }
     
     /**
-     * Receives the file a sender offers with a word code such as
-     * `37-grasp-gag-drum` (Relay M1; the sender is `relay-spike send` on a
-     * computer for now). `addresses` and `endpoint_id` come from the
+     * Receives the file or folder a sender offers with a word code such as
+     * `37-grasp-gag-drum` (Relay M1; the sender is another Relay or
+     * `relay-spike send`). `addresses` and `endpoint_id` come from the
      * sender's Bonjour advertisement (`CODE_SERVICE_TYPE`, TXT `n` = the
-     * code's number, `id` = the endpoint id). The file is verified chunk by
-     * chunk and saved in Relay's `codes/received` folder; a dropped receive
-     * resumes with the sender's next code. One at a time.
+     * code's number, `id` = the endpoint id). Every chunk is verified, and
+     * it is saved in Relay's `codes/received` folder; a dropped receive
+     * resumes with the sender's next code, also after a relaunch. Once the
+     * sender has named what it sends, the receive goes into the history.
+     * One at a time.
      */
 open func receiveWithCode(code: String, addresses: [String], endpointId: String)async throws  -> CodeReceipt  {
     return
@@ -1223,11 +1228,12 @@ open func sendNote(deviceId: String, text: String, addresses: [String], cancella
 }
     
     /**
-     * Starts sending the file at `path` with a new word code, in the
-     * background (Relay M1). Follow it with `code_send_status`: while it
+     * Starts sending the file or folder at `path` with a new word code, in
+     * the background (Relay M1). Follow it with `code_send_status`: while it
      * has a code, the app advertises it with Bonjour and reports other
      * senders it sees with `code_send_nearby`. The receiver is another
-     * Relay or `relay-spike receive <code>` on a computer. One at a time.
+     * Relay, or `relay-spike receive <code>` for a file. When it ends it
+     * goes into the history. One at a time.
      */
 open func sendWithCode(path: String)throws   {try rustCallWithError(FfiConverterTypeRelayError_lift) {
         uniffiCallStatus in
@@ -1430,17 +1436,31 @@ public func FfiConverterTypeCodeReceipt_lower(_ value: CodeReceipt) -> RustBuffe
 
 
 /**
- * The file a code receive is fetching.
+ * The file or folder a code receive is fetching.
  */
 public struct CodeSize: Equatable, Hashable {
     public var total: UInt64
+    /**
+     * Bytes that were here before this try (a resume).
+     */
     public var already: UInt64
+    /**
+     * Bytes here so far, counting `already`.
+     */
+    public var done: UInt64
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(total: UInt64, already: UInt64) {
+    public init(total: UInt64, 
+        /**
+         * Bytes that were here before this try (a resume).
+         */already: UInt64, 
+        /**
+         * Bytes here so far, counting `already`.
+         */done: UInt64) {
         self.total = total
         self.already = already
+        self.done = done
     }
 
     
@@ -1460,13 +1480,15 @@ public struct FfiConverterTypeCodeSize: FfiConverterRustBuffer {
         return
             try CodeSize(
                 total: FfiConverterUInt64.read(from: &buf), 
-                already: FfiConverterUInt64.read(from: &buf)
+                already: FfiConverterUInt64.read(from: &buf), 
+                done: FfiConverterUInt64.read(from: &buf)
         )
     }
 
     public static func write(_ value: CodeSize, into buf: inout [UInt8]) {
         FfiConverterUInt64.write(value.total, into: &buf)
         FfiConverterUInt64.write(value.already, into: &buf)
+        FfiConverterUInt64.write(value.done, into: &buf)
     }
 }
 
@@ -2916,7 +2938,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_phase() != 61654) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_receive_with_code() != 34060) {
+    if (uniffi_relay_core_checksum_method_relaycore_receive_with_code() != 43026) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_remove_transfer() != 50342) {
@@ -2934,7 +2956,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_send_note() != 59564) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_send_with_code() != 55172) {
+    if (uniffi_relay_core_checksum_method_relaycore_send_with_code() != 8349) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_set_phase() != 45256) {

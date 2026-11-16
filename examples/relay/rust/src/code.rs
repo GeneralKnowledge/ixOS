@@ -1,20 +1,22 @@
-//! Receiving a file with a word code, the transfer Relay is moving to
-//! (examples/relay/docs/relay-platform-plan.md, M1). The sender is the M0 spike
-//! (`examples/relay/spike`, `relay-spike send <file>`) on a computer; this is
-//! the same receiver, so the iPhone can prove the stack works there:
+//! Receiving a file or a folder with a word code, the transfer Relay is
+//! moving to (examples/relay/docs/relay-platform-plan.md, M1). The sender is
+//! another Relay (`code_send`) or the M0 spike (`relay-spike send <file>`):
 //!
-//! - iroh endpoints with relays off: the local network only.
+//! - The device's own iroh endpoint ([`crate::node`]), relays off: the local
+//!   network only.
 //! - The app finds the sender with Bonjour (`_forgerelay._udp`, its TXT
 //!   record carries the code's number and the sender's endpoint id) and hands
 //!   the addresses here; raw multicast needs an entitlement a free team
 //!   can't have, so Rust does not browse on iOS.
 //! - SPAKE2 with the code's three words, then a key confirmation over both
 //!   endpoint ids. A wrong code is spent on the sender's side.
-//! - Then iroh-blobs fetches the file, verifying every chunk, into a store
-//!   on disk, so receiving again with the sender's next code resumes.
+//! - Then iroh-blobs fetches the file, or a folder's files as a collection,
+//!   verifying every chunk, into the device's store on disk, so receiving
+//!   again with the sender's next code resumes, also after a relaunch.
 //!
-//! The wire protocol matches the spike's exactly. The sending side, which
-//! the iPhone uses too, is `code_send`.
+//! A file's wire protocol matches the spike's exactly; a folder's offer adds
+//! a format byte. The sending side, which the iPhone uses too, is
+//! `code_send`.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -23,14 +25,17 @@ use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use hmac::{Hmac, Mac};
-use iroh::endpoint::{presets, RecvStream, SendStream};
-use iroh::{Endpoint, EndpointAddr, EndpointId, RelayMode, TransportAddr};
-use iroh_blobs::store::fs::FsStore;
+use iroh::endpoint::{RecvStream, SendStream};
+use iroh::{EndpointAddr, EndpointId, TransportAddr};
+use iroh_blobs::api::downloader::DownloadProgressItem;
+use iroh_blobs::format::collection::Collection;
 use iroh_blobs::{Hash, HashAndFormat};
+use n0_future::StreamExt;
 use sha2::Sha256;
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 
 use crate::model::RelayError;
+use crate::node::{file_error, Node};
 
 /// The Bonjour service a sender advertises.
 pub const CODE_SERVICE_TYPE: &str = "_forgerelay._udp";
@@ -43,6 +48,8 @@ const TICK: Duration = Duration::from_secs(2);
 pub(crate) const GO: u8 = b'K';
 pub(crate) const BUSY: u8 = b'B';
 pub(crate) const GONE: u8 = b'G';
+/// The format byte of a folder's offer: an iroh-blobs collection.
+pub(crate) const COLLECTION: u8 = 1;
 
 /// The EFF short word list 1 (CC BY 3.0 US), as the sender uses.
 static WORDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
@@ -150,6 +157,19 @@ pub struct CodeProgress {
     pub active: AtomicBool,
     pub total: AtomicU64,
     pub already: AtomicU64,
+    /// Bytes here so far, counting what was already here.
+    pub done: AtomicU64,
+    /// Tests: stop once this many bytes are here (0: never), to interrupt
+    /// a transfer halfway on purpose.
+    #[cfg(test)]
+    pub stop_at: AtomicU64,
+}
+
+/// What the receiver learnt before a receive ended: the sender's offer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Offered {
+    pub name: String,
+    pub size: u64,
 }
 
 /// A finished receive.
@@ -197,19 +217,36 @@ pub(crate) async fn get_within(
         .map_err(|_| connection("the sender stopped answering"))?
 }
 
-/// Receives the file a sender offers with `code`. `addresses` are the
-/// sender's "host:port"s from Bonjour and `endpoint_id` its id (both from
-/// its advertisement). The file lands in `inbox`; blobs are kept in `store`
-/// so a later try resumes.
+/// Why a receive ended without the file, and what the sender had offered
+/// by then, if anything (for the history).
+#[derive(Debug)]
+pub struct Failed {
+    pub error: RelayError,
+    pub offered: Option<Offered>,
+}
+
+impl From<RelayError> for Failed {
+    fn from(error: RelayError) -> Self {
+        Self {
+            error,
+            offered: None,
+        }
+    }
+}
+
+/// Receives the file or folder a sender offers with `code`. `addresses` are
+/// the sender's "host:port"s from Bonjour and `endpoint_id` its id (both
+/// from its advertisement). It lands in `inbox`; blobs stay in the node's
+/// store, so a later try resumes.
 pub async fn receive(
     code: &str,
     addresses: &[String],
     endpoint_id: &str,
-    store: &Path,
+    node: Arc<Node>,
     inbox: &Path,
     progress: Arc<CodeProgress>,
     stop: Arc<AtomicBool>,
-) -> Result<CodeReceipt, RelayError> {
+) -> Result<CodeReceipt, Failed> {
     let code = WordCode::parse(code)?;
     let sender: EndpointId = endpoint_id.parse().map_err(|_| RelayError::Unreachable {
         reason: "the sender's id is malformed".into(),
@@ -222,22 +259,25 @@ pub async fn receive(
     if addrs.is_empty() {
         return Err(RelayError::Unreachable {
             reason: "no address for the sender".into(),
-        });
+        }
+        .into());
     }
     let target = EndpointAddr::from_parts(sender, addrs);
-    let store = store.to_path_buf();
     let inbox = inbox.to_path_buf();
     progress.active.store(true, Ordering::SeqCst);
+    progress.done.store(0, Ordering::SeqCst);
+    let offered: Arc<std::sync::Mutex<Option<Offered>>> = Arc::default();
     // iroh needs tokio; the caller (UniFFI's executor) may not be tokio, so
     // the work runs on Relay's own runtime and this only awaits it.
     let work = TOKIO.spawn({
         let progress = Arc::clone(&progress);
+        let offered = Arc::clone(&offered);
         async move {
             tokio::select! {
-                r = run(code, target, &store, &inbox, &progress) => r,
+                r = run(code, target, &node, &inbox, &progress, &offered) => r,
                 _ = async {
                     while !stop.load(Ordering::SeqCst) {
-                        tokio::time::sleep(Duration::from_millis(200)).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                 } => Err(RelayError::Connection { reason: "cancelled".into() }),
             }
@@ -245,26 +285,24 @@ pub async fn receive(
     });
     let result = work.await.unwrap_or_else(|e| Err(connection(e)));
     progress.active.store(false, Ordering::SeqCst);
-    result
+    result.map_err(|error| Failed {
+        error,
+        offered: crate::node::lock(&offered).clone(),
+    })
 }
 
 async fn run(
     code: WordCode,
     target: EndpointAddr,
-    store_dir: &Path,
+    node: &Node,
     inbox: &Path,
     progress: &CodeProgress,
+    offered: &std::sync::Mutex<Option<Offered>>,
 ) -> Result<CodeReceipt, RelayError> {
     let sender = target.id;
-    let endpoint = Endpoint::builder(presets::Minimal)
-        .relay_mode(RelayMode::Disabled)
-        .bind()
-        .await
-        .map_err(|e| RelayError::Unreachable {
-            reason: e.to_string(),
-        })?;
+    let endpoint = &node.endpoint;
     let me = endpoint.id();
-    let outcome = async {
+    async {
         let conn = tokio::time::timeout(STEP, endpoint.connect(target, CODE_ALPN))
             .await
             .map_err(|_| RelayError::Unreachable {
@@ -306,32 +344,26 @@ async fn run(
             });
         }
         let offer = get_within(&mut recv, STEP).await?;
-        if offer.len() < 40 {
-            return Err(connection("bad offer"));
-        }
-        let hash = Hash::from_bytes(offer[..32].try_into().expect("32 bytes"));
-        let size = u64::from_be_bytes(offer[32..40].try_into().expect("8 bytes"));
-        // A name, never a path.
-        let name = Path::new(&String::from_utf8_lossy(&offer[40..]).to_string())
-            .file_name()
-            .and_then(|n| n.to_str())
-            .filter(|n| !n.is_empty())
-            .unwrap_or("file")
-            .to_string();
-
-        let store = FsStore::load(store_dir)
-            .await
-            .map_err(|e| RelayError::File {
-                reason: e.to_string(),
-            })?;
+        let (hash, size, collection, name) = parse_offer(&offer)?;
+        *crate::node::lock(offered) = Some(Offered {
+            name: name.clone(),
+            size,
+        });
+        let content = if collection {
+            HashAndFormat::hash_seq(hash)
+        } else {
+            HashAndFormat::raw(hash)
+        };
+        let store = &node.store;
         let already = store
             .remote()
-            .local(HashAndFormat::raw(hash))
+            .local(content)
             .await
             .map(|l| l.local_bytes())
             .unwrap_or(0);
         progress.total.store(size, Ordering::SeqCst);
         progress.already.store(already, Ordering::SeqCst);
+        progress.done.store(already, Ordering::SeqCst);
         log::info!("code receive: {size} bytes, {already} already here");
         let started = Instant::now();
         // Tell the sender we're still here while the file moves.
@@ -349,27 +381,19 @@ async fn run(
             }
             send
         });
-        let downloaded = store
-            .downloader(&endpoint)
-            .download(hash, Some(sender))
-            .await;
+        // Fetch, unless the sender closes the code connection first (it
+        // was stopped): then stop too, keeping what arrived for a resume.
+        let downloaded = tokio::select! {
+            r = fetch(node, content, sender, progress) => r,
+            _ = conn.closed() => Err(RelayError::Declined {
+                reason: "the sender stopped".into(),
+            }),
+        };
         let seconds = started.elapsed().as_secs_f64();
         let out = unique_path(inbox, &name);
         let saved = match downloaded {
-            Ok(()) => {
-                std::fs::create_dir_all(inbox).map_err(|e| RelayError::File {
-                    reason: e.to_string(),
-                })?;
-                store
-                    .blobs()
-                    .export(hash, &out)
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| RelayError::File {
-                        reason: e.to_string(),
-                    })
-            }
-            Err(e) => Err(connection(format!("{e:#}"))),
+            Ok(()) => save(node, hash, collection, inbox, &out).await,
+            Err(e) => Err(e),
         };
         let _ = stop_ticks.send(());
         let mut send = ticker.await.map_err(connection)?;
@@ -377,7 +401,6 @@ async fn run(
         put(&mut send, b"done").await?;
         let _ = send.finish();
         let _ = tokio::time::timeout(Duration::from_secs(3), conn.closed()).await;
-        store.shutdown().await.ok();
         let fetched = size.saturating_sub(already);
         Ok(CodeReceipt {
             name,
@@ -392,9 +415,121 @@ async fn run(
             },
         })
     }
-    .await;
-    endpoint.close().await;
-    outcome
+    .await
+}
+
+/// Reads an offer: the root hash, the size, whether it is a folder, and
+/// its name (a name, never a path).
+fn parse_offer(offer: &[u8]) -> Result<(Hash, u64, bool, String), RelayError> {
+    if offer.len() < 40 {
+        return Err(connection("bad offer"));
+    }
+    let hash = Hash::from_bytes(offer[..32].try_into().expect("32 bytes"));
+    let size = u64::from_be_bytes(offer[32..40].try_into().expect("8 bytes"));
+    let (collection, name) = match offer.get(40) {
+        Some(0) => match offer.get(41) {
+            Some(&COLLECTION) => (true, &offer[42..]),
+            _ => {
+                return Err(RelayError::Declined {
+                    reason: "the sender's Relay is newer; update this one".into(),
+                })
+            }
+        },
+        _ => (false, &offer[40..]),
+    };
+    let name = Path::new(&String::from_utf8_lossy(name).to_string())
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or(if collection { "folder" } else { "file" })
+        .to_string();
+    Ok((hash, size, collection, name))
+}
+
+/// Fetches `content` from the sender, verifying every chunk, and keeps
+/// `progress.done` current.
+async fn fetch(
+    node: &Node,
+    content: HashAndFormat,
+    sender: EndpointId,
+    progress: &CodeProgress,
+) -> Result<(), RelayError> {
+    let failed = |e: &dyn std::fmt::Display| connection(format!("{e:#}"));
+    let mut items = node
+        .store
+        .downloader(&node.endpoint)
+        .download(content, Some(sender))
+        .stream()
+        .await
+        .map_err(|e| failed(&e))?;
+    while let Some(item) = items.next().await {
+        match item {
+            DownloadProgressItem::Progress(here) => {
+                progress.done.store(here, Ordering::SeqCst);
+                #[cfg(test)]
+                {
+                    let at = progress.stop_at.load(Ordering::SeqCst);
+                    if at > 0 && here >= at {
+                        return Err(connection("stopped on purpose (test)"));
+                    }
+                }
+            }
+            DownloadProgressItem::Error(e) => return Err(failed(&e)),
+            DownloadProgressItem::DownloadError => return Err(connection("the download failed")),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Copies what arrived out of the store: a file to `out`, a folder's files
+/// under the folder `out`, each kept inside it whatever its path says.
+async fn save(
+    node: &Node,
+    hash: Hash,
+    collection: bool,
+    inbox: &Path,
+    out: &Path,
+) -> Result<(), RelayError> {
+    std::fs::create_dir_all(inbox).map_err(file_error)?;
+    let blobs = node.store.blobs();
+    if !collection {
+        blobs.export(hash, out).await.map_err(file_error)?;
+        return Ok(());
+    }
+    let list = Collection::load(hash, &*node.store)
+        .await
+        .map_err(file_error)?;
+    std::fs::create_dir_all(out).map_err(file_error)?;
+    for (inside, file) in list.iter() {
+        let target = inside_folder(out, inside).ok_or_else(|| RelayError::File {
+            reason: format!("the sender named a file outside the folder: {inside}"),
+        })?;
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(file_error)?;
+        }
+        blobs.export(*file, &target).await.map_err(file_error)?;
+    }
+    Ok(())
+}
+
+/// `folder` joined with a `/`-separated path from a sender, or `None` if the
+/// path is empty or could leave the folder (`..`, a root, a drive).
+fn inside_folder(folder: &Path, inside: &str) -> Option<PathBuf> {
+    let mut path = folder.to_path_buf();
+    let mut any = false;
+    for part in inside.split('/') {
+        match part {
+            "" | "." => continue,
+            ".." => return None,
+            _ if part.contains('\\') || part.contains(':') || part.contains('\0') => return None,
+            _ => {
+                path.push(part);
+                any = true;
+            }
+        }
+    }
+    any.then_some(path)
 }
 
 /// `inbox/name`, or `inbox/name (2)` and so on if that is taken.
@@ -456,5 +591,36 @@ mod tests {
             dir.path().join("a (2).txt")
         );
         assert_eq!(unique_path(dir.path(), "b"), dir.path().join("b"));
+    }
+
+    #[test]
+    fn a_folder_never_writes_outside_itself() {
+        let f = Path::new("/in/box");
+        assert_eq!(inside_folder(f, "a/b.txt"), Some(f.join("a").join("b.txt")));
+        assert_eq!(inside_folder(f, "./a"), Some(f.join("a")));
+        assert_eq!(inside_folder(f, "../etc/passwd"), None);
+        assert_eq!(inside_folder(f, "a/../../x"), None);
+        assert_eq!(inside_folder(f, "c:\\x"), None);
+        assert_eq!(inside_folder(f, ""), None);
+        assert_eq!(inside_folder(f, "/"), None);
+    }
+
+    #[test]
+    fn offers_name_a_file_or_a_folder() {
+        let mut offer = vec![7u8; 32];
+        offer.extend_from_slice(&5u64.to_be_bytes());
+        let mut file = offer.clone();
+        file.extend_from_slice(b"../a.txt");
+        let (_, size, collection, name) = parse_offer(&file).unwrap();
+        assert_eq!((size, collection, name.as_str()), (5, false, "a.txt"));
+        let mut folder = offer.clone();
+        folder.extend_from_slice(&[0, COLLECTION]);
+        folder.extend_from_slice(b"Photos");
+        let (_, _, collection, name) = parse_offer(&folder).unwrap();
+        assert!(collection);
+        assert_eq!(name, "Photos");
+        let mut newer = offer;
+        newer.extend_from_slice(&[0, 9]);
+        assert!(parse_offer(&newer).is_err());
     }
 }
