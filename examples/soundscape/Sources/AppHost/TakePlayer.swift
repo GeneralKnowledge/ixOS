@@ -7,10 +7,12 @@ import Observation
 
 private let log = ForgeLog("Listen")
 
-/// Plays takes streamed from the take server: one take to listen to, or two
-/// side by side to compare. In a comparison both play together, in step,
-/// and switching only changes which one you hear, so A and B are heard at
-/// the same moment of the song. Volumes come from Rust's loudness match.
+/// Plays takes streamed from the take server: a queue of songs one after
+/// another, or two takes side by side to compare. The queue's rules (what
+/// plays next, shuffle, repeat) are Rust's (`rust/src/queue.rs`). In a
+/// comparison both takes play together, in step, and switching only
+/// changes which one you hear, so A and B are heard at the same moment of
+/// the song. Volumes come from Rust's loudness match.
 ///
 /// Keeps playing with the screen locked (`background_modes = ["audio"]`)
 /// and shows on the lock screen with play, pause and seeking.
@@ -21,6 +23,7 @@ final class TakePlayer {
 
     struct Loaded: Equatable {
         let song: String
+        let act: String?
         let take: Take
     }
 
@@ -30,6 +33,8 @@ final class TakePlayer {
     /// Which side you hear while comparing.
     private(set) var active: Side = .a
     private(set) var match: LoudnessMatch?
+    /// What plays one after another, when not comparing.
+    private(set) var queue: PlayQueue?
     private(set) var isPlaying = false
     private(set) var isBuffering = false
     private(set) var time: Double = 0
@@ -39,6 +44,15 @@ final class TakePlayer {
 
     var isComparing: Bool { b != nil }
     var current: Loaded? { active == .b ? b ?? a : a }
+    /// The songs after this one, for Up Next.
+    var upcoming: [QueueEntry] { queue.map { queueUpcoming(queue: $0) } ?? [] }
+    var shuffle: Bool { queue?.shuffle ?? false }
+    var repeatMode: RepeatMode { queue?.repeat ?? .off }
+    var hasPrevious: Bool { queue != nil }
+    var hasNext: Bool {
+        guard let queue else { return false }
+        return queue.repeat != .off || Int(queue.position) + 1 < queue.order.count
+    }
 
     @ObservationIgnored private let playerA = AVPlayer()
     @ObservationIgnored private let playerB = AVPlayer()
@@ -60,15 +74,40 @@ final class TakePlayer {
 
     // MARK: Loading
 
-    /// Plays one take from the start.
-    func play(_ take: Take, of song: String) {
-        load(a: Loaded(song: song, take: take), b: nil, match: nil)
-        resume()
+    /// Plays `tracks` from `start`, one after another. Repeat carries over
+    /// from what played before.
+    func play(_ tracks: [QueueTrack], from start: Int = 0, shuffle: Bool = false) {
+        guard !tracks.isEmpty else { return }
+        queue = queueStart(
+            tracks: tracks, start: UInt32(max(0, start)), shuffle: shuffle,
+            repeat: repeatMode, seed: Self.seed()
+        )
+        loadQueued(playing: true)
+    }
+
+    /// Plays one take on its own.
+    func play(_ take: Take, of song: SongDetail) {
+        play([QueueTrack(slug: song.slug, songTitle: song.title, act: song.act, take: take)])
+    }
+
+    /// Adds songs right after the one playing (`next`) or at the end; with
+    /// nothing playing, they start.
+    func add(_ tracks: [QueueTrack], next: Bool) {
+        guard !tracks.isEmpty else { return }
+        guard let queue, !isComparing else {
+            play(tracks)
+            return
+        }
+        self.queue = queueAdd(queue: queue, tracks: tracks, next: next)
     }
 
     /// Loads two takes to compare, A heard first, both from the start.
     func compare(_ first: Take, _ second: Take, of song: String, match: LoudnessMatch) {
-        load(a: Loaded(song: song, take: first), b: Loaded(song: song, take: second), match: match)
+        queue = nil
+        load(
+            a: Loaded(song: song, act: nil, take: first),
+            b: Loaded(song: song, act: nil, take: second), match: match
+        )
         resume()
     }
 
@@ -80,6 +119,7 @@ final class TakePlayer {
         a = nil
         b = nil
         match = nil
+        queue = nil
         isPlaying = false
         time = 0
         duration = 0
@@ -108,6 +148,64 @@ final class TakePlayer {
         item.preferredForwardBufferDuration = 30
         return item
     }
+
+    /// Loads the queue's current song from its start.
+    private func loadQueued(playing: Bool) {
+        guard let queue, let track = queueCurrent(queue: queue) else { return }
+        load(a: Loaded(song: track.songTitle, act: track.act, take: track.take), b: nil, match: nil)
+        if playing { resume() } else { pause() }
+    }
+
+    // MARK: The queue
+
+    /// The next song; at the end of the queue with repeat off, back to the
+    /// first song, paused.
+    func next() {
+        guard let queue, !isComparing else { return }
+        if let moved = queueAdvance(queue: queue, byUser: true) {
+            self.queue = moved
+            loadQueued(playing: true)
+        } else {
+            self.queue = queueJump(queue: queue, position: 0)
+            loadQueued(playing: false)
+        }
+    }
+
+    /// Back to the start of the song, or, near its start, the song before.
+    func previous() {
+        guard let queue, !isComparing else { return }
+        if time > 3 {
+            seek(to: 0)
+            return
+        }
+        self.queue = queueBack(queue: queue)
+        loadQueued(playing: isPlaying)
+    }
+
+    /// Plays the song at `position` in the play order (from Up Next).
+    func jump(to position: UInt32) {
+        guard let queue else { return }
+        self.queue = queueJump(queue: queue, position: position)
+        loadQueued(playing: true)
+    }
+
+    func remove(at position: UInt32) {
+        guard let queue else { return }
+        self.queue = queueRemove(queue: queue, position: position)
+    }
+
+    func toggleShuffle() {
+        guard let queue else { return }
+        self.queue = queueSetShuffle(queue: queue, on: !queue.shuffle, seed: Self.seed())
+    }
+
+    /// Off, All, One, Off.
+    func cycleRepeat() {
+        guard let queue else { return }
+        self.queue = queueSetRepeat(queue: queue, repeat: repeatAfter(repeat: queue.repeat))
+    }
+
+    private static func seed() -> UInt64 { UInt64.random(in: .min ... .max) }
 
     // MARK: Transport
 
@@ -220,10 +318,23 @@ final class TakePlayer {
         }
     }
 
-    /// The take you hear came to its end: back to the start, paused.
+    /// The take you hear came to its end: the queue's next song, the same
+    /// song again (repeat One), or back to the start, paused.
     private func ended(_ side: Side) {
         let heard: Side = isComparing ? active : .a
         guard side == heard else { return }
+        if !isComparing, let queue {
+            if let moved = queueAdvance(queue: queue, byUser: false) {
+                if moved.position == queue.position && moved.order.count == queue.order.count {
+                    seek(to: 0)
+                    resume()
+                } else {
+                    self.queue = moved
+                    loadQueued(playing: true)
+                }
+                return
+            }
+        }
         pause()
         seek(to: 0)
     }
@@ -235,9 +346,9 @@ final class TakePlayer {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: isComparing
                 ? "\(active == .a ? "A" : "B"): \(current.take.label)"
-                : current.take.label,
-            MPMediaItemPropertyAlbumTitle: current.song,
-            MPMediaItemPropertyArtist: "Soundscape Listen",
+                : current.song,
+            MPMediaItemPropertyAlbumTitle: isComparing ? current.song : current.act ?? current.take.label,
+            MPMediaItemPropertyArtist: isComparing ? "Comparing takes" : current.take.label,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: time,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
         ]
@@ -272,12 +383,20 @@ final class TakePlayer {
             MainActor.assumeIsolated { self?.skip(-10) }
             return .success
         }
-        // In a comparison, "next track" on headphones or the lock screen
-        // switches between A and B.
+        // In a comparison, "next" and "previous" on headphones or the lock
+        // screen switch between A and B; otherwise they move through the
+        // queue.
         center.nextTrackCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.isComparing else { return }
-                self.hear(self.active == .a ? .b : .a)
+                guard let self else { return }
+                if self.isComparing { self.hear(self.active == .a ? .b : .a) } else { self.next() }
+            }
+            return .success
+        }
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.isComparing { self.hear(self.active == .a ? .b : .a) } else { self.previous() }
             }
             return .success
         }

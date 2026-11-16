@@ -447,6 +447,11 @@ uint64_t uniffi_soundscape_core_fn_method_soundscapecore_listen_song(uint64_t pt
 uint64_t uniffi_soundscape_core_fn_method_soundscapecore_listen_songs(uint64_t ptr, int8_t fresh, RustBuffer cancellation
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LISTEN_TRACKS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LISTEN_TRACKS
+uint64_t uniffi_soundscape_core_fn_method_soundscapecore_listen_tracks(uint64_t ptr, RustBuffer slugs, RustBuffer cancellation
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LOOP_FRAMES
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_METHOD_SOUNDSCAPECORE_LOOP_FRAMES
 uint64_t uniffi_soundscape_core_fn_method_soundscapecore_loop_frames(uint64_t ptr, uint64_t id, uint32_t sample_rate, RustCallStatus *_Nonnull out_status
@@ -737,6 +742,66 @@ RustBuffer uniffi_soundscape_core_fn_func_parse_deep_link(RustBuffer url, RustCa
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
 void uniffi_soundscape_core_fn_func_install_native_http(uint64_t transport, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_PREFERRED_TAKE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_PREFERRED_TAKE
+RustBuffer uniffi_soundscape_core_fn_func_preferred_take(RustBuffer song, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_ADD
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_ADD
+RustBuffer uniffi_soundscape_core_fn_func_queue_add(RustBuffer queue, RustBuffer tracks, int8_t next, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_ADVANCE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_ADVANCE
+RustBuffer uniffi_soundscape_core_fn_func_queue_advance(RustBuffer queue, int8_t by_user, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_BACK
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_BACK
+RustBuffer uniffi_soundscape_core_fn_func_queue_back(RustBuffer queue, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_CURRENT
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_CURRENT
+RustBuffer uniffi_soundscape_core_fn_func_queue_current(RustBuffer queue, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_JUMP
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_JUMP
+RustBuffer uniffi_soundscape_core_fn_func_queue_jump(RustBuffer queue, uint32_t position, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_REMOVE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_REMOVE
+RustBuffer uniffi_soundscape_core_fn_func_queue_remove(RustBuffer queue, uint32_t position, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_SET_REPEAT
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_SET_REPEAT
+RustBuffer uniffi_soundscape_core_fn_func_queue_set_repeat(RustBuffer queue, RustBuffer repeat, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_SET_SHUFFLE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_SET_SHUFFLE
+RustBuffer uniffi_soundscape_core_fn_func_queue_set_shuffle(RustBuffer queue, int8_t on, uint64_t seed, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_START
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_START
+RustBuffer uniffi_soundscape_core_fn_func_queue_start(RustBuffer tracks, uint32_t start, int8_t shuffle, RustBuffer repeat, uint64_t seed, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_UPCOMING
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_QUEUE_UPCOMING
+RustBuffer uniffi_soundscape_core_fn_func_queue_upcoming(RustBuffer queue, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_REPEAT_AFTER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_REPEAT_AFTER
+RustBuffer uniffi_soundscape_core_fn_func_repeat_after(RustBuffer repeat, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_SOUNDSCAPE_CORE_RUSTBUFFER_ALLOC
@@ -1065,6 +1130,78 @@ uint16_t uniffi_soundscape_core_checksum_func_install_native_http(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_PREFERRED_TAKE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_PREFERRED_TAKE
+uint16_t uniffi_soundscape_core_checksum_func_preferred_take(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_ADD
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_ADD
+uint16_t uniffi_soundscape_core_checksum_func_queue_add(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_ADVANCE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_ADVANCE
+uint16_t uniffi_soundscape_core_checksum_func_queue_advance(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_BACK
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_BACK
+uint16_t uniffi_soundscape_core_checksum_func_queue_back(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_CURRENT
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_CURRENT
+uint16_t uniffi_soundscape_core_checksum_func_queue_current(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_JUMP
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_JUMP
+uint16_t uniffi_soundscape_core_checksum_func_queue_jump(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_REMOVE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_REMOVE
+uint16_t uniffi_soundscape_core_checksum_func_queue_remove(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_SET_REPEAT
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_SET_REPEAT
+uint16_t uniffi_soundscape_core_checksum_func_queue_set_repeat(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_SET_SHUFFLE
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_SET_SHUFFLE
+uint16_t uniffi_soundscape_core_checksum_func_queue_set_shuffle(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_START
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_START
+uint16_t uniffi_soundscape_core_checksum_func_queue_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_UPCOMING
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_QUEUE_UPCOMING
+uint16_t uniffi_soundscape_core_checksum_func_queue_upcoming(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_REPEAT_AFTER
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_REPEAT_AFTER
+uint16_t uniffi_soundscape_core_checksum_func_repeat_after(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_ADD_TRACK
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_ADD_TRACK
 uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_add_track(void
@@ -1134,6 +1271,12 @@ uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_listen_song(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_SONGS
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_SONGS
 uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_listen_songs(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_TRACKS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_METHOD_SOUNDSCAPECORE_LISTEN_TRACKS
+uint16_t uniffi_soundscape_core_checksum_method_soundscapecore_listen_tracks(void
     
 );
 #endif

@@ -12,7 +12,8 @@ it runs inside Device Lab (Apps, then Soundscape) and on its own.
 |---|---|---|
 | SS1 | Rust core (`rust/`): projects, tracks, settings checked and mapped to AVAudioEngine units, waveforms, offline mixdown | Done, tested on Linux |
 | SS2 | SwiftUI app: project list, recorder, mixer with Canvas waveforms, AVAudioEngine playback, background audio, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
-| L1 | Listen tab: songs and takes from a take server, A/B at matched loudness, stars, notes and picks, lock-screen playback | Rust tested on Linux, also against the real server; Swift written, not yet built with xtool or run on a phone |
+| L1 | Listen tab: songs and takes from a take server, A/B at matched loudness, stars, notes and picks, lock-screen playback | Passed on the iPhone (Device Lab, 2026-11-16) |
+| M1 | Music player: play all, an act or a song, shuffle and repeat, Play Next and Add to Queue, previous and next (also on the lock screen), a mini-player on every screen and a Now Playing screen with Up Next | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | S4 | Spike: one effect in Rust on the real-time audio thread, measured on the phone | Not started; decides whether live effects move to Rust |
 
 ## How the work is split
@@ -79,7 +80,16 @@ and saves picks to `~/band/picks.json`.
   takes in step and switching only changes which one you hear, so A and B
   are heard at the same moment; Blind hides which is which. Playback goes on
   with the screen locked, with lock-screen controls; "next track" on
-  headphones switches A and B.
+  headphones switches A and B in a comparison and moves through the queue
+  otherwise.
+- **The queue (`rust/src/queue.rs`)** decides what plays next. Play,
+  Shuffle, an act's play button or a song's Play plays songs one after
+  another, each with its preferred take (`preferred_take`: the pick, else
+  the best rated, else the newest; `listen_tracks` looks them up). Shuffle
+  keeps the song playing and plays the others once each in random order;
+  repeat goes Off, All, One. Play Next and Add to Queue add a song after
+  the current one or at the end. The queue is a value Swift keeps and hands
+  back to these functions.
 - The song list is in sections by act when the server says which act a
   song belongs to (`group_songs` in Rust; the act comes off the title if the
   server put it in front), and **Unpicked Only** keeps the songs still
@@ -90,8 +100,8 @@ and saves picks to `~/band/picks.json`.
 | File | What |
 |---|---|
 | `Sources/AppHost/ListenModel.swift` | Songs, a song's takes, picks and ratings, the server address. Foundation only |
-| `Sources/AppHost/ListenView.swift` | The song list, the server form, a song's takes, the comparison panel, the now-playing bar |
-| `Sources/AppHost/TakePlayer.swift` | AVPlayer: one take, or two in step for A/B; the lock screen |
+| `Sources/AppHost/ListenView.swift` | The song list, the server form, a song's takes, the comparison panel, the mini-player and Now Playing with Up Next |
+| `Sources/AppHost/TakePlayer.swift` | AVPlayer: the queue, or two takes in step for A/B; the lock screen |
 
 Build and install on its own (it uses the free team's sandbox id):
 

@@ -100,6 +100,8 @@ pub struct Take {
 pub struct SongDetail {
     pub slug: String,
     pub title: String,
+    /// The act or album it belongs to, when the server knows.
+    pub act: Option<String>,
     pub takes: Vec<Take>,
     /// The caption and lyrics most of its takes share (Kaggle renders all
     /// carry the same ones), to show once above the takes.
@@ -381,8 +383,10 @@ pub fn parse_song(body: &[u8], server: &str) -> Result<SongDetail, SoundscapeErr
         .collect();
     let caption = most_common(takes.iter().map(|t| t.caption.clone()));
     let lyrics = most_common(takes.iter().map(|t| t.lyrics.clone()));
+    let act = non_empty(song.act_title);
     Ok(SongDetail {
-        title: song_title(song.title, non_empty(song.act_title).as_deref(), &song.slug),
+        title: song_title(song.title, act.as_deref(), &song.slug),
+        act,
         slug: song.slug,
         takes,
         caption,
