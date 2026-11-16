@@ -473,6 +473,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chat-core",
+ "forge-app",
  "forge-net",
  "forge-runtime",
  "forge-services",

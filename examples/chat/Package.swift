@@ -39,7 +39,8 @@ let package = Package(
         .library(name: "ChatXtool", targets: ["ChatXtoolApp"]),
     ],
     dependencies: [
-        // ForgeUI: the design system (forgeLaunchAppearance).
+        // ForgeKit (the runtime host), ForgeAppKit (alerts) and ForgeUI
+        // (the design system).
         .package(path: "../../forgekit"),
     ],
     targets: [
@@ -50,7 +51,7 @@ let package = Package(
         ),
         .target(
             name: "ChatFFI",
-            dependencies: ["chat_appFFI"],
+            dependencies: ["chat_appFFI", .product(name: "ForgeApp", package: "forgekit")],
             path: "Generated/ForgeFFI",
             // Generated UniFFI code is built in Swift 5 mode; it is not checked for Swift 6 strict concurrency.
             swiftSettings: [.swiftLanguageMode(.v5)]
@@ -58,24 +59,33 @@ let package = Package(
         // SwiftUI views and the @Observable model; they call the Rust API in ForgeFFI.
         .target(
             name: "ChatApp",
-            dependencies: ["ChatFFI", .product(name: "ForgeUI", package: "forgekit")],
+            dependencies: [
+                "ChatFFI",
+                .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeAppKit", package: "forgekit"),
+                .product(name: "ForgeUI", package: "forgekit"),
+            ],
             path: "Sources/AppHost"
         ),
         .target(
             name: "ChatXtoolApp",
-            dependencies: ["ChatApp"],
+            dependencies: ["ChatApp", .product(name: "ForgeKit", package: "forgekit")],
             path: "Sources/AppHostXtoolApp",
             linkerSettings: rustLibrary
         ),
         .executableTarget(
             name: "ChatLauncher",
-            dependencies: ["ChatApp"],
+            dependencies: ["ChatApp", .product(name: "ForgeKit", package: "forgekit")],
             path: "Sources/AppHostLauncher",
             linkerSettings: rustLibrary
         ),
         .testTarget(
             name: "AppHostTests",
-            dependencies: ["ChatApp", "ChatFFI"],
+            dependencies: [
+                "ChatApp", "ChatFFI",
+                .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeAppKit", package: "forgekit"),
+            ],
             path: "Tests/AppHostTests",
             linkerSettings: rustLibrary
         ),

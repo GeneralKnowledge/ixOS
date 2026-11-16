@@ -33,7 +33,7 @@ extension ChatModel {
             return try AttachmentFiles.namedCopy(
                 of: URL(fileURLWithPath: path), for: attachment)
         } catch {
-            actionError = Self.describe(error)
+            actionError = Self.failure(error)
             return nil
         }
     }

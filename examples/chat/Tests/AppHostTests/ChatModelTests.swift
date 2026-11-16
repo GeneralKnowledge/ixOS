@@ -1,5 +1,6 @@
 @testable import ChatApp
 @preconcurrency import ChatFFI
+@preconcurrency import ForgeKit
 import XCTest
 
 /// The model against the real Rust core and the real chat server: no mocks.
@@ -94,6 +95,32 @@ final class ChatModelTests: XCTestCase {
         XCTAssertNil(me.account)
         XCTAssertTrue(me.conversations.isEmpty)
         me.close()
+    }
+
+    /// One core per data folder: a second model on the same folder can't
+    /// open while the first is open, says why, and Try Again opens it once
+    /// the first has closed.
+    func testALoadFailureShowsWhyAndTryAgainOpens() async throws {
+        let directory = try temporaryDirectory(self)
+        let first = ChatModel(storageDirectory: directory, useKeychain: false)
+        await first.open()
+        XCTAssertEqual(first.phase, .signedOut)
+
+        let second = ChatModel(storageDirectory: directory, useKeychain: false)
+        await second.open()
+        guard case .failed(let message) = second.phase else {
+            return XCTFail("a second core opened the same data: \(second.phase)")
+        }
+        XCTAssertFalse(message.isEmpty)
+        XCTAssertNil(second.core)
+        XCTAssertEqual(chatErrorKind(error: ChatError.InUse(reason: "")), .unavailable)
+
+        first.close()
+        // What the recovery screen's Try Again does.
+        await second.open()
+        XCTAssertEqual(second.phase, .signedOut)
+        XCTAssertNotNil(second.core)
+        second.close()
     }
 
     func testBadServerURLIsExplainedNotThrownAway() async throws {

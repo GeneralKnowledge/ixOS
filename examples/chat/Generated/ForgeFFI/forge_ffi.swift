@@ -3,6 +3,7 @@
 
 // swiftlint:disable all
 import Foundation
+@preconcurrency import ForgeApp
 
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
@@ -2621,6 +2622,17 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func attachmentFile(attachmentId: String)  -> String?
     
     /**
+     * The host's background time ran out: finishing work stops.
+     */
+    func backgroundTimeExpired() 
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+    func backgroundWorkPending()  -> Bool
+    
+    /**
      * Conversations as stored, for a first render before the network.
      */
     func cachedConversations()  -> [ChatConversation]
@@ -2629,6 +2641,12 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
      * A room's messages as stored, oldest first.
      */
     func cachedMessages(conversationId: String)  -> [ChatMessage]
+    
+    /**
+     * A new event stream. Each consumer takes its own and sees every event
+     * from now on.
+     */
+    func chatEvents() throws  -> ChatEvents
     
     /**
      * Asks the server who the stored token belongs to. Fails with
@@ -2663,16 +2681,21 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func editMessage(messageId: String, body: String) async throws  -> ChatMessage
     
     /**
-     * A new event stream. Each consumer takes its own and sees every event
-     * from now on.
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
      */
-    func events() throws  -> ChatEvents
+    func events()  -> RuntimeEvents?
     
     /**
      * The local file of an attachment, downloading it first if needed (and
      * checking it against its id). Runs off the caller's thread.
      */
     func fetchAttachment(attachmentId: String) async throws  -> String
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+    func launchReport()  -> LaunchReport
     
     /**
      * Lists conversations from the server, prefetching new messages for
@@ -2699,7 +2722,7 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func outboxCount()  -> UInt32
     
     /**
-     * The phase last reported with `set_phase`.
+     * The phase last reported.
      */
     func phase()  -> AppPhase
     
@@ -2707,6 +2730,11 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
      * Sends a `Failed` (or still queued) message again now, with the same id.
      */
     func retryMessage(messageId: String) async throws  -> ChatMessage
+    
+    /**
+     * The last committed revision.
+     */
+    func revision()  -> UInt64
     
     /**
      * Searches the messages on this device: every word of `query` must
@@ -2764,10 +2792,7 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func setMuted(conversationId: String, muted: Bool) throws 
     
     /**
-     * The host reports a lifecycle change; cheap, safe to repeat. Going to
-     * `Background` stops every live stream; coming back restarts them (they
-     * catch up) and emits `PhaseChanged { resumed: true }`; `Terminated`
-     * is `shutdown()`.
+     * The host reports the application lifecycle phase.
      */
     func setPhase(phase: AppPhase) 
     
@@ -2777,8 +2802,8 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func setReaction(messageId: String, emoji: String, on: Bool) async throws  -> ChatMessage
     
     /**
-     * Ends every stream and refuses further commands with `ShutDown`.
-     * Sends in flight finish and are saved. Idempotent.
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
      */
     func shutdown() 
     
@@ -2968,6 +2993,30 @@ open func attachmentFile(attachmentId: String) -> String?  {
 }
     
     /**
+     * The host's background time ran out: finishing work stops.
+     */
+open func backgroundTimeExpired()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_chatcore_background_time_expired(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+open func backgroundWorkPending() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_chatcore_background_work_pending(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Conversations as stored, for a first render before the network.
      */
 open func cachedConversations() -> [ChatConversation]  {
@@ -2988,6 +3037,19 @@ open func cachedMessages(conversationId: String) -> [ChatMessage]  {
     uniffi_chat_app_fn_method_chatcore_cached_messages(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A new event stream. Each consumer takes its own and sees every event
+     * from now on.
+     */
+open func chatEvents()throws  -> ChatEvents  {
+    return try  FfiConverterTypeChatEvents_lift(try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_chatcore_chat_events(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -3089,11 +3151,11 @@ open func editMessage(messageId: String, body: String)async throws  -> ChatMessa
 }
     
     /**
-     * A new event stream. Each consumer takes its own and sees every event
-     * from now on.
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
      */
-open func events()throws  -> ChatEvents  {
-    return try  FfiConverterTypeChatEvents_lift(try rustCallWithError(FfiConverterTypeChatError_lift) {
+open func events() -> RuntimeEvents?  {
+    return try!  FfiConverterOptionTypeRuntimeEvents.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_chat_app_fn_method_chatcore_events(
             self.uniffiCloneHandle(),uniffiCallStatus
@@ -3119,6 +3181,18 @@ open func fetchAttachment(attachmentId: String)async throws  -> String  {
             liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
+}
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+open func launchReport() -> LaunchReport  {
+    return try!  FfiConverterTypeLaunchReport_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_chatcore_launch_report(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -3188,7 +3262,7 @@ open func outboxCount() -> UInt32  {
 }
     
     /**
-     * The phase last reported with `set_phase`.
+     * The phase last reported.
      */
 open func phase() -> AppPhase  {
     return try!  FfiConverterTypeAppPhase_lift(try! rustCall() {
@@ -3216,6 +3290,18 @@ open func retryMessage(messageId: String)async throws  -> ChatMessage  {
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
+}
+    
+    /**
+     * The last committed revision.
+     */
+open func revision() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_chatcore_revision(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -3361,10 +3447,7 @@ open func setMuted(conversationId: String, muted: Bool)throws   {try rustCallWit
 }
     
     /**
-     * The host reports a lifecycle change; cheap, safe to repeat. Going to
-     * `Background` stops every live stream; coming back restarts them (they
-     * catch up) and emits `PhaseChanged { resumed: true }`; `Terminated`
-     * is `shutdown()`.
+     * The host reports the application lifecycle phase.
      */
 open func setPhase(phase: AppPhase)  {try! rustCall() {
         uniffiCallStatus in
@@ -3395,8 +3478,8 @@ open func setReaction(messageId: String, emoji: String, on: Bool)async throws  -
 }
     
     /**
-     * Ends every stream and refuses further commands with `ShutDown`.
-     * Sends in flight finish and are saved. Idempotent.
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
@@ -7753,115 +7836,6 @@ public func FfiConverterTypeAiRole_lower(_ value: AiRole) -> RustBuffer {
 
 
 
-/**
- * Where the app is in its lifecycle. The host reports it with
- * `set_phase`: iOS from SwiftUI's `scenePhase` (and
- * `willTerminate`), Android from the activity's `onStart`,
- * `onResume`, `onPause` and `onStop`.
- */
-
-public enum AppPhase: Equatable, Hashable {
-    
-    /**
-     * Created, not on screen yet. The phase before the first report.
-     */
-    case launching
-    /**
-     * On screen and receiving input.
-     */
-    case active
-    /**
-     * On screen without input: an alert, the app switcher, a dialog.
-     */
-    case inactive
-    /**
-     * Not visible; the OS may suspend or kill the process from here.
-     * Work started on screen is stopped.
-     */
-    case background
-    /**
-     * Going away: same as `shutdown()`. iOS does not always report it.
-     */
-    case terminated
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension AppPhase: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeAppPhase: FfiConverterRustBuffer {
-    typealias SwiftType = AppPhase
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppPhase {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .launching
-        
-        case 2: return .active
-        
-        case 3: return .inactive
-        
-        case 4: return .background
-        
-        case 5: return .terminated
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: AppPhase, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .launching:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .active:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .inactive:
-            writeInt(&buf, Int32(3))
-        
-        
-        case .background:
-            writeInt(&buf, Int32(4))
-        
-        
-        case .terminated:
-            writeInt(&buf, Int32(5))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppPhase_lift(_ buf: RustBuffer) throws -> AppPhase {
-    return try FfiConverterTypeAppPhase.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppPhase_lower(_ value: AppPhase) -> RustBuffer {
-    return FfiConverterTypeAppPhase.lower(value)
-}
-
-
-
 public 
 enum AssistantError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
@@ -8646,6 +8620,11 @@ enum ChatError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      */
     case Storage(reason: String
     )
+    /**
+     * Another core already has this data folder open.
+     */
+    case InUse(reason: String
+    )
     case ShutDown
     case Internal(reason: String
     )
@@ -8708,8 +8687,11 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
         case 11: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 12: return .ShutDown
-        case 13: return .Internal(
+        case 12: return .InUse(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 13: return .ShutDown
+        case 14: return .Internal(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -8778,12 +8760,17 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .ShutDown:
+        case let .InUse(reason):
             writeInt(&buf, Int32(12))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(13))
         
         
         case let .Internal(reason):
-            writeInt(&buf, Int32(13))
+            writeInt(&buf, Int32(14))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -10087,6 +10074,30 @@ fileprivate struct FfiConverterOptionTypeAssistantGeneration: FfiConverterRustBu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeRuntimeEvents: FfiConverterRustBuffer {
+    typealias SwiftType = RuntimeEvents?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeRuntimeEvents.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeRuntimeEvents.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeAiModelInfo: FfiConverterRustBuffer {
     typealias SwiftType = AiModelInfo?
 
@@ -10957,6 +10968,17 @@ public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) 
 })
 }
 /**
+ * [`ChatError::kind`] for the host (ForgeKit's `ForgeKindedError`).
+ */
+public func chatErrorKind(error: ChatError) -> ErrorKind  {
+    return try!  FfiConverterTypeErrorKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_func_chat_error_kind(
+        FfiConverterTypeChatError_lower(error),uniffiCallStatus
+    )
+})
+}
+/**
  * The storage engine compiled into the app, e.g. "SQLite 3.50.2"
  * (shown in Settings).
  */
@@ -11034,6 +11056,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_func_chat_delivery() != 12086) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_chat_app_checksum_func_chat_error_kind() != 50498) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_chat_app_checksum_func_storage_engine() != 15189) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11049,10 +11074,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_method_chatcore_attachment_file() != 56137) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_chat_app_checksum_method_chatcore_background_time_expired() != 289) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_chatcore_background_work_pending() != 20756) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_chat_app_checksum_method_chatcore_cached_conversations() != 49227) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_cached_messages() != 57694) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_chatcore_chat_events() != 3947) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_check_account() != 25829) {
@@ -11070,10 +11104,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_method_chatcore_edit_message() != 40954) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_app_checksum_method_chatcore_events() != 21955) {
+    if (uniffi_chat_app_checksum_method_chatcore_events() != 30251) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_fetch_attachment() != 13668) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_chatcore_launch_report() != 28953) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_list_conversations() != 1795) {
@@ -11088,10 +11125,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_method_chatcore_outbox_count() != 46708) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_app_checksum_method_chatcore_phase() != 46465) {
+    if (uniffi_chat_app_checksum_method_chatcore_phase() != 3316) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_retry_message() != 37179) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_chatcore_revision() != 47398) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_search() != 22099) {
@@ -11118,13 +11158,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_method_chatcore_set_muted() != 65486) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_app_checksum_method_chatcore_set_phase() != 2135) {
+    if (uniffi_chat_app_checksum_method_chatcore_set_phase() != 63581) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_set_reaction() != 6861) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_app_checksum_method_chatcore_shutdown() != 45854) {
+    if (uniffi_chat_app_checksum_method_chatcore_shutdown() != 20324) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_sign_out() != 3411) {
@@ -11302,6 +11342,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitLocalNotifier()
     uniffiCallbackInitPermissionProvider()
     uniffiCallbackInitSecureStore()
+    uniffiEnsureForgeAppInitialized()
     return InitializationResult.ok
 }()
 

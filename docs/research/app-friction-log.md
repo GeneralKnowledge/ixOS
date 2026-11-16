@@ -589,3 +589,27 @@ was mostly mechanical: `Runtime<State>` with a `Published` copy for reads,
 
 **Framework.** Accept both. The first is worth a line in app-crate.md if a
 third app trips on it.
+
+## A31. No app hook for phase changes (Chat)
+
+Chat did real work in its own `set_phase`: it closed every room
+connection in the background, reconnected on the way back, recorded what
+was seen and told the view through its event stream. `export_runtime!`
+generates `set_phase` itself, so an app has no place for that work.
+Chat now subscribes to the runtime's lifecycle on its own thread and
+reacts to each transition, and ends its client and assistant from a
+lifetime cancel hook on shutdown. It works, but it is two pieces of
+plumbing an app shouldn't have to know about. (annoyance)
+
+Smaller: the moved core keeps `app_shell!` only for its own event stream,
+and its old `events()` is now `chat_events()` because the runtime's
+`events()` takes the name.
+
+**Framework.** Relay keeps live connections too and will likely need the
+same. If it does, that is the second use: give `Runtime` an
+`on_transition` hook that runs on the command thread, and move both apps
+onto it.
+
+**Measure (Chat).** The move deleted `AppLifecycle.swift` and
+`ErrorAlert.swift`; the app's entry points keep one model for the process
+and attach its host to `ForgeLifecycle`, as Device Lab does.
