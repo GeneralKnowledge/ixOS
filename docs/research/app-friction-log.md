@@ -581,5 +581,11 @@ was mostly mechanical: `Runtime<State>` with a `Published` copy for reads,
   methods on a `@MainActor` class; `ForgeDescribedError.failure` is
   nonisolated, so they had to be marked `nonisolated`. (annoyance)
 
+- **A model on an open host.** Device Lab keeps one host for the process
+  but makes a new model each time Good Dog's sheet opens. `open()` returned
+  early when the host already had a core, so the new model never read and
+  showed a spinner until a trip to the background (found on the phone,
+  2026-11-16). It now reads whenever it opens. (bug, fixed)
+
 **Framework.** Accept both. The first is worth a line in app-crate.md if a
 third app trips on it.

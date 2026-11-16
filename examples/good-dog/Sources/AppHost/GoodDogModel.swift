@@ -167,12 +167,15 @@ public final class GoodDogModel {
         }
     }
 
-    /// Opens the Rust core through the host. Calling it again while open
-    /// does nothing.
+    /// Opens the Rust core through the host, then reads what the screens
+    /// show. The host may already be open: Device Lab keeps one host for
+    /// the process and makes a new model each time Good Dog's sheet opens,
+    /// so this model still has to read.
     public func open() async {
-        guard core == nil else { return }
-        phase = .loading
-        await host.start()
+        if core == nil {
+            phase = .loading
+            await host.start()
+        }
         guard let core else {
             if case .failed(let message) = host.status {
                 log.error("could not open: \(message)")
