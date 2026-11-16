@@ -18,6 +18,8 @@ for name in sys.stdin.read().split("\0"):
     if not name or name == "docs/ledger/page.md":
         continue
     path = pathlib.Path(name)
+    if not path.exists():  # deleted in the working tree, not yet committed
+        continue
     text = path.read_text(encoding="utf-8", errors="replace")
     # Code blocks and inline code can hold link-shaped text that is not a link.
     text = re.sub(r"```.*?```", "", text, flags=re.S)
