@@ -182,8 +182,11 @@ app infrastructure.
 - **A person** has a Nostr key (the identity rooms already need). It signs
   a statement for each of their devices' keys; the statement is revocable,
   so a lost device is cut off without touching the others.
-- **Recovery** uses an existing scheme, not one of ours. Candidates to
-  evaluate in M2: the person key on two or more devices, and NIP-06 (a
+- **Device identity comes first.** M1 and M2 build durable device keys
+  and device trust only; the person key, and how it is recovered, wait
+  until Relay needs people, groups and a portable identity (M3 to M5).
+- **Recovery** uses an existing scheme, not one of ours, decided when the
+  person key is built. Candidates: the person key on two or more devices, and NIP-06 (a
   Nostr key from a standard word phrase) for a written backup. MLS already
   treats each device as its own member, so a lost device is removed from
   groups by the normal key rotation.
@@ -232,6 +235,14 @@ GRANT  device: Ubuntu Laptop   capability: terminal
        scope: named tasks only  operations: build, test, status
        duration: 24 hours       confirmation: required   revocable: yes
 ```
+
+**Default grants for a trusted device** (2026-11-16): trusting a device
+establishes its identity and nothing more by itself. Receiving files and
+notes from it is on by default, shown in its permissions and can be turned
+off. AI inference needs an explicit grant. Terminal and tasks are never
+implied by trust. Revoking a device overrides every grant it had, and a
+revoked device never becomes trusted again by itself, whatever code or old
+pairing it presents; only the person can trust it again.
 
 Three presets cover most grants: **Always allow** (harmless, repeatable),
 **Ask first** (sensitive or disruptive) and **Never allow**. Build the model
@@ -315,8 +326,16 @@ result back.
   per-device authorisation and visible approval.
 - **Tasks:** named, approved commands, not an open shell, with approval for
   sensitive ones.
-- **AI:** Relay is a transport for models on other machines (the AI asks
-  that already exist, Forge AI's request shape); never required.
+- **AI,** in three stages of one idea, never three implementations:
+  1. **Remote model requests** (implemented: `relay serve-ai` / `relay
+     ask`, Forge AI's request shape) move from TCP onto iroh in M1, as
+     they are.
+  2. **AI as a device capability** (M6): discover the models a device
+     offers, see what they can do, and invoke them under a grant.
+  3. **Distributed AI** (M8): several machines, resource-aware routing.
+
+  Relay is the transport and the permission check; a model is never
+  required.
 
 ## Extending Relay
 
@@ -435,8 +454,8 @@ each feature PR; there are no test-only PRs.
 Device capabilities (7 to 10) come before messaging (11), unlike the
 milestone numbers: the personal network test needs them first (confirmed
 by Reuben, 2026-11-16). A test relay on Hetzner goes up early, after PR 1,
-and PR 6 makes it permanent. Pairing is a setting with levels (codes only,
-ask to pair, pair automatically); the basic functions stay under the higher
+and PR 6 makes it permanent. Pairing is a setting with three policies
+(codes only, ask to pair, pair automatically); the basic functions stay under the higher
 ones ([brief](relay-m1-m2-brief.md#one-transfer-path)).
 
 PR #197 stays the decision record and the spike. Implementation comes in
@@ -512,7 +531,7 @@ versions, test interoperability, keep an alternative), and complexity
 | Private routes | Configured routes, Tailscale first |
 | Internet routes | iroh hole punching and relays |
 | Device identity | iroh key |
-| Person identity | Nostr key, with a recovery decision in M2 |
+| Person identity | Nostr key, with its recovery decided when people and groups need it (after M2) |
 | Group messaging | Marmot / MLS, after the spike |
 | Remote terminal | OpenSSH over a Relay connection |
 | Service protocol | Versioned capability declarations and invocation |
