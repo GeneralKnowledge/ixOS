@@ -68,5 +68,5 @@ device = ["uitests/goals.toml"]
 
 [[requirement]]
 id = "GD-12"
-statement = "Good Dog's data is opened once, by the app's host: data it can't read says why and Try Again opens it once it can, and a second core on the same data is refused until the first closes."
-twin = ["GoodDogModelTests.testALoadFailureShowsWhyAndTryAgainOpens", "GoodDogModelTests.testASecondCoreOnTheSameDataIsRefused"]
+statement = "Good Dog's data is opened once, by the app's host: data it can't read says why and Try Again opens it once it can, and a second core on the same data is refused until the first closes. Opening Good Dog again on the open host (Device Lab) shows the data."
+twin = ["GoodDogModelTests.testALoadFailureShowsWhyAndTryAgainOpens", "GoodDogModelTests.testASecondCoreOnTheSameDataIsRefused", "GoodDogModelTests.testANewModelOnAnOpenHostShowsTheData"]

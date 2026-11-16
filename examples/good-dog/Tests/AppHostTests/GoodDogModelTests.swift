@@ -51,6 +51,24 @@ final class GoodDogModelTests: XCTestCase {
         model.close()
     }
 
+    /// Device Lab keeps one host for the process and makes a new model each
+    /// time Good Dog opens: a model on a host that is already open shows
+    /// the data, not a spinner.
+    @MainActor
+    func testANewModelOnAnOpenHostShowsTheData() async throws {
+        let dir = try makeDirectory()
+        let host = makeAppHost(storageDirectory: dir.path)
+        let clock: @Sendable () -> LocalTime = { LocalTime(ms: Self.nineAM, utcOffsetMinutes: 0) }
+        let first = GoodDogModel(host: host, clock: clock, sampleDog: nil)
+        await first.open()
+        XCTAssertEqual(first.phase, .needsDog)
+
+        let second = GoodDogModel(host: host, clock: clock, sampleDog: nil)
+        await second.open()
+        XCTAssertEqual(second.phase, .needsDog)
+        host.close()
+    }
+
     /// One core per data folder: a second host on the same folder is
     /// refused until the first closes.
     @MainActor
