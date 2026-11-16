@@ -254,7 +254,11 @@ public final class SoundscapeModel {
         case .NewerData: return "Your projects were saved by a newer version of Soundscape."
         case .Storage: return "Couldn't save. Try again."
         case .BadAddress(let reason): return Self.sentence(reason)
-        case .Unreachable: return "Can't reach the take server. Check that it's running on the computer and that this phone is on Tailscale (or the same network)."
+        case .Unreachable(let reason):
+            // The system's own reason goes last, so a cause on the phone
+            // (such as App Transport Security) is visible, not just a guess.
+            return "Can't reach the take server. Check that it's running on the computer and that this phone is on Tailscale (or the same network)."
+                + (reason.isEmpty ? "" : "\n\n" + Self.sentence(reason))
         case .Server(let reason): return Self.sentence(reason)
         case .Stopped: return "Stopped."
         }
