@@ -433,7 +433,11 @@ each feature PR; there are no test-only PRs.
 | 16 | Distributed services and agents | Long-term ambition | M8 |
 
 Device capabilities (7 to 10) come before messaging (11), unlike the
-milestone numbers: the personal network test needs them first.
+milestone numbers: the personal network test needs them first (confirmed
+by Reuben, 2026-11-16). A test relay on Hetzner goes up early, after PR 1,
+and PR 6 makes it permanent. Pairing is a setting with levels (codes only,
+ask to pair, pair automatically); the basic functions stay under the higher
+ones ([brief](relay-m1-m2-brief.md#one-transfer-path)).
 
 PR #197 stays the decision record and the spike. Implementation comes in
 focused PRs, each with one acceptance condition:

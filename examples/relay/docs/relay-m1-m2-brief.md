@@ -29,11 +29,18 @@ pairing and transfer already do well:
    identity (stored as in [M2 identity](#identity-and-storage)). Word codes
    stop binding their own endpoints and use it, each protocol on its own
    ALPN.
-2. **A word code can make a trusted device.** After a code's SPAKE2
-   confirmation both sides know each other's endpoint id. "Trust this
-   device" (on either side, after the transfer) saves the other's endpoint
-   id and name. This replaces QR pairing (decision 7 of the transfer plan);
-   the QR code just carries the same word code.
+2. **Pairing is layered, and set in Settings** (Reuben, 2026-11-16). The
+   basic functions stay and the higher ones are built on them, never in
+   their place:
+
+   | Level | What it does |
+   |---|---|
+   | **Codes only** | A word code moves one transfer; nothing is remembered. Always available, whatever the setting |
+   | **Ask to pair** (default) | After a code's SPAKE2 confirmation both sides know each other's endpoint id; Relay offers "Trust this device" and saves its id and name |
+   | **Pair automatically** | A device you already know (paired before, including by the old QR pairing) is paired again by itself the next time a code or Bonjour connects you; new devices still ask |
+
+   The QR code carries the same word code, so scanning is just a faster
+   way to type it.
 3. **Paired traffic moves onto iroh.** Notes, files and AI asks between
    trusted devices go over `relay/device/1` (CBOR messages reused from
    `wire.rs`; files by iroh-blobs). The connection is authenticated by the
@@ -41,8 +48,8 @@ pairing and transfer already do well:
 4. **Then the TCP path goes.** Once the app and the CLI use only iroh,
    `link.rs`, the Noise intro and the `_forgerelay._tcp` service are
    deleted. `forge-devproto` stays: the device tools still use it.
-   Devices paired the old way pair once more with a code (there is one
-   person using it; no migration code).
+   Devices paired the old way are paired again on iroh by the pairing
+   level above: automatically, or after asking.
 
 ## PRs to the end of M1
 
@@ -75,8 +82,8 @@ batched, built before the phone is needed). No test-only PRs.
 
 ### 3. Trusted devices
 
-- "Trust this device" after a code (step 2), trusted devices in a list,
-  forget and revoke.
+- The pairing levels in Settings (step 2), trusted devices in a list,
+  forget and revoke. Codes keep working for anyone at every level.
 - Notes, files and AI asks to trusted devices over `relay/device/1` (step
   3), then the TCP path removed (step 4).
 - The device key in the Keychain on iPhone, a 0600 file on computers
@@ -109,7 +116,8 @@ batched, built before the phone is needed). No test-only PRs.
 ### 6. Our relay and internet routes
 
 - `iroh-relay` (and the small rendezvous service, if iroh's discovery
-  isn't enough) on Hetzner, n0's public relays only for development.
+  isn't enough) on Hetzner as the production relay. A test relay on
+  Hetzner comes earlier (below), so this PR makes it permanent.
 - Reconnecting when the network changes.
 - **Accepted when** (the M2 test) the phone reliably finds and connects to
   the laptop and the iMac from outside home, without Tailscale, with
@@ -141,12 +149,16 @@ batched, built before the phone is needed). No test-only PRs.
   MB) are the phone checks.
 - Update the ledger when a capability changes (`docs/ledger/`).
 
-## Open questions for Reuben
+## Decided (Reuben, 2026-11-16)
 
-1. **Old pairings:** re-pair once with a code (recommended; one person uses
-   Relay today), or write a migration?
-2. **When the Hetzner relay goes up:** with PR 6 (recommended), or earlier
-   for testing from 5G?
-3. **Order after M2:** the plan puts device capabilities (PRs 7 to 10)
-   before messaging (PR 11), so the personal network test can pass first.
-   Confirm.
+1. **Pairing is a setting with levels** (step 2 of [one transfer
+   path](#one-transfer-path)): codes only, ask to pair, pair
+   automatically. Basic functions are never lost to the higher ones;
+   automatic re-pairing is one level.
+2. **Hetzner runs a test relay early:** `iroh-relay` on Hetzner as soon as
+   transfers run on the core's own endpoint (PR 1), so the phone can test
+   from 5G long before PR 6. It is for testing; PR 6 makes it the
+   production relay and adds reconnecting. Setting it up on the server is a
+   step for Reuben to approve when it comes.
+3. **Device capabilities come before messaging:** PRs 7 to 10 before PR
+   11, so the personal network test passes first.
