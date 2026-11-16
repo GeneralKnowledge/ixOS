@@ -1,18 +1,24 @@
 # Relay
 
-Send notes and files between nearby devices, encrypted, after pairing once
-by QR code. The last of the remaining demo apps
-([friction log](../../docs/research/app-friction-log.md)); it runs inside
-Device Lab (Apps, then Relay) and on its own. The second device can be a Linux
-machine running the `relay` command, so one iPhone is enough.
+**Your devices. One network.** Private connectivity for the things you own
+and the people you trust. Relay starts by moving files between your devices
+and grows into a personal network; the roadmap is
+[docs/relay-platform-plan.md](docs/relay-platform-plan.md), and the next
+work is [docs/relay-m1-m2-brief.md](docs/relay-m1-m2-brief.md).
+
+Today it sends notes and files between nearby devices, after pairing once by
+QR code, and sends a file to anyone on the same Wi-Fi with a word code. It
+runs inside Device Lab (Apps, then Relay) and on its own. The second device
+can be a Linux machine running the `relay` command, so one iPhone is enough.
 
 ## Where it is
 
 | Step | What | State |
 |---|---|---|
 | R1 | Rust core (`rust/`): identity, QR pairing, the encrypted protocol, sending and receiving notes and files, history; the `relay` command | Done, tested on Linux over localhost |
-| R2 | SwiftUI app: pair by scanning (VisionKit) or showing a QR code, Bonjour (NetService advertises Rust's port, NWBrowser finds devices), notes and files from the file picker, received files in Quick Look, hosted in Device Lab | Written; not yet built with xtool or run on a phone. Secrets stay in Rust's file (friction A17) |
-| R3 | Resume, background transfers, a share extension (costs an App ID) | Later |
+| R2 | SwiftUI app: pair by scanning (VisionKit) or showing a QR code, Bonjour (NetService advertises Rust's port, NWBrowser finds devices), notes and files from the file picker, received files in Quick Look, hosted in Device Lab | Built with xtool and installed on an iPhone in Device Lab (2026-11-15); pairing, notes and Quick Look not yet tried on the phone. Secrets stay in Rust's file (friction A17) |
+| M1 start | Word codes on iroh (`code.rs`, `code_send.rs`): "Receive with a Code" and "Send with a Code" in the app, `relay send-code` on Linux, `relay-spike` from [spike/](spike/) | Passed on an iPhone 15 Pro Max on 2026-11-15: 1 GB Linux to iPhone at 9.5 MB/s and iPhone to Linux, each at the first code and verified ([results](docs/relay-stage0-spike.md#iphone-start-of-m1-2026-11-15)). Not yet a production transfer: no folders, no history, separate from paired transfers |
+| R3 | Resume, background transfers, a share extension (costs an App ID) | Later, within M1 and the plan's milestones |
 | AI A1 | Ask a paired device's language model (protocol 2): `relay serve-ai` answers with an OpenAI-compatible server, `relay ask` asks from a terminal ([forge-ai-plan.md](../../docs/forge-ai-plan.md)) | Done in Rust and the command, tested on Linux; the app gets it with the AI Lab (A2) |
 
 ## How it works

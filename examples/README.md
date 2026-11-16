@@ -11,7 +11,7 @@ The products built with Forge. Each one is its own SwiftUI app on its own Rust c
 | [FieldKit](fieldkit/README.md) | Field notebook: GPS tracks, notes, photos | [README](fieldkit/README.md) |
 | [Weather](weather/README.md) | Weather in the style of the iPhone's own app | [README](weather/README.md) |
 | [Checklist](checklist/) | The smallest app on the runtime: lists with due dates | its `rust/` and `Sources/` |
-| [Relay](relay/README.md) | Encrypted transfer of notes and files between devices | [README](relay/README.md), [platform plan](relay/docs/relay-platform-plan.md), [transfer plan](relay/docs/relay-transfer-plan.md) |
+| [Relay](relay/README.md) | Your devices, one network: encrypted transfer between devices first, a personal network next | [README](relay/README.md), [platform plan](relay/docs/relay-platform-plan.md), [M1 to M2 brief](relay/docs/relay-m1-m2-brief.md), [transfer plan](relay/docs/relay-transfer-plan.md) |
 | [Sketchbook](sketchbook/README.md) | Drawing notebook with layers | [README](sketchbook/README.md) |
 | [Soundscape](soundscape/README.md) | Multi-track sound sketchpad | [README](soundscape/README.md) |
 | [Pocket Library for Android](pocket-library-android/README.md) | Android, work in progress | [README](pocket-library-android/README.md) |

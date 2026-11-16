@@ -1,33 +1,92 @@
 # Relay platform plan
 
-Status: Reuben's product direction, 2026-11-14. **This is the canonical
-Relay roadmap;** the documents below are its supporting specifications.
+Status: Reuben's product direction, 2026-11-14, sharpened by his product
+specification of 2026-11-16 (product identity, the connections, permissions
+and capabilities model, sharper milestones, M8, the PR order and the
+personal network test). **This is the canonical Relay roadmap;** the
+documents below are its supporting specifications, and there is no second
+roadmap. The next work is in [relay-m1-m2-brief.md](relay-m1-m2-brief.md).
 It builds on [relay-transfer-plan.md](relay-transfer-plan.md) (transfer,
 messages, rooms, security, iPhone limits, decisions) and
 [relay-rooms-protocols.md](relay-rooms-protocols.md)
 (why rooms speak Nostr), which stay as they are; where this plan renumbers
 their stages, the [milestones](#milestones) here win.
 
-> **Relay is a platform for connecting devices, people and services, with
-> file transfer as its first application.**
+> **Relay. Your devices. One network.**
 >
-> If two things need to exchange information, Relay should provide a way
-> for them to connect.
+> Private connectivity for the things you own and the people you trust.
+>
+> Relay is a private connectivity platform that lets devices, people and
+> services discover one another, establish trusted connections and exchange
+> capabilities securely. It starts by moving files between your devices,
+> grows into a personal network, and eventually becomes a general way for
+> connected things to communicate and work together.
 
-Not another messaging app, not another AirDrop clone, not another
-self-hosted server: the layer that lets things communicate, whichever device
-they are on, wherever they are and whatever network they happen to be on.
-The name stays Relay.
+**Personal network first, universal platform eventually.** Today a phone
+can't easily reach the computer at home, the laptop has files you need
+while away, the home server's services aren't public, the machine that runs
+AI models is somewhere else, and each fix brings another account, server or
+app. Relay makes it one operation: choose something, connect, do something
+with it.
+
+Not another AirDrop clone, messaging app, remote desktop, VPN, cloud
+storage service or AI agent framework: it can offer capabilities in all of
+these areas without becoming any one of them. The name stays Relay.
 
 ## Where each part stands
 
 | State | What |
 |---|---|
-| **Implemented** (on main) | Relay R1/R2 ([examples/relay](../README.md)): QR pairing, TCP + Noise from `forge-devproto`, notes and files between paired devices on one network, Bonjour on iPhone, the `relay` command. AI asks over Relay (protocol 2, `relay serve-ai` / `relay ask`). Chat with its `ChatRepo` backends, SQLite store, outbox and SwiftUI conversation screens. Relay's Swift compiles with xtool and runs in Device Lab; receiving with a word code passed on an iPhone on 2026-11-15 |
-| **Validated, experimental** (Linux spike, [results](relay-stage0-spike.md)) | iroh endpoints with relays off; 1 GB offline transfer with iroh-blobs; mDNS discovery by code number; SPAKE2 word codes with key confirmation over both endpoint ids; one wrong guess ends a code; blobs only for the endpoint that proved the code; size about +7 MB. M0 (#199): three EFF short words, no number collisions, busy and wrong-code handling, disk store and resume, the code session as a state machine checked by Lean, and transfers both ways between two Linux machines over Tailscale |
-| **Approved, not built** | iroh for every connection; iroh-blobs for files; word codes `7-orbit-velvet` with a QR code; trusted devices replacing QR pairing; messages through a `PeerRepo` backend for `chat-core`; temporary rooms that collapse with the host; Relaxed, Standard and Strict room levels; rooms on Nostr (Marmot, NIP-29, NIP-11); our rendezvous and iroh relay on Hetzner; a browser receiver later; stays in ixOS |
-| **Proposed** (this plan) | The four pillars and three screens; the connection resolver and three network modes; person and device identities; capability-based permissions; capability services and their declarations; device capabilities (clipboard, files, terminal, tasks, AI); the extension model; the eventual crate layout |
-| **Deferred** | Our own federation protocol, our own group encryption, a full sync engine, unrestricted remote access, an extension marketplace, agents over Relay (below), any dependency on our servers for local use, a repository restructure, a separate repository, a new name |
+| **Implemented** (on main) | Relay R1/R2 ([examples/relay](../README.md)): device records and QR pairing, TCP + Noise from `forge-devproto`, notes and files between paired devices on one network, transfer history and received files, Bonjour on iPhone, the `relay` command. AI asks between paired devices (protocol 2, `relay serve-ai` / `relay ask`). Word codes on iroh in the app's own crate: "Receive with a Code" and "Send with a Code" on the iPhone and `relay send-code` on Linux. Relay's Swift compiles with xtool and runs in Device Lab, checked on a physical iPhone on 2026-11-15 |
+| **Validated, not yet a production system** (Linux spike and the iPhone gate, [results](relay-stage0-spike.md)) | iroh endpoints with relays off; 1 GB offline transfer with iroh-blobs; mDNS discovery by code number; SPAKE2 word codes with key confirmation over both endpoint ids; one wrong guess ends a code; blobs only for the endpoint that proved the code; size about +7 MB. M0 (#199): three EFF short words, no number collisions, busy and wrong-code handling, disk store and resume, the code session as a state machine checked by Lean, and transfers both ways between two Linux machines over Tailscale. iPhone: 1 GB Linux to iPhone at 9.5 MB/s and iPhone to Linux, each with a word code |
+| **Approved, not built** | iroh for every connection; iroh-blobs for files; word codes `7-orbit-velvet` with a QR code; trusted devices replacing QR pairing; device messages through a `PeerRepo` (a messaging library, never Chat the app: [below](#b-communications)); temporary rooms that collapse with the host; Relaxed, Standard and Strict room levels; rooms on Nostr (Marmot, NIP-29, NIP-11); our rendezvous and iroh relay on Hetzner; a browser receiver later; stays in ixOS |
+| **Proposed** (2026-11-14) | The four pillars and three screens; the connection resolver and three network modes; person and device identities; capability-based permissions; capability services and their declarations; device capabilities (clipboard, files, terminal, tasks, AI); the extension model; the eventual crate layout |
+| **New proposals** (2026-11-16) | Connections, permissions and capabilities as the product model; Revoked as a trust level and "trust is not a permission"; scoped grants with three presets; service discovery separate from device discovery; device presence and connection diagnostics; M8 Distributed services; the [new capabilities](#new-capabilities-worth-considering) list; the [personal network test](#the-personal-network-test) as the measure of the product |
+| **Deferred** | Our own federation protocol, our own group encryption, a full sync engine, unrestricted remote access, an extension marketplace, agents over Relay (now M8), any dependency on our servers for local use, a repository restructure or early crate split, a separate repository, a new name, a separate Relay server product, several regional relays before reliability needs them, Relay depending on another app as a product |
+
+### What the code holds today (2026-11-16)
+
+So that plans are never counted as features:
+
+1. **M1 is not finished because the iPhone gate passed.** Production
+   transfer still needs its whole lifecycle: disk storage that survives a
+   relaunch, folders and several files, trusted devices, history,
+   cancellation and reliable resume, on the phone as well as on Linux.
+2. **There are two transfer paths.** Paired devices use TCP + Noise
+   (`link.rs`, `wire.rs`, `forge-devproto`); word codes use iroh and
+   iroh-blobs (`code.rs`, `code_send.rs`). They share no transport, and
+   word-code transfers don't appear in the history. Relay keeps one
+   networking stack in the end: the migration is in the
+   [brief](relay-m1-m2-brief.md#one-transfer-path).
+3. **Chat is not Relay messaging.** Chat has its own engine; Relay's
+   `PeerRepo` doesn't exist yet.
+4. **Pair secrets sit in Relay's JSON file,** not the Keychain (friction
+   A17).
+
+## The product model
+
+Three ideas carry the product, and every later feature fits into them:
+
+| Idea | What |
+|---|---|
+| **Connections** | Devices, people and services that have a relationship with one another, each with an identity |
+| **Permissions** | Authority someone explicitly granted to use one capability on one resource |
+| **Capabilities** | What a connected device or service can actually do |
+
+A device is not simply connected or disconnected. It is connected, has an
+identity, and offers some capabilities under a permission policy:
+
+```text
+DEVICE      Ubuntu Laptop
+IDENTITY    Trusted
+AVAILABLE   Transfer files, browse approved folders, device status,
+            ask the local AI model, run approved tasks
+PERMISSIONS File transfer: allowed   Folders: approved only
+            AI inference: allowed    Terminal: ask every time
+            Arbitrary commands: denied
+```
+
+This is what lets Relay grow without becoming dangerous.
 
 ## The four pillars
 
@@ -36,10 +95,10 @@ apps):
 
 | Pillar | What |
 |---|---|
-| **A. Transfer** | Files and folders, photos and videos, text and clipboard, links and documents, large resumable transfers; later selective sync, temporary share links, several recipients, transfer collections (a project or folder as one object) |
+| **A. Transfer** (first mature capability) | Files of any practical size, collections (several files and folders as one transfer), clipboard text and links, photos and videos, documents with metadata and previews, resume, searchable history; later several recipients, short-lived share codes, selective sync. Sending a folder is not syncing one: transfer first, sync is a much larger consistency problem |
 | **B. Communicate** | Conversations with your devices, person to person messages, temporary rooms, persistent group rooms, encrypted groups, federated communities |
-| **C. Connect and control** | Discovery, device status, shared clipboard, approved folders, remote terminal, task handoff, remote services |
-| **D. Extend** | Services from other apps and developers, public relay discovery, self-hosted infrastructure, app to app communication, AI and automation |
+| **C. Connect and control** | Device status (online, battery, resources, uptime), approved folders, clipboard, terminal, named commands, long-running tasks, hosted services, device notifications, active sessions. The phone becomes the remote control for your own devices: from outside home, start a build on the laptop, follow it, and download the result, with no SSH or server exposed to the internet |
+| **D. Extend** | Services from other developers (a media server's playback controls, document processing, local AI inference, build and test on a development machine, approved directories, home automation). Relay needs a service's identity, protocol, permissions and invocation lifecycle, never its implementation |
 
 ### The main screens
 
@@ -47,8 +106,12 @@ apps):
 - **Connections:** trusted devices, contacts, servers, rooms.
 - **Activity:** transfers, messages, sessions and requests.
 
-Pick a device, then choose what to do: send a file, start a conversation,
-open a terminal, share a folder, ask for a task, start a room. No networking
+Pick a device, and it opens its own capability view: send a file, start a
+conversation, open a terminal, share a folder, ask for a task, start a
+room. New features land in that view, never as another top-level screen.
+Activity also holds the requests waiting for approval and finished and
+failed operations. Today's app still presents Relay as a paired-device
+transfer tool; it moves to these screens with M2. No networking
 words in the interface; the route shows as "Direct, Wi-Fi", "Private
 network" or "Via relay".
 
@@ -67,7 +130,10 @@ One Rust module picks the route for every connection, in this order:
    second region later.
 5. **Public relays:** compatible public iroh relays, optional fallback.
 
-The rest of Relay never cares which route was used. The person can restrict
+The resolver is a distinct Rust responsibility: no capability service has
+its own networking strategy. A terminal service receives an authenticated
+session with an identity and its permissions, and never learns whether it
+runs over Wi-Fi or an iroh relay. The person can restrict
 which routes a connection may use.
 
 | Mode | Behaviour |
@@ -152,11 +218,25 @@ pub struct RelayEnvelope {
 | Level | Can |
 |---|---|
 | **Unknown** | Ask to connect; nothing without consent |
-| **Paired** | What was granted, one capability at a time |
-| **Trusted** | Lasting permission for the capabilities granted |
+| **Paired** | Completed pairing; only what was granted, one capability at a time |
+| **Trusted** | Lasting grants for specific capabilities |
+| **Revoked** | Nothing; no longer authorised |
 
-Permissions are per capability: trusting the laptop to receive files does
-not let it run commands.
+**Trust is not a permission.** A trusted device can still be refused the
+terminal. A grant names the device or service, the capability, the resource
+or target, the allowed operations, how long it lasts, whether each use needs
+confirmation, and its resource limits:
+
+```text
+GRANT  device: Ubuntu Laptop   capability: terminal
+       scope: named tasks only  operations: build, test, status
+       duration: 24 hours       confirmation: required   revocable: yes
+```
+
+Three presets cover most grants: **Always allow** (harmless, repeatable),
+**Ask first** (sensitive or disruptive) and **Never allow**. Build the model
+first and show it through a simple interface; no detailed permission
+editor at the start.
 
 ### Capability services
 
@@ -190,9 +270,19 @@ links, several recipients, transfer collections.
 
 ### B. Communications
 
-Reuse Chat: `chat-core`'s `ChatRepo` with a `PeerRepo` over Relay Device,
-no second chat engine. Kinds: conversations with your own devices, person to
-person, temporary rooms, community rooms, application channels.
+From messages between your own devices to direct messages, attachments
+(sent through Transfer), delivered and read states, temporary and
+persistent rooms, communities on independent servers, and perhaps voice and
+video later.
+
+**Relay does not depend on Chat as a product** (Reuben, 2026-11-16). No
+second chat engine either: if a messaging library is shared (today
+`chat-core`'s `ChatRepo`, with a `PeerRepo` over Relay Device), it stays
+independently usable and brings no shared accounts, shared product state or
+app-to-app dependency. Apps never depend on each other
+([areas.md](../../../docs/areas.md)), so the shared part moves out of Chat
+into the framework first, as its second real use; until then Relay has
+nothing of Chat's.
 
 ### C. Rooms and communities
 
@@ -244,7 +334,7 @@ relay service invoke my-service process-document
 
 The extension protocol comes before any marketplace.
 
-### Agents over Relay (deferred)
+### Agents over Relay (M8)
 
 Reuben's idea (2026-11-15): AI agents on different machines talk to each
 other over Relay, whatever model, framework or host each one uses. Relay
@@ -266,8 +356,7 @@ permissions, discovery and delivery.
 - **Starting point:** `relay serve-ai` / `relay ask` (protocol 2) already
   send OpenAI-style requests to a model on another machine; they move onto
   iroh with the rest of Relay.
-- **When:** after M2 (messaging and capability permissions), as part of the
-  Extend pillar. **First test:** two independent agents exchange signed
+- **When:** M8, after the extension protocol (M7). **First test:** two independent agents exchange signed
   messages, one asks the other for a task, gets the result and an
   attachment back, and a revoked grant is refused.
 
@@ -297,20 +386,54 @@ Reuben uses it.
 ## Milestones
 
 Each leaves something that works on its own. M0 and M1 are gates. The
-estimates are for planning, not promises.
+estimates are for planning, not promises. The numbers stay; 2026-11-16
+sharpened their contents, added an acceptance test to each and added M8.
+
+| Phase | Milestones |
+|---|---|
+| I. Make Relay dependable (now) | M1, M2 |
+| II. Make devices useful to one another | M3, M4, M5 |
+| III. Make Relay powerful | M6 |
+| IV. Make Relay extensible | M7, M8 |
 
 | Milestone | Contents | Was | Estimate |
 |---|---|---|---|
-| **M0 Foundation validation** (Linux to Linux) | Done on one Linux machine: iroh, SPAKE2 codes of three EFF words, no number collisions, busy and wrong-code handling with new codes, disk store, a 4 GB transfer resumed after the receiver was killed, 24 MB peak memory. Left: two real machines on a real network (the laptop, the iMac or Hetzner over Tailscale) and the Lean model of the code session | Stage 0 | 1 to 2 days |
-| **M1 Relay Transfer** | Starts with the iPhone feasibility check moved from M0. Passed on 2026-11-15: the iOS build, Bonjour to the Rust endpoint, Linux to iPhone (200 MB at 15.9 MB/s, 1 GB at 9.5 MB/s over Wi-Fi) and iPhone to Linux with a word code ([results](relay-stage0-spike.md#iphone-start-of-m1-2026-11-15)). Left: a memory reading from the phone. Then production core, iPhone and CLI send and receive, folders and several files, resumable disk store, trusted devices, history, cancellation and errors | Stage 1 (files) | 1 to 2 weeks |
-| **M2 Personal device network** | Persistent identities (person and device), discovery and status, the resolver, Tailscale routes, direct internet, our rendezvous and relay, diagnostics | Stage 2 (servers) | 1 to 2 weeks |
-| **M3 Direct communications** | `PeerRepo`, messages between devices, outbox, delivered and read, attachments, history, AI asks as messages | Stage 1 (messages) | 1 to 2 weeks |
-| **M4 Temporary rooms** | Host and join, codes, members, permissions, memory only, closing, Relaxed / Standard / Strict | Stage 2 (rooms) | 1 to 2 weeks |
-| **M5 Decentralised communities** | After the Nostr/Marmot spike: Nostr adapter, NIP-11, Marmot, MLS groups, NIP-29, our Nostr relay, relay choice, moderation | After stage 2 | 2 to 4 weeks |
-| **M6 Device capabilities** | Clipboard, approved folders, terminal, tasks, AI inference, permissions, service discovery | New | 2 to 4 weeks |
-| **M7 Platform** | Extension SDK, browser receiver, Android app, integrations, folder sync, multi-device sessions, public protocol spec | Stage 3 | Longer term |
+| **M0 Foundation validation** (Linux to Linux) | Done: iroh, SPAKE2 codes of three EFF words, no number collisions, busy and wrong-code handling with new codes, disk store, a 4 GB transfer resumed after the receiver was killed, 24 MB peak memory, two Linux machines over Tailscale, and the Lean model of the code session (`verification/relay/`) | Stage 0 | Done |
+| **M1 Relay Transfer** | Starts with the iPhone feasibility check moved from M0. Passed on 2026-11-15: the iOS build, Bonjour to the Rust endpoint, Linux to iPhone (200 MB at 15.9 MB/s, 1 GB at 9.5 MB/s over Wi-Fi) and iPhone to Linux with a word code ([results](relay-stage0-spike.md#iphone-start-of-m1-2026-11-15)). Left: iroh as the production transport (one transfer path), send and receive on iPhone and CLI, several files and folders, resumable disk store, progress, cancellation and errors, trusted-device transfer, history, and a memory reading from the phone. **Accepted when** two real devices send and receive large files both ways, also after an interruption, with verified content | Stage 1 (files) | 1 to 2 weeks |
+| **M2 Personal device network** (the defining milestone) | Persistent device identity in secure storage, trusted-device management, discovery and status, the resolver, local, private (Tailscale) and internet routes, our rendezvous and relay, diagnostics and reconnecting. **Accepted when** the phone reliably finds and connects to your own computers from outside the home network with no addresses configured | Stage 2 (servers) | 1 to 2 weeks |
+| **M3 Direct communications** | Device-to-device messages, a reliable outbox, delivered and read, attachments, history, AI asks as messages, reconnects without duplicates. **Accepted when** messages survive relaunches, disconnections and retries without disappearing or duplicating | Stage 1 (messages) | 1 to 2 weeks |
+| **M4 Temporary rooms** | Host and join with codes, room identity, members, permission levels, memory-only history, lifecycle, Relaxed / Standard / Strict. **Accepted when** two or more people use a private room, and it behaves correctly when the host disconnects | Stage 2 (rooms) | 1 to 2 weeks |
+| **M5 Decentralised communities** | After the Nostr/Marmot spike (a real gate): Nostr adapter, NIP-11, Marmot, MLS groups, NIP-29, self-hosted compatible relays, relay choice, moderation. **Accepted when** a Relay user joins a supported group alongside an independent Nostr client, with the server's real capabilities and retention shown | After stage 2 | 2 to 4 weeks |
+| **M6 Device capabilities** | One at a time: device status (CPU, memory, disk, uptime, battery), approved folders, clipboard text, then terminal (OpenSSH over a Relay connection) and named tasks, which need much more security work, and AI inference; permissions, service discovery. **Accepted when** the phone inspects a remote computer, browses an approved folder, runs an authorised task and gets its result | New | 2 to 4 weeks |
+| **M7 Platform** | The documented capability protocol, external service processes, service discovery and invocation, permission declarations, version negotiation, browser receiver, macOS and Linux polish, Android, selective folder sync, public protocol spec. The extension protocol comes before any marketplace | Stage 3 | Longer term |
+| **M8 Distributed services** (new proposal, 2026-11-16) | Several devices hosting different services, availability, resource-aware routing, long-running task monitoring, handoff, remote compute, distributed AI, agents over A2A and MCP ([above](#agents-over-relay-m8)). Example: the phone asks Relay to process a document; Relay finds an authorised computer, sends the file, follows the task and returns the result, without deciding how it is processed | New | Long term |
 
 ### How the work lands
+
+The order of the next PRs (2026-11-16). Tests and device evidence go in
+each feature PR; there are no test-only PRs.
+
+| # | PR scope | Outcome | Milestone |
+|---|---|---|---|
+| 1 | Finish the M1 transfer core | Production iroh transfers | M1 |
+| 2 | Finish the native transfer UI and CLI | Usable on phone and computer | M1 |
+| 3 | Trusted device identity | Persistent device trust | M1, M2 |
+| 4 | Device discovery and status | Personal network | M2 |
+| 5 | Connection resolver and private routes | Beyond one Wi-Fi | M2 |
+| 6 | Our relay and internet routes | Reach devices remotely | M2 |
+| 7 | Capability permission model | Safe remote access | M6 |
+| 8 | Device status and approved folders | First remote services | M6 |
+| 9 | Clipboard and task execution | Useful device control | M6 |
+| 10 | Terminal and AI inference | Remote computing | M6 |
+| 11 | Direct communication | Device messaging | M3 |
+| 12 | Temporary rooms | Private collaboration | M4 |
+| 13 | Nostr/Marmot integration | Communities | M5 |
+| 14 | External service protocol | Extensibility | M7 |
+| 15 | Browser receiver and wider clients | Platform | M7 |
+| 16 | Distributed services and agents | Long-term ambition | M8 |
+
+Device capabilities (7 to 10) come before messaging (11), unlike the
+milestone numbers: the personal network test needs them first.
 
 PR #197 stays the decision record and the spike. Implementation comes in
 focused PRs, each with one acceptance condition:
@@ -324,7 +447,7 @@ focused PRs, each with one acceptance condition:
 | CLI | Linux and macOS work with the phone |
 | Trusted devices | Pairing persists securely |
 | Device network | Internet and private routes work |
-| Peer messaging | Chat's screens run on `PeerRepo` |
+| Peer messaging | Relay's conversations run on `PeerRepo`, with no dependency on Chat the app |
 | Temporary rooms | Host and join lifecycle works |
 | Nostr/Marmot spike | An encrypted group works with another client |
 | Each capability | One service at a time |
@@ -357,23 +480,70 @@ drift apart.
 | Our own federation protocol | Nostr |
 | Our own group encryption | Marmot / MLS, after validation |
 | Our own P2P transport | iroh |
-| Another chat app | Chat's engine and screens |
+| Another chat engine | A shared messaging library if it stays independent; never Chat the app as a dependency |
 | A full sync engine | One-way transfers first |
 | Unrestricted remote access | Capability permissions |
 | An extension marketplace | The extension protocol first |
 | Our own agent protocol | A2A and MCP carried over Relay |
 | Needing our servers | Local first, always |
+| An elaborate agent orchestration framework | Capability invocation; A2A and MCP in M8 |
+| Several regional relays early | One relay on Hetzner until reliability needs more |
+| A separate Relay server product, repository or name | `examples/relay` in ixOS |
+| Relay depending on another app | Optional integrations; Relay works alone |
 
 **Risks to watch:** the iOS lifecycle (reconnect and resume, never fight
 Apple's background rules), the maturity of iroh-blobs and Marmot (pin
 versions, test interoperability, keep an alternative), and complexity
 (never six half-built systems; each milestone useful alone).
 
+## Decisions locked in (2026-11-16)
+
+| Area | Decision |
+|---|---|
+| Core, CLI | Rust |
+| Mobile interface | Native SwiftUI |
+| Transport | iroh |
+| File transfer | iroh-blobs |
+| Local discovery | Bonjour (iPhone), mDNS (CLI) |
+| Private routes | Configured routes, Tailscale first |
+| Internet routes | iroh hole punching and relays |
+| Device identity | iroh key |
+| Person identity | Nostr key, with a recovery decision in M2 |
+| Group messaging | Marmot / MLS, after the spike |
+| Remote terminal | OpenSSH over a Relay connection |
+| Service protocol | Versioned capability declarations and invocation |
+| External extensions | Separate processes with restricted permissions |
+| Verification | Tests, plus Lean for the critical state machines |
+
+## New capabilities worth considering
+
+Proposals from 2026-11-16, not yet scheduled beyond their milestone.
+Finding a laptop is half the job: Relay should also know it offers a
+terminal, a file service and a model, so **service discovery is separate
+from device discovery**.
+
+| Idea | Why | Priority |
+|---|---|---|
+| Device presence | Know which devices are available and reachable | High (M2) |
+| Service discovery | Find what a device can actually do | High (M6) |
+| Task handoff | Send work to another machine | High (M6) |
+| Connection diagnostics | Explain why a connection fails | High (M2) |
+| Several recipients | Send to several trusted devices | Medium |
+| Browser receiver | Receive without installing Relay | Medium (M7) |
+| Remote media access | Use a service hosted on another device | Medium |
+| Shared workspaces | Files and messages in a temporary context | Medium |
+| Device-to-device automation | Trigger approved actions remotely | Medium |
+| Distributed AI | Models across several machines | Later (M8) |
+| Agent communication | Connect independent agents securely | Later (M8) |
+| Public service discovery | Find third-party Relay services | Later |
+
 ## Repository: a destination, not a move
 
 Today everything is `examples/relay` (app, `rust/` core with the CLI,
 `spike/`). Code moves into crates only when it has a second real user, as
-ixOS's architecture rule says. A possible end state:
+ixOS's architecture rule says. The core is still compact: build the
+connection fabric, identity and capability boundaries as modules when
+features need them, not as six or seven crates up front. A possible end state:
 
 ```text
 crates/relay-core (identity, connections, sessions, permissions, protocol)
@@ -382,6 +552,24 @@ services/rendezvous, services/iroh-relay, services/nostr
 sdk/rust, sdk/protocol
 docs/relay-*.md
 ```
+
+## The personal network test
+
+One end-to-end scenario judges whether Relay has become what it is meant
+to be:
+
+1. Open Relay on the phone: the laptop, the iMac and the remote server are
+   in Connections.
+2. Pick the laptop: Relay connects over the best route available.
+3. Browse a folder: only the folders you approved are visible.
+4. Start a named build task on the laptop.
+5. Follow its progress, with a way to cancel it.
+6. Get the output and the files it made back on the phone.
+
+**Passes when** there is no public SSH port, no network set up by hand, no
+separate file-transfer tool and no unrestricted remote access. It exercises
+identity, routing, trust, permissions, capability discovery, tasks and
+transfer together, which a list of separate features can't.
 
 ## Definition of success
 
