@@ -105,7 +105,7 @@ forge run ios --release       # release configuration (xtool dev build -c releas
 forge install ios --ipa App.ipa
 ```
 
-`forge install ios --ipa` signs the `.ipa` as it installs it, so give it an unsigned one. It refuses an `.ipa` xtool already signed (its bundle id starts with `XTL-`, as `forge publish ios` builds do): signing it again would install a second, separate copy of the app instead of updating yours. Install those from the Install page.
+`forge install ios --ipa` signs the `.ipa` as it installs it, so give it an unsigned one. It refuses an `.ipa` xtool already signed (its bundle id starts with `XTL-`, as `forge publish ios` builds do): signing it again would install a second, separate copy of the app instead of updating yours. Install with `forge run ios` from the checkout instead.
 
 Before building, `forge run ios` checks xtool, the iOS Rust target, the Darwin SDK and its iOS version, your sign-in and the connected iPhone, so these problems show up in seconds rather than after the build. When a signing or install step fails, the error ends with a "What went wrong" section naming the problem and the fix ([troubleshooting.md](troubleshooting.md#signing-and-iphone-problems)).
 
