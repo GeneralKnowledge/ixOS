@@ -5,9 +5,23 @@ import ForgeUI
 // The xtool entry point. WeatherLauncher is the same app for `swift run` and the Xcode project.
 @main
 struct WeatherXtoolApp: App {
+    /// Owns the Rust core for the life of the process (WeatherHost.swift).
+    @State private var host = makeAppHost()
+
+    init() {
+        // URLSession for forecasts, Core Location for "My Location", and the
+        // rest of Forge's native services for the Rust core.
+        AppServices.install()
+        // Reports the application lifecycle to Rust: refreshes stop in the
+        // background, and the core shuts down when iOS ends the app.
+        #if canImport(UIKit)
+        ForgeLifecycle.attach(host)
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
-            WeatherView()
+            WeatherRoot(host: host)
                 .forgeLaunchAppearance()
         }
     }

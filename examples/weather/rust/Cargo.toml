@@ -15,12 +15,21 @@ name = "weather_core"
 crate-type = ["staticlib", "lib"]
 
 [dependencies]
+# The application runtime: one core per process, lifecycle, cancellation,
+# shutdown (docs/app-model-review.md). ForgeKit's ForgeHost hosts it.
+forge-app = { path = "../../../crates/forge-app" }
 forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
 forge-storage = { path = "../../../crates/forge-storage" }
 # The async bridge and the Android JNI init (ForgeAndroid.nativeInit).
 forge-runtime = { path = "../../../crates/forge-runtime" }
+# Native services: `http` (forecasts go through URLSession on iOS) and
+# `location` (the device's position for "My Location"):
+# `forge_services::native_services!(http, location)` in src/lib.rs.
+forge-services = { path = "../../../crates/forge-services", features = ["http"] }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
+# UniFFI's generated code for async host interfaces names it directly.
+async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

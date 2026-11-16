@@ -4,12 +4,14 @@
 
 mod app;
 mod error;
+mod location;
 mod open_meteo;
 mod overview;
 mod places;
 mod types;
 
 pub use app::{ForgeWeatherApp, WeatherOperation};
-pub use error::WeatherError;
+pub use error::{weather_error_kind, WeatherError};
+pub use location::DeviceFix;
 pub use overview::weather_overview;
 pub use types::*;

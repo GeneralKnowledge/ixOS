@@ -4908,8 +4908,11 @@ dependencies = [
 name = "weather-app"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "forge-app",
  "forge-net",
  "forge-runtime",
+ "forge-services",
  "forge-storage",
  "serde",
  "serde_json",

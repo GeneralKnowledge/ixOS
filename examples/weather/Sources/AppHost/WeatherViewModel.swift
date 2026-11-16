@@ -1,5 +1,5 @@
 import Foundation
-import WeatherBridge
+import Observation
 
 /// One page of the pager: "My Location", then each saved place.
 public struct WeatherPage: Identifiable, Equatable, Sendable {
@@ -50,18 +50,19 @@ public struct WeatherPage: Identifiable, Equatable, Sendable {
 /// cache, saved places and what each page shows (`WeatherOverview`) are all
 /// in Rust behind `WeatherClient`. Location comes from a `LocationProviding`
 /// (CoreLocation in the app, a fake in tests).
+@Observable
 @MainActor
-public final class WeatherViewModel: ObservableObject {
+public final class WeatherViewModel {
     /// "My Location" first, then the saved places in the user's order.
-    @Published public private(set) var pages: [WeatherPage]
+    public private(set) var pages: [WeatherPage]
     /// The page on screen.
-    @Published public var selection: String = WeatherPage.myLocationID
+    public var selection: String = WeatherPage.myLocationID
     /// Why "My Location" did not work.
-    @Published public private(set) var locationMessage: String?
+    public private(set) var locationMessage: String?
 
-    @Published public private(set) var searchResults: [Place] = []
-    @Published public private(set) var isSearching = false
-    @Published public private(set) var searchMessage: String?
+    public private(set) var searchResults: [Place] = []
+    public private(set) var isSearching = false
+    public private(set) var searchMessage: String?
 
     public let client: WeatherClient
     /// How the summary and the wind tile state wind speed.
@@ -71,31 +72,32 @@ public final class WeatherViewModel: ObservableObject {
     /// The simulator screenshot job uses it (launch argument
     /// `-WeatherOfflineDemo YES`).
     private let isLive: Bool
-    private var refreshTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var refreshTasks: [String: Task<Void, Never>] = [:]
     /// The newest refresh of each page; an older one finishing does not
     /// clear the page's spinner.
-    private var refreshTokens: [String: Int] = [:]
-    private var nextToken = 0
-    private var searchTask: Task<Void, Never>?
-    private var started = false
+    @ObservationIgnored private var refreshTokens: [String: Int] = [:]
+    @ObservationIgnored private var nextToken = 0
+    @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var started = false
 
     /// A page whose report is younger than this is not refreshed when it
     /// comes on screen.
     static let freshFor: TimeInterval = 10 * 60
 
     /// - Parameters:
-    ///   - client: defaults to a client caching under Application Support.
-    ///   - location: defaults to CoreLocation.
+    ///   - client: the Rust core the app's host opened, wrapped.
+    ///   - location: defaults to the core's `current_location` (Core
+    ///     Location through Forge's `location` service).
     ///   - windUnit: defaults to mph where the locale uses it (US, UK).
     ///   - isLive: false to show only cached data (screenshots).
     public init(
-        client: WeatherClient? = nil,
+        client: WeatherClient,
         location: (any LocationProviding)? = nil,
         windUnit: WindUnit? = nil,
         isLive: Bool? = nil
     ) {
-        self.client = client ?? WeatherClient(storageDirectory: Self.defaultStorageDirectory())
-        self.location = location ?? DeviceLocationProvider()
+        self.client = client
+        self.location = location ?? DeviceLocationProvider(core: client.app)
         self.windUnit = windUnit ?? Self.localeWindUnit()
         self.isLive = isLive ?? !UserDefaults.standard.bool(forKey: "WeatherOfflineDemo")
         pages = [WeatherPage(id: WeatherPage.myLocationID)]
@@ -179,6 +181,11 @@ public final class WeatherViewModel: ObservableObject {
                 }
                 recomputeOverviews()
                 await refresh(WeatherPage.myLocationID).value
+            } catch is CancellationError {
+                // The app left the screen: it asks again on return.
+                update(WeatherPage.myLocationID) { page in
+                    if refreshTasks[page.id] == nil { page.isRefreshing = false }
+                }
             } catch {
                 let message = (error as? LocationError)?.userMessage
                     ?? LocationError.unavailable(detail: "\(error)").userMessage
@@ -370,15 +377,5 @@ public final class WeatherViewModel: ObservableObject {
         case .us, .uk: return .milesPerHour
         default: return .kilometresPerHour
         }
-    }
-
-    private static func defaultStorageDirectory() -> String {
-        let fm = FileManager.default
-        let base = (try? fm.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
-            ?? fm.temporaryDirectory
-        let dir = base.appendingPathComponent("Weather", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.path
     }
 }

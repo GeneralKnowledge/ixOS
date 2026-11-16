@@ -68,6 +68,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-trait"
+version = "0.1.92"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -224,6 +235,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-app"
+version = "0.6.0"
+dependencies = [
+ "forge-runtime",
+ "forge-storage",
+ "libc",
+ "serde",
+ "uniffi",
+]
+
+[[package]]
 name = "forge-net"
 version = "0.1.0"
 dependencies = [
@@ -241,6 +263,13 @@ dependencies = [
  "forge-net",
  "jni",
  "log",
+]
+
+[[package]]
+name = "forge-services"
+version = "0.1.0"
+dependencies = [
+ "forge-net",
 ]
 
 [[package]]
@@ -1080,8 +1109,11 @@ checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 name = "weather-app"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "forge-app",
  "forge-net",
  "forge-runtime",
+ "forge-services",
  "forge-storage",
  "serde",
  "serde_json",

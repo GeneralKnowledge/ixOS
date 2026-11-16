@@ -1,12 +1,12 @@
 import Foundation
-import WeatherApp
-import WeatherBridge
+@testable import WeatherApp
+@preconcurrency import WeatherFFI
 import XCTest
 
 private struct FakeLocation: LocationProviding {
-    let result: Result<LocationFix, LocationError>
+    let result: Result<LocationReading, LocationError>
 
-    func currentLocation() async throws -> LocationFix {
+    func currentLocation() async throws -> LocationReading {
         try result.get()
     }
 }
@@ -40,7 +40,7 @@ final class WeatherViewModelTests: XCTestCase {
 
     @MainActor
     func testLocationFixRefreshesAndReportsOffline() async throws {
-        let fix = LocationFix(
+        let fix = LocationReading(
             coordinate: Coordinate(latitude: 51.5, longitude: -0.12), horizontalAccuracy: 65)
         let model = WeatherViewModel(
             client: try offlineClient(), location: FakeLocation(result: .success(fix)))
@@ -56,13 +56,49 @@ final class WeatherViewModelTests: XCTestCase {
 
     @MainActor
     func testTheLocalityNamesMyLocation() async throws {
-        let fix = LocationFix(
+        let fix = LocationReading(
             coordinate: Coordinate(latitude: 55.9, longitude: -3.64), placeName: "Bathgate")
         let model = WeatherViewModel(
             client: try offlineClient(), location: FakeLocation(result: .success(fix)))
         await model.start()
         XCTAssertEqual(model.place?.name, "Bathgate")
         XCTAssertTrue(model.selectedPage?.isMyLocation ?? false)
+    }
+
+    @MainActor
+    func testALoadFailureShowsAMessageAndTryAgainLoads() async throws {
+        let server = try FixtureServer(body: parisForecastJSON)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("forge-weather-vm-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let base = "http://127.0.0.1:\(server.port)"
+        let client = try WeatherClient(
+            storageDirectory: url.path,
+            configuration: WeatherConfig(
+                forecastBaseUrl: base, geocodingBaseUrl: base, requestTimeoutMs: 5_000))
+        let model = WeatherViewModel(
+            client: client, location: FakeLocation(result: .failure(.denied)))
+        await model.start()
+        let paris = Place(
+            name: "Paris", region: nil, country: nil, countryCode: nil,
+            coordinate: Coordinate(latitude: 48.86, longitude: 2.34), timezone: nil,
+            population: nil, source: .search(geocodingId: nil))
+        model.add(paris)
+        let id = model.selection
+        await model.refresh(id).value
+        XCTAssertNil(model.report, "the service is down")
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertFalse(model.isRefreshing)
+
+        // Try Again, with the service back.
+        server.failing = false
+        await model.refresh(id).value
+        XCTAssertNotNil(model.report)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.isRefreshing)
+        XCTAssertNotNil(model.selectedPage?.overview)
+        model.close()
     }
 
     @MainActor

@@ -243,6 +243,378 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD1
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod1)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD2
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod2)(uint64_t, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod3)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
+typedef void (*UniffiCallbackInterfacePermissionProviderMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD1
+typedef void (*UniffiCallbackInterfacePermissionProviderMethod1)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD0
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD1
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod1)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD2
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod1)(uint64_t, RustBuffer, uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod2)(uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD0
+typedef void (*UniffiCallbackInterfaceLocationSourceMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD1
+typedef void (*UniffiCallbackInterfaceLocationSourceMethod1)(uint64_t, int8_t* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD2
+typedef void (*UniffiCallbackInterfaceLocationSourceMethod2)(uint64_t, int8_t* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD3
+typedef void (*UniffiCallbackInterfaceLocationSourceMethod3)(uint64_t, RustBuffer, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD4
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCATION_SOURCE_METHOD4
+typedef void (*UniffiCallbackInterfaceLocationSourceMethod4)(uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
+typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceLocalNotifierMethod0 _Nonnull schedule;
+    UniffiCallbackInterfaceLocalNotifierMethod1 _Nonnull cancel;
+    UniffiCallbackInterfaceLocalNotifierMethod2 _Nonnull pending;
+    UniffiCallbackInterfaceLocalNotifierMethod3 _Nonnull setCategories;
+} UniffiVTableCallbackInterfaceLocalNotifier;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PERMISSION_PROVIDER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PERMISSION_PROVIDER
+typedef struct UniffiVTableCallbackInterfacePermissionProvider {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfacePermissionProviderMethod0 _Nonnull status;
+    UniffiCallbackInterfacePermissionProviderMethod1 _Nonnull request;
+} UniffiVTableCallbackInterfacePermissionProvider;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SECURE_STORE
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SECURE_STORE
+typedef struct UniffiVTableCallbackInterfaceSecureStore {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceSecureStoreMethod0 _Nonnull get;
+    UniffiCallbackInterfaceSecureStoreMethod1 _Nonnull set;
+    UniffiCallbackInterfaceSecureStoreMethod2 _Nonnull delete;
+} UniffiVTableCallbackInterfaceSecureStore;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+typedef struct UniffiVTableCallbackInterfaceHttpTransport {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceHttpTransportMethod0 _Nonnull send;
+    UniffiCallbackInterfaceHttpTransportMethod1 _Nonnull openStream;
+    UniffiCallbackInterfaceHttpTransportMethod2 _Nonnull cancel;
+} UniffiVTableCallbackInterfaceHttpTransport;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCATION_SOURCE
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCATION_SOURCE
+typedef struct UniffiVTableCallbackInterfaceLocationSource {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceLocationSourceMethod0 _Nonnull lastKnown;
+    UniffiCallbackInterfaceLocationSourceMethod1 _Nonnull isPrecise;
+    UniffiCallbackInterfaceLocationSourceMethod2 _Nonnull headingAvailable;
+    UniffiCallbackInterfaceLocationSourceMethod3 _Nonnull start;
+    UniffiCallbackInterfaceLocationSourceMethod4 _Nonnull stop;
+} UniffiVTableCallbackInterfaceLocationSource;
+
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_LOCALNOTIFIER
+uint64_t uniffi_weather_core_fn_clone_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_LOCALNOTIFIER
+void uniffi_weather_core_fn_free_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_LOCALNOTIFIER
+void uniffi_weather_core_fn_init_callback_vtable_localnotifier(const UniffiVTableCallbackInterfaceLocalNotifier* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCALNOTIFIER_SCHEDULE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCALNOTIFIER_SCHEDULE
+uint64_t uniffi_weather_core_fn_method_localnotifier_schedule(uint64_t ptr, RustBuffer notification
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCALNOTIFIER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCALNOTIFIER_CANCEL
+void uniffi_weather_core_fn_method_localnotifier_cancel(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCALNOTIFIER_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCALNOTIFIER_PENDING
+uint64_t uniffi_weather_core_fn_method_localnotifier_pending(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+void uniffi_weather_core_fn_method_localnotifier_set_categories(uint64_t ptr, RustBuffer categories, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_PERMISSIONPROVIDER
+uint64_t uniffi_weather_core_fn_clone_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_PERMISSIONPROVIDER
+void uniffi_weather_core_fn_free_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_PERMISSIONPROVIDER
+void uniffi_weather_core_fn_init_callback_vtable_permissionprovider(const UniffiVTableCallbackInterfacePermissionProvider* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_PERMISSIONPROVIDER_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_PERMISSIONPROVIDER_STATUS
+uint64_t uniffi_weather_core_fn_method_permissionprovider_status(uint64_t ptr, RustBuffer permission
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_PERMISSIONPROVIDER_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_PERMISSIONPROVIDER_REQUEST
+uint64_t uniffi_weather_core_fn_method_permissionprovider_request(uint64_t ptr, RustBuffer permission
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_SECURESTORE
+uint64_t uniffi_weather_core_fn_clone_securestore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_SECURESTORE
+void uniffi_weather_core_fn_free_securestore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_SECURESTORE
+void uniffi_weather_core_fn_init_callback_vtable_securestore(const UniffiVTableCallbackInterfaceSecureStore* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_SECURESTORE_GET
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_SECURESTORE_GET
+RustBuffer uniffi_weather_core_fn_method_securestore_get(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_SECURESTORE_SET
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_SECURESTORE_SET
+void uniffi_weather_core_fn_method_securestore_set(uint64_t ptr, RustBuffer key, RustBuffer value, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_SECURESTORE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_SECURESTORE_DELETE
+void uniffi_weather_core_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_HTTPSTREAMBODY
+uint64_t uniffi_weather_core_fn_clone_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_HTTPSTREAMBODY
+void uniffi_weather_core_fn_free_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+void uniffi_weather_core_fn_method_httpstreambody_fail(uint64_t ptr, RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+void uniffi_weather_core_fn_method_httpstreambody_finish(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+void uniffi_weather_core_fn_method_httpstreambody_receive(uint64_t ptr, RustBuffer data, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_HTTPTRANSPORT
+uint64_t uniffi_weather_core_fn_clone_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_HTTPTRANSPORT
+void uniffi_weather_core_fn_free_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+void uniffi_weather_core_fn_init_callback_vtable_httptransport(const UniffiVTableCallbackInterfaceHttpTransport* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPTRANSPORT_SEND
+RustBuffer uniffi_weather_core_fn_method_httptransport_send(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+RustBuffer uniffi_weather_core_fn_method_httptransport_open_stream(uint64_t ptr, RustBuffer request, uint64_t body, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_HTTPTRANSPORT_CANCEL
+void uniffi_weather_core_fn_method_httptransport_cancel(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_LOCATIONSINK
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_LOCATIONSINK
+uint64_t uniffi_weather_core_fn_clone_locationsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_LOCATIONSINK
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_LOCATIONSINK
+void uniffi_weather_core_fn_free_locationsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSINK_SEND
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSINK_SEND
+void uniffi_weather_core_fn_method_locationsink_send(uint64_t ptr, RustBuffer event, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_LOCATIONSOURCE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_LOCATIONSOURCE
+uint64_t uniffi_weather_core_fn_clone_locationsource(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_LOCATIONSOURCE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FREE_LOCATIONSOURCE
+void uniffi_weather_core_fn_free_locationsource(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_LOCATIONSOURCE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_INIT_CALLBACK_VTABLE_LOCATIONSOURCE
+void uniffi_weather_core_fn_init_callback_vtable_locationsource(const UniffiVTableCallbackInterfaceLocationSource* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_LAST_KNOWN
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_LAST_KNOWN
+RustBuffer uniffi_weather_core_fn_method_locationsource_last_known(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_IS_PRECISE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_IS_PRECISE
+int8_t uniffi_weather_core_fn_method_locationsource_is_precise(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_HEADING_AVAILABLE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_HEADING_AVAILABLE
+int8_t uniffi_weather_core_fn_method_locationsource_heading_available(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_START
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_START
+void uniffi_weather_core_fn_method_locationsource_start(uint64_t ptr, RustBuffer options, uint64_t sink, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_STOP
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_LOCATIONSOURCE_STOP
+void uniffi_weather_core_fn_method_locationsource_stop(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_FORGEWEATHERAPP
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_FORGEWEATHERAPP
 uint64_t uniffi_weather_core_fn_clone_forgeweatherapp(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -268,6 +640,16 @@ uint64_t uniffi_weather_core_fn_constructor_forgeweatherapp_with_config(RustBuff
 RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_active_refresh(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_BACKGROUND_TIME_EXPIRED
+void uniffi_weather_core_fn_method_forgeweatherapp_background_time_expired(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_BACKGROUND_WORK_PENDING
+int8_t uniffi_weather_core_fn_method_forgeweatherapp_background_work_pending(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_CACHED_REPORT
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_CACHED_REPORT
 RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_cached_report(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -283,9 +665,19 @@ RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_cached_report_for(uint6
 RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_cached_reports(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_IS_SHUT_DOWN
-#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_IS_SHUT_DOWN
-int8_t uniffi_weather_core_fn_method_forgeweatherapp_is_shut_down(uint64_t ptr, RustCallStatus *_Nonnull out_status
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_EVENTS
+RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_LAUNCH_REPORT
+RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_launch_report(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_PHASE
+RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_phase(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_REFRESH
@@ -293,14 +685,29 @@ int8_t uniffi_weather_core_fn_method_forgeweatherapp_is_shut_down(uint64_t ptr, 
 uint64_t uniffi_weather_core_fn_method_forgeweatherapp_refresh(uint64_t ptr, RustBuffer place, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_REVISION
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_REVISION
+uint64_t uniffi_weather_core_fn_method_forgeweatherapp_revision(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_SEARCH_PLACES
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_SEARCH_PLACES
 uint64_t uniffi_weather_core_fn_method_forgeweatherapp_search_places(uint64_t ptr, RustBuffer query
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_SET_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_SET_PHASE
+void uniffi_weather_core_fn_method_forgeweatherapp_set_phase(uint64_t ptr, RustBuffer phase, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_SHUTDOWN
 void uniffi_weather_core_fn_method_forgeweatherapp_shutdown(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_CURRENT_LOCATION
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_CURRENT_LOCATION
+uint64_t uniffi_weather_core_fn_method_forgeweatherapp_current_location(uint64_t ptr
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_MOVE_SAVED_PLACE
@@ -361,6 +768,58 @@ RustBuffer uniffi_weather_core_fn_method_weatheroperation_place(uint64_t ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_WEATHEROPERATION_RESULT
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_WEATHEROPERATION_RESULT
 uint64_t uniffi_weather_core_fn_method_weatheroperation_result(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_FORGE_LOG
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_FORGE_LOG
+void uniffi_weather_core_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_FORGE_LOG_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_FORGE_LOG_ENABLED
+int8_t uniffi_weather_core_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+void uniffi_weather_core_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
+void uniffi_weather_core_fn_func_install_native_services(RustBuffer directories, uint64_t secure_store, uint64_t notifier, uint64_t permissions, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_NATIVE_SERVICES_INSTALLED
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_NATIVE_SERVICES_INSTALLED
+int8_t uniffi_weather_core_fn_func_native_services_installed(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_NATIVE_SERVICES_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_NATIVE_SERVICES_VERSION
+uint32_t uniffi_weather_core_fn_func_native_services_version(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_PARSE_DEEP_LINK
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_PARSE_DEEP_LINK
+RustBuffer uniffi_weather_core_fn_func_parse_deep_link(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
+void uniffi_weather_core_fn_func_install_native_http(uint64_t transport, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_INSTALL_NATIVE_LOCATION
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_INSTALL_NATIVE_LOCATION
+void uniffi_weather_core_fn_func_install_native_location(uint64_t source, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_WEATHER_ERROR_KIND
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_WEATHER_ERROR_KIND
+RustBuffer uniffi_weather_core_fn_func_weather_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_WEATHER_OVERVIEW
@@ -628,15 +1087,213 @@ void ffi_weather_core_rust_future_free_void(uint64_t handle
 void ffi_weather_core_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_FORGE_LOG
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_FORGE_LOG
+uint16_t uniffi_weather_core_checksum_func_forge_log(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
+uint16_t uniffi_weather_core_checksum_func_forge_log_enabled(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+uint16_t uniffi_weather_core_checksum_func_deliver_notification_response(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
+uint16_t uniffi_weather_core_checksum_func_install_native_services(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_INSTALLED
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_INSTALLED
+uint16_t uniffi_weather_core_checksum_func_native_services_installed(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_VERSION
+uint16_t uniffi_weather_core_checksum_func_native_services_version(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
+uint16_t uniffi_weather_core_checksum_func_parse_deep_link(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+uint16_t uniffi_weather_core_checksum_func_install_native_http(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_LOCATION
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_LOCATION
+uint16_t uniffi_weather_core_checksum_func_install_native_location(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_WEATHER_ERROR_KIND
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_WEATHER_ERROR_KIND
+uint16_t uniffi_weather_core_checksum_func_weather_error_kind(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_WEATHER_OVERVIEW
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_WEATHER_OVERVIEW
 uint16_t uniffi_weather_core_checksum_func_weather_overview(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
+uint16_t uniffi_weather_core_checksum_method_localnotifier_schedule(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_CANCEL
+uint16_t uniffi_weather_core_checksum_method_localnotifier_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
+uint16_t uniffi_weather_core_checksum_method_localnotifier_pending(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+uint16_t uniffi_weather_core_checksum_method_localnotifier_set_categories(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
+uint16_t uniffi_weather_core_checksum_method_permissionprovider_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_REQUEST
+uint16_t uniffi_weather_core_checksum_method_permissionprovider_request(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_SECURESTORE_GET
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_SECURESTORE_GET
+uint16_t uniffi_weather_core_checksum_method_securestore_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_SECURESTORE_SET
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_SECURESTORE_SET
+uint16_t uniffi_weather_core_checksum_method_securestore_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
+uint16_t uniffi_weather_core_checksum_method_securestore_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+uint16_t uniffi_weather_core_checksum_method_httpstreambody_fail(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+uint16_t uniffi_weather_core_checksum_method_httpstreambody_finish(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+uint16_t uniffi_weather_core_checksum_method_httpstreambody_receive(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+uint16_t uniffi_weather_core_checksum_method_httptransport_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+uint16_t uniffi_weather_core_checksum_method_httptransport_open_stream(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+uint16_t uniffi_weather_core_checksum_method_httptransport_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSINK_SEND
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSINK_SEND
+uint16_t uniffi_weather_core_checksum_method_locationsink_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_LAST_KNOWN
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_LAST_KNOWN
+uint16_t uniffi_weather_core_checksum_method_locationsource_last_known(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_IS_PRECISE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_IS_PRECISE
+uint16_t uniffi_weather_core_checksum_method_locationsource_is_precise(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_HEADING_AVAILABLE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_HEADING_AVAILABLE
+uint16_t uniffi_weather_core_checksum_method_locationsource_heading_available(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_START
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_START
+uint16_t uniffi_weather_core_checksum_method_locationsource_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_STOP
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCATIONSOURCE_STOP
+uint16_t uniffi_weather_core_checksum_method_locationsource_stop(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_ACTIVE_REFRESH
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_ACTIVE_REFRESH
 uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_active_refresh(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_BACKGROUND_TIME_EXPIRED
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_background_time_expired(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_BACKGROUND_WORK_PENDING
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_background_work_pending(void
     
 );
 #endif
@@ -658,9 +1315,21 @@ uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_cached_reports(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_IS_SHUT_DOWN
-#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_IS_SHUT_DOWN
-uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_is_shut_down(void
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_EVENTS
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_events(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_LAUNCH_REPORT
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_launch_report(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_PHASE
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_phase(void
     
 );
 #endif
@@ -670,15 +1339,33 @@ uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_refresh(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_REVISION
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_REVISION
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_revision(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SEARCH_PLACES
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SEARCH_PLACES
 uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_search_places(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SET_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SET_PHASE
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_set_phase(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SHUTDOWN
 uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_shutdown(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_CURRENT_LOCATION
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_CURRENT_LOCATION
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_current_location(void
     
 );
 #endif

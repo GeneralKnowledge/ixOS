@@ -1,0 +1,62 @@
+# Weather inside Device Lab: open the places, see My Location first, find
+# Prague and add it, refresh its forecast, then relaunch and see it is
+# still there. Needs the network (Open-Meteo). Starts on throwaway data
+# (-ForgeTemporaryData); the relaunch keeps it with -ForgeKeepTestData, so
+# the person's own places are never touched. If Device Lab has never been
+# asked for location, answer the prompt first: the scenario doesn't.
+# Run with the phone plugged in:  forge ui run uitests/add-a-place.toml
+
+name = "Add a place, refresh, relaunch"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "weather"] }
+
+[[step]]
+tap = { id = "weather.places" }
+
+[[step]]
+expect = { id = "places.card.here" }
+
+[[step]]
+screenshot = "1-places"
+
+[[step]]
+type = { kind = "SearchField", index = 0, text = "Prague" }
+
+[[step]]
+tap = { id = "places.result.Prague" }
+
+# The sheet closes on Prague's page; it has a page dot now.
+[[step]]
+expect = { id = "weather.page.Prague" }
+
+[[step]]
+tap = { id = "weather.refresh" }
+
+[[step]]
+expect = { id = "weather.refresh", enabled = true }
+
+[[step]]
+screenshot = "2-prague"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-ForgeKeepTestData", "-launchApp", "weather"] }
+
+[[step]]
+expect = { id = "weather.page.Prague" }
+
+[[step]]
+tap = { id = "weather.places" }
+
+[[step]]
+expect = { id = "places.card.Prague" }
+
+[[step]]
+tap = { id = "places.done" }

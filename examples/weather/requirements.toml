@@ -1,0 +1,50 @@
+# What Weather must do, and what proves it (docs/evidence.md).
+# `twin`: XCTests that drive the real view model and client against the
+# real Rust core (`forge check swift` runs them on Linux). `device`: UI
+# scenarios for `forge ui run`; their verdicts come only from a run on an
+# iPhone.
+
+[[requirement]]
+id = "WX-1"
+statement = "A place's forecast is fetched, kept for offline use and shown with its temperatures and times formatted; when the service fails the page says so and Try Again loads it; with no network and nothing kept it says it is offline, and a coordinate off the globe is refused before any request."
+twin = [
+    "WeatherClientTests.testFreshClientHasNoCache",
+    "WeatherClientTests.testOfflineWithoutCacheThrowsOffline",
+    "WeatherClientTests.testInvalidCoordinateIsRejectedBeforeAnyRequest",
+    "WeatherClientTests.testBadConfigurationIsRejected",
+    "WeatherViewModelTests.testFormatting",
+    "WeatherViewModelTests.testALoadFailureShowsAMessageAndTryAgainLoads",
+]
+device = ["uitests/add-a-place.toml"]
+
+[[requirement]]
+id = "WX-2"
+statement = "A city can be found by name and added to the places, which can be removed and reordered and are still there after a relaunch; a search shorter than three letters asks nothing, and an offline search says so."
+twin = [
+    "WeatherViewModelTests.testAddingRemovingAndReorderingPlaces",
+    "WeatherViewModelTests.testShortSearchClearsResultsWithoutARequest",
+    "WeatherViewModelTests.testOfflineSearchShowsAMessage",
+    "WeatherClientTests.testShortSearchIsInvalidAndOfflineSearchIsOffline",
+]
+device = ["uitests/add-a-place.toml"]
+
+[[requirement]]
+id = "WX-3"
+statement = "My Location comes first, named after the place the phone is in; when location is refused or can't be found the page says why and stops loading."
+twin = [
+    "WeatherViewModelTests.testDeniedLocationExplainsAndStopsLoading",
+    "WeatherViewModelTests.testLocationFixRefreshesAndReportsOffline",
+    "WeatherViewModelTests.testTheLocalityNamesMyLocation",
+]
+device = ["uitests/add-a-place.toml"]
+
+[[requirement]]
+id = "WX-4"
+statement = "Refresh can be cancelled at once and a new refresh replaces the old one; the core is opened by the host, a second core on the same data is refused, and after shutdown no new work starts."
+twin = [
+    "WeatherClientTests.testCancellingTheTaskCancelsTheRefreshAtOnce",
+    "WeatherClientTests.testANewRefreshSupersedesTheOldOne",
+    "WeatherClientTests.testTheHostOpensTheCoreAndASecondCoreIsRefused",
+    "WeatherClientTests.testShutdownRefusesNewWork",
+]
+device = ["uitests/add-a-place.toml"]

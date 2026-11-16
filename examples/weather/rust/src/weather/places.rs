@@ -184,6 +184,8 @@ mod tests {
         assert_eq!(list[0].name, "Prague");
         assert!(a.move_saved_place(0, 2).is_err());
 
+        // A relaunch: the first core lets go of the folder first.
+        drop(a);
         let restored = app(Some(dir.path().to_path_buf()));
         assert_eq!(restored.saved_places(), list);
 
@@ -191,6 +193,7 @@ mod tests {
             .remove_saved_place(place("x", 51.221, 6.781))
             .unwrap();
         assert_eq!(list.len(), 1);
+        drop(restored);
         assert_eq!(app(Some(dir.path().to_path_buf())).saved_places().len(), 1);
     }
 
