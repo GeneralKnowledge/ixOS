@@ -68,7 +68,10 @@ Expected from the first picks: full-text search (Commonplace, then Pocket Librar
   - The phase hook for apps (A31) waits for Relay to need it too.
   - Not Relay's encrypted channel (A16): Relay's approved plan replaces that wire with iroh ([relay-transfer-plan.md](relay-transfer-plan.md)), which leaves the channel with one user, the device tools.
 - **Wave 5: give each one-use piece its second app,** as a real feature with its own phone row, one app per PR, in this order:
-  1. Pocket Library's full-text search, after Commonplace's.
+  1. Full-text search, in three steps:
+     1. Commonplace's search across collected articles (it already has an FTS5 search) is validated on an iPhone.
+     2. Pocket Library builds and validates its own search across books and notes.
+     3. The two are compared, and only what they genuinely share moves into forge-storage.
   2. FieldKit's elevation and pace charts and Good Dog's progress over time, then Weather's hourly chart.
   3. FieldKit's photo notes, after Chat's photo picker.
 
@@ -94,11 +97,13 @@ Expected from the first picks: full-text search (Commonplace, then Pocket Librar
 |---|---|---|
 | Local notifications | Good Dog | Checklist |
 | Recurring schedules | Checklist | Good Dog |
-| Calendar | Good Dog | FieldKit |
+| Calendar integration (Apple's Calendar through EventKit) | Good Dog | FieldKit |
 | Widgets | Good Dog | Checklist |
 | App Intents and Shortcuts | Checklist | Pocket Library |
 | Timeline presentation | Commonplace | FieldKit |
 | Background scheduled work | Commonplace | Good Dog |
+
+"Calendar" here means only integration with Apple's Calendar (EventKit): adding an appointment or a planned trip to the person's calendar. It is not an app's own agenda or calendar screen, which stays each app's own design, and not notifications or recurring schedules, which are their own rows. Two apps showing dates is no reason for a shared calendar abstraction.
 
 ## Product direction: a native application framework
 
