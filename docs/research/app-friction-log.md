@@ -83,7 +83,7 @@ follow it now.
 | A2 | FieldKit | `sha256_file` is public in forge-storage but not exported, and `import_hashed` drops the file extension | Limit | Fixed (with A14) |
 | A3 | FieldKit | SQLite can't store `u64`, so SQLite apps use `i64` ids and file-based apps use `u64` | Annoyance | Fixed: new apps and the iOS starters use `i64`; file apps keep `u64` until they move to SQLite (2026-11-16) |
 | A4 | FieldKit | Great-circle distance lives in `forge_services::sensors`, so a pure Rust core depends on the native services crate | Annoyance | Open |
-| A5 | FieldKit | The runtime has no way to read data the command thread owns without a command, and every command raises the revision | Limit | Open |
+| A5 | FieldKit | The runtime has no way to read data the command thread owns without a command, and every command raises the revision | Limit | Fixed: `forge_storage::Database::reader` (second use: Commonplace search) (2026-11-16) |
 | A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Fixed: `forge_runtime::time` (second use: Weather) |
 | A7 | FieldKit | `forge init FieldKit` names the library `field_kit_core`, and the template's folders and test target are still called `AppHost` | Annoyance | Fixed: `forge init --library`; `AppHost` names kept as the convention (2026-11-16) |
 | A8 | FieldKit | `PermissionStatus::allows_use` is Rust only, so each app redefines `allowsUse` in Swift | Annoyance | Open |
@@ -190,6 +190,13 @@ thread. A test checks that reading a trip leaves the revision alone.
 raise the revision (`rt.read`), or a reader connection from
 `forge_storage::Database` itself, documented in app-model-review.md as the
 way to query data too large to publish.
+
+**Fixed (2026-11-16).** `Database::reader()` opens the read-only connection
+(WAL, a busy timeout, usable from any thread through `Reader::read`).
+FieldKit's track, notes, charts and export, and Commonplace's search (the
+second user, which had the same connection without a busy timeout), both
+use it; their own connection code is gone. persistence.md says when to use
+it.
 
 ## A6. No date formatting
 

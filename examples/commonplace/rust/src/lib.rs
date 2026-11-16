@@ -596,7 +596,7 @@ impl AppCore {
         let storage_directory = PathBuf::from(storage_directory);
         let directory = DataDirectory::open(&storage_directory)?;
         let store = Store::open(directory.path())?;
-        let searcher = Arc::new(Searcher::open(directory.path())?);
+        let searcher = Arc::new(Searcher::open(&store)?);
         let snapshot = store.snapshot()?;
         // Never log feed addresses, titles or article text.
         forge_runtime::logging::info!(

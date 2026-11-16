@@ -53,6 +53,10 @@ Give a new record's id the type `i64` (Swift `Int64`). rusqlite has no `ToSql` f
 
 Apps that already use `u64` on a JSON file (Checklist, Good Dog, Pocket Library, and the frozen Android starter) keep it: a JSON number reads the same either way, but changing the type would change their Swift API for no user benefit. Change it only when such an app moves to SQLite.
 
+## Reading data too large to publish
+
+What a screen shows usually fits in the core's published snapshot. When it doesn't (a long GPS track, a search over every article), read it through `Database::reader()`: a second, read-only connection to the same file that any thread can use (`reader.read(|c| ...)`). WAL lets it read while the command thread writes, and because the read isn't a command it doesn't raise the revision, so a screen that reloads on every change can't loop. Open it after `Database::open`; a database in memory has none. FieldKit (tracks, charts, export) and Commonplace (search) use it.
+
 ## Schema changes
 
 - **JSON** (`JsonFile`, `Document`): additive changes use `#[serde(default)]` and keep the version. A change that old files can't be read as raises it and adds a step to the migration function. The migrated value is written at the next save, after the `.v<N>` copy is kept.

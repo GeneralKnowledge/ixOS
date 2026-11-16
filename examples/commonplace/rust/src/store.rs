@@ -2,10 +2,9 @@
 //! command thread touches it; every change is one transaction.
 
 use std::path::Path;
-use std::sync::Mutex;
 
-use forge_storage::rusqlite::{params, Connection, OpenFlags, OptionalExtension, Transaction};
-use forge_storage::{Database, Opened};
+use forge_storage::rusqlite::{params, OptionalExtension, Transaction};
+use forge_storage::{Database, Opened, Reader};
 
 use crate::feed::{self, ParsedFeed};
 use crate::model::{AppError, AppSettings, ArticleSummary, ArticleText, Feed};
@@ -547,18 +546,14 @@ fn index_article(tx: &Transaction<'_>, id: i64, title: &str, html: &str) -> Resu
 /// never waits for a command and never counts as a change (SQLite's WAL
 /// lets it read while the command thread writes).
 pub struct Searcher {
-    connection: Mutex<Connection>,
+    reader: Reader,
 }
 
 impl Searcher {
-    /// Opens `library.sqlite` in `directory` for reading, after `Store::open`.
-    pub fn open(directory: &Path) -> Result<Self, AppError> {
-        let connection = Connection::open_with_flags(
-            directory.join("library.sqlite"),
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
+    /// A searcher over `store`'s file (forge-storage's shared reader).
+    pub fn open(store: &Store) -> Result<Self, AppError> {
         Ok(Self {
-            connection: Mutex::new(connection),
+            reader: store.db.reader()?,
         })
     }
 
@@ -569,14 +564,15 @@ impl Searcher {
         let Some(expression) = match_expression(query) else {
             return Ok(Vec::new());
         };
-        let connection = forge_runtime::lock(&self.connection);
-        let mut q = connection.prepare_cached(
-            "SELECT rowid FROM article_search WHERE article_search MATCH ?1 LIMIT ?2",
-        )?;
-        let ids = q
-            .query_map(params![expression, MAX_RESULTS as i64], |r| r.get(0))?
-            .collect::<Result<Vec<i64>, _>>()?;
-        Ok(ids)
+        self.reader.read(|connection| {
+            let mut q = connection.prepare_cached(
+                "SELECT rowid FROM article_search WHERE article_search MATCH ?1 LIMIT ?2",
+            )?;
+            let ids = q
+                .query_map(params![expression, MAX_RESULTS as i64], |r| r.get(0))?
+                .collect::<Result<Vec<i64>, _>>()?;
+            Ok(ids)
+        })
     }
 }
 
