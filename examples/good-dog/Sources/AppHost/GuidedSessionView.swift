@@ -2,6 +2,9 @@
 import ForgeUI
 import ForgeAppKit
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// An exercise followed one card at a time: "get ready", each step, then
 /// how it went. Large text, and big Back and Next buttons that are easy to
@@ -75,6 +78,16 @@ struct GuidedSessionView: View {
             // while this session covers them.
             .termSheet(model: model)
         }
+        // Hands are full of lead and treats: the screen stays on for the
+        // whole session instead of locking part way.
+        .onAppear { keepAwake(true) }
+        .onDisappear { keepAwake(false) }
+    }
+
+    private func keepAwake(_ on: Bool) {
+        #if canImport(UIKit) && !os(macOS)
+        UIApplication.shared.isIdleTimerDisabled = on
+        #endif
     }
 
     // MARK: Cards
