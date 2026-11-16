@@ -267,10 +267,56 @@ pub enum ChatError {
     /// The Keychain or the chat store could not be used.
     #[error("storage error: {reason}")]
     Storage { reason: String },
+    /// Another core already has this data folder open.
+    #[error("the chat data is in use: {reason}")]
+    InUse { reason: String },
     #[error("the chat core has been shut down")]
     ShutDown,
     #[error("internal failure: {reason}")]
     Internal { reason: String },
+}
+
+impl ChatError {
+    /// The shared kind the host uses to treat every app's errors alike.
+    pub fn kind(&self) -> forge_app::ErrorKind {
+        use forge_app::ErrorKind as K;
+        match self {
+            Self::Network { .. } | Self::Certificate { .. } => K::Network,
+            Self::Http { status, .. } if *status < 500 => K::Refused,
+            Self::Http { .. } | Self::BadResponse { .. } | Self::InUse { .. } => K::Unavailable,
+            Self::UnsupportedOnHost { .. } => K::Unavailable,
+            Self::Cancelled => K::Cancelled,
+            Self::NotFound { .. } => K::NotFound,
+            Self::InvalidInput { .. } => K::Invalid,
+            Self::NotSignedIn | Self::Unauthorized { .. } => K::NeedsUser,
+            Self::Storage { .. } | Self::Internal { .. } => K::Internal,
+            Self::ShutDown => K::ShutDown,
+        }
+    }
+}
+
+/// [`ChatError::kind`] for the host (ForgeKit's `ForgeKindedError`).
+#[uniffi::export]
+pub fn chat_error_kind(error: ChatError) -> forge_app::ErrorKind {
+    error.kind()
+}
+
+impl From<forge_app::Stopped> for ChatError {
+    fn from(stopped: forge_app::Stopped) -> Self {
+        match stopped.kind {
+            forge_app::ErrorKind::Cancelled | forge_app::ErrorKind::Interrupted => Self::Cancelled,
+            _ => Self::ShutDown,
+        }
+    }
+}
+
+impl From<forge_app::OpenError> for ChatError {
+    fn from(err: forge_app::OpenError) -> Self {
+        match err {
+            forge_app::OpenError::InUse { path } => Self::InUse { reason: path },
+            forge_app::OpenError::Io { reason } => Self::Storage { reason },
+        }
+    }
 }
 
 /// Converts with the signed-in account's id, which decides the preview's

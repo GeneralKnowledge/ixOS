@@ -8,9 +8,12 @@
 //! - **Chat.** `chat_core::ChatClient` does the work: the per-room live
 //!   streams, the store, sending and retrying. Each account has its own
 //!   store under the storage directory.
-//! - **Lifecycle.** The host reports scene phases with `set_phase`; in the
-//!   background every live stream stops (iOS suspends the app within
-//!   seconds anyway), and on resume they restart and catch up.
+//! - **Lifecycle.** The core runs on forge-app's runtime
+//!   (`export_runtime!`), which ForgeKit's ForgeHost drives: one core per
+//!   data folder, the phases the host reports, shutdown. In the background
+//!   every live stream stops (iOS suspends the app within seconds anyway),
+//!   and on resume they restart and catch up. The chat's own events are a
+//!   second stream (`chat_events`).
 //! - **Assistant.** A private assistant that runs on the iPhone
 //!   ([`assistant`], `ChatCore::assistant`). It has its own store and works
 //!   signed in or out.
@@ -21,11 +24,12 @@
 //! ended (see `docs/chat-demo.md`).
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use chat_core::{ChatClient, ChatConfig, ChatStore, HttpRepo};
-use forge_runtime::{background, EventHub, Lifecycle, Phase};
+use forge_app::{DataDirectory, Runtime};
+use forge_net::AbortRegistration;
+use forge_runtime::{background, EventHub, Phase, Transition};
 
 pub mod alerts;
 pub mod assistant;
@@ -34,16 +38,16 @@ mod types;
 
 pub use assistant::AssistantCore;
 pub use credentials::{Credentials, KeychainCredentials, MemoryCredentials, StoredAccount};
+pub use forge_app::AppPhase;
 pub use types::*;
 
 // No namespace argument: UniFFI takes the library's name (chat_app), so this
 // crate keeps its own bindings when another app links it.
 uniffi::setup_scaffolding!();
 
-// The lifecycle phase the host reports and the event stream object
-// (`ChatEvents::subscribe(&hub)`). See `forge_runtime::app_shell!`.
+// The chat's own event stream object (`ChatEvents::subscribe(&hub)`). The
+// lifecycle phase is forge-app's `AppPhase`. See `forge_runtime::app_shell!`.
 forge_runtime::app_shell! {
-    phase: AppPhase,
     events: ChatEvents(ChatEvent::EventsDropped),
 }
 
@@ -67,8 +71,10 @@ pub struct ChatCore {
     credentials: Arc<dyn Credentials>,
     session: Mutex<Option<Session>>,
     events: EventHub<ChatEvent>,
-    lifecycle: Lifecycle,
-    shut_down: AtomicBool,
+    /// The runtime: the data folder's lock, phases, shutdown.
+    rt: Runtime<()>,
+    /// Ends the chat when the runtime shuts down (kept so the hook stays).
+    _on_shutdown: Mutex<Option<AbortRegistration>>,
     assistant: Arc<AssistantCore>,
     /// The notifier for message notifications; none in tests that don't
     /// ask for one, and in `swift test` (no app bundle).
@@ -105,8 +111,7 @@ impl ChatCore {
             PathBuf::from(storage_directory),
             Arc::new(credentials),
             services,
-        )
-        .map(Arc::new)?;
+        )?;
         core.handle_notification_actions();
         core.ask_for_notifications();
         core.register_background_refresh();
@@ -122,7 +127,6 @@ impl ChatCore {
             PathBuf::from(storage_directory),
             Arc::new(MemoryCredentials::default()),
         )
-        .map(Arc::new)
     }
 
     /// The signed-in account, if any. Known at once at launch: the app works
@@ -214,7 +218,7 @@ impl ChatCore {
 
     /// A new event stream. Each consumer takes its own and sees every event
     /// from now on.
-    pub fn events(&self) -> Result<Arc<ChatEvents>, ChatError> {
+    pub fn chat_events(&self) -> Result<Arc<ChatEvents>, ChatError> {
         ChatEvents::subscribe(&self.events).ok_or(ChatError::ShutDown)
     }
 
@@ -593,60 +597,9 @@ impl ChatCore {
     pub fn store_problem(&self) -> Option<String> {
         self.client().ok()?.store_error().map(|e| e.to_string())
     }
-
-    /// The phase last reported with `set_phase`.
-    pub fn phase(&self) -> AppPhase {
-        self.lifecycle.phase().into()
-    }
-
-    /// The host reports a lifecycle change; cheap, safe to repeat. Going to
-    /// `Background` stops every live stream; coming back restarts them (they
-    /// catch up) and emits `PhaseChanged { resumed: true }`; `Terminated`
-    /// is `shutdown()`.
-    pub fn set_phase(&self, phase: AppPhase) {
-        if phase == AppPhase::Terminated {
-            return self.shutdown();
-        }
-        let Some(change) = self.lifecycle.enter(phase.into()) else {
-            return;
-        };
-        if let Ok(client) = self.client() {
-            if change.to == Phase::Background {
-                client.pause_streams();
-            } else if change.to.is_foreground() {
-                // Fails only after shutdown, which `client()` rules out.
-                let _ = client.resume_streams();
-            }
-        }
-        if change.to.is_foreground() {
-            // What arrived until now is on screen or counted as unread.
-            if let Some(alerts) = self.alerts() {
-                alerts.seen_until(forge_services::notify::now_ms());
-            }
-        }
-        self.events.publish(ChatEvent::PhaseChanged {
-            phase,
-            resumed: change.resumed,
-        });
-    }
-
-    /// Ends every stream and refuses further commands with `ShutDown`.
-    /// Sends in flight finish and are saved. Idempotent.
-    pub fn shutdown(&self) {
-        self.shut_down.store(true, Ordering::SeqCst);
-        self.assistant.shutdown();
-        if let Some(session) = self.lock().as_ref() {
-            session.client.shutdown();
-        }
-        if self.lifecycle.enter(Phase::Terminated).is_some() {
-            self.events.publish(ChatEvent::PhaseChanged {
-                phase: AppPhase::Terminated,
-                resumed: false,
-            });
-        }
-        self.events.close();
-    }
 }
+
+forge_app::export_runtime!(ChatCore, rt);
 
 /// The notification category of a new message ([`alerts`]), with Reply and
 /// Mark as Read on it.
@@ -824,7 +777,7 @@ impl ChatCore {
     pub fn open(
         storage_directory: PathBuf,
         credentials: Arc<dyn Credentials>,
-    ) -> Result<Self, ChatError> {
+    ) -> Result<Arc<Self>, ChatError> {
         Self::open_with_services(storage_directory, credentials, None)
     }
 
@@ -835,16 +788,15 @@ impl ChatCore {
         storage_directory: PathBuf,
         credentials: Arc<dyn Credentials>,
         services: Option<native::NativeServices>,
-    ) -> Result<Self, ChatError> {
+    ) -> Result<Arc<Self>, ChatError> {
         forge_runtime::logging::init();
         if storage_directory.as_os_str().is_empty() {
             return Err(ChatError::InvalidInput {
                 reason: "storage directory must not be empty".into(),
             });
         }
-        std::fs::create_dir_all(&storage_directory).map_err(|err| ChatError::Storage {
-            reason: format!("create {}: {err}", storage_directory.display()),
-        })?;
+        // One core per data folder: a second is refused with `InUse`.
+        let directory = DataDirectory::open(&storage_directory)?;
         let assistant =
             AssistantCore::open(&storage_directory.join("assistant.db")).map_err(|err| {
                 ChatError::Storage {
@@ -857,15 +809,89 @@ impl ChatCore {
             credentials,
             session: Mutex::new(None),
             events: EventHub::with_capacity(EVENT_QUEUE_CAPACITY),
-            lifecycle: Lifecycle::new(),
-            shut_down: AtomicBool::new(false),
+            rt: Runtime::with_directory("chat", directory, ()),
+            _on_shutdown: Mutex::new(None),
             services,
         };
         if let Some(stored) = core.credentials.load()? {
             let session = core.open_session(&stored)?;
             *core.lock() = Some(session);
         }
+        let core = Arc::new(core);
+        core.follow_lifecycle();
         Ok(core)
+    }
+
+    /// Applies the phases the host reports (through the runtime) to the
+    /// chat: streams stop in the background and catch up on return, and
+    /// shutdown ends the chat. Shutdown runs at once, on the caller's
+    /// thread (it is quick); the other changes on a thread of their own.
+    fn follow_lifecycle(self: &Arc<Self>) {
+        let lifecycle = self.rt.lifecycle();
+        let core = Arc::downgrade(self);
+        let registration = lifecycle.lifetime().on_cancel(move || {
+            if let Some(core) = core.upgrade() {
+                core.end();
+            }
+        });
+        *self._on_shutdown.lock().unwrap_or_else(|p| p.into_inner()) = Some(registration);
+        let Some(changes) = lifecycle.subscribe() else {
+            return;
+        };
+        let core: Weak<Self> = Arc::downgrade(self);
+        std::thread::Builder::new()
+            .name("chat-lifecycle".into())
+            .spawn(move || {
+                while let Some(delivery) = forge_runtime::block_on(changes.next()) {
+                    let forge_runtime::Delivery::Event(change) = delivery else {
+                        continue;
+                    };
+                    match core.upgrade() {
+                        Some(core) => core.apply(change),
+                        None => return,
+                    }
+                }
+            })
+            .expect("a thread for the lifecycle");
+    }
+
+    /// One phase change, as `set_phase` used to apply it.
+    fn apply(&self, change: Transition) {
+        if change.to == Phase::Terminated {
+            return;
+        }
+        if let Ok(client) = self.client() {
+            if change.to == Phase::Background {
+                client.pause_streams();
+            } else if change.to.is_foreground() {
+                // Fails only after shutdown, which `client()` rules out.
+                let _ = client.resume_streams();
+            }
+        }
+        if change.to.is_foreground() {
+            // What arrived until now is on screen or counted as unread.
+            if let Some(alerts) = self.alerts() {
+                alerts.seen_until(forge_services::notify::now_ms());
+            }
+        }
+        self.events.publish(ChatEvent::PhaseChanged {
+            phase: change.to.into(),
+            resumed: change.resumed,
+        });
+    }
+
+    /// Ends every stream and the chat's event stream. Sends in flight
+    /// finish and are saved.
+    fn end(&self) {
+        self.assistant.shutdown();
+        if let Some(session) = self.lock().as_ref() {
+            session.client.shutdown();
+        }
+        self.events.publish(ChatEvent::PhaseChanged {
+            phase: AppPhase::Terminated,
+            resumed: false,
+        });
+        self.events.close();
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<Session>> {
@@ -873,7 +899,7 @@ impl ChatCore {
     }
 
     fn ensure_running(&self) -> Result<(), ChatError> {
-        if self.shut_down.load(Ordering::SeqCst) {
+        if self.rt.is_shut_down() {
             Err(ChatError::ShutDown)
         } else {
             Ok(())
@@ -948,7 +974,7 @@ impl ChatCore {
                 hub.publish(types::event(event, &user_id))
             },
         )?;
-        if self.lifecycle.phase() == Phase::Background {
+        if self.rt.lifecycle().phase() == Phase::Background {
             client.pause_streams();
         }
         if let Some(alerts) = &alerts {

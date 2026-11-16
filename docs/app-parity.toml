@@ -9,18 +9,6 @@
 # Plan: https://claude.ai/artifact/9MTqhUCVKAYVXCrRuAWpeu
 
 [[lag]]
-app = "chat"
-rule = "appkit-alerts"
-wave = 3
-reason = "Its own ErrorAlert.swift predates ForgeAppKit"
-
-[[lag]]
-app = "chat"
-rule = "forge-host"
-wave = 3
-reason = "Keeps its own state model from before ForgeHost (friction log rank 1)"
-
-[[lag]]
 app = "device-lab"
 rule = "forge-host"
 status = "not-applicable"

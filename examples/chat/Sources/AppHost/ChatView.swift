@@ -325,13 +325,13 @@ struct ChatView: View {
             play: { attachment in
                 Task {
                     guard let url = await model.localFile(for: attachment) else {
-                        model.actionError = String(localized: "This voice message could not be downloaded.")
+                        model.showError(String(localized: "This voice message could not be downloaded."))
                         return
                     }
                     do {
                         try ForgeAudioPlayer.shared.toggle(url)
                     } catch {
-                        model.actionError = error.localizedDescription
+                        model.showError(error.localizedDescription)
                     }
                 }
             }
@@ -348,7 +348,7 @@ struct ChatView: View {
             } catch ForgeAudioError.microphoneDenied {
                 microphoneDenied = true
             } catch {
-                model.actionError = error.localizedDescription
+                model.showError(error.localizedDescription)
             }
         }
     }
@@ -376,7 +376,7 @@ struct ChatView: View {
                 staged.append(try await AttachmentFiles.preparePhoto(data))
             } catch {
                 attachmentLog.warn("photo not added: \(error)")
-                model.actionError = String(localized: "That photo couldn't be added (\(error.localizedDescription)).")
+                model.showError(String(localized: "That photo couldn't be added (\(error.localizedDescription))."))
             }
         }
     }
@@ -390,12 +390,12 @@ struct ChatView: View {
                     staged.append(try AttachmentFiles.prepareDocument(url))
                 } catch {
                     attachmentLog.warn("document not added: \(error)")
-                    model.actionError = String(localized: "\(url.lastPathComponent) couldn't be added (\(error.localizedDescription)).")
+                    model.showError(String(localized: "\(url.lastPathComponent) couldn't be added (\(error.localizedDescription))."))
                 }
             }
         case .failure(let error):
             attachmentLog.warn("document picker failed: \(error)")
-            model.actionError = error.localizedDescription
+            model.showError(error.localizedDescription)
         }
     }
 

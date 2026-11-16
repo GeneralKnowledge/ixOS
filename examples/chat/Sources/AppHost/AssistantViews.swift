@@ -1,4 +1,5 @@
 @preconcurrency import ChatFFI
+import ForgeAppKit
 import SwiftUI
 
 /// The Assistant tab (and the sign-up screen's Assistant sheet): private
@@ -15,7 +16,7 @@ struct AssistantTab: View {
                 }
         }
         // One alert for the list and the open conversation.
-        .errorAlert("Assistant", message: Bindable(model).actionError)
+        .forgeAlert(failure: Bindable(model).actionError)
     }
 }
 

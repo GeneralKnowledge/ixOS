@@ -1,6 +1,42 @@
 @preconcurrency import ChatFFI
+import ForgeAppKit
+import ForgeKit
 import Foundation
 import Observation
+
+// The Rust core runs on forge-app's runtime (`export_runtime!`), so ForgeKit
+// hosts it: one core per process, the lifecycle, shutdown. The chat's own
+// events are a second stream (`chatEvents()`).
+extension ChatCore: ForgeCore {}
+
+extension ChatError: ForgeKindedError {
+    public var forgeKind: ErrorKind { chatErrorKind(error: self) }
+}
+
+/// The host for Chat's core. `keychain` keeps the account in the Keychain
+/// (the app); otherwise it is kept in memory (tests, UI test data).
+@MainActor
+public func makeAppHost(storageDirectory: String? = nil, useKeychain: Bool? = nil) -> ForgeHost<ChatCore> {
+    let testData = storageDirectory == nil && ChatModel.usesTestData
+    return ForgeHost(
+        environment: {
+            // UI tests (`forge ui run`, forge.toml [ui_test]) start on a
+            // throwaway store and an account kept only in memory, so they
+            // never touch the person's account or chats.
+            let directory =
+                try storageDirectory
+                ?? (testData ? ChatModel.temporaryDirectory() : ChatModel.applicationSupportDirectory())
+            return ForgeEnvironment(dataDirectory: directory, cachesDirectory: directory)
+        },
+        open: { environment in
+            let keychain = !testData && (useKeychain ?? nativeServicesInstalled())
+            if keychain {
+                return try ChatCore(storageDirectory: environment.dataDirectory)
+            }
+            return try ChatCore.withMemoryCredentials(storageDirectory: environment.dataDirectory)
+        }
+    )
+}
 
 /// Swift-side attachment failures, in the same log as Rust's
 /// (`forge device logs`, the live stream).
@@ -49,10 +85,9 @@ public final class ChatModel {
     public private(set) var roomError: [String: String] = [:]
     /// Set when the server stopped accepting this device's account.
     public private(set) var accountProblem: String?
-    /// A failed action, for an alert. The view clears it when dismissed.
-    public var actionError: String?
-    /// The lifecycle phase last reported to Rust.
-    public private(set) var lifecyclePhase: AppPhase = .launching
+    /// A failed action, for an alert (`forgeAlert(failure:)`). The view
+    /// clears it when dismissed.
+    public var actionError: ForgeFailure?
     /// Increases after each message this device sends; a haptic trigger.
     public private(set) var sentCount = 0
     /// Increases each time one of this device's messages fails to send; a
@@ -62,29 +97,37 @@ public final class ChatModel {
     /// server could not be reached). Rust sends them by itself.
     public private(set) var waitingCount = 0
 
-    public private(set) var core: ChatCore?
+    /// Opens the core, reports the lifecycle and shuts the core down. The
+    /// App (or Device Lab) attaches it with `ForgeLifecycle.attach`.
+    public let host: ForgeHost<ChatCore>
+    public var core: ChatCore? { host.core }
     /// The on-device assistant, once the core is open. It needs no account.
     public private(set) var assistant: AssistantModel?
-    private let storageDirectory: String?
-    private let useKeychain: Bool?
     @ObservationIgnored private let assistantEngine: AiModel?
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var events: ChatEvents?
 
     /// - Parameters:
+    ///   - host: the process's host (`makeAppHost()`).
+    ///   - assistantEngine: the on-device model for the assistant (the app
+    ///     passes `ForgeAppleModel()`; tests a fake or nothing).
+    public init(host: ForgeHost<ChatCore>, assistantEngine: AiModel? = nil) {
+        self.host = host
+        self.assistantEngine = assistantEngine
+    }
+
+    /// A model with a host of its own.
     ///   - storageDirectory: where Rust keeps each account's chats; defaults
     ///     to Application Support. Tests pass a temporary folder.
     ///   - useKeychain: keep the account in the Keychain (the default when
     ///     `ForgeServices.install()` has run) or only in memory (tests).
-    ///   - assistantEngine: the on-device model for the assistant (the app
-    ///     passes `ForgeAppleModel()`; tests a fake or nothing).
-    public init(
+    public convenience init(
         storageDirectory: String? = nil, useKeychain: Bool? = nil,
         assistantEngine: AiModel? = nil
     ) {
-        self.storageDirectory = storageDirectory
-        self.useKeychain = useKeychain
-        self.assistantEngine = assistantEngine
+        self.init(
+            host: makeAppHost(storageDirectory: storageDirectory, useKeychain: useKeychain),
+            assistantEngine: assistantEngine)
     }
 
     // MARK: Opening and the account
@@ -94,29 +137,17 @@ public final class ChatModel {
     public func open() async {
         guard core == nil else { return }
         phase = .loading
+        await host.start()
+        guard let core else {
+            if case .failed(let message) = host.status { phase = .failed(message) }
+            return
+        }
         do {
-            // UI tests (`forge ui run`, forge.toml [ui_test]) start on a
-            // throwaway store and an account kept only in memory, so they
-            // never touch the person's account or chats.
-            let testData = storageDirectory == nil && Self.usesTestData
-            let directory =
-                try storageDirectory
-                ?? (testData ? Self.temporaryDirectory() : Self.applicationSupportDirectory())
-            let keychain = !testData && (useKeychain ?? nativeServicesInstalled())
-            // Opening reads the Keychain and a file: do it off the main actor.
-            let core = try await Task.detached {
-                if keychain {
-                    return try ChatCore(storageDirectory: directory)
-                }
-                return try ChatCore.withMemoryCredentials(storageDirectory: directory)
-            }.value
             // Subscribe before reading, so nothing is missed in between.
-            let events = try core.events()
-            self.core = core
+            let events = try core.chatEvents()
             self.events = events
             assistant = AssistantModel(core: core.assistant(), engine: assistantEngine)
             listen(to: events)
-            if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
             // Before the tabs appear, so a locked app never shows them.
             appLock = core.appLock()
             showAccount(core.account())
@@ -140,7 +171,7 @@ public final class ChatModel {
             try core.signOut()
             showAccount(nil)
         } catch {
-            actionError = Self.describe(error)
+            actionError = Self.failure(error)
         }
     }
 
@@ -148,23 +179,33 @@ public final class ChatModel {
     public func close() {
         events?.cancel()
         eventTask?.cancel()
-        core?.shutdown()
-        core = nil
+        host.close()
         events = nil
     }
 
-    /// Reports the scene phase to Rust (`ContentView` uses
-    /// `.forgeLifecycle`). Rust closes every connection in the background and
-    /// reconnects on the way back, then this model refreshes the list.
+    /// Reports a lifecycle phase through the host (ForgeLifecycle does this
+    /// in the app; tests call it). Rust closes every connection in the
+    /// background and reconnects on the way back, then this model refreshes
+    /// the list.
     public func setPhase(_ phase: AppPhase) {
-        lifecyclePhase = phase
         if phase == .terminated {
             close()
-        } else {
-            core?.setPhase(phase: phase)
-            // Apple Intelligence may have been turned on meanwhile.
-            if phase == .active { assistant?.refresh() }
+            return
         }
+        host.report(phase)
+        if phase == .active { becameActive() }
+    }
+
+    /// The app is on screen again: Apple Intelligence may have been turned
+    /// on meanwhile.
+    public func becameActive() {
+        assistant?.refresh()
+    }
+
+    /// Shows `message` in the alert (Swift-side failures: attachments,
+    /// voice messages).
+    public func showError(_ message: String) {
+        actionError = ForgeFailure(title: "Something Went Wrong", message: message)
     }
 
     // MARK: Conversation list
@@ -227,7 +268,7 @@ public final class ChatModel {
         do {
             try await core.markRead(conversationId: conversationId)
         } catch {
-            actionError = Self.describe(error)
+            actionError = Self.failure(error)
         }
     }
 
@@ -256,7 +297,7 @@ public final class ChatModel {
         do {
             try action(core)
         } catch {
-            actionError = Self.describe(error)
+            actionError = Self.failure(error)
         }
     }
 
@@ -378,7 +419,7 @@ public final class ChatModel {
         do {
             upsert(try await core.editMessage(messageId: message.id, body: body))
         } catch {
-            actionError = Self.describe(error)
+            actionError = Self.failure(error)
         }
     }
 
@@ -393,7 +434,7 @@ public final class ChatModel {
                 remove(message.id, from: message.conversationId)
             }
         } catch {
-            actionError = Self.describe(error)
+            actionError = Self.failure(error)
         }
         updateWaitingCount()
     }
@@ -405,7 +446,7 @@ public final class ChatModel {
         do {
             upsert(try await core.setReaction(messageId: message.id, emoji: emoji, on: !mine))
         } catch {
-            actionError = Self.describe(error)
+            actionError = Self.failure(error)
         }
     }
 
@@ -556,20 +597,25 @@ public final class ChatModel {
     /// Whether this launch uses throwaway test data (`-ForgeUITestData`, or
     /// ForgeKit's `-ForgeTemporaryData`, so one argument works for every app
     /// in Device Lab).
-    static let usesTestData =
+    nonisolated static let usesTestData =
         ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
         || ProcessInfo.processInfo.arguments.contains("-ForgeTemporaryData")
 
     /// A fresh folder for one test-data launch.
-    static func temporaryDirectory() throws -> String {
+    nonisolated static func temporaryDirectory() throws -> String {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("ChatUITest-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url.path
     }
 
+    /// `error` for the alert, titled `title`, in Chat's words.
+    nonisolated public static func failure(_ error: Error, title: String = "Something Went Wrong") -> ForgeFailure {
+        ForgeFailure(title: title, message: describe(error))
+    }
+
     /// Text for the screen; `reason` fields are diagnostics from Rust.
-    public static func describe(_ error: Error) -> String {
+    nonisolated public static func describe(_ error: Error) -> String {
         guard let error = error as? ChatError else { return error.localizedDescription }
         switch error {
         case .Network(let reason):
@@ -585,12 +631,13 @@ public final class ChatModel {
         case .Unauthorized:
             return "The server no longer knows this account. Sign out and sign up again."
         case .Storage(let reason): return "Your chats couldn't be read or saved (\(reason))."
+        case .InUse: return "Chat's data is open somewhere else in this app. Close it there and try again."
         case .ShutDown: return "The app is closing."
         case .Internal(let reason): return "Something went wrong: \(reason)"
         }
     }
 
-    private static func applicationSupportDirectory() throws -> String {
+    nonisolated static func applicationSupportDirectory() throws -> String {
         let base = try FileManager.default
             .url(
                 for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil,

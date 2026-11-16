@@ -1,4 +1,5 @@
 @preconcurrency import ChatFFI
+import ForgeAppKit
 import SwiftUI
 
 /// The Chats tab: its own navigation stack, so a new conversation can open
@@ -221,7 +222,7 @@ private struct NewConversationView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
     @State private var working = false
-    @State private var error: String?
+    @State private var error: ForgeFailure?
     @FocusState private var focused: Bool
 
     private var trimmed: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -258,7 +259,7 @@ private struct NewConversationView: View {
                 }
             }
             .interactiveDismissDisabled(!trimmed.isEmpty)
-            .errorAlert("Can't Create the Conversation", message: $error)
+            .forgeAlert(failure: $error)
             .onAppear { focused = true }
         }
     }
@@ -271,7 +272,7 @@ private struct NewConversationView: View {
             do {
                 created(try await model.createConversation(title: trimmed))
             } catch {
-                self.error = ChatModel.describe(error)
+                self.error = ChatModel.failure(error, title: "Can't Create the Conversation")
             }
         }
     }

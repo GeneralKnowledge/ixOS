@@ -26,7 +26,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 | App | `forgekit` | `forge-host` | `appkit-alerts` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| chat | Yes | No (wave 3) | No (wave 3) | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| chat | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 | checklist | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | commonplace | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | device-lab | Yes | Not applicable | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
@@ -43,8 +43,6 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 | App | Rule | Status | Why | Wave |
 |---|---|---|---|---|
-| chat | `appkit-alerts` | missing | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
-| chat | `forge-host` | missing | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
 | good-dog | `appkit-alerts` | missing | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | good-dog | `forge-host` | missing | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
 | checklist | `device-checks` | missing | CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt | 4 |
