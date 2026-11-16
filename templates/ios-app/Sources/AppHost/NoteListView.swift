@@ -58,8 +58,13 @@ struct NoteListView: View {
             }
         }
         // On the stack, not its first screen: an alert there shows behind
-        // any screen the list pushes (a note's detail).
-        .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
+        // any screen the list pushes (a note's detail). Nothing under a
+        // sheet can present, so while Settings is open it shows the alerts,
+        // and one raised under New Note waits until that sheet closes.
+        .forgeAlert(Binding(
+            get: { isComposing || isShowingSettings ? nil : model.alert },
+            set: { model.alert = $0 }
+        )) { action in Task { await model.handle(action) } }
         .sensoryFeedback(.success, trigger: model.saveCount)
     }
 

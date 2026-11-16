@@ -145,6 +145,17 @@ Forge never stores Apple credentials. xtool signs with the account you signed in
 | `team_type = "free" \| "paid"` | Which kind of team xtool signs with. With `"free"`, Forge refuses entitlements Apple only provisions for the Apple Developer Program, and says which one, before anything is built. Left unset, Forge prints a warning for them instead. |
 | `team_id = "ABCDE12345"` | Your 10-character team ID. Used to check the Xcode project's `DEVELOPMENT_TEAM` (`forge config check` reports a mismatch). |
 
+### Plain http (App Transport Security)
+
+iOS refuses plain `http://` for anything that goes through URLSession: the [`http` service](native-services.md#http-through-urlsession-http), AVPlayer and web views. That includes numeric addresses: a request to a Tailscale address such as `http://100.x.y.z:8642` fails with NSURLError -1022 (Soundscape, 2026-11-16). Exception domains can't name an IP address, and `NSAllowsLocalNetworking` doesn't cover a tailnet's 100.x range, so an app that talks plain http to a server you run yourself on a private network allows it for the whole app:
+
+```toml
+[ios.info.NSAppTransportSecurity]
+NSAllowsArbitraryLoads = true
+```
+
+It is opt-in: the starter's `forge.toml` carries these lines commented out. Leave them off when every server speaks https. Rust's own client (`forge_net::UreqClient`, which the starter's Settings check uses) opens plain sockets, so ATS doesn't apply to it; the local network permission does. A host doesn't merge its hosted apps' `[ios.info]`, so Device Lab sets the same key for the apps it hosts.
+
 ### `[ui_test]`
 
 How UI automation runs the app. Nothing here is written into the app; the app itself must honour the argument.
