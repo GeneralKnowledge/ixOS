@@ -29,6 +29,9 @@ expect = { label_contains = "Hello from the fixture" }
 [[step]]
 tap = { id = "timeline.markAllRead" }
 
+[[step]]
+tap = { id = "timeline.confirmMarkAllRead" }
+
 # Nothing is left to mark.
 [[step]]
 expect = { id = "timeline.markAllRead", enabled = false }

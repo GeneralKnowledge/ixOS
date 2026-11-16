@@ -21,6 +21,9 @@ struct FeedListView: View {
     @State private var showingSettings = false
     @State private var query = ""
     @State private var results: [ArticleSummary] = []
+    /// The search `results` answer: "No Results" waits for the search of
+    /// what is typed now instead of flashing on every keystroke.
+    @State private var resultsFor: SearchKey?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -36,7 +39,10 @@ struct FeedListView: View {
             // A moment after typing stops; Rust reads the index directly.
             .task(id: SearchKey(query: query, version: model.version)) {
                 do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
-                results = await model.search(query)
+                let found = await model.search(query)
+                guard !Task.isCancelled else { return }
+                results = found
+                resultsFor = SearchKey(query: query, version: model.version)
             }
             .overlay { emptyState }
             .refreshable { await model.refresh() }
@@ -128,7 +134,11 @@ struct FeedListView: View {
     /// Matching articles, newest first, opening like timeline rows.
     @ViewBuilder private var searchResults: some View {
         if results.isEmpty {
-            ContentUnavailableView.search(text: query)
+            if resultsFor?.query == query {
+                ContentUnavailableView.search(text: query)
+            } else {
+                ProgressView().frame(maxWidth: .infinity)
+            }
         } else {
             Section("^[\(results.count) article](inflect: true)") {
                 ForEach(results) { article in
