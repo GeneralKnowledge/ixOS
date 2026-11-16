@@ -11,6 +11,9 @@ pub const VERSION: u32 = 1;
 /// The history keeps this many transfers; older ones are dropped (their
 /// received files stay in the inbox until removed).
 pub const MAX_HISTORY: usize = 500;
+/// The history's other side for a transfer made with a word code.
+pub const CODE_PEER: &str = "code";
+pub const CODE_PEER_NAME: &str = "someone with a code";
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Record {
@@ -144,6 +147,23 @@ impl Record {
                 *slot = Some(file);
             }
         }
+    }
+
+    /// Adds a finished transfer made with a word code: the other side is
+    /// "someone with a code", never a paired device.
+    pub fn code_transfer(
+        &mut self,
+        sent: bool,
+        item: SavedItem,
+        status: SavedStatus,
+        now_ms: i64,
+    ) -> u64 {
+        let id = self.begin(CODE_PEER, sent, item, now_ms);
+        if let Some(t) = self.transfers.iter_mut().find(|t| t.id == id) {
+            t.peer_name = CODE_PEER_NAME.into();
+            t.status = status;
+        }
+        id
     }
 
     /// Transfers that were running when the app ended didn't finish.

@@ -37,7 +37,7 @@ const USAGE: &str = "usage: relay listen [--port N] | pair <code> | peers | \
 send <peer> [--to host:port] (--note TEXT | FILE) | history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
 ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
-receive-code <code> <host:port> <endpoint-id> | send-code FILE";
+receive-code <code> <host:port> <endpoint-id> | send-code FILE|FOLDER";
 
 fn main() {
     if let Err(problem) = run(std::env::args().skip(1).collect()) {

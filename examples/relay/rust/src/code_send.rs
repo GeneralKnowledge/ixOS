@@ -17,28 +17,26 @@
 //! The app follows what happens by reading [`CodeSend`].
 
 use std::collections::HashSet;
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use iroh::endpoint::{presets, Connection, RecvStream, SendStream};
-use iroh::protocol::{AcceptError, ProtocolHandler, Router};
-use iroh::{Endpoint, EndpointId, RelayMode};
+use iroh::endpoint::{Connection, RecvStream, SendStream};
+use iroh::protocol::AcceptError;
+use iroh::EndpointId;
 use iroh_blobs::api::blobs::{AddPathOptions, ImportMode};
-use iroh_blobs::provider::events::{
-    AbortReason, ConnectMode, EventMask, EventSender, ProviderMessage,
-};
-use iroh_blobs::store::fs::FsStore;
-use iroh_blobs::{BlobFormat, BlobsProtocol, Hash};
+use iroh_blobs::api::TempTag;
+use iroh_blobs::format::collection::Collection;
+use iroh_blobs::{BlobFormat, Hash};
 use tokio::sync::mpsc;
 
 use crate::code::{
-    confirm, connection, get_within, put, WordCode, BUSY, CODE_ALPN, GO, GONE, STEP, TOKIO,
+    confirm, connection, get_within, put, WordCode, BUSY, COLLECTION, GO, GONE, STEP, TOKIO,
 };
 use crate::code_session::{Answer, Ending, Session as Machine};
 use crate::model::RelayError;
+use crate::node::{file_error, lock, Node, NodeCell};
 
 /// How long the receiver may go without a tick before the transfer counts
 /// as dropped (QUIC alone can take minutes to notice).
@@ -134,42 +132,65 @@ impl CodeSendShared {
     }
 }
 
-fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|e| e.into_inner())
-}
+/// Called once when a send ends, with its last status (`Sent` or `Failed`).
+pub(crate) type OnEnd = Box<dyn FnOnce(&CodeSend) + Send>;
 
-/// Starts sending `path` with a word code in the background; follow it in
-/// `shared.status`. Blobs are kept in `store` so a later send of the same
-/// file need not hash it again.
-pub fn start(path: PathBuf, store: PathBuf, shared: Arc<CodeSendShared>) {
+/// Starts sending `path`, a file or a folder, with a word code in the
+/// background; follow it in `shared.status`. The node's store keeps the
+/// hashes, so sending the same thing again need not hash it again.
+pub(crate) fn start(
+    path: PathBuf,
+    node: Arc<NodeCell>,
+    shared: Arc<CodeSendShared>,
+    on_end: OnEnd,
+) {
     shared.stop.store(false, Ordering::SeqCst);
     // Set before returning, so the app's first read already sees the send
     // running: it stops polling once the status is no longer running.
-    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     let name = path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("file")
         .to_string();
+    let size = std::fs::metadata(&path)
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .unwrap_or(0);
     shared.set(CodeSend::Preparing {
         name: name.clone(),
         size,
     });
     TOKIO.spawn(async move {
-        if let Err(err) = send(&path, name, &store, &shared).await {
+        let outcome = match node.get().await {
+            Ok(node) => {
+                let outcome = send(&path, name, &node, &shared).await;
+                *lock(&node.sending) = None;
+                lock(&node.allowed).clear();
+                outcome
+            }
+            Err(err) => Err(err),
+        };
+        if let Err(err) = outcome {
             log::info!("code send ended: {err}");
             shared.set(CodeSend::Failed {
                 reason: err.to_string(),
             });
         }
+        on_end(&shared.status());
     });
 }
 
+/// What a send offers: one file (a raw blob) or a folder (a collection).
 #[derive(Clone)]
 struct Offer {
     hash: Hash,
+    collection: bool,
     size: u64,
     name: String,
+    /// Every blob the receiver may fetch: the root, and for a folder its
+    /// list and files.
+    hashes: HashSet<Hash>,
 }
 
 /// The live code and its state machine.
@@ -195,15 +216,19 @@ struct Event {
     kind: Kind,
 }
 
+/// The running send, as the node's word-code protocol sees it.
 #[derive(Clone)]
-struct CodeHandler {
+pub(crate) struct CodeHandler {
     me: EndpointId,
     port: u16,
     session: Arc<Mutex<Session>>,
     offer: Offer,
-    allowed: Arc<Mutex<HashSet<EndpointId>>>,
+    allowed: crate::node::Allowed,
     events: mpsc::Sender<Event>,
     shared: Arc<CodeSendShared>,
+    /// Open code connections, closed when the send ends so a receiver
+    /// stops at once.
+    live: Arc<Mutex<Vec<Connection>>>,
 }
 
 impl std::fmt::Debug for CodeHandler {
@@ -251,7 +276,7 @@ impl CodeHandler {
             Ending::Dropped => Kind::Dropped,
             Ending::Proved if !accepted => Kind::Dropped,
             Ending::Proved => {
-                lock(&self.allowed).insert(them);
+                lock(&self.allowed).insert(them, self.offer.hashes.clone());
                 self.shared.set(CodeSend::Sending {
                     code: code.text(),
                     number: code.number,
@@ -301,9 +326,15 @@ impl CodeHandler {
     /// Names the file and waits until the receiver has it.
     async fn deliver(&self, send: &mut SendStream, recv: &mut RecvStream) -> Kind {
         let started = Instant::now();
+        // A file's offer is the spike's (hash, size, name), so
+        // `relay-spike` still talks to it; a folder's puts 0 and the format
+        // before the name, which no name starts with.
         let mut offer = Vec::new();
         offer.extend_from_slice(self.offer.hash.as_bytes());
         offer.extend_from_slice(&self.offer.size.to_be_bytes());
+        if self.offer.collection {
+            offer.extend_from_slice(&[0, COLLECTION]);
+        }
         offer.extend_from_slice(self.offer.name.as_bytes());
         if put(send, &offer).await.is_err() {
             return Kind::Dropped;
@@ -324,8 +355,9 @@ impl CodeHandler {
     }
 }
 
-impl ProtocolHandler for CodeHandler {
-    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+impl CodeHandler {
+    pub(crate) async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+        lock(&self.live).push(connection.clone());
         match self.run(&connection).await {
             Ok(Some(event)) => {
                 let _ = self.events.send(event).await;
@@ -336,97 +368,28 @@ impl ProtocolHandler for CodeHandler {
         // Let the other side read our last words before closing.
         let _ = tokio::time::timeout(Duration::from_secs(2), connection.closed()).await;
         connection.close(0u32.into(), b"bye");
+        lock(&self.live).retain(|c| c.stable_id() != connection.stable_id());
         Ok(())
-    }
-}
-
-/// Lets only endpoints that proved a code fetch blobs.
-fn gate(allowed: Arc<Mutex<HashSet<EndpointId>>>) -> EventSender {
-    let mask = EventMask {
-        connected: ConnectMode::Intercept,
-        ..EventMask::DEFAULT
-    };
-    let (events, mut rx) = EventSender::channel(32, mask);
-    tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
-            if let ProviderMessage::ClientConnected(msg) = msg {
-                let ok = msg
-                    .inner
-                    .endpoint_id
-                    .map(|id| lock(&allowed).contains(&id))
-                    .unwrap_or(false);
-                let answer = if ok {
-                    Ok(())
-                } else {
-                    Err(AbortReason::Permission)
-                };
-                msg.tx.send(answer).await.ok();
-            }
-        }
-    });
-    events
-}
-
-fn file_error(e: impl std::fmt::Display) -> RelayError {
-    RelayError::File {
-        reason: e.to_string(),
     }
 }
 
 async fn send(
     path: &Path,
     name: String,
-    store_dir: &Path,
-    shared: &Arc<CodeSendShared>,
-) -> Result<(), RelayError> {
-    let size = std::fs::metadata(path).map_err(file_error)?.len();
-    let store = FsStore::load(store_dir).await.map_err(file_error)?;
-    let outcome = serve(path, &store, name, size, shared).await;
-    store.shutdown().await.ok();
-    outcome
-}
-
-async fn serve(
-    path: &Path,
-    store: &FsStore,
-    name: String,
-    size: u64,
+    node: &Arc<Node>,
     shared: &Arc<CodeSendShared>,
 ) -> Result<(), RelayError> {
     let started = Instant::now();
-    let tag = store
-        .blobs()
-        .add_path_with_opts(AddPathOptions {
-            path: std::path::absolute(path).map_err(file_error)?,
-            format: BlobFormat::Raw,
-            // Hash the file where it is instead of copying it into the store.
-            mode: ImportMode::TryReference,
-        })
-        .await
-        .map_err(file_error)?;
+    // Held for the whole send, so what it offers stays in the store.
+    let (offer, _tags) = prepare(path, name.clone(), node).await?;
     log::info!(
-        "code send: hashed {size} bytes in {:.1}s",
+        "code send: hashed {} bytes in {:.1}s",
+        offer.size,
         started.elapsed().as_secs_f64()
     );
-
-    let endpoint = Endpoint::builder(presets::Minimal)
-        .relay_mode(RelayMode::Disabled)
-        .bind()
-        .await
-        .map_err(|e| RelayError::Unreachable {
-            reason: e.to_string(),
-        })?;
-    let me = endpoint.id();
-    let port = endpoint
-        .bound_sockets()
-        .into_iter()
-        .find(SocketAddr::is_ipv4)
-        .map(|s| s.port())
-        .ok_or_else(|| RelayError::Unreachable {
-            reason: "no IPv4 socket".into(),
-        })?;
-    let allowed = Arc::new(Mutex::new(HashSet::new()));
-    let blobs = BlobsProtocol::new(store, Some(gate(Arc::clone(&allowed))));
+    let size = offer.size;
+    let me = node.id();
+    let port = node.port()?;
     let session = Arc::new(Mutex::new(Session {
         code: WordCode::new(&shared.numbers_in_use(me)),
         issued: Instant::now(),
@@ -437,19 +400,14 @@ async fn serve(
         me,
         port,
         session: Arc::clone(&session),
-        offer: Offer {
-            hash: tag.hash,
-            size,
-            name: name.clone(),
-        },
-        allowed,
+        offer,
+        allowed: Arc::clone(&node.allowed),
         events: tx,
         shared: Arc::clone(shared),
+        live: Arc::default(),
     };
-    let router = Router::builder(endpoint.clone())
-        .accept(CODE_ALPN, handler)
-        .accept(iroh_blobs::ALPN, blobs)
-        .spawn();
+    let live = Arc::clone(&handler.live);
+    *lock(&node.sending) = Some(handler);
     let waiting = |code: &WordCode, note: Option<String>| CodeSend::Waiting {
         code: code.text(),
         number: code.number,
@@ -533,7 +491,11 @@ async fn serve(
         log::info!("code send: new code ({:?})", event.kind);
         shared.set(waiting(&code, Some(why.to_string())));
     };
-    router.shutdown().await.ok();
+    *lock(&node.sending) = None;
+    lock(&node.allowed).clear();
+    for conn in lock(&live).drain(..) {
+        conn.close(0u32.into(), b"stopped");
+    }
     let took = result?;
     let seconds = took.as_secs_f64();
     shared.set(CodeSend::Sent {
@@ -550,12 +512,112 @@ async fn serve(
     Ok(())
 }
 
+/// Hashes what `path` holds into the store, where it lies (nothing is
+/// copied): a file as one blob, a folder as a collection of its files with
+/// their paths inside it. Returns the offer and the tags that keep it.
+async fn prepare(
+    path: &Path,
+    name: String,
+    node: &Node,
+) -> Result<(Offer, Vec<TempTag>), RelayError> {
+    let meta = std::fs::metadata(path).map_err(file_error)?;
+    let import = |file: PathBuf| async move {
+        node.store
+            .blobs()
+            .add_path_with_opts(AddPathOptions {
+                path: std::path::absolute(file).map_err(file_error)?,
+                format: BlobFormat::Raw,
+                // Hash the file where it is instead of copying it.
+                mode: ImportMode::TryReference,
+            })
+            .temp_tag()
+            .await
+            .map_err(file_error)
+    };
+    if meta.is_file() {
+        let tag = import(path.to_path_buf()).await?;
+        let hash = tag.hash();
+        let offer = Offer {
+            hash,
+            collection: false,
+            size: meta.len(),
+            name,
+            hashes: HashSet::from([hash]),
+        };
+        return Ok((offer, vec![tag]));
+    }
+    let files = files_in(path).map_err(file_error)?;
+    if files.is_empty() {
+        return Err(RelayError::File {
+            reason: "the folder has no files".into(),
+        });
+    }
+    let mut tags = Vec::with_capacity(files.len() + 1);
+    let mut collection = Collection::default();
+    let mut size = 0;
+    for (inside, file, length) in files {
+        let tag = import(file).await?;
+        collection.push(inside, tag.hash());
+        size += length;
+        tags.push(tag);
+    }
+    let root = collection.store(&node.store).await.map_err(file_error)?;
+    let hash = root.hash();
+    // The receiver fetches the root with its children in one request; the
+    // list and files are allowed too in case it asks for them one by one.
+    let mut hashes: HashSet<Hash> = tags.iter().map(TempTag::hash).collect();
+    hashes.insert(hash);
+    if let Ok(list) = node.store.get_bytes(hash).await {
+        if let Ok(seq) = iroh_blobs::hashseq::HashSeq::try_from(list) {
+            hashes.extend(seq.iter());
+        }
+    }
+    tags.push(root);
+    let offer = Offer {
+        hash,
+        collection: true,
+        size,
+        name,
+        hashes,
+    };
+    Ok((offer, tags))
+}
+
+/// The files under `root` with their paths inside it (`/`-separated) and
+/// sizes, sorted. Symbolic links are left out, so a send never reaches
+/// outside the folder.
+pub(crate) fn files_in(root: &Path) -> std::io::Result<Vec<(String, PathBuf, u64)>> {
+    let mut found = Vec::new();
+    let mut folders = vec![(root.to_path_buf(), String::new())];
+    while let Some((folder, prefix)) = folders.pop() {
+        for entry in std::fs::read_dir(&folder)? {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            let Some(name) = entry.file_name().to_str().map(String::from) else {
+                continue;
+            };
+            let inside = if prefix.is_empty() {
+                name
+            } else {
+                format!("{prefix}/{name}")
+            };
+            if kind.is_dir() {
+                folders.push((entry.path(), inside));
+            } else if kind.is_file() {
+                found.push((inside, entry.path(), entry.metadata()?.len()));
+            }
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(found)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::AtomicBool;
 
     use super::*;
-    use crate::code::{receive, CodeProgress};
+    use crate::code::{receive, CodeProgress, CodeReceipt, Failed};
 
     async fn wait_for(shared: &CodeSendShared, f: impl Fn(&CodeSend) -> bool) -> CodeSend {
         for _ in 0..600 {
@@ -584,16 +646,57 @@ mod tests {
         }
     }
 
+    /// A device for a test: its own key and store under `dir/name`.
+    fn device(dir: &Path, name: &str) -> Arc<NodeCell> {
+        let home = dir.join(name);
+        Arc::new(NodeCell::new(home.clone(), home.join("store")))
+    }
+
+    fn sending(path: PathBuf, node: &Arc<NodeCell>) -> Arc<CodeSendShared> {
+        let shared = Arc::new(CodeSendShared::default());
+        start(
+            path,
+            Arc::clone(node),
+            Arc::clone(&shared),
+            Box::new(|_| {}),
+        );
+        shared
+    }
+
+    async fn take(
+        status: &CodeSend,
+        node: &Arc<NodeCell>,
+        inbox: &Path,
+        progress: Arc<CodeProgress>,
+    ) -> Result<CodeReceipt, Failed> {
+        let (code, addr, id) = address(status);
+        receive(
+            &code,
+            &[addr],
+            &id,
+            node.get().await.unwrap(),
+            inbox,
+            progress,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+    }
+
+    fn bytes(n: u32, seed: u32) -> Vec<u8> {
+        (0..n).map(|i| ((i * 7 + seed) % 251) as u8).collect()
+    }
+
     /// The whole flow on one machine: a wrong code is spent and replaced,
     /// the new code delivers the file byte for byte.
     #[test]
     fn send_and_receive_with_a_code_over_loopback() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("hello.bin");
-        let bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
-        std::fs::write(&file, &bytes).unwrap();
-        let shared = Arc::new(CodeSendShared::default());
-        start(file, dir.path().join("send-store"), Arc::clone(&shared));
+        let content = bytes(3_000_000, 0);
+        std::fs::write(&file, &content).unwrap();
+        let (a, b) = (device(dir.path(), "a"), device(dir.path(), "b"));
+        let shared = sending(file, &a);
+        let inbox = dir.path().join("inbox");
 
         TOKIO.block_on(async {
             let first = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
@@ -601,36 +704,25 @@ mod tests {
             let number: u8 = code.split('-').next().unwrap().parse().unwrap();
             let wrong = WordCode::new(&[]).text();
             let wrong = format!("{number}{}", &wrong[wrong.find('-').unwrap()..]);
-            let progress = Arc::new(CodeProgress::default());
             let refused = receive(
                 &wrong,
                 std::slice::from_ref(&addr),
                 &id,
-                &dir.path().join("recv-store"),
-                &dir.path().join("inbox"),
-                Arc::clone(&progress),
+                b.get().await.unwrap(),
+                &inbox,
+                Arc::new(CodeProgress::default()),
                 Arc::new(AtomicBool::new(false)),
             )
-            .await;
-            assert!(refused.is_err(), "a wrong code must be refused");
+            .await
+            .unwrap_err();
+            assert!(refused.offered.is_none(), "nothing was offered yet");
 
             let second = wait_for(&shared, |s| {
                 matches!(s, CodeSend::Waiting { note: Some(_), .. })
             })
             .await;
-            let (code, addr, id) = address(&second);
-            let receipt = receive(
-                &code,
-                &[addr],
-                &id,
-                &dir.path().join("recv-store"),
-                &dir.path().join("inbox"),
-                progress,
-                Arc::new(AtomicBool::new(false)),
-            )
-            .await
-            .unwrap();
-            assert_eq!(std::fs::read(&receipt.path).unwrap(), bytes);
+            let receipt = take(&second, &b, &inbox, Arc::default()).await.unwrap();
+            assert_eq!(std::fs::read(&receipt.path).unwrap(), content);
             let sent = wait_for(&shared, |s| matches!(s, CodeSend::Sent { .. })).await;
             assert!(matches!(
                 sent,
@@ -642,6 +734,127 @@ mod tests {
         });
     }
 
+    fn folder(root: &Path) -> Vec<(&'static str, Vec<u8>)> {
+        let files = vec![
+            ("notes.txt", b"hello".to_vec()),
+            ("photos/a.jpg", bytes(400_000, 1)),
+            ("photos/deeper/b.raw", bytes(900_000, 2)),
+            ("empty.bin", Vec::new()),
+        ];
+        for (inside, data) in &files {
+            let path = root.join(inside);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, data).unwrap();
+        }
+        files
+    }
+
+    /// A folder goes one way, then another folder the other way, between
+    /// two devices: every file arrives under one folder, byte for byte.
+    #[test]
+    fn a_folder_goes_both_ways() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (device(dir.path(), "a"), device(dir.path(), "b"));
+        let there = dir.path().join("Holiday");
+        let back = dir.path().join("Reply");
+        let files = folder(&there);
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(back.join("thanks.txt"), b"thanks").unwrap();
+
+        TOKIO.block_on(async {
+            for (from, to, what, inbox) in [
+                (&a, &b, &there, dir.path().join("inbox-b")),
+                (&b, &a, &back, dir.path().join("inbox-a")),
+            ] {
+                let shared = sending(what.clone(), from);
+                let waiting = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
+                let receipt = take(&waiting, to, &inbox, Arc::default()).await.unwrap();
+                assert_eq!(receipt.name, what.file_name().unwrap().to_str().unwrap());
+                assert!(Path::new(&receipt.path).is_dir());
+                wait_for(&shared, |s| matches!(s, CodeSend::Sent { .. })).await;
+            }
+            let got = dir.path().join("inbox-b").join("Holiday");
+            for (inside, data) in &files {
+                assert_eq!(&std::fs::read(got.join(inside)).unwrap(), data, "{inside}");
+            }
+            let got = dir.path().join("inbox-a").join("Reply/thanks.txt");
+            assert_eq!(std::fs::read(got).unwrap(), b"thanks");
+        });
+    }
+
+    /// The receiver stops halfway and Relay closes (its node shuts down);
+    /// after a relaunch the sender's next code resumes from what arrived,
+    /// and the result verifies.
+    #[test]
+    fn a_transfer_stopped_halfway_resumes_after_a_relaunch() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("big.bin");
+        let content = bytes(24_000_000, 3);
+        std::fs::write(&file, &content).unwrap();
+        let a = device(dir.path(), "a");
+        let shared = sending(file, &a);
+        let inbox = dir.path().join("inbox");
+
+        TOKIO.block_on(async {
+            let first = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
+            let b = device(dir.path(), "b");
+            let progress = Arc::new(CodeProgress::default());
+            progress.stop_at.store(4_000_000, Ordering::SeqCst);
+            let failed = take(&first, &b, &inbox, progress).await.unwrap_err();
+            assert_eq!(failed.offered.unwrap().size, 24_000_000);
+            b.get().await.unwrap().shutdown().await;
+            drop(b);
+
+            let second = wait_for(&shared, |s| {
+                matches!(s, CodeSend::Waiting { note: Some(_), .. })
+            })
+            .await;
+            let b = device(dir.path(), "b");
+            let receipt = take(&second, &b, &inbox, Arc::default()).await.unwrap();
+            assert!(
+                receipt.resumed_from >= 4_000_000,
+                "resumed from {}",
+                receipt.resumed_from
+            );
+            assert_eq!(std::fs::read(&receipt.path).unwrap(), content);
+            wait_for(&shared, |s| matches!(s, CodeSend::Sent { .. })).await;
+        });
+    }
+
+    /// Stopping the send stops a receiver that is fetching.
+    #[test]
+    fn stopping_the_sender_stops_the_receiver() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("big.bin");
+        std::fs::write(&file, bytes(24_000_000, 4)).unwrap();
+        let (a, b) = (device(dir.path(), "a"), device(dir.path(), "b"));
+        let shared = sending(file, &a);
+        TOKIO.block_on(async {
+            let first = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
+            let receiving = {
+                let first = first.clone();
+                let b = Arc::clone(&b);
+                let inbox = dir.path().join("inbox");
+                tokio::spawn(async move { take(&first, &b, &inbox, Arc::default()).await })
+            };
+            wait_for(&shared, |s| matches!(s, CodeSend::Sending { .. })).await;
+            shared.stop.store(true, Ordering::SeqCst);
+            let ended = tokio::time::timeout(Duration::from_secs(20), receiving)
+                .await
+                .expect("the receiver stopped in time")
+                .unwrap();
+            // A small file can finish before the stop lands; a stop is the
+            // usual ending.
+            if let Err(failed) = ended {
+                assert!(failed.offered.is_some());
+            }
+            wait_for(&shared, |s| {
+                matches!(s, CodeSend::Failed { .. } | CodeSend::Sent { .. })
+            })
+            .await;
+        });
+    }
+
     /// The app reads the status right after starting and stops polling if
     /// the send isn't running, so it must never read Idle there.
     #[test]
@@ -649,11 +862,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("a.txt");
         std::fs::write(&file, b"hello").unwrap();
-        let shared = Arc::new(CodeSendShared::default());
-        start(file, dir.path().join("store"), Arc::clone(&shared));
+        let shared = sending(file, &device(dir.path(), "a"));
         assert!(shared.running(), "{:?}", shared.status());
         shared.stop.store(true, Ordering::SeqCst);
         TOKIO.block_on(wait_for(&shared, |s| matches!(s, CodeSend::Failed { .. })));
+    }
+
+    #[test]
+    fn an_empty_folder_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("empty");
+        std::fs::create_dir_all(empty.join("inner")).unwrap();
+        let shared = sending(empty, &device(dir.path(), "a"));
+        let failed = TOKIO.block_on(wait_for(&shared, |s| matches!(s, CodeSend::Failed { .. })));
+        assert!(matches!(failed, CodeSend::Failed { reason } if reason.contains("no files")));
     }
 
     #[test]
@@ -661,8 +883,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("a.txt");
         std::fs::write(&file, b"hello").unwrap();
-        let shared = Arc::new(CodeSendShared::default());
-        start(file, dir.path().join("store"), Arc::clone(&shared));
+        let shared = sending(file, &device(dir.path(), "a"));
         TOKIO.block_on(async {
             let first = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
             let CodeSend::Waiting { number, .. } = first else {
@@ -683,5 +904,24 @@ mod tests {
             shared.stop.store(true, Ordering::SeqCst);
             wait_for(&shared, |s| matches!(s, CodeSend::Failed { .. })).await;
         });
+    }
+
+    #[test]
+    fn folders_list_their_files_without_following_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("f");
+        folder(&root);
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("/etc", root.join("outside")).unwrap();
+        let names: Vec<String> = files_in(&root).unwrap().into_iter().map(|f| f.0).collect();
+        assert_eq!(
+            names,
+            [
+                "empty.bin",
+                "notes.txt",
+                "photos/a.jpg",
+                "photos/deeper/b.raw"
+            ]
+        );
     }
 }

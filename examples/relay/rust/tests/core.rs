@@ -184,3 +184,95 @@ fn bad_input_is_refused_early() {
         Err(RelayError::EmptyNote)
     );
 }
+
+/// A folder sent with a word code between two devices: it arrives whole,
+/// and both histories record it, with the received folder's path.
+#[test]
+fn a_folder_with_a_code_lands_in_both_histories() {
+    use relay_core::CodeSend;
+    let dir = tempfile::tempdir().unwrap();
+    let phone = device(&dir, "phone");
+    let laptop = device(&dir, "laptop");
+    let folder = dir.path().join("Trip");
+    std::fs::create_dir_all(folder.join("day 1")).unwrap();
+    std::fs::write(folder.join("day 1/map.txt"), b"north").unwrap();
+    std::fs::write(folder.join("list.txt"), b"tent, stove").unwrap();
+
+    laptop
+        .send_with_code(folder.to_string_lossy().into_owned())
+        .unwrap();
+    let CodeSend::Waiting {
+        code,
+        port,
+        endpoint_id,
+        ..
+    } = waiting(&laptop)
+    else {
+        unreachable!()
+    };
+    let receipt =
+        block_on(phone.receive_with_code(code, vec![format!("127.0.0.1:{port}")], endpoint_id))
+            .unwrap();
+    let got = std::path::Path::new(&receipt.path);
+    assert_eq!(std::fs::read(got.join("day 1/map.txt")).unwrap(), b"north");
+    assert_eq!(std::fs::read(got.join("list.txt")).unwrap(), b"tent, stove");
+
+    eventually("the sent entry", || !laptop.transfers().is_empty());
+    let sent = &laptop.transfers()[0];
+    assert_eq!(sent.direction, Direction::Sent);
+    assert_eq!(sent.status, TransferStatus::Done);
+    assert_eq!(sent.peer_name, "someone with a code");
+
+    let received = &phone.transfers()[0];
+    assert_eq!(received.direction, Direction::Received);
+    assert_eq!(received.status, TransferStatus::Done);
+    let Item::File { name, size, path } = &received.item else {
+        panic!("not a file entry")
+    };
+    assert_eq!((name.as_str(), *size), ("Trip", 16));
+    assert_eq!(path.as_deref(), Some(receipt.path.as_str()));
+
+    // Removing the entry removes the received folder.
+    block_on(phone.remove_transfer(received.id)).unwrap();
+    assert!(!got.exists());
+}
+
+/// The device's endpoint id stays the same across relaunches: sends from
+/// the same data directory advertise the same id.
+#[test]
+fn the_device_keeps_its_endpoint_id() {
+    use relay_core::CodeSend;
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("a.txt");
+    std::fs::write(&file, b"hello").unwrap();
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let laptop = device(&dir, "laptop");
+        laptop
+            .send_with_code(file.to_string_lossy().into_owned())
+            .unwrap();
+        let CodeSend::Waiting { endpoint_id, .. } = waiting(&laptop) else {
+            unreachable!()
+        };
+        ids.push(endpoint_id);
+        laptop.cancel_code_send();
+        eventually("the send to stop", || {
+            matches!(laptop.code_send_status(), CodeSend::Failed { .. })
+        });
+        drop(laptop);
+        // The node closes in the background as the core goes.
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    assert_eq!(ids[0], ids[1]);
+}
+
+/// The send's status once it has a code.
+fn waiting(core: &RelayCore) -> relay_core::CodeSend {
+    eventually("a code", || {
+        matches!(
+            core.code_send_status(),
+            relay_core::CodeSend::Waiting { .. }
+        )
+    });
+    core.code_send_status()
+}
