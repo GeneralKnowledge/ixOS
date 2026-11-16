@@ -3,8 +3,8 @@
 
 use std::path::Path;
 
-use forge_storage::rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
-use forge_storage::{Database, Opened};
+use forge_storage::rusqlite::{params, Connection, OptionalExtension, Row};
+use forge_storage::{Database, Opened, Reader};
 
 use crate::model::{FieldKitError, Note, NoteKind, Position, TripSummary};
 use crate::track::{Totals, TrackPoint};
@@ -69,11 +69,8 @@ impl Store {
 
     /// A second, read-only connection to the same file, for queries that
     /// run off the command thread (WAL keeps them apart from the writer).
-    pub fn reader(&self) -> Result<Connection, FieldKitError> {
-        let path = self.db.path().expect("opened from a file");
-        let c = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        c.busy_timeout(std::time::Duration::from_secs(5))?;
-        Ok(c)
+    pub fn reader(&self) -> Result<Reader, FieldKitError> {
+        Ok(self.db.reader()?)
     }
 
     pub fn trips(&self) -> Result<Vec<TripSummary>, FieldKitError> {

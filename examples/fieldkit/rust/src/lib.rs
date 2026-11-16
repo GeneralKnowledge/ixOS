@@ -32,8 +32,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 use forge_app::{Cancellation, DataDirectory, ErrorKind, Published, Runtime};
 use forge_runtime::{lock, now_ms};
-use forge_storage::rusqlite::Connection;
-use forge_storage::{files, FileStore, Opened};
+use forge_storage::{files, FileStore, Opened, Reader};
 
 pub use export::ExportFormat;
 pub use model::{
@@ -182,7 +181,7 @@ pub struct FieldKitCore {
     rt: Runtime<State>,
     trips: Arc<Published<Vec<TripSummary>>>,
     /// Read-only connection for queries off the command thread.
-    reader: Arc<Mutex<Connection>>,
+    reader: Arc<Reader>,
     media_root: PathBuf,
     caches: PathBuf,
     /// The location service, when the host installed one.
@@ -362,8 +361,10 @@ impl FieldKitCore {
         let work = self.rt.foreground(cancellation.as_deref());
         self.rt
             .run("trip", work, move |_| {
-                let notes = store::notes(&lock(&reader), trip_id, |name| {
-                    media.join(name).to_string_lossy().into_owned()
+                let notes = reader.read(|c| {
+                    store::notes(c, trip_id, |name| {
+                        media.join(name).to_string_lossy().into_owned()
+                    })
                 })?;
                 Ok(TripDetail { summary, notes })
             })
@@ -381,7 +382,7 @@ impl FieldKitCore {
         let work = self.rt.foreground(cancellation.as_deref());
         self.rt
             .run("track", work, move |_| {
-                store::track(&lock(&reader), trip_id)
+                reader.read(|c| store::track(c, trip_id))
             })
             .await
     }
@@ -398,7 +399,7 @@ impl FieldKitCore {
         let work = self.rt.foreground(cancellation.as_deref());
         self.rt
             .run("profile", work, move |_| {
-                let points = store::track(&lock(&reader), trip_id)?;
+                let points = reader.read(|c| store::track(c, trip_id))?;
                 Ok(track::profile(&points))
             })
             .await
@@ -425,14 +426,13 @@ impl FieldKitCore {
         let work = self.rt.finishing(cancellation.as_deref());
         self.rt
             .run("export", work, move |cancel| {
-                let (points, notes) = {
-                    let c = lock(&reader);
-                    let points = store::track(&c, trip_id)?;
-                    let notes = store::notes(&c, trip_id, |name| {
+                let (points, notes) = reader.read(|c| {
+                    let points = store::track(c, trip_id)?;
+                    let notes = store::notes(c, trip_id, |name| {
                         media.join(name).to_string_lossy().into_owned()
                     })?;
-                    (points, notes)
-                };
+                    Ok::<_, FieldKitError>((points, notes))
+                })?;
                 if cancel.is_cancelled() {
                     return Err(FieldKitError::Stopped {
                         kind: ErrorKind::Cancelled,
@@ -558,7 +558,7 @@ impl FieldKitCore {
             last,
         });
         let trips = Arc::new(Published::new(store.trips()?));
-        let reader = Arc::new(Mutex::new(store.reader()?));
+        let reader = Arc::new(store.reader()?);
         let media_root = media.root().to_path_buf();
         let state = State {
             store,

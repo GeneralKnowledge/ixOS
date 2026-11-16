@@ -20,7 +20,7 @@ mod json_file;
 pub use atomic::{write_atomic, StorageError};
 pub use copies::set_aside;
 #[cfg(feature = "sqlite")]
-pub use database::{Database, Opened};
+pub use database::{Database, Opened, Reader};
 pub use files::{FileStore, FileStoreError, Staged, StoredFile};
 pub use json_file::{JsonFile, Migration};
 /// The SQLite bindings [`Database`] uses, for an app's own queries.

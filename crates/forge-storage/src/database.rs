@@ -105,6 +105,33 @@ impl Database {
         &self.connection
     }
 
+    /// A second, read-only connection to the same file, for queries that run
+    /// off the thread that writes: a screen reading a long GPS track, a
+    /// search. WAL lets it read while the writer writes, and a read through
+    /// it never goes through the app's command thread, so it never counts as
+    /// a change (a screen that reloads on every change can't loop). Open it
+    /// after `open`, so the file and its schema exist. A database in memory
+    /// has no file to share, so this is an error there.
+    pub fn reader(&self) -> Result<Reader, StorageError> {
+        let path = self
+            .path
+            .as_deref()
+            .ok_or_else(|| StorageError::ReadFailed {
+                reason: "an in-memory database has no file for a reader".into(),
+            })?;
+        let connection = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|e| StorageError::read("open a reader", e))?;
+        connection
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| StorageError::read("open a reader", e))?;
+        Ok(Reader {
+            connection: std::sync::Mutex::new(connection),
+        })
+    }
+
     /// Runs `work` in a transaction: committed if it returns `Ok`, rolled
     /// back otherwise.
     pub fn transaction<T, E>(
@@ -317,6 +344,32 @@ impl From<rusqlite::Error> for StorageError {
     }
 }
 
+/// A read-only connection to a [`Database`]'s file, from
+/// [`Database::reader`]. It can be shared between threads; reads take turns.
+pub struct Reader {
+    connection: std::sync::Mutex<Connection>,
+}
+
+impl std::fmt::Debug for Reader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Reader").finish_non_exhaustive()
+    }
+}
+
+impl Reader {
+    /// Runs `work` with the connection. Writing through it fails: it is
+    /// opened read-only.
+    pub fn read<T>(&self, work: impl FnOnce(&Connection) -> T) -> T {
+        // A panic in an earlier read leaves nothing half-done in a read-only
+        // connection, so a poisoned lock is still safe to use.
+        let connection = self
+            .connection
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        work(&connection)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -479,5 +532,33 @@ mod tests {
             .unwrap();
         assert_eq!(hit, "Weekend plans at the lake");
         assert!(Database::sqlite_version().starts_with('3'));
+    }
+
+    #[test]
+    fn a_reader_sees_commits_and_cannot_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let (db, _) = Database::open(dir.path().join("app.db"), &SCHEMA[..1]).unwrap();
+        let reader = db.reader().unwrap();
+        let count = |r: &Reader| {
+            r.read(|c| c.query_row("SELECT count(*) FROM notes", [], |row| row.get::<_, i64>(0)))
+                .unwrap()
+        };
+        assert_eq!(count(&reader), 0);
+        db.connection()
+            .execute("INSERT INTO notes (body) VALUES ('Lake')", [])
+            .unwrap();
+        assert_eq!(count(&reader), 1, "a committed write is visible");
+
+        // Reading while a write is open sees the last commit, not a wait.
+        db.connection()
+            .execute_batch("BEGIN; INSERT INTO notes (body) VALUES ('Hill');")
+            .unwrap();
+        assert_eq!(count(&reader), 1);
+        db.connection().execute_batch("COMMIT;").unwrap();
+        assert_eq!(count(&reader), 2);
+
+        let write = reader.read(|c| c.execute("DELETE FROM notes", []));
+        assert!(write.is_err(), "the reader is read-only");
+        assert!(Database::in_memory(SCHEMA).unwrap().reader().is_err());
     }
 }
