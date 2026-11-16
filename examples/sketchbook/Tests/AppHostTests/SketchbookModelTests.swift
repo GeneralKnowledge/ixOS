@@ -22,6 +22,14 @@ final class SketchbookModelTests: XCTestCase {
         let drawn = try XCTUnwrap(await model.draw(id, layer: layer, drawing: Data([1, 2, 3])))
         XCTAssertEqual(model.drawing(at: drawn.layers.first?.drawingPath), Data([1, 2, 3]))
 
+        // Each stroke is a new file; only the current one stays in memory.
+        let redrawn = try XCTUnwrap(await model.draw(id, layer: layer, drawing: Data([4, 5])))
+        XCTAssertEqual(model.drawing(at: redrawn.layers.first?.drawingPath), Data([4, 5]))
+        XCTAssertEqual(model.cachedDrawings, 2)
+        model.keepDrawings(of: redrawn)
+        XCTAssertEqual(model.cachedDrawings, 1)
+        XCTAssertEqual(model.drawing(at: redrawn.layers.first?.drawingPath), Data([4, 5]))
+
         let twoLayers = try XCTUnwrap(await model.addLayer(to: id))
         XCTAssertEqual(twoLayers.layers.count, 2)
         XCTAssertNotNil(twoLayers.undoName)
