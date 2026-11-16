@@ -114,7 +114,7 @@ Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust 
 | P0 | Existing runtime and native integration stability | Maintain |
 | P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md), [guide](forgeui.md)) | **0.1 done: run on an iPhone 2026-11-10** |
 | P2 | **ForgeAppKit 0.1**: alerts and confirmations as model values, destinations, load and submission state, form errors ([guide](forgeappkit.md)) | **In progress: 0.1 built and used by Pocket Library, Commonplace, FieldKit, Relay, Sketchbook and Soundscape; not yet recorded on an iPhone** |
-| P3 | Rust application foundations: saved documents and validation ([guide](app-foundations.md)); repositories and query later (modules in existing crates first) | **Built: persistence guarantees (#159) and Pocket Library on the runtime (#176); iPhone check open** |
+| P3 | Rust application foundations: saved documents and validation ([guide](app-crate.md#saved-documents-and-validation)); repositories and query later (modules in existing crates first) | **Built: persistence guarantees (#159) and Pocket Library on the runtime (#176); iPhone check open** |
 | P4 | A complete reference app (personal library) built only on the above | Required proof |
 | P5 | Developer experience: `forge init` on ForgeUI, component docs, feature templates | After the foundation |
 | P6 | Autonomous-agent tooling expansion (M6, general device control) | **Moved out** to the [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project (2026-11-15). Device, build and diagnostics stay here as supporting infrastructure |
@@ -252,7 +252,7 @@ Not in this release. Today the CLI produces development builds (an xtool debug b
 
 - **Android:** release build type, signing config read from the environment (never committed), an `.aab` bundle, and R8/minification rules that keep JNA and the generated bindings.
 - **iOS:** an archive and export path. App Store submission needs a distribution certificate and provisioning profile; whether xtool can produce a submission-ready build on Linux has not been verified, so the first deliverable is a documented macOS `xcodebuild archive` path.
-- A `docs/distribution.md` covering both, plus release notes in [release-process.md](release-process.md).
+- A `docs/distribution.md` covering both, plus release notes in [builds.md](builds.md#releasing-forge-itself).
 
 The staged plan for the first real iOS release (Pocket Library; what Linux can do and what needs a Mac; `forge release check`) is [first-app-store-release.md](first-app-store-release.md).
 
