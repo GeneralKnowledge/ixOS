@@ -13,6 +13,7 @@ it runs inside Device Lab (Apps, then Soundscape) and on its own.
 | SS1 | Rust core (`rust/`): projects, tracks, settings checked and mapped to AVAudioEngine units, waveforms, offline mixdown | Done, tested on Linux |
 | SS2 | SwiftUI app: project list, recorder, mixer with Canvas waveforms, AVAudioEngine playback, background audio, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
 | L1 | Listen tab: songs and takes from a take server, A/B at matched loudness, stars, notes and picks, lock-screen playback | Passed on the iPhone (Device Lab, 2026-11-16) |
+| M2 | Music library ([design](docs/library.md)): tracks apart from their recordings and audio sources, artists, albums and songs with search, artwork (from the server or Photos), your own edits, a preferred recording per song, kept on the phone | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | M1 | Music player: play all, an act or a song, shuffle and repeat, Play Next and Add to Queue, previous and next (also on the lock screen), a mini-player on every screen and a Now Playing screen with Up Next | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | S4 | Spike: one effect in Rust on the real-time audio thread, measured on the phone | Not started; decides whether live effects move to Rust |
 
@@ -82,6 +83,14 @@ and saves picks to `~/band/picks.json`.
   with the screen locked, with lock-screen controls; "next track" on
   headphones switches A and B in a comparison and moves through the queue
   otherwise.
+- **The library (`rust/src/library.rs`, [design](docs/library.md))** keeps
+  tracks apart from their recordings and where their audio lives. The take
+  server's catalogue (`/api/catalog`, one request) is kept in
+  `library.json` with your edits and artwork, and `build_library` makes the
+  artists, albums and tracks from those, so the library browses without
+  the server and a refresh never undoes an edit. A track plays its
+  preferred recording: the server's pick, else the best rated, else the
+  newest; choosing another picks it on the server.
 - **The queue (`rust/src/queue.rs`)** decides what plays next. Play,
   Shuffle, an act's play button or a song's Play plays songs one after
   another, each with its preferred take (`preferred_take`: the pick, else
@@ -100,7 +109,8 @@ and saves picks to `~/band/picks.json`.
 | File | What |
 |---|---|
 | `Sources/AppHost/ListenModel.swift` | Songs, a song's takes, picks and ratings, the server address. Foundation only |
-| `Sources/AppHost/ListenView.swift` | The song list, the server form, a song's takes, the comparison panel, the mini-player and Now Playing with Up Next |
+| `Sources/AppHost/ListenView.swift` | The Library tab's stack, the server form, a song's takes and the comparison panel, the mini-player and Now Playing with Up Next |
+| `Sources/AppHost/LibraryView.swift` | Songs, albums and artists, search, an album, an artist, a track with its recordings, editing and artwork |
 | `Sources/AppHost/TakePlayer.swift` | AVPlayer: the queue, or two takes in step for A/B; the lock screen |
 
 Build and install on its own (it uses the free team's sandbox id):

@@ -39,13 +39,13 @@ private struct SoundscapeScreen: View {
                 .tabItem { Label("Projects", systemImage: "waveform") }
                 .accessibilityIdentifier("tab.projects")
             listen
-                .tabItem { Label("Listen", systemImage: "music.note.list") }
+                .tabItem { Label("Library", systemImage: "music.note.list") }
                 .accessibilityIdentifier("tab.listen")
         }
     }
 
-    /// Generated song takes on another computer's take server: play,
-    /// compare, rate and pick them (ListenView.swift).
+    /// Your music library, from the take server on another computer, with
+    /// the player (ListenView.swift, LibraryView.swift).
     @ViewBuilder private var listen: some View {
         #if os(iOS)
         ListenView(core: model.core)

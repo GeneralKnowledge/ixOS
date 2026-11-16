@@ -46,5 +46,20 @@ final class ListenModelTests: XCTestCase {
         XCTAssertEqual(TakeFormat.match(loudnessMatch(aLufs: -11, bLufs: -14.2)), "A turned down 3.2 dB to match")
         XCTAssertEqual(TakeFormat.match(loudnessMatch(aLufs: -14, bLufs: -14)), "Same loudness")
         XCTAssertFalse(loudnessMatch(aLufs: nil, bLufs: -14).matched)
+
+        let band = LibraryArtist(id: "artist:lowbridge", name: "LOWBRIDGE", artworkUrl: nil, albumCount: 1, trackCount: 3)
+        XCTAssertEqual(TakeFormat.artistSummary(band), "1 album · 3 songs")
+        XCTAssertEqual(TakeFormat.recordings(1), nil)
+        XCTAssertEqual(TakeFormat.recordings(4), "4 recordings")
+    }
+
+    func testLibraryStartsEmptyWithoutAServer() async throws {
+        let host = makeTemporaryAppHost()
+        await host.start()
+        let model = ListenModel(core: try XCTUnwrap(host.core))
+        XCTAssertTrue(model.library.tracks.isEmpty)
+        XCTAssertTrue(model.search("anything").isEmpty)
+        await model.loadLibrary()
+        XCTAssertEqual(model.phase, .needsServer)
     }
 }

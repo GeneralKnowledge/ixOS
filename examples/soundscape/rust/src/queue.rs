@@ -2,11 +2,10 @@
 //! shuffled, and what happens at the end of each song (repeat).
 //!
 //! The queue is a value. Swift keeps the current one and asks these
-//! functions for the next. Each song in an album or list plays its
-//! preferred take ([`preferred_take`]): the picked one, else the best
-//! rated, else the newest.
+//! functions for the next. Each track plays one recording, normally its
+//! preferred one (the library decides which).
 
-use crate::listen::{SongDetail, Take};
+use crate::library::Recording;
 
 /// What happens when a song ends.
 #[derive(uniffi::Enum, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -20,13 +19,15 @@ pub enum RepeatMode {
     One,
 }
 
-/// One song in the queue, with the take that plays for it.
+/// One track in the queue, with the recording that plays for it.
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
 pub struct QueueTrack {
-    pub slug: String,
-    pub song_title: String,
-    pub act: Option<String>,
-    pub take: Take,
+    pub track_id: String,
+    pub title: String,
+    pub artist: String,
+    pub album: Option<String>,
+    pub artwork_url: Option<String>,
+    pub recording: Recording,
 }
 
 /// Songs to play, in the order they play.
@@ -48,19 +49,6 @@ pub struct PlayQueue {
 pub struct QueueEntry {
     pub position: u32,
     pub track: QueueTrack,
-}
-
-/// The take to play for a song: the picked one, else the one with the
-/// most stars (the newer of a tie), else the newest. `None` with no takes.
-#[uniffi::export]
-pub fn preferred_take(song: SongDetail) -> Option<Take> {
-    let mut takes = song.takes;
-    if let Some(i) = takes.iter().position(|t| t.picked) {
-        return Some(takes.swap_remove(i));
-    }
-    takes
-        .into_iter()
-        .max_by(|a, b| a.stars.cmp(&b.stars).then(a.made_ms.cmp(&b.made_ms)))
 }
 
 /// A queue of `tracks` that starts at `tracks[start]`. Shuffled, that song
