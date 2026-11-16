@@ -42,7 +42,7 @@ Device Lab's own state model is **not applicable**, not lag: its state is lab se
 5. Record friction and framework opportunities in the friction log.
 6. Only then choose the app's next feature.
 
-The current first picks: Good Dog reminders and progress over time (training history, sessions done, progress per exercise; streaks optional and never the main measure); FieldKit elevation and pace charts, then background recording, then photo and voice notes; Pocket Library full-text search inside books and notes (matching passages, jumping to the place in the book, filters for books and notes); Commonplace folders and OPML; Relay Send with a Code; Soundscape mixdown sharing after its first device run; Weather an hourly chart after its move. Chat and Sketchbook get no new features until their next device validation.
+The current first picks: Good Dog reminders and progress over time (training history, sessions done, progress per exercise; streaks optional and never the main measure); FieldKit elevation and pace charts, then background recording, then photo and voice notes; Pocket Library full-text search inside books and notes (matching passages, jumping to the place in the book, filters for books and notes); Commonplace folders and OPML (the start of its feed reader, below); Relay Send with a Code; Soundscape mixdown sharing after its first device run; Weather an hourly chart after its move. Chat and Sketchbook get no new features until their next device validation.
 
 **A feature is complete** when it works for real data and its unhappy paths, not when it first renders:
 
@@ -59,6 +59,51 @@ The current first picks: Good Dog reminders and progress over time (training his
 3. **Extract only the common part,** after the second app's feature has merged and been validated on an iPhone. Don't force the apps into the same product behaviour because they share plumbing: two apps can share chart styling without sharing chart data or presentation.
 
 Expected from the first picks: full-text search (Commonplace, then Pocket Library) into forge-storage; a chart style (Good Dog and FieldKit, then Weather) into ForgeUI; the photo picker (Chat, then FieldKit) into ForgeNative.
+
+**Waves 4 and 5** (decided 2026-11-16, Reuben). They start after the wave 3 moves have merged.
+
+- **Wave 4: extractions whose second use already exists.**
+  - The read connection that skips the revision, used by Commonplace and FieldKit ([friction log](research/app-friction-log.md) A5).
+  - Small leftovers: init naming, template leftovers (A21), id types (A3) and distance maths in the services crate.
+  - The phase hook for apps (A31) waits for Relay to need it too.
+  - Not Relay's encrypted channel (A16): Relay's approved plan replaces that wire with iroh ([relay-transfer-plan.md](relay-transfer-plan.md)), which leaves the channel with one user, the device tools.
+- **Wave 5: give each one-use piece its second app,** as a real feature with its own phone row, one app per PR, in this order:
+  1. Full-text search, in three steps:
+     1. Commonplace's search across collected articles (it already has an FTS5 search) is validated on an iPhone.
+     2. Pocket Library builds and validates its own search across books and notes.
+     3. The two are compared, and only what they genuinely share moves into forge-storage.
+  2. FieldKit's elevation and pace charts and Good Dog's progress over time, then Weather's hourly chart.
+  3. FieldKit's photo notes, after Chat's photo picker.
+
+  The shared part moves into the framework after both features have been validated on an iPhone.
+
+**Expand an existing app before adding a new one** (decided 2026-11-16, Reuben). A missing application category does not by itself justify a new app. First ask whether an existing app has a real reason to grow into it; if one does, that growth proves the capability.
+
+- **Feed reading belongs to Commonplace.** There is no separate feed reader app. Commonplace grows into a feed reader and personal reading system:
+  - subscriptions and a unified chronological feed;
+  - full article extraction and background refresh;
+  - OPML import and export, folders, and read, unread, favourites and history;
+  - search across what it has collected.
+- **Planning and time are spread across the apps, each in its own way.** There is no generic shared calendar:
+  - Good Dog plans activities: training schedules, recurring sessions, history, and appointments in the calendar.
+  - Checklist schedules obligations: due dates, recurring tasks, reminders and an agenda.
+  - Commonplace organises information over time: daily notes, reading queues, follow-up dates and resurfacing.
+  - FieldKit plans and records fieldwork: planned trips, scheduled sessions and a time-stamped history.
+  - Pocket Library tracks reading intentions: goals, schedules, reminders to resume and statistics.
+
+  These are candidate first and second users of each capability, not an order to extract:
+
+| Capability | First user | Possible second user |
+|---|---|---|
+| Local notifications | Good Dog | Checklist |
+| Recurring schedules | Checklist | Good Dog |
+| Calendar integration (Apple's Calendar through EventKit) | Good Dog | FieldKit |
+| Widgets | Good Dog | Checklist |
+| App Intents and Shortcuts | Checklist | Pocket Library |
+| Timeline presentation | Commonplace | FieldKit |
+| Background scheduled work | Commonplace | Good Dog |
+
+"Calendar" here means only integration with Apple's Calendar (EventKit): adding an appointment or a planned trip to the person's calendar. It is not an app's own agenda or calendar screen, which stays each app's own design, and not notifications or recurring schedules, which are their own rows. Two apps showing dates is no reason for a shared calendar abstraction.
 
 ## Product direction: a native application framework
 
