@@ -41,7 +41,7 @@ There are two different things to prove, and they need different evidence:
 1. **Does the wrapper integrate correctly with iOS?** A screen in the services check app (`scripts/make-services-check-app.sh`) proves this, with Rust tests and a device run.
 2. **Does it make building an app easier?** Only a real app that adopts it proves this. Pocket Library and Chat are the main consumers; Good Dog, Weather and Device Lab adopt where they already need something.
 
-A consumer app may be added when a capability's usability can't be judged in the apps we have. The one planned now is a **feed reader benchmarked against [NetNewsWire](https://github.com/Ranchero-Software/NetNewsWire)**, the established open-source (MIT) reader for Apple platforms. NetNewsWire is the external reference: we compare navigation, article presentation, reader behaviour, refresh, search and interaction against it, which is a more demanding test than a reader whose features we choose ourselves. It is built on ixOS from scratch (no NetNewsWire code is copied in) and ships under its own name and icon, because NetNewsWire's are its authors'. It is the reader's second consumer (see Tier 1), with a different implementation and UX from Pocket Library, and it exercises the web view, readable-text extraction, the HTTP cache and background refresh. Feature parity is not the goal: a gap is recorded as a finding about ixOS, not a reason to add features.
+A consumer app may be added only when a capability's usability can't be judged in the apps we have, and no existing app has a real reason to grow into it ([roadmap](roadmap.md#apps-first-prove-complete-then-extract), decided 2026-11-16). **The feed reader is Commonplace**, not a separate app: Commonplace grows into a feed reader and personal reading system, benchmarked against [NetNewsWire](https://github.com/Ranchero-Software/NetNewsWire), the established open-source (MIT) reader for Apple platforms. NetNewsWire is the external reference: we compare navigation, article presentation, reader behaviour, refresh, search and interaction against it, which is a more demanding test than a reader whose features we choose ourselves. No NetNewsWire code is copied in, and Commonplace keeps its own name and icon. It is the reader's second consumer (see Tier 1), with a different implementation and UX from Pocket Library, and it exercises the web view, readable-text extraction, the HTTP cache and background refresh. Feature parity is not the goal: a gap is recorded as a finding about ixOS, not a reason to add features.
 
 Each capability lands in its own PR, and the ledger keeps **compiled**, **tested** and **device-verified** strictly apart. Before a capability's ledger row says it works on an iPhone, it needs all of:
 
@@ -89,17 +89,17 @@ Ranked by how many apps each enables and how much repeated work it removes. "Fir
 
 | # | Capability | Shape | Apple framework | First consumer |
 |---|---|---|---|---|
-| 1 | **Web view** (spec below). Built 2026-11-11: `ForgeWeb.swift` ([native-services.md](native-services.md#web-pages)) | Helper (`ForgeWebView`) | WebKit, SafariServices | Feed reader (showing the original article) |
+| 1 | **Web view** (spec below). Built 2026-11-11: `ForgeWeb.swift` ([native-services.md](native-services.md#web-pages)) | Helper (`ForgeWebView`) | WebKit, SafariServices | Commonplace, the feed reader (showing the original article) |
 | 2 | **Documents**: PDF view, Quick Look preview of any file in the file store. Built 2026-11-15 as far as an app needs it: `ForgeDocuments.thumbnail` (Quick Look's thumbnailer, a document's first page in Chat's bubbles). Opening a file needs no wrapper: SwiftUI's `.quickLookPreview` already shows PDFs with their pages and sharing (Chat, Relay, Sketchbook use it). `ForgePDFView` waits for an app that shows a PDF inline | Helper (`ForgeDocuments`) | Quick Look; PDFKit when needed | Chat (attachments); Pocket Library if it imports PDFs |
-| 3 | **Native reader** (spec below). Built 2026-11-15: `crates/forge-reader` and its Swift views ([forge-reader.md](forge-reader.md)) | Rust module plus Swift helper, extracted from Pocket Library | SwiftUI text layout, AVSpeechSynthesizer for read-aloud | Pocket Library, then the feed reader |
+| 3 | **Native reader** (spec below). Built 2026-11-15: `crates/forge-reader` and its Swift views ([forge-reader.md](forge-reader.md)) | Rust module plus Swift helper, extracted from Pocket Library | SwiftUI text layout, AVSpeechSynthesizer for read-aloud | Pocket Library, then Commonplace (the feed reader) |
 | 4 | **Photos and camera**: the system photo picker returning the chosen items as files in the file store, and camera capture with its `camera` permission | Helper (picker, from Chat's code, no permission) and optional service `camera` | PhotosUI, AVFoundation | Chat (attachments) |
-| 5 | **Background tasks** (contract below). Built 2026-11-11: optional service `background` ([native-services.md](native-services.md#background-tasks-background)): Swift registers them at launch, Rust does the work in the window iOS grants. Chat's catch-up added 2026-11-15 (M5); several apps in one process (Device Lab) share the registrations | Optional service `background` | BackgroundTasks | Feed reader (refresh), Chat (catch-up) |
+| 5 | **Background tasks** (contract below). Built 2026-11-11: optional service `background` ([native-services.md](native-services.md#background-tasks-background)): Swift registers them at launch, Rust does the work in the window iOS grants. Chat's catch-up added 2026-11-15 (M5); several apps in one process (Device Lab) share the registrations | Optional service `background` | BackgroundTasks | Commonplace (feed refresh), Chat (catch-up) |
 | 6 | **Background transfers** (spec below) | Service, native side of `forge-net` downloads | Background `URLSession` | Local AI model downloads, Chat attachments, Pocket Library |
 | 7 | **Notification actions** (reply, mark done) delivered to Rust. Built 2026-11-11 ([native-services.md](native-services.md#notification-actions)) | Extend `LocalNotifier` | UserNotifications | Chat, Good Dog reminders |
 | 8 | **App lock with Face ID / Touch ID**. Built 2026-11-11: optional service `biometrics` ([native-services.md](native-services.md#face-id-and-the-app-lock-biometrics)) | Optional service `biometrics` | LocalAuthentication | Pocket Library or Chat (opt-in lock) |
 | 9 | **OAuth sign-in**: open the provider, return the callback URL to Rust; tokens kept in the Keychain | Helper plus a Rust token record on `SecureStore` | AuthenticationServices (`ASWebAuthenticationSession`) | First app that signs in to a service |
 | 10 | **Universal links**: `https://` links that open the app, routed through the existing deep-link path (Swift receives, Rust resolves the destination) | `forge.toml` `associated_domains` plus the existing deep-link service; a recipe for the `apple-app-site-association` file | Associated Domains | Pocket Library (shared book links). **Needs the paid team**: built and unit-tested now, proven on a phone after the switch |
-| 11 | **Receiving shared content**: URLs, text, images and PDFs from other apps' share sheets, handed to the app | Share extension template plus a helper; Rust sees only an inbox of files it drains | Share extension, Uniform Type Identifiers, App Groups | Pocket Library (save a link or book), the feed reader (add a feed). Spike first: whether a free team can sign an App Group (S2) |
+| 11 | **Receiving shared content**: URLs, text, images and PDFs from other apps' share sheets, handed to the app | Share extension template plus a helper; Rust sees only an inbox of files it drains | Share extension, Uniform Type Identifiers, App Groups | Pocket Library (save a link or book), Commonplace (add a feed). Spike first: whether a free team can sign an App Group (S2) |
 | 12 | **App Intents and Shortcuts**: a few app actions available to Siri, Shortcuts and Spotlight | Swift (`AppIntent` types in the app), calling the app's Rust core | App Intents | Pocket Library ("log reading"), Good Dog ("start a session"). Spike first: App Shortcuts need build-time metadata Xcode generates. Spike written 2026-11-11 ([research/app-intents-on-linux.md](research/app-intents-on-linux.md)): an open-source replacement for Xcode's metadata tool runs on Linux; two laptop and phone checks decide it |
 
 Items 10 to 12 make an app reachable from outside itself: from the web, from other apps and from the system. They come after the first nine and are not started until those are under way.
@@ -135,7 +135,7 @@ The system photo picker (`PhotosPicker`) runs outside the app and hands over onl
 
 #### Native reader
 
-ForgeReader is the reusable reading experience, extracted from Pocket Library when the feed reader becomes its second consumer. It is **not coupled to EPUB or feeds**: formats are inputs to it. Its responsibilities, which need not each be a separate module:
+ForgeReader is the reusable reading experience, extracted from Pocket Library when Commonplace, the feed reader, becomes its second consumer. It is **not coupled to EPUB or feeds**: formats are inputs to it. Its responsibilities, which need not each be a separate module:
 
 | Responsibility | What it is | Side |
 |---|---|---|
@@ -151,7 +151,7 @@ Block ids are what make positions stable, so they never come from a block's plac
 
 With ids like these, a position survives a change of text size or layout, and survives an article being edited as long as its block still exists. An edited block gets a new content id, so a saved anchor can stop matching. Recovery then tries, in order: the same id; a block in the same section whose text closely matches the saved block's opening words (the anchor stores them); the nearest surviving neighbour, using the saved ids of the blocks before and after; the section's start. Pocket Library saves chapter and fraction today; extracting the reader converts those positions to anchors once.
 
-Each format converts into a reader document: Pocket Library's EPUB parser does now, and readable-text extraction (Tier 2) converts web pages for the feed reader. `ForgeWebView` stays separate: it shows the original page, the reader shows the extracted text.
+Each format converts into a reader document: Pocket Library's EPUB parser does now, and readable-text extraction (Tier 2) converts web pages for Commonplace. `ForgeWebView` stays separate: it shows the original page, the reader shows the extracted text.
 
 #### Background transfers
 
@@ -181,8 +181,8 @@ Items 1, 2, 3 and 6 need the device; 4 and 5 also have unit tests against a fake
 
 | # | Capability | Shape | Notes |
 |---|---|---|---|
-| 13 | **Readable text from a web page** into a reader document | Rust, alongside the reader | Feeds the reader for the feed reader |
-| 14 | **HTTP cache** with expiry, ETag and Last-Modified revalidation | Rust module in `forge-net` | Feed reader, Weather, Pocket Library covers |
+| 13 | **Readable text from a web page** into a reader document | Rust, alongside the reader | Feeds the reader for Commonplace |
+| 14 | **HTTP cache** with expiry, ETag and Last-Modified revalidation | Rust module in `forge-net` | Commonplace, Weather, Pocket Library covers |
 | 15 | **Durable work queue** (stored before the network call, retried with `Backoff`, recovered after termination) | Rust, from Chat's outbox | Extract on the second user, per the [extraction audit](framework-extraction-audit.md) |
 | 16 | **Backup and export archive** of an app's data | Rust (`forge-storage`) plus `ShareLink` | Already a "No" row in the ledger |
 | 17 | **Search history** and **navigation restoration** | ForgeAppKit | Stored through `forge_app::document` |
@@ -233,4 +233,4 @@ Recorded so they aren't forgotten, not scheduled ahead of the tiers above.
 - **An unrestricted JavaScript bridge.** See the web view spec.
 - **A synchronisation engine.** No app has a server that needs it yet; Chat's "server order wins" stands.
 - **Unrestricted background execution.** iOS decides when background tasks run. ixOS integrates with that, and doesn't pretend otherwise.
-- **Demo apps made only to justify a capability.** A consumer app is added only when usability can't be judged in the apps we have, as with the NetNewsWire-benchmarked feed reader.
+- **Demo apps made only to justify a capability.** Grow an existing app into the area first (the feed reader is Commonplace).
