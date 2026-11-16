@@ -2208,6 +2208,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func listenSongs(fresh: Bool, cancellation: Cancellation?) async throws  -> [SongSummary]
     
     /**
+     * The songs `slugs`, in that order, each with its preferred take, to
+     * play one after another. Songs the server no longer has, or that
+     * have no takes, are left out. On-screen work.
+     */
+    func listenTracks(slugs: [String], cancellation: Cancellation?) async throws  -> [QueueTrack]
+    
+    /**
      * How many frames to record for one pass of the loop at
      * `sample_rate`, so a recording loops cleanly.
      */
@@ -2593,6 +2600,27 @@ open func listenSongs(fresh: Bool, cancellation: Cancellation?)async throws  -> 
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypeSongSummary.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * The songs `slugs`, in that order, each with its preferred take, to
+     * play one after another. Songs the server no longer has, or that
+     * have no takes, are left out. On-screen work.
+     */
+open func listenTracks(slugs: [String], cancellation: Cancellation?)async throws  -> [QueueTrack]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_listen_tracks(
+                        self.uniffiCloneHandle(),FfiConverterSequenceString.lower(slugs),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeQueueTrack.lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -4079,6 +4107,93 @@ public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResp
 
 
 /**
+ * Songs to play, in the order they play.
+ */
+public struct PlayQueue: Equatable, Hashable {
+    /**
+     * Every song added, in the order it was added.
+     */
+    public var tracks: [QueueTrack]
+    /**
+     * The order they play in, as indexes into `tracks`.
+     */
+    public var order: [UInt32]
+    /**
+     * Where in `order` playback is.
+     */
+    public var position: UInt32
+    public var shuffle: Bool
+    public var `repeat`: RepeatMode
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Every song added, in the order it was added.
+         */tracks: [QueueTrack], 
+        /**
+         * The order they play in, as indexes into `tracks`.
+         */order: [UInt32], 
+        /**
+         * Where in `order` playback is.
+         */position: UInt32, shuffle: Bool, `repeat`: RepeatMode) {
+        self.tracks = tracks
+        self.order = order
+        self.position = position
+        self.shuffle = shuffle
+        self.`repeat` = `repeat`
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PlayQueue: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePlayQueue: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlayQueue {
+        return
+            try PlayQueue(
+                tracks: FfiConverterSequenceTypeQueueTrack.read(from: &buf), 
+                order: FfiConverterSequenceUInt32.read(from: &buf), 
+                position: FfiConverterUInt32.read(from: &buf), 
+                shuffle: FfiConverterBool.read(from: &buf), 
+                repeat: FfiConverterTypeRepeatMode.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PlayQueue, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeQueueTrack.write(value.tracks, into: &buf)
+        FfiConverterSequenceUInt32.write(value.order, into: &buf)
+        FfiConverterUInt32.write(value.position, into: &buf)
+        FfiConverterBool.write(value.shuffle, into: &buf)
+        FfiConverterTypeRepeatMode.write(value.`repeat`, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlayQueue_lift(_ buf: RustBuffer) throws -> PlayQueue {
+    return try FfiConverterTypePlayQueue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlayQueue_lower(_ value: PlayQueue) -> RustBuffer {
+    return FfiConverterTypePlayQueue.lower(value)
+}
+
+
+/**
  * A project with everything the mixer needs.
  */
 public struct ProjectDetail: Equatable, Hashable {
@@ -4290,11 +4405,138 @@ public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
 
 
 /**
+ * One entry of the Up Next list: where it is in the play order (to jump
+ * to it or remove it) and the song.
+ */
+public struct QueueEntry: Equatable, Hashable {
+    public var position: UInt32
+    public var track: QueueTrack
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(position: UInt32, track: QueueTrack) {
+        self.position = position
+        self.track = track
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension QueueEntry: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeQueueEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> QueueEntry {
+        return
+            try QueueEntry(
+                position: FfiConverterUInt32.read(from: &buf), 
+                track: FfiConverterTypeQueueTrack.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: QueueEntry, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.position, into: &buf)
+        FfiConverterTypeQueueTrack.write(value.track, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQueueEntry_lift(_ buf: RustBuffer) throws -> QueueEntry {
+    return try FfiConverterTypeQueueEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQueueEntry_lower(_ value: QueueEntry) -> RustBuffer {
+    return FfiConverterTypeQueueEntry.lower(value)
+}
+
+
+/**
+ * One song in the queue, with the take that plays for it.
+ */
+public struct QueueTrack: Equatable, Hashable {
+    public var slug: String
+    public var songTitle: String
+    public var act: String?
+    public var take: Take
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(slug: String, songTitle: String, act: String?, take: Take) {
+        self.slug = slug
+        self.songTitle = songTitle
+        self.act = act
+        self.take = take
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension QueueTrack: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeQueueTrack: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> QueueTrack {
+        return
+            try QueueTrack(
+                slug: FfiConverterString.read(from: &buf), 
+                songTitle: FfiConverterString.read(from: &buf), 
+                act: FfiConverterOptionString.read(from: &buf), 
+                take: FfiConverterTypeTake.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: QueueTrack, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.slug, into: &buf)
+        FfiConverterString.write(value.songTitle, into: &buf)
+        FfiConverterOptionString.write(value.act, into: &buf)
+        FfiConverterTypeTake.write(value.take, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQueueTrack_lift(_ buf: RustBuffer) throws -> QueueTrack {
+    return try FfiConverterTypeQueueTrack.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQueueTrack_lower(_ value: QueueTrack) -> RustBuffer {
+    return FfiConverterTypeQueueTrack.lower(value)
+}
+
+
+/**
  * A song with its takes, oldest first.
  */
 public struct SongDetail: Equatable, Hashable {
     public var slug: String
     public var title: String
+    /**
+     * The act or album it belongs to, when the server knows.
+     */
+    public var act: String?
     public var takes: [Take]
     /**
      * The caption and lyrics most of its takes share (Kaggle renders all
@@ -4305,13 +4547,17 @@ public struct SongDetail: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(slug: String, title: String, takes: [Take], 
+    public init(slug: String, title: String, 
+        /**
+         * The act or album it belongs to, when the server knows.
+         */act: String?, takes: [Take], 
         /**
          * The caption and lyrics most of its takes share (Kaggle renders all
          * carry the same ones), to show once above the takes.
          */caption: String?, lyrics: String?) {
         self.slug = slug
         self.title = title
+        self.act = act
         self.takes = takes
         self.caption = caption
         self.lyrics = lyrics
@@ -4335,6 +4581,7 @@ public struct FfiConverterTypeSongDetail: FfiConverterRustBuffer {
             try SongDetail(
                 slug: FfiConverterString.read(from: &buf), 
                 title: FfiConverterString.read(from: &buf), 
+                act: FfiConverterOptionString.read(from: &buf), 
                 takes: FfiConverterSequenceTypeTake.read(from: &buf), 
                 caption: FfiConverterOptionString.read(from: &buf), 
                 lyrics: FfiConverterOptionString.read(from: &buf)
@@ -4344,6 +4591,7 @@ public struct FfiConverterTypeSongDetail: FfiConverterRustBuffer {
     public static func write(_ value: SongDetail, into buf: inout [UInt8]) {
         FfiConverterString.write(value.slug, into: &buf)
         FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.act, into: &buf)
         FfiConverterSequenceTypeTake.write(value.takes, into: &buf)
         FfiConverterOptionString.write(value.caption, into: &buf)
         FfiConverterOptionString.write(value.lyrics, into: &buf)
@@ -5791,6 +6039,91 @@ public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) ->
 
 
 /**
+ * What happens when a song ends.
+ */
+
+public enum RepeatMode: Equatable, Hashable {
+    
+    /**
+     * Stop after the last song.
+     */
+    case off
+    /**
+     * Start the queue again after the last song.
+     */
+    case all
+    /**
+     * Play the same song again.
+     */
+    case one
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension RepeatMode: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRepeatMode: FfiConverterRustBuffer {
+    typealias SwiftType = RepeatMode
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RepeatMode {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .off
+        
+        case 2: return .all
+        
+        case 3: return .one
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RepeatMode, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .off:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .all:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .one:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRepeatMode_lift(_ buf: RustBuffer) throws -> RepeatMode {
+    return try FfiConverterTypeRepeatMode.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRepeatMode_lower(_ value: RepeatMode) -> RustBuffer {
+    return FfiConverterTypeRepeatMode.lower(value)
+}
+
+
+
+/**
  * Something the user can share through the system share sheet.
  * The host presents it (on iOS `ForgeShareLink`).
  */
@@ -6363,6 +6696,103 @@ fileprivate struct FfiConverterOptionTypeEcho: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypePlayQueue: FfiConverterRustBuffer {
+    typealias SwiftType = PlayQueue?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePlayQueue.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePlayQueue.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeQueueTrack: FfiConverterRustBuffer {
+    typealias SwiftType = QueueTrack?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeQueueTrack.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeQueueTrack.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeTake: FfiConverterRustBuffer {
+    typealias SwiftType = Take?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeTake.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeTake.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt32]
+
+    public static func write(_ value: [UInt32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt32.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt32] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt32]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt32.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceFloat: FfiConverterRustBuffer {
     typealias SwiftType = [Float]
 
@@ -6530,6 +6960,56 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeQueryItem.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeQueueEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [QueueEntry]
+
+    public static func write(_ value: [QueueEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeQueueEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [QueueEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [QueueEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeQueueEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeQueueTrack: FfiConverterRustBuffer {
+    typealias SwiftType = [QueueTrack]
+
+    public static func write(_ value: [QueueTrack], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeQueueTrack.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [QueueTrack] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [QueueTrack]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeQueueTrack.read(from: &buf))
         }
         return seq
     }
@@ -6905,6 +7385,156 @@ public func installNativeHttp(transport: HttpTransport)  {try! rustCall() {
     )
 }
 }
+/**
+ * The take to play for a song: the picked one, else the one with the
+ * most stars (the newer of a tie), else the newest. `None` with no takes.
+ */
+public func preferredTake(song: SongDetail) -> Take?  {
+    return try!  FfiConverterOptionTypeTake.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_preferred_take(
+        FfiConverterTypeSongDetail_lower(song),uniffiCallStatus
+    )
+})
+}
+/**
+ * Adds songs to play next (right after the current one) or last.
+ */
+public func queueAdd(queue: PlayQueue, tracks: [QueueTrack], next: Bool) -> PlayQueue  {
+    return try!  FfiConverterTypePlayQueue_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_add(
+        FfiConverterTypePlayQueue_lower(queue),
+        FfiConverterSequenceTypeQueueTrack.lower(tracks),
+        FfiConverterBool.lower(next),uniffiCallStatus
+    )
+})
+}
+/**
+ * The queue moved on to the next song, or `None` when it has ended.
+ * `by_user` is a tap on Next: it always moves on, while a song that ends
+ * by itself plays again with repeat One.
+ */
+public func queueAdvance(queue: PlayQueue, byUser: Bool) -> PlayQueue?  {
+    return try!  FfiConverterOptionTypePlayQueue.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_advance(
+        FfiConverterTypePlayQueue_lower(queue),
+        FfiConverterBool.lower(byUser),uniffiCallStatus
+    )
+})
+}
+/**
+ * The queue moved back a song. From the first song it goes to the last
+ * with repeat All, and stays put otherwise.
+ */
+public func queueBack(queue: PlayQueue) -> PlayQueue  {
+    return try!  FfiConverterTypePlayQueue_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_back(
+        FfiConverterTypePlayQueue_lower(queue),uniffiCallStatus
+    )
+})
+}
+/**
+ * The song playing now.
+ */
+public func queueCurrent(queue: PlayQueue) -> QueueTrack?  {
+    return try!  FfiConverterOptionTypeQueueTrack.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_current(
+        FfiConverterTypePlayQueue_lower(queue),uniffiCallStatus
+    )
+})
+}
+/**
+ * Plays from `position` in the play order.
+ */
+public func queueJump(queue: PlayQueue, position: UInt32) -> PlayQueue  {
+    return try!  FfiConverterTypePlayQueue_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_jump(
+        FfiConverterTypePlayQueue_lower(queue),
+        FfiConverterUInt32.lower(position),uniffiCallStatus
+    )
+})
+}
+/**
+ * Takes the song at `position` out of the play order. The song playing
+ * now can't be removed.
+ */
+public func queueRemove(queue: PlayQueue, position: UInt32) -> PlayQueue  {
+    return try!  FfiConverterTypePlayQueue_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_remove(
+        FfiConverterTypePlayQueue_lower(queue),
+        FfiConverterUInt32.lower(position),uniffiCallStatus
+    )
+})
+}
+public func queueSetRepeat(queue: PlayQueue, `repeat`: RepeatMode) -> PlayQueue  {
+    return try!  FfiConverterTypePlayQueue_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_set_repeat(
+        FfiConverterTypePlayQueue_lower(queue),
+        FfiConverterTypeRepeatMode_lower(`repeat`),uniffiCallStatus
+    )
+})
+}
+/**
+ * Turns shuffle on or off without interrupting the song playing. On, the
+ * other songs follow in a random order from `seed`; off, every song goes
+ * back to the order it was added in.
+ */
+public func queueSetShuffle(queue: PlayQueue, on: Bool, seed: UInt64) -> PlayQueue  {
+    return try!  FfiConverterTypePlayQueue_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_set_shuffle(
+        FfiConverterTypePlayQueue_lower(queue),
+        FfiConverterBool.lower(on),
+        FfiConverterUInt64.lower(seed),uniffiCallStatus
+    )
+})
+}
+/**
+ * A queue of `tracks` that starts at `tracks[start]`. Shuffled, that song
+ * plays first and the rest follow in a random order from `seed`.
+ */
+public func queueStart(tracks: [QueueTrack], start: UInt32, shuffle: Bool, `repeat`: RepeatMode, seed: UInt64) -> PlayQueue  {
+    return try!  FfiConverterTypePlayQueue_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_start(
+        FfiConverterSequenceTypeQueueTrack.lower(tracks),
+        FfiConverterUInt32.lower(start),
+        FfiConverterBool.lower(shuffle),
+        FfiConverterTypeRepeatMode_lower(`repeat`),
+        FfiConverterUInt64.lower(seed),uniffiCallStatus
+    )
+})
+}
+/**
+ * The songs after the current one, in play order. With repeat All the
+ * list doesn't wrap: it shows what's left of this time through.
+ */
+public func queueUpcoming(queue: PlayQueue) -> [QueueEntry]  {
+    return try!  FfiConverterSequenceTypeQueueEntry.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_queue_upcoming(
+        FfiConverterTypePlayQueue_lower(queue),uniffiCallStatus
+    )
+})
+}
+/**
+ * The repeat mode after a tap on the repeat button: Off, All, One, Off.
+ */
+public func repeatAfter(`repeat`: RepeatMode) -> RepeatMode  {
+    return try!  FfiConverterTypeRepeatMode_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_repeat_after(
+        FfiConverterTypeRepeatMode_lower(`repeat`),uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -6954,6 +7584,42 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_func_install_native_http() != 47558) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_func_preferred_take() != 44002) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_add() != 65046) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_advance() != 59695) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_back() != 45720) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_current() != 50610) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_jump() != 52397) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_remove() != 25085) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_set_repeat() != 41562) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_set_shuffle() != 25783) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_start() != 25568) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_queue_upcoming() != 28564) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_repeat_after() != 38396) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_add_track() != 41719) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6988,6 +7654,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_listen_songs() != 60133) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_listen_tracks() != 53179) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_loop_frames() != 65425) {
