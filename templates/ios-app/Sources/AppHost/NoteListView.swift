@@ -56,9 +56,11 @@ struct NoteListView: View {
             .sheet(isPresented: $isShowingSettings) {
                 SettingsView(model: model)
             }
-            .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
-            .sensoryFeedback(.success, trigger: model.saveCount)
         }
+        // On the stack, not its first screen: an alert there shows behind
+        // any screen the list pushes (a note's detail).
+        .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
+        .sensoryFeedback(.success, trigger: model.saveCount)
     }
 
     @ViewBuilder private var emptyState: some View {

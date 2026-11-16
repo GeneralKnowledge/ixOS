@@ -60,9 +60,11 @@ struct TripListView: View {
             .sheet(isPresented: $isStarting) {
                 StartTripView(model: model) { path = [.recording] }
             }
-            .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
-            .sensoryFeedback(.success, trigger: model.saveCount)
         }
+        // On the stack, not its first screen: Stop and Delete are asked from
+        // pushed screens, and an alert on the root screen showed behind them.
+        .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
+        .sensoryFeedback(.success, trigger: model.saveCount)
     }
 
     @ViewBuilder private var emptyState: some View {

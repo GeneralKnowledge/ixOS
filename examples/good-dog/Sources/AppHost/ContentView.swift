@@ -1,4 +1,5 @@
 @preconcurrency import GoodDogFFI
+import ForgeAppKit
 import ForgeKit
 import ForgeUI
 import SwiftUI
@@ -68,6 +69,9 @@ struct MainTabs: View {
                         .accessibilityIdentifier("tab.dog")
                 }
         }
+        // Once, over every tab: a failure on a pushed screen (a goal's path)
+        // showed behind it when the alert sat on each tab's first screen.
+        .forgeAlert(failure: Bindable(model).actionError)
         .termSheet(model: model)
         .stageCelebration(model: model)
     }

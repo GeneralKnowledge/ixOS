@@ -76,7 +76,6 @@ struct GoalPathView: View {
         } message: {
             Text("Its stages and history are kept. You can pick it up again from My Dog.")
         }
-        .forgeAlert(failure: $model.actionError)
         .sheet(item: $openLesson) { lesson in
             LessonView(model: model, goalId: goalId, lesson: lesson)
                 .presentationDetents([.medium, .large])
@@ -304,6 +303,8 @@ struct LessonView: View {
             }
             .disabled(working)
         }
+        // A sheet shows its own alerts: the tabs' alert can't show over it.
+        .forgeAlert(failure: Bindable(model).actionError)
         .sensoryFeedback(trigger: answer?.correct) { _, correct in
             guard let correct else { return nil }
             return correct ? .success : .warning
