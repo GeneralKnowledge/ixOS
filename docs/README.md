@@ -29,4 +29,4 @@ Each area has one entry page that lists its pages in reading order ([areas.md](a
 
 ## Background
 
-[research/](research/) holds open investigations (the reinvention audit, the accessibility audit, App Intents on Linux, the app friction log). [archive/](archive/README.md) lists retired pages, each linked to its last version in git history.
+[research/](research/) holds open investigations (the reinvention audit, the accessibility audit, App Intents on Linux, the app friction log, the [everyday capabilities audit and plan](research/everyday-capabilities.md)). [archive/](archive/README.md) lists retired pages, each linked to its last version in git history.
