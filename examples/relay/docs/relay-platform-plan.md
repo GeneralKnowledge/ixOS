@@ -232,7 +232,7 @@ pub struct RelayEnvelope {
 | **Unknown** | Ask to connect; nothing without consent |
 | **Paired** | Completed pairing; only what was granted, one capability at a time |
 | **Trusted** | Lasting grants for specific capabilities |
-| **Revoked** | Nothing; no longer authorised |
+| **Revoked** | No grants and no trusted connections; like an unknown device, only one-off code transfers the person accepts |
 
 **Trust is not a permission.** A trusted device can still be refused the
 terminal. A grant names the device or service, the capability, the resource
@@ -251,7 +251,11 @@ notes from it is on by default, shown in its permissions and can be turned
 off. AI inference needs an explicit grant. Terminal and tasks are never
 implied by trust. Revoking a device overrides every grant it had, and a
 revoked device never becomes trusted again by itself, whatever code or old
-pairing it presents; only the person can trust it again.
+pairing it presents; only the person can trust it again. Revocation ends
+the trusted relationship, not the basic function: a revoked device can
+still join a one-off word-code transfer the person starts or accepts, as
+any unknown device can, and that transfer never restores trust
+([the rule](relay-m1-m2-brief.md#one-transfer-path)).
 
 Three presets cover most grants: **Always allow** (harmless, repeatable),
 **Ask first** (sensitive or disruptive) and **Never allow**. Build the model

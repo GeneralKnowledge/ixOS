@@ -44,11 +44,16 @@ pairing and transfer already do well:
    | **Ask to pair** (default) | After a code's SPAKE2 confirmation both sides know each other's endpoint id; Relay offers "Trust this device" and saves its id and name |
    | **Pair automatically** | A device you already know (paired before, including by the old QR pairing) is paired again by itself the next time a code or Bonjour connects you; new devices still ask |
 
-   A revoked device is never paired again by itself under any policy,
-   even with a valid code or an old pairing; a code can still move one
-   transfer to it if the person accepts, and only the person can trust it
-   again. The QR code carries the same word code, so scanning is just a
-   faster way to type it.
+   **The revocation rule** (one rule for code and tests). Revoking ends
+   the trusted relationship: the device loses every grant, its trusted
+   connections (`relay/device/1`: messages, files, AI asks) are refused,
+   and no policy, code or old pairing ever makes it trusted again by
+   itself; only the person can, by trusting it afresh. Revoking does not
+   block the basic function: like any unknown device, it can still take
+   part in a one-off word-code transfer that the person starts or accepts
+   on this side, and that transfer never offers or restores trust for it.
+   The QR code carries the same word code, so scanning is just a faster
+   way to type it.
 3. **Paired traffic moves onto iroh.** Notes, files and today's AI asks
    (`serve-ai` / `ask`, moved as they are; AI as a capability is M6)
    between trusted devices go over `relay/device/1` (CBOR messages reused from
@@ -101,8 +106,10 @@ batched, built before the phone is needed). No test-only PRs.
 - The device key moves into the Keychain on iPhone, unchanged (fixes
   A17); computers keep the 0600 file.
 - **Accepted when** a trusted device survives relaunches on both sides and
-  sends without a code; a revoked one is refused and isn't re-paired by a
-  code or the automatic policy.
+  sends without a code. A revoked one is refused on every trusted
+  connection, and neither a code nor the automatic policy re-pairs it; a
+  one-off code transfer the person accepts still works and leaves it
+  revoked (tests cover all three).
 
 ## Messages (M3)
 
@@ -183,7 +190,7 @@ batched, built before the phone is needed). No test-only PRs.
   | Receive files and notes from it | On, shown in its permissions, can be turned off |
   | AI requests (today's `ask`) | Off until granted |
   | Terminal, tasks, folders | Never implied; M6 grants only |
-  | After revocation | Nothing, whatever was granted before |
+  | After revocation | No grants and no trusted connections; one-off code transfers only, as for an unknown device ([the rule](#one-transfer-path)) |
 
   The full grant model comes with M6. The Lean model of trust and
   revocation is written with it, as the plan's verification table says.
@@ -239,5 +246,6 @@ A key says who a device is, never where it is.
 5. AI comes in three stages: today's requests moved to iroh (PR 3), AI as
    a capability (M6), distributed AI (M8).
 6. Pairing modes are policies, not levels; a revoked device is never
-   re-paired by itself; the Tailscale test (PR 6) is separate from the
+   re-paired by itself, but one-off code transfers the person accepts still
+   work (the revocation rule); the Tailscale test (PR 6) is separate from the
    final M2 test (PR 7); the Hetzner relay stays optional.
