@@ -176,7 +176,7 @@ struct ProjectView: View {
                         .font(.footnote)
                         .accessibilityIdentifier("project.stopMixdown")
                 } else if engine.isCountingIn {
-                    Text("Get ready: one bar…").foregroundStyle(.orange)
+                    Text("Get ready: one bar…").forgeForeground(.warning)
                 } else if recording != nil {
                     Text("Recording one pass. Stop keeps it.").foregroundStyle(.red)
                 } else if let summary = detail?.summary, let detail {

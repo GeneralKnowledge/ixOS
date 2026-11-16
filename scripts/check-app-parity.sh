@@ -364,6 +364,30 @@ def rule_errors_shown(app):
     return True, ""
 
 
+# Raw orange or yellow text fails contrast on a light background (the
+# friction audit, 2026-11-16); ForgeUI's tones pass in light and dark:
+# `.forgeForeground(.warning)`. Fills and tints may stay any colour.
+RAW_TONE_TEXT = re.compile(r"\.foregroundStyle\(\s*(?:Color)?\.(orange|yellow)\s*\)")
+
+
+def raw_tone_problems(text):
+    return [
+        i + 1
+        for i, line in enumerate(text.splitlines())
+        if RAW_TONE_TEXT.search(line.split("//", 1)[0])
+    ]
+
+
+def rule_toned_text(app):
+    bad = []
+    for path in swift_sources(app):
+        for line in raw_tone_problems(read(path)):
+            bad.append(f"{path.name}:{line}")
+    if bad:
+        return False, "orange or yellow text (low contrast); use .forgeForeground(.warning): " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -372,6 +396,7 @@ RULES = [
     ("alerts-on-top", "App-wide alerts on the navigation stack or tabs, never on a first screen that pushes others", rule_alerts_on_top),
     ("alerts-over-sheets", "A model alert is held back while a sheet is up; the sheet shows alerts itself", rule_alerts_over_sheets),
     ("picked-files", "Picked files copied with ForgeAppKit's `ForgePickedFile` (off the main thread), never by hand", rule_picked_files),
+    ("toned-text", "Warning text in ForgeUI's tone, never raw orange or yellow", rule_toned_text),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
     ("location", "Location through the `location` service", rule_location),
@@ -456,6 +481,11 @@ for template in sorted((root / "templates").glob("ios-*")):
         for line in picked_copy_problems(text):
             problems.append(
                 f"{path.relative_to(root)}:{line}: picked-files: use ForgePickedFile.copy(of:)"
+            )
+        for line in raw_tone_problems(text):
+            problems.append(
+                f"{path.relative_to(root)}:{line}: toned-text: orange or yellow text; "
+                "use .forgeForeground(.warning)"
             )
 
 
