@@ -3,7 +3,7 @@
 The flagship ixOS acceptance app: a SwiftUI messaging app on a Rust core,
 growing one milestone at a time into a real iPhone chat app. Every feature
 works for real and tests a real ixOS capability. Plan and status:
-[docs/chat-demo.md](../../docs/chat-demo.md).
+[examples/chat/docs/chat-demo.md](docs/chat-demo.md).
 
 ```
 SwiftUI (Sources/AppHost: ChatModel, screens)        navigation, UI, notifications

@@ -1,5 +1,5 @@
 //! chat-core's real HTTP + SSE client against the real chat server, in
-//! process: the demo interaction from docs/chat-demo.md over sockets.
+//! process: the demo interaction from examples/chat/docs/chat-demo.md over sockets.
 
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver};

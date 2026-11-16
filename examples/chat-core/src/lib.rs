@@ -4,7 +4,7 @@
 //! high-frequency event stream that outlives any single command, explicit
 //! subscribe/unsubscribe with provable cancellation, multi-entity storage
 //! with a `since` cursor, and typed network/protocol errors. See
-//! `docs/chat-demo.md`.
+//! `examples/chat/docs/chat-demo.md`.
 //!
 //! This crate has no FFI. It is plain, blocking Rust, testable on Linux:
 //!

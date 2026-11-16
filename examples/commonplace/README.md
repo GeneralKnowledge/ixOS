@@ -2,7 +2,7 @@
 
 A native, local-first reading application built with ixOS: subscribe to RSS, Atom and JSON feeds, read their articles, keep track of what you've read and bookmark what you want to keep. Everything stays on the device.
 
-It is also the first **replication benchmark** for ixOS: its behaviour is benchmarked against NetNewsWire, an open-source iOS feed reader, to find what ixOS is missing for a real app. Commonplace is written from scratch, with its own name and look; it uses none of NetNewsWire's code or assets. The benchmark's brief, specification, gap log and pattern inventory are in [docs/benchmarks/netnewswire/](../../docs/benchmarks/netnewswire/README.md).
+It is also the first **replication benchmark** for ixOS: its behaviour is benchmarked against NetNewsWire, an open-source iOS feed reader, to find what ixOS is missing for a real app. Commonplace is written from scratch, with its own name and look; it uses none of NetNewsWire's code or assets. The benchmark's brief, specification, gap log and pattern inventory are in [examples/commonplace/docs/benchmark/](docs/benchmark/README.md).
 
 **Slice 1:** subscriptions, refresh with HTTP caching, parsing (RSS, Atom, JSON Feed), the timelines (All Unread, Bookmarks, All Articles, each feed), read and unread, bookmarks, SQLite on the device, and navigation.
 

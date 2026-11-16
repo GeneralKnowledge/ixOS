@@ -7,7 +7,7 @@ Linux-first, Rust-first framework for building native mobile apps with **Rust** 
 
 > **Platform focus: iOS.** Android is **work in progress** and paused while the project concentrates on iOS. The Android code, examples and template stay in the repository and keep building in CI, but they get no new features, Android has not been validated on a physical phone, and new capabilities land on iOS only. See [the roadmap](docs/roadmap.md#android--work-in-progress).
 
-This repository (`ixOS` on GitHub) ships **Checklist**, the smallest app on the ixOS runtime, a networked **Weather** example (iOS), a **Chat** demo (iOS, with a frozen Android twin; live event stream, room subscriptions, offline retry; see [docs/chat-demo.md](docs/chat-demo.md)), **Pocket Library**, a multi-screen reading tracker made with `forge init` that owns its Rust crate ([examples/pocket-library](examples/pocket-library/README.md)), a developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
+This repository (`ixOS` on GitHub) ships **Checklist**, the smallest app on the ixOS runtime, a networked **Weather** example (iOS), a **Chat** demo (iOS, with a frozen Android twin; live event stream, room subscriptions, offline retry; see [examples/chat/docs/chat-demo.md](examples/chat/docs/chat-demo.md)), **Pocket Library**, a multi-screen reading tracker made with `forge init` that owns its Rust crate ([examples/pocket-library](examples/pocket-library/README.md)), a developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
 
 The Rust-to-Swift boundary is asynchronous: each app's Rust core runs on the ixOS runtime (`forge-app`), whose commands are `async` calls that save before they return, whose queries never wait, and whose events tell the SwiftUI host (ForgeKit's `ForgeHost`) when to re-read, with explicit cancellation and typed errors. See [docs/architecture.md](docs/architecture.md) and [docs/ffi-policy.md](docs/ffi-policy.md).
 
@@ -16,7 +16,7 @@ The Rust-to-Swift boundary is asynchronous: each app's Rust core runs on the ixO
   <img src="docs/images/chat-ios-room.png" width="270" alt="Chat example on an iPhone: the General room, with messages sent from the phone and posted from curl">
 </p>
 
-The [Chat example](docs/chat-demo.md) on an iPhone, built and installed from Linux with xtool, talking to the local chat server (the grey bubbles were posted from another client).
+The [Chat example](examples/chat/docs/chat-demo.md) on an iPhone, built and installed from Linux with xtool, talking to the local chat server (the grey bubbles were posted from another client).
 
 ## Why Forge?
 
@@ -70,7 +70,7 @@ crates/forge-services  # Native services for apps: Keychain, files, notification
 crates/forge-cli       # `forge` CLI
 examples/checklist        # The first app on the runtime and ForgeKit
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
-examples/chat             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see docs/chat-demo.md)
+examples/chat             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see examples/chat/docs/chat-demo.md)
 examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
 examples/pocket-library   # Reading tracker from forge init: own Rust crate, catalogue search, EPUB import
 templates/app-rust        # Starter Rust crate every new iOS app gets as rust/, on forge-app (see docs/app-crate.md)

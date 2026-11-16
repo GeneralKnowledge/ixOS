@@ -15,14 +15,14 @@ The Chat example is the third demo, after Counter (FFI basics) and Weather (real
 | Milestone | What | State |
 |---|---|---|
 | M0 | Chat on the current framework: its own Rust crate, `@Observable` SwiftUI, lifecycle, a real server with accounts and storage on disk, the account in the Keychain, `chat-cli` | Done (PR #40); passed on an iPhone (PR #42) |
-| M1 | Native messaging UI: Chats and Settings tabs, previews, server read cursors (unread and "Read"), mark read/unread and mute, new conversations, grouped bubbles with time separators, a pinned composer, haptics | Done (PR #46); device run E1–E13 passed on an iPhone 15 Pro Max, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md) |
-| M2 | Edits, deletes, replies, reactions; drafts; a durable outbox; search; storage on the reusable forge-storage database (SQLite spike first) | Built (PR #51), CI green; the iPhone run F1–F14 was skipped at Reuben's request, not run, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m2-device-run) |
-| M3 | Photos and documents: the photo picker and the Files picker, photos shrunk on the phone, files uploaded through the outbox and stored by content hash, downloads checked, thumbnails, Quick Look and sharing | Built (PR #56), CI green; iPhone run pending, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m3-photos-and-documents) |
-| M4 | Voice messages: record from the composer, send as an audio attachment, play inline with a waveform; recording and playback are Forge's optional audio module, not Chat code | Built; iPhone run pending, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m4-voice-messages) |
+| M1 | Native messaging UI: Chats and Settings tabs, previews, server read cursors (unread and "Read"), mark read/unread and mute, new conversations, grouped bubbles with time separators, a pinned composer, haptics | Done (PR #46); device run E1–E13 passed on an iPhone 15 Pro Max, see [examples/chat/ACCEPTANCE.md](../ACCEPTANCE.md) |
+| M2 | Edits, deletes, replies, reactions; drafts; a durable outbox; search; storage on the reusable forge-storage database (SQLite spike first) | Built (PR #51), CI green; the iPhone run F1–F14 was skipped at Reuben's request, not run, see [examples/chat/ACCEPTANCE.md](../ACCEPTANCE.md#m2-device-run) |
+| M3 | Photos and documents: the photo picker and the Files picker, photos shrunk on the phone, files uploaded through the outbox and stored by content hash, downloads checked, thumbnails, Quick Look and sharing | Built (PR #56), CI green; iPhone run pending, see [examples/chat/ACCEPTANCE.md](../ACCEPTANCE.md#m3-photos-and-documents) |
+| M4 | Voice messages: record from the composer, send as an audio attachment, play inline with a waveform; recording and playback are Forge's optional audio module, not Chat code | Built; iPhone run pending, see [examples/chat/ACCEPTANCE.md](../ACCEPTANCE.md#m4-voice-messages) |
 | M5 | Notifications decided and posted by the Rust core through forge-services (Reply and Mark as Read, deep links to the message), a background refresh that catches up every room and announces what arrived, an open room that counts as unread while the app is away, document thumbnails, and a hosted server on the tailnet | Built (2026-11-15), Rust tests in CI; Swift compiled on the laptop before merging; iPhone run is M6 |
-| M6 | Physical iPhone acceptance of M2 to M5 in one Device Lab sitting, and the framework gap report | Runbook ready, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m6-one-sitting-for-m2-to-m5) |
+| M6 | Physical iPhone acceptance of M2 to M5 in one Device Lab sitting, and the framework gap report | Runbook ready, see [examples/chat/ACCEPTANCE.md](../ACCEPTANCE.md#m6-one-sitting-for-m2-to-m5) |
 
-Still out of scope: remote push (APNs). Without it, new-message alerts appear while the app runs and when iOS grants a background refresh (at its discretion, often late, never after a force-quit), so the app never promises timely alerts while it is suspended or closed. Also out: end-to-end encryption. The server runs on your own computer, or on a machine of yours behind Tailscale ([examples/chat-server/deploy](../examples/chat-server/deploy/README.md)); it is not a public service.
+Still out of scope: remote push (APNs). Without it, new-message alerts appear while the app runs and when iOS grants a background refresh (at its discretion, often late, never after a force-quit), so the app never promises timely alerts while it is suspended or closed. Also out: end-to-end encryption. The server runs on your own computer, or on a machine of yours behind Tailscale ([examples/chat-server/deploy](../../chat-server/deploy/README.md)); it is not a public service.
 
 The Android client (`examples/chat-android`, frozen at its phase-5 features) was removed on 2026-11-15 to keep one Android example, Pocket Library; its last version is [in git history](https://github.com/GeneralKnowledge/ixOS/tree/7636ef9/examples/chat-android).
 
@@ -30,10 +30,10 @@ The Android client (`examples/chat-android`, frozen at its phase-5 features) was
 
 | Phase | What | State |
 |---|---|---|
-| 1 | Rust core, no FFI: [`examples/chat-core`](../examples/chat-core) | **Done** (PR #18). `cargo test -p chat-core` |
+| 1 | Rust core, no FFI: [`examples/chat-core`](../../chat-core) | **Done** (PR #18). `cargo test -p chat-core` |
 | 2 | FFI boundary (`ForgeChatApp`, later in `examples/chat-android/rust`, removed 2026-11-15), Swift + Kotlin bindings | **Done.** The iOS app's crate (`ChatCore`) keeps the same contract |
 | 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat`; since M0 `examples/chat-server` | **Done.** End-to-end test: `cargo test -p chat-server` |
-| 4 | SwiftUI host, [`examples/chat`](../examples/chat/README.md) | **Done.** `scripts/test-swift-host.sh examples/chat` (macOS; runs against the mock server) |
+| 4 | SwiftUI host, [`examples/chat`](../README.md) | **Done.** `scripts/test-swift-host.sh examples/chat` (macOS; runs against the mock server) |
 | 5 | Compose host, `examples/chat-android` (+ the Android TLS decision) | **Done**, then removed 2026-11-15 ([last version](https://github.com/GeneralKnowledge/ixOS/tree/7636ef9/examples/chat-android)) |
 | 6 | CI matrix, README (screenshots from an iPhone, built on Linux), roadmap | **Done** |
 
@@ -172,11 +172,11 @@ The SwiftUI host picks photos with `PhotosPicker` (no photo-library permission: 
 
 A voice message is an attachment like any other (M3): an AAC `.m4a` file sent as `audio/mp4`, named "Voice message.m4a", through the outbox, stored by content hash, checked on download. The server and chat-core need nothing new; `chat-cli read` shows it as `[voice: …]`. The phone fetches a voice message when its bubble appears (they are small, about 240 KB a minute) and measures and draws it locally.
 
-Recording and playback are not Chat code. They are Forge's optional `audio` native service (`crates/forge-services/swift/optional/ForgeServices+Audio.swift`, see [native-services.md](native-services.md#audio-audio)), which Chat selects with `native_services!(audio)` (and `microphone` in forge.toml): `ForgeAudioRecorder` (the microphone permission, the audio session, a level meter, a 5-minute limit), `ForgeAudioPlayer` (one file at a time, pauses on interruptions and unplugged headphones) and `ForgeAudio.waveform`. Rust asks for the microphone as `NativePermission::Microphone` (services interface v3). A recording that ends by itself (the limit, or a phone call) is sent rather than lost.
+Recording and playback are not Chat code. They are Forge's optional `audio` native service (`crates/forge-services/swift/optional/ForgeServices+Audio.swift`, see [native-services.md](../../../docs/native-services.md#audio-audio)), which Chat selects with `native_services!(audio)` (and `microphone` in forge.toml): `ForgeAudioRecorder` (the microphone permission, the audio session, a level meter, a 5-minute limit), `ForgeAudioPlayer` (one file at a time, pauses on interruptions and unplugged headphones) and `ForgeAudio.waveform`. Rust asks for the microphone as `NativePermission::Microphone` (services interface v3). A recording that ends by itself (the limit, or a phone call) is sent rather than lost.
 
 ### The on-device assistant (L1)
 
-Designed in [local-ai.md](local-ai.md). `ChatCore::assistant()` returns an `AssistantCore` that lives beside the account session, not inside it: it opens `assistant.db` next to the accounts at launch and works signed out. Rust owns the conversations, the characters and their prompt harness, history trimming and when an answer stops; a Swift engine (`FoundationModelsEngine`) implements the `LocalModelEngine` foreign trait and pushes text into Rust's `TokenSink`. `send` returns an `AssistantGeneration` at once; the screen reads it with `next()` (text at most about 20 times a second, then `Finished`) and stops it with `cancel()`, which makes the sink's `push` return false so the engine ends its stream. Assistant traffic never touches the `ChatEvent` queue.
+Designed in [local-ai.md](../../../docs/local-ai.md). `ChatCore::assistant()` returns an `AssistantCore` that lives beside the account session, not inside it: it opens `assistant.db` next to the accounts at launch and works signed out. Rust owns the conversations, the characters and their prompt harness, history trimming and when an answer stops; a Swift engine (`FoundationModelsEngine`) implements the `LocalModelEngine` foreign trait and pushes text into Rust's `TokenSink`. `send` returns an `AssistantGeneration` at once; the screen reads it with `next()` (text at most about 20 times a second, then `Finished`) and stops it with `cancel()`, which makes the sink's `push` return false so the engine ends its stream. Assistant traffic never touches the `ChatEvent` queue.
 
 ### Store
 
@@ -293,12 +293,12 @@ The plan was written before the Weather example landed. Checked against the repo
 | `Cancelled` "if the user navigates away mid-send" | Navigating away never cancels a send; `Cancelled` is what a send reports when the app shuts down while it is in flight | Step 2 of the demo says leaving cancels nothing; both cannot hold. Not cancelling is the better UX (the message is already on the wire). |
 | `StreamDisconnected { conversation_id, reason }` | Added `will_retry` | The UI needs to tell "reconnecting" from "gone". |
 | `ChatError` as listed | Added `InvalidInput` and `ShutDown` | Same grouping as `WeatherError` / `ForgeAppError` (input, lifecycle). |
-| Phase 2: `chat-ffi` crate or a module | A module, `forge-ffi/src/chat` (later moved to `examples/chat-android/rust/src/chat`, removed 2026-11-15) | At the time one `forge_ffi` library exported every example's API. Each app now owns its crate (see [app-crate.md](app-crate.md)). |
+| Phase 2: `chat-ffi` crate or a module | A module, `forge-ffi/src/chat` (later moved to `examples/chat-android/rust/src/chat`, removed 2026-11-15) | At the time one `forge_ffi` library exported every example's API. Each app now owns its crate (see [app-crate.md](../../../docs/app-crate.md)). |
 | `examples/chat-core` | As planned | It is a workspace member like the crates under `crates/`. |
 
 ## The FFI surface (Phase 2)
 
-This section describes `ForgeChatApp`, the Phase 2 surface, which lived in `examples/chat-android/rust/src/chat` until that example was removed on 2026-11-15. The iOS app's own crate (`examples/chat/rust`, `ChatCore`) grew from it and keeps the same stream contract. The types mirror the core with a `Chat` prefix (`ChatConversation`, `ChatMessage`, `ChatMessageStatus`), a leftover from when every example shared one generated module. The contract is in [ffi-policy.md](ffi-policy.md#long-lived-event-streams-chat).
+This section describes `ForgeChatApp`, the Phase 2 surface, which lived in `examples/chat-android/rust/src/chat` until that example was removed on 2026-11-15. The iOS app's own crate (`examples/chat/rust`, `ChatCore`) grew from it and keeps the same stream contract. The types mirror the core with a `Chat` prefix (`ChatConversation`, `ChatMessage`, `ChatMessageStatus`), a leftover from when every example shared one generated module. The contract is in [ffi-policy.md](../../../docs/ffi-policy.md#long-lived-event-streams-chat).
 
 | Rust export | Notes |
 |---|---|
@@ -318,7 +318,7 @@ This section describes `ForgeChatApp`, the Phase 2 surface, which lived in `exam
 Two separate problems, and the demo as planned only hits one of them:
 
 1. **Cleartext HTTP: not a problem for Rust.** Android 9+ refuses cleartext by default, but that policy is enforced by the Java HTTP stacks (`HttpURLConnection`, OkHttp); the platform does not apply it to plain sockets. The Rust client opens its own sockets, so `http://10.0.2.2:8787` (the emulator's view of the host) works with only the `INTERNET` permission, and the example has no `network_security_config`.
-2. **The TLS verifier: wired (2026-11).** `UreqClient` uses `rustls-platform-verifier`, which on Android needs a JNI init with the app `Context` and its companion Kotlin library. Phase 5 refused `https://` on Android with `UnsupportedOnHost` until that existed. Now `MainActivity` calls `ForgeAndroid.init(applicationContext)` (shipped with the generated bindings), the app depends on `org.rustls:rustls-platform-verifier`, and `https://` servers work with Android's trust store. A rejected certificate is `ChatError::Certificate`; an `https` request before the init is `UnsupportedOnHost` with a message that says so. See [android-setup.md](android-setup.md#https-certificate-verification).
+2. **The TLS verifier: wired (2026-11).** `UreqClient` uses `rustls-platform-verifier`, which on Android needs a JNI init with the app `Context` and its companion Kotlin library. Phase 5 refused `https://` on Android with `UnsupportedOnHost` until that existed. Now `MainActivity` calls `ForgeAndroid.init(applicationContext)` (shipped with the generated bindings), the app depends on `org.rustls:rustls-platform-verifier`, and `https://` servers work with Android's trust store. A rejected certificate is `ChatError::Certificate`; an `https` request before the init is `UnsupportedOnHost` with a message that says so. See [android-setup.md](../../../docs/android-setup.md#https-certificate-verification).
 
 ## Risks
 

@@ -739,7 +739,7 @@ fn high_frequency_stream_delivers_everything_once_in_order() {
     h.client.shutdown();
 }
 
-/// The demo script from docs/chat-demo.md, against the in-memory server.
+/// The demo script from examples/chat/docs/chat-demo.md, against the in-memory server.
 #[test]
 fn killer_demo_interaction() {
     let h = harness();

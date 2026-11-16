@@ -66,7 +66,7 @@ Expected from the first picks: full-text search (Commonplace, then Pocket Librar
   - The read connection that skips the revision, used by Commonplace and FieldKit ([friction log](research/app-friction-log.md) A5).
   - Small leftovers: init naming, template leftovers (A21), id types (A3) and distance maths in the services crate.
   - The phase hook for apps (A31) waits for Relay to need it too.
-  - Not Relay's encrypted channel (A16): Relay's approved plan replaces that wire with iroh ([relay-transfer-plan.md](relay-transfer-plan.md)), which leaves the channel with one user, the device tools.
+  - Not Relay's encrypted channel (A16): Relay's approved plan replaces that wire with iroh ([relay-transfer-plan.md](../examples/relay/docs/relay-transfer-plan.md)), which leaves the channel with one user, the device tools.
 - **Wave 5: give each one-use piece its second app,** as a real feature with its own phone row, one app per PR, in this order:
   1. Full-text search, in three steps:
      1. Commonplace's search across collected articles (it already has an FTS5 search) is validated on an iPhone.
@@ -223,7 +223,7 @@ Linux iOS builds depend on [xtool](https://github.com/xtool-org/xtool) and the D
 
 ### Networking — In progress
 
-`forge-net` has a transport trait, test doubles, and a real blocking HTTPS client (`UreqClient`: ureq + rustls with the platform certificate verifier) behind its `ureq` feature. The iOS Weather example ([examples/weather](../examples/weather/README.md)) uses it end to end: Open-Meteo requests from Rust, typed errors, cancellation, and an offline cache. The Chat demo ([docs/chat-demo.md](chat-demo.md)) uses it on iOS (and on its frozen Android twin): a long-lived Server-Sent Events stream per room, reconnects with catch-up, and idempotent retries, against a local mock server.
+`forge-net` has a transport trait, test doubles, and a real blocking HTTPS client (`UreqClient`: ureq + rustls with the platform certificate verifier) behind its `ureq` feature. The iOS Weather example ([examples/weather](../examples/weather/README.md)) uses it end to end: Open-Meteo requests from Rust, typed errors, cancellation, and an offline cache. The Chat demo ([examples/chat/docs/chat-demo.md](../examples/chat/docs/chat-demo.md)) uses it on iOS (and on its frozen Android twin): a long-lived Server-Sent Events stream per room, reconnects with catch-up, and idempotent retries, against a local mock server.
 
 HTTPS works on Android too (work in progress): hosts call `ForgeAndroid.init(applicationContext)` once, and certificates are checked against Android's trust store, with typed `Certificate` errors ([android-setup.md](android-setup.md#https-certificate-verification)). It is covered by Rust tests against local TLS servers and the JVM test of the JNI entry point; a run on a physical Android phone is still to be recorded.
 

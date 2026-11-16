@@ -21,7 +21,7 @@
 //! Network commands are `async` and run on worker threads
 //! ([`forge_runtime::background`]). They are not cancelled by the host: a
 //! send that has started finishes, and the event stream reports how it
-//! ended (see `docs/chat-demo.md`).
+//! ended (see `examples/chat/docs/chat-demo.md`).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};

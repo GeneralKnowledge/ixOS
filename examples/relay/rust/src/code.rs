@@ -1,5 +1,5 @@
 //! Receiving a file with a word code, the transfer Relay is moving to
-//! (docs/relay-platform-plan.md, M1). The sender is the M0 spike
+//! (examples/relay/docs/relay-platform-plan.md, M1). The sender is the M0 spike
 //! (`examples/relay/spike`, `relay-spike send <file>`) on a computer; this is
 //! the same receiver, so the iPhone can prove the stack works there:
 //!

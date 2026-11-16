@@ -55,7 +55,7 @@ Read these in order the first time.
 | [forge-device.md](forge-device.md) | Your iPhone from Linux: details, live logs, crash reports |
 | [over-the-air.md](over-the-air.md) | Parked: why installs from the Install page (`forge publish ios`) don't work with a free Apple team; install by cable instead |
 | [forge-ui-testing.md](forge-ui-testing.md) | UI tests that tap and type on a real iPhone (`forge ui`) |
-| [benchmarks/](benchmarks/README.md) | Replication benchmarks: rebuilding a real app (NetNewsWire, as Commonplace) to find what ixOS is missing; gap logs and pattern inventories |
+| [benchmarks/](../examples/commonplace/docs/benchmark/benchmarks.md) | Replication benchmarks: rebuilding a real app (NetNewsWire, as Commonplace) to find what ixOS is missing; gap logs and pattern inventories |
 | [visual-regression.md](visual-regression.md) | Noticing when a change made a screen look worse |
 | [evidence.md](evidence.md) | Recording what a run proved, so a feature is shown to work rather than said to |
 
@@ -68,6 +68,10 @@ Nothing on the pages above needs an agent. Agents use the same commands, and `fo
 | [AGENTS.md](../AGENTS.md) | The rules an agent follows in this repository |
 | [json-output.md](json-output.md) | `--json`: the one result object every command prints, and its exit codes |
 | [forge-lab](https://github.com/GeneralKnowledge/forge-lab) | Side project: the MCP server, the explorer, run records and the live dev connection, built on ixOS |
+
+## Apps
+
+The products built with Forge, with each app's design plans and acceptance records: [examples/README.md](../examples/README.md).
 
 ## Status and plans
 
@@ -83,8 +87,8 @@ Nothing on the pages above needs an agent. Agents use the same commands, and `fo
 
 These pages are for people working on Forge itself. They are plans, reviews and records of past work, and their status notes describe the day they were written. Check [status.md](status.md) for where things stand now.
 
-- Demo designs: [chat-demo.md](chat-demo.md), [good-dog-demo.md](good-dog-demo.md), [local-ai.md](local-ai.md), [forge-ai-plan.md](forge-ai-plan.md) (proposal: shared AI module and AI over Relay), [relay-platform-plan.md](relay-platform-plan.md) (Relay as a platform connecting devices, people and services; milestones M0 to M7) and [relay-transfer-plan.md](relay-transfer-plan.md) (its transfer, messages and rooms detail)
-- Milestone plans and reports: [forge-m6.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/forge-m6.md), [m65-run-report.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/m65-run-report.md), [good-dog-pain-points.md](good-dog-pain-points.md)
+- Demo designs: [chat-demo.md](../examples/chat/docs/chat-demo.md), [good-dog-demo.md](../examples/good-dog/docs/good-dog-demo.md), [local-ai.md](local-ai.md), [forge-ai-plan.md](forge-ai-plan.md) (proposal: shared AI module and AI over Relay), [relay-platform-plan.md](../examples/relay/docs/relay-platform-plan.md) (Relay as a platform connecting devices, people and services; milestones M0 to M7) and [relay-transfer-plan.md](../examples/relay/docs/relay-transfer-plan.md) (its transfer, messages and rooms detail)
+- Milestone plans and reports: [forge-m6.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/forge-m6.md), [m65-run-report.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/m65-run-report.md), [good-dog-pain-points.md](../examples/good-dog/docs/good-dog-pain-points.md)
 - Reviews and audits: [app-model-review.md](app-model-review.md) (what an ixOS application is, and the proposed canonical model), [foundation-review.md](foundation-review.md), [research/reinvention-audit.md](research/reinvention-audit.md) (where ixOS reinvents existing tools), [research/](research/)
 - Phone runbooks and session records: [native-services-device-check.md](native-services-device-check.md), [local-ai-check.md](local-ai-check.md), [toolchain-validation.md](toolchain-validation.md)
 - Decisions and history: [adr/](adr/), [archive/](archive/README.md) (an index of retired pages, each linked to its last version in git history), [release-process.md](release-process.md) (releasing Forge itself, not your app)

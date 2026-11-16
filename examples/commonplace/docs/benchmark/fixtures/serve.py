@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Serves the benchmark's fixture feeds to the iPhone, from the laptop.
 
-    python3 docs/benchmarks/netnewswire/fixtures/serve.py [--port 8765]
+    python3 examples/commonplace/docs/benchmark/fixtures/serve.py [--port 8765]
 
 Both apps subscribe to the same addresses, so they show the same content.
 Standard library only. Besides the files in this folder:

@@ -2818,7 +2818,7 @@ mod example_files {
         }
     }
 
-    /// Commonplace's flows (docs/benchmarks/netnewswire/spec.md): the
+    /// Commonplace's flows (examples/commonplace/docs/benchmark/spec.md): the
     /// bookmark flow ends on a relaunch that keeps the throwaway library.
     #[test]
     fn commonplace_tests_parse() {

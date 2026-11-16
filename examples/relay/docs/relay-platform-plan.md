@@ -4,7 +4,7 @@ Status: Reuben's product direction, 2026-11-14. **This is the canonical
 Relay roadmap;** the documents below are its supporting specifications.
 It builds on [relay-transfer-plan.md](relay-transfer-plan.md) (transfer,
 messages, rooms, security, iPhone limits, decisions) and
-[research/relay-rooms-protocols.md](research/relay-rooms-protocols.md)
+[relay-rooms-protocols.md](relay-rooms-protocols.md)
 (why rooms speak Nostr), which stay as they are; where this plan renumbers
 their stages, the [milestones](#milestones) here win.
 
@@ -23,8 +23,8 @@ The name stays Relay.
 
 | State | What |
 |---|---|
-| **Implemented** (on main) | Relay R1/R2 ([examples/relay](../examples/relay/README.md)): QR pairing, TCP + Noise from `forge-devproto`, notes and files between paired devices on one network, Bonjour on iPhone, the `relay` command. AI asks over Relay (protocol 2, `relay serve-ai` / `relay ask`). Chat with its `ChatRepo` backends, SQLite store, outbox and SwiftUI conversation screens. Relay's Swift compiles with xtool and runs in Device Lab; receiving with a word code passed on an iPhone on 2026-11-15 |
-| **Validated, experimental** (Linux spike, [results](research/relay-stage0-spike.md)) | iroh endpoints with relays off; 1 GB offline transfer with iroh-blobs; mDNS discovery by code number; SPAKE2 word codes with key confirmation over both endpoint ids; one wrong guess ends a code; blobs only for the endpoint that proved the code; size about +7 MB. M0 (#199): three EFF short words, no number collisions, busy and wrong-code handling, disk store and resume, the code session as a state machine checked by Lean, and transfers both ways between two Linux machines over Tailscale |
+| **Implemented** (on main) | Relay R1/R2 ([examples/relay](../README.md)): QR pairing, TCP + Noise from `forge-devproto`, notes and files between paired devices on one network, Bonjour on iPhone, the `relay` command. AI asks over Relay (protocol 2, `relay serve-ai` / `relay ask`). Chat with its `ChatRepo` backends, SQLite store, outbox and SwiftUI conversation screens. Relay's Swift compiles with xtool and runs in Device Lab; receiving with a word code passed on an iPhone on 2026-11-15 |
+| **Validated, experimental** (Linux spike, [results](relay-stage0-spike.md)) | iroh endpoints with relays off; 1 GB offline transfer with iroh-blobs; mDNS discovery by code number; SPAKE2 word codes with key confirmation over both endpoint ids; one wrong guess ends a code; blobs only for the endpoint that proved the code; size about +7 MB. M0 (#199): three EFF short words, no number collisions, busy and wrong-code handling, disk store and resume, the code session as a state machine checked by Lean, and transfers both ways between two Linux machines over Tailscale |
 | **Approved, not built** | iroh for every connection; iroh-blobs for files; word codes `7-orbit-velvet` with a QR code; trusted devices replacing QR pairing; messages through a `PeerRepo` backend for `chat-core`; temporary rooms that collapse with the host; Relaxed, Standard and Strict room levels; rooms on Nostr (Marmot, NIP-29, NIP-11); our rendezvous and iroh relay on Hetzner; a browser receiver later; stays in ixOS |
 | **Proposed** (this plan) | The four pillars and three screens; the connection resolver and three network modes; person and device identities; capability-based permissions; capability services and their declarations; device capabilities (clipboard, files, terminal, tasks, AI); the extension model; the eventual crate layout |
 | **Deferred** | Our own federation protocol, our own group encryption, a full sync engine, unrestricted remote access, an extension marketplace, agents over Relay (below), any dependency on our servers for local use, a repository restructure, a separate repository, a new name |
@@ -302,7 +302,7 @@ estimates are for planning, not promises.
 | Milestone | Contents | Was | Estimate |
 |---|---|---|---|
 | **M0 Foundation validation** (Linux to Linux) | Done on one Linux machine: iroh, SPAKE2 codes of three EFF words, no number collisions, busy and wrong-code handling with new codes, disk store, a 4 GB transfer resumed after the receiver was killed, 24 MB peak memory. Left: two real machines on a real network (the laptop, the iMac or Hetzner over Tailscale) and the Lean model of the code session | Stage 0 | 1 to 2 days |
-| **M1 Relay Transfer** | Starts with the iPhone feasibility check moved from M0. Passed on 2026-11-15: the iOS build, Bonjour to the Rust endpoint, Linux to iPhone (200 MB at 15.9 MB/s, 1 GB at 9.5 MB/s over Wi-Fi) and iPhone to Linux with a word code ([results](research/relay-stage0-spike.md#iphone-start-of-m1-2026-11-15)). Left: a memory reading from the phone. Then production core, iPhone and CLI send and receive, folders and several files, resumable disk store, trusted devices, history, cancellation and errors | Stage 1 (files) | 1 to 2 weeks |
+| **M1 Relay Transfer** | Starts with the iPhone feasibility check moved from M0. Passed on 2026-11-15: the iOS build, Bonjour to the Rust endpoint, Linux to iPhone (200 MB at 15.9 MB/s, 1 GB at 9.5 MB/s over Wi-Fi) and iPhone to Linux with a word code ([results](relay-stage0-spike.md#iphone-start-of-m1-2026-11-15)). Left: a memory reading from the phone. Then production core, iPhone and CLI send and receive, folders and several files, resumable disk store, trusted devices, history, cancellation and errors | Stage 1 (files) | 1 to 2 weeks |
 | **M2 Personal device network** | Persistent identities (person and device), discovery and status, the resolver, Tailscale routes, direct internet, our rendezvous and relay, diagnostics | Stage 2 (servers) | 1 to 2 weeks |
 | **M3 Direct communications** | `PeerRepo`, messages between devices, outbox, delivered and read, attachments, history, AI asks as messages | Stage 1 (messages) | 1 to 2 weeks |
 | **M4 Temporary rooms** | Host and join, codes, members, permissions, memory only, closing, Relaxed / Standard / Strict | Stage 2 (rooms) | 1 to 2 weeks |
@@ -331,7 +331,7 @@ focused PRs, each with one acceptance condition:
 
 ## Verification
 
-Following the rule in [foundation-review.md](foundation-review.md#where-lean-helps-and-where-it-does-not)
+Following the rule in [foundation-review.md](../../../docs/foundation-review.md#where-lean-helps-and-where-it-does-not)
 (Reuben, 2026-11-14: Relay is a place where Lean verification is useful and
 needed): Lean for small protocols whose properties must hold for every
 interleaving, tests for the rest.

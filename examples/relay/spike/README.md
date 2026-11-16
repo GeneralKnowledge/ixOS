@@ -1,9 +1,9 @@
 # Relay stage 0 spike
 
 **Not production code.** Throwaway code that answers the stage 0 questions in
-[docs/relay-transfer-plan.md](../../../docs/relay-transfer-plan.md): does a
+[examples/relay/docs/relay-transfer-plan.md](../docs/relay-transfer-plan.md): does a
 croc-style word code work on iroh, offline, on a local network? Results are in
-[docs/research/relay-stage0-spike.md](../../../docs/research/relay-stage0-spike.md).
+[examples/relay/docs/relay-stage0-spike.md](../docs/relay-stage0-spike.md).
 The review's limitations (code collisions, codes burnt before the proof, 16-bit
 codes, memory stores) are fixed here and tested in the results. M1 rebuilds this inside
 `relay_core`; then this folder goes.

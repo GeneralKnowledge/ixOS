@@ -1,6 +1,6 @@
 # Good Dog demo: plan
 
-Good Dog is the second demo in the core sequence, after Chat. It replaced Pocket Ledger on 2026-11-08 (Reuben's decision). This page is a plan. GD0 (the Rust engine, [`examples/good-dog-core`](../examples/good-dog-core/README.md)) is built, and GD1 (the app, [`examples/good-dog`](../examples/good-dog/README.md)) is built and passed its journey on an iPhone (2026-11-08). On 2026-11-08 Reuben set a product direction: Good Dog becomes a goal-led training companion rather than an exercise list. The milestones after GD1 now follow that direction (see [Product direction](#product-direction)). None of them is built.
+Good Dog is the second demo in the core sequence, after Chat. It replaced Pocket Ledger on 2026-11-08 (Reuben's decision). This page is a plan. GD0 (the Rust engine, [`examples/good-dog-core`](../../good-dog-core/README.md)) is built, and GD1 (the app, [`examples/good-dog`](../README.md)) is built and passed its journey on an iPhone (2026-11-08). On 2026-11-08 Reuben set a product direction: Good Dog becomes a goal-led training companion rather than an exercise list. The milestones after GD1 now follow that direction (see [Product direction](#product-direction)). None of them is built.
 
 Good Dog already exists as a web app ([GeneralKnowledge/Good-Dog](https://github.com/GeneralKnowledge/Good-Dog), Next.js and SQLite). It helps ordinary UK dog owners train their dog through short, reward-based activities: open the app, see what to practise today, follow the steps, say how it went, and get a better plan tomorrow. The native version keeps that product and rebuilds it the ixOS way: Rust owns the plan engine, the content and the data, and SwiftUI presents them.
 
@@ -38,14 +38,14 @@ Version one runs on the phone only, like Murmur. There is one local dog profile,
 
 **Rust** (the engine is in `examples/good-dog-core`, GD0; the app crate will be `examples/good-dog/rust`):
 
-- `coaching`: the engine ported from TypeScript. Keep the same split and the rule that it never mentions dogs. If a second coaching app ever appears, the engine is the candidate to move into the framework ([architecture.md](architecture.md#framework-principles)).
+- `coaching`: the engine ported from TypeScript. Keep the same split and the rule that it never mentions dogs. If a second coaching app ever appears, the engine is the candidate to move into the framework ([architecture.md](../../../docs/architecture.md#framework-principles)).
 - `dog_training`: the policy, the safety rules and the content loader.
 - Content ships inside the app as the same JSON files the web app vendors. The app records each exercise's `contentVersion` when it is used, so a content update never rewrites history.
 - Storage on forge-storage SQLite: dogs, daily plans, training sessions, skill progress and term progress, with forge-storage migrations.
 - The golden fixture is copied over unchanged. `cargo test` must reproduce all 100 plans exactly, which proves the port matches the web app.
 - Everything is logged through `forge_runtime::logging`, never including the owner's notes or the dog's name.
 
-**SwiftUI** (per [ios-ui.md](ios-ui.md)):
+**SwiftUI** (per [ios-ui.md](../../../docs/ios-ui.md)):
 
 - **Today**: the day's 2 or 3 activities with "why today", and swapping an activity.
 - **Exercise**: preparation, steps, what to look for, and what to do if it's hard. It has a session timer, a haptic marker tap, and the outcome buttons (easy, getting there, too difficult), plus a welfare concern option.
@@ -57,7 +57,7 @@ Accessibility identifiers follow `screen.element` (`today.item.0`, `exercise.out
 
 ## Capabilities it forces
 
-These are the ledger rows Good Dog would move. Today each is **No** in the [capability ledger](capability-ledger.md).
+These are the ledger rows Good Dog would move. Today each is **No** in the [capability ledger](../../../docs/capability-ledger.md).
 
 | Capability (ledger row) | What Good Dog needs | Where it should live | Workstream |
 |---|---|---|---|

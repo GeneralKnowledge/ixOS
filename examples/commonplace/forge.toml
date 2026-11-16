@@ -45,7 +45,7 @@ local_network = "Commonplace reads feeds from servers on your local network when
 # associated_domains = ["applinks:example.com"]   # paid team
 # push_notifications = "development"              # paid team
 
-# A replication benchmark against NetNewsWire (docs/benchmarks/netnewswire/):
+# A replication benchmark against NetNewsWire (examples/commonplace/docs/benchmark/):
 # explore and UI tests start on an empty, throwaway library.
 [ui_test]
 test_data_args = ["-ForgeTemporaryData"]
