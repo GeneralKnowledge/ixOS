@@ -64,9 +64,9 @@ Expected from the first picks: full-text search (Commonplace, then Pocket Librar
 
 - **Wave 4: extractions whose second use already exists.**
   - The read connection that skips the revision, used by Commonplace and FieldKit ([friction log](research/app-friction-log.md) A5).
-  - Relay's encrypted channel: `frame`, `secure` and `conn` move out of `forge-devproto` into the networking crate, and `forge-devproto` re-exports them (A16).
   - Small leftovers: init naming, template leftovers (A21), id types (A3) and distance maths in the services crate.
   - The phase hook for apps (A31) waits for Relay to need it too.
+  - Not Relay's encrypted channel (A16): Relay's approved plan replaces that wire with iroh ([relay-transfer-plan.md](relay-transfer-plan.md)), which leaves the channel with one user, the device tools.
 - **Wave 5: give each one-use piece its second app,** as a real feature with its own phone row, one app per PR, in this order:
   1. Pocket Library's full-text search, after Commonplace's.
   2. FieldKit's elevation and pace charts and Good Dog's progress over time, then Weather's hourly chart.
