@@ -4,15 +4,17 @@
 //! `good-dog-core` (the engine ported from the Good Dog web app); this crate
 //! adds saving, the day boundary and the API the host calls.
 //!
-//! Every command that changes data saves before it returns and then
-//! publishes [`AppEvent::DataChanged`]. Reads are quick in-memory calls the
-//! host may make from the main thread.
+//! It runs on forge-app's runtime (`export_runtime!`): every command that
+//! changes data runs on the command thread, saves before it returns and
+//! then moves the revision (`RuntimeEvent::Changed`). Reads take the last
+//! committed data ([`Published`]) and never wait, so the host may make them
+//! from the main thread. ForgeKit's ForgeHost opens the core, reports the
+//! lifecycle and shuts it down.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use forge_runtime::{background, lock, EventHub, Lifecycle, Phase};
+use forge_app::{DataDirectory, ErrorKind, OpenError, Published, Runtime, Stopped};
 use forge_storage::{JsonFile, StorageError};
 use good_dog_core::dog_training::{
     bundled_exercises, bundled_glossary, bundled_topics, parse_term_links, plain_text,
@@ -42,12 +44,6 @@ uniffi::setup_scaffolding!();
 // ForgeNative. See docs/native-services.md.
 pub use forge_native as native;
 
-forge_runtime::app_shell! {
-    phase: AppPhase,
-    cancellation: Cancellation,
-    events: AppEvents(AppEvent::EventsDropped),
-}
-
 forge_runtime::log_export!();
 
 /// Schema version of `gooddog.json`. Bump it, and add a migration, when
@@ -66,18 +62,6 @@ fn migrate(from: u32, mut data: serde_json::Value) -> Result<serde_json::Value, 
     Ok(data)
 }
 
-/// Something the host may want to react to.
-#[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
-pub enum AppEvent {
-    /// Saved data changed: re-read whatever is on screen.
-    DataChanged,
-    /// This subscriber fell behind and missed `count` events; re-read everything.
-    EventsDropped { count: u64 },
-    /// The app changed phase. `resumed` is true on the way back from the
-    /// background, which may be a new day: re-read today's plan.
-    PhaseChanged { phase: AppPhase, resumed: bool },
-}
-
 /// Every error the API returns. `reason` fields are diagnostics, not UI copy.
 #[derive(uniffi::Error, thiserror::Error, Clone, Debug, PartialEq, Eq)]
 pub enum AppError {
@@ -94,9 +78,48 @@ pub enum AppError {
     /// The data file could not be read or written.
     #[error("storage error: {reason}")]
     Storage { reason: String },
+    /// Another core already has this data folder open.
+    #[error("the data is in use: {reason}")]
+    InUse { reason: String },
     /// `shutdown()` was called; the instance accepts no more work.
     #[error("the app has been shut down")]
     ShutDown,
+}
+
+impl AppError {
+    /// The shared kind the host uses to treat every app's errors alike.
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            Self::InvalidInput { .. } | Self::NoAlternative => ErrorKind::Invalid,
+            Self::NotFound { .. } => ErrorKind::NotFound,
+            Self::NoDog => ErrorKind::NeedsUser,
+            Self::Storage { .. } => ErrorKind::Internal,
+            Self::InUse { .. } => ErrorKind::Unavailable,
+            Self::ShutDown => ErrorKind::ShutDown,
+        }
+    }
+}
+
+/// [`AppError::kind`] for the host (ForgeKit's `ForgeKindedError`).
+#[uniffi::export]
+pub fn app_error_kind(error: AppError) -> ErrorKind {
+    error.kind()
+}
+
+impl From<Stopped> for AppError {
+    /// Commands aren't cancellable, so the only stop is shutdown.
+    fn from(_: Stopped) -> Self {
+        Self::ShutDown
+    }
+}
+
+impl From<OpenError> for AppError {
+    fn from(err: OpenError) -> Self {
+        match err {
+            OpenError::InUse { path } => Self::InUse { reason: path },
+            OpenError::Io { reason } => Self::Storage { reason },
+        }
+    }
 }
 
 impl From<StorageError> for AppError {
@@ -110,11 +133,16 @@ impl From<StorageError> for AppError {
 /// The app instance the host creates once and shares. Thread-safe.
 #[derive(uniffi::Object)]
 pub struct AppCore {
-    state: Arc<Mutex<Stored>>,
-    file: Arc<JsonFile<Stored>>,
-    events: EventHub<AppEvent>,
-    shut_down: Arc<AtomicBool>,
-    lifecycle: Lifecycle,
+    rt: Runtime<State>,
+    /// The last committed data, for reads.
+    data: Arc<Published<Stored>>,
+}
+
+/// What the command thread owns: the data, its file, and where reads look.
+struct State {
+    stored: Stored,
+    file: JsonFile<Stored>,
+    published: Arc<Published<Stored>>,
 }
 
 #[uniffi::export]
@@ -132,7 +160,7 @@ impl AppCore {
 
     /// The dog's profile, or `None` before onboarding.
     pub fn dog(&self) -> Option<DogProfile> {
-        lock(&self.state).dog.clone()
+        self.data.get().dog.clone()
     }
 
     /// The longest name `save_dog` accepts.
@@ -161,7 +189,7 @@ impl AppCore {
     /// for the rest of it. `NoDog` before onboarding.
     pub async fn today(&self, now: LocalTime) -> Result<TodayPlan, AppError> {
         {
-            let state = lock(&self.state);
+            let state = self.data.get();
             if let Some(plan) = state.today(now) {
                 return Ok(plan);
             }
@@ -253,23 +281,23 @@ impl AppCore {
     /// The goals the owner can start: pathways that suit the dog's age.
     /// Empty until DogResearch publishes pathways.
     pub fn pathways(&self) -> Vec<PathwaySummary> {
-        lock(&self.state).pathway_summaries()
+        self.data.get().pathway_summaries()
     }
 
     /// Goals matching what the owner typed, best first. Empty when nothing
     /// matches; show the full list then, never a guess.
     pub fn suggest_goals(&self, own_words: String) -> Vec<PathwaySummary> {
-        lock(&self.state).suggest_pathways(&own_words)
+        self.data.get().suggest_pathways(&own_words)
     }
 
     /// The owner's goals: active first, then paused, finished, set aside.
     pub fn goals(&self) -> Vec<GoalSummary> {
-        lock(&self.state).goal_summaries()
+        self.data.get().goal_summaries()
     }
 
     /// One goal in full.
     pub fn goal(&self, goal_id: u64, now: LocalTime) -> Result<GoalDetail, AppError> {
-        lock(&self.state).goal_detail(goal_id, now)
+        self.data.get().goal_detail(goal_id, now)
     }
 
     /// Starts working on a pathway, at most three at once. Starting one the
@@ -410,10 +438,13 @@ impl AppCore {
         activity_id: Option<u64>,
         now: LocalTime,
     ) -> Result<Arc<GuidedSession>, AppError> {
-        if self.shut_down.load(Ordering::SeqCst) {
+        if self.rt.is_shut_down() {
             return Err(AppError::ShutDown);
         }
-        let e = lock(&self.state).check_recordable(&exercise_id, activity_id, now)?;
+        let e = self
+            .data
+            .get()
+            .check_recordable(&exercise_id, activity_id, now)?;
         let glossary = bundled_glossary();
         let linked = |text: &str| LinkedText::from(parse_term_links(text, glossary));
         forge_runtime::logging::info!(
@@ -461,12 +492,12 @@ impl AppCore {
     // MARK: Progress
 
     pub fn progress(&self, now: LocalTime) -> ProgressSummary {
-        lock(&self.state).progress_summary(now)
+        self.data.get().progress_summary(now)
     }
 
     /// Recorded sessions, newest first.
     pub fn history(&self, limit: u32) -> Vec<SessionRecord> {
-        lock(&self.state).history(limit as usize)
+        self.data.get().history(limit as usize)
     }
 
     /// Deletes the profile, plans, sessions and progress, and turns the
@@ -495,7 +526,7 @@ impl AppCore {
     /// The daily reminder's time in minutes after midnight, or `None` when
     /// it's off.
     pub fn reminder_minute(&self) -> Option<u32> {
-        lock(&self.state).reminder.at_minute
+        self.data.get().reminder.at_minute
     }
 
     /// Turns the daily reminder on at `at_minute` (minutes after midnight),
@@ -540,7 +571,7 @@ impl AppCore {
         let Ok(services) = native::NativeServices::installed() else {
             return;
         };
-        let wanted = lock(&self.state).reminders(now);
+        let wanted = self.data.get().reminders(now);
         reminders::schedule(&services, wanted, now).await;
     }
 
@@ -553,7 +584,7 @@ impl AppCore {
         })?;
         let glossary = bundled_glossary();
         let linked = |text: &str| LinkedText::from(parse_term_links(text, glossary));
-        let skill = lock(&self.state).skill(&e.core.learning_objective_id);
+        let skill = self.data.get().skill(&e.core.learning_objective_id);
         Ok(ExerciseDetail {
             id: e.core.id.clone(),
             title: e.title.clone(),
@@ -577,7 +608,7 @@ impl AppCore {
     /// The Learn topics, each with the exercises that suit the dog's age
     /// (every exercise before onboarding). Empty topics are left out.
     pub fn learn_topics(&self) -> Vec<LearnTopic> {
-        let stage = lock(&self.state).dog.as_ref().map(|d| d.life_stage);
+        let stage = self.data.get().dog.as_ref().map(|d| d.life_stage);
         bundled_topics()
             .iter()
             .map(|topic| LearnTopic {
@@ -676,45 +707,9 @@ impl AppCore {
                 .collect(),
         }
     }
-
-    // MARK: Events and lifecycle
-
-    /// A new event stream. Each consumer takes its own.
-    pub fn events(&self) -> Result<Arc<AppEvents>, AppError> {
-        AppEvents::subscribe(&self.events).ok_or(AppError::ShutDown)
-    }
-
-    pub fn phase(&self) -> AppPhase {
-        self.lifecycle.phase().into()
-    }
-
-    /// The host reports a lifecycle change. Coming back from the background
-    /// emits `PhaseChanged { resumed: true }`; `Terminated` is `shutdown()`.
-    pub fn set_phase(&self, phase: AppPhase) {
-        if phase == AppPhase::Terminated {
-            return self.shutdown();
-        }
-        if let Some(change) = self.lifecycle.enter(phase.into()) {
-            self.events.publish(AppEvent::PhaseChanged {
-                phase,
-                resumed: change.resumed,
-            });
-        }
-    }
-
-    /// Refuses new commands with `ShutDown` and ends every event stream.
-    /// Saves already running finish. Idempotent.
-    pub fn shutdown(&self) {
-        self.shut_down.store(true, Ordering::SeqCst);
-        if self.lifecycle.enter(Phase::Terminated).is_some() {
-            self.events.publish(AppEvent::PhaseChanged {
-                phase: AppPhase::Terminated,
-                resumed: false,
-            });
-        }
-        self.events.close();
-    }
 }
+
+forge_app::export_runtime!(AppCore, rt);
 
 impl AppCore {
     /// The reminder's Not Today button. Start Now just opens the app, on
@@ -762,26 +757,18 @@ impl AppCore {
         name: &'static str,
         apply: impl FnOnce(&mut Stored) -> Result<T, AppError> + Send + 'static,
     ) -> Result<T, AppError> {
-        if self.shut_down.load(Ordering::SeqCst) {
-            return Err(AppError::ShutDown);
-        }
-        let (state, file, events) = (
-            Arc::clone(&self.state),
-            Arc::clone(&self.file),
-            self.events.clone(),
-        );
-        background(name, move || {
-            let mut state = lock(&state);
-            let mut next = state.clone();
-            let value = apply(&mut next)?;
-            if next != *state {
-                file.save(&next)?;
-                *state = next;
-                events.publish(AppEvent::DataChanged);
-            }
-            Ok(value)
-        })
-        .await
+        self.rt
+            .command(name, move |state: &mut State| {
+                let mut next = state.stored.clone();
+                let value = apply(&mut next)?;
+                if next != state.stored {
+                    state.file.save(&next)?;
+                    state.published.set(next.clone());
+                    state.stored = next;
+                }
+                Ok(value)
+            })
+            .await
     }
 }
 
@@ -803,9 +790,7 @@ impl AppCore {
             });
         }
         let storage_directory = PathBuf::from(storage_directory);
-        std::fs::create_dir_all(&storage_directory).map_err(|e| AppError::Storage {
-            reason: e.to_string(),
-        })?;
+        let directory = DataDirectory::open(&storage_directory)?;
         let file = JsonFile::new(storage_directory.join("gooddog.json"), STORE_VERSION)
             .with_migration(migrate);
         let mut stored: Stored = file.load()?.unwrap_or_default();
@@ -816,14 +801,15 @@ impl AppCore {
             stored.dog.is_some(),
             stored.sessions.len()
         );
-        let state = Arc::new(Mutex::new(stored));
-        let lifecycle = Lifecycle::new();
+        let data = Arc::new(Published::new(stored.clone()));
+        let state = State {
+            stored,
+            file,
+            published: Arc::clone(&data),
+        };
         Ok(Arc::new(Self {
-            state,
-            file: Arc::new(file),
-            events: EventHub::new(),
-            shut_down: Arc::new(AtomicBool::new(false)),
-            lifecycle,
+            rt: Runtime::with_directory("gooddog", directory, state),
+            data,
         }))
     }
 }

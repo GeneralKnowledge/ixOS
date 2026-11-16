@@ -65,3 +65,8 @@ id = "GD-11"
 statement = "A goal stage applies its DogResearch safety rules: the owner confirms safe practice (a lead or long line for recall) before the stage can move on, and a worry noted in a session holds the stage, pointing to a vet or behaviourist, until the owner says they've had advice."
 twin = ["GoodDogModelTests.testASafetyRuleIsConfirmedBeforeTheStageCanMoveOn"]
 device = ["uitests/goals.toml"]
+
+[[requirement]]
+id = "GD-12"
+statement = "Good Dog's data is opened once, by the app's host: data it can't read says why and Try Again opens it once it can, and a second core on the same data is refused until the first closes."
+twin = ["GoodDogModelTests.testALoadFailureShowsWhyAndTryAgainOpens", "GoodDogModelTests.testASecondCoreOnTheSameDataIsRefused"]

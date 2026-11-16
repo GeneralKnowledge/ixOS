@@ -1,13 +1,48 @@
 @preconcurrency import GoodDogFFI
+import ForgeAppKit
+import ForgeKit
 import Foundation
 import Observation
 
 private let log = ForgeLog("GoodDog")
 
+// The Rust core runs on forge-app's runtime (`export_runtime!`), so ForgeKit
+// hosts it: one core per process, the lifecycle, background time, shutdown.
+extension AppCore: ForgeCore {}
+
+extension AppError: ForgeKindedError {
+    public var forgeKind: ErrorKind { appErrorKind(error: self) }
+}
+
+extension AppError: ForgeDescribedError {
+    /// Good Dog's own words for its errors (`forgeAlert` shows them).
+    public var failure: ForgeFailure {
+        ForgeFailure(
+            title: GoodDogModel.title(self), message: GoodDogModel.describe(self),
+            isRetryable: ForgeErrors.isRetryable(forgeKind))
+    }
+}
+
+/// The host for Good Dog's core, with its data where it has always been
+/// (Application Support/GoodDog), or a throwaway folder on test data. The
+/// App and Device Lab each make one for the life of the process and attach
+/// it to the lifecycle (`ForgeLifecycle.attach`).
+@MainActor
+public func makeAppHost(storageDirectory: String? = nil) -> ForgeHost<AppCore> {
+    ForgeHost(
+        environment: {
+            let directory = try storageDirectory ?? GoodDogModel.defaultDirectory()
+            return ForgeEnvironment(dataDirectory: directory, cachesDirectory: directory)
+        },
+        open: { try AppCore(storageDirectory: $0.dataDirectory) }
+    )
+}
+
 /// The app's presentation state. It holds no training rules: every change
 /// goes to the Rust `AppCore` (rust/src/lib.rs), which builds plans, records
-/// sessions and moves skills on. This model keeps the latest answers for the
-/// screens and re-reads them when Rust says the data changed.
+/// sessions and moves skills on. ForgeKit's host opens the core; this model
+/// keeps the latest answers for the screens and re-reads them when the
+/// host's `changes` moves (the root view calls `hostChanged()`).
 @Observable
 @MainActor
 public final class GoodDogModel {
@@ -29,10 +64,9 @@ public final class GoodDogModel {
     public private(set) var glossary: [GlossarySection] = []
     /// The Learn search field.
     public var searchText = ""
-    /// A failed action, for an alert. The view clears it when dismissed.
-    public var actionError: String?
-    /// The alert's title for `actionError`: what kind of problem it was.
-    public private(set) var actionErrorTitle = "Something Went Wrong"
+    /// A failed action, for an alert (`forgeAlert(failure:)`). The view
+    /// clears it when dismissed.
+    public var actionError: ForgeFailure?
     /// Why today's plan couldn't be built. The Today tab shows it with Try
     /// Again; the other tabs keep working.
     public private(set) var todayError: String?
@@ -49,26 +83,22 @@ public final class GoodDogModel {
     /// A stage the owner just passed, for the celebration. Views clear it.
     public var celebration: StageCelebration?
 
-    public private(set) var core: AppCore?
-    private let storageDirectory: String?
+    /// Opens the core, reports the lifecycle and shuts the core down.
+    public let host: ForgeHost<AppCore>
+    public var core: AppCore? { host.core }
     private let clock: @Sendable () -> LocalTime
     /// Set up before the first read when the store has no dog yet.
     private let sampleDog: DogProfile?
-    @ObservationIgnored private var eventTask: Task<Void, Never>?
-    @ObservationIgnored private var events: AppEvents?
-    @ObservationIgnored private var lifecyclePhase: AppPhase = .launching
 
     /// - Parameters:
-    ///   - storageDirectory: where Rust keeps its data. Defaults to
-    ///     Application Support (a throwaway folder under UI tests); tests
-    ///     pass a temporary one.
+    ///   - host: the process's host (`makeAppHost()`).
     ///   - clock: the time now with the phone's UTC offset; tests fix it.
     public init(
-        storageDirectory: String? = nil,
+        host: ForgeHost<AppCore>,
         clock: (@Sendable () -> LocalTime)? = nil,
         sampleDog: DogProfile? = GoodDogModel.launchSampleDog
     ) {
-        self.storageDirectory = storageDirectory
+        self.host = host
         self.sampleDog = sampleDog
         if let clock {
             self.clock = clock
@@ -79,13 +109,22 @@ public final class GoodDogModel {
         }
     }
 
+    /// A model with a host of its own on `storageDirectory` (tests).
+    public convenience init(
+        storageDirectory: String,
+        clock: (@Sendable () -> LocalTime)? = nil,
+        sampleDog: DogProfile? = nil
+    ) {
+        self.init(host: makeAppHost(storageDirectory: storageDirectory), clock: clock, sampleDog: sampleDog)
+    }
+
     /// Whether this launch uses throwaway test data (`-ForgeUITestData`, as
     /// `forge ui run` passes it). Such a launch also
     /// runs on a fixed clock, so dates and times on screen don't change
     /// between runs and screenshots stay comparable.
     /// ForgeKit's `-ForgeTemporaryData` does the same, so one argument
     /// starts every app on test data (Device Lab's Apps screen).
-    static let usesTestData = ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
+    nonisolated static let usesTestData = ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
         || ProcessInfo.processInfo.arguments.contains("-ForgeTemporaryData")
 
     /// With `-ForgeUITestData`, `-ForgeUITestSampleDog` starts on a dog
@@ -128,45 +167,55 @@ public final class GoodDogModel {
         }
     }
 
-    /// Opens the Rust core and starts listening for its events. Calling it
-    /// again while open does nothing.
+    /// Opens the Rust core through the host. Calling it again while open
+    /// does nothing.
     public func open() async {
         guard core == nil else { return }
         phase = .loading
+        await host.start()
+        guard let core else {
+            if case .failed(let message) = host.status {
+                log.error("could not open: \(message)")
+                phase = .failed(message)
+            }
+            return
+        }
         do {
-            let directory = try storageDirectory ?? Self.defaultDirectory()
-            let core = try await Task.detached { try AppCore(storageDirectory: directory) }.value
-            let events = try core.events()
-            self.core = core
-            self.events = events
-            listen(to: events)
-            if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
             if let sampleDog, core.dog() == nil {
                 _ = try await core.saveDog(profile: sampleDog, now: clock())
             }
-            await core.refreshReminders(now: clock())
-            await reload()
         } catch {
-            log.error("could not open: \(error)")
-            phase = .failed(Self.describe(error))
+            log.warn("sample dog not saved: \(error)")
         }
+        await core.refreshReminders(now: clock())
+        await reload()
     }
 
+    /// Shuts the core down (tests, and the app ending).
     public func close() {
-        events?.cancel()
-        eventTask?.cancel()
-        core?.shutdown()
-        core = nil
-        events = nil
+        host.close()
     }
 
+    /// Reports a lifecycle phase to the host (ForgeLifecycle does this in
+    /// the app; tests call it).
     public func setPhase(_ phase: AppPhase) {
-        lifecyclePhase = phase
-        if phase == .terminated {
-            close()
-        } else {
-            core?.setPhase(phase: phase)
-        }
+        let resumed = host.phase == .background && phase != .background && phase != .terminated
+        host.report(phase)
+        if resumed { Task { await self.resumed() } }
+    }
+
+    /// The host's `changes` moved: a command committed, events were missed,
+    /// or the app came back. Reads everything again.
+    public func hostChanged() async {
+        guard phase != .loading else { return }
+        await reload()
+    }
+
+    /// Back from the background, possibly on a new day: the reminders'
+    /// week moves on and today's plan may be a new one.
+    public func resumed() async {
+        await core?.refreshReminders(now: clock())
+        await reload()
     }
 
     /// Re-reads everything the screens show from Rust. Building today's plan
@@ -392,32 +441,17 @@ public final class GoodDogModel {
             try await command(core, clock())
         } catch {
             log.warn("command failed: \(error)")
-            actionErrorTitle = Self.title(error)
-            actionError = Self.describe(error)
+            actionError = ForgeFailure(error)
         }
     }
 
-    private func listen(to events: AppEvents) {
-        eventTask = Task { [weak self] in
-            while let event = await events.next() {
-                guard let self else { return }
-                switch event {
-                case .dataChanged, .eventsDropped:
-                    await self.reload()
-                case .phaseChanged(_, let resumed):
-                    // Back from the background, possibly on a new day.
-                    if resumed {
-                        await self.core?.refreshReminders(now: self.clock())
-                        await self.reload()
-                    }
-                }
-            }
-        }
+    /// `error` as an alert titled `title` ("Couldn't Save"), in Good Dog's
+    /// words.
+    nonisolated public static func failure(_ error: Error, title: String) -> ForgeFailure {
+        ForgeFailure(title: title, message: describe(error))
     }
 
-    /// A short alert title for each error, so the alert says what kind of
-    /// problem it was rather than "Something Went Wrong" every time.
-    public static func title(_ error: Error) -> String {
+    nonisolated public static func title(_ error: Error) -> String {
         guard let error = error as? AppError else { return "Something Went Wrong" }
         switch error {
         case .InvalidInput: return "Check the Details"
@@ -425,11 +459,12 @@ public final class GoodDogModel {
         case .NoDog: return "No Dog Yet"
         case .NoAlternative: return "Nothing Else Suits Today"
         case .Storage: return "Couldn't Save"
+        case .InUse: return "Good Dog Is Already Open"
         case .ShutDown: return "Good Dog Is Closing"
         }
     }
 
-    public static func describe(_ error: Error) -> String {
+    nonisolated public static func describe(_ error: Error) -> String {
         guard let error = error as? AppError else { return "Try again. If it keeps happening, close the app and open it again." }
         switch error {
         case .InvalidInput(let reason): return "Please check: \(reason)."
@@ -437,6 +472,7 @@ public final class GoodDogModel {
         case .NoDog: return "Tell us about your dog first."
         case .NoAlternative: return "There's nothing else that suits today. Try this one, or keep it short."
         case .Storage(let reason): return "Good Dog couldn't read or save its data (\(reason))."
+        case .InUse: return "Good Dog's data is open somewhere else in this app. Close it there and try again."
         case .ShutDown: return "Good Dog is closing."
         }
     }
@@ -444,7 +480,7 @@ public final class GoodDogModel {
     /// Application Support/GoodDog, or a fresh GoodDog-UITest folder when
     /// launched with `-ForgeUITestData` (forge.toml), so UI tests never touch
     /// the owner's real data.
-    private static func defaultDirectory() throws -> String {
+    nonisolated static func defaultDirectory() throws -> String {
         let testData = usesTestData
         let base = try FileManager.default
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)

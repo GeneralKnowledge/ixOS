@@ -1,5 +1,6 @@
 @preconcurrency import GoodDogFFI
 import ForgeUI
+import ForgeAppKit
 import SwiftUI
 
 /// One exercise: why, how, what to look for, and what to do if it's hard.
@@ -11,7 +12,7 @@ struct ExerciseView: View {
     @State private var recording = false
     @State private var feedback: SessionFeedback?
     @State private var guided: GuidedSessionModel?
-    @State private var startError: String?
+    @State private var startError: ForgeFailure?
     /// The session timer, shared with the guided session so it keeps running.
     @State private var timerStartedAt: Date?
 
@@ -140,7 +141,7 @@ struct ExerciseView: View {
                 GuidedSessionView(model: model, session: session, timerStartedAt: $timerStartedAt)
             }
             #endif
-            .errorAlert("Couldn't Start", message: $startError)
+            .forgeAlert(failure: $startError)
             .alert(
                 "Session Saved",
                 isPresented: Binding(get: { feedback != nil }, set: { if !$0 { feedback = nil } }),
@@ -164,7 +165,7 @@ struct ExerciseView: View {
             guided = try model.startGuidedSession(exerciseId: route.exerciseId, activityId: route.activityId)
             if timerStartedAt == nil { timerStartedAt = Date() }
         } catch {
-            startError = GoodDogModel.describe(error)
+            startError = GoodDogModel.failure(error, title: "Couldn't Start")
         }
     }
 }
@@ -282,7 +283,7 @@ private struct RecordSessionView: View {
     @State private var result: SessionResult?
     @State private var welfareConcern = false
     @State private var saving = false
-    @State private var error: String?
+    @State private var error: ForgeFailure?
 
     var body: some View {
         NavigationStack {
@@ -305,7 +306,7 @@ private struct RecordSessionView: View {
                 }
             }
             .sensoryFeedback(.selection, trigger: result)
-            .errorAlert("Couldn't Save", message: $error)
+            .forgeAlert(failure: $error)
         }
         .presentationDetents([.medium, .large])
     }
@@ -324,7 +325,7 @@ private struct RecordSessionView: View {
             dismiss()
             onSaved(feedback)
         } catch {
-            self.error = GoodDogModel.describe(error)
+            self.error = GoodDogModel.failure(error, title: "Couldn't Save")
         }
     }
 }

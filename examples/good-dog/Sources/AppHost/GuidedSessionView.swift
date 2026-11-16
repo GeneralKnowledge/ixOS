@@ -1,5 +1,6 @@
 @preconcurrency import GoodDogFFI
 import ForgeUI
+import ForgeAppKit
 import SwiftUI
 
 /// An exercise followed one card at a time: "get ready", each step, then
@@ -67,7 +68,7 @@ struct GuidedSessionView: View {
             } message: { feedback in
                 Text(feedback.message)
             }
-            .errorAlert("Couldn't Save", message: $session.error)
+            .forgeAlert(failure: $session.error)
             .sensoryFeedback(.selection, trigger: card.position)
             .onChange(of: card.position) { headingFocused = true }
             // Glossary links open here: the tabs underneath can't present
@@ -224,7 +225,7 @@ struct GuidedSessionView: View {
             feedback = try await session.record(result: result, welfareConcern: welfareConcern)
             timerStartedAt = nil  // the session is over
         } catch {
-            session.error = GoodDogModel.describe(error)
+            session.error = GoodDogModel.failure(error, title: "Couldn't Save")
         }
     }
 }

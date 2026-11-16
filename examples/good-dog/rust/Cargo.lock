@@ -235,6 +235,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-app"
+version = "0.6.0"
+dependencies = [
+ "forge-runtime",
+ "forge-storage",
+ "libc",
+ "serde",
+ "uniffi",
+]
+
+[[package]]
 name = "forge-native"
 version = "0.1.0"
 dependencies = [
@@ -328,6 +339,7 @@ dependencies = [
 name = "good-dog-app"
 version = "0.1.0"
 dependencies = [
+ "forge-app",
  "forge-native",
  "forge-runtime",
  "forge-storage",

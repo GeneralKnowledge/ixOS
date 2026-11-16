@@ -41,8 +41,8 @@ let package = Package(
         .library(name: "GoodDogXtool", targets: ["GoodDogXtoolApp"]),
     ],
     dependencies: [
-        // ForgeUI (the design system) and ForgeNative (the native services).
-        // Good Dog doesn't use the ForgeKit runtime host.
+        // ForgeKit (the runtime host), ForgeAppKit (alerts), ForgeUI (the
+        // design system) and ForgeNative (the native services).
         .package(path: "../../forgekit"),
     ],
     targets: [
@@ -53,7 +53,11 @@ let package = Package(
         ),
         .target(
             name: "GoodDogFFI",
-            dependencies: ["good_dog_appFFI", .product(name: "ForgeNative", package: "forgekit")],
+            dependencies: [
+                "good_dog_appFFI",
+                .product(name: "ForgeApp", package: "forgekit"),
+                .product(name: "ForgeNative", package: "forgekit"),
+            ],
             path: "Generated/ForgeFFI",
             // Generated UniFFI code is built in Swift 5 mode; it is not checked for Swift 6 strict concurrency.
             swiftSettings: [.swiftLanguageMode(.v5)]
@@ -63,6 +67,8 @@ let package = Package(
             name: "GoodDogApp",
             dependencies: [
                 "GoodDogFFI",
+                .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeAppKit", package: "forgekit"),
                 .product(name: "ForgeUI", package: "forgekit"),
                 .product(name: "ForgeNative", package: "forgekit"),
             ],
@@ -82,7 +88,12 @@ let package = Package(
         ),
         .testTarget(
             name: "AppHostTests",
-            dependencies: ["GoodDogApp", "GoodDogFFI", .product(name: "ForgeNative", package: "forgekit")],
+            dependencies: [
+                "GoodDogApp", "GoodDogFFI",
+                .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeAppKit", package: "forgekit"),
+                .product(name: "ForgeNative", package: "forgekit"),
+            ],
             path: "Tests/AppHostTests",
             linkerSettings: rustLibrary
         ),
