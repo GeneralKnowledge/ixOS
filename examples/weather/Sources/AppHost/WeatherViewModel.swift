@@ -82,9 +82,14 @@ public final class WeatherViewModel {
     @ObservationIgnored private var nextToken = 0
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var started = false
+    /// When "My Location" last got a fix. The process can stay alive for
+    /// days while the phone travels, so an old fix is looked up again.
+    @ObservationIgnored private var lastFix: Date?
+    /// The clock, so tests can move time on.
+    @ObservationIgnored var now: () -> Date = Date.init
 
     /// A page whose report is younger than this is not refreshed when it
-    /// comes on screen.
+    /// comes on screen; a location fix older than this is looked up again.
     static let freshFor: TimeInterval = 10 * 60
 
     /// - Parameters:
@@ -149,17 +154,38 @@ public final class WeatherViewModel {
     }
 
     /// Call when the page on screen changes: refreshes it if its report is
-    /// missing, cached or older than ten minutes.
+    /// missing, cached or older than ten minutes. "My Location" first finds
+    /// the phone again if its fix is that old: the phone may have moved
+    /// while the app was in the background.
     public func pageDidAppear() {
         guard isLive, started, let page = selectedPage, !page.isRefreshing else { return }
-        if page.isMyLocation && page.place == nil {
+        if page.isMyLocation && (page.place == nil || needsNewFix) {
             useCurrentLocation()
             return
         }
-        let needsRefresh = page.report.map { $0.isCached || $0.age() > Self.freshFor } ?? true
-        if needsRefresh, page.place != nil {
-            refresh(page.id)
+        refreshIfStale(page.id)
+    }
+
+    /// Refreshes a page whose report is missing, cached or older than
+    /// `freshFor`, if it has a place.
+    private func refreshIfStale(_ id: String) {
+        guard let page = pages.first(where: { $0.id == id }), page.place != nil,
+            refreshTasks[id] == nil
+        else { return }
+        if page.report.map({ $0.isCached || $0.age() > Self.freshFor }) ?? true {
+            refresh(id)
         }
+    }
+
+    /// What to say above a page's report: why its refresh failed, why "My
+    /// Location" couldn't be found again (the report is then the last
+    /// place found), or how old a cached report is. Nil for nothing.
+    public func notice(for page: WeatherPage) -> String? {
+        if let error = page.errorMessage { return error }
+        if page.isMyLocation, page.report != nil, let location = locationMessage {
+            return "\(location) Showing the last place found."
+        }
+        return page.staleNotice
     }
 
     // MARK: Location
@@ -173,6 +199,7 @@ public final class WeatherViewModel {
         return Task {
             do {
                 let fix = try await location.currentLocation()
+                lastFix = now()
                 let place = Place.currentLocation(fix)
                 update(WeatherPage.myLocationID) { page in
                     page.place = place
@@ -196,8 +223,18 @@ public final class WeatherViewModel {
                 update(WeatherPage.myLocationID) { page in
                     if refreshTasks[page.id] == nil { page.isRefreshing = false }
                 }
+                // The last place found stays on screen, with the reason
+                // above it (`notice(for:)`), and its forecast kept current.
+                refreshIfStale(WeatherPage.myLocationID)
             }
         }
+    }
+
+    /// Whether "My Location" should be looked up again before refreshing:
+    /// never found this run, or found more than `freshFor` ago.
+    private var needsNewFix: Bool {
+        guard let lastFix else { return true }
+        return now().timeIntervalSince(lastFix) > Self.freshFor
     }
 
     // MARK: Refresh

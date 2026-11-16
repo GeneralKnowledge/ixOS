@@ -11,6 +11,23 @@ private struct FakeLocation: LocationProviding {
     }
 }
 
+/// Answers each lookup with the next reading, repeating the last.
+private final class MovingLocation: LocationProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private var readings: [LocationReading]
+    private var _lookups = 0
+    var lookups: Int { lock.withLock { _lookups } }
+
+    init(_ readings: [LocationReading]) { self.readings = readings }
+
+    func currentLocation() async throws -> LocationReading {
+        lock.withLock {
+            _lookups += 1
+            return readings.count > 1 ? readings.removeFirst() : readings[0]
+        }
+    }
+}
+
 final class WeatherViewModelTests: XCTestCase {
     @MainActor
     private func offlineClient() throws -> WeatherClient {
@@ -130,6 +147,71 @@ final class WeatherViewModelTests: XCTestCase {
         XCTAssertEqual(client.savedPlaces.map(\.name), ["Düsseldorf"])
         XCTAssertNotNil(model.selectedPage)
         model.close()
+    }
+
+    @MainActor
+    func testMyLocationIsFoundAgainAfterAWhileAway() async throws {
+        let here = LocationReading(
+            coordinate: Coordinate(latitude: 55.9, longitude: -3.64), placeName: "Bathgate")
+        let there = LocationReading(
+            coordinate: Coordinate(latitude: 48.86, longitude: 2.34), placeName: "Paris")
+        let location = MovingLocation([here, there])
+        let model = WeatherViewModel(client: try offlineClient(), location: location)
+        var clock = Date()
+        model.now = { clock }
+        await model.start()
+        XCTAssertEqual(model.place?.name, "Bathgate")
+
+        // Back within ten minutes: the fix is still good.
+        clock += 5 * 60
+        model.becameActive()
+        XCTAssertEqual(location.lookups, 1)
+
+        // Back after a long time away: the phone may have moved.
+        clock += 60 * 60
+        model.becameActive()
+        for _ in 0..<200 where model.place?.name != "Paris" {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(location.lookups, 2)
+        XCTAssertEqual(model.place?.name, "Paris")
+        model.close()
+    }
+
+    @MainActor
+    func testALostLocationIsSaidAboveTheLastPlaceFound() async throws {
+        let server = try FixtureServer(body: parisForecastJSON)
+        server.failing = false
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("forge-weather-vm-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let base = "http://127.0.0.1:\(server.port)"
+        let config = WeatherConfig(forecastBaseUrl: base, geocodingBaseUrl: base, requestTimeoutMs: 5_000)
+        let paris = LocationReading(
+            coordinate: Coordinate(latitude: 48.86, longitude: 2.34), placeName: "Paris")
+
+        // A first run finds the phone and keeps its forecast.
+        let first = WeatherViewModel(
+            client: try WeatherClient(storageDirectory: url.path, configuration: config),
+            location: FakeLocation(result: .success(paris)))
+        await first.start()
+        XCTAssertNotNil(first.report)
+        XCTAssertNil(first.notice(for: try XCTUnwrap(first.selectedPage)))
+        first.close()
+
+        // The next run can't use location: the last place stays, and says why.
+        let second = WeatherViewModel(
+            client: try WeatherClient(storageDirectory: url.path, configuration: config),
+            location: FakeLocation(result: .failure(.denied)))
+        await second.start()
+        let page = try XCTUnwrap(second.selectedPage)
+        XCTAssertTrue(page.isMyLocation)
+        XCTAssertNotNil(page.report)
+        XCTAssertEqual(
+            second.notice(for: page),
+            LocationError.denied.userMessage + " Showing the last place found.")
+        second.close()
     }
 
     @MainActor
