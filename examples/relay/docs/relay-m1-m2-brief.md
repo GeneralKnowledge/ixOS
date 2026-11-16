@@ -1,14 +1,18 @@
-# Relay M1 to M2: implementation brief
+# Relay next steps: transfer, messages, reach
 
-Status: written 2026-11-16 from Reuben's product specification. It turns
-the first six PRs of the [platform plan](relay-platform-plan.md#how-the-work-lands)
-into concrete work on today's code. The plan stays the roadmap; this brief
-only says how to get from where the code is to the end of M2. It changes no
+Status: written 2026-11-16 from Reuben's product specification and his
+direction that evening: messaging and file transfer first, the
+interconnecting parts as features of the network later. It turns the first
+seven PRs of the [platform plan](relay-platform-plan.md#how-the-work-lands)
+into concrete work on today's code (M1, M3 and M2, in that order). The plan
+stays the roadmap; this brief only says how to get there. It changes no
 crates: everything stays in `examples/relay/rust` as modules.
 
-**Goal:** finish M1 (a production transfer on one stack), then make M2 the
-defining milestone: the phone finds and connects to your own computers from
-anywhere, with nothing configured by hand.
+**Goal:** finish M1 (a production transfer on one stack), add messages
+between trusted devices, then make both work from anywhere, with nothing
+configured by hand. Passing the plan's [messaging and transfer
+test](relay-platform-plan.md#the-messaging-and-transfer-test) ends this
+brief.
 
 ## Where the code is (2026-11-16)
 
@@ -100,19 +104,37 @@ batched, built before the phone is needed). No test-only PRs.
   sends without a code; a revoked one is refused and isn't re-paired by a
   code or the automatic policy.
 
-## PRs that start M2
+## Messages (M3)
 
-### 4. Device discovery and status
+### 4. Messages between trusted devices
+
+- A conversation per trusted device over `relay/device/1`: text, with
+  files and folders attached through the transfer from PR 1.
+- An outbox in Relay's own store: a message waits until the other device
+  is seen, is sent once, and shows sent, delivered and read. Retries and
+  reconnects never duplicate it (each message has an id the receiver
+  remembers).
+- History that survives relaunches, on both sides.
+- `relay send <device> --text` and a conversation list in the CLI.
+- Relay's own small engine, built for this: nothing from Chat (see
+  [rules](#rules-for-this-work)).
+- **Accepted when** a message sent while the laptop is off arrives once
+  when it is back, both sides show delivered and read, and the
+  conversation survives relaunches. Phone check on home Wi-Fi.
+
+## Reach (M2)
+
+### 5. Device discovery and status
 
 - Trusted devices show as nearby, reachable or offline (presence). On the
   same network Bonjour finds them; away from it they show as offline until
-  PRs 5 and 6 give a way to locate them ([below](#four-separate-questions)).
+  PRs 6 and 7 give a way to locate them ([below](#four-separate-questions)).
 - Status a device reports about itself: name, platform, last seen, what it
   offers (the first, read-only use of service discovery).
 - The app's three screens begin: Nearby, Connections, Activity. A device
   opens its own view.
 
-### 5. The connection resolver and private routes
+### 6. The connection resolver and private routes
 
 - One module (`resolver.rs`) picks the route for every connection: local,
   then private (Tailscale addresses the devices exchanged while they were
@@ -127,7 +149,7 @@ batched, built before the phone is needed). No test-only PRs.
   Tailscale with no address typed. This is the Tailscale test, not yet the
   M2 test: Tailscale is itself configuration.
 
-### 6. Our relay and internet routes
+### 7. Our relay and internet routes
 
 - Remote discovery, full form: each device publishes where it can be
   reached, signed by its key, so a trusted device finds it by key. Use
@@ -141,7 +163,8 @@ batched, built before the phone is needed). No test-only PRs.
 - Reconnecting when the network changes.
 - **Accepted when** (the M2 test) the phone reliably finds and connects to
   the laptop and the iMac from outside home, without Tailscale, with
-  nothing configured by hand.
+  nothing configured by hand, and messages and files go both ways that
+  way.
 
 ## Identity and storage
 
@@ -170,8 +193,8 @@ batched, built before the phone is needed). No test-only PRs.
 | Question | Answered by |
 |---|---|
 | **Identity:** who is the device? | Its iroh key (PR 1) |
-| **Discovery:** where might it be? | Bonjour nearby (PR 4); remembered local and Tailscale addresses (PR 5); a signed record published to our server (PR 6) |
-| **Connectivity:** can we reach it? | The resolver's routes: local, private, direct internet, our relay (PRs 5 and 6) |
+| **Discovery:** where might it be? | Bonjour nearby (PR 5); remembered local and Tailscale addresses (PR 6); a signed record published to our server (PR 7) |
+| **Connectivity:** can we reach it? | The resolver's routes: local, private, direct internet, our relay (PRs 6 and 7) |
 | **Authentication:** is it the device we expect? | The connection's endpoint id must match the trusted key; nothing else counts |
 
 A key says who a device is, never where it is.
@@ -180,9 +203,9 @@ A key says who a device is, never where it is.
 
 - Modules in `examples/relay/rust`, no new crates. The connection fabric,
   identity and capability boundaries are built as features need them.
-- Relay takes nothing from Chat. Messages (M3) start only after the shared
-  part of `chat-core` has moved into the framework, or Relay writes its own
-  small outbox.
+- Relay takes nothing from Chat. Messages (PR 4) use Relay's own small
+  outbox; if a messaging library is shared later, it moves into the
+  framework first.
 - Rust owns the state; Swift shows it and does Bonjour, the Keychain and the
   file picker.
 - No 1 GB phone tests: a small file and one large-enough file (about 200
@@ -197,11 +220,13 @@ A key says who a device is, never where it is.
    automatic re-pairing is one policy.
 2. **Hetzner runs a test relay early:** `iroh-relay` on Hetzner as soon as
    transfers run on the core's own endpoint (PR 1), so the phone can test
-   from 5G long before PR 6. It is for testing; PR 6 makes it the
+   from 5G long before PR 7. It is for testing; PR 7 makes it the
    production relay and adds reconnecting. Setting it up on the server is a
    step for Reuben to approve when it comes.
-3. **Device capabilities come before messaging:** PRs 7 to 10 before PR
-   11, so the personal network test passes first.
+3. **Messaging and transfer come first** (replacing the earlier
+   "capabilities before messaging"): messages are PR 4, right after
+   trusted devices; device features come after rooms, as features of the
+   network.
 
 ## Clarified after review (Reuben, 2026-11-16)
 
@@ -214,5 +239,5 @@ A key says who a device is, never where it is.
 5. AI comes in three stages: today's requests moved to iroh (PR 3), AI as
    a capability (M6), distributed AI (M8).
 6. Pairing modes are policies, not levels; a revoked device is never
-   re-paired by itself; the Tailscale test (PR 5) is separate from the
-   final M2 test (PR 6); the Hetzner relay stays optional.
+   re-paired by itself; the Tailscale test (PR 6) is separate from the
+   final M2 test (PR 7); the Hetzner relay stays optional.
