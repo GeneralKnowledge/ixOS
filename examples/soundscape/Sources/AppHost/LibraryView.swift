@@ -368,6 +368,7 @@ struct ArtistView: View {
                 }
             }
         }
+        .miniPlayerClearance()
         .navigationTitle(current.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $details) { id in
@@ -442,6 +443,7 @@ struct AlbumView: View {
                 }
             }
         }
+        .miniPlayerClearance()
         .navigationTitle(current.title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $details) { id in
@@ -507,6 +509,7 @@ struct TrackView: View {
                 )
             }
         }
+        .miniPlayerClearance()
         .navigationTitle(detail?.track.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { detail = model.track(id) }

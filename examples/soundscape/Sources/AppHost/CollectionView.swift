@@ -122,6 +122,7 @@ struct FavouritesView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .miniPlayerClearance()
         .navigationTitle("Favourites")
         .navigationDestination(item: $details) { id in
             TrackView(model: model, player: player, id: id)
@@ -158,6 +159,7 @@ struct PlaylistsView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .miniPlayerClearance()
         .navigationTitle("Playlists")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -260,6 +262,7 @@ struct PlaylistView: View {
                 )
             }
         }
+        .miniPlayerClearance()
         .navigationTitle(detail?.playlist.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { detail = model.playlist(id) }
@@ -467,6 +470,7 @@ struct RecentlyPlayedView: View {
             }
         }
         .listStyle(.plain)
+        .miniPlayerClearance()
         .navigationTitle("Recently Played")
         .navigationDestination(item: $details) { id in
             TrackView(model: model, player: player, id: id)
