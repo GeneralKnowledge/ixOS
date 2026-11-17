@@ -8,7 +8,7 @@
 //! each run (time to first text, total time, a speed estimate, the app's
 //! memory and the thermal state before and after).
 //!
-//! Structured output is the one experiment Swift runs itself, because
+//! Structured output (both kinds) is the one experiment Swift runs itself, because
 //! Foundation Models' guided generation has no Rust shape: the host reports
 //! it through [`AiLab::begin_external`], [`AiLab::update_external`] and
 //! [`AiLab::finish_external`], so it gets the same record.
@@ -37,8 +37,12 @@ pub enum AiExperimentKind {
     Instructions,
     /// Summarising a passage the prompt carries.
     Summary,
-    /// A typed answer through guided generation (run by the host).
+    /// A typed answer through guided generation with Apple's `@Generable`
+    /// macro (run by the host).
     Structured,
+    /// The same typed answer with the shape described at run time, no
+    /// macro (run by the host; builds on Linux).
+    StructuredSchema,
     /// A long answer, to watch streaming and try Stop.
     LongAnswer,
     /// The user's own prompt.
@@ -159,6 +163,17 @@ pub fn ai_lab_experiments() -> Vec<AiExperiment> {
             kind: AiExperimentKind::Structured,
             title: "Structured Output".into(),
             detail: "A typed answer (name, minutes, ingredients) instead of free text.".into(),
+            instructions: "You suggest simple recipes.".into(),
+            prompt: "Suggest a quick vegetarian lunch.".into(),
+            max_tokens: 300,
+            temperature: 0.5,
+        },
+        AiExperiment {
+            kind: AiExperimentKind::StructuredSchema,
+            title: "Structured, No Macro".into(),
+            detail: "The same typed answer, its shape described at run time instead of with \
+                     @Generable."
+                .into(),
             instructions: "You suggest simple recipes.".into(),
             prompt: "Suggest a quick vegetarian lunch.".into(),
             max_tokens: 300,
@@ -307,18 +322,22 @@ impl AiLab {
         }
     }
 
-    /// Ends the host's run: `error` is `None` when it finished,
-    /// `refused` when the model declined.
+    /// Ends the host's run. `answer` is the whole answer, or `None` to keep
+    /// what `update_external` last reported (a stopped or failed run keeps
+    /// its partial answer). `error` is `None` when it finished, `refused`
+    /// when the model declined.
     pub fn finish_external(
         &self,
-        answer: String,
+        answer: Option<String>,
         error: Option<String>,
         refused: bool,
     ) -> Result<(), AiLabError> {
         let id = {
             let state = lock(&self.state);
             let running = state.running.as_ref().ok_or(AiLabError::NotRunning)?;
-            running.out.replace(&answer);
+            if let Some(answer) = &answer {
+                running.out.replace(answer);
+            }
             running.run.id
         };
         let error = match (error, refused) {
@@ -655,16 +674,30 @@ mod tests {
         );
         lab.update_external("{\"name\":".into());
         assert_eq!(lab.snapshot().running.unwrap().answer, "{\"name\":");
-        lab.finish_external("{\"name\":\"Salad\"}".into(), None, false)
+        lab.finish_external(Some("{\"name\":\"Salad\"}".into()), None, false)
             .unwrap();
         let run = lab.snapshot().history[0].clone();
         assert_eq!(run.state, AiRunState::Finished);
         assert_eq!(run.kind, AiExperimentKind::Structured);
         assert!(run.first_text_ms.is_some());
         assert_eq!(
-            lab.finish_external(String::new(), None, false),
+            lab.finish_external(None, None, false),
             Err(AiLabError::NotRunning)
         );
+    }
+
+    #[test]
+    fn a_stopped_host_run_keeps_its_partial_answer() {
+        let lab = lab(ScriptedModel::new(["unused"]));
+        lab.begin_external(AiExperimentKind::StructuredSchema, "Lunch".into())
+            .unwrap();
+        lab.update_external("{\"name\":\"Sal".into());
+        lab.stop();
+        assert!(lab.stop_requested());
+        lab.finish_external(None, None, false).unwrap();
+        let run = lab.snapshot().history[0].clone();
+        assert_eq!(run.state, AiRunState::Stopped);
+        assert_eq!(run.answer, "{\"name\":\"Sal");
     }
 
     #[test]

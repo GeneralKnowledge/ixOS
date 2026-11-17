@@ -686,10 +686,12 @@ public protocol AiLabProtocol: AnyObject, Sendable {
     func clearHistory() 
     
     /**
-     * Ends the host's run: `error` is `None` when it finished,
-     * `refused` when the model declined.
+     * Ends the host's run. `answer` is the whole answer, or `None` to keep
+     * what `update_external` last reported (a stopped or failed run keeps
+     * its partial answer). `error` is `None` when it finished, `refused`
+     * when the model declined.
      */
-    func finishExternal(answer: String, error: String?, refused: Bool) throws 
+    func finishExternal(answer: String?, error: String?, refused: Bool) throws 
     
     /**
      * Asks the model again whether it can answer (Apple Intelligence
@@ -815,14 +817,16 @@ open func clearHistory()  {try! rustCall() {
 }
     
     /**
-     * Ends the host's run: `error` is `None` when it finished,
-     * `refused` when the model declined.
+     * Ends the host's run. `answer` is the whole answer, or `None` to keep
+     * what `update_external` last reported (a stopped or failed run keeps
+     * its partial answer). `error` is `None` when it finished, `refused`
+     * when the model declined.
      */
-open func finishExternal(answer: String, error: String?, refused: Bool)throws   {try rustCallWithError(FfiConverterTypeAiLabError_lift) {
+open func finishExternal(answer: String?, error: String?, refused: Bool)throws   {try rustCallWithError(FfiConverterTypeAiLabError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_ailab_finish_external(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(answer),
+        FfiConverterOptionString.lower(answer),
         FfiConverterOptionString.lower(error),
         FfiConverterBool.lower(refused),uniffiCallStatus
     )
@@ -8577,9 +8581,15 @@ public enum AiExperimentKind: Equatable, Hashable {
      */
     case summary
     /**
-     * A typed answer through guided generation (run by the host).
+     * A typed answer through guided generation with Apple's `@Generable`
+     * macro (run by the host).
      */
     case structured
+    /**
+     * The same typed answer with the shape described at run time, no
+     * macro (run by the host; builds on Linux).
+     */
+    case structuredSchema
     /**
      * A long answer, to watch streaming and try Stop.
      */
@@ -8617,9 +8627,11 @@ public struct FfiConverterTypeAiExperimentKind: FfiConverterRustBuffer {
         
         case 4: return .structured
         
-        case 5: return .longAnswer
+        case 5: return .structuredSchema
         
-        case 6: return .custom
+        case 6: return .longAnswer
+        
+        case 7: return .custom
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -8645,12 +8657,16 @@ public struct FfiConverterTypeAiExperimentKind: FfiConverterRustBuffer {
             writeInt(&buf, Int32(4))
         
         
-        case .longAnswer:
+        case .structuredSchema:
             writeInt(&buf, Int32(5))
         
         
-        case .custom:
+        case .longAnswer:
             writeInt(&buf, Int32(6))
+        
+        
+        case .custom:
+            writeInt(&buf, Int32(7))
         
         }
     }
@@ -12120,7 +12136,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_ailab_clear_history() != 59284) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_ailab_finish_external() != 5357) {
+    if (uniffi_forge_ffi_checksum_method_ailab_finish_external() != 50284) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_ailab_refresh_model() != 60677) {

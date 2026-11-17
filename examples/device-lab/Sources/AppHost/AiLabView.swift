@@ -184,6 +184,7 @@ extension AiExperimentKind {
         case .instructions: "instructions"
         case .summary: "summary"
         case .structured: "structured"
+        case .structuredSchema: "structuredSchema"
         case .longAnswer: "longAnswer"
         case .custom: "custom"
         }
@@ -195,6 +196,7 @@ extension AiExperimentKind {
         case .instructions: "Follow Instructions"
         case .summary: "Summarise"
         case .structured: "Structured Output"
+        case .structuredSchema: "Structured, No Macro"
         case .longAnswer: "Long Answer"
         case .custom: "Your Prompt"
         }

@@ -12,12 +12,13 @@ import Observation
 @MainActor
 @Observable
 public final class AiLabModel {
-    /// Runs a structured experiment: given the instructions and the prompt,
-    /// calls `update` with the answer so far and returns the whole answer.
-    /// Throws `AiModelError` (`.Refused` when the model declined).
+    /// Runs a structured experiment of `kind`: given the instructions and
+    /// the prompt, calls `update` with the answer so far and returns the
+    /// whole answer. Throws `AiModelError` (`.Refused` when the model
+    /// declined).
     public typealias StructuredRun =
         @Sendable (
-            _ instructions: String, _ prompt: String,
+            _ kind: AiExperimentKind, _ instructions: String, _ prompt: String,
             _ update: @escaping @Sendable (String) -> Void
         ) async throws -> String
 
@@ -61,7 +62,7 @@ public final class AiLabModel {
     }
 
     public func run(_ experiment: AiExperiment) {
-        if experiment.kind == .structured {
+        if experiment.kind == .structured || experiment.kind == .structuredSchema {
             runStructured(experiment)
             return
         }
@@ -101,11 +102,14 @@ public final class AiLabModel {
         guard error == nil else { return }
         let lab = lab
         structuredTask = Task { [weak self] in
-            var answer = ""
+            // nil keeps the partial answer Rust already has (Stop, a failure).
+            var answer: String?
             var failure: String?
             var refused = false
             do {
-                answer = try await structured(experiment.instructions, experiment.prompt) {
+                answer = try await structured(
+                    experiment.kind, experiment.instructions, experiment.prompt
+                ) {
                     lab.updateExternal(soFar: $0)
                 }
             } catch AiModelError.Refused(let reason) {
