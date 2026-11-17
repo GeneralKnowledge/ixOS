@@ -4,7 +4,7 @@ Status: proposed by Reuben, 2026-11-17 21:48. Recorded so it isn't lost.
 **Not started.** M1 comes first, then M2; the direction after M2 is
 decided once both are done (Reuben's choice, 21:48). This study sits one
 level below [relay-computing.md](relay-computing.md) and
-`relay-social.md`: it is meant to produce tested design decisions
+[relay-social.md](relay-social.md): it is meant to produce tested design decisions
 *before* the milestones after M2 are restructured.
 
 ## Research question

@@ -3,7 +3,7 @@
 Status: an idea from Reuben, 2026-11-17 21:46, recorded so it isn't lost.
 Decided 21:48: the direction after M2 is chosen once M1 and M2 are done.
 **Nothing here is built until he says so.** It proposes a **different
-direction** from `relay-social.md` (the Relay Social idea, recorded 21:28)
+direction** from [relay-social.md](relay-social.md) (the Relay Social idea, recorded 21:28)
 and a **reordering** of the milestones after M2 in
 [relay-future-directions.md](relay-future-directions.md). Which direction
 Relay takes after M2 is Reuben's open decision; M1 and M2 are the same in
@@ -161,7 +161,7 @@ the work under way.
 ## Notes for the decision (Claude, 2026-11-17)
 
 - **What's common:** M1 and M2 are unchanged in this, in
-  `relay-future-directions.md` and in `relay-social.md`, so nothing in
+  `relay-future-directions.md` and in [relay-social.md](relay-social.md), so nothing in
   progress changes whichever direction wins.
 - **It conflicts with Relay Social as written:** that doc's S1, S3 and S5
   wait for M4 People and Rooms, which this proposal demotes, and it says

@@ -68,7 +68,7 @@ permission. Capabilities would grow from it.
 
 ## Later ideas (parked)
 
-Recorded the same evening, after this page. Neither is started; the
+Recorded the same evening, after this page. None is started; the
 direction after M2 is chosen once M1 and M2 are done (Reuben, 21:48).
 
 - [Relay as a personal computing network](relay-computing.md): resources,
