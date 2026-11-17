@@ -172,7 +172,10 @@ struct ChatView: View {
             cancel: cancelContext,
             pickPhotos: { pickingPhotos = true },
             pickFiles: { pickingFiles = true },
-            unstage: { file in staged.removeAll { $0.id == file.id } },
+            unstage: { file in
+                file.release()
+                staged.removeAll { $0.id == file.id }
+            },
             startRecording: startRecording,
             cancelRecording: { recorder.cancel() },
             sendRecording: sendRecording,
@@ -439,12 +442,17 @@ struct ChatView: View {
     private func send() {
         let text = draft
         if editing == nil && !staged.isEmpty {
-            let files = staged.map(\.outgoing)
+            let sending = staged
             let replyTo = replyingTo?.id
             staged = []
             replyingTo = nil
             draft = ""
-            Task { await model.send(files: files, text: text, to: conversationId, replyTo: replyTo) }
+            // Rust copies the files into its store during the send, so the
+            // private copies go once it has finished, sent or not.
+            Task {
+                await model.send(files: sending.map(\.outgoing), text: text, to: conversationId, replyTo: replyTo)
+                sending.forEach { $0.release() }
+            }
             return
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }

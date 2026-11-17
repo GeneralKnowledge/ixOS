@@ -66,7 +66,9 @@ ForgeAppKit as `ForgePickedFile`, not into the native services'
 every app uses ForgeAppKit, whose model code tests on Linux. `importCopy`
 is left as it is (no app calls it) and can go when the native services get
 one route (everyday capabilities Phase 4). Chat and Relay use
-`ForgePickedFile`; `picked-files` is in `check-app-parity.sh`.
+`ForgePickedFile`; `picked-files` is in `check-app-parity.sh`. Chat's
+staged attachment owns its copy and releases it when the attachment is
+removed or once the send has finished.
 
 **Not included.** The photo picker extraction (wave 5) stays where it is;
 it should use this copy when it comes.
@@ -164,6 +166,14 @@ Soundscape, Commonplace and the starter have the switch.
 **Why later.** It touches the same code as the everyday capabilities plan's
 Phase 1 (typed open failure to ForgeRoot), so it should be designed with
 it, not beside it.
+
+## Guardrails, not guarantees
+
+The parity rules read the Swift source for known shapes (a security scope
+next to `copyItem`, a model alert next to `.sheet(`); they don't analyse
+Swift. They stop the mistakes the apps actually made from coming back, and
+a new shape of the same mistake can still get past them, so review and the
+phone remain the proof.
 
 ## Looked at and left alone
 
