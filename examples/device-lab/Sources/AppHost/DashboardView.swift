@@ -5,6 +5,9 @@ import SwiftUI
 /// This iPhone tab.
 struct DashboardView: View {
     let model: LabModel
+    /// This phone's IP addresses, re-read when the network changes.
+    @State private var addresses: [NetworkAddress] = []
+    private let audio = AudioMonitor.shared
 
     private var s: LabSnapshot { model.snapshot }
 
@@ -13,6 +16,7 @@ struct DashboardView: View {
             networkSection
             bluetoothSection
             powerSection
+            audioSection
             storageSection
             motionSection
             compassSection
@@ -67,6 +71,17 @@ struct DashboardView: View {
                         .map { $0 ? "Yes" : "No" }.joined(separator: " · "))
                 }
                 LabeledContent("Large Downloads", value: network.unmetered ? "Would start now" : "Would wait for Wi-Fi")
+                ForEach(addresses, id: \.self) { address in
+                    LabeledContent {
+                        Text(address.address)
+                            .font(.footnote.monospaced())
+                            .multilineTextAlignment(.trailing)
+                            .textSelection(.enabled)
+                    } label: {
+                        Text(address.label)
+                    }
+                    .accessibilityIdentifier("dashboard.address.\(address.interface)")
+                }
                 LabeledContent("Wi-Fi Name") {
                     Text("Needs a paid team").foregroundStyle(.secondary)
                 }
@@ -81,6 +96,35 @@ struct DashboardView: View {
         } header: {
             Text("Network")
         }
+        .task(id: s.network.status) { addresses = NetworkAddress.current() }
+    }
+
+    // MARK: Audio
+
+    @ViewBuilder private var audioSection: some View {
+        Section {
+            LabeledContent("Output", value: audio.outputs.isEmpty ? "–" : audio.outputs.joined(separator: ", "))
+                .accessibilityIdentifier("dashboard.audioOutput")
+            if !audio.inputs.isEmpty {
+                LabeledContent("Input", value: audio.inputs.joined(separator: ", "))
+            }
+            if let volume = audio.volume {
+                LabeledContent("Volume", value: Format.percent(Double(volume)))
+                    .monospacedDigit()
+            }
+            LabeledContent("Another App Playing", value: audio.otherAudioPlaying ? "Yes" : "No")
+            NavigationLink {
+                AudioLogView(audio: audio)
+            } label: {
+                LabeledContent("Interruptions and Changes", value: "\(audio.events.count)")
+            }
+            .accessibilityIdentifier("dashboard.audioLog")
+        } header: {
+            Text("Audio")
+        } footer: {
+            Text("Recorded since launch, including while an app here plays: take a call or unplug headphones during Soundscape, then read what iOS sent.")
+        }
+        .onAppear { audio.refresh() }
     }
 
     // MARK: Bluetooth
@@ -139,14 +183,45 @@ struct DashboardView: View {
                 if let brightness = status.screenBrightness {
                     LabeledContent("Screen Brightness", value: Format.percent(Double(brightness)))
                 }
+                drainRows(s.device.power, onPower: status.batteryState == .charging || status.batteryState == .full)
             } else {
                 Note(s.device.available ? "Reading…" : "Device status is not available in this build.")
             }
         } header: {
             Text("Battery & Power")
         } footer: {
-            Text("Heavy Work is Forge's default rule for big downloads and on-device AI.")
+            Text("Heavy Work is Forge's default rule for big downloads and on-device AI. Drain and Heat count from launch, whichever tab or app is open, so after an AI Lab run or a big transfer they show what it cost.")
         }
+    }
+
+    @ViewBuilder private func drainRows(_ power: PowerStats, onPower: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            LabeledContent("Drain") {
+                Text(drainText(power, onPower: onPower))
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+            }
+            if power.levels.count > 1 {
+                Sparkline(values: power.levels)
+                    .frame(height: 24)
+            }
+        }
+        .accessibilityIdentifier("dashboard.drain")
+        NavigationLink {
+            ThermalLogView(changes: power.thermalChanges)
+        } label: {
+            LabeledContent("Heat Changes", value: "\(max(power.thermalChanges.count - 1, 0))")
+        }
+        .accessibilityIdentifier("dashboard.heat")
+    }
+
+    private func drainText(_ power: PowerStats, onPower: Bool) -> String {
+        if onPower { return "On power" }
+        let minutes = Int(power.onBatteryMinutes.rounded())
+        guard let rate = power.drainPercentPerHour else {
+            return "Measuring (\(minutes) of 10 min)"
+        }
+        return "\(Format.number(rate, digits: 1))% an hour over \(minutes) min"
     }
 
     // MARK: Storage and memory
@@ -384,6 +459,57 @@ struct DashboardView: View {
         case .serious: .orange
         case .critical: .red
         }
+    }
+}
+
+/// Audio interruptions and route changes since launch, newest first.
+struct AudioLogView: View {
+    let audio: AudioMonitor
+
+    var body: some View {
+        List(audio.events) { event in
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(event.title)
+                    Spacer()
+                    Text(event.at.formatted(date: .omitted, time: .standard))
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Text(event.detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+        }
+        .overlay {
+            if audio.events.isEmpty {
+                ContentUnavailableView(
+                    "Nothing Yet", systemImage: "speaker.wave.2",
+                    description: Text("Plug in headphones, connect AirPods, or take a call while an app plays."))
+            }
+        }
+        .navigationTitle("Audio Events")
+        .inlineNavigationTitle()
+    }
+}
+
+/// The thermal state since launch, newest first: the first entry is how
+/// warm the phone was when Device Lab opened.
+struct ThermalLogView: View {
+    let changes: [ThermalChange]
+
+    var body: some View {
+        List(Array(changes.enumerated()), id: \.offset) { _, change in
+            LabeledContent(change.state.name, value: Format.time(unixMs: change.atMs))
+        }
+        .overlay {
+            if changes.isEmpty {
+                ContentUnavailableView("No Readings Yet", systemImage: "thermometer.medium")
+            }
+        }
+        .navigationTitle("Heat Changes")
+        .inlineNavigationTitle()
     }
 }
 

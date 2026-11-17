@@ -18,9 +18,10 @@ It has three tabs:
 
 | Section | Values | Needs |
 |---------|--------|-------|
-| **Network** | Online or offline and why, Wi-Fi, cellular or wired, metered, Low Data Mode, IPv4/IPv6/DNS, whether a Wi-Fi-only download would start, a log of every change | Nothing |
+| **Network** | Online or offline and why, Wi-Fi, cellular or wired, metered, Low Data Mode, IPv4/IPv6/DNS, this phone's own IP addresses (Wi-Fi, cellular, VPN, with Tailscale named), whether a Wi-Fi-only download would start, a log of every change | Nothing |
 | **Bluetooth** | On, off, not allowed, not supported | Bluetooth permission (asked from a button) |
-| **Battery & Power** | Level and charging state, Low Power Mode, thermal state, screen brightness, whether Forge's heavy-work rule would let a big download run | Nothing |
+| **Battery & Power** | Level and charging state, Low Power Mode, thermal state, screen brightness, whether Forge's heavy-work rule would let a big download run, the drain in percent an hour on battery (after 10 minutes) with a sparkline, and every heat change since launch. Drain and heat keep counting while another tab or a hosted app is open, so they show what an AI Lab run or a big transfer cost | Nothing |
+| **Audio** | Where sound is going (speaker, headphones, Bluetooth, AirPlay, CarPlay), the microphone in use, the volume, whether another app is playing, and every interruption and route change since launch, including those a hosted app (Soundscape) gets while it plays | Nothing |
 | **Storage & Memory** | Free and total storage, memory the app uses, memory it has left before iOS ends it, device RAM | Nothing |
 | **Motion** | Accelerometer, gyroscope and magnetometer (each axis, magnitude, peak, measured rate, sparkline), roll, pitch, yaw, tilt, movement without gravity, compass calibration | Nothing |
 | **Compass** | A turning dial. True north from Core Location when location is allowed, magnetic north from device motion otherwise | Nothing (location for true north) |

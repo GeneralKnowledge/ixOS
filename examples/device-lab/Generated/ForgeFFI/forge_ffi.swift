@@ -6913,6 +6913,10 @@ public struct DeviceStats: Equatable, Hashable {
      * download would do now). `None`: go ahead.
      */
     public var heavyWorkDeferred: DeferReason?
+    /**
+     * Battery drain and thermal changes since launch ([`power`]).
+     */
+    public var power: PowerStats
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6920,11 +6924,15 @@ public struct DeviceStats: Equatable, Hashable {
         /**
          * Forge's default heavy-work policy, applied to `status` (what a model
          * download would do now). `None`: go ahead.
-         */heavyWorkDeferred: DeferReason?) {
+         */heavyWorkDeferred: DeferReason?, 
+        /**
+         * Battery drain and thermal changes since launch ([`power`]).
+         */power: PowerStats) {
         self.available = available
         self.info = info
         self.status = status
         self.heavyWorkDeferred = heavyWorkDeferred
+        self.power = power
     }
 
     
@@ -6946,7 +6954,8 @@ public struct FfiConverterTypeDeviceStats: FfiConverterRustBuffer {
                 available: FfiConverterBool.read(from: &buf), 
                 info: FfiConverterOptionTypeDeviceInfo.read(from: &buf), 
                 status: FfiConverterOptionTypeDeviceStatus.read(from: &buf), 
-                heavyWorkDeferred: FfiConverterOptionTypeDeferReason.read(from: &buf)
+                heavyWorkDeferred: FfiConverterOptionTypeDeferReason.read(from: &buf), 
+                power: FfiConverterTypePowerStats.read(from: &buf)
         )
     }
 
@@ -6955,6 +6964,7 @@ public struct FfiConverterTypeDeviceStats: FfiConverterRustBuffer {
         FfiConverterOptionTypeDeviceInfo.write(value.info, into: &buf)
         FfiConverterOptionTypeDeviceStatus.write(value.status, into: &buf)
         FfiConverterOptionTypeDeferReason.write(value.heavyWorkDeferred, into: &buf)
+        FfiConverterTypePowerStats.write(value.power, into: &buf)
     }
 }
 
@@ -8221,6 +8231,99 @@ public func FfiConverterTypePermissionStatuses_lower(_ value: PermissionStatuses
 
 
 /**
+ * What the Battery & Power section shows about the time since launch.
+ */
+public struct PowerStats: Equatable, Hashable {
+    /**
+     * Percent an hour since the phone was last unplugged (or since launch),
+     * once it has been on battery for 10 minutes. `None` on power or
+     * before then.
+     */
+    public var drainPercentPerHour: Double?
+    /**
+     * How long the current stretch on battery has lasted, in minutes.
+     */
+    public var onBatteryMinutes: Double
+    /**
+     * Battery level samples, oldest first, for a sparkline (0 to 100).
+     */
+    public var levels: [Double]
+    /**
+     * Thermal state changes, newest first.
+     */
+    public var thermalChanges: [ThermalChange]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Percent an hour since the phone was last unplugged (or since launch),
+         * once it has been on battery for 10 minutes. `None` on power or
+         * before then.
+         */drainPercentPerHour: Double?, 
+        /**
+         * How long the current stretch on battery has lasted, in minutes.
+         */onBatteryMinutes: Double, 
+        /**
+         * Battery level samples, oldest first, for a sparkline (0 to 100).
+         */levels: [Double], 
+        /**
+         * Thermal state changes, newest first.
+         */thermalChanges: [ThermalChange]) {
+        self.drainPercentPerHour = drainPercentPerHour
+        self.onBatteryMinutes = onBatteryMinutes
+        self.levels = levels
+        self.thermalChanges = thermalChanges
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PowerStats: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePowerStats: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PowerStats {
+        return
+            try PowerStats(
+                drainPercentPerHour: FfiConverterOptionDouble.read(from: &buf), 
+                onBatteryMinutes: FfiConverterDouble.read(from: &buf), 
+                levels: FfiConverterSequenceDouble.read(from: &buf), 
+                thermalChanges: FfiConverterSequenceTypeThermalChange.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PowerStats, into buf: inout [UInt8]) {
+        FfiConverterOptionDouble.write(value.drainPercentPerHour, into: &buf)
+        FfiConverterDouble.write(value.onBatteryMinutes, into: &buf)
+        FfiConverterSequenceDouble.write(value.levels, into: &buf)
+        FfiConverterSequenceTypeThermalChange.write(value.thermalChanges, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePowerStats_lift(_ buf: RustBuffer) throws -> PowerStats {
+    return try FfiConverterTypePowerStats.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePowerStats_lower(_ value: PowerStats) -> RustBuffer {
+    return FfiConverterTypePowerStats.lower(value)
+}
+
+
+/**
  * One `name=value` pair of a URL query, decoded.
  */
 public struct QueryItem: Equatable, Hashable {
@@ -8347,6 +8450,63 @@ public func FfiConverterTypeSessionTaskInfo_lift(_ buf: RustBuffer) throws -> Se
 #endif
 public func FfiConverterTypeSessionTaskInfo_lower(_ value: SessionTaskInfo) -> RustBuffer {
     return FfiConverterTypeSessionTaskInfo.lower(value)
+}
+
+
+/**
+ * One change of the phone's thermal state.
+ */
+public struct ThermalChange: Equatable, Hashable {
+    public var atMs: Int64
+    public var state: ThermalState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(atMs: Int64, state: ThermalState) {
+        self.atMs = atMs
+        self.state = state
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ThermalChange: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeThermalChange: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ThermalChange {
+        return
+            try ThermalChange(
+                atMs: FfiConverterInt64.read(from: &buf), 
+                state: FfiConverterTypeThermalState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ThermalChange, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.atMs, into: &buf)
+        FfiConverterTypeThermalState.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeThermalChange_lift(_ buf: RustBuffer) throws -> ThermalChange {
+    return try FfiConverterTypeThermalChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeThermalChange_lower(_ value: ThermalChange) -> RustBuffer {
+    return FfiConverterTypeThermalChange.lower(value)
 }
 
 
@@ -11814,6 +11974,31 @@ fileprivate struct FfiConverterSequenceTypeSessionTaskInfo: FfiConverterRustBuff
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeSessionTaskInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeThermalChange: FfiConverterRustBuffer {
+    typealias SwiftType = [ThermalChange]
+
+    public static func write(_ value: [ThermalChange], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeThermalChange.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ThermalChange] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ThermalChange]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeThermalChange.read(from: &buf))
         }
         return seq
     }

@@ -64,6 +64,9 @@ public struct ContentView: View {
         .onAppear {
             guard !launched else { return }
             launched = true
+            // From launch, so audio events while a hosted app plays are
+            // recorded (This iPhone, Audio).
+            AudioMonitor.shared.start()
             // Chat merged into Relay: an "Open at Launch" of Chat opens Relay.
             openApp = EmbeddedApp(rawValue: launchApp == "chat" ? "relay" : launchApp)
         }
