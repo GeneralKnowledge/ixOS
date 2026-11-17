@@ -21,7 +21,12 @@ struct LocationsView: View {
             .searchable(text: $query, prompt: "Search for a city")
             .onSubmit(of: .search) { model.search(query) }
             .onChange(of: query) { _, newValue in
-                if newValue.trimmingCharacters(in: .whitespaces).count >= 3 { model.search(newValue) }
+                // Below three letters the old results don't match any more.
+                if newValue.trimmingCharacters(in: .whitespaces).count >= 3 {
+                    model.search(newValue)
+                } else {
+                    model.clearSearch()
+                }
             }
             .toolbar {
                 #if os(iOS)
@@ -82,9 +87,11 @@ struct LocationsView: View {
         }
         ForEach(model.searchResults, id: \.self) { place in
             Button {
-                model.add(place)
-                query = ""
-                isPresented = false
+                // On failure the sheet stays, with the reason above.
+                if model.add(place) {
+                    query = ""
+                    isPresented = false
+                }
             } label: {
                 VStack(alignment: .leading) {
                     Text(place.name).font(.body)

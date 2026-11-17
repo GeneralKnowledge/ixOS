@@ -154,7 +154,14 @@ fn identity_and_peers_survive_a_restart() {
     let id = phone.identity();
     block_on(phone.rename_device("Cati".into())).unwrap();
     phone.shutdown();
+    // The phone's answer to the pairing connection can still hold the core
+    // for a moment after the peer is saved; reopening before it lets go is
+    // refused as in use.
+    let closing = Arc::downgrade(&phone);
     drop(phone);
+    eventually("the old phone core to close", || {
+        closing.strong_count() == 0
+    });
     let phone = device(&dir, "phone");
     assert_eq!(phone.identity().device_id, id.device_id);
     assert_eq!(phone.identity().name, "Cati");
