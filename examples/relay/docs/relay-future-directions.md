@@ -6,7 +6,10 @@ current milestone is [Relay M1: Reliable Trusted-Device Delivery](relay-reliable
 
 A larger idea from the same day, Relay as open social infrastructure
 (Spaces, portable Nostr identity, independent hosting), is recorded in
-[relay-social.md](relay-social.md), parked in the same way.
+[relay-social.md](relay-social.md), parked in the same way. Three later
+ideas that evening (Relay as a personal computing network, a foundational
+computing study, and the next computing environment) are in
+[relay-computing.md](relay-computing.md), also parked.
 
 The vision is a personal network operating system: devices, people,
 services and eventually agents that find one another, exchange
