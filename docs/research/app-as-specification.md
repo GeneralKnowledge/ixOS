@@ -79,7 +79,7 @@ With the phone on the cable, in the next sitting already planned for Device Lab:
 
 **Exit:** every sequence matches, or each difference is written down as either a bug in the recreation (fixed) or a gap in ixOS (a record in `gaps.toml`: layer, cost, whether a second app would need it). A finding that needed a workaround outside ForgeUI or the FFI rules is a gap even if the result matches.
 
-### R3: compare screens automatically (needs Reuben's decision on the explorer)
+### R3: compare screens automatically (the explorer question is decided here)
 
 1. Wire the parked explorer into a `forge-lab explore` command, add a breadth-first order option, and walk both apps.
 2. A `forge-lab compare` that reads two `graph.json` files and a hand-written screen mapping (reference screen to recreation screen), and reports screens, controls and transitions present in one and not the other.
@@ -91,6 +91,8 @@ With the phone on the cable, in the next sitting already planned for Device Lab:
 Run R1 to R3 on NetNewsWire and Commonplace, with the fixture feeds. This is where most platform gaps should appear, and where the [NetNewsWire spec](../../examples/commonplace/docs/benchmark/spec.md) rows finally move from Expected to Seen.
 
 ## The decision: the explorer
+
+**Decided 2026-11-17 (Reuben): decide at R3.** R0 to R2 go ahead without it.
 
 The explorer was frozen by the reinvention audit (2026-11-11) and moved to forge-lab (2026-11-15), where it "can grow on its own" but nothing has been wired back in. R0 to R2 do not need it. R3 does.
 
