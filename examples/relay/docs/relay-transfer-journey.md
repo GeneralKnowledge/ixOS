@@ -1,6 +1,6 @@
 # Relay's transfer journey
 
-Status: **proposed** (2026-11-17), for Reuben's review. This is the
+Status: **proposed** (2026-11-17); its three [decisions](#decisions-reuben-2026-11-17) agreed by Reuben the same day. This is the
 experience specification for sending and receiving in Relay, from first
 launch to the tenth time. It is Phase 4's first product journey in the
 [experience research](../../../docs/research/experience/README.md), and it
@@ -295,10 +295,9 @@ About 15 minutes, once PR 3 is built, iPhone and laptop:
    Again without answering for two minutes: the laptop says they didn't answer.
 5. Send Again from Activity: two taps.
 
-## Decisions for Reuben
+## Decisions (Reuben, 2026-11-17)
 
-1. **The first screen:** Send at first launch, then the last tab used
-   (recommended), or always Chats, or always Send.
+1. **The first screen:** Send at first launch, then the last tab used.
 2. **Trusted devices receive without asking by default** (the brief's default
    grant, kept), with Ask before receiving per device.
 3. **An unanswered offer expires after two minutes** as a decline.
