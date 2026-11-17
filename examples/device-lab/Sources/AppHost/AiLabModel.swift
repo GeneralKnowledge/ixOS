@@ -100,7 +100,7 @@ public final class AiLabModel {
         }
         perform { _ = try lab.beginExternal(kind: experiment.kind, prompt: experiment.prompt) }
         guard error == nil else { return }
-        let lab = lab
+        let rustLab = lab
         structuredTask = Task { [weak self] in
             // nil keeps the partial answer Rust already has (Stop, a failure).
             var answer: String?
@@ -110,7 +110,7 @@ public final class AiLabModel {
                 answer = try await structured(
                     experiment.kind, experiment.instructions, experiment.prompt
                 ) {
-                    lab.updateExternal(soFar: $0)
+                    rustLab.updateExternal(soFar: $0)
                 }
             } catch AiModelError.Refused(let reason) {
                 failure = reason
@@ -120,7 +120,7 @@ public final class AiLabModel {
             } catch {
                 failure = "\(error)"
             }
-            try? lab.finishExternal(answer: answer, error: failure, refused: refused)
+            try? rustLab.finishExternal(answer: answer, error: failure, refused: refused)
             self?.refresh()
         }
     }
