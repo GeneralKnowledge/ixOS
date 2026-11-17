@@ -360,15 +360,35 @@ final class ReadAloud: NSObject {
         #endif
     }
 
+    /// Speech has no duration of its own, so the lock screen gets an
+    /// estimate from the chapter's length at the current speed: where the
+    /// current block starts, and the whole chapter. iOS moves the progress
+    /// bar between updates at the playback rate; each new block corrects it.
+    /// Without a duration and elapsed time iOS showed the player with no
+    /// details at all (found on the phone, 2026-11-17; Soundscape's player
+    /// had the same fault).
+    nonisolated static func estimatedTimes(texts: [String], block: Int?, speed: Double) -> (elapsed: Double, duration: Double) {
+        // About 15 characters a second at normal speed (≈180 words a minute).
+        let perSecond = 15 * max(speed, 0.5)
+        let total = texts.reduce(0) { $0 + $1.count }
+        let before = texts.prefix(max(0, min(block ?? 0, texts.count))).reduce(0) { $0 + $1.count }
+        return (Double(before) / perSecond, Double(total) / perSecond)
+    }
+
     private func updateNowPlaying() {
         #if os(iOS)
         guard state != .stopped else { return }
+        let times = Self.estimatedTimes(texts: texts, block: block, speed: speed)
         var info: [String: Any] = [
-            MPMediaItemPropertyTitle: chapterTitle,
+            MPMediaItemPropertyTitle: chapterTitle.isEmpty ? bookTitle : chapterTitle,
             MPMediaItemPropertyArtist: author,
             MPMediaItemPropertyAlbumTitle: bookTitle,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: times.elapsed,
             MPNowPlayingInfoPropertyPlaybackRate: state == .playing ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
+        if times.duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = times.duration }
         if let coverFile, let image = UIImage(contentsOfFile: coverFile) {
             info[MPMediaItemPropertyArtwork] = Self.lockScreenArtwork(image)
         }
