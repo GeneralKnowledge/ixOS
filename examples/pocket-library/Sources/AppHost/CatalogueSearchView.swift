@@ -185,47 +185,50 @@ private struct CatalogueRow: View {
     let disabled: Bool
     let add: () -> Void
 
+    /// The whole row adds the book (or opens it, once in the library):
+    /// only the small icon did before.
     var body: some View {
-        HStack(spacing: 12) {
-            CoverImage(title: result.title, file: nil, url: result.coverUrl, width: 40)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(result.title)
-                    .font(.headline)
-                    .lineLimit(2)
-                if !result.author.isEmpty {
-                    Text(result.author)
-                        .font(.subheadline)
+        Button(action: add) {
+            HStack(spacing: 12) {
+                CoverImage(title: result.title, file: nil, url: result.coverUrl, width: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(result.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                    if !result.author.isEmpty {
+                        Text(result.author)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Text(details)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
-                Text(details)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            if importing {
-                ProgressView()
-            } else if result.libraryBookId != nil {
-                Button(action: add) {
-                    Label("In Library", systemImage: "checkmark.circle.fill")
-                        .labelStyle(.iconOnly)
+                Spacer(minLength: 8)
+                if importing {
+                    ProgressView()
+                } else if result.libraryBookId != nil {
+                    Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                         .font(.title2)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Already in your library. Open it")
-            } else {
-                Button(action: add) {
-                    Label("Add", systemImage: "plus.circle.fill")
-                        .labelStyle(.iconOnly)
+                } else {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(.tint)
                         .font(.title2)
                 }
-                .buttonStyle(.borderless)
-                .disabled(disabled)
-                .accessibilityLabel("Add \(result.title)")
             }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 2)
+        .buttonStyle(.plain)
+        .disabled(result.libraryBookId == nil && disabled)
+        .accessibilityLabel(
+            result.libraryBookId != nil
+                ? "\(result.title), already in your library. Open it"
+                : "Add \(result.title)"
+        )
+        .accessibilityIdentifier(result.libraryBookId != nil ? "catalogue.open" : "catalogue.add")
     }
 
     private var details: String {
