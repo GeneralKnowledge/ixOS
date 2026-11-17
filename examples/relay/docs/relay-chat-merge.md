@@ -1,12 +1,11 @@
 # Merging Chat into Relay
 
-Status: **proposal** (2026-11-17), waiting for Reuben's decisions at the
-[end](#decisions-for-reuben). No code moves until he agrees and Relay's PR 2
-(#268) has landed. Where this differs from
+Status: **agreed** (Reuben, 2026-11-17: all three
+[decisions](#decisions-reuben-2026-11-17) as recommended). No code moves
+until Relay's PR 2 (#268) has landed. Where this differs from
 [relay-platform-plan.md](relay-platform-plan.md) and
-[relay-m1-m2-brief.md](relay-m1-m2-brief.md), those stay in force until this
-is agreed; the [doc changes](#docs-that-change-when-this-is-agreed) list what
-then gets rewritten.
+[relay-m1-m2-brief.md](relay-m1-m2-brief.md), this wins; the
+[doc changes](#docs-that-change) list what is rewritten and when.
 
 ## The question
 
@@ -201,7 +200,9 @@ once when it is back, delivered and read on both sides, after relaunches.
 ### Step 4. The front door (with brief PR 5)
 
 Chats, Send, Devices as above, applying the LocalSend audit's P1 and P2.
-Device presence and status from PR 5 land here.
+Device presence and status from PR 5 land here. This is the same work as
+the UI Improvement programme's Relay redesign pilot (its PR 4): one PR, not
+two.
 
 ### Then the plan as agreed
 
@@ -224,23 +225,24 @@ server's future is decided.
 - **Merge-time churn while Relay is mid-roadmap.** Step 1 waits for #268 and
   is mechanical; Relay's transfer work doesn't change.
 
-## Docs that change when this is agreed
+## Docs that change
 
 - [relay-platform-plan.md](relay-platform-plan.md): "Relay does not depend on
   Chat as a product", the "Another chat engine" and "Relay depending on
   another app" rows and the main screens, rewritten to this plan.
 - [relay-m1-m2-brief.md](relay-m1-m2-brief.md): PR 4 and the rule "Relay
-  takes nothing from Chat".
+  takes nothing from Chat", in step 1, because #268 is still changing the
+  brief.
 - [chat-demo.md](../../chat/docs/chat-demo.md): marked as history, pointing
   here.
 - The roadmap's demo list and `docs/boundaries.toml` (chat crossings) in
   step 1.
 
-## Decisions for Reuben
+## Decisions (Reuben, 2026-11-17)
 
-1. **Merge Chat into Relay** (recommended), or keep them separate and share
-   chat-core through the framework (the 2026-11-16 plan).
-2. **Chat's server mode:** keep it as a frozen connection kind until Nostr
-   communities (recommended), or drop it in step 1.
-3. **The front door:** Chats, Send, Devices (recommended), or the plan's
-   Nearby, Connections, Activity with messages inside each device's view.
+1. **Chat merges into Relay.** Relay absorbs Chat; the 2026-11-16 plan
+   (keep them separate, share chat-core through the framework) is now only
+   step 3's fallback.
+2. **Chat's server mode stays,** as a connection kind frozen to bug fixes
+   until Nostr communities (M5) decide its future.
+3. **The front door is Chats, Send, Devices.**

@@ -42,9 +42,11 @@ Not another AirDrop clone, messaging app, remote desktop, VPN, cloud
 storage service or AI agent framework: it can offer capabilities in all of
 these areas without becoming any one of them. The name stays Relay.
 
-> **Proposed, 2026-11-17:** merge Chat into Relay, so Relay's messages run
-> on chat-core instead of a new engine. Not agreed yet; until it is, this
-> plan stands. See [relay-chat-merge.md](relay-chat-merge.md).
+> **Agreed, 2026-11-17: Chat merges into Relay.** Relay's messages run on
+> chat-core instead of a new engine, Chat's server stays as a frozen
+> connection kind, and the front door is Chats, Send, Devices. Where this
+> plan still says otherwise, [relay-chat-merge.md](relay-chat-merge.md)
+> wins.
 
 ## Where each part stands
 
@@ -52,10 +54,10 @@ these areas without becoming any one of them. The name stays Relay.
 |---|---|
 | **Implemented** (on main) | Relay R1/R2 ([examples/relay](../README.md)): device records and QR pairing, TCP + Noise from `forge-devproto`, notes and files between paired devices on one network, transfer history and received files, Bonjour on iPhone, the `relay` command. AI asks between paired devices (protocol 2, `relay serve-ai` / `relay ask`). Word codes on iroh in the app's own crate: "Receive with a Code" and "Send with a Code" on the iPhone and `relay send-code` on Linux. Relay's Swift compiles with xtool and runs in Device Lab, checked on a physical iPhone on 2026-11-15 |
 | **Validated, not yet a production system** (Linux spike and the iPhone gate, [results](relay-stage0-spike.md)) | iroh endpoints with relays off; 1 GB offline transfer with iroh-blobs; mDNS discovery by code number; SPAKE2 word codes with key confirmation over both endpoint ids; one wrong guess ends a code; blobs only for the endpoint that proved the code; size about +7 MB. M0 (#199): three EFF short words, no number collisions, busy and wrong-code handling, disk store and resume, the code session as a state machine checked by Lean, and transfers both ways between two Linux machines over Tailscale. iPhone: 1 GB Linux to iPhone at 9.5 MB/s and iPhone to Linux, each with a word code |
-| **Approved, not built** | iroh for every connection; iroh-blobs for files; word codes `7-orbit-velvet` with a QR code; trusted devices replacing QR pairing; device messages (never through Chat the app: [below](#b-communications-first-with-transfer)); temporary rooms that collapse with the host; Relaxed, Standard and Strict room levels; rooms on Nostr (Marmot, NIP-29, NIP-11); our rendezvous and iroh relay on Hetzner; a browser receiver later; stays in ixOS |
+| **Approved, not built** | iroh for every connection; iroh-blobs for files; word codes `7-orbit-velvet` with a QR code; trusted devices replacing QR pairing; device messages on chat-core, Chat merged into Relay ([below](#b-communications-first-with-transfer)); temporary rooms that collapse with the host; Relaxed, Standard and Strict room levels; rooms on Nostr (Marmot, NIP-29, NIP-11); our rendezvous and iroh relay on Hetzner; a browser receiver later; stays in ixOS |
 | **Proposed** (2026-11-14) | The four pillars and three screens; the connection resolver and three network modes; person and device identities; capability-based permissions; capability services and their declarations; device capabilities (clipboard, files, terminal, tasks, AI); the extension model; the eventual crate layout |
 | **New proposals** (2026-11-16) | Connections, permissions and capabilities as the product model; Revoked as a trust level and "trust is not a permission"; scoped grants with three presets; service discovery separate from device discovery; device presence and connection diagnostics; M8 Distributed services; the [new capabilities](#new-capabilities-worth-considering) list; the [personal network test](#the-personal-network-test) as the measure of the product |
-| **Deferred** | Our own federation protocol, our own group encryption, a full sync engine, unrestricted remote access, an extension marketplace, agents over Relay (now M8), any dependency on our servers for local use, a repository restructure or early crate split, a separate repository, a new name, a separate Relay server product, several regional relays before reliability needs them, Relay depending on another app as a product |
+| **Deferred** | Our own federation protocol, our own group encryption, a full sync engine, unrestricted remote access, an extension marketplace, agents over Relay (now M8), any dependency on our servers for local use, a repository restructure or early crate split, a separate repository, a new name, a separate Relay server product, several regional relays before reliability needs them |
 
 ### What the code holds today (2026-11-16)
 
@@ -71,8 +73,10 @@ So that plans are never counted as features:
    word-code transfers don't appear in the history. Relay keeps one
    networking stack in the end: the migration is in the
    [brief](relay-m1-m2-brief.md#one-transfer-path).
-3. **Chat is not Relay messaging.** Chat has its own engine; Relay's
-   messages don't exist yet.
+3. **Chat is not Relay messaging yet.** Chat has its own engine and server;
+   Relay's messages don't exist yet. The merge
+   ([relay-chat-merge.md](relay-chat-merge.md)) makes Chat's engine
+   Relay's.
 4. **Pair secrets sit in Relay's JSON file,** not the Keychain (friction
    A17).
 
@@ -115,9 +119,15 @@ apps):
 
 ### The main screens
 
-- **Nearby:** devices and people that can be found right now.
-- **Connections:** trusted devices, contacts, servers, rooms.
-- **Activity:** transfers, messages, sessions and requests.
+Decided 2026-11-17 with the Chat merge
+([relay-chat-merge.md](relay-chat-merge.md#what-the-merged-app-is)), replacing
+Nearby, Connections and Activity:
+
+- **Chats:** every conversation, with a device, a person, a room, a chat
+  server or the assistant.
+- **Send:** one flow, what then who; Receive beside it. Transfers and
+  requests waiting for approval show here.
+- **Devices:** nearby and trusted devices, contacts, servers.
 
 Pick a device, and it opens its own capability view: send a file, start a
 conversation, open a terminal, share a folder, ask for a task, start a
@@ -303,14 +313,12 @@ From messages between your own devices to direct messages, attachments
 persistent rooms, communities on independent servers, and perhaps voice and
 video later.
 
-**Relay does not depend on Chat as a product** (Reuben, 2026-11-16).
-Relay's first messages (between trusted devices) use its own small outbox
-over Relay Device. If a messaging library is ever shared (`chat-core`'s
-`ChatRepo` is the candidate), it stays independently usable and brings no
-shared accounts, shared product state or app-to-app dependency. Apps never
-depend on each other ([areas.md](../../../docs/areas.md)), so the shared
-part would move out of Chat into the framework first, as its second real
-use.
+**Chat merges into Relay** (Reuben, 2026-11-17, replacing "Relay does
+not depend on Chat" of 2026-11-16). Chat's engine, chat-core, becomes
+Relay's: messages between trusted devices are a `ChatRepo` over Relay
+Device, chat servers keep theirs, and rooms and communities get their own
+later. Being one app, nothing moves into the framework for it. Plan, data
+and order: [relay-chat-merge.md](relay-chat-merge.md).
 
 ### C. Rooms and communities
 
@@ -489,7 +497,7 @@ focused PRs, each with one acceptance condition:
 | CLI | Linux and macOS work with the phone |
 | Trusted devices | Pairing persists securely |
 | Device network | Internet and private routes work |
-| Peer messaging | Messages between trusted devices survive relaunches and retries, once each, with no dependency on Chat the app |
+| Peer messaging | Messages between trusted devices survive relaunches and retries, once each, through chat-core's outbox |
 | Temporary rooms | Host and join lifecycle works |
 | Nostr/Marmot spike | An encrypted group works with another client |
 | Each capability | One service at a time |
@@ -522,7 +530,7 @@ drift apart.
 | Our own federation protocol | Nostr |
 | Our own group encryption | Marmot / MLS, after validation |
 | Our own P2P transport | iroh |
-| Another chat engine | A shared messaging library if it stays independent; never Chat the app as a dependency |
+| Another chat engine | chat-core, Chat's engine, now Relay's own |
 | A full sync engine | One-way transfers first |
 | Unrestricted remote access | Capability permissions |
 | An extension marketplace | The extension protocol first |
@@ -531,7 +539,6 @@ drift apart.
 | An elaborate agent orchestration framework | Capability invocation; A2A and MCP in M8 |
 | Several regional relays early | One relay on Hetzner until reliability needs more |
 | A separate Relay server product, repository or name | `examples/relay` in ixOS |
-| Relay depending on another app | Optional integrations; Relay works alone |
 
 **Risks to watch:** the iOS lifecycle (reconnect and resume, never fight
 Apple's background rules), the maturity of iroh-blobs and Marmot (pin
