@@ -56,17 +56,15 @@ This is a compatibility layer, not a promise of identical behaviour.
 
 ## Plan
 
-One pull request per milestone, in this order.
+**Parked after M1 (Reuben, 2026-11-17).** llama.cpp, Ollama and vLLM already take a JSON Schema and enforce it while decoding, so the rest of the plan below may not be needed: this package's export plus its validator could be enough. M2 to M5 wait until the AI Lab's A1 step (a model on the laptop's GPU) shows a real need for more.
 
 | Milestone | What | State |
 |---|---|---|
-| M1 | Dynamic schema core: schemas, validation, nested objects, lists, choices, references, JSON Schema export. No model needed | This package |
-| M2 | Guided generation with llama.cpp: grammar-constrained decoding from the schema, and a test that the output really obeys it. A prompt-and-validate fallback for backends without grammars, marked as weaker | Next |
-| M3 | Streaming: partially generated structured content as it arrives, cancellation, incomplete results | |
-| M4 | `@Generable` and `@Guide` macros (SwiftSyntax, builds on Linux), compile-time schemas, more guides | |
-| M5 | ixOS: use it in Device Lab's AI Lab next to Apple's Foundation Models and compare. The AI Lab's `StructuredShape` is replaced by this package here | |
-
-The first end-to-end proof (after M3): on Ubuntu, define a dynamic schema, generate a nested object with a local model, stream the partial result, and show that invalid values cannot pass validation.
+| M1 | Dynamic schema core: schemas, validation, nested objects, lists, choices, references, JSON Schema export. No model needed | Done |
+| M2 | Guided generation with llama.cpp: grammar-constrained decoding from the schema, and a test that the output really obeys it. A prompt-and-validate fallback for backends without grammars, marked as weaker | Parked |
+| M3 | Streaming: partially generated structured content as it arrives, cancellation, incomplete results | Parked |
+| M4 | `@Generable` and `@Guide` macros (SwiftSyntax, builds on Linux), compile-time schemas, more guides | Parked |
+| M5 | ixOS: use it in Device Lab's AI Lab next to Apple's Foundation Models and compare, replacing the AI Lab's `StructuredShape` | Parked |
 
 ## Checking it
 
