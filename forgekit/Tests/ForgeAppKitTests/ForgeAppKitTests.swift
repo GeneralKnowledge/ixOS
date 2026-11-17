@@ -222,4 +222,42 @@ final class ForgeAppKitTests: XCTestCase {
         let left = (try? FileManager.default.contentsOfDirectory(atPath: inbox.path)) ?? []
         XCTAssertEqual(left, [])
     }
+
+    // MARK: Feedback and banners
+
+    func testFeedbackPlaysEachTimeItIsAskedFor() {
+        var feedback = ForgeFeedback()
+        XCTAssertNil(feedback.kind)
+        let before = feedback
+        feedback.play(.success)
+        XCTAssertEqual(feedback.kind, .success)
+        XCTAssertNotEqual(feedback, before, "a change is what makes the view play it")
+        let once = feedback
+        feedback.play(.success)
+        XCTAssertNotEqual(feedback, once, "the same kind twice plays twice")
+        XCTAssertEqual(feedback.count, 2)
+    }
+
+    func testUndoBannerCarriesTheModelsAction() {
+        enum Undo: Equatable { case restore(String) }
+        let banner = ForgeBanner.undo("Deleted “Milk”", action: Undo.restore("Milk"), identifier: "list.undo")
+        XCTAssertEqual(banner.button?.title, "Undo")
+        XCTAssertEqual(banner.button?.action, .restore("Milk"))
+        XCTAssertEqual(banner.button?.identifier, "list.undo")
+        XCTAssertNotNil(banner.duration, "undo goes by itself")
+        XCTAssertEqual(banner.announcement, "Deleted “Milk”. Undo is available.")
+        XCTAssertFalse(banner.showsActivity)
+    }
+
+    func testWorkingBannerStaysAndUpdatesInPlace() {
+        let banner = ForgeBanner<Never>.working("Sending 3 files")
+        XCTAssertNil(banner.duration, "running work stays until the model clears it")
+        XCTAssertTrue(banner.showsActivity)
+        let later = banner.updated(message: "Sending 2 of 3", progress: 1.4)
+        XCTAssertEqual(later.id, banner.id, "an update isn't shown as a new banner")
+        XCTAssertEqual(later.progress, 1, "progress is clamped")
+        XCTAssertEqual(later.message, "Sending 2 of 3")
+        XCTAssertFalse(later.showsActivity, "measured progress shows a bar, not a spinner")
+        XCTAssertEqual(ForgeBanner<Never>.message("Saved to Files").announcement, "Saved to Files")
+    }
 }

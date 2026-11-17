@@ -23,8 +23,9 @@ public final class SketchbookModel {
     }
 
     public var alert: ForgeAlert<Action>?
-    /// Increases after each saved change; views use it as a haptic trigger.
-    public private(set) var saveCount = 0
+    /// Success after each saved change, played by the views
+    /// (`.forgeFeedback`).
+    public private(set) var feedback = ForgeFeedback()
     /// Increases after each saved thumbnail. A thumbnail keeps its file
     /// name, so the grid uses this to know the picture changed.
     public private(set) var thumbnailsSaved = 0
@@ -213,7 +214,7 @@ public final class SketchbookModel {
         do {
             let value = try await command(core)
             reload()
-            if haptic { saveCount += 1 }
+            if haptic { feedback.play(.success) }
             return value
         } catch {
             log.warn("command failed: \(error)")

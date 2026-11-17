@@ -98,6 +98,8 @@ let package = Package(
                 .product(name: "SoundscapeApp", package: "soundscape"),
                 .product(name: "RelayApp", package: "relay"),
                 .product(name: "ForgeUI", package: "forgekit"),
+                // The interaction patterns page (PatternsView.swift).
+                .product(name: "ForgeAppKit", package: "forgekit"),
             ],
             path: "Sources/AppHost",
             swiftSettings: hostSettings

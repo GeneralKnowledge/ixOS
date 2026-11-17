@@ -203,6 +203,55 @@ A URL from `fileImporter`, the document picker or a drop is security-scoped: the
 
 Copies go to their own folder under the temporary directory, which iOS clears. `scripts/check-app-parity.sh` (rule `picked-files`) fails on an app that copies a picked file itself.
 
+## Undo and running work: `ForgeBanner`
+
+A short message at the bottom of the screen, above the tab bar, for work that continues while the person carries on, or for an action that can be taken back. The model owns it, like an alert; the view presents it once, at the root, so it stays visible on whichever screen comes next:
+
+```swift
+// Model (Foundation only)
+public var banner: ForgeBanner<ReadUndo>?
+
+let marked = try await core.markAllRead(feedId: nil)   // count and an undo token
+banner = .undo("Marked \(marked.count) articles as read", action: .markAllRead(token: marked.undoToken),
+               identifier: "timeline.undoMarkAllRead")
+
+// View
+FeedListView(model: model)
+    .forgeBanner(Bindable(model).banner) { action in Task { await model.undo(action) } }
+```
+
+| Form | For |
+|---|---|
+| `.undo(_:action:identifier:)` | A frequent, cheap action done at once (a swipe delete, Mark All as Read). Stays 6 seconds. Say exactly what Undo restores, and let Rust protect what the person did in between: Commonplace's Undo marks unread only the articles nobody opened or marked since, and only for the latest Mark All as Read |
+| `.working(_:progress:)` | Work that continues: a spinner, or a bar with `progress`. Stays until the model replaces it; update it with `updated(message:progress:)`, which keeps its id |
+| `.message(_:)` (`ForgeBanner<Never>`), `ForgeBanner(_:)` | A result worth a word ("Saved to Files"). Stays 4 seconds |
+
+It is a bottom safe-area inset rather than an overlay, so a list under it scrolls its last row clear of it and bottom bars aren't covered; inside a `TabView`, attach it to each tab's content. Its timer only dismisses it when the time runs out: a cancelled timer (the banner changed, the screen went away) leaves it. VoiceOver announces it and gets twice as long; it can be swiped down or dismissed with a VoiceOver action; Reduce Motion fades instead of sliding. Errors that need a decision stay alerts (`ForgeAlert`).
+
+**When to use Undo instead of a confirmation** (decided 2026-11-17): undo for frequent, cheap actions, where a question every time is friction; a confirmation for rare, costly ones (deleting a book, a trip, a sketch). The action is done at once and the banner carries what Rust needs to take it back.
+
+## Haptics: `ForgeFeedback`
+
+A small vocabulary the model plays at the moments that deserve it; SwiftUI's `sensoryFeedback` stays the mechanism:
+
+```swift
+public private(set) var feedback = ForgeFeedback()   // model
+feedback.play(.success)                                // after a save
+
+.forgeFeedback(model.feedback)                         // the screen, once
+```
+
+| Kind | When |
+|---|---|
+| `success` | Something the person did is done and kept: saved, sent, finished |
+| `failure` | It didn't work; only together with visible text that says why (an alert, a field message, a banner), never on its own |
+| `selection` | A choice among a few options changed: a step, a rating |
+| `refresh` | New content arrived after they asked for it |
+
+Feedback is proportional: a routine tap, a toggle or a scroll gets none (system controls already give their own). No per-app haptics setting: iOS's System Haptics switch covers it. `scripts/check-app-parity.sh` (rule `feedback`) flags a hand-rolled `saveCount` trigger.
+
+Device Lab's **Apps > Interaction Patterns** shows every banner and haptic on the phone.
+
 ## What's not in 0.1
 
 Navigation paths and tab selection as model state, toasts, undo, settings screens as data, and anything that needs a dependency: ForgeAppKit is about 650 lines of plain Swift, borrowing ideas (alerts as data, destination enums) from Point-Free's swift-navigation without depending on it, because its macros are slow and fragile to build with xtool on Linux.

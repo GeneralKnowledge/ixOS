@@ -709,9 +709,9 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     
     /**
      * Marks every article of one feed (or of every feed, with nil) read.
-     * Returns how many changed.
+     * Returns how many changed, and a token for `undo_mark_all_read`.
      */
-    func markAllRead(feedId: Int64?) async throws  -> UInt32
+    func markAllRead(feedId: Int64?) async throws  -> MarkedRead
     
     /**
      * Whether a background refresh that finds new articles shows a
@@ -804,6 +804,14 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * "hide read").
      */
     func timeline(timeline: Timeline)  -> [ArticleSummary]
+    
+    /**
+     * Undo for the Mark All as Read that returned `undo_token`: marks its
+     * articles unread again, except those the person has opened or
+     * marked since. Only the latest Mark All as Read can be undone, once.
+     * Returns how many changed.
+     */
+    func undoMarkAllRead(undoToken: UInt64) async throws  -> UInt32
     
 }
 /**
@@ -987,9 +995,9 @@ open func launchReport() -> LaunchReport  {
     
     /**
      * Marks every article of one feed (or of every feed, with nil) read.
-     * Returns how many changed.
+     * Returns how many changed, and a token for `undo_mark_all_read`.
      */
-open func markAllRead(feedId: Int64?)async throws  -> UInt32  {
+open func markAllRead(feedId: Int64?)async throws  -> MarkedRead  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -997,10 +1005,10 @@ open func markAllRead(feedId: Int64?)async throws  -> UInt32  {
                         self.uniffiCloneHandle(),FfiConverterOptionInt64.lower(feedId)
                 )
             },
-            pollFunc: ffi_commonplace_core_rust_future_poll_u32,
-            completeFunc: ffi_commonplace_core_rust_future_complete_u32,
-            freeFunc: ffi_commonplace_core_rust_future_free_u32,
-            liftFunc: FfiConverterUInt32.lift,
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeMarkedRead_lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
 }
@@ -1277,6 +1285,28 @@ open func timeline(timeline: Timeline) -> [ArticleSummary]  {
         FfiConverterTypeTimeline_lower(timeline),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Undo for the Mark All as Read that returned `undo_token`: marks its
+     * articles unread again, except those the person has opened or
+     * marked since. Only the latest Mark All as Read can be undone, once.
+     * Returns how many changed.
+     */
+open func undoMarkAllRead(undoToken: UInt64)async throws  -> UInt32  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_undo_mark_all_read(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(undoToken)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_u32,
+            completeFunc: ffi_commonplace_core_rust_future_complete_u32,
+            freeFunc: ffi_commonplace_core_rust_future_free_u32,
+            liftFunc: FfiConverterUInt32.lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
 }
     
 
@@ -4535,6 +4565,75 @@ public func FfiConverterTypeLocalNotification_lower(_ value: LocalNotification) 
 
 
 /**
+ * What Mark All as Read did.
+ */
+public struct MarkedRead: Equatable, Hashable {
+    /**
+     * How many articles it marked read.
+     */
+    public var count: UInt32
+    /**
+     * Hands the change to `undo_mark_all_read`.
+     */
+    public var undoToken: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * How many articles it marked read.
+         */count: UInt32, 
+        /**
+         * Hands the change to `undo_mark_all_read`.
+         */undoToken: UInt64) {
+        self.count = count
+        self.undoToken = undoToken
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MarkedRead: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMarkedRead: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MarkedRead {
+        return
+            try MarkedRead(
+                count: FfiConverterUInt32.read(from: &buf), 
+                undoToken: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MarkedRead, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.count, into: &buf)
+        FfiConverterUInt64.write(value.undoToken, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMarkedRead_lift(_ buf: RustBuffer) throws -> MarkedRead {
+    return try FfiConverterTypeMarkedRead.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMarkedRead_lower(_ value: MarkedRead) -> RustBuffer {
+    return FfiConverterTypeMarkedRead.lower(value)
+}
+
+
+/**
  * One action button on a notification.
  */
 public struct NotificationAction: Equatable, Hashable {
@@ -7526,7 +7625,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_launch_report() != 61151) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_commonplace_core_checksum_method_appcore_mark_all_read() != 29790) {
+    if (uniffi_commonplace_core_checksum_method_appcore_mark_all_read() != 49254) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_new_article_alerts() != 12825) {
@@ -7578,6 +7677,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_timeline() != 41218) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_undo_mark_all_read() != 28434) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_localnotifier_schedule() != 37230) {

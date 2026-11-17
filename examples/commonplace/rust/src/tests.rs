@@ -258,9 +258,73 @@ fn opening_an_article_marks_it_read_and_gives_its_text() {
 fn mark_all_read_by_feed_or_everything() {
     let dir = tempfile::tempdir().unwrap();
     let (core, feed) = subscribed(dir.path());
-    assert_eq!(block_on(core.mark_all_read(Some(feed.id))).unwrap(), 2);
-    assert_eq!(block_on(core.mark_all_read(None)).unwrap(), 0);
+    let marked = block_on(core.mark_all_read(Some(feed.id))).unwrap();
+    assert_eq!(marked.count, 2);
+    assert_eq!(block_on(core.mark_all_read(None)).unwrap().count, 0);
     assert!(core.timeline(Timeline::Unread).is_empty());
+}
+
+#[test]
+fn mark_all_read_can_be_undone() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _feed) = subscribed(dir.path());
+    let before = core.timeline(Timeline::Unread);
+    let marked = block_on(core.mark_all_read(None)).unwrap();
+    assert_eq!(marked.count as usize, before.len());
+    assert_eq!(
+        block_on(core.undo_mark_all_read(marked.undo_token)).unwrap(),
+        marked.count
+    );
+    assert_eq!(core.timeline(Timeline::Unread).len(), before.len());
+    // Undo works once.
+    assert_eq!(
+        block_on(core.undo_mark_all_read(marked.undo_token)).unwrap(),
+        0
+    );
+}
+
+#[test]
+fn undo_keeps_what_the_person_did_in_between() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _feed) = subscribed(dir.path());
+    let unread = core.timeline(Timeline::Unread);
+    assert!(unread.len() >= 2);
+    let marked = block_on(core.mark_all_read(None)).unwrap();
+    // The person opens one article, and marks another unread and read again.
+    block_on(core.open_article(unread[0].id)).unwrap();
+    block_on(core.set_read(unread[1].id, false)).unwrap();
+    block_on(core.set_read(unread[1].id, true)).unwrap();
+    let n = block_on(core.undo_mark_all_read(marked.undo_token)).unwrap();
+    assert_eq!(n as usize, unread.len() - 2);
+    let still_unread: Vec<i64> = core
+        .timeline(Timeline::Unread)
+        .iter()
+        .map(|a| a.id)
+        .collect();
+    assert!(
+        !still_unread.contains(&unread[0].id),
+        "an opened article stays read"
+    );
+    assert!(
+        !still_unread.contains(&unread[1].id),
+        "an article marked by hand keeps its mark"
+    );
+}
+
+#[test]
+fn only_the_latest_mark_all_read_can_be_undone() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, feed) = subscribed(dir.path());
+    let first = block_on(core.mark_all_read(Some(feed.id))).unwrap();
+    let second = block_on(core.mark_all_read(None)).unwrap();
+    assert_eq!(
+        block_on(core.undo_mark_all_read(first.undo_token)).unwrap(),
+        0
+    );
+    assert_eq!(
+        block_on(core.undo_mark_all_read(second.undo_token)).unwrap(),
+        second.count
+    );
 }
 
 #[test]

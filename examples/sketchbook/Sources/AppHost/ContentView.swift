@@ -111,7 +111,7 @@ struct SketchListView: View {
                 get: { path.isEmpty ? model.alert : nil },
                 set: { model.alert = $0 }
             )) { action in Task { await model.handle(action) } }
-            .sensoryFeedback(.success, trigger: model.saveCount)
+            .forgeFeedback(model.feedback)
         }
     }
 

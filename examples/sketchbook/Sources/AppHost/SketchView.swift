@@ -57,7 +57,7 @@ struct SketchView: View {
         )) { action in
             Task { if let changed = await model.handle(action) { show(changed) } }
         }
-        .sensoryFeedback(.success, trigger: model.saveCount)
+        .forgeFeedback(model.feedback)
         .onAppear { show(model.detail(sketchID)) }
         .onChange(of: changes) {
             if pendingDraws == 0 { show(model.detail(sketchID)) }

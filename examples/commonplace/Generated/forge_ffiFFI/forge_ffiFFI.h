@@ -560,6 +560,11 @@ RustBuffer uniffi_commonplace_core_fn_method_appcore_suggested_feeds(uint64_t pt
 RustBuffer uniffi_commonplace_core_fn_method_appcore_timeline(uint64_t ptr, RustBuffer timeline, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_UNDO_MARK_ALL_READ
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_UNDO_MARK_ALL_READ
+uint64_t uniffi_commonplace_core_fn_method_appcore_undo_mark_all_read(uint64_t ptr, uint64_t undo_token
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_LOCALNOTIFIER
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_LOCALNOTIFIER
 uint64_t uniffi_commonplace_core_fn_clone_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -1317,6 +1322,12 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_suggested_feeds(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_TIMELINE
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_TIMELINE
 uint16_t uniffi_commonplace_core_checksum_method_appcore_timeline(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_UNDO_MARK_ALL_READ
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_UNDO_MARK_ALL_READ
+uint16_t uniffi_commonplace_core_checksum_method_appcore_undo_mark_all_read(void
     
 );
 #endif

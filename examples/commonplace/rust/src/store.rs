@@ -384,17 +384,36 @@ impl Store {
     }
 
     /// Marks every unread article of a feed (or of all feeds) read, and
-    /// returns how many changed.
-    pub fn mark_all_read(&mut self, feed: Option<i64>) -> Result<u32, AppError> {
+    /// returns the ones that changed, so the change can be undone.
+    pub fn mark_all_read(&mut self, feed: Option<i64>) -> Result<Vec<i64>, AppError> {
         self.db.transaction(|tx| {
-            let n = match feed {
-                Some(id) => tx.execute(
-                    "UPDATE articles SET read = 1 WHERE read = 0 AND feed_id = ?1",
-                    [id],
-                )?,
-                None => tx.execute("UPDATE articles SET read = 1 WHERE read = 0", [])?,
+            let ids = {
+                let mut statement = tx.prepare(
+                    "SELECT id FROM articles WHERE read = 0 AND (?1 IS NULL OR feed_id = ?1) ORDER BY id",
+                )?;
+                let rows = statement.query_map([feed], |row| row.get::<_, i64>(0))?;
+                rows.collect::<Result<Vec<_>, _>>()?
             };
-            Ok(n as u32)
+            tx.execute(
+                "UPDATE articles SET read = 1 WHERE read = 0 AND (?1 IS NULL OR feed_id = ?1)",
+                [feed],
+            )?;
+            Ok(ids)
+        })
+    }
+
+    /// Marks these articles unread again (Undo after Mark All as Read), and
+    /// returns how many changed. Articles deleted since are skipped.
+    pub fn mark_unread(&mut self, articles: &[i64]) -> Result<u32, AppError> {
+        self.db.transaction(|tx| {
+            let mut changed = 0;
+            for id in articles {
+                changed += tx.execute(
+                    "UPDATE articles SET read = 0 WHERE id = ?1 AND read = 1",
+                    [id],
+                )?;
+            }
+            Ok(changed as u32)
         })
     }
 

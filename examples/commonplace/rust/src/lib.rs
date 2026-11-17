@@ -79,6 +79,28 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
 struct State {
     store: Store,
     published: Arc<Published<Snapshot>>,
+    /// What the last Mark All as Read can still undo. Kept in memory only:
+    /// Undo is offered for a few seconds.
+    undo: Option<ReadUndo>,
+    next_undo: u64,
+}
+
+/// The articles a Mark All as Read changed and the person hasn't touched
+/// since. Undo marks only these unread again, so an article read or marked
+/// in the meantime keeps the state the person gave it.
+struct ReadUndo {
+    token: u64,
+    articles: std::collections::HashSet<i64>,
+}
+
+impl State {
+    /// The person set an article's read state themselves: Undo must leave
+    /// it alone.
+    fn touched(&mut self, article: i64) {
+        if let Some(undo) = &mut self.undo {
+            undo.articles.remove(&article);
+        }
+    }
 }
 
 impl State {
@@ -505,6 +527,7 @@ impl AppCore {
         self.rt
             .command("open-article", move |state| {
                 state.store.set_flag(article_id, Flag::Read, true)?;
+                state.touched(article_id);
                 let text = state.store.article_text(article_id)?;
                 state.publish();
                 Ok(text)
@@ -516,6 +539,7 @@ impl AppCore {
         self.rt
             .command("set-read", move |state| {
                 state.store.set_flag(article_id, Flag::Read, read)?;
+                state.touched(article_id);
                 state.publish();
                 Ok(())
             })
@@ -571,16 +595,53 @@ impl AppCore {
     }
 
     /// Marks every article of one feed (or of every feed, with nil) read.
-    /// Returns how many changed.
-    pub async fn mark_all_read(&self, feed_id: Option<i64>) -> Result<u32, AppError> {
+    /// Returns how many changed, and a token for `undo_mark_all_read`.
+    pub async fn mark_all_read(&self, feed_id: Option<i64>) -> Result<MarkedRead, AppError> {
         self.rt
             .command("mark-all-read", move |state| {
-                let n = state.store.mark_all_read(feed_id)?;
+                let ids = state.store.mark_all_read(feed_id)?;
+                state.publish();
+                state.next_undo += 1;
+                let marked = MarkedRead {
+                    count: ids.len() as u32,
+                    undo_token: state.next_undo,
+                };
+                state.undo = Some(ReadUndo {
+                    token: state.next_undo,
+                    articles: ids.into_iter().collect(),
+                });
+                Ok(marked)
+            })
+            .await
+    }
+
+    /// Undo for the Mark All as Read that returned `undo_token`: marks its
+    /// articles unread again, except those the person has opened or
+    /// marked since. Only the latest Mark All as Read can be undone, once.
+    /// Returns how many changed.
+    pub async fn undo_mark_all_read(&self, undo_token: u64) -> Result<u32, AppError> {
+        self.rt
+            .command("undo-mark-all-read", move |state| {
+                let Some(undo) = state.undo.take_if(|undo| undo.token == undo_token) else {
+                    return Ok(0);
+                };
+                let mut articles: Vec<i64> = undo.articles.into_iter().collect();
+                articles.sort_unstable();
+                let n = state.store.mark_unread(&articles)?;
                 state.publish();
                 Ok(n)
             })
             .await
     }
+}
+
+/// What Mark All as Read did.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct MarkedRead {
+    /// How many articles it marked read.
+    pub count: u32,
+    /// Hands the change to `undo_mark_all_read`.
+    pub undo_token: u64,
 }
 
 // The runtime half of the API: `events()`, `set_phase(phase)`, `phase()`,
@@ -618,6 +679,8 @@ impl AppCore {
         let state = State {
             store,
             published: Arc::clone(&published),
+            undo: None,
+            next_undo: 0,
         };
         let rt = Runtime::with_directory("commonplace", directory, state);
         Ok(Arc::new(Self {

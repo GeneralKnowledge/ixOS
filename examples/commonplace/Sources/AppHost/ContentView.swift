@@ -1,5 +1,6 @@
 @preconcurrency import CommonplaceFFI
 @preconcurrency import ForgeKit
+import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
@@ -32,6 +33,12 @@ private struct LibraryScreen: View {
 
     var body: some View {
         FeedListView(model: model)
+            // Over every screen of the stack, so Undo stays reachable
+            // whichever screen the person goes to next.
+            .forgeBanner(Bindable(model).banner) { action in
+                Task { await model.undo(action) }
+            }
+            .forgeFeedback(model.feedback)
             // Rust committed a change, or the app came back from the
             // background: show what Rust holds now.
             .onChange(of: changes) { model.reload() }
