@@ -11,6 +11,11 @@ statement = "A device shows a pairing code; another pairs with it and sends a no
 twin = ["RelayModelTests.testPairAndSendANote", "RelayModelTests.testFormatting"]
 device = ["uitests/smoke.toml"]
 
+[[requirement]]
+id = "RL-2"
+statement = "After a code transfer both devices are asked to trust each other; once trusted, a note goes to the other device with no code, and revoking refuses the next one."
+twin = ["RelayModelTests.testTrustAfterACodeTransferThenSendWithoutACode"]
+
 # Messaging (CH-*): Chat's requirements, from before Chat merged into
 # Relay (docs/relay-chat-merge.md). `twin`: XCTests that drive the real
 # view model against the real Rust core and a real chat server; MessagingTests

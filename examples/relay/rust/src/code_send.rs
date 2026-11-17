@@ -103,6 +103,11 @@ pub struct CodeSendShared {
     pub status: Mutex<Option<CodeSend>>,
     pub nearby: Mutex<HashSet<NearbySender>>,
     pub stop: AtomicBool,
+    /// This device's name, told to the receiver once it has the files.
+    pub my_name: Mutex<String>,
+    /// Who received the last send: its endpoint id (who proved the code)
+    /// and what it calls itself. Set when the send succeeds.
+    pub receiver: Mutex<Option<(String, String)>>,
 }
 
 impl CodeSendShared {
@@ -157,6 +162,7 @@ pub(crate) fn start(
     on_end: OnEnd,
 ) {
     shared.stop.store(false, Ordering::SeqCst);
+    lock(&shared.receiver).take();
     // Set before returning, so the app's first read already sees the send
     // running: it stops polling once the status is no longer running.
     let name = send_name(&paths);
@@ -193,14 +199,14 @@ pub(crate) fn start(
 
 /// What a send offers: one file (a raw blob) or a folder (a collection).
 #[derive(Clone)]
-struct Offer {
-    hash: Hash,
-    collection: bool,
-    size: u64,
-    name: String,
+pub(crate) struct Offer {
+    pub hash: Hash,
+    pub collection: bool,
+    pub size: u64,
+    pub name: String,
     /// Every blob the receiver may fetch: the root, and for a folder its
     /// list and files.
-    hashes: HashSet<Hash>,
+    pub hashes: HashSet<Hash>,
 }
 
 /// The live code and its state machine.
@@ -295,7 +301,20 @@ impl CodeHandler {
                     name: self.offer.name.clone(),
                     size: self.offer.size,
                 });
-                self.deliver(&mut send, &mut recv).await
+                let kind = self.deliver(&mut send, &mut recv).await;
+                if matches!(kind, Kind::Done(_)) {
+                    // Names last, once the receiver has it all (code.rs).
+                    let name = crate::code::their_name(&mut recv).await;
+                    let mine = lock(&self.shared.my_name).clone();
+                    let _ = put(&mut send, &crate::code::named(&mine)).await;
+                    send.finish().ok();
+                    // Until the receiver has read it and finished its side:
+                    // the send closes the connection as soon as this returns.
+                    let _ =
+                        tokio::time::timeout(Duration::from_secs(2), recv.read_to_end(64)).await;
+                    *lock(&self.shared.receiver) = Some((them.to_string(), name));
+                }
+                kind
             }
         };
         Ok(Some(Event { gen, kind }))
@@ -527,7 +546,7 @@ async fn send(
 /// with their paths inside the transfer (a lone folder's files relative to
 /// it; several items each under its own name). Returns the offer and the
 /// tags that keep it.
-async fn prepare(
+pub(crate) async fn prepare(
     paths: &[PathBuf],
     name: String,
     node: &Node,
@@ -705,7 +724,11 @@ mod tests {
     /// A device for a test: its own key and store under `dir/name`.
     fn device(dir: &Path, name: &str) -> Arc<NodeCell> {
         let home = dir.join(name);
-        Arc::new(NodeCell::new(home.clone(), home.join("store")))
+        Arc::new(NodeCell::new(
+            home.clone(),
+            home.join("store"),
+            Arc::new(crate::device::NoDevices),
+        ))
     }
 
     fn sending(path: PathBuf, node: &Arc<NodeCell>) -> Arc<CodeSendShared> {
@@ -736,6 +759,7 @@ mod tests {
             &id,
             node.get().await.unwrap(),
             inbox,
+            "b".into(),
             progress,
             Arc::new(AtomicBool::new(false)),
         )
@@ -770,6 +794,7 @@ mod tests {
                 &id,
                 b.get().await.unwrap(),
                 &inbox,
+                "b".into(),
                 Arc::new(CodeProgress::default()),
                 Arc::new(AtomicBool::new(false)),
             )

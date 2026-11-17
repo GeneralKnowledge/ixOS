@@ -115,6 +115,15 @@ batched, built before the phone is needed). No test-only PRs.
   connection, and neither a code nor the automatic policy re-pairs it; a
   one-off code transfer the person accepts still works and leaves it
   revoked (tests cover all three).
+- **Split in two (2026-11-17).** 3a: the trust rules (`rust/src/trust.rs`),
+  "Trust this device?" after a code transfer, notes, files and folders to
+  a trusted device over `relay/device/1` (CBOR, golden bytes in
+  `rust/fixtures/device-1/`), the screens and the `relay` commands; the
+  acceptance tests above are `rust/tests/trusted.rs`. 3b: AI asks on
+  iroh, QR pairings carried over to trust (an upgrade the pair secret
+  authenticates), the TCP path removed, the device key in the Keychain.
+  Ask before receiving waits for the delivery outbox (PR 4), which
+  queues what waits for an answer.
 
 ## Messages (M3)
 

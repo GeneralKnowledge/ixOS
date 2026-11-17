@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Direction, Item, Peer, Transfer, TransferStatus};
+use crate::trust::Devices;
 use crate::wire::{hex, unhex};
 
 /// The saved document's version.
@@ -27,6 +28,9 @@ pub struct Record {
     pub peers: Vec<SavedPeer>,
     #[serde(default)]
     pub transfers: Vec<SavedTransfer>,
+    /// Devices trusted on iroh, and the pairing policy (`trust`).
+    #[serde(default)]
+    pub devices: Devices,
 }
 
 fn first_id() -> u64 {
@@ -123,6 +127,7 @@ impl Record {
         let peer_name = self
             .peer(peer_id)
             .map(|p| p.name.clone())
+            .or_else(|| self.devices.get(peer_id).map(|d| d.name.clone()))
             .unwrap_or_default();
         self.transfers.push(SavedTransfer {
             id,

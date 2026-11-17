@@ -33,6 +33,7 @@ use tokio::sync::OnceCell;
 
 use crate::code::{connection, get_within, put, CODE_ALPN, GONE, STEP, TOKIO};
 use crate::code_send::CodeHandler;
+use crate::device::{DeviceHandler, DeviceInbound, NodeLink, DEVICE_ALPN};
 use crate::model::RelayError;
 
 const KEY_FILE: &str = "device.key";
@@ -47,13 +48,23 @@ pub(crate) struct Node {
     /// The send that answers word codes now, if any.
     pub sending: Arc<Mutex<Option<CodeHandler>>>,
     pub allowed: Allowed,
+    /// The blobs trusted devices may fetch: what sends to them offer
+    /// (`device`), kept apart from the word code's so ending one doesn't
+    /// end the other.
+    pub device_allowed: Allowed,
     router: Router,
 }
 
 impl Node {
     /// Opens the store in `store_dir` and binds the endpoint with the key
-    /// in `key_dir` (made on first use).
-    pub async fn start(key_dir: &Path, store_dir: &Path) -> Result<Self, RelayError> {
+    /// in `key_dir` (made on first use). `devices` answers trusted devices
+    /// (`relay/device/1`); `link` is set to the node once it runs.
+    pub async fn start(
+        key_dir: &Path,
+        store_dir: &Path,
+        devices: Arc<dyn DeviceInbound>,
+        link: NodeLink,
+    ) -> Result<Self, RelayError> {
         let key = device_key(key_dir)?;
         let store = FsStore::load(store_dir).await.map_err(file_error)?;
         let endpoint = Endpoint::builder(presets::Minimal)
@@ -66,7 +77,14 @@ impl Node {
             })?;
         let sending = Arc::new(Mutex::new(None));
         let allowed: Allowed = Arc::default();
-        let blobs = BlobsProtocol::new(&store, Some(gate(Arc::clone(&allowed))));
+        let device_allowed: Allowed = Arc::default();
+        let blobs = BlobsProtocol::new(
+            &store,
+            Some(gate(vec![
+                Arc::clone(&allowed),
+                Arc::clone(&device_allowed),
+            ])),
+        );
         let router = Router::builder(endpoint.clone())
             .accept(
                 CODE_ALPN,
@@ -75,6 +93,13 @@ impl Node {
                 },
             )
             .accept(iroh_blobs::ALPN, blobs)
+            .accept(
+                DEVICE_ALPN,
+                DeviceHandler {
+                    host: devices,
+                    node: link,
+                },
+            )
             .spawn();
         log::info!("relay node: {}", endpoint.id().fmt_short());
         Ok(Self {
@@ -82,6 +107,7 @@ impl Node {
             store,
             sending,
             allowed,
+            device_allowed,
             router,
         })
     }
@@ -113,14 +139,16 @@ impl Node {
 pub(crate) struct NodeCell {
     key_dir: PathBuf,
     store_dir: PathBuf,
+    devices: Arc<dyn DeviceInbound>,
     cell: OnceCell<Arc<Node>>,
 }
 
 impl NodeCell {
-    pub fn new(key_dir: PathBuf, store_dir: PathBuf) -> Self {
+    pub fn new(key_dir: PathBuf, store_dir: PathBuf, devices: Arc<dyn DeviceInbound>) -> Self {
         Self {
             key_dir,
             store_dir,
+            devices,
             cell: OnceCell::new(),
         }
     }
@@ -129,9 +157,18 @@ impl NodeCell {
     pub async fn get(&self) -> Result<Arc<Node>, RelayError> {
         self.cell
             .get_or_try_init(|| async {
-                Node::start(&self.key_dir, &self.store_dir)
-                    .await
-                    .map(Arc::new)
+                let link = NodeLink::default();
+                let node = Arc::new(
+                    Node::start(
+                        &self.key_dir,
+                        &self.store_dir,
+                        Arc::clone(&self.devices),
+                        Arc::clone(&link),
+                    )
+                    .await?,
+                );
+                let _ = link.set(Arc::downgrade(&node));
+                Ok(node)
             })
             .await
             .cloned()
@@ -223,9 +260,10 @@ pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Lets an endpoint fetch only the blobs it was allowed (see [`Allowed`]);
-/// asking for anything else, or for several at once, is refused.
-fn gate(allowed: Allowed) -> EventSender {
+/// Lets an endpoint fetch only the blobs one of `allowed` allows it (see
+/// [`Allowed`]); asking for anything else, or for several at once, is
+/// refused.
+fn gate(allowed: Vec<Allowed>) -> EventSender {
     let mask = EventMask {
         connected: ConnectMode::Intercept,
         get: RequestMode::Intercept,
@@ -238,8 +276,11 @@ fn gate(allowed: Allowed) -> EventSender {
         // Which endpoint each blobs connection belongs to.
         let mut who: HashMap<u64, EndpointId> = HashMap::new();
         let may = |who: &HashMap<u64, EndpointId>, connection: u64, hash: &Hash| {
-            who.get(&connection)
-                .is_some_and(|id| lock(&allowed).get(id).is_some_and(|h| h.contains(hash)))
+            who.get(&connection).is_some_and(|id| {
+                allowed
+                    .iter()
+                    .any(|a| lock(a).get(id).is_some_and(|h| h.contains(hash)))
+            })
         };
         let answer = |ok: bool| {
             if ok {
@@ -252,7 +293,7 @@ fn gate(allowed: Allowed) -> EventSender {
             match msg {
                 ProviderMessage::ClientConnected(msg) => {
                     let id = msg.inner.endpoint_id;
-                    let ok = id.is_some_and(|id| lock(&allowed).contains_key(&id));
+                    let ok = id.is_some_and(|id| allowed.iter().any(|a| lock(a).contains_key(&id)));
                     if let (true, Some(id)) = (ok, id) {
                         who.insert(msg.inner.connection_id, id);
                     }
@@ -311,14 +352,24 @@ mod tests {
     fn the_endpoint_id_survives_a_relaunch() {
         let dir = tempfile::tempdir().unwrap();
         TOKIO.block_on(async {
-            let a = Node::start(dir.path(), &dir.path().join("store"))
-                .await
-                .unwrap();
+            let a = Node::start(
+                dir.path(),
+                &dir.path().join("store"),
+                Arc::new(crate::device::NoDevices),
+                NodeLink::default(),
+            )
+            .await
+            .unwrap();
             let id = a.id();
             a.shutdown().await;
-            let b = Node::start(dir.path(), &dir.path().join("store"))
-                .await
-                .unwrap();
+            let b = Node::start(
+                dir.path(),
+                &dir.path().join("store"),
+                Arc::new(crate::device::NoDevices),
+                NodeLink::default(),
+            )
+            .await
+            .unwrap();
             assert_eq!(b.id(), id);
             b.shutdown().await;
         });

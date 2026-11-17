@@ -3,9 +3,18 @@
 //! and transfers.
 //!
 //! ```text
-//! relay listen [--port N]            wait for the phone; prints a pairing QR code
+//! relay listen [--port N]            wait for the phone; prints a pairing QR code,
+//!                                    and takes what trusted devices send
 //! relay pair <code>                  pair with a phone showing its code
-//! relay peers                        paired devices
+//! relay peers                        paired devices (QR pairing)
+//! relay devices                      trusted and revoked devices (on iroh)
+//! relay send <device> (--note TEXT | PATH...) [--to host:port]
+//!                                    send to a trusted device, no code
+//! relay revoke <device>              stop trusting a device, for good
+//! relay forget <device>              take a device off the list
+//! relay trust <device>               trust a revoked device again
+//! relay policy [codes-only | ask | automatic]
+//!                                    what happens after a code transfer
 //! relay send <peer> [--to host:port] (--note TEXT | FILE)
 //! relay send PATH...                 send files and folders with a word code
 //!                                    to anyone on this network
@@ -32,6 +41,11 @@
 //! Word codes are found the way the app finds them: the sender advertises
 //! `_forgerelay._udp` with mDNS (TXT `n` = the code's number, `id` = its
 //! endpoint id), and the receiver looks for the number it was told.
+//! Trusted devices advertise the same service type with TXT `d` = 1 and
+//! `id` (no number), while `relay listen` runs.
+//!
+//! After a code transfer, the pairing policy may offer to trust the other
+//! device; the command asks on the terminal.
 
 use std::collections::{HashMap, HashSet};
 use std::net::UdpSocket;
@@ -46,8 +60,10 @@ use relay_core::{
     CODE_SERVICE_TYPE,
 };
 
-const USAGE: &str = "usage: relay listen [--port N] | pair <code> | peers | \
+const USAGE: &str = "usage: relay listen [--port N] | pair <code> | peers | devices | \
 send <peer> [--to host:port] (--note TEXT | FILE) | send PATH... | receive <code> | \
+send <device> (--note TEXT | PATH...) [--to host:port] | revoke <device> | forget <device> | \
+trust <device> | policy [codes-only | ask | automatic] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
 ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
@@ -100,12 +116,60 @@ fn run(args: Vec<String>) -> Result<(), String> {
         // files and folders to send with a word code.
         "send" => match rest.first() {
             Some(first) if find_peer(&core, first).is_some() => send(&core, rest),
-            Some(_) => send_code(&core, rest),
+            Some(first) if find_device(&core, first).is_some() => send_to_device(&core, rest),
+            Some(_) => send_code(&core, rest).and_then(|()| offer_trust(&core)),
             None => Err(USAGE.into()),
         },
         "receive" => match rest {
-            [code] => receive_code(&core, code),
+            [code] => receive_code(&core, code).and_then(|()| offer_trust(&core)),
             _ => Err(USAGE.into()),
+        },
+        "devices" => {
+            for d in core.devices() {
+                let state = if d.trusted { "trusted" } else { "revoked" };
+                let takes = if d.trusted && !d.receives_from {
+                    ", may not send here"
+                } else {
+                    ""
+                };
+                println!("{}  {state}{takes}  {}", d.name, d.endpoint_id);
+            }
+            println!("Pairing policy: {}", policy_name(core.pairing_policy()));
+            Ok(())
+        }
+        "revoke" | "forget" | "trust" => {
+            let who = rest.first().ok_or(USAGE)?;
+            let device = find_device(&core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            let id = device.endpoint_id.clone();
+            let done = match command.as_str() {
+                "revoke" => block_on(core.revoke_device(id)),
+                "forget" => block_on(core.forget_device(id)),
+                _ => block_on(core.trust_device(id)),
+            };
+            done.map_err(|e| e.to_string())?;
+            let what = match command.as_str() {
+                "revoke" => "revoked; it can only send here with a code now",
+                "forget" => "forgotten",
+                _ => "trusted",
+            };
+            println!("{}: {what}.", device.name);
+            Ok(())
+        }
+        "policy" => match rest.first().map(String::as_str) {
+            None => {
+                println!("{}", policy_name(core.pairing_policy()));
+                Ok(())
+            }
+            Some(name) => {
+                let policy = match name {
+                    "codes-only" => relay_core::PairingPolicy::CodesOnly,
+                    "ask" => relay_core::PairingPolicy::AskToPair,
+                    "automatic" => relay_core::PairingPolicy::PairAutomatically,
+                    _ => return Err(USAGE.into()),
+                };
+                block_on(core.set_pairing_policy(policy)).map_err(|e| e.to_string())
+            }
         },
         "serve-ai" => serve_ai(&core, rest),
         "ask" => ask(&core, rest),
@@ -169,6 +233,12 @@ fn listen(core: &RelayCore, args: &[String]) -> Result<(), String> {
     };
     let port = core.start_listening(port).map_err(|e| e.to_string())?;
     let host = local_address().unwrap_or_else(|| "127.0.0.1".into());
+    // Trusted devices reach this one on iroh while it listens.
+    let service = block_on(core.device_service()).map_err(|e| e.to_string())?;
+    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
+    if let Err(err) = advertise_device(&mdns, service.port, &service.endpoint_id) {
+        eprintln!("relay: trusted devices won't find this one: {err}");
+    }
     let invitation = core
         .create_invitation(vec![host.clone()])
         .map_err(|e| e.to_string())?;
@@ -237,6 +307,139 @@ fn send(core: &RelayCore, args: &[String]) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     println!("{}", describe(&transfer));
     Ok(())
+}
+
+fn policy_name(policy: relay_core::PairingPolicy) -> &'static str {
+    match policy {
+        relay_core::PairingPolicy::CodesOnly => "codes-only (nothing is remembered)",
+        relay_core::PairingPolicy::AskToPair => "ask (offer to trust after a code transfer)",
+        relay_core::PairingPolicy::PairAutomatically => {
+            "automatic (trust devices trusted before again by themselves)"
+        }
+    }
+}
+
+fn find_device(core: &RelayCore, who: &str) -> Option<relay_core::Device> {
+    core.devices()
+        .into_iter()
+        .find(|d| d.endpoint_id == who || d.name.eq_ignore_ascii_case(who))
+}
+
+/// After a code transfer, asks on the terminal whether to trust the other
+/// device, when the pairing policy offers it.
+fn offer_trust(core: &RelayCore) -> Result<(), String> {
+    use std::io::{BufRead, IsTerminal, Write};
+    let Some(offer) = core.trust_offer() else {
+        return Ok(());
+    };
+    let name = if offer.name.is_empty() {
+        "the other device".to_string()
+    } else {
+        format!("\"{}\"", offer.name)
+    };
+    if !std::io::stdin().is_terminal() {
+        println!("Trust {name}? Not asked: this isn't a terminal.");
+        return Ok(());
+    }
+    print!("Trust {name}? You'll be able to send to each other without a code. [y/N] ");
+    let _ = std::io::stdout().flush();
+    let mut answer = String::new();
+    let _ = std::io::stdin().lock().read_line(&mut answer);
+    if answer.trim().eq_ignore_ascii_case("y") {
+        block_on(core.trust_device(offer.endpoint_id)).map_err(|e| e.to_string())?;
+        println!("Trusted. `relay devices` lists it.");
+    } else {
+        core.dismiss_trust_offer();
+    }
+    Ok(())
+}
+
+/// `send <device> (--note TEXT | PATH...) [--to host:port]`: to a trusted
+/// device, found with mDNS unless `--to` says where.
+fn send_to_device(core: &RelayCore, args: &[String]) -> Result<(), String> {
+    let mut args = args.to_vec();
+    let to = take_flag(&mut args, "--to")?;
+    let note = take_flag(&mut args, "--note")?;
+    let (who, paths) = args.split_first().ok_or(USAGE)?;
+    let device = find_device(core, who).ok_or(USAGE)?;
+    let addresses = match to {
+        Some(address) => vec![address],
+        None => find_device_addresses(&device.endpoint_id)?,
+    };
+    core.devices_nearby(vec![relay_core::NearbyDevice {
+        endpoint_id: device.endpoint_id.clone(),
+        addresses,
+    }]);
+    let transfer = match (note, paths) {
+        (Some(text), []) => block_on(core.send_note_to_device(device.endpoint_id, text)),
+        (None, paths) if !paths.is_empty() => {
+            block_on(core.send_to_device(device.endpoint_id, paths.to_vec()))
+        }
+        _ => return Err(USAGE.into()),
+    }
+    .map_err(|e| e.to_string())?;
+    println!("{}", describe(&transfer));
+    Ok(())
+}
+
+/// Advertises this device for trusted devices: TXT `d` = 1 and its id.
+fn advertise_device(
+    mdns: &mdns_sd::ServiceDaemon,
+    port: u16,
+    endpoint_id: &str,
+) -> Result<String, String> {
+    let short = &endpoint_id[..8.min(endpoint_id.len())];
+    let txt = [
+        ("v", "1".to_string()),
+        ("d", "1".to_string()),
+        ("id", endpoint_id.to_string()),
+    ];
+    let info = mdns_sd::ServiceInfo::new(
+        &service_type(),
+        &format!("relay-{short}"),
+        &format!("relay-{short}.local."),
+        "",
+        port,
+        &txt[..],
+    )
+    .map_err(|e| e.to_string())?
+    .enable_addr_auto();
+    let full = info.get_fullname().to_string();
+    mdns.register(info).map_err(|e| e.to_string())?;
+    Ok(full)
+}
+
+/// Where the trusted device `endpoint_id` advertises itself on this network.
+fn find_device_addresses(endpoint_id: &str) -> Result<Vec<String>, String> {
+    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
+    let events = mdns.browse(&service_type()).map_err(|e| e.to_string())?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut found = Vec::new();
+    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+        let Ok(event) = events.recv_timeout(left) else {
+            break;
+        };
+        if let mdns_sd::ServiceEvent::ServiceResolved(info) = event {
+            if info.get_property_val_str("d") == Some("1")
+                && info.get_property_val_str("id") == Some(endpoint_id)
+            {
+                let port = info.get_port();
+                found.extend(
+                    info.get_addresses()
+                        .iter()
+                        .map(|ip| std::net::SocketAddr::new(*ip, port).to_string()),
+                );
+                break;
+            }
+        }
+    }
+    let _ = mdns.shutdown();
+    if found.is_empty() {
+        return Err("that device isn't on this network (is Relay open on it?); \
+                    or say where with --to host:port"
+            .into());
+    }
+    Ok(found)
 }
 
 fn find_peer(core: &RelayCore, who: &str) -> Option<relay_core::Peer> {
