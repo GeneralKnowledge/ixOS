@@ -45,9 +45,9 @@ enum MusicImporter {
         let common = (try? await asset.load(.commonMetadata)) ?? []
         for item in common {
             switch item.commonKey {
-            case .commonKeyTitle?: title = title ?? (try? await item.load(.stringValue))
-            case .commonKeyArtist?: artist = artist ?? (try? await item.load(.stringValue))
-            case .commonKeyAlbumName?: album = album ?? (try? await item.load(.stringValue))
+            case .commonKeyTitle?: if title == nil { title = try? await item.load(.stringValue) }
+            case .commonKeyArtist?: if artist == nil { artist = try? await item.load(.stringValue) }
+            case .commonKeyAlbumName?: if album == nil { album = try? await item.load(.stringValue) }
             case .commonKeyArtwork?:
                 if cover == nil, let data = try? await item.load(.dataValue) {
                     cover = write(data, to: covers, index: index)
