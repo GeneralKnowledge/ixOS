@@ -61,3 +61,14 @@ M1 prepares for this by keeping trust, delivery and conversation separate
 ([relay-reliable-delivery.md](relay-reliable-delivery.md#three-separate-concerns)).
 Today's "may send here" grant (`receives_from`) is the first per-device
 permission. Capabilities would grow from it.
+
+## Later ideas (parked)
+
+Recorded the same evening, after this page. Neither is started; the
+direction after M2 is chosen once M1 and M2 are done (Reuben, 21:48).
+
+- [Relay as a personal computing network](relay-computing.md): resources,
+  capabilities and remote execution, with a proposed new M3 to M9.
+- [Relay Foundational Computing Study](relay-foundations-study.md): a
+  research programme (R0 to R7) on the abstractions underneath, and above
+  it the wider question of what the next computing environment should be.
