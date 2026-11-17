@@ -89,7 +89,7 @@ Each module is a reusable part of the framework. **Stable** means its main capab
 | Networking | Experimental | Yes |
 | Native services | Experimental | Partial: services check app only for most |
 | Device services | Experimental | Partial: compiled in CI, not yet run on an iPhone |
-| Media | Experimental | Partial: Chat and Pocket Library use it; device run pending |
+| Media | Experimental | Partial: Relay (chat attachments) and Pocket Library use it; web pictures (Pocket Library covers, Soundscape artwork, Commonplace article images) not yet run on a phone |
 | Developer tools | Experimental | Partial: host tools proven |
 | Local AI | In progress: A0 shared by Chat and Pocket Library; A1 Relay asks built and tested on Linux | Partial: L0 check app ran on an iPhone 15 Pro Max (2026-11-07): Foundation Models available on a free team; Qwen3.5 0.8B at ~36 tok/s in release; stopping, offline and the 2B skipped, not measured. L1 (Chat's Assistant on Foundation Models) built, not yet run on the phone |
 | Attachments | Planned | Partial: Chat M3 (#56) |
