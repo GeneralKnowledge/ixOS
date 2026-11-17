@@ -1,5 +1,8 @@
 # Relay next steps: transfer, messages, reach
 
+> From 2026-11-17 the order of the remaining work (PR 3 onwards) is set by
+> [Relay M1: Reliable Trusted-Device Delivery](relay-reliable-delivery.md).
+
 Status: written 2026-11-16 from Reuben's product specification and his
 direction that evening: messaging and file transfer first, the
 interconnecting parts as features of the network later. It turns the first

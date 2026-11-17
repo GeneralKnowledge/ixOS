@@ -17,6 +17,8 @@ can be a Linux machine running the `relay` command, so one iPhone is enough.
 
 ## Where it is
 
+The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay-reliable-delivery.md). Ideas beyond it are in [relay-future-directions.md](docs/relay-future-directions.md).
+
 | Step | What | State |
 |---|---|---|
 | R1 | Rust core (`rust/`): identity, QR pairing, the encrypted protocol, sending and receiving notes and files, history; the `relay` command | Done, tested on Linux over localhost |
