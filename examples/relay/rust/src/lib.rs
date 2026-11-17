@@ -844,7 +844,7 @@ impl RelayCore {
         let status = match &result {
             Ok(_) => SavedStatus::Done,
             Err(err) => SavedStatus::Failed {
-                reason: err.to_string(),
+                reason: err.saved_reason(),
             },
         };
         let reached = result.as_ref().ok().cloned();

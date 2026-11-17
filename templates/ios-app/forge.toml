@@ -51,3 +51,12 @@ orientations = ["portrait"]
 [ios.signing]
 # team_type = "free"                # "free" (Apple ID) or "paid" (Developer Program)
 # team_id = "ABCDE12345"            # for the Xcode project (macOS, optional)
+
+# Plain http (no TLS) is off. iOS's App Transport Security refuses it for
+# requests through URLSession (the `http` service, AVPlayer, web views), and
+# numeric addresses such as a Tailscale 100.x are refused too. To talk to a
+# server you run yourself on a private network, uncomment these two lines
+# (docs/app-config.md#plain-http-app-transport-security). The Settings check
+# sends its request from Rust's own client, which ATS doesn't cover.
+# [ios.info.NSAppTransportSecurity]
+# NSAllowsArbitraryLoads = true

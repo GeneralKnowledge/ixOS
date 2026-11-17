@@ -720,4 +720,7 @@ streams the audio. What took work:
   read-aloud would be the second user.
 - **ATS and Tailscale names.** Plain http to a host name is refused, so the
   address must be numeric (a Tailscale `100.` address); Rust says so when
-  the person types a name.
+  the person types a name. *Correction (2026-11-16):* numeric addresses are
+  refused too (NSURLError -1022 on the phone); Soundscape sets
+  `NSAllowsArbitraryLoads` (#263), and the starter now carries that setting
+  commented out ([app-config.md](../app-config.md#plain-http-app-transport-security)).

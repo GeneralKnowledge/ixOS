@@ -62,6 +62,17 @@ What a screen shows usually fits in the core's published snapshot. When it doesn
 - **JSON** (`JsonFile`, `Document`): additive changes use `#[serde(default)]` and keep the version. A change that old files can't be read as raises it and adds a step to the migration function. The migrated value is written at the next save, after the `.v<N>` copy is kept.
 - **SQLite** (`Database::open(path, migrations)`): append a SQL step. All pending steps run in one transaction after the `.v<N>` copy is made with `VACUUM INTO`, so a failed migration leaves the file as it was.
 
+## What iOS backs up
+
+`ForgeEnvironment.standard(app:)` gives an app two folders, and iOS treats them differently:
+
+| Folder | Backed up | Kept |
+|---|---|---|
+| `dataDirectory` (Application Support/<app>/data) | Yes | Until the app deletes it |
+| `cachesDirectory` (Caches/<app>) | No | iOS may delete it when the phone is low on space |
+
+Put what the person made in the data directory and anything the app can fetch or rebuild in the caches directory. Forge has no third place yet for files that must be kept but not backed up, such as songs downloaded for offline listening. It is planned with the first app that needs it ([everyday capabilities, phase 3](research/everyday-capabilities.md)). Nothing in Forge sets a file protection class, so files get iOS's default.
+
 ## Export, import and backups
 
 Two optional `forge-storage` features cover the files a person takes out of an app or brings into it.

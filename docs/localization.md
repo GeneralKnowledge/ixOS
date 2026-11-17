@@ -62,7 +62,8 @@ Name a second catalog `InfoPlist.xcstrings` and use Info.plist keys as its keys 
 
 - Finding keys in Swift source on Linux. Add them by hand, or let Xcode do it on a Mac.
 - Text made in Rust, such as error messages, is English. Keep user-facing wording in Swift where it can be localized, or have Rust return a code that Swift turns into text.
-- ForgeAppKit's built-in buttons (OK, Try Again) pass plain `String`s and stay English.
+- ForgeAppKit's built-in buttons (OK, Try Again), ForgeKit's error words (`ForgeErrors`, `ForgeFailure`) and `ForgeRoot` pass plain `String`s and stay English.
+- No app ships a String Catalog yet; the services check app is the only localized build.
 - Right-to-left layout works as in any SwiftUI app, but no Forge app has been checked in Arabic or Hebrew.
 
 ## Checking it on an iPhone
