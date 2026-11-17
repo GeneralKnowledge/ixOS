@@ -186,6 +186,78 @@ final class RelayNetwork {
         codeWatcher = nil
     }
 
+    // MARK: Trusted devices (relay/device/1)
+
+    @ObservationIgnored private var deviceAdvertiser: NetService?
+    @ObservationIgnored private var deviceAdvertised: DeviceService?
+    @ObservationIgnored private var deviceWatcher: NWBrowser?
+    @ObservationIgnored private var deviceAddresses: [String: String] = [:]
+
+    /// Advertises this device's iroh endpoint for trusted devices
+    /// (`_forgerelay._udp`, TXT `v=1`, `d=1`, `id`; no `n`, so code
+    /// receivers never take it for a code sender). `nil` withdraws it.
+    func advertiseDevice(_ service: DeviceService?) {
+        guard service != deviceAdvertised else { return }
+        deviceAdvertiser?.stop()
+        deviceAdvertiser = nil
+        deviceAdvertised = service
+        guard let service else { return }
+        let name = "relay-\(service.endpointId.prefix(12))"
+        let advert = NetService(domain: "local.", type: Self.codeServiceType + ".", name: name, port: Int32(service.port))
+        let txt: [String: Data] = [
+            "v": Data("1".utf8),
+            "d": Data("1".utf8),
+            "id": Data(service.endpointId.utf8),
+        ]
+        _ = advert.setTXTRecord(NetService.data(fromTXTRecord: txt))
+        advert.publish()
+        deviceAdvertiser = advert
+    }
+
+    /// Reports the devices advertising `d=1` nearby, each resolved to an
+    /// IPv4 "host:port" (Rust can't use a link-local IPv6 scope), until
+    /// `stopWatchingDevices`. Rust keeps only the ones it trusts.
+    func watchDevices(_ report: @escaping @MainActor @Sendable ([NearbyDevice]) -> Void) {
+        guard deviceWatcher == nil else { return }
+        let browser = NWBrowser(
+            for: .bonjourWithTXTRecord(type: Self.codeServiceType, domain: nil),
+            using: .udp
+        )
+        browser.browseResultsChangedHandler = { [weak self] results, _ in
+            let found: [(String, NWEndpoint)] = results.compactMap { result in
+                guard case .bonjour(let txt) = result.metadata,
+                      txt["d"] == "1",
+                      let id = txt["id"], !id.isEmpty
+                else { return nil }
+                return (id, result.endpoint)
+            }
+            Task { @MainActor in
+                guard let self else { return }
+                var nearby: [NearbyDevice] = []
+                for (id, endpoint) in found {
+                    if let known = self.deviceAddresses[id] {
+                        nearby.append(NearbyDevice(endpointId: id, addresses: [known]))
+                    } else if let address = await Self.resolve(endpoint, ipv4Only: true) {
+                        self.deviceAddresses[id] = address
+                        nearby.append(NearbyDevice(endpointId: id, addresses: [address]))
+                    }
+                }
+                // Forget where devices that left were.
+                let ids = Set(found.map(\.0))
+                self.deviceAddresses = self.deviceAddresses.filter { ids.contains($0.key) }
+                report(nearby)
+            }
+        }
+        browser.start(queue: .main)
+        deviceWatcher = browser
+    }
+
+    func stopWatchingDevices() {
+        deviceWatcher?.cancel()
+        deviceWatcher = nil
+        deviceAddresses = [:]
+    }
+
     /// A Bonjour UDP service's "host:port": a UDP connection is ready once
     /// the name resolves, and sends nothing.
     private static func resolve(_ endpoint: NWEndpoint, ipv4Only: Bool) async -> String? {

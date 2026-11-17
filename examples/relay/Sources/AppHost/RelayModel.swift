@@ -28,6 +28,8 @@ public final class RelayModel {
     public enum Action: Equatable, Sendable {
         case forget(deviceID: String)
         case remove(transfer: UInt64)
+        case revoke(endpointID: String)
+        case forgetDevice(endpointID: String)
     }
 
     public var alert: ForgeAlert<Action>?
@@ -48,6 +50,9 @@ public final class RelayModel {
         peers = core.peers()
         transfers = core.transfers()
         port = core.listeningPort()
+        devices = core.devices()
+        policy = core.pairingPolicy()
+        trustOffer = core.trustOffer()
     }
 
     /// Whether anything is still on its way, so the screen refreshes its
@@ -161,6 +166,10 @@ public final class RelayModel {
             await perform { try await $0.forgetPeer(deviceId: id) }
         case .remove(let id):
             await perform { try await $0.removeTransfer(id: id) }
+        case .revoke(let id):
+            await perform { try await $0.revokeDevice(endpointId: id) }
+        case .forgetDevice(let id):
+            await perform { try await $0.forgetDevice(endpointId: id) }
         }
     }
 
@@ -202,6 +211,134 @@ public final class RelayModel {
             saveCount += 1
         } catch {
             report(error)
+        }
+    }
+
+    // MARK: Trusted devices (brief PR 3)
+
+    /// Trusted and revoked devices, by name. Trust is keyed by the
+    /// device's endpoint id in Rust (`rust/src/trust.rs`), never its name.
+    public private(set) var devices: [Device] = []
+    /// What happens after a code transfer (Settings).
+    public private(set) var policy: PairingPolicy = .askToPair
+    /// "Trust this device?" after a code transfer, until answered.
+    public private(set) var trustOffer: TrustOffer?
+
+    public var trustedDevices: [Device] { devices.filter(\.trusted) }
+    public var revokedDevices: [Device] { devices.filter { !$0.trusted } }
+
+    public func device(_ endpointID: String) -> Device? {
+        devices.first { $0.endpointId == endpointID }
+    }
+
+    public func transfers(with device: Device) -> [Transfer] {
+        transfers.filter { $0.peerId == device.endpointId }
+    }
+
+    /// Where this device takes trusted connections, for Bonjour; `nil` if
+    /// Relay's endpoint couldn't start.
+    public func deviceService() async -> DeviceService? {
+        do {
+            return try await core.deviceService()
+        } catch {
+            log.warn("no device service: \(error)")
+            return nil
+        }
+    }
+
+    /// The trusted devices Bonjour sees now, with where they are.
+    public func devicesNearby(_ nearby: [NearbyDevice]) {
+        core.devicesNearby(devices: nearby)
+        devices = core.devices()
+    }
+
+    /// Re-reads the trust offer: the sending side learns the other's name
+    /// a moment after its code send ends.
+    public func refreshTrustOffer() {
+        trustOffer = core.trustOffer()
+    }
+
+    /// The person answered Trust.
+    public func trust(_ offer: TrustOffer) async {
+        trustOffer = nil
+        await perform { try await $0.trustDevice(endpointId: offer.endpointId) }
+    }
+
+    /// The person answered Not Now: nothing is remembered.
+    public func dismissTrustOffer() {
+        core.dismissTrustOffer()
+        trustOffer = nil
+    }
+
+    /// Trust Again, for a revoked device: the only way it is trusted again.
+    public func trustAgain(_ device: Device) async {
+        await perform { try await $0.trustDevice(endpointId: device.endpointId) }
+    }
+
+    public func askToRevoke(_ device: Device) {
+        alert = .confirm(
+            "Revoke “\(device.name)”?",
+            message: "It can't send to this device without a code, and a code transfer never trusts it again. Only you can, from this list.",
+            confirm: "Revoke",
+            action: .revoke(endpointID: device.endpointId),
+            identifier: "trusted.confirmRevoke",
+            destructive: true
+        )
+    }
+
+    public func askToForget(_ device: Device) {
+        alert = .confirm(
+            "Forget “\(device.name)”?",
+            message: device.trusted
+                ? "It leaves this list and can't send without a code. Its history stays."
+                : "It leaves this list and stays revoked. Its history stays.",
+            confirm: "Forget Device",
+            action: .forgetDevice(endpointID: device.endpointId),
+            identifier: "trusted.confirmForget",
+            destructive: true
+        )
+    }
+
+    /// Whether `device` may send files and notes here.
+    public func setReceives(_ on: Bool, from device: Device) async {
+        await perform { try await $0.setReceivesFrom(endpointId: device.endpointId, on: on) }
+    }
+
+    public func setPolicy(_ policy: PairingPolicy) async {
+        await perform { try await $0.setPairingPolicy(policy: policy) }
+    }
+
+    /// Sends a note to a trusted device, no code. `false` (and an alert)
+    /// if it failed.
+    @discardableResult
+    public func send(note: String, toDevice device: Device) async -> Bool {
+        await sendingToDevice { try await $0.sendNoteToDevice(endpointId: device.endpointId, text: note) }
+    }
+
+    /// Sends files and folders (in one folder when several) to a trusted
+    /// device. They must stay until the send ends.
+    @discardableResult
+    public func send(paths: [String], toDevice device: Device) async -> Bool {
+        await sendingToDevice { try await $0.sendToDevice(endpointId: device.endpointId, paths: paths) }
+    }
+
+    /// Stops a send to a trusted device that is on its way.
+    public func cancel(_ transfer: Transfer) {
+        core.cancelTransfer(id: transfer.id)
+    }
+
+    private func sendingToDevice(_ send: (RelayCore) async throws -> Transfer) async -> Bool {
+        reload()
+        do {
+            _ = try await send(core)
+            reload()
+            saveCount += 1
+            return true
+        } catch {
+            reload()
+            if case RelayError.Stopped = error { return false }
+            report(error)
+            return false
         }
     }
 
@@ -258,6 +395,7 @@ public final class RelayModel {
                 let receipt = try await core.receiveWithCode(code: code, addresses: addresses, endpointId: endpointID)
                 codeReceive = .received(receipt)
                 saveCount += 1
+                refreshTrustOffer()
             } catch {
                 log.warn("code receive failed: \(error)")
                 codeReceive = .failed(Self.message(error))
@@ -339,6 +477,7 @@ public final class RelayModel {
         // Still copying the picked file in: Rust hasn't been asked yet.
         if case .idle = now, case .preparing = codeSend { return }
         codeSend = now
+        refreshTrustOffer()
     }
 
     /// Other code senders Bonjour sees, so Rust avoids their numbers.
@@ -395,7 +534,7 @@ public final class RelayModel {
         case .UnknownPeer: return "This device isn't paired with that one any more."
         case .NotFound: return "That's no longer in the history."
         case .Unreachable: return "Can't reach the other device. Check that it has Relay open, on the same Wi-Fi."
-        case .Refused: return "The other device didn't accept. Pair again with a new code."
+        case .Refused: return "The other device didn’t accept this one. Pair again, or send with a code."
         case .Declined(let reason): return "The other device declined: \(reason)."
         case .Connection: return "The connection broke. Try again."
         case .File: return "The file couldn't be read or kept."
@@ -448,6 +587,10 @@ extension Peer: Identifiable {
 }
 
 extension Transfer: Identifiable {}
+
+extension Device: Identifiable {
+    public var id: String { endpointId }
+}
 
 // MARK: Formatting (Foundation only, so it tests on Linux)
 

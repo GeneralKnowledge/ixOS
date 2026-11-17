@@ -67,6 +67,16 @@ struct DevicesView: View {
     var body: some View {
         NavigationStack {
             List {
+                if !model.trustedDevices.isEmpty {
+                    Section("Trusted Devices") {
+                        ForEach(model.trustedDevices) { device in
+                            NavigationLink(value: TrustedRoute(endpointID: device.endpointId)) {
+                                TrustedDeviceRow(device: device)
+                            }
+                            .accessibilityIdentifier("devices.trusted")
+                        }
+                    }
+                }
                 Section {
                     ForEach(model.peers) { peer in
                         NavigationLink(value: peer.deviceId) {
@@ -85,6 +95,16 @@ struct DevicesView: View {
                 } footer: {
                     Text(listeningNote)
                 }
+                if !model.revokedDevices.isEmpty {
+                    Section("Revoked") {
+                        ForEach(model.revokedDevices) { device in
+                            RevokedDeviceRow(device: device, model: model)
+                        }
+                    }
+                }
+                if !isEmpty {
+                    PairingPolicySection(model: model)
+                }
                 if !model.transfers.isEmpty {
                     Section("History") {
                         ForEach(model.transfers) { transfer in
@@ -101,6 +121,9 @@ struct DevicesView: View {
                 } else {
                     ContentUnavailableView("Device Forgotten", systemImage: "iphone.slash")
                 }
+            }
+            .navigationDestination(for: TrustedRoute.self) { route in
+                TrustedDeviceView(model: model, endpointID: route.endpointID, preview: $preview)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -155,6 +178,25 @@ struct DevicesView: View {
             } message: {
                 Text("Other devices see this name.")
             }
+            // "Trust this device?" after a code transfer, once no sheet is up
+            // (the code sheets end first; the offer waits for them).
+            .alert(
+                trustOfferTitle,
+                isPresented: Binding(
+                    get: { showingTrustOffer },
+                    // Trust and Not Now answer it; nothing else closes it.
+                    set: { _ in }
+                ),
+                presenting: model.trustOffer
+            ) { offer in
+                Button("Trust") { Task { await model.trust(offer) } }
+                    .accessibilityIdentifier("trustOffer.trust")
+                Button("Not Now", role: .cancel) { model.dismissTrustOffer() }
+                    .accessibilityIdentifier("trustOffer.notNow")
+            } message: { _ in
+                Text("You'll be able to send to each other without a code. You can revoke this at any time.")
+            }
+            .onChange(of: anySheet) { if !anySheet { model.refreshTrustOffer() } }
             .quickLookPreview($preview)
             .sensoryFeedback(.success, trigger: model.saveCount)
             // Progress of what is on its way, twice a second.
@@ -179,6 +221,22 @@ struct DevicesView: View {
         }
     }
 
+    private var isEmpty: Bool {
+        model.peers.isEmpty && model.devices.isEmpty && model.transfers.isEmpty
+    }
+
+    private var anySheet: Bool {
+        showingCode || scanning || receivingCode || sendingCode
+    }
+
+    private var showingTrustOffer: Bool {
+        model.trustOffer != nil && !anySheet && model.alert == nil
+    }
+
+    private var trustOfferTitle: String {
+        model.trustOffer.map { "Trust “\($0.name)”?" } ?? "Trust This Device?"
+    }
+
     private var listeningNote: String {
         if model.port != nil {
             return "“\(model.identity.name)” is open to paired devices on this Wi-Fi while Relay is on screen."
@@ -187,7 +245,7 @@ struct DevicesView: View {
     }
 
     @ViewBuilder private var emptyState: some View {
-        if model.peers.isEmpty && model.transfers.isEmpty {
+        if isEmpty {
             ForgeStateView.empty(
                 "No Devices", systemImage: "arrow.left.arrow.right",
                 description: "Pair once by QR code, then send notes and files straight to the other device, encrypted. Both need Relay open on the same Wi-Fi.",
@@ -200,9 +258,18 @@ struct DevicesView: View {
         if let port = model.startListening() {
             network.start(name: RelayFormat.serviceName(for: model.identity), port: port)
         }
+        // Trusted devices reach this one on its iroh endpoint, found by
+        // Bonjour (`d=1`); Rust keeps only the devices it trusts.
+        network.watchDevices { [model] nearby in model.devicesNearby(nearby) }
+        Task {
+            let service = await model.deviceService()
+            network.advertiseDevice(service)
+        }
     }
 
     private func close() {
+        network.advertiseDevice(nil)
+        network.stopWatchingDevices()
         network.stop()
         model.stopListening()
     }

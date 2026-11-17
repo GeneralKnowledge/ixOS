@@ -517,6 +517,11 @@ void uniffi_relay_core_fn_method_relaycore_cancel_code_send(uint64_t ptr, RustCa
 void uniffi_relay_core_fn_method_relaycore_cancel_invitation(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_TRANSFER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_TRANSFER
+void uniffi_relay_core_fn_method_relaycore_cancel_transfer(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
 RustBuffer uniffi_relay_core_fn_method_relaycore_code_receive_size(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -537,9 +542,34 @@ RustBuffer uniffi_relay_core_fn_method_relaycore_code_send_status(uint64_t ptr, 
 RustBuffer uniffi_relay_core_fn_method_relaycore_create_invitation(uint64_t ptr, RustBuffer hosts, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICE_SERVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICE_SERVICE
+uint64_t uniffi_relay_core_fn_method_relaycore_device_service(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICES
+RustBuffer uniffi_relay_core_fn_method_relaycore_devices(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICES_NEARBY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICES_NEARBY
+void uniffi_relay_core_fn_method_relaycore_devices_nearby(uint64_t ptr, RustBuffer devices, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DISMISS_TRUST_OFFER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DISMISS_TRUST_OFFER
+void uniffi_relay_core_fn_method_relaycore_dismiss_trust_offer(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_EVENTS
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_EVENTS
 RustBuffer uniffi_relay_core_fn_method_relaycore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_FORGET_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_FORGET_DEVICE
+uint64_t uniffi_relay_core_fn_method_relaycore_forget_device(uint64_t ptr, RustBuffer endpoint_id
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_FORGET_PEER
@@ -565,6 +595,11 @@ RustBuffer uniffi_relay_core_fn_method_relaycore_listening_port(uint64_t ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_PAIR
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_PAIR
 uint64_t uniffi_relay_core_fn_method_relaycore_pair(uint64_t ptr, RustBuffer code, RustBuffer cancellation
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_PAIRING_POLICY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_PAIRING_POLICY
+RustBuffer uniffi_relay_core_fn_method_relaycore_pairing_policy(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_PEERS
@@ -602,6 +637,11 @@ uint64_t uniffi_relay_core_fn_method_relaycore_rename_device(uint64_t ptr, RustB
 uint64_t uniffi_relay_core_fn_method_relaycore_revision(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_REVOKE_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_REVOKE_DEVICE
+uint64_t uniffi_relay_core_fn_method_relaycore_revoke_device(uint64_t ptr, RustBuffer endpoint_id
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_FILE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_FILE
 uint64_t uniffi_relay_core_fn_method_relaycore_send_file(uint64_t ptr, RustBuffer device_id, RustBuffer path, RustBuffer addresses, RustBuffer cancellation
@@ -612,9 +652,19 @@ uint64_t uniffi_relay_core_fn_method_relaycore_send_file(uint64_t ptr, RustBuffe
 uint64_t uniffi_relay_core_fn_method_relaycore_send_note(uint64_t ptr, RustBuffer device_id, RustBuffer text, RustBuffer addresses, RustBuffer cancellation
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_NOTE_TO_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_NOTE_TO_DEVICE
+uint64_t uniffi_relay_core_fn_method_relaycore_send_note_to_device(uint64_t ptr, RustBuffer endpoint_id, RustBuffer text
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
 void uniffi_relay_core_fn_method_relaycore_send_paths_with_code(uint64_t ptr, RustBuffer paths, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_TO_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_TO_DEVICE
+uint64_t uniffi_relay_core_fn_method_relaycore_send_to_device(uint64_t ptr, RustBuffer endpoint_id, RustBuffer paths
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_WITH_CODE
@@ -622,9 +672,19 @@ void uniffi_relay_core_fn_method_relaycore_send_paths_with_code(uint64_t ptr, Ru
 void uniffi_relay_core_fn_method_relaycore_send_with_code(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PAIRING_POLICY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PAIRING_POLICY
+uint64_t uniffi_relay_core_fn_method_relaycore_set_pairing_policy(uint64_t ptr, RustBuffer policy
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PHASE
 void uniffi_relay_core_fn_method_relaycore_set_phase(uint64_t ptr, RustBuffer phase, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_RECEIVES_FROM
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_RECEIVES_FROM
+uint64_t uniffi_relay_core_fn_method_relaycore_set_receives_from(uint64_t ptr, RustBuffer endpoint_id, int8_t on
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SHUTDOWN
@@ -645,6 +705,16 @@ void uniffi_relay_core_fn_method_relaycore_stop_listening(uint64_t ptr, RustCall
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_TRANSFERS
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_TRANSFERS
 RustBuffer uniffi_relay_core_fn_method_relaycore_transfers(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_TRUST_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_TRUST_DEVICE
+uint64_t uniffi_relay_core_fn_method_relaycore_trust_device(uint64_t ptr, RustBuffer endpoint_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_TRUST_OFFER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_TRUST_OFFER
+RustBuffer uniffi_relay_core_fn_method_relaycore_trust_offer(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_CHATCORE
@@ -1827,6 +1897,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_cancel_invitation(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_TRANSFER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_TRANSFER
+uint16_t uniffi_relay_core_checksum_method_relaycore_cancel_transfer(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
 uint16_t uniffi_relay_core_checksum_method_relaycore_code_receive_size(void
@@ -1851,9 +1927,39 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_create_invitation(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICE_SERVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICE_SERVICE
+uint16_t uniffi_relay_core_checksum_method_relaycore_device_service(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICES
+uint16_t uniffi_relay_core_checksum_method_relaycore_devices(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICES_NEARBY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICES_NEARBY
+uint16_t uniffi_relay_core_checksum_method_relaycore_devices_nearby(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DISMISS_TRUST_OFFER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DISMISS_TRUST_OFFER
+uint16_t uniffi_relay_core_checksum_method_relaycore_dismiss_trust_offer(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_EVENTS
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_EVENTS
 uint16_t uniffi_relay_core_checksum_method_relaycore_events(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_FORGET_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_FORGET_DEVICE
+uint16_t uniffi_relay_core_checksum_method_relaycore_forget_device(void
     
 );
 #endif
@@ -1884,6 +1990,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_listening_port(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_PAIR
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_PAIR
 uint16_t uniffi_relay_core_checksum_method_relaycore_pair(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_PAIRING_POLICY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_PAIRING_POLICY
+uint16_t uniffi_relay_core_checksum_method_relaycore_pairing_policy(void
     
 );
 #endif
@@ -1929,6 +2041,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_revision(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_REVOKE_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_REVOKE_DEVICE
+uint16_t uniffi_relay_core_checksum_method_relaycore_revoke_device(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_FILE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_FILE
 uint16_t uniffi_relay_core_checksum_method_relaycore_send_file(void
@@ -1941,9 +2059,21 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_send_note(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_NOTE_TO_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_NOTE_TO_DEVICE
+uint16_t uniffi_relay_core_checksum_method_relaycore_send_note_to_device(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
 uint16_t uniffi_relay_core_checksum_method_relaycore_send_paths_with_code(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_TO_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_TO_DEVICE
+uint16_t uniffi_relay_core_checksum_method_relaycore_send_to_device(void
     
 );
 #endif
@@ -1953,9 +2083,21 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_send_with_code(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_PAIRING_POLICY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_PAIRING_POLICY
+uint16_t uniffi_relay_core_checksum_method_relaycore_set_pairing_policy(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_PHASE
 uint16_t uniffi_relay_core_checksum_method_relaycore_set_phase(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_RECEIVES_FROM
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_RECEIVES_FROM
+uint16_t uniffi_relay_core_checksum_method_relaycore_set_receives_from(void
     
 );
 #endif
@@ -1980,6 +2122,18 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_stop_listening(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_TRANSFERS
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_TRANSFERS
 uint16_t uniffi_relay_core_checksum_method_relaycore_transfers(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_TRUST_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_TRUST_DEVICE
+uint16_t uniffi_relay_core_checksum_method_relaycore_trust_device(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_TRUST_OFFER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_TRUST_OFFER
+uint16_t uniffi_relay_core_checksum_method_relaycore_trust_offer(void
     
 );
 #endif

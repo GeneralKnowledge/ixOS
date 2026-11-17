@@ -138,7 +138,7 @@ pub struct RelayCore {
     code_send: Arc<CodeSendShared>,
     /// The device a code transfer was just made with, waiting for the
     /// person to say whether to trust it (Ask to Pair).
-    trust_offer: Mutex<Option<TrustOffer>>,
+    trust_offer: Arc<Mutex<Option<TrustOffer>>>,
     /// Trusted devices the app sees nearby, with their addresses.
     nearby: Mutex<HashMap<String, Vec<String>>>,
     /// The stop switch of each send to a trusted device, by history id.
@@ -211,7 +211,7 @@ impl RelayCore {
             code_progress: Arc::new(CodeProgress::default()),
             code_stop: Mutex::new(Arc::new(AtomicBool::new(false))),
             code_send: Arc::new(CodeSendShared::default()),
-            trust_offer: Mutex::new(None),
+            trust_offer: Arc::new(Mutex::new(None)),
             nearby: Mutex::new(HashMap::new()),
             device_stops: Mutex::new(HashMap::new()),
             me: me.clone(),
@@ -1185,21 +1185,22 @@ impl RelayCore {
         if endpoint_id.is_empty() {
             return;
         }
-        let (id, called) = (endpoint_id.clone(), name.clone());
-        let decided = self
+        let offer = self.trust_offer.clone();
+        let decided: Result<AfterCode, RelayError> = self
             .rt
             .command("after-code", move |state| {
-                state.change(|r| Ok(r.devices.after_code(&id, &called, now_ms())))
+                let decided =
+                    state.change(|r| Ok(r.devices.after_code(&endpoint_id, &name, now_ms())))?;
+                // Set within the command, so the change the app hears
+                // about already carries the offer.
+                if decided == AfterCode::Offer {
+                    *lock(&offer) = Some(TrustOffer { endpoint_id, name });
+                }
+                Ok(decided)
             })
             .await;
-        match decided {
-            Ok(AfterCode::Offer) => {
-                *lock(&self.trust_offer) = Some(TrustOffer { endpoint_id, name });
-            }
-            Ok(_) => {}
-            Err(err) => {
-                forge_runtime::logging::warn!("relay couldn't apply the pairing policy: {err}")
-            }
+        if let Err(err) = decided {
+            forge_runtime::logging::warn!("relay couldn't apply the pairing policy: {err}")
         }
     }
 

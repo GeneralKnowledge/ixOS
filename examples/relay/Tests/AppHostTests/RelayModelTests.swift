@@ -35,8 +35,69 @@ final class RelayModelTests: XCTestCase {
         XCTAssertEqual(RelayFormat.title(received.item), "Hello from B")
     }
 
+    /// A code transfer, "Trust this device?" on both sides, then a note to
+    /// the trusted device with no code; revoking refuses the next one.
+    func testTrustAfterACodeTransferThenSendWithoutACode() async throws {
+        let hostA = makeTemporaryAppHost()
+        let hostB = makeTemporaryAppHost()
+        await hostA.start()
+        await hostB.start()
+        let a = RelayModel(core: try XCTUnwrap(hostA.core))
+        let b = RelayModel(core: try XCTUnwrap(hostB.core))
+
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("trust-\(UUID().uuidString).txt")
+        try Data("hello".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        a.send(fileAt: file.path)
+        let advert = try await eventually { a.refreshCodeSend(); return a.codeAdvert }
+        guard case .waiting(let code, _, _, _, _, _, _) = a.codeSend else { return XCTFail("no code") }
+        await b.receive(code: code) { _ in
+            .found(addresses: [RelayFormat.address(host: "127.0.0.1", port: advert.port)], endpointID: advert.endpointID)
+        }
+        guard case .received = b.codeReceive else { return XCTFail("\(b.codeReceive)") }
+
+        let offerOnB = try XCTUnwrap(b.trustOffer)
+        let offerOnA = try await eventually { a.refreshCodeSend(); return a.trustOffer }
+        await b.trust(offerOnB)
+        await a.trust(offerOnA)
+        XCTAssertNil(b.trustOffer)
+        XCTAssertEqual(b.trustedDevices.map(\.endpointId), [advert.endpointID])
+
+        // B tells A where B is, as Bonjour would.
+        let maybeService = await b.deviceService()
+        let service = try XCTUnwrap(maybeService)
+        a.devicesNearby([NearbyDevice(endpointId: service.endpointId, addresses: [RelayFormat.address(host: "127.0.0.1", port: service.port)])])
+        let toB = try XCTUnwrap(a.device(service.endpointId))
+        XCTAssertTrue(toB.nearby)
+        let sent = await a.send(note: "No code", toDevice: toB)
+        XCTAssertTrue(sent)
+        b.reload()
+        XCTAssertEqual(b.transfers.first.map { RelayFormat.title($0.item) }, "No code")
+
+        // Revoked on B: A's next note is refused, with an alert on A.
+        let aOnB = try XCTUnwrap(b.device(advert.endpointID))
+        b.askToRevoke(aOnB)
+        await b.handle(.revoke(endpointID: aOnB.endpointId))
+        XCTAssertEqual(b.revokedDevices.count, 1)
+        let refused = await a.send(note: "Again", toDevice: toB)
+        XCTAssertFalse(refused)
+        XCTAssertNotNil(a.alert)
+    }
+
+    /// Polls `value` for up to 15 s.
+    private func eventually<T>(_ value: () -> T?) async throws -> T {
+        for _ in 0..<750 {
+            if let found = value() { return found }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("timed out")
+        throw TimedOut()
+    }
+
     func testFormatting() {
         XCTAssertEqual(RelayFormat.address(host: "192.168.1.5", port: 4000), "192.168.1.5:4000")
         XCTAssertEqual(RelayFormat.address(host: "fd00::1", port: 4000), "[fd00::1]:4000")
     }
 }
+
+private struct TimedOut: Error {}
