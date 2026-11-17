@@ -7,9 +7,11 @@ import Foundation
 /// The shape of a typed answer, written as a plain value instead of with
 /// Apple's `@Generable` macro.
 ///
-/// `@Generable` needs a compiler plugin that only ships inside Xcode, so it
-/// can't be expanded by a Linux build. This gives the same guided
-/// generation without a macro: describe the fields once, conform an ordinary
+/// `@Generable` does build with xtool on Linux (its Darwin SDK expands
+/// Apple's macros with an open reimplementation; friction log A36). This is
+/// for what the macro can't do, a shape known only at run time, and for
+/// comparing the two on the phone. The same guided generation without a
+/// macro: describe the fields once, conform an ordinary
 /// `Decodable` struct to `StructuredAnswer`, and the shape becomes Apple's
 /// `DynamicGenerationSchema` at run time; the model's answer decodes into
 /// the struct with `JSONDecoder`. The shape itself is Foundation only, so it
