@@ -37,11 +37,7 @@ struct ReaderView: View {
     var body: some View {
         Group {
             if let openError {
-                ContentUnavailableView {
-                    Label(openError.title, systemImage: "book.closed")
-                } description: {
-                    Text(openError.message)
-                }
+                ForgeStateView.failed(openError.title, message: openError.message)
             } else if let contents, let chapter {
                 reader(contents, chapter)
             } else {

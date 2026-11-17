@@ -1,4 +1,5 @@
 @preconcurrency import PocketLibraryFFI
+import ForgeUI
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -84,11 +85,11 @@ struct BookSummarySheet: View {
     }
 
     private var unavailable: some View {
-        ContentUnavailableView {
-            Label("Summaries Unavailable", systemImage: "sparkles")
-        } description: {
-            Text(state.info.unavailableReason ?? "Apple Intelligence is not available.")
-        }
+        ForgeStateView.empty(
+            "Summaries Unavailable",
+            systemImage: "sparkles",
+            message: state.info.unavailableReason ?? String(localized: "Apple Intelligence is not available.")
+        )
     }
 
     private var working: some View {

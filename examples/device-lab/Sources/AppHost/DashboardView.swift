@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeUI
 import SwiftUI
 
 /// Everything the phone tells an app about itself, live, in one list: the
@@ -484,9 +485,9 @@ struct AudioLogView: View {
         }
         .overlay {
             if audio.events.isEmpty {
-                ContentUnavailableView(
+                ForgeStateView.empty(
                     "Nothing Yet", systemImage: "speaker.wave.2",
-                    description: Text("Plug in headphones, connect AirPods, or take a call while an app plays."))
+                    description: "Plug in headphones, connect AirPods, or take a call while an app plays.")
             }
         }
         .navigationTitle("Audio Events")
@@ -505,7 +506,7 @@ struct ThermalLogView: View {
         }
         .overlay {
             if changes.isEmpty {
-                ContentUnavailableView("No Readings Yet", systemImage: "thermometer.medium")
+                ForgeStateView.empty("No Readings Yet", systemImage: "thermometer.medium")
             }
         }
         .navigationTitle("Heat Changes")
@@ -528,8 +529,8 @@ struct NetworkLogView: View {
         }
         .overlay {
             if changes.isEmpty {
-                ContentUnavailableView("No Changes Yet", systemImage: "network",
-                    description: Text("Turn Wi-Fi or Airplane Mode on and off to see them here."))
+                ForgeStateView.empty("No Changes Yet", systemImage: "network",
+                    description: "Turn Wi-Fi or Airplane Mode on and off to see them here.")
             }
         }
         .navigationTitle("Recent Changes")

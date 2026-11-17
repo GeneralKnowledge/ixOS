@@ -131,7 +131,7 @@ struct FeedListView: View {
     @ViewBuilder private var searchResults: some View {
         if results.isEmpty {
             if resultsFor?.query == query {
-                ContentUnavailableView.search(text: query)
+                ForgeStateView.noResults(for: query)
             } else {
                 ProgressView().frame(maxWidth: .infinity)
             }

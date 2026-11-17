@@ -469,6 +469,24 @@ def rule_toned_text(app):
     return True, ""
 
 
+# Empty, no-results, loading and failed screens through ForgeUI's
+# `ForgeStateView` (framework candidates PR B, 2026-11-17), which keeps the
+# states apart, gives every action an identifier and uses the system's own
+# no-results view. Apps that don't use ForgeUI (Checklist, on ForgeKit
+# alone) draw SwiftUI's own.
+def rule_state_views(app):
+    if '.product(name: "ForgeUI"' not in read(app / "Package.swift"):
+        return None
+    bad = []
+    for path in swift_sources(app):
+        for i, line in enumerate(read(path).splitlines()):
+            if re.search(r"\bContentUnavailableView\b", line.split("//", 1)[0]):
+                bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "builds state screens with ContentUnavailableView; use ForgeStateView: " + ", ".join(bad)
+    return True, ""
+
+
 def rule_web_images(app):
     bad = []
     for path in swift_sources(app):
@@ -489,6 +507,7 @@ RULES = [
     ("alerts-over-sheets", "A model alert is held back while a sheet is up; the sheet shows alerts itself", rule_alerts_over_sheets),
     ("picked-files", "Picked files copied with ForgeAppKit's `ForgePickedFile` (off the main thread), never by hand", rule_picked_files),
     ("web-images", "Pictures from the web through `ForgeRemoteImage` (kept on disk, decoded at the size shown), never `AsyncImage`", rule_web_images),
+    ("state-views", "Empty, no-results, loading and failed screens through ForgeUI's `ForgeStateView`", rule_state_views),
     ("toned-text", "Warning and error text in ForgeUI's tones, never raw orange, yellow or (for errors) red", rule_toned_text),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),

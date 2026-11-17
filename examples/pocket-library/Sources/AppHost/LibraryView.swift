@@ -60,22 +60,21 @@ struct LibraryView: View {
     @ViewBuilder
     private var content: some View {
         if model.totalBooks == 0 {
-            ContentUnavailableView {
-                Label("No Books Yet", systemImage: "books.vertical")
-            } description: {
-                Text("Add the books you're reading, have read, or want to read.")
-            } actions: {
-                addMenu(id: "library.empty.add").buttonStyle(.borderedProminent)
-            }
+            ForgeStateView.empty(
+                "No Books Yet",
+                systemImage: "books.vertical",
+                description: "Add the books you're reading, have read, or want to read.",
+                action: .menu("Add Book", systemImage: "plus", identifier: "library.empty.add") { addButtons }
+            )
         } else if model.books.isEmpty {
             if model.searchText.isEmpty {
-                ContentUnavailableView(
+                ForgeStateView.empty(
                     "No \(model.statusFilter?.label ?? "") Books",
                     systemImage: model.statusFilter?.symbol ?? "book",
-                    description: Text("Books you mark as \(model.statusFilter?.label ?? "") appear here.")
+                    description: "Books you mark as \(model.statusFilter?.label ?? "") appear here."
                 )
             } else {
-                ContentUnavailableView.search(text: model.searchText)
+                ForgeStateView.noResults(for: model.searchText)
             }
         } else {
             List {
@@ -158,23 +157,29 @@ struct LibraryView: View {
     /// library, so each copy gets its own identifier.
     private func addMenu(id: String) -> some View {
         Menu {
-            Button { model.libraryDestination = .catalogue } label: {
-                Label("Search Online Catalogue", systemImage: "magnifyingglass")
-            }
-            .disabled(!model.settings.catalogueEnabled)
-            .accessibilityIdentifier("library.add.catalogue")
-            Button { model.libraryDestination = .addBook } label: {
-                Label("Enter Details", systemImage: "square.and.pencil")
-            }
-            .accessibilityIdentifier("library.add.manual")
-            Button { model.libraryDestination = .importEpub } label: {
-                Label("Import EPUB File", systemImage: "doc.badge.plus")
-            }
-            .accessibilityIdentifier("library.add.epub")
+            addButtons
         } label: {
             Label("Add Book", systemImage: "plus")
         }
         .accessibilityIdentifier(id)
+    }
+
+    /// The ways to add a book, for the toolbar's menu and the empty library's.
+    @ViewBuilder
+    private var addButtons: some View {
+        Button { model.libraryDestination = .catalogue } label: {
+            Label("Search Online Catalogue", systemImage: "magnifyingglass")
+        }
+        .disabled(!model.settings.catalogueEnabled)
+        .accessibilityIdentifier("library.add.catalogue")
+        Button { model.libraryDestination = .addBook } label: {
+            Label("Enter Details", systemImage: "square.and.pencil")
+        }
+        .accessibilityIdentifier("library.add.manual")
+        Button { model.libraryDestination = .importEpub } label: {
+            Label("Import EPUB File", systemImage: "doc.badge.plus")
+        }
+        .accessibilityIdentifier("library.add.epub")
     }
 
     private func setStatus(_ book: Book, _ status: ReadingStatus) {

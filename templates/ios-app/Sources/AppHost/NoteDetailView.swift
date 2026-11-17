@@ -1,5 +1,6 @@
 @preconcurrency import FORGE_MODULE_NAMEFFI
 import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// Screen 2: one note, edited in place. Changes are saved when you tap Done,
@@ -19,7 +20,7 @@ struct NoteDetailView: View {
             editor(for: note)
         } else {
             // Deleted elsewhere (for example from Rust) while open.
-            ContentUnavailableView("Note Deleted", systemImage: "trash")
+            ForgeStateView.empty("Note Deleted", systemImage: "trash")
         }
     }
 

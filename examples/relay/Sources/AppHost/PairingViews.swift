@@ -41,10 +41,10 @@ struct ShowCodeSheet: View {
                     }
                     .accessibilityIdentifier("code.share")
                 } else {
-                    ContentUnavailableView(
+                    ForgeStateView.empty(
                         "No Code",
                         systemImage: "wifi.slash",
-                        description: Text("Relay needs a Wi-Fi network to make a pairing code.")
+                        description: "Relay needs a Wi-Fi network to make a pairing code."
                     )
                 }
             }

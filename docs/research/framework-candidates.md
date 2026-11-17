@@ -59,7 +59,7 @@ Already in flight: outcome haptics through `ForgeFeedback` in every app (#309).
 
 These were checked and are already used where they apply: share sheets, Keychain, notifications, permissions, URLSession requests (`http`), location, picked files, web images, file storage (`FileStore`, `JsonFile`, atomic writes), Rust logging and date formatting. Plain SwiftUI `ShareLink` for app-made content is fine: `ForgeShareLink` is for share items that come from Rust.
 
-**PR A is up (items 1 to 3):** rules `rust-cancellation`, `swift-logging` and a wider `toned-text`. Soundscape's mixdown moved onto `withRustCancellation` too, which also makes leaving its screen stop the mixdown in Rust; before, only Stop did.
+**PR A merged (#313, items 1 to 3):** rules `rust-cancellation`, `swift-logging` and a wider `toned-text`. Soundscape's mixdown moved onto `withRustCancellation` too, which also makes leaving its screen stop the mixdown in Rust; before, only Stop did.
 
 Order: PR A (items 1 to 3, mechanical, Linux tests plus the iPhone build) after #311 merges and passes its phone check, then PR B. Neither PR touches the photo picker or Now Playing: those stay gated on their second-app phone checks.
 
@@ -91,3 +91,42 @@ He approved the direction and the two-PR split, with four tightenings and one ru
 Then a look at each affected app in Device Lab.
 
 **What stays out.** This is not a campaign against every app-specific implementation. `perform`, the distance maths, each app's error wording and other app behaviour stay where they are.
+
+## PR B: the state-view audit
+
+Done before any screen changed. Each row is a place an app drew a state with `ContentUnavailableView`, what it showed, its actions and identifiers, and what it is now. The 22 counted on 17 November grew to 33 with screens added since (Device Lab's dashboard and logs, Relay's assistant and trusted devices). 31 moved; Checklist's 2 stay.
+
+Three things ForgeUI's `ForgeStateView` couldn't do, which several apps needed, were added to it rather than left as exceptions: a second action (Pocket Library's "Enter Details by Hand", Weather's "Search for a City"), an action that is a menu (Relay's "Start a Chat", Pocket Library's "Add Book"), and a title or message from the app's data shown as written (a place name, a reason from Rust). `noResults` now draws the system's own search state, in the system's own language, instead of a copy of its English words.
+
+| App | Screen | Showed | Actions (identifiers) | Now |
+|---|---|---|---|---|
+| Device Lab | Audio Events | empty | none | `empty` |
+| Device Lab | Heat Changes | empty | none | `empty` |
+| Device Lab | Recent Changes (network) | empty | none | `empty` |
+| Device Lab | Logs | empty (nothing logged), no results (filter or search) | none | `empty`, `noResults` with the search words |
+| Relay | Assistant | empty | Start a Chat menu (`assistant.new`, `assistant.character.<id>`) | `empty` with a menu action, same identifiers |
+| Relay | Chats search | loading, no results | none | `loading`, `noResults` |
+| Relay | Chats list | loading until first listed (`hasListed`), empty | none | `loading`, `empty`; a list error stays its own banner |
+| Relay | Chat search | no results | none | `noResults` |
+| Relay | Pair a Device | empty (no Wi-Fi, no code) | Done in the toolbar (`code.done`) | `empty` |
+| Relay | Chats tab, core failed to open | failed | Try Again → `chat.open()` (`content.retry`) | `failed` with retry; tested by `testALoadFailureShowsWhyAndTryAgainOpens` |
+| Relay | Trusted device | missing (no longer trusted) | back | `empty` |
+| Relay | Device | missing (forgotten) | back | `empty` |
+| Weather | A place with no forecast | failed, or empty (no location yet) | Try Again → `refresh(page)` (`forecast.retry`) or Use My Location (`forecast.useLocation`); Search for a City (`forecast.search`) | `failed` when the page has an error, else `empty`; same actions and identifiers; tested by `testALoadFailureShowsAMessageAndTryAgainLoads` |
+| Good Dog | Exercise | missing | back | `empty` |
+| Good Dog | Glossary term | missing | back | `empty` |
+| Good Dog | Learn search | no results | none | `noResults` |
+| Pocket Library | Find a Book, before searching | empty | none | `empty` |
+| Pocket Library | Find a Book, search failed | failed | Try Again when retryable (`catalogue.retry`), Enter Details by Hand (`catalogue.manual`) | `failed` with retry and a second action; tested by `testTryAgainRepeatsTheFailedCatalogueSearch` |
+| Pocket Library | Find a Book, no results | no results with its own advice | Enter Details by Hand (`catalogue.noResults.manual`) | `empty` titled No Results, with the action |
+| Pocket Library | Book | missing (deleted) | back | `empty` |
+| Pocket Library | Chapter summary, book summary | unavailable (reason from the system) | none | `empty` with the reason as written |
+| Pocket Library | Reader | failed to open | back | `failed` with no retry, as before |
+| Pocket Library | Library | empty (no books), empty (none with this status), no results | Add Book menu (`library.empty.add`, `library.add.catalogue`, `.manual`, `.epub`) | `empty` with the menu, `empty`, `noResults`; the library shows only once it has loaded (`phase == .open`) |
+| Soundscape | Project | missing (deleted) | back | `empty` |
+| Commonplace | Search | no results; loading stays a row in the list | none | `noResults` |
+| Sketchbook | Sketch | missing (deleted) | back | `empty` |
+| Starter template | Note | missing (deleted) | back | `empty` |
+| Checklist | Items | empty, no results | none | unchanged: Checklist uses ForgeKit without ForgeUI, so the rule doesn't apply to it |
+
+What changes on screen: failed states now use ForgeUI's warning triangle instead of each app's own symbol, and their buttons use ForgeUI's styles instead of `.borderedProminent`. Everything else (wording, actions, identifiers, when each state shows) is as it was. The rule `state-views` fails an app that uses ForgeUI and draws `ContentUnavailableView` itself.

@@ -119,7 +119,7 @@ struct DevicesView: View {
                 if let peer = model.peers.first(where: { $0.deviceId == id }) {
                     PeerView(model: model, network: network, peer: peer, preview: $preview)
                 } else {
-                    ContentUnavailableView("Device Forgotten", systemImage: "iphone.slash")
+                    ForgeStateView.empty("Device Forgotten", systemImage: "iphone.slash")
                 }
             }
             .navigationDestination(for: TrustedRoute.self) { route in

@@ -214,7 +214,27 @@ ForgeStateView.failed("Couldn't Load Tasks", message: model.loadError,
 ForgeStateView.noResults(for: model.searchText)
 ```
 
-Built on `ContentUnavailableView`, so they look like the system's own.
+Built on `ContentUnavailableView`, so they look like the system's own; `noResults` is the system's own search state, in the system's words and language. Keep the states apart:
+
+- Show `loading` until the model has loaded, never an empty list that is still loading.
+- `noResults` is only for a search; `empty` is for a screen with nothing in it yet, or an item that has gone (`"Book Deleted"`, no action).
+- `failed` takes a retry that repeats the operation that failed, and a model test shows it does.
+
+A state can offer a second way forward, and an action can be a menu when there is a choice to make. Titles and messages from the app's data (a place name, a reason from Rust) are shown as written:
+
+```swift
+ForgeStateView.failed(failure.title, message: failure.message,
+                      retry: ForgeStateAction("Try Again", identifier: "catalogue.retry") { retry() },
+                      secondary: ForgeStateAction("Enter Details by Hand", identifier: "catalogue.manual") { manual = true })
+ForgeStateView.empty("No Books Yet", systemImage: "books.vertical",
+                     action: .menu("Add Book", systemImage: "plus", identifier: "library.empty.add") {
+                         Button("Search Online") { … }.accessibilityIdentifier("library.add.catalogue")
+                         Button("Enter Details") { … }.accessibilityIdentifier("library.add.manual")
+                     })
+ForgeStateView.empty("Summaries Unavailable", systemImage: "sparkles", message: info.unavailableReason)
+```
+
+The `state-views` parity rule keeps apps that use ForgeUI off `ContentUnavailableView` itself.
 
 ### Alerts, dialogs and sheets
 

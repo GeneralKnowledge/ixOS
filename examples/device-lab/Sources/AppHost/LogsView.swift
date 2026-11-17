@@ -16,11 +16,11 @@ struct LogsView: View {
         .overlay {
             if model.shown.isEmpty {
                 if model.all.isEmpty {
-                    ContentUnavailableView(
+                    ForgeStateView.empty(
                         "Nothing Logged Yet", systemImage: "text.alignleft",
-                        description: Text("Open an app and use it; what it logs shows here."))
+                        description: "Open an app and use it; what it logs shows here.")
                 } else {
-                    ContentUnavailableView.search
+                    ForgeStateView.noResults(for: model.search)
                 }
             }
         }
