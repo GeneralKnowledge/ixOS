@@ -70,7 +70,7 @@ Probably the best immediate return: improvements reach every app. **Opportunity:
 
 | Project | Potential contribution | Classification | Priority |
 |---|---|---|---|
-| CVS Health SwiftUI Accessibility Techniques (a11y-check) | A rule-based accessibility analyser, good and bad examples, automatic fixes, CI | **Candidate**, *unverified* | P0 |
+| CVS Health SwiftUI Accessibility Techniques (a11y-check) | A rule-based accessibility analyser (47 rules), good and bad examples, automatic fixes, CI | **Assessed 2026-11-17: Adopt as a CI tool**, report-only first; builds and tests on Linux ([assessment](assessments/accessibility/a11y-check.md)) | P0 |
 | Swift Snapshot Testing | Visual and structural regression tests | **Prior:** simulator only; ideas borrowed into phone baselines | |
 | AccessibilitySnapshot | Accessibility hierarchy snapshots | **Prior:** simulator only; tree-diff idea pending. Reassess next to a11y-check | |
 | ViewInspector | Inspect and test SwiftUI views | **Reference**, *unverified*. Needs SwiftUI at test time, so a Mac or simulator, not Linux CI | P2 |

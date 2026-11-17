@@ -8,7 +8,7 @@ Part of the [External Projects Atlas](../README.md). One file per evidence-backe
 | Local-first data and sync | [local-first/](local-first/) | None yet |
 | Security and privacy | [privacy/](privacy/) | None yet |
 | On-device AI | [ai/](ai/) | None yet. P0: FluidAudio |
-| Accessibility and interaction quality | [accessibility/](accessibility/) | None yet. P0: a11y-check |
+| Accessibility and interaction quality | [accessibility/](accessibility/) | [a11y-check](accessibility/a11y-check.md): Adopt as a CI tool |
 | Images, documents and media | [media/](media/) | None yet. P0: Offscan |
 | Reading and personal libraries | [reading/](reading/) | None yet |
 | Maps and fieldwork | [fieldwork/](fieldwork/) | None yet |
