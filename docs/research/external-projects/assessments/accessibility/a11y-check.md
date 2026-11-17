@@ -83,7 +83,7 @@ So the strongest rules (labels in repeated rows, unlabelled images and icon butt
 
 ## Verdict
 
-**Adopt, as a development tool in CI, not as a dependency of any app.** Run it pinned to a tag, report-only first, then gate only on new findings from a chosen set of rules.
+**Adopt, as a development tool in CI, not as a dependency of any app.** Run it pinned to a tag, report-only first. Then gate rules one at a time, each only after a fixture shows it handles ixOS's patterns, and only on new findings.
 
 The reason: it is the only way found so far to catch accessibility problems on Linux before the phone, it builds and passes its own tests on Linux, and its best rules found real problems in ixOS's apps. It is not ready to gate on all 47 rules, because several common ones are noisy or blind to `#if`.
 
@@ -91,12 +91,19 @@ Reopen when: its maintenance stops, a Linux build breaks, or Apple's audit (the 
 
 ## Next step
 
-One implementation PR, after Reuben agrees:
+One implementation PR, after Reuben agrees. Its first phase is **report-only: nothing fails a build**.
 
-1. Add a pinned build of `a11y-check` (tag `0.7.0` or later) to the Linux CI job that already uses `swift:6.2`, cached, with `--no-trend --format json`.
-2. Add a repository `.a11ycheck.yml`: gate on duplicate-button-label, image-missing-label, icon-button-missing-label, input-missing-purpose and fixed-font-size; report the rest; leave sheet-focus-return and heading-trait-missing off until a VoiceOver check on the phone says whether they're real.
-3. Save today's findings as a baseline, so only new findings fail. Rule 12 (no app left behind) then works as usual: the baseline only shrinks as apps are fixed.
-4. Run it through `forge` so a person without CI gets the same check (AGENTS.md rule 9), for example as a step of `forge check` that is skipped with a reason when the tool isn't installed.
+1. **Report only.** Add a pinned build of `a11y-check` (tag `0.7.0` or later) to the Linux CI job that already uses `swift:6.2`, cached, run with `--no-trend --format json`. It writes a report and never fails. Add a repository `.a11ycheck.yml` that turns off sheet-focus-return and heading-trait-missing until a VoiceOver check on the phone shows whether they're real.
+2. **A fixture per rule before it can gate.** For each rule that is a candidate for gating, add a small fixture to ixOS: one real problem the rule must flag, and the ixOS patterns it must not flag. Known false positives a fixture must cover:
+   - **input-missing-purpose:** `.textContentType` inside `#if os(iOS)` (confirmed false positive).
+   - **fixed-font-size:** deliberately decorative sizes, such as Good Dog's 96 pt trophy or Soundscape's artwork initial, as opposed to text that must follow Dynamic Type.
+   - **duplicate-button-label:** a context-menu or swipe action on a row, which VoiceOver reads with the row, as opposed to identical standalone buttons repeated in a `ForEach` (Relay's "Play Voice Message").
+   - **icon-button-missing-label:** its only finding in ixOS was a false positive. Pocket Library's `NavigationRow` labels its button through a generic `label()` closure, and the chevron image is already hidden. It was not in the hand-checked sample, so it stays report-only until a fixture shows it is reliable.
+   - **textfield-missing-label:** fields inside `ForgeField`, which attaches its label with `.accessibilityLabel`.
+   Where a false positive can't be fixed upstream, the rule stays report-only, or the ixOS pattern gets an inline suppression with a reason.
+3. **Gate one rule at a time.** A rule becomes a gate only once its fixture passes, in its own small commit, with today's findings for that rule saved as a baseline so only new findings fail. Rule 12 (no app left behind) then works as usual: the baseline only shrinks as apps are fixed. A baseline guards against old findings, not against new false positives, which is why the fixture comes first.
+4. **No score gate.** `--min-score` and the grade are not used. A number is not a substitute for testing with VoiceOver on the phone, which stays part of each app's phone check.
+5. Run it through `forge` so a person without CI gets the same report (AGENTS.md rule 9), for example as a step of `forge check` that is skipped with a reason when the tool isn't installed.
 
 The phone check that would settle the three uncertain rules takes about five minutes in the next Device Lab sitting: with VoiceOver on, open and close one sheet and one alert and see where focus lands, and read a plain `TextField` with text entered.
 

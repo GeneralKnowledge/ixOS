@@ -75,4 +75,5 @@ Reopen when: an app needs diarization or VAD; Apple's speech recognition fails o
 ## Next steps, if wanted
 
 1. **Apple first (recommended):** a small spike of Apple's on-device speech recognition built with xtool, transcribing one recorded voice message in Device Lab. That answers roadmap item 26 and is the baseline any FluidAudio comparison needs.
-2. **Keep FluidAudio ready (optional, about 15 minutes on the laptop, no phone):** an unsigned xtool iOS build of FluidAudio with `traits: []` through the build queue, to replace "Unknown" under Development with a result. Only worth it if Reuben expects to need diarization soon.
+2. **When FluidAudio is evaluated for real** (not now), measure on the iPhone rather than trust the Neural Engine claim: model download size, memory at peak (under the free team's limits), cold start to first words, and sustained processing (an hour of audio: speed, heat, battery). The Neural Engine doesn't make every model practical on every supported iPhone.
+3. **Keep FluidAudio ready (optional, about 15 minutes on the laptop, no phone):** an unsigned xtool iOS build of FluidAudio with `traits: []` through the build queue, to replace "Unknown" under Development with a result. Only worth it if Reuben expects to need diarization soon. No implementation PR for FluidAudio now.

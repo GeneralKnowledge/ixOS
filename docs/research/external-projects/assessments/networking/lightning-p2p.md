@@ -35,7 +35,23 @@ Both fetch with iroh-blobs, so both verify every chunk with BLAKE3 and resume fr
 
 **For the outbox:** temporary tags end with the process, but the outbox keeps items for up to 30 days across relaunches. Queued sends and paused receives need **persistent named tags** (as Lightning's), or a later collection would delete what the outbox is still waiting to send.
 
-**Proposal:** in brief PR 4 (or earlier as a fix), open the store with a `GcConfig`, tag every queued delivery and every paused receive by its id, drop the tag when the item ends, and let collection reclaim the rest. Test: receive a file, wait for one collection, and check the store holds no copy; queue a send, relaunch, collect, and check it still sends.
+**Checked against Relay's version, iroh-blobs 0.104.1** (Lightning uses 0.103, so Lightning's code was not assumed to carry over). Source read in the crate at `src/store/gc.rs`, `src/store/fs/options.rs` and `src/api/tags.rs`:
+
+- `FsStore::load` builds `Options::new`, which sets `gc: None`. So collection only runs when Relay opens the store with `load_with_opts` and a `GcConfig { interval, add_protected }`.
+- On each run, a blob is kept if **any** temporary tag or **any** named tag points at it, or if the `add_protected` callback adds it. For a collection (a hash sequence), its children are kept too. Everything else is deleted.
+- Named tags map a name to a hash, and are set and deleted with `store.tags().set(name, …)` and `.delete(name)`. Several tags can point at one hash.
+- The crate notes one known race: a handover **from a named tag to a temporary tag** during a run can be missed. Handing over from a temporary tag to a named tag is handled. The callback can also return `Abort`, which skips the run.
+
+**Shared ownership.** A blob can be needed by more than one thing at once: the same photo queued for two devices, a file offered with a code while it is also in the outbox, or a received file whose content is also being sent. Because a blob lives while any tag points at it, the rule is **one named tag per owner, never one per blob**. The tag is named by the owner's own id (for example `relay/delivery/<id>` and `relay/receive/<id>`), so finishing one delivery deletes only its own tag, and the blob stays while another owner still holds one. Never hand ownership from a named tag back to a temporary one. Lightning also only lets collection run once receives have settled, which avoids the race in practice.
+
+**Proposal: a prerequisite for the outbox's persistent deliveries (brief PR 4), not a later optimisation.** Open the store with a `GcConfig`. Give every queued delivery and every paused receive its own named tag, written in the same step that records the item. Delete the tag only when that item reaches an end state (Delivered, Declined, Expired, Cancelled, Failed, or 30 days). Use the `add_protected` callback, or a gate as Lightning does, to protect anything in progress that isn't tagged yet. Let collection reclaim the rest. Tests, on Linux:
+
+- Receive a file, wait for one collection, and check the store no longer holds its copy.
+- Queue a send, relaunch, collect, and check it still sends.
+- **Shared content:** queue the same file for two devices, finish one, collect, and check the other still sends.
+- A paused receive survives a relaunch and a collection, and resumes from its verified bytes.
+
+**Acceptance on the iPhone**, in the phone check of the PR that adds collection: receive a 200 MB file and check that Relay's size in iPhone Storage grows by about 200 MB, not 400 MB. Then let it sit for a minute and relaunch, and check it hasn't grown again.
 
 ### 2. Bound how much any one peer can ask for (P2)
 
