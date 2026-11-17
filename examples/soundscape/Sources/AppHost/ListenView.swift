@@ -22,8 +22,10 @@ struct ListenView: View {
     @State private var editingServer = false
     @State private var showingNowPlaying = false
 
-    init(core: SoundscapeCore) {
-        _model = State(initialValue: ListenModel(core: core))
+    init(core: SoundscapeCore, host: ForgeHost<SoundscapeCore>) {
+        let model = ListenModel(core: core)
+        model.follow(host)
+        _model = State(initialValue: model)
     }
 
     var body: some View {

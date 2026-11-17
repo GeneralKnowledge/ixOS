@@ -49,8 +49,14 @@ public final class TripsModel {
         locationProblem = core.locationProblem()
     }
 
-    /// Back on screen: re-check permission (it may have changed in
-    /// Settings) and follow location again for a recording trip.
+    /// Follows the app's phases through `host`, for as long as this model
+    /// lives: each return from the background calls `resume`.
+    public func follow(_ host: ForgeHost<FieldKitCore>) {
+        host.onResume(self) { [weak self] _ in self?.resume() }
+    }
+
+    /// Back from the background: re-check permission (it may have changed
+    /// in Settings) and follow location again for a recording trip.
     public func resume() {
         Task {
             await refreshPermission()

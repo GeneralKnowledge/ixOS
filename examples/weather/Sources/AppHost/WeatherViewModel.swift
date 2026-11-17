@@ -1,3 +1,4 @@
+import ForgeKit
 import Foundation
 import Observation
 
@@ -149,8 +150,15 @@ public final class WeatherViewModel {
         await useCurrentLocation().value
     }
 
-    /// Call when the app comes back to the foreground: the hourly strip moves
-    /// on, and a stale page on screen refreshes.
+    /// Follows the app's phases through `host`, for as long as this model
+    /// lives: each return from the background calls `becameActive`.
+    public func follow(_ host: ForgeHost<ForgeWeatherApp>) {
+        host.onResume(self) { [weak self] _ in self?.becameActive() }
+    }
+
+    /// The app came back from the background (`follow`): the hourly strip
+    /// moves on, and a stale page on screen refreshes, finding the phone
+    /// again first if its fix is old.
     public func becameActive() {
         recomputeOverviews()
         pageDidAppear()

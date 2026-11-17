@@ -184,11 +184,49 @@ public final class LibraryModel {
             }
             lastRefresh = RefreshSummary(report: report, at: Date())
             reload()
+        } catch AppError.Interrupted {
+            // The background stopped it: no alert, it is tried again when
+            // the app is back (`follow`), or now if it already is.
+            log.info("refresh stopped by the background")
+            refreshCutOff = true
+            reload()
+            if !isAway { Task { await self.cameBack() } }
         } catch {
             log.warn("refresh failed: \(error)")
             alert = .failure(error)
             reload()
         }
+    }
+
+    // MARK: The background
+
+    /// Whether the app is in the background (`follow`).
+    @ObservationIgnored private var isAway = false
+    /// A refresh the background stopped, tried again on return.
+    public private(set) var refreshCutOff = false
+
+    /// Follows the app's phases through `host`, for as long as this model
+    /// lives: each return from the background calls `cameBack`.
+    public func follow(_ host: ForgeHost<AppCore>) {
+        host.onBackground(self) { [weak self] in self?.isAway = true }
+        host.onResume(self) { [weak self] _ in
+            guard let self else { return }
+            isAway = false
+            Task { await self.cameBack() }
+        }
+    }
+
+    /// Back from the background: a refresh the background stopped is tried
+    /// again; otherwise one that found the device offline, or feeds older
+    /// than `staleAfter`, are refreshed.
+    public func cameBack() async {
+        if refreshCutOff {
+            refreshCutOff = false
+            await refresh()
+            return
+        }
+        await refreshIfOffline()
+        await refreshIfStale()
     }
 
     /// How old the newest refresh may be before opening the app, or coming

@@ -22,10 +22,12 @@ What it doesn't cover is everything outside the Rust state the app re-reads. Tha
 | | Commonplace | feeds | Swift `scenePhase`: `refreshIfStale` with its own age rule, and a refresh when the network comes back (#311) |
 | | Soundscape | the song library from the take server | **Not handled**: it loads only when the Listen tab appears or the server changes, so picks made on the laptop don't show until a pull to refresh (found 2026-11-17, from the code) |
 | **3. Something that changed outside the app** | FieldKit | location permission changed in Settings | re-read on `resume()` |
+| | Pocket Library | voices downloaded in Settings | Swift `scenePhase`: Settings > Read Aloud re-reads the voices on active (found while moving the apps) |
 | | Device Lab | permissions on its dashboard | re-read when it comes to the foreground |
 | **4. Work cut off while away** | Commonplace | a refresh interrupted by the background | open in the friction audit (#12, "needs a device test first"): nothing tries it again on return |
 | | Relay | a transfer cut off | handled: the outbox retries |
 | | Pocket Library | a catalogue import | handled: it fails with `Interrupted` and the library is unchanged |
+| | Pocket Library | a whole-book summary | Swift `scenePhase`: the sheet starts it again from its saved progress (found while moving the apps) |
 
 The pattern behind the four fixes: **each app finds out it is back by watching SwiftUI's `scenePhase` in a view, then tells its model or its Rust core.** The rules end up in views (Relay's `ContentView`, `SendCodeView`), sometimes in two places for one screen, and nothing checks that a new screen with a connection does the same.
 
@@ -68,6 +70,16 @@ Commonplace's interrupted refresh (friction #12) is tried again in `onResume`. T
 2. **PR 2, the other apps:** FieldKit, Weather, Commonplace (with its retry) and Soundscape move onto `onResume`, which empties the lag list. Phone: one minute away in each.
 
 Each PR moves every app it touches, or lists the lag in `docs/app-parity.toml`. Neither touches the Now Playing work, which is separate ([now-playing.md](now-playing.md)).
+
+## Done (2026-11-17)
+
+Both PRs went in as one, on the same branch as this plan, because the hook was small and every app's move was a few lines:
+
+- `ForgeHost.onBackground`, `onResume` and `lastResume` (with `clock`). A handler belongs to a model and goes with it; the same model registering again replaces its handler.
+- Relay: `RelayModel.follow` sets `isAway` and counts `returns`; the devices screen and the send code react to those. Chat refreshes from `onResume`, one path instead of two.
+- Weather, FieldKit, Commonplace and Soundscape: `follow(host)` on the model, called where the screen makes it. Commonplace's refresh stopped by the background no longer shows an alert and is tried again on return (friction #12).
+- Pocket Library: the book summary carries on from `onResume` in its state; Settings re-reads voices on `host.lastResume`.
+- Rule `resume`, with Device Lab not applicable. Tests: Relay (port and adverts, time away), Weather (a long time away finds the phone again), Commonplace (the retry), Soundscape (the reload). FieldKit's `resume()` is unchanged and only its caller moved, so it has no new test.
 
 ## Decision
 

@@ -1,6 +1,8 @@
 @testable import RelayApp
 @preconcurrency import RelayFFI
 import ForgeAppKit
+import ForgeKit
+import Foundation
 import XCTest
 
 /// Two devices, each a real Rust core on its own temporary folder, talking
@@ -40,6 +42,40 @@ final class RelayModelTests: XCTestCase {
         let count = a.feedback.count
         a.reload()
         XCTAssertEqual(a.feedback.count, count)
+    }
+
+    /// The background closes Relay's port; coming back tells the screens
+    /// to open it and advertise again, with how long the app was away. The
+    /// model follows the host's phases, so no view has to watch for them.
+    func testTheBackgroundClosesThePortAndComingBackReopens() async throws {
+        let host = makeTemporaryAppHost()
+        await host.start()
+        var now = Date(timeIntervalSince1970: 1_000)
+        host.clock = { now }
+        let model = RelayModel(core: try XCTUnwrap(host.core))
+        model.follow(host)
+        defer { model.stopListening() }
+        XCTAssertNotNil(model.startListening())
+
+        host.report(.inactive)
+        host.report(.background)
+        XCTAssertTrue(model.isAway)
+        XCTAssertNil(model.port, "the port is closed while away")
+        XCTAssertNil(host.lastResume)
+
+        now += 90
+        host.report(.inactive)
+        XCTAssertFalse(model.isAway, "the screens open the port and adverts again")
+        XCTAssertEqual(model.returns, 1, "an open send code is advertised again")
+        XCTAssertEqual(host.lastResume?.away, 90)
+        host.report(.active)
+        XCTAssertEqual(model.returns, 1, "one return, however many phases follow")
+
+        // Pulling down Control Center is not a return from the background.
+        host.report(.inactive)
+        host.report(.active)
+        XCTAssertEqual(model.returns, 1)
+        XCTAssertNotNil(model.startListening())
     }
 
     /// Which haptic a new read of the history plays: received items that

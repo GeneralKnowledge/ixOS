@@ -25,7 +25,6 @@ struct SendCodeSheet: View {
     /// The copies of what is being sent, kept until the next send starts.
     @State private var outgoing: [ForgePickedFile] = []
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -102,9 +101,8 @@ struct SendCodeSheet: View {
                     model.codeSendersNearby(senders)
                 }
             }
-            .onChange(of: scenePhase) {
-                if scenePhase == .active { network.readvertiseCode(model.codeAdvert) }
-            }
+            // Back from the background: iOS dropped the advert meanwhile.
+            .onChange(of: model.returns) { network.readvertiseCode(model.codeAdvert) }
             .onDisappear {
                 network.stopWatchingCodeSenders()
                 if !model.isSendingCode { network.advertiseCode(nil) }
