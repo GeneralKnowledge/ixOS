@@ -30,6 +30,8 @@ Every finding in this article gets one of three labels:
 
 It sounds pedantic. It is pedantic. It's also the only way I've found to stop "I'm fairly sure it does this" quietly becoming "it does this" somewhere around the third coffee.
 
+The notebook also keeps our failures. If a button has no useful label, or the display refuses to tell us its number, that isn't a failed expedition. It's a finding: Observed, the calculator wouldn't say. It goes in the notebook, kept well apart from whatever we guess to get round it.
+
 ## An app shows you several faces
 
 Most people see an application as a visual interface. But an app exposes several overlapping representations of itself:
@@ -41,6 +43,8 @@ Most people see an application as a visual interface. But an app exposes several
 - **Temporal:** what changes after repeated interactions, a relaunch, or simply time.
 
 Each one reveals something different. None tells the whole story. And you don't need to know in advance which will be useful. You collect it all and find out.
+
+So the accessibility tree is one of our maps, not the edge of the world. We also want the screenshots, the answers to button-mashing nobody sensible would attempt, what survives being closed and reopened, what the app asks of the rest of the phone, and what it fails to tell us at all.
 
 A screenshot tells us what something looks like. The accessibility tree tells us something about what it is. Interaction tests tell us what happens when we press it.
 

@@ -39,6 +39,14 @@ The plan's key idea: compare values before screens. A table of key sequences and
 
 **20:37.** Reuben reframes the whole thing as an expedition: what can you learn about software by exploring everything it lets you observe? Five activities (survey, collect, map, reconstruct, verify), five representations (visual, structural, behavioural, navigational, temporal), and every finding tagged Observed, Inferred or Unknown. These notes, the draft and the plan now follow that.
 
+**20:40.** Reuben reviews #318 and keeps the direction, with three tightenings, all now in the plan and the draft:
+
+- Every expedition produces the same six outputs (specimen profile, evidence catalogue, field map, findings register, reconstruction record, verification report), so the next one starts from a template. They'll live in `docs/research/expeditions/<specimen>/`.
+- The accessibility tree is one map, not the boundary: screenshots, unusual interactions, persistence across a relaunch, effects on the rest of the phone, and errors and unreachable controls all count. R0 now includes a quick relaunch check.
+- A failed investigation is a finding. If Calculator's tree can't be read, that goes in its findings as an Observed limitation, and those findings are kept even if the expedition moves to Voice Memos.
+
+He also asked for no new infrastructure before R0: get the phone connected and see what the calculator gives up.
+
 ## Next
 
 R0, survey: ten minutes with the phone on the cable, reading Calculator's tree and taking screenshots on the main screen, the history and in landscape.

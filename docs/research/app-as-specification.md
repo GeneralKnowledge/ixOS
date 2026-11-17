@@ -37,11 +37,30 @@ Reuben's framing (2026-11-17): the question is not only "can we rebuild it?" but
 
 **Five representations** the app gives of itself, each showing something different and none the whole story: visual (screenshots), structural (the accessibility tree: roles, labels, relationships), behavioural (what taps and sequences do), navigational (which screens lead where) and temporal (what changes after repeated presses, a relaunch, or time). R0 to R2 collect the first four for Calculator and the temporal ones that are cheap (repeated equals, history after a relaunch).
 
-**Every finding is tagged** in the spec, the results and the [log](../blog/calculator/log.md):
+**Every finding is tagged** in the findings register and the [log](../blog/calculator/log.md):
 
 - **Observed:** captured directly, with where it came from (a tree file, a screenshot, a recorded result).
 - **Inferred:** believed from the evidence, with the evidence named. An inferred rule becomes Observed only when a sequence that tests it has been recorded.
 - **Unknown:** not worked out yet. Unknowns are listed, not guessed: a guess in the rebuild is marked as one.
+
+**The tree is one map, not the boundary.** The method is to investigate everything the app makes observable: the accessibility tree, screenshots and layout, its answers to unusual interactions, what survives a relaunch, its effects on the system (permissions, the clipboard, notifications), and its errors, omissions and controls that can't be reached. A phase that only looked at the tree has skipped part of its job.
+
+**A failed investigation is a finding.** A control with no useful label, a value the tree won't give up, a screen WebDriverAgent can't see: each is recorded as an Observed limitation, with what was tried, and kept apart from any assumption made to work around it. Nothing found about a specimen is thrown away when the expedition moves to another one.
+
+### What every expedition produces
+
+The same six outputs for every specimen, so the next expedition starts from a template rather than inventing the process again. They live in `docs/research/expeditions/<specimen>/`, created at R0 and filled in as the phases go; the recreation's code links to it.
+
+| Output | What it holds | Started in |
+|---|---|---|
+| `profile.md`: specimen profile | The app's identity (name, bundle id, version), the phone and iOS version, how it was installed, the policy level used, and the constraints (licence, data, what we won't copy) | R0 |
+| `evidence/`: evidence catalogue | Screenshots, saved trees and recorded values, each named by date, screen and what produced it. Trees and screenshots of an app holding personal data are not committed | R0 |
+| `map.md`: field map | Screens, controls and transitions | R1 |
+| `findings.md`: findings register | Every finding with its tag (Observed, Inferred, Unknown), its source, and the representation it came from, failed investigations included | R0 |
+| `reconstruction.md`: reconstruction record | Implementation decisions, and each assumption the recreation makes where the evidence ran out | R2 |
+| `verification.md`: verification report | Confirmed behaviours, differences and their verdicts (our bug, or a platform gap with a record in `gaps.toml`) | R2 |
+
+This is a folder of Markdown and saved files, not a tool. Nothing new is built for it before R0.
 
 ## Two levels of comparison
 
@@ -67,7 +86,7 @@ What makes a good first target: small enough to rebuild in days, native UIKit or
 | Recreation already exists | No | Commonplace, slices 1 and 2 | No |
 | Risk | Teaches little about the platform beyond the basics | Too large to prove the method on | Microphone and real data, so `operate` level and a watched walk |
 
-**Calculator first** because it proves the loop end to end (map, specify, rebuild, compare) on something finished in a week, and its edge cases (repeated equals, percent, sign change, very large numbers, the display's formatting) are exactly the fidelity questions the method is meant to catch. **NetNewsWire second** because Commonplace already exists and the method then pays off on a real app. Voice Memos is the alternative if Calculator's tree turns out to be unreadable.
+**Calculator first** because it proves the loop end to end (map, specify, rebuild, compare) on something finished in a week, and its edge cases (repeated equals, percent, sign change, very large numbers, the display's formatting) are exactly the fidelity questions the method is meant to catch. **NetNewsWire second** because Commonplace already exists and the method then pays off on a real app. Voice Memos is the alternative if Calculator's tree turns out to be unreadable, and Calculator's findings are kept either way.
 
 The Calculator recreation would be a benchmark target, not a new product. It goes in Device Lab under a Benchmarks heading with its own plain name, never in the product roadmap, so it does not break the rule that existing apps expand before new ones are added. Its look is our own ForgeUI, not Apple's round orange keys.
 
@@ -81,22 +100,24 @@ With the phone on the cable, in the next sitting already planned for Device Lab:
 
 1. Add `"com.apple.calculator" = "observe"` to `~/.config/forge/device-control.toml` on the laptop (bundle id to confirm with `forge device apps`).
 2. `forge ui tree --app com.apple.calculator` and `forge ui screenshot` on the main screen, the history and in landscape.
-3. Same two commands on NetNewsWire's feeds list, if it is still installed.
+3. While the cable is in, a few observations outside the tree: close Calculator from the app switcher and reopen it (is the last number or the history still there?), and note anything it asks for or changes outside itself.
+4. Same two commands on NetNewsWire's feeds list, if it is still installed.
+5. Start `profile.md`, `evidence/` and `findings.md` for Calculator from what came back.
 
-**Proves:** whether Apple's own app exposes every key and the display through WebDriverAgent, which no Apple app has been tried with yet. **Exit:** every key has a label and the display's value can be read from the tree. If not, try Voice Memos in the same sitting.
+**Proves:** whether Apple's own app exposes every key and the display through WebDriverAgent, which no Apple app has been tried with yet. **Exit:** every key has a label and the display's value can be read from the tree. If not, that is recorded as an Observed limitation in Calculator's findings (kept, not discarded) and Voice Memos is tried in the same sitting.
 
 ### R1: map by hand
 
-1. Write the spec from the R0 trees: screens, controls, where each leads (in the recreation's own `docs/benchmark/` folder, in the format of the NetNewsWire spec, so nothing waits for the R2 code).
-2. Write the sequence table: about 40 key sequences covering ordinary sums and the edge cases, one per line (`sequences.toml`).
-3. A small script runs each sequence on the reference through `forge ui run --any-app` (tapping keys by label) and reads the display with `forge --json ui tree`, writing `reference-results.toml`. It uses only commands ixOS already has, so a person can run it without an agent.
+1. Write the field map from the R0 evidence: screens, controls, where each leads (`map.md`), and move what it shows into the findings register.
+2. Write the sequence table: about 40 key sequences covering ordinary sums, the edge cases and some nobody sensible would press, plus a relaunch in the middle of a few to test what persists (`evidence/sequences.toml`).
+3. A small script runs each sequence on the reference through `forge ui run --any-app` (tapping keys by label) and reads the display with `forge --json ui tree`, writing `evidence/reference-results.toml`. It uses only commands ixOS already has, so a person can run it without an agent.
 
-**Exit:** the table recorded twice on the phone gives identical results, which shows the reference is deterministic enough to compare against, and every rule in the spec is tagged Observed, Inferred or Unknown.
+**Exit:** the table recorded twice on the phone gives identical results, which shows the reference is deterministic enough to compare against, and every rule in the field map is in the findings register, tagged Observed, Inferred or Unknown.
 
 ### R2: rebuild and compare values
 
 1. The calculator engine in Rust, owning all state and rules; a SwiftUI and ForgeUI view; an identifier on every key (`calculator.key.7`); hosted in Device Lab.
-2. `reference-results.toml` becomes a Rust unit test of the engine, so most differences show up on Linux in `cargo test`, before the phone.
+2. `evidence/reference-results.toml` becomes a Rust unit test of the engine, so most differences show up on Linux in `cargo test`, before the phone.
 3. On the phone, the same sequences replayed on the recreation by identifier, compared with the reference results.
 
 **Exit:** every sequence matches, or each difference is written down as either a bug in the recreation (fixed) or a gap in ixOS (a record in `gaps.toml`: layer, cost, whether a second app would need it). A finding that needed a workaround outside ForgeUI or the FFI rules is a gap even if the result matches.
