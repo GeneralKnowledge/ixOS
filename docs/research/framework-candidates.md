@@ -42,3 +42,21 @@ Plan, one PR:
 `forge_services::sensors::distance_m` lives in the native services crate. Moving it would only help a pure-Rust core that needs distances without any native service (friction log A4). Both users today, FieldKit and Device Lab, already select the `location` service, so they depend on that crate anyway. Nothing would get simpler now.
 
 The trigger is the first app that needs geo maths without location. When that happens, move `distance_m` into a small `geo` module in `forge-runtime` and keep a re-export at the old path so nothing breaks. Until then it stays where it is, and A4 stays "accept for now".
+
+## Apps not using what the framework already has
+
+On 2026-11-17 Reuben asked to look for places where apps do by hand what the framework already offers. Each item below moves the apps onto the existing helper and adds an app-parity rule so the hand-written version can't come back.
+
+| # | What the apps do by hand | Framework helper | Where | Plan |
+|---|---|---|---|---|
+| 1 | Make a `Cancellation` and wire it to `withTaskCancellationHandler` | ForgeKit `withRustCancellation` | 7 places: Commonplace, Relay, Soundscape | PR A, rule `rust-cancellation` (item 2 above) |
+| 2 | Error text in raw `.red` (`Text(problem).foregroundStyle(.red)`) | ForgeUI `.forgeForeground(.danger)`, which passes contrast in light and dark | 12 places: Device Lab, FieldKit, Relay, Sketchbook, Soundscape | PR A, widen the `toned-text` rule to red. A red that marks recording (Soundscape's "Recording one pass") is a state colour, not an error; it moves to the same tone |
+| 3 | Swift logging through `print` and `NSLog`, which bypass the log pipeline (`forge device logs`, crash reports) | `ForgeLog` (crates call `forge_runtime::log_export!()`) | Pocket Library (model), Relay (`ChatModel`). Pocket Library and Checklist don't export `ForgeLog` at all | PR A, rule `swift-logging` (no `print` or `NSLog` in `Sources/AppHost`; launchers and Device Lab's crash test are exempt) |
+| 4 | Empty, missing and failed screens built directly with `ContentUnavailableView` | ForgeUI `ForgeStateView` (`empty`, `noResults`, `loading`, `failed` with a retry button and identifier) | 22 places in 9 apps; Pocket Library and Relay have the most | PR B on its own, since screens change look slightly: a glance at each app in Device Lab. Rule `state-views` |
+| 5 | Soundscape sets `AVAudioSession` itself | `ForgeAudioSession` (no music mode yet) | Soundscape | Part of the Now Playing extraction, which adds the music mode |
+
+Already in flight: outcome haptics through `ForgeFeedback` in every app (#309).
+
+These were checked and are already used where they apply: share sheets, Keychain, notifications, permissions, URLSession requests (`http`), location, picked files, web images, file storage (`FileStore`, `JsonFile`, atomic writes), Rust logging and date formatting. Plain SwiftUI `ShareLink` for app-made content is fine: `ForgeShareLink` is for share items that come from Rust.
+
+Order: PR A (items 1 to 3, mechanical, Linux tests plus the iPhone build) after #311 merges, then PR B.
