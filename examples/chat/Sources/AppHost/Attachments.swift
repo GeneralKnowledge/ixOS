@@ -41,13 +41,27 @@ extension ChatModel {
 }
 
 /// A file picked in the composer, waiting to be sent with the next message.
-/// `url` is a private copy in the temporary directory: Rust copies it again
-/// into its attachment store when it is sent.
+/// `url` is a private copy in the temporary directory, in a folder of its
+/// own: Rust copies it again into its attachment store when it is sent, so
+/// the composer calls `release()` once the send has finished or the file is
+/// removed from the message.
 struct StagedFile: Identifiable, Equatable {
     let id = UUID()
     let url: URL
     let name: String
     let mime: String
+    /// The picked document's copy, which owns `url`; nil for a photo, whose
+    /// JPEG Chat wrote itself.
+    var picked: ForgePickedFile? = nil
+
+    /// Deletes the private copy. Safe to call more than once.
+    func release() {
+        if let picked {
+            picked.release()
+        } else {
+            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+        }
+    }
 
     var outgoing: ChatOutgoingFile {
         ChatOutgoingFile(path: url.path, name: name, mime: mime)
@@ -91,7 +105,7 @@ enum AttachmentFiles {
         let type = UTType(filenameExtension: picked.pathExtension)
         return StagedFile(
             url: copy.url, name: copy.name,
-            mime: type?.preferredMIMEType ?? "application/octet-stream")
+            mime: type?.preferredMIMEType ?? "application/octet-stream", picked: copy)
     }
 
     /// Rust names its files by their id, without an extension, so Quick Look
