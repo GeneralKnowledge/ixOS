@@ -15,6 +15,8 @@ enum ListenRoute: Hashable {
     case playlists
     case playlist(UInt64)
     case recent
+    /// What is kept on the phone.
+    case downloads
 }
 
 /// The Listen tab: your music library (artists, albums, songs, each song
@@ -46,6 +48,7 @@ struct ListenView: View {
                     case .playlists: PlaylistsView(model: model, player: player)
                     case .playlist(let id): PlaylistView(model: model, player: player, id: id)
                     case .recent: RecentlyPlayedView(model: model, player: player)
+                    case .downloads: DownloadsView(model: model, player: player)
                     }
                 }
                 .toolbar {

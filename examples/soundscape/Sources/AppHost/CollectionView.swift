@@ -31,6 +31,11 @@ struct YourMusicSection: View {
                 row("Recently Played", systemImage: "clock.fill", tint: .orange, count: nil)
             }
             .accessibilityIdentifier("library.recent")
+            NavigationLink(value: ListenRoute.downloads) {
+                row("Downloaded", systemImage: "arrow.down.circle.fill", tint: .green,
+                    count: Int(model.offline.downloaded))
+            }
+            .accessibilityIdentifier("library.downloads")
         }
         let recent = Array(collection.recentlyPlayed.prefix(3))
         if !recent.isEmpty {
@@ -276,6 +281,10 @@ struct PlaylistView: View {
                     Menu("More", systemImage: "ellipsis.circle") {
                         Button("Rename", systemImage: "pencil") { renaming = true }
                             .accessibilityIdentifier("playlist.rename")
+                        if let detail {
+                            DownloadMenuItem(model: model, tracks: detail.entries.map(\.track),
+                                             identifier: "playlist.download")
+                        }
                     }
                     .accessibilityIdentifier("playlist.more")
                 }

@@ -87,6 +87,38 @@ final class ListenModelTests: XCTestCase {
         XCTAssertNil(model.playlist(made.playlist.id))
     }
 
+    func testOwnFilesAndDownloads() async throws {
+        let host = makeTemporaryAppHost()
+        await host.start()
+        let model = ListenModel(core: try XCTUnwrap(host.core))
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func file(_ name: String, _ text: String) throws -> MusicFile {
+            let url = folder.appendingPathComponent(name)
+            try Data(text.utf8).write(to: url)
+            return MusicFile(path: url.path, fileName: name, title: nil, artist: "Me", album: nil, number: nil,
+                             genre: nil, durationSeconds: 90, artworkPath: nil)
+        }
+        let result = try XCTUnwrap(await model.importMusic([try file("Demo_one.mp3", "a"), try file("x.txt", "b")]))
+        XCTAssertEqual(result.added.count, 1)
+        XCTAssertEqual(TakeFormat.importSummary(result),
+                       "Added 1 song. 1 couldn't be imported: x.txt: not a music file.")
+        let demo = try XCTUnwrap(model.library.tracks.first)
+        XCTAssertEqual(demo.title, "Demo one")
+        XCTAssertTrue(demo.downloaded)
+        XCTAssertEqual(demo.preferred?.kind, .imported)
+
+        // An imported song is on the phone already: nothing to download.
+        XCTAssertTrue(model.downloadable([demo]).isEmpty)
+        await model.keepOnPhone([demo], true)
+        XCTAssertFalse(model.allChosenForPhone([demo]))
+        XCTAssertTrue(TakeFormat.offlineSummary(model.offline).hasPrefix("0 songs, "))
+
+        await model.removeImported(demo.id)
+        XCTAssertTrue(model.library.tracks.isEmpty)
+    }
+
     func testPlaylistSummary() {
         let list = Playlist(
             id: 1, name: "Mix", trackCount: 12, missingCount: 2, durationSeconds: 2880,

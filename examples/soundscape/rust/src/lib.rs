@@ -30,12 +30,14 @@ pub mod library;
 pub mod listen;
 pub mod lyrics;
 mod model;
+pub mod offline;
 pub mod project;
 pub mod queue;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use forge_app::{Cancellation, DataDirectory, Document, ErrorKind, Published, Runtime};
 use forge_net::{HttpClient, UreqClient};
@@ -48,8 +50,8 @@ pub use collection::{
 };
 use library::LibraryFile;
 pub use library::{
-    ArtworkTarget, AudioSource, Generation, Library, LibraryAlbum, LibraryArtist, LibrarySearch,
-    LibraryTrack, Recording, RecordingKind, TrackDetail, TrackEdit,
+    ArtworkTarget, AudioSource, Generation, ImportResult, Library, LibraryAlbum, LibraryArtist,
+    LibrarySearch, LibraryTrack, MusicFile, Recording, RecordingKind, TrackDetail, TrackEdit,
 };
 pub use listen::{
     group_songs, loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongGroup, SongSummary,
@@ -61,6 +63,8 @@ pub use model::{
     Track, TrackMix, TrackSettings, MAX_BARS, MAX_GAIN_DB, MAX_NAME_CHARS, MAX_TEMPO, MAX_TRACKS,
     MIN_GAIN_DB, MIN_TEMPO,
 };
+pub use offline::{DownloadState, OfflineSummary, OfflineTrack};
+use offline::{OfflineFile, Progress};
 use project::{Loaded, Project, Projects, SavedClip};
 pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
 
@@ -82,6 +86,10 @@ const LISTEN_FILE: &str = "listen.json";
 const LIBRARY_FILE: &str = "library.json";
 /// Favourites, playlists and history.
 const COLLECTION_FILE: &str = "collection.json";
+/// What is kept on the phone to play offline.
+const OFFLINE_FILE: &str = "offline.json";
+/// The largest music file imported.
+const MAX_IMPORT_BYTES: u64 = 1024 * 1024 * 1024;
 /// The largest picture accepted as artwork.
 const MAX_ARTWORK_BYTES: u64 = 20 * 1024 * 1024;
 /// The largest answer the take server may give (a library of a few hundred
@@ -107,6 +115,11 @@ struct State {
     artwork: FileStore,
     collection: Document<CollectionFile>,
     collection_published: Arc<Published<CollectionFile>>,
+    /// The person's own music files.
+    imported: FileStore,
+    offline: Document<OfflineFile>,
+    offline_published: Arc<Published<OfflineFile>>,
+    downloads: FileStore,
 }
 
 impl State {
@@ -134,9 +147,13 @@ impl State {
         edit: impl FnOnce(&mut LibraryFile) -> Result<T, SoundscapeError>,
     ) -> Result<T, SoundscapeError> {
         let before = self.library.value().artwork_files();
+        let music_before = self.library.value().music_files();
         let value = self.library.change(edit)?;
         for name in before.difference(&self.library.value().artwork_files()) {
             self.artwork.remove(name);
+        }
+        for name in music_before.difference(&self.library.value().music_files()) {
+            self.imported.remove(name);
         }
         self.library_published.set(self.library.value().clone());
         Ok(value)
@@ -152,6 +169,21 @@ impl State {
             .set(self.collection.value().clone());
         Ok(value)
     }
+
+    /// Changes what is kept offline, saves, publishes, and removes
+    /// downloaded files nothing names any more.
+    fn change_offline<T>(
+        &mut self,
+        edit: impl FnOnce(&mut OfflineFile) -> Result<T, SoundscapeError>,
+    ) -> Result<T, SoundscapeError> {
+        let before = self.offline.value().file_names();
+        let value = self.offline.change(edit)?;
+        for name in before.difference(&self.offline.value().file_names()) {
+            self.downloads.remove(name);
+        }
+        self.offline_published.set(self.offline.value().clone());
+        Ok(value)
+    }
 }
 
 /// The app's core. The Swift app opens one per process and shares it.
@@ -165,6 +197,12 @@ pub struct SoundscapeCore {
     library: Arc<Published<LibraryFile>>,
     artwork: PathBuf,
     collection: Arc<Published<CollectionFile>>,
+    imported: PathBuf,
+    offline: Arc<Published<OfflineFile>>,
+    downloads: PathBuf,
+    progress: Arc<Mutex<Progress>>,
+    /// True while `sync_downloads` runs, so a second one returns at once.
+    syncing: Arc<AtomicBool>,
     http: Arc<dyn HttpClient>,
 }
 
@@ -765,12 +803,256 @@ impl SoundscapeCore {
         Ok(self.collection())
     }
 
+    // MARK: Offline
+
+    /// What the person chose for the phone and how far along it is. Never
+    /// waits for a command.
+    pub fn offline(&self) -> OfflineSummary {
+        let progress = self.progress().clone();
+        offline::summary(
+            &self.offline.get(),
+            &progress,
+            &self.kept_library(),
+            &self.download_url(),
+        )
+    }
+
+    /// A song's download state.
+    pub fn download_state(&self, track_id: String) -> DownloadState {
+        let progress = self.progress().clone();
+        self.kept_library()
+            .tracks
+            .iter()
+            .find(|t| t.id == track_id)
+            .map_or(DownloadState::NotDownloaded, |t| {
+                offline::state_of(&self.offline.get(), &progress, t)
+            })
+    }
+
+    /// Chooses songs for the phone, or takes them off. Call
+    /// `sync_downloads` after, to fetch or remove the files.
+    pub async fn set_offline(
+        &self,
+        track_ids: Vec<String>,
+        on: bool,
+    ) -> Result<OfflineSummary, SoundscapeError> {
+        self.rt
+            .command("offline-set", move |state| {
+                state.change_offline(|o| o.set_wanted(&track_ids, on, now_ms()))
+            })
+            .await?;
+        Ok(self.offline())
+    }
+
+    /// Takes every song off the phone and deletes the files.
+    pub async fn remove_all_downloads(&self) -> Result<OfflineSummary, SoundscapeError> {
+        self.rt
+            .command("offline-clear", move |state| {
+                state.change_offline(|o| {
+                    o.wanted.clear();
+                    o.files.clear();
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.offline())
+    }
+
+    /// Downloads what the person chose and removes what nothing wants, one
+    /// file at a time, until everything chosen is on the phone or has
+    /// failed on this pass. A failed file doesn't stop the others; it is
+    /// tried again on the next pass. If a pass is already running this
+    /// returns at once. On-screen work: it stops when the app is closed and
+    /// carries on with the next pass.
+    pub async fn sync_downloads(
+        &self,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<OfflineSummary, SoundscapeError> {
+        if self.syncing.swap(true, Ordering::SeqCst) {
+            return Ok(self.offline());
+        }
+        let guard = SyncGuard(Arc::clone(&self.syncing), Arc::clone(&self.progress));
+        {
+            let mut progress = self.progress();
+            progress.syncing = true;
+            progress.failures.clear();
+        }
+        loop {
+            let plan = offline::plan(&self.offline.get(), &self.kept_library());
+            self.remove_unwanted(plan.remove).await?;
+            let next = {
+                let progress = self.progress();
+                plan.fetch
+                    .into_iter()
+                    .find(|f| !progress.failures.contains_key(&f.key))
+            };
+            let Some(fetch) = next else {
+                break;
+            };
+            self.progress().current = Some(fetch.key.clone());
+            let partial = FileStore::new(self.downloads.clone()).partial_path()?;
+            let http = Arc::clone(&self.http);
+            let work = self.rt.foreground(cancellation.as_deref());
+            let job = fetch.clone();
+            let key = fetch.key.clone();
+            let target = partial.clone();
+            let result = self
+                .rt
+                .run("offline-download", work, move |cancel| {
+                    offline::download(http.as_ref(), &job, &target, cancel)
+                })
+                .await;
+            self.progress().current = None;
+            let bytes = match result {
+                Ok(bytes) => bytes,
+                Err(err @ SoundscapeError::Stopped { .. }) => {
+                    let _ = std::fs::remove_file(&partial);
+                    return Err(err);
+                }
+                Err(err) => {
+                    let _ = std::fs::remove_file(&partial);
+                    self.progress()
+                        .failures
+                        .insert(fetch.key.clone(), err.to_string());
+                    continue;
+                }
+            };
+            let kept = self
+                .rt
+                .command("offline-keep", move |state| {
+                    let name =
+                        offline::file_name(state.offline.value().next_file + 1, &fetch.extension);
+                    state.downloads.accept(&partial, &name)?;
+                    state.change_offline(|o| {
+                        o.next_file += 1;
+                        o.files.insert(
+                            fetch.key.clone(),
+                            offline::Download {
+                                file: name.clone(),
+                                track_id: fetch.track_id.clone(),
+                                recording_id: fetch.recording_id.clone(),
+                                bytes,
+                                at_ms: now_ms(),
+                            },
+                        );
+                        Ok(())
+                    })
+                })
+                .await;
+            if let Err(err) = kept {
+                self.progress().failures.insert(key, err.to_string());
+            }
+        }
+        drop(guard);
+        Ok(self.offline())
+    }
+
+    // MARK: Your own files
+
+    /// Copies music files the person picked into Soundscape, with the tags
+    /// the phone read from them. A file already imported is counted, not
+    /// added again; one that isn't audio or can't be read is refused and
+    /// the rest still come in.
+    pub async fn import_music(
+        &self,
+        files: Vec<MusicFile>,
+    ) -> Result<ImportResult, SoundscapeError> {
+        if files.len() > library::MAX_IMPORT_FILES {
+            return Err(SoundscapeError::range("files"));
+        }
+        self.rt
+            .command("library-import", move |state| {
+                let mut result = ImportResult::default();
+                let mut adding: Vec<(String, library::ImportedFile)> = Vec::new();
+                let mut stored_names = Vec::new();
+                for file in &files {
+                    let Some(extension) = library::music_extension(&file.file_name) else {
+                        result
+                            .refused
+                            .push(format!("{}: not a music file", file.file_name));
+                        continue;
+                    };
+                    let stored = match state
+                        .imported
+                        .import_hashed_with_extension(Path::new(&file.path), Some(&extension))
+                    {
+                        Ok(stored) => stored,
+                        Err(err) => {
+                            result.refused.push(format!("{}: {err}", file.file_name));
+                            continue;
+                        }
+                    };
+                    let hash = stored
+                        .name
+                        .split('.')
+                        .next()
+                        .unwrap_or_default()
+                        .to_string();
+                    let id = library::imported_id(&hash);
+                    if state.library.value().imported.contains_key(&id)
+                        || adding.iter().any(|(a, _)| a == &id)
+                    {
+                        result.already += 1;
+                        continue;
+                    }
+                    let artwork = file
+                        .artwork_path
+                        .as_deref()
+                        .and_then(|p| keep_artwork(&state.artwork, Path::new(p)).ok());
+                    stored_names.push(stored.name.clone());
+                    adding.push((
+                        id.clone(),
+                        library::imported_file(file, stored.name, artwork, now_ms()),
+                    ));
+                    result.added.push(id);
+                }
+                let changed = state.change_library(|lib| {
+                    lib.imported.extend(adding);
+                    Ok(())
+                });
+                if let Err(err) = changed {
+                    let named = state.library.value().music_files();
+                    for name in stored_names.iter().filter(|n| !named.contains(*n)) {
+                        state.imported.remove(name);
+                    }
+                    return Err(err);
+                }
+                Ok(result)
+            })
+            .await
+    }
+
+    /// Removes an imported file from the library and deletes Soundscape's
+    /// copy (the original, wherever it was, is untouched).
+    pub async fn remove_imported(&self, track_id: String) -> Result<Library, SoundscapeError> {
+        self.rt
+            .command("library-remove-imported", move |state| {
+                if !state.library.value().imported.contains_key(&track_id) {
+                    return Err(SoundscapeError::NotInLibrary { id: track_id });
+                }
+                state.change_library(|lib| {
+                    lib.imported.remove(&track_id);
+                    lib.edits.remove(&track_id);
+                    lib.artwork.remove(&track_id);
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.library())
+    }
+
     // MARK: Library
 
     /// The library as kept on the phone: artists, albums and tracks, each
     /// track with its preferred recording. Empty until the first refresh.
     pub fn library(&self) -> Library {
-        library::build_library(&self.library.get(), &self.artwork_url())
+        let mut library = self.kept_library();
+        let offline = self.offline.get();
+        let url = self.download_url();
+        for track in &mut library.tracks {
+            offline::localize_track(track, &offline, &url);
+        }
+        library
     }
 
     /// Asks the take server for its catalogue and keeps it. `fresh` makes
@@ -842,8 +1124,24 @@ impl SoundscapeCore {
 
     /// A track with every recording of it.
     pub fn library_track(&self, id: String) -> Result<TrackDetail, SoundscapeError> {
-        library::build_track(&self.library.get(), &self.artwork_url(), &id)
-            .ok_or(SoundscapeError::NotInLibrary { id })
+        let artwork = self.artwork_url();
+        let music = self.imported_url();
+        let mut detail = library::build_track(
+            &self.library.get(),
+            &library::Locate {
+                artwork: &artwork,
+                music: &music,
+            },
+            &id,
+        )
+        .ok_or(SoundscapeError::NotInLibrary { id })?;
+        let offline = self.offline.get();
+        let url = self.download_url();
+        offline::localize_track(&mut detail.track, &offline, &url);
+        for recording in &mut detail.recordings {
+            offline::localize(&detail.track.id, recording, &offline, &url);
+        }
+        Ok(detail)
     }
 
     /// What the queue plays for `track_ids`, in that order: each track's
@@ -882,11 +1180,7 @@ impl SoundscapeCore {
         let key = id.clone();
         self.rt
             .command("library-edit", move |state| {
-                let known =
-                    state.library.value().snapshot.as_ref().is_some_and(|s| {
-                        s.tracks.iter().any(|t| library::track_id(&t.slug) == key)
-                    });
-                if !known {
+                if !state.library.value().has_track(&key) {
                     return Err(SoundscapeError::NotInLibrary { id: key });
                 }
                 state.change_library(|lib| {
@@ -911,22 +1205,7 @@ impl SoundscapeCore {
     ) -> Result<Library, SoundscapeError> {
         self.rt
             .command("library-artwork", move |state| {
-                let source = Path::new(&source_path);
-                let extension = match source
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| e.to_ascii_lowercase())
-                    .as_deref()
-                {
-                    Some("jpg") | Some("jpeg") => "jpg",
-                    Some("png") => "png",
-                    Some("heic") => "heic",
-                    _ => return Err(SoundscapeError::range("artwork")),
-                };
-                let name = state
-                    .artwork
-                    .import_hashed_with_extension(source, Some(extension))?
-                    .name;
+                let name = keep_artwork(&state.artwork, Path::new(&source_path))?;
                 let id = target.id().to_string();
                 let result = state.change_library(|lib| {
                     lib.artwork.insert(id, name.clone());
@@ -985,7 +1264,7 @@ impl SoundscapeCore {
     pub fn take_queue_track(&self, song: SongDetail, take: Take) -> QueueTrack {
         let id = library::track_id(&song.slug);
         let known = self.library().tracks.into_iter().find(|t| t.id == id);
-        let recording = Recording {
+        let mut recording = Recording {
             id: take.id.clone(),
             label: take.label.clone(),
             kind: RecordingKind::Generated,
@@ -1007,6 +1286,12 @@ impl SoundscapeCore {
             }),
             lyrics: take.lyrics.clone(),
         };
+        offline::localize(
+            &id,
+            &mut recording,
+            &self.offline.get(),
+            &self.download_url(),
+        );
         match known {
             Some(track) => library::queue_track_with(&track, recording),
             None => QueueTrack {
@@ -1036,11 +1321,50 @@ impl SoundscapeCore {
 
     /// Turns a stored artwork file name into a `file://` URL.
     fn artwork_url(&self) -> impl Fn(&str) -> Option<String> {
-        let root = self.artwork.clone();
-        move |name: &str| {
-            let path = root.join(name);
-            path.exists().then(|| library::file_url(&path))
+        stored_url(self.artwork.clone())
+    }
+
+    fn imported_url(&self) -> impl Fn(&str) -> Option<String> {
+        stored_url(self.imported.clone())
+    }
+
+    fn download_url(&self) -> impl Fn(&str) -> Option<String> {
+        stored_url(self.downloads.clone())
+    }
+
+    /// The library as kept, before downloads are swapped in: what the
+    /// offline rules compare against.
+    fn kept_library(&self) -> Library {
+        let artwork = self.artwork_url();
+        let music = self.imported_url();
+        library::build_library(
+            &self.library.get(),
+            &library::Locate {
+                artwork: &artwork,
+                music: &music,
+            },
+        )
+    }
+
+    fn progress(&self) -> std::sync::MutexGuard<'_, Progress> {
+        self.progress.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Removes downloads nothing wants.
+    async fn remove_unwanted(&self, keys: Vec<String>) -> Result<(), SoundscapeError> {
+        if keys.is_empty() {
+            return Ok(());
         }
+        self.rt
+            .command("offline-remove", move |state| {
+                state.change_offline(|o| {
+                    for key in &keys {
+                        o.files.remove(key);
+                    }
+                    Ok(())
+                })
+            })
+            .await
     }
 
     fn server(&self) -> Result<String, SoundscapeError> {
@@ -1127,6 +1451,31 @@ impl SoundscapeCore {
             forge_runtime::logging::warn!("unreadable collection set aside as {}", kept.display());
         }
         let collection_published = Arc::new(Published::new(collection_doc.value().clone()));
+        let imported =
+            FileStore::new(directory.path().join("imported")).with_max_bytes(MAX_IMPORT_BYTES);
+        let named = library_doc.value().music_files();
+        imported.sweep(|name| named.contains(name));
+        let imported_root = imported.root().to_path_buf();
+        // Only copies of what the server has: an unreadable file is set
+        // aside and the downloads start again.
+        let (offline_doc, kept) = Document::<OfflineFile>::start_fresh(
+            directory.path().join(OFFLINE_FILE),
+            offline::OFFLINE_VERSION,
+            None,
+            now_ms(),
+        )?;
+        if let Some(kept) = kept {
+            forge_runtime::logging::warn!(
+                "unreadable downloads list set aside as {}",
+                kept.display()
+            );
+        }
+        let downloads = FileStore::new(directory.path().join("downloads"))
+            .with_max_bytes(offline::MAX_DOWNLOAD_BYTES);
+        let named = offline_doc.value().file_names();
+        downloads.sweep(|name| named.contains(name));
+        let downloads_root = downloads.root().to_path_buf();
+        let offline_published = Arc::new(Published::new(offline_doc.value().clone()));
         let state = State {
             projects,
             recordings,
@@ -1138,6 +1487,10 @@ impl SoundscapeCore {
             artwork,
             collection: collection_doc,
             collection_published: Arc::clone(&collection_published),
+            imported,
+            offline: offline_doc,
+            offline_published: Arc::clone(&offline_published),
+            downloads,
         };
         Ok(Arc::new(Self {
             rt: Runtime::with_directory("soundscape", directory, state),
@@ -1148,6 +1501,11 @@ impl SoundscapeCore {
             library: library_published,
             artwork: artwork_root,
             collection: collection_published,
+            imported: imported_root,
+            offline: offline_published,
+            downloads: downloads_root,
+            progress: Arc::default(),
+            syncing: Arc::default(),
             http,
         }))
     }
@@ -1205,6 +1563,46 @@ fn summary(p: &Project) -> ProjectSummary {
         bars: p.bars,
         metronome: p.metronome,
         track_count: p.tracks.len() as u32,
+    }
+}
+
+/// Turns a file name in the store at `root` into a `file://` URL, or `None`
+/// when the file has gone.
+fn stored_url(root: PathBuf) -> impl Fn(&str) -> Option<String> {
+    move |name: &str| {
+        let path = root.join(name);
+        path.exists().then(|| library::file_url(&path))
+    }
+}
+
+/// Copies a JPEG, PNG or HEIC picture into the artwork store and returns
+/// its name there.
+fn keep_artwork(store: &FileStore, source: &Path) -> Result<String, SoundscapeError> {
+    let extension = match source
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("jpg") | Some("jpeg") => "jpg",
+        Some("png") => "png",
+        Some("heic") => "heic",
+        _ => return Err(SoundscapeError::range("artwork")),
+    };
+    Ok(store
+        .import_hashed_with_extension(source, Some(extension))?
+        .name)
+}
+
+/// Clears the syncing flag however `sync_downloads` ends.
+struct SyncGuard(Arc<AtomicBool>, Arc<Mutex<Progress>>);
+
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+        let mut progress = self.1.lock().unwrap_or_else(|e| e.into_inner());
+        progress.syncing = false;
+        progress.current = None;
     }
 }
 

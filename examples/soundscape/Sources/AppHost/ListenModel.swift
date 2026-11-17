@@ -34,6 +34,17 @@ public final class ListenModel {
     }
     /// Favourites, playlists and recently played, against the library now.
     public private(set) var collection: MusicCollection
+    /// The songs chosen for the phone and how far along they are.
+    public private(set) var offline: OfflineSummary {
+        didSet {
+            downloadStates = Dictionary(
+                offline.tracks.map { ($0.track.id, $0.state) }, uniquingKeysWith: { a, _ in a }
+            )
+        }
+    }
+    private var downloadStates: [String: DownloadState] = [:]
+    private var syncTask: Task<Void, Never>?
+    private var syncAgain = false
     public private(set) var phase: Phase = .needsServer
     /// Why the last refresh failed while the kept library still shows.
     public var refreshProblem: String?
@@ -48,6 +59,10 @@ public final class ListenModel {
         server = core.listenServer()
         library = core.library()
         collection = core.collection()
+        offline = core.offline()
+        downloadStates = Dictionary(
+            offline.tracks.map { ($0.track.id, $0.state) }, uniquingKeysWith: { a, _ in a }
+        )
         phase = server == nil ? .needsServer : library.tracks.isEmpty ? .loading : .ready
     }
 
@@ -100,6 +115,8 @@ public final class ListenModel {
             }
             refreshProblem = nil
             phase = .ready
+            // A new pick may mean a new take to keep on the phone.
+            syncDownloads()
         } catch {
             if Self.isStop(error) { return }
             log.warn("library failed: \(error)")
@@ -254,6 +271,106 @@ public final class ListenModel {
         }
     }
 
+    // MARK: On the phone
+
+    public func downloadState(_ trackId: String) -> DownloadState {
+        downloadStates[trackId] ?? .notDownloaded
+    }
+
+    /// Songs that can be downloaded: your own files are on the phone already.
+    public func downloadable(_ tracks: [LibraryTrack]) -> [LibraryTrack] {
+        tracks.filter { $0.preferred != nil && $0.preferred?.kind != .imported }
+    }
+
+    /// True when every downloadable one of `tracks` is chosen for the phone.
+    public func allChosenForPhone(_ tracks: [LibraryTrack]) -> Bool {
+        let some = downloadable(tracks)
+        return !some.isEmpty && some.allSatisfy { downloadStates[$0.id] != nil }
+    }
+
+    /// Chooses songs for the phone (or takes them off), then downloads or
+    /// removes their files.
+    public func keepOnPhone(_ tracks: [LibraryTrack], _ on: Bool) async {
+        let ids = on ? downloadable(tracks).map(\.id) : tracks.map(\.id)
+        guard !ids.isEmpty else { return }
+        do {
+            offline = try await core.setOffline(trackIds: ids, on: on)
+            feedback.play(.success)
+            syncDownloads()
+        } catch {
+            report(error)
+        }
+    }
+
+    public func removeAllDownloads() async {
+        do {
+            offline = try await core.removeAllDownloads()
+            library = core.library()
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Downloads what is chosen and removes what isn't, following along
+    /// until it's done. A pass already running picks up new choices; a call
+    /// that comes as it ends starts another.
+    public func syncDownloads() {
+        guard syncTask == nil else {
+            syncAgain = true
+            return
+        }
+        syncTask = Task { [weak self] in
+            guard let self else { return }
+            repeat {
+                syncAgain = false
+                let follow = Task { @MainActor [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(1))
+                        guard let self, !Task.isCancelled else { return }
+                        let before = offline.downloaded
+                        offline = core.offline()
+                        if offline.downloaded != before { library = core.library() }
+                    }
+                }
+                do {
+                    offline = try await core.syncDownloads(cancellation: nil)
+                } catch {
+                    if !Self.isStop(error) { log.warn("downloads stopped: \(error)") }
+                    offline = core.offline()
+                }
+                follow.cancel()
+                library = core.library()
+            } while syncAgain
+            syncTask = nil
+        }
+    }
+
+    // MARK: Your own files
+
+    /// Copies picked music files into Soundscape (`MusicFile`s carry the
+    /// tags the phone read). Returns what happened, for the summary.
+    public func importMusic(_ files: [MusicFile]) async -> ImportResult? {
+        do {
+            let result = try await core.importMusic(files: files)
+            library = core.library()
+            if !result.added.isEmpty { feedback.play(.success) }
+            return result
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
+    /// Takes an imported file out of the library and deletes Soundscape's copy.
+    public func removeImported(_ trackId: String) async {
+        do {
+            library = try await core.removeImported(trackId: trackId)
+            offline = core.offline()
+        } catch {
+            report(error)
+        }
+    }
+
     // MARK: Songs and takes
 
     /// One song's takes, or `nil` with the reason in `failure`.
@@ -402,6 +519,34 @@ public enum TakeFormat {
         if let key = g.key { parts.append(key) }
         if let model = g.model, model != "turbo" { parts.append(model) }
         return parts.joined(separator: " · ")
+    }
+
+    /// "12 songs, 340 MB", with what is still coming or failed.
+    public static func offlineSummary(_ summary: OfflineSummary) -> String {
+        var text = "\(summary.downloaded) \(summary.downloaded == 1 ? "song" : "songs"), \(bytes(summary.bytes))"
+        if summary.pending > 0 { text += " · \(summary.pending) to come" }
+        if summary.failed > 0 { text += " · \(summary.failed) failed" }
+        return text
+    }
+
+    /// "340 MB".
+    public static func bytes(_ count: UInt64) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(clamping: count), countStyle: .file)
+    }
+
+    /// "Added 3 songs. 1 was already in your library. 1 couldn't be imported: notes.txt: not a music file."
+    public static func importSummary(_ result: ImportResult) -> String {
+        var parts: [String] = []
+        let added = result.added.count
+        parts.append(added == 0 ? "No new songs." : "Added \(added) \(added == 1 ? "song" : "songs").")
+        if result.already > 0 {
+            parts.append("\(result.already) \(result.already == 1 ? "was" : "were") already in your library.")
+        }
+        if !result.refused.isEmpty {
+            let count = result.refused.count
+            parts.append("\(count) couldn't be imported: \(result.refused.joined(separator: "; ")).")
+        }
+        return parts.joined(separator: " ")
     }
 
     /// "12 songs, 48 minutes", "2 songs not in your library" added when some are gone.

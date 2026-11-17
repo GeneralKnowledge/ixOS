@@ -63,6 +63,11 @@ struct LibraryHome: View {
         .navigationDestination(item: $details) { id in
             TrackView(model: model, player: player, id: id)
         }
+        .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                ImportMusicButton(model: model)
+            }
+        }
         .overlay {
             if library.tracks.isEmpty {
                 ForgeStateView.empty(
@@ -208,6 +213,7 @@ struct TrackRow: View {
                                     .foregroundStyle(.pink)
                                     .accessibilityLabel("Favourite")
                             }
+                            DownloadBadge(model: model, track: track)
                             if isCurrent && player.isPlaying {
                                 Image(systemName: "speaker.wave.2.fill")
                                     .font(.caption)
@@ -256,6 +262,7 @@ struct TrackRow: View {
                 Task { await model.toggleFavourite(track.id) }
             }
             .accessibilityIdentifier("library.favouriteMenu")
+            DownloadMenuItem(model: model, tracks: [track], identifier: "library.downloadMenu")
             Button("Details", systemImage: "info.circle", action: showDetails)
                 .accessibilityIdentifier("library.detailsMenu")
         }
@@ -457,6 +464,7 @@ struct AlbumView: View {
                 Menu("More", systemImage: "ellipsis.circle") {
                     Button("Add to Playlist…", systemImage: "text.badge.plus") { addingToPlaylist = true }
                         .accessibilityIdentifier("album.addToPlaylist")
+                    DownloadMenuItem(model: model, tracks: model.tracks(of: current), identifier: "album.download")
                     Button("Artwork", systemImage: "photo") { editingArtwork = true }
                         .accessibilityIdentifier("album.artwork")
                 }
@@ -497,6 +505,8 @@ struct TrackView: View {
     @State private var editing = false
     @State private var addingToPlaylist = false
     @State private var showingLyrics = false
+    @State private var confirmingRemove = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -538,6 +548,18 @@ struct TrackView: View {
             if let detail {
                 EditTrackSheet(model: model, track: detail.track) { updated in self.detail = updated }
             }
+        }
+        .confirmationDialog("Remove this song from your library?", isPresented: $confirmingRemove,
+                            titleVisibility: .visible) {
+            Button("Remove from Library", role: .destructive) {
+                Task {
+                    await model.removeImported(id)
+                    dismiss()
+                }
+            }
+            .accessibilityIdentifier("track.confirmRemove")
+        } message: {
+            Text("Soundscape's copy is deleted. The file you imported it from isn't touched.")
         }
     }
 
@@ -605,6 +627,16 @@ struct TrackView: View {
                     Label("Add to Playlist", systemImage: "text.badge.plus")
                 }
                 .accessibilityIdentifier("track.addToPlaylist")
+                if track.preferred?.kind == .imported {
+                    Button(role: .destructive) {
+                        confirmingRemove = true
+                    } label: {
+                        Label("Remove from Library", systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("track.remove")
+                } else if track.preferred != nil {
+                    downloadButton(track)
+                }
             }
             Section {
                 ForEach(detail.recordings) { recording in
@@ -662,6 +694,30 @@ struct TrackView: View {
                 }
             }
         }
+    }
+}
+
+extension TrackView {
+    /// Download, with how far along it is, or Remove Download.
+    @ViewBuilder fileprivate func downloadButton(_ track: LibraryTrack) -> some View {
+        let state = model.downloadState(track.id)
+        Button {
+            Task { await model.keepOnPhone([track], state == .notDownloaded) }
+        } label: {
+            switch state {
+            case .notDownloaded:
+                Label("Download", systemImage: "arrow.down.circle")
+            case .waiting:
+                Label("Waiting to Download", systemImage: "arrow.down.circle.dotted")
+            case .downloading:
+                Label("Downloading…", systemImage: "arrow.down.circle.dotted")
+            case .downloaded:
+                Label("Remove Download", systemImage: "minus.circle")
+            case .failed(let reason):
+                Label("Download failed: \(reason). Tap to stop trying.", systemImage: "exclamationmark.circle")
+            }
+        }
+        .accessibilityIdentifier("track.download")
     }
 }
 
