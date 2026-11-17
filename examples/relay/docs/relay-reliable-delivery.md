@@ -34,6 +34,15 @@ lifecycles. No concern reaches into another's storage.
 | 3 | Persistent delivery outbox | Files and messages wait while a device is away, and go when it reappears |
 | 4 | Device conversations | Each trusted device has its own conversation in Chats, on the existing Chat engine, delivered through the outbox |
 
+## Progress
+
+- Stage 1: listening and sending at once on the laptop (#317), the
+  pairing policy in Settings (#314); revocation on a phone still to run.
+- Stage 2: one saved copy per received item, and the store lets go of
+  its copy (this PR's tests: `a_file_received_again_is_kept_once_and_the_store_lets_go`,
+  and the resume test now runs with clean-ups on). The iPhone storage
+  check is still to run.
+
 ## Acceptance criteria
 
 **1. Trust and the device lifecycle**

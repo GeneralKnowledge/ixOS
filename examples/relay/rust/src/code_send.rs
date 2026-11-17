@@ -918,6 +918,9 @@ mod tests {
             progress.stop_at.store(4_000_000, Ordering::SeqCst);
             let failed = take(&first, &b, &inbox, progress).await.unwrap_err();
             assert_eq!(failed.offered.unwrap().size, 24_000_000);
+            // A clean-up runs meanwhile: the receive's tag keeps what
+            // arrived.
+            tokio::time::sleep(Duration::from_millis(1_000)).await;
             b.get().await.unwrap().shutdown().await;
             drop(b);
 
@@ -934,6 +937,74 @@ mod tests {
             );
             assert_eq!(std::fs::read(&receipt.path).unwrap(), content);
             wait_for(&shared, |s| matches!(s, CodeSend::Sent { .. })).await;
+        });
+    }
+
+    /// Bytes under `dir`, every file counted.
+    fn size_of(dir: &Path) -> u64 {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|e| match e.metadata() {
+                        Ok(m) if m.is_dir() => size_of(&e.path()),
+                        Ok(m) => m.len(),
+                        Err(_) => 0,
+                    })
+                    .sum()
+            })
+            .unwrap_or(0)
+    }
+
+    /// The same file sent twice is saved once; a different file with the
+    /// same name is kept beside it; and once the transfers end neither
+    /// store keeps a copy (M1 stage 2: one copy on disk, not two).
+    #[test]
+    fn a_file_received_again_is_kept_once_and_the_store_lets_go() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("photo.bin");
+        let content = bytes(2_000_000, 5);
+        std::fs::write(&file, &content).unwrap();
+        let (a, b) = (device(dir.path(), "a"), device(dir.path(), "b"));
+        let inbox = dir.path().join("inbox");
+        TOKIO.block_on(async {
+            let mut paths = Vec::new();
+            for _ in 0..2 {
+                let shared = sending(file.clone(), &a);
+                let waiting = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
+                let receipt = take(&waiting, &b, &inbox, Arc::default()).await.unwrap();
+                wait_for(&shared, |s| matches!(s, CodeSend::Sent { .. })).await;
+                paths.push(receipt.path);
+            }
+            assert_eq!(paths[0], paths[1], "the second time reuses the first file");
+            assert_eq!(std::fs::read_dir(&inbox).unwrap().count(), 1);
+            assert_eq!(std::fs::read(&paths[0]).unwrap(), content);
+
+            // Same name, different content: both kept.
+            std::fs::write(&file, bytes(2_000_000, 6)).unwrap();
+            let shared = sending(file.clone(), &a);
+            let waiting = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
+            let other = take(&waiting, &b, &inbox, Arc::default()).await.unwrap();
+            wait_for(&shared, |s| matches!(s, CodeSend::Sent { .. })).await;
+            assert_eq!(Path::new(&other.path), inbox.join("photo (2).bin"));
+            assert_eq!(std::fs::read(&paths[0]).unwrap(), content, "untouched");
+
+            // The stores let go once nothing holds the blobs.
+            let mut sizes = (u64::MAX, u64::MAX);
+            for _ in 0..100 {
+                sizes = (
+                    size_of(&dir.path().join("a/store")),
+                    size_of(&dir.path().join("b/store")),
+                );
+                if sizes.0 < 1_000_000 && sizes.1 < 1_000_000 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            assert!(
+                sizes.0 < 1_000_000 && sizes.1 < 1_000_000,
+                "stores still hold {sizes:?} bytes after 6 MB went across"
+            );
         });
     }
 
