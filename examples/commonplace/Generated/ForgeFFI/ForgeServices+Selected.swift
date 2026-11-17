@@ -3,5 +3,6 @@
 
 public let forgeSelectedServices: [(name: String, install: @Sendable () throws -> Void)] = [
     ("Background", ForgeServices.installBackground),
+    ("Connectivity", ForgeServices.installConnectivity),
     ("Http", ForgeServices.installHttp),
 ]

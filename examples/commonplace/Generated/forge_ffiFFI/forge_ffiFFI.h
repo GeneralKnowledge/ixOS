@@ -330,6 +330,27 @@ typedef void (*UniffiCallbackInterfaceBackgroundTaskCompletionMethod0)(uint64_t,
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_CONNECTIVITY_MONITOR_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_CONNECTIVITY_MONITOR_METHOD0
+typedef void (*UniffiCallbackInterfaceConnectivityMonitorMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_CONNECTIVITY_MONITOR_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_CONNECTIVITY_MONITOR_METHOD1
+typedef void (*UniffiCallbackInterfaceConnectivityMonitorMethod1)(uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_CONNECTIVITY_MONITOR_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_CONNECTIVITY_MONITOR_METHOD2
+typedef void (*UniffiCallbackInterfaceConnectivityMonitorMethod2)(uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
 typedef void (*UniffiCallbackInterfaceHttpTransportMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
@@ -402,6 +423,17 @@ typedef struct UniffiVTableCallbackInterfaceBackgroundTaskCompletion {
     UniffiCallbackInterfaceClone _Nonnull uniffiClone;
     UniffiCallbackInterfaceBackgroundTaskCompletionMethod0 _Nonnull finished;
 } UniffiVTableCallbackInterfaceBackgroundTaskCompletion;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_CONNECTIVITY_MONITOR
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_CONNECTIVITY_MONITOR
+typedef struct UniffiVTableCallbackInterfaceConnectivityMonitor {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceConnectivityMonitorMethod0 _Nonnull current;
+    UniffiCallbackInterfaceConnectivityMonitorMethod1 _Nonnull start;
+    UniffiCallbackInterfaceConnectivityMonitorMethod2 _Nonnull stop;
+} UniffiVTableCallbackInterfaceConnectivityMonitor;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
@@ -565,6 +597,11 @@ RustBuffer uniffi_commonplace_core_fn_method_appcore_timeline(uint64_t ptr, Rust
 uint64_t uniffi_commonplace_core_fn_method_appcore_undo_mark_all_read(uint64_t ptr, uint64_t undo_token
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_WAIT_UNTIL_BACK_ONLINE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_WAIT_UNTIL_BACK_ONLINE
+uint64_t uniffi_commonplace_core_fn_method_appcore_wait_until_back_online(uint64_t ptr, RustBuffer cancellation
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_LOCALNOTIFIER
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_LOCALNOTIFIER
 uint64_t uniffi_commonplace_core_fn_clone_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -720,6 +757,51 @@ void uniffi_commonplace_core_fn_free_backgroundtaskrun(uint64_t handle, RustCall
 void uniffi_commonplace_core_fn_method_backgroundtaskrun_expire(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_CONNECTIVITYMONITOR
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_CONNECTIVITYMONITOR
+uint64_t uniffi_commonplace_core_fn_clone_connectivitymonitor(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_CONNECTIVITYMONITOR
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_CONNECTIVITYMONITOR
+void uniffi_commonplace_core_fn_free_connectivitymonitor(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_INIT_CALLBACK_VTABLE_CONNECTIVITYMONITOR
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_INIT_CALLBACK_VTABLE_CONNECTIVITYMONITOR
+void uniffi_commonplace_core_fn_init_callback_vtable_connectivitymonitor(const UniffiVTableCallbackInterfaceConnectivityMonitor* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_CONNECTIVITYMONITOR_CURRENT
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_CONNECTIVITYMONITOR_CURRENT
+RustBuffer uniffi_commonplace_core_fn_method_connectivitymonitor_current(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_CONNECTIVITYMONITOR_START
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_CONNECTIVITYMONITOR_START
+void uniffi_commonplace_core_fn_method_connectivitymonitor_start(uint64_t ptr, uint64_t sink, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_CONNECTIVITYMONITOR_STOP
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_CONNECTIVITYMONITOR_STOP
+void uniffi_commonplace_core_fn_method_connectivitymonitor_stop(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_CONNECTIVITYSINK
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_CONNECTIVITYSINK
+uint64_t uniffi_commonplace_core_fn_clone_connectivitysink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_CONNECTIVITYSINK
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_CONNECTIVITYSINK
+void uniffi_commonplace_core_fn_free_connectivitysink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_CONNECTIVITYSINK_SEND
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_CONNECTIVITYSINK_SEND
+void uniffi_commonplace_core_fn_method_connectivitysink_send(uint64_t ptr, RustBuffer status, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_HTTPSTREAMBODY
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_HTTPSTREAMBODY
 uint64_t uniffi_commonplace_core_fn_clone_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -830,6 +912,11 @@ int8_t uniffi_commonplace_core_fn_func_native_background_handles(RustBuffer iden
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_RUN_NATIVE_BACKGROUND_TASK
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_RUN_NATIVE_BACKGROUND_TASK
 uint64_t uniffi_commonplace_core_fn_func_run_native_background_task(RustBuffer identifier, uint64_t completion, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_CONNECTIVITY
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_CONNECTIVITY
+void uniffi_commonplace_core_fn_func_install_native_connectivity(uint64_t monitor, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
@@ -1163,6 +1250,12 @@ uint16_t uniffi_commonplace_core_checksum_func_run_native_background_task(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_CONNECTIVITY
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_CONNECTIVITY
+uint16_t uniffi_commonplace_core_checksum_func_install_native_connectivity(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
 uint16_t uniffi_commonplace_core_checksum_func_install_native_http(void
@@ -1331,6 +1424,12 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_undo_mark_all_read(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_WAIT_UNTIL_BACK_ONLINE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_WAIT_UNTIL_BACK_ONLINE
+uint16_t uniffi_commonplace_core_checksum_method_appcore_wait_until_back_online(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
 uint16_t uniffi_commonplace_core_checksum_method_localnotifier_schedule(void
@@ -1412,6 +1511,30 @@ uint16_t uniffi_commonplace_core_checksum_method_backgroundtaskcompletion_finish
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDTASKRUN_EXPIRE
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDTASKRUN_EXPIRE
 uint16_t uniffi_commonplace_core_checksum_method_backgroundtaskrun_expire(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_CONNECTIVITYMONITOR_CURRENT
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_CONNECTIVITYMONITOR_CURRENT
+uint16_t uniffi_commonplace_core_checksum_method_connectivitymonitor_current(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_CONNECTIVITYMONITOR_START
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_CONNECTIVITYMONITOR_START
+uint16_t uniffi_commonplace_core_checksum_method_connectivitymonitor_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_CONNECTIVITYMONITOR_STOP
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_CONNECTIVITYMONITOR_STOP
+uint16_t uniffi_commonplace_core_checksum_method_connectivitymonitor_stop(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_CONNECTIVITYSINK_SEND
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_CONNECTIVITYSINK_SEND
+uint16_t uniffi_commonplace_core_checksum_method_connectivitysink_send(void
     
 );
 #endif
