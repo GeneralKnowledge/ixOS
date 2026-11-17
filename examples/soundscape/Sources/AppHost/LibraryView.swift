@@ -789,7 +789,7 @@ private struct ArtworkSheet: View {
                 .disabled(working)
                 .accessibilityIdentifier("artwork.clear")
                 if let problem {
-                    Text(problem).font(.callout).foregroundStyle(.red)
+                    Text(problem).font(.callout).forgeForeground(.danger)
                 }
                 Spacer()
             }

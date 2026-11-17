@@ -38,3 +38,8 @@ id = "CP-6"
 statement = "Add Feed offers suggested feeds by category from an editable catalogue; nothing is subscribed until the person taps a suggestion's Add, which then shows as subscribed."
 twin = ["LibraryModelTests.testSuggestedFeedsAreOfferedNotSubscribed"]
 device = ["uitests/suggested-feeds.toml"]
+
+[[requirement]]
+id = "CP-7"
+statement = "Stop, or leaving the screen, ends a refresh in Rust as well as on screen: it returns at once, nothing is saved or reported, and no alert says it was cancelled."
+twin = ["LibraryModelTests.testStopEndsARefreshInRust", "LibraryModelTests.testCancellingTheTaskEndsARefreshInRust"]

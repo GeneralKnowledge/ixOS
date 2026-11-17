@@ -23,6 +23,22 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertEqual(ReadAloud.speakableText(block(.image(source: "/x.png", alt: "Map"))), "")
     }
 
+    /// The lock screen's progress: where the current block starts in the
+    /// chapter, and the chapter's length, at the reading speed.
+    func testLockScreenTimesFollowTheChapter() {
+        let texts = [String(repeating: "a", count: 150), "", String(repeating: "b", count: 300)]
+        let start = ReadAloud.estimatedTimes(texts: texts, block: 0, speed: 1)
+        XCTAssertEqual(start.elapsed, 0)
+        XCTAssertEqual(start.duration, 30, accuracy: 0.001)
+        let last = ReadAloud.estimatedTimes(texts: texts, block: 2, speed: 1)
+        XCTAssertEqual(last.elapsed, 10, accuracy: 0.001)
+        // Twice as fast: half the time.
+        XCTAssertEqual(ReadAloud.estimatedTimes(texts: texts, block: 2, speed: 2).duration, 15, accuracy: 0.001)
+        // Nothing loaded, or no block yet.
+        XCTAssertEqual(ReadAloud.estimatedTimes(texts: [], block: nil, speed: 1).duration, 0)
+        XCTAssertEqual(ReadAloud.estimatedTimes(texts: texts, block: nil, speed: 1).elapsed, 0)
+    }
+
     func testSpeedsMapToRisingRatesWithinRange() {
         let speeds: [Double] = [0.75, 1, 1.25, 1.5, 2, 3]
         let rates = speeds.map(ReadAloud.rate(for:))

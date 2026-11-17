@@ -166,7 +166,7 @@ struct SendCodeSheet: View {
             .accessibilityIdentifier("sendCode.status")
         case .failed(let reason):
             Label(reason, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+                .forgeForeground(.danger)
                 .accessibilityIdentifier("sendCode.status")
         }
     }

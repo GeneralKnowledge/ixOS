@@ -196,7 +196,7 @@ struct NewProjectSheet: View {
                 TimingFields(tempo: $tempo, bars: $bars)
                 if let problem {
                     Section {
-                        Text(problem).foregroundStyle(.red)
+                        Text(problem).forgeForeground(.danger)
                     }
                 }
             }

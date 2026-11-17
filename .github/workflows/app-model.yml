@@ -127,6 +127,10 @@ jobs:
           # The app as it was at the release, so a later ForgeKit change on
           # this branch doesn't test the old release against new app code.
           git fetch -q --depth 1 origin "$FORGE_REV"
+          # Remove the branch's copy first: checkout only overwrites, so a
+          # file added since the release (new generated bindings) would
+          # otherwise leak into the old app.
+          rm -rf examples/checklist
           git checkout -q "$FORGE_REV" -- examples/checklist rust-toolchain.toml
           cp -R examples/checklist "$RUNNER_TEMP/Checklist"
           cp rust-toolchain.toml "$RUNNER_TEMP/Checklist/rust/"

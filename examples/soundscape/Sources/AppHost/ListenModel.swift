@@ -89,12 +89,9 @@ public final class ListenModel {
             return
         }
         if library.tracks.isEmpty { phase = .loading }
-        let cancellation = Cancellation()
         do {
-            library = try await withTaskCancellationHandler {
+            library = try await withRustCancellation { cancellation in
                 try await core.refreshLibrary(fresh: fresh, cancellation: cancellation)
-            } onCancel: {
-                cancellation.cancel()
             }
             refreshProblem = nil
             phase = .ready
@@ -180,12 +177,9 @@ public final class ListenModel {
 
     /// One song's takes, or `nil` with the reason in `failure`.
     public func song(_ slug: String) async -> Result<SongDetail, ListenFailure> {
-        let cancellation = Cancellation()
         do {
-            let song = try await withTaskCancellationHandler {
+            let song = try await withRustCancellation { cancellation in
                 try await core.listenSong(slug: slug, cancellation: cancellation)
-            } onCancel: {
-                cancellation.cancel()
             }
             return .success(song)
         } catch {

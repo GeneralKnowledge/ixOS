@@ -32,6 +32,10 @@ pub use checklist::{Item, Summary, MAX_TITLE_CHARS};
 // crate keeps its own bindings when another app links it.
 uniffi::setup_scaffolding!();
 
+// `forge_log` for the host: Swift's `ForgeLog("Category")` writes into the
+// same log as Rust (`forge device logs`, crash reports).
+forge_runtime::log_export!();
+
 const SAVE_FILE: &str = "checklist.json";
 const SAVE_VERSION: u32 = 1;
 const EXPORT_FILE: &str = "Checklist.txt";
@@ -365,3 +369,21 @@ fn write_export(path: &Path, text: &str) -> Result<(), ChecklistError> {
 }
 
 forge_app::export_runtime!(ChecklistCore, rt);
+
+#[cfg(test)]
+mod host_log_tests {
+    /// Swift's `ForgeLog` calls `forge_log`: its records reach the same
+    /// pipeline as Rust's (the recent records `forge device logs` and
+    /// crash reports read), not just stdout.
+    #[test]
+    fn host_records_reach_the_log() {
+        super::forge_log(
+            super::ForgeLogLevel::Warn,
+            "HostTest".into(),
+            "from Swift".into(),
+        );
+        assert!(forge_runtime::logging::recent(100)
+            .iter()
+            .any(|r| r.target == "HostTest" && r.message == "from Swift"));
+    }
+}

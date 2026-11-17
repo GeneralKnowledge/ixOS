@@ -128,12 +128,9 @@ public final class LibraryModel {
     /// Subscribes to the feed at `url`. Throws Rust's `AppError`, so the
     /// add sheet stays open with the address and shows why.
     public func add(url: String) async throws -> Feed {
-        let cancellation = Cancellation()
         do {
-            let feed = try await withTaskCancellationHandler {
+            let feed = try await withRustCancellation { cancellation in
                 try await core.addFeed(url: url, cancellation: cancellation)
-            } onCancel: {
-                cancellation.cancel()
             }
             reload()
             return feed
@@ -176,17 +173,14 @@ public final class LibraryModel {
     public func refresh() async {
         guard !isRefreshing, !feeds.isEmpty else { return }
         isRefreshing = true
-        let cancellation = Cancellation()
-        refreshing = cancellation
         defer {
             isRefreshing = false
             refreshing = nil
         }
         do {
-            let report = try await withTaskCancellationHandler {
-                try await core.refresh(cancellation: cancellation)
-            } onCancel: {
-                cancellation.cancel()
+            let report = try await withRustCancellation { cancellation in
+                refreshing = cancellation
+                return try await core.refresh(cancellation: cancellation)
             }
             lastRefresh = RefreshSummary(report: report, at: Date())
             reload()

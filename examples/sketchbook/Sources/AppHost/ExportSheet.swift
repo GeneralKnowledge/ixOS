@@ -5,6 +5,7 @@ import Photos
 import QuickLook
 import SwiftUI
 import UIKit
+import ForgeUI
 
 /// What an export made: a look at it, then Save to Photos (images), Share,
 /// or open it in Quick Look.
@@ -55,7 +56,7 @@ struct ExportSheet: View {
                 }
                 if let problem {
                     Section {
-                        Text(problem).foregroundStyle(.red)
+                        Text(problem).forgeForeground(.danger)
                     }
                 }
             }

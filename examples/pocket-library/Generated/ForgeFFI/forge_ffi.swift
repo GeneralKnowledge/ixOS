@@ -7075,6 +7075,96 @@ public func FfiConverterTypeBookSource_lower(_ value: BookSource) -> RustBuffer 
 
 
 /**
+ * A log level for [`forge_log`].
+ */
+
+public enum ForgeLogLevel: Equatable, Hashable {
+    
+    case trace
+    case debug
+    case info
+    case warn
+    case error
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ForgeLogLevel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeForgeLogLevel: FfiConverterRustBuffer {
+    typealias SwiftType = ForgeLogLevel
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ForgeLogLevel {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .trace
+        
+        case 2: return .debug
+        
+        case 3: return .info
+        
+        case 4: return .warn
+        
+        case 5: return .error
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ForgeLogLevel, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .trace:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .debug:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .info:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .warn:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .error:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lift(_ buf: RustBuffer) throws -> ForgeLogLevel {
+    return try FfiConverterTypeForgeLogLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lower(_ value: ForgeLogLevel) -> RustBuffer {
+    return FfiConverterTypeForgeLogLevel.lower(value)
+}
+
+
+
+/**
  * Why a request got no response. A non-2xx status is a
  * response, not an error.
  */
@@ -9557,6 +9647,31 @@ public func epubWordsPerPage() -> UInt32  {
 })
 }
 /**
+ * Writes one record from host code into Forge's log, with
+ * `category` as its target. Never log secrets.
+ */
+public func forgeLog(level: ForgeLogLevel, category: String, message: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_func_forge_log(
+        FfiConverterTypeForgeLogLevel_lower(level),
+        FfiConverterString.lower(category),
+        FfiConverterString.lower(message),uniffiCallStatus
+    )
+}
+}
+/**
+ * Whether a record at `level` would be kept, so the host can skip
+ * building a message nobody will see.
+ */
+public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_func_forge_log_enabled(
+        FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
+    )
+})
+}
+/**
  * The framework kind of each error, so ForgeKit presents it like any
  * app's (`LibraryError: ForgeKindedError` in Swift).
  */
@@ -9681,6 +9796,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_func_epub_words_per_page() != 51851) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_func_forge_log() != 10611) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_func_forge_log_enabled() != 47247) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_func_library_error_kind() != 3528) {

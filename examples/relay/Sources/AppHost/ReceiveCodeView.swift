@@ -140,7 +140,7 @@ struct ReceiveCodeSheet: View {
             .accessibilityIdentifier("receiveCode.status")
         case .failed(let reason):
             Label(reason, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+                .forgeForeground(.danger)
                 .accessibilityIdentifier("receiveCode.status")
         }
     }

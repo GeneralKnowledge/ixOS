@@ -175,12 +175,9 @@ public final class SoundscapeModel {
     /// A track's waveform as `buckets` peaks from 0 to 1. Cancelling the
     /// calling task (the row scrolled away) stops it in Rust.
     public func waveform(_ project: UInt64, track: UInt64, buckets: Int) async -> [Float] {
-        let cancellation = Cancellation()
         do {
-            return try await withTaskCancellationHandler {
+            return try await withRustCancellation { cancellation in
                 try await core.waveform(id: project, trackId: track, buckets: UInt32(buckets), cancellation: cancellation)
-            } onCancel: {
-                cancellation.cancel()
             }
         } catch {
             if !Self.isStop(error) { log.warn("waveform failed: \(error)") }
@@ -192,15 +189,17 @@ public final class SoundscapeModel {
     /// alert, unless stopped) if it failed.
     public func mixdown(_ project: UInt64, passes: Int) async -> Mixdown? {
         guard !isMixing else { return nil }
-        let cancellation = Cancellation()
-        mixing = cancellation
         isMixing = true
         defer {
             isMixing = false
             mixing = nil
         }
         do {
-            return try await core.mixdown(id: project, passes: UInt32(passes), cancellation: cancellation)
+            // Stop (`stopMixdown`) and leaving the screen both stop it in Rust.
+            return try await withRustCancellation { cancellation in
+                mixing = cancellation
+                return try await core.mixdown(id: project, passes: UInt32(passes), cancellation: cancellation)
+            }
         } catch {
             if !Self.isStop(error) { report(error) }
             return nil

@@ -358,6 +358,16 @@ uint64_t uniffi_checklist_core_fn_method_checklistcore_toggle(uint64_t ptr, uint
 RustBuffer uniffi_checklist_core_fn_func_checklist_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_FUNC_FORGE_LOG
+#define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_FUNC_FORGE_LOG
+void uniffi_checklist_core_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_FUNC_FORGE_LOG_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_FUNC_FORGE_LOG_ENABLED
+int8_t uniffi_checklist_core_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_FFI_CHECKLIST_CORE_RUSTBUFFER_ALLOC
 #define UNIFFI_FFIDEF_FFI_CHECKLIST_CORE_RUSTBUFFER_ALLOC
 RustBuffer ffi_checklist_core_rustbuffer_alloc(uint64_t size, RustCallStatus *_Nonnull out_status
@@ -621,6 +631,18 @@ void ffi_checklist_core_rust_future_complete_void(uint64_t handle, RustCallStatu
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_FUNC_CHECKLIST_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_FUNC_CHECKLIST_ERROR_KIND
 uint16_t uniffi_checklist_core_checksum_func_checklist_error_kind(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_FUNC_FORGE_LOG
+#define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_FUNC_FORGE_LOG
+uint16_t uniffi_checklist_core_checksum_func_forge_log(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
+uint16_t uniffi_checklist_core_checksum_func_forge_log_enabled(void
     
 );
 #endif
