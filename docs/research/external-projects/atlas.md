@@ -58,8 +58,8 @@ The opportunity is making privacy understandable: what is stored, who can access
 | Project | Potential contribution | Classification | Priority |
 |---|---|---|---|
 | MLX Swift | Apple Silicon inference, LLM and VLM examples | **Prior:** poor fit for Linux builds (its Metal shaders need Xcode). A spike has to answer that first | P1 |
-| FluidAudio | Local speech recognition, diarisation, speech processing on Core ML | **Candidate**, *unverified* | P0 |
-| WhisperKit | On-device transcription | **Candidate**, *unverified*. Compared inside the FluidAudio assessment | |
+| FluidAudio | Local speech recognition, diarisation, speech processing on Core ML | **Assessed 2026-11-17: Watch.** Wrap Apple's on-device speech recognition first; FluidAudio when an app needs diarization or VAD ([assessment](assessments/ai/fluidaudio.md)) | P0 |
+| WhisperKit | On-device transcription | **Reference**, *unverified*. Same overlap with Apple's speech recognition as FluidAudio's transcription ([FluidAudio assessment](assessments/ai/fluidaudio.md)) | |
 | llama.cpp | Quantised local inference | **Prior:** fallback adapter after CoreML-LLM; laptop upstream for AI over Relay | |
 
 MLX's Apple Silicon support does not make it a drop-in for every iPhone, or for the Linux build machine.

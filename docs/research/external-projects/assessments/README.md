@@ -7,7 +7,7 @@ Part of the [External Projects Atlas](../README.md). One file per evidence-backe
 | Networking and device communication | [networking/](networking/) | None yet. P0: Lightning P2P |
 | Local-first data and sync | [local-first/](local-first/) | None yet |
 | Security and privacy | [privacy/](privacy/) | None yet |
-| On-device AI | [ai/](ai/) | None yet. P0: FluidAudio |
+| On-device AI | [ai/](ai/) | [FluidAudio](ai/fluidaudio.md): Watch |
 | Accessibility and interaction quality | [accessibility/](accessibility/) | [a11y-check](accessibility/a11y-check.md): Adopt as a CI tool |
 | Images, documents and media | [media/](media/) | None yet. P0: Offscan |
 | Reading and personal libraries | [reading/](reading/) | None yet |
