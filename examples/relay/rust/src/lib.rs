@@ -31,6 +31,7 @@ mod code;
 mod code_send;
 mod code_session;
 mod device;
+pub mod device_chat;
 pub mod link;
 mod model;
 mod node;
@@ -107,6 +108,9 @@ impl State {
     }
 }
 
+/// Called with a trusted device's endpoint id when it can be reached now.
+pub(crate) type ChatWaker = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// The open invitation: its secret and when it expires.
 type Pending = Option<([u8; 32], i64)>;
 
@@ -148,6 +152,11 @@ pub struct RelayCore {
     device_stops: Mutex<HashMap<u64, Arc<AtomicBool>>>,
     /// What waits for trusted devices, and when to try them (`outbox`).
     outbox: outbox::Outbox,
+    /// Each trusted device's conversation log (`device_chat`).
+    peer_logs: device_chat::PeerLogs,
+    /// Wakes a device conversation's outbox when the device is reached:
+    /// set by the chat core that holds those conversations.
+    chat_waker: Mutex<Option<ChatWaker>>,
     me: Weak<RelayCore>,
 }
 
@@ -192,6 +201,7 @@ impl RelayCore {
         // Sends kept their own store before one store served both.
         let _ = std::fs::remove_dir_all(code_dir.join("send-store"));
         let key_dir = directory.path().to_path_buf();
+        let peer_logs = device_chat::PeerLogs::new(directory.path().join("devices"));
         let store_dir = code_dir.join("store");
         let state = State {
             record,
@@ -220,6 +230,8 @@ impl RelayCore {
             nearby: Mutex::new(HashMap::new()),
             device_stops: Mutex::new(HashMap::new()),
             outbox: outbox::Outbox::default(),
+            peer_logs,
+            chat_waker: Mutex::new(None),
             me: me.clone(),
         }))
     }
@@ -1303,6 +1315,34 @@ impl CoreDevices {
 }
 
 impl device::DeviceInbound for CoreDevices {
+    fn message(&self, from: &str, message: device_chat::PeerMessage) -> Result<(), RelayError> {
+        let core = self.core.upgrade().ok_or(RelayError::Stopped {
+            kind: forge_app::ErrorKind::ShutDown,
+        })?;
+        if message.id.is_empty() || message.id.chars().count() > device_chat::MAX_ID_CHARS {
+            return Err(RelayError::Connection {
+                reason: "a message id that isn't usable".into(),
+            });
+        }
+        let body = model::clean_note(&message.body)?;
+        let author = core
+            .record
+            .get()
+            .devices
+            .get(from)
+            .map(|d| d.name.clone())
+            .unwrap_or_default();
+        core.peer_logs.get(from)?.add(chat_core::Message {
+            id: message.id,
+            author,
+            author_id: from.to_string(),
+            body,
+            reply_to: message.reply_to,
+            ..chat_core::Message::default()
+        })?;
+        Ok(())
+    }
+
     fn rights(&self, from: &str) -> Option<device::Rights> {
         let core = self.core.upgrade()?;
         let record = core.record.get();

@@ -55,6 +55,22 @@ lifecycles. No concern reaches into another's storage.
   same scheduler. Deferred: connection arbitration and fairness batches
   (they matter once a conversation sends many messages, stage 4), and the
   1 GB free-space check. The phone check is still to run.
+- Stage 4: device conversations (`rust/src/device_chat.rs`, tests in
+  `rust/tests/device_chat.rs`). Each trusted device is a conversation in
+  Chats, `device:<endpoint id>`, on chat-core with no changes to it: one
+  chat-core client per device (so a device that is away holds up only its
+  own conversation), whose `ChatRepo` (`PeerRepo`) sends over
+  `relay/device/1` (`DeviceMsg::Message`, with a golden fixture) and keeps
+  the conversation's truth in a log per device
+  (`devices/<endpoint id>/messages.json`), stamped in arrival order. A
+  message to a device that is away waits in chat-core's outbox, survives a
+  relaunch, and is woken by the delivery scheduler when the device is
+  seen; the receiver's log takes each message id once. Chats works without
+  a chat server account; Settings offers Join a Chat Server. Messages are
+  text and replies for now: edits, deletes, reactions, attachments and
+  read marks to a device answer "not supported" (files go from Send). The
+  `relay` command: `relay send <device> --text TEXT`, `relay messages
+  <device>`. The phone check is still to run.
 
 ## Acceptance criteria
 

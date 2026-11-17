@@ -952,6 +952,11 @@ void uniffi_relay_core_fn_method_chatcore_unsubscribe(uint64_t ptr, RustBuffer c
 void uniffi_relay_core_fn_method_chatcore_unwatch(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_USE_RELAY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_USE_RELAY
+void uniffi_relay_core_fn_method_chatcore_use_relay(uint64_t ptr, uint64_t relay, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_WATCH
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_WATCH
 void uniffi_relay_core_fn_method_chatcore_watch(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
@@ -2397,6 +2402,12 @@ uint16_t uniffi_relay_core_checksum_method_chatcore_unsubscribe(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_UNWATCH
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_UNWATCH
 uint16_t uniffi_relay_core_checksum_method_chatcore_unwatch(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_USE_RELAY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_USE_RELAY
+uint16_t uniffi_relay_core_checksum_method_chatcore_use_relay(void
     
 );
 #endif

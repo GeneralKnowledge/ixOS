@@ -65,6 +65,13 @@ pub(crate) enum DeviceMsg {
     Done,
     /// The receiver won't take it, and why, in words for the sender.
     Refused { reason: String },
+    /// A message in the two devices' conversation (`device_chat`), by the
+    /// id chat-core gave it, kept through retries.
+    Message {
+        id: String,
+        body: String,
+        reply_to: Option<String>,
+    },
 }
 
 impl DeviceMsg {
@@ -125,6 +132,13 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn received_before(&self, from: &str, id: &[u8; 16]) -> bool;
     /// A note arrived; returns when it is saved, with its id remembered.
     fn note(&self, from: &str, id: [u8; 16], text: String) -> Result<(), RelayError>;
+    /// A conversation message arrived; returns when it is in the log (a
+    /// message whose id is there already is not added again).
+    fn message(
+        &self,
+        from: &str,
+        message: crate::device_chat::PeerMessage,
+    ) -> Result<(), RelayError>;
     /// A file is coming; returns the history entry's id.
     fn begin_file(&self, from: &str, name: &str, size: u64) -> Result<u64, RelayError>;
     fn progress(&self, id: u64, done: u64);
@@ -152,6 +166,9 @@ impl DeviceInbound for NoDevices {
         false
     }
     fn note(&self, _: &str, _: [u8; 16], _: String) -> Result<(), RelayError> {
+        Err(RelayError::Refused)
+    }
+    fn message(&self, _: &str, _: crate::device_chat::PeerMessage) -> Result<(), RelayError> {
         Err(RelayError::Refused)
     }
     fn begin_file(&self, _: &str, _: &str, _: u64) -> Result<u64, RelayError> {
@@ -264,6 +281,20 @@ impl DeviceHandler {
                     },
                 }
             }
+            DeviceMsg::Message { id, body, reply_to } => {
+                let host = Arc::clone(&self.host);
+                let from = them.to_string();
+                let message = crate::device_chat::PeerMessage { id, body, reply_to };
+                match tokio::task::spawn_blocking(move || host.message(&from, message))
+                    .await
+                    .map_err(connection)?
+                {
+                    Ok(()) => DeviceMsg::Done,
+                    Err(err) => DeviceMsg::Refused {
+                        reason: err.saved_reason(),
+                    },
+                }
+            }
             DeviceMsg::File {
                 id,
                 hash,
@@ -364,6 +395,8 @@ impl DeviceHandler {
 /// What a send to a trusted device carries.
 pub(crate) enum Outgoing {
     Note(String),
+    /// A conversation message; it carries its own id.
+    Message(crate::device_chat::PeerMessage),
     /// Files and folders as one item, already in the blob store (the
     /// outbox keeps them there).
     Stored(crate::code_send::Offer),
@@ -431,6 +464,15 @@ async fn exchange(
     let ending = match item {
         Outgoing::Note(text) => {
             say(&mut send, &DeviceMsg::Note { id, text }).await?;
+            hear(&mut recv, STEP).await?
+        }
+        Outgoing::Message(m) => {
+            let msg = DeviceMsg::Message {
+                id: m.id,
+                body: m.body,
+                reply_to: m.reply_to,
+            };
+            say(&mut send, &msg).await?;
             hear(&mut recv, STEP).await?
         }
         Outgoing::Stored(offer) => {
@@ -555,6 +597,14 @@ mod tests {
                     reason: "no".into(),
                 },
                 include_str!("../fixtures/device-1/refused.hex"),
+            ),
+            (
+                DeviceMsg::Message {
+                    id: "m1".into(),
+                    body: "hi".into(),
+                    reply_to: None,
+                },
+                include_str!("../fixtures/device-1/message.hex"),
             ),
         ]
     }

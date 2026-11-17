@@ -318,6 +318,10 @@ impl RelayCore {
     /// Tries `to`'s queue now, forgetting its backoff: it was seen, it
     /// connected, or Relay came back to the foreground.
     pub(crate) fn try_now(&self, to: &str) {
+        let waker = lock(&self.chat_waker).clone();
+        if let Some(wake) = waker {
+            wake(to);
+        }
         if self.record.get().next_for(to).is_none() {
             return;
         }
@@ -571,6 +575,66 @@ impl RelayCore {
             );
         }
         true
+    }
+}
+
+impl RelayCore {
+    /// Sends one conversation message to a trusted device now, by its
+    /// own id (`device_chat`): the caller's outbox keeps it while the
+    /// device can't be reached.
+    pub(crate) async fn deliver_message(
+        &self,
+        to: &str,
+        message: crate::device_chat::PeerMessage,
+    ) -> Result<(), RelayError> {
+        let saved = self.record.get().devices.get(to).cloned();
+        let Some(saved) = saved.filter(|s| s.trust == SavedTrust::Trusted) else {
+            return Err(RelayError::UnknownPeer { id: to.into() });
+        };
+        let addresses = lock(&self.nearby)
+            .get(to)
+            .cloned()
+            .filter(|a| !a.is_empty())
+            .unwrap_or(saved.addresses);
+        let addr = device::endpoint_addr(to, &addresses)?;
+        let node = Arc::clone(&self.node);
+        let my_name = self.identity().name;
+        let stop = Arc::new(AtomicBool::new(false));
+        code::TOKIO
+            .spawn(async move {
+                let node = node.get().await?;
+                let outgoing = device::Outgoing::Message(message);
+                device::send(&node, addr, my_name, new_id(), outgoing, |_| {}, stop).await
+            })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)))?;
+        if self.lose_answer() {
+            return Err(code::connection("the answer was lost"));
+        }
+        let to = to.to_string();
+        let _ = self
+            .rt
+            .command("message-reached", move |state| {
+                state.change(|r| {
+                    r.devices.seen_at(&to, &addresses);
+                    Ok(())
+                })
+            })
+            .await;
+        Ok(())
+    }
+
+    /// Sets what wakes device conversations when their device is reached.
+    pub(crate) fn set_chat_waker(&self, waker: Option<crate::ChatWaker>) {
+        *lock(&self.chat_waker) = waker;
+    }
+
+    /// The `ChatRepo` of `endpoint_id`'s conversation.
+    pub(crate) fn peer_repo(
+        self: &Arc<Self>,
+        endpoint_id: &str,
+    ) -> Result<crate::device_chat::PeerRepo, RelayError> {
+        crate::device_chat::PeerRepo::new(self, endpoint_id)
     }
 }
 

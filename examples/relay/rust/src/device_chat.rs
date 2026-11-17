@@ -1,0 +1,433 @@
+//! Messages between trusted devices on chat-core (Relay M1 stage 4,
+//! examples/relay/docs/relay-chat-merge.md step 3).
+//!
+//! Each trusted device is one conversation, `device:<endpoint id>`, on
+//! chat-core's engine, so the Chats screens, the store, search and the
+//! outbox are the ones server conversations use. What a server does for a
+//! server conversation, this device does for itself:
+//!
+//! - **The log** ([`PeerLog`]) is the conversation's truth on this device:
+//!   every message sent to the device and received from it, saved in
+//!   `devices/<endpoint id>/messages.json`. chat-core's store is a cache of
+//!   it, as it is of a server, so a damaged store that chat-core sets aside
+//!   loses nothing. The log stamps each message as it enters, strictly
+//!   increasing, which is the order both sides show and the `since` cursor
+//!   catch-up reads by.
+//! - **The repo** ([`PeerRepo`]) is the conversation's `ChatRepo`. Posting a
+//!   message sends it over `relay/device/1` and, once the other device has
+//!   it, adds it to the log. A device that can't be reached is a network
+//!   error, so the message stays in chat-core's outbox and goes when the
+//!   device is reached: chat-core retries with its own backoff, and the
+//!   delivery scheduler ([`crate::outbox`]) wakes it at once when the
+//!   device is seen, connects here, or Relay comes to the foreground.
+//! - **Exactly once.** The receiver adds a message to its log, then
+//!   answers. A message id it already has is answered without adding it
+//!   again, so a retry whose answer was lost never shows twice.
+//! - Messages to one device keep their order: chat-core's outbox sends
+//!   oldest first and stops at the first that waits, and each device has
+//!   its own client, so a device that is away holds up only its own
+//!   conversation.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex, Weak};
+use std::time::Duration;
+
+use chat_core::{
+    ChatError, ChatRepo, Message, MessageStatus, OutgoingMessage, RemoteConversation, RemoteEvent,
+    RemoteStream,
+};
+use forge_app::Document;
+use forge_net::CancelHandle;
+use forge_runtime::{lock, now_ms};
+use serde::{Deserialize, Serialize};
+
+use crate::model::RelayError;
+use crate::RelayCore;
+
+/// The conversation id of the trusted device `endpoint_id`.
+pub fn device_conversation(endpoint_id: &str) -> String {
+    format!("{PREFIX}{endpoint_id}")
+}
+
+/// The trusted device a conversation id names, if it names one.
+pub fn conversation_device(conversation_id: &str) -> Option<&str> {
+    conversation_id.strip_prefix(PREFIX)
+}
+
+const PREFIX: &str = "device:";
+const LOG_VERSION: u32 = 1;
+/// How often a quiet stream wakes to see if it was cancelled.
+const QUIET: Duration = Duration::from_millis(250);
+/// How often a quiet stream says it is still there.
+const HEARTBEAT: Duration = Duration::from_secs(15);
+/// Longest message id accepted from another device.
+pub(crate) const MAX_ID_CHARS: usize = 100;
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct LogFile {
+    #[serde(default)]
+    pub messages: Vec<Message>,
+    /// The newest stamp given, so stamps only ever increase.
+    #[serde(default)]
+    pub last_at: i64,
+}
+
+/// One device conversation's messages on this device.
+pub struct PeerLog {
+    conversation_id: String,
+    doc: Mutex<Document<LogFile>>,
+    listeners: Mutex<Vec<mpsc::Sender<Message>>>,
+}
+
+impl PeerLog {
+    fn open(dir: PathBuf, endpoint_id: &str) -> Result<Self, RelayError> {
+        std::fs::create_dir_all(&dir).map_err(crate::node::file_error)?;
+        Ok(Self {
+            conversation_id: device_conversation(endpoint_id),
+            doc: Mutex::new(Document::open(dir.join("messages.json"), LOG_VERSION)?),
+            listeners: Mutex::new(Vec::new()),
+        })
+    }
+
+    pub fn get(&self, id: &str) -> Option<Message> {
+        lock(&self.doc)
+            .value()
+            .messages
+            .iter()
+            .find(|m| m.id == id)
+            .cloned()
+    }
+
+    /// Messages changed after `since` (all without it), oldest first.
+    pub fn since(&self, since: Option<i64>) -> Vec<Message> {
+        lock(&self.doc)
+            .value()
+            .messages
+            .iter()
+            .filter(|m| since.is_none_or(|s| m.changed_at() > s))
+            .cloned()
+            .collect()
+    }
+
+    pub fn last(&self) -> Option<Message> {
+        lock(&self.doc).value().messages.last().cloned()
+    }
+
+    /// Adds `message`, stamped now, unless one with its id is here: then
+    /// that one is returned and nothing changes.
+    pub fn add(&self, mut message: Message) -> Result<Message, RelayError> {
+        let added = {
+            let mut doc = lock(&self.doc);
+            if let Some(found) = doc.value().messages.iter().find(|m| m.id == message.id) {
+                return Ok(found.clone());
+            }
+            message.conversation_id = self.conversation_id.clone();
+            message.status = MessageStatus::Sent;
+            message.updated_at = None;
+            doc.change(|log| {
+                let at = now_ms().max(log.last_at + 1);
+                log.last_at = at;
+                message.sent_at = at;
+                log.messages.push(message.clone());
+                Ok::<_, RelayError>(())
+            })?;
+            message
+        };
+        lock(&self.listeners).retain(|l| l.send(added.clone()).is_ok());
+        Ok(added)
+    }
+
+    fn listen(&self) -> mpsc::Receiver<Message> {
+        let (tx, rx) = mpsc::channel();
+        lock(&self.listeners).push(tx);
+        rx
+    }
+}
+
+/// The logs of every device conversation, opened on first use.
+pub(crate) struct PeerLogs {
+    dir: PathBuf,
+    open: Mutex<HashMap<String, Arc<PeerLog>>>,
+}
+
+impl PeerLogs {
+    pub fn new(dir: PathBuf) -> Self {
+        Self {
+            dir,
+            open: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn get(&self, endpoint_id: &str) -> Result<Arc<PeerLog>, RelayError> {
+        let mut open = lock(&self.open);
+        if let Some(log) = open.get(endpoint_id) {
+            return Ok(Arc::clone(log));
+        }
+        // Endpoint ids are hex; anything else never names a folder.
+        if endpoint_id.is_empty() || !endpoint_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(RelayError::UnknownPeer {
+                id: endpoint_id.into(),
+            });
+        }
+        let log = Arc::new(PeerLog::open(self.dir.join(endpoint_id), endpoint_id)?);
+        open.insert(endpoint_id.to_string(), Arc::clone(&log));
+        Ok(log)
+    }
+}
+
+/// A message as it crosses `relay/device/1`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PeerMessage {
+    pub id: String,
+    pub body: String,
+    pub reply_to: Option<String>,
+}
+
+/// The `ChatRepo` of one trusted device's conversation.
+pub struct PeerRepo {
+    relay: Weak<RelayCore>,
+    endpoint_id: String,
+    log: Arc<PeerLog>,
+}
+
+impl PeerRepo {
+    pub(crate) fn new(relay: &Arc<RelayCore>, endpoint_id: &str) -> Result<Self, RelayError> {
+        Ok(Self {
+            relay: Arc::downgrade(relay),
+            endpoint_id: endpoint_id.to_string(),
+            log: relay.peer_logs.get(endpoint_id)?,
+        })
+    }
+
+    fn relay(&self) -> Result<Arc<RelayCore>, ChatError> {
+        self.relay.upgrade().ok_or(ChatError::ShutDown)
+    }
+
+    fn check(&self, conversation_id: &str) -> Result<(), ChatError> {
+        if conversation_id == self.log.conversation_id {
+            Ok(())
+        } else {
+            Err(ChatError::NotFound {
+                conversation_id: conversation_id.into(),
+            })
+        }
+    }
+}
+
+/// What a failed delivery means to chat-core: a device that wasn't
+/// reached is a network error (the message waits in the outbox); one that
+/// refused it is not (the message fails, and the person can retry).
+fn chat_error(err: RelayError) -> ChatError {
+    match err {
+        RelayError::Unreachable { reason } | RelayError::Connection { reason } => {
+            ChatError::Network { reason }
+        }
+        RelayError::Stopped { .. } => ChatError::Network {
+            reason: "Relay stopped".into(),
+        },
+        RelayError::Refused => ChatError::Http {
+            status: 403,
+            reason: "the other device doesn't trust this one".into(),
+        },
+        RelayError::Declined { reason } => ChatError::Http {
+            status: 403,
+            reason,
+        },
+        RelayError::UnknownPeer { .. } => ChatError::Http {
+            status: 403,
+            reason: "no longer trusted".into(),
+        },
+        other => ChatError::Protocol {
+            reason: other.to_string(),
+        },
+    }
+}
+
+impl ChatRepo for PeerRepo {
+    fn list_conversations(&self) -> Result<Vec<RemoteConversation>, ChatError> {
+        let relay = self.relay()?;
+        let title = relay
+            .record
+            .get()
+            .devices
+            .get(&self.endpoint_id)
+            .map(|d| d.name.clone())
+            .unwrap_or_else(|| "Device".into());
+        let last = self.log.last();
+        Ok(vec![RemoteConversation {
+            id: self.log.conversation_id.clone(),
+            title,
+            last_message_at: last.as_ref().map(|m| m.sent_at),
+            last_message: last,
+            read_up_to: None,
+            others_read_up_to: None,
+        }])
+    }
+
+    fn load_messages(
+        &self,
+        conversation_id: &str,
+        since: Option<i64>,
+    ) -> Result<Vec<Message>, ChatError> {
+        self.check(conversation_id)?;
+        Ok(self.log.since(since))
+    }
+
+    fn post_message(&self, message: &OutgoingMessage) -> Result<Message, ChatError> {
+        self.check(&message.conversation_id)?;
+        if let Some(found) = self.log.get(&message.id) {
+            return Ok(found);
+        }
+        if !message.attachments.is_empty() {
+            return Err(ChatError::UnsupportedOnHost {
+                detail: "files go to a device from Send, not in a message yet".into(),
+            });
+        }
+        let relay = self.relay()?;
+        let outgoing = PeerMessage {
+            id: message.id.clone(),
+            body: message.body.clone(),
+            reply_to: message.reply_to.clone(),
+        };
+        forge_runtime::block_on(relay.deliver_message(&self.endpoint_id, outgoing))
+            .map_err(chat_error)?;
+        self.log
+            .add(Message {
+                id: message.id.clone(),
+                author: message.author.clone(),
+                author_id: message.author_id.clone(),
+                body: message.body.clone(),
+                reply_to: message.reply_to.clone(),
+                ..Message::default()
+            })
+            .map_err(|e| ChatError::Protocol {
+                reason: e.to_string(),
+            })
+    }
+
+    fn open_stream(
+        &self,
+        conversation_id: &str,
+        cancel: &CancelHandle,
+    ) -> Result<Box<dyn RemoteStream>, ChatError> {
+        self.check(conversation_id)?;
+        if cancel.is_cancelled() {
+            return Err(ChatError::Cancelled);
+        }
+        Ok(Box::new(LogStream {
+            rx: self.log.listen(),
+            cancel: cancel.clone(),
+            quiet_for: Duration::ZERO,
+        }))
+    }
+}
+
+struct LogStream {
+    rx: mpsc::Receiver<Message>,
+    cancel: CancelHandle,
+    quiet_for: Duration,
+}
+
+impl RemoteStream for LogStream {
+    fn next_event(&mut self) -> Option<Result<RemoteEvent, ChatError>> {
+        loop {
+            if self.cancel.is_cancelled() {
+                return Some(Err(ChatError::Cancelled));
+            }
+            match self.rx.recv_timeout(QUIET) {
+                Ok(message) => {
+                    self.quiet_for = Duration::ZERO;
+                    return Some(Ok(RemoteEvent::Message(message)));
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    self.quiet_for += QUIET;
+                    if self.quiet_for >= HEARTBEAT {
+                        self.quiet_for = Duration::ZERO;
+                        return Some(Ok(RemoteEvent::Heartbeat));
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            }
+        }
+    }
+}
+
+/// The `relay` command's side of device conversations. The app's
+/// messages go through chat-core's outbox instead (`ChatCore::use_relay`).
+impl RelayCore {
+    /// The conversation with a trusted device, oldest first.
+    pub fn device_messages(&self, endpoint_id: &str) -> Result<Vec<Message>, RelayError> {
+        Ok(self.peer_logs.get(endpoint_id)?.since(None))
+    }
+
+    /// Sends `text` to a trusted device's conversation now; an error when
+    /// it can't be reached (nothing waits).
+    pub async fn send_device_message(
+        &self,
+        endpoint_id: &str,
+        text: String,
+    ) -> Result<Message, RelayError> {
+        let body = crate::model::clean_note(&text)?;
+        let id = crate::wire::hex(&crate::outbox::new_id());
+        let message = PeerMessage {
+            id: id.clone(),
+            body: body.clone(),
+            reply_to: None,
+        };
+        self.deliver_message(endpoint_id, message).await?;
+        let me = self.identity();
+        self.peer_logs.get(endpoint_id)?.add(Message {
+            id,
+            author: me.name,
+            author_id: format!("relay:{}", me.device_id),
+            body,
+            ..Message::default()
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_log_stamps_in_order_and_adds_each_id_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = PeerLogs::new(dir.path().to_path_buf());
+        let log = logs.get("abc123").unwrap();
+        let rx = log.listen();
+        let message = |id: &str| Message {
+            id: id.into(),
+            body: id.into(),
+            ..Message::default()
+        };
+        let a = log.add(message("a")).unwrap();
+        let b = log.add(message("b")).unwrap();
+        assert!(b.sent_at > a.sent_at);
+        assert_eq!(a.conversation_id, "device:abc123");
+        assert_eq!(a.status, MessageStatus::Sent);
+        let again = log.add(message("a")).unwrap();
+        assert_eq!(again, a);
+        assert_eq!(log.since(None).len(), 2);
+        assert_eq!(log.since(Some(a.sent_at)), vec![b.clone()]);
+        assert_eq!(rx.try_iter().count(), 2, "one event per new message");
+
+        // It is all there after a relaunch.
+        drop(logs);
+        let logs = PeerLogs::new(dir.path().to_path_buf());
+        assert_eq!(logs.get("abc123").unwrap().since(None), vec![a, b]);
+        assert!(logs.get("../x").is_err());
+    }
+
+    #[test]
+    fn only_a_device_that_wasnt_reached_keeps_a_message_waiting() {
+        let unreachable = chat_error(RelayError::Unreachable { reason: "x".into() });
+        assert!(unreachable.is_transient());
+        assert!(!chat_error(RelayError::Refused).is_transient());
+        assert!(!chat_error(RelayError::Declined { reason: "x".into() }).is_transient());
+        assert_eq!(conversation_device(&device_conversation("ab")), Some("ab"));
+        assert_eq!(conversation_device("room-1"), None);
+    }
+}

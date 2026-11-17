@@ -2716,6 +2716,8 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     /**
      * Lists conversations from the server, prefetching new messages for
      * rooms that are not open (they count as unread).
+     * With Relay (`use_relay`), each trusted device's conversation is
+     * listed too, and the list works signed out.
      */
     func listConversations() async throws  -> [ChatConversation]
     
@@ -2861,6 +2863,14 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func unsubscribe(conversationId: String) throws 
     
     func unwatch(conversationId: String) throws 
+    
+    /**
+     * Adds a conversation with each device Relay trusts to the list,
+     * beside the server's, working with or without an account. Messages
+     * to a device that is away wait in its outbox and go when Relay
+     * reaches it.
+     */
+    func useRelay(relay: RelayCore) 
     
     /**
      * Keeps the room live without opening it, so new messages from others
@@ -3214,6 +3224,8 @@ open func launchReport() -> LaunchReport  {
     /**
      * Lists conversations from the server, prefetching new messages for
      * rooms that are not open (they count as unread).
+     * With Relay (`use_relay`), each trusted device's conversation is
+     * listed too, and the list works signed out.
      */
 open func listConversations()async throws  -> [ChatConversation]  {
     return
@@ -3602,6 +3614,21 @@ open func unwatch(conversationId: String)throws   {try rustCallWithError(FfiConv
     uniffi_relay_core_fn_method_chatcore_unwatch(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Adds a conversation with each device Relay trusts to the list,
+     * beside the server's, working with or without an account. Messages
+     * to a device that is away wait in its outbox and go when Relay
+     * reaches it.
+     */
+open func useRelay(relay: RelayCore)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_use_relay(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeRelayCore_lower(relay),uniffiCallStatus
     )
 }
 }
@@ -14133,7 +14160,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_chatcore_launch_report() != 49427) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_chatcore_list_conversations() != 17462) {
+    if (uniffi_relay_core_checksum_method_chatcore_list_conversations() != 26320) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_live_streams() != 58133) {
@@ -14206,6 +14233,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_unwatch() != 45890) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_use_relay() != 12872) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_watch() != 15302) {
