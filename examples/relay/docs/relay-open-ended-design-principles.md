@@ -30,11 +30,12 @@ The proposed future must not dictate the present architecture.
   evidence: a prototype, a real use, or a limit found in practice.
 - Architecture preserves useful optionality without speculative
   over-engineering.
-- Contributors don't have to resolve what Relay ultimately is when they
-  propose a feature or an architecture change.
-- Optionality is not a compatibility obligation. Experiments are
-  disposable: keeping a future possible never means supporting every
-  experiment forever.
+- **Contributor freedom.** Contributors are not expected to resolve what
+  Relay ultimately is. Proposals can be useful without fitting a grand
+  theory of the project.
+- **Disposable experiments.** Preserving optionality does not create
+  permanent compatibility obligations. Experimental interfaces and
+  implementations can be abandoned when evidence warrants it.
 
 ## Design principles
 
@@ -46,10 +47,9 @@ The proposed future must not dictate the present architecture.
   resources.
 - **Replaceability.** No single protocol, model, vendor or device becomes
   indispensable.
-- **Local-first, not local-only.** Relay stays useful without a central
-  service where practical. External infrastructure, remote computation
-  and shared services are welcome when they help, as long as Relay
-  doesn't depend on them.
+- **Local-first, not local-only.** Relay should work independently where
+  practical, while remaining free to use remote infrastructure, shared
+  services and external computation when useful.
 - **Emergence.** New uses can grow from combinations of existing
   capabilities.
 - **Reversibility.** An experiment can be tried without committing the
@@ -65,12 +65,16 @@ boundaries belong.
 
 ## Reviewing a Relay proposal
 
-This page is the conceptual reference for Relay proposals and PRs. Ask:
+This page is the standing conceptual reference for Relay. For
+architectural proposals, ask:
 
 1. Does this solve a real problem today?
 2. Does it preserve useful possibilities?
 3. Is it committing us to an assumed future?
 4. Can we reverse the decision if we learn something different?
+
+These are prompts for judgement, not a checklist. Small PRs don't need to
+answer them.
 
 ## How Relay moves
 
