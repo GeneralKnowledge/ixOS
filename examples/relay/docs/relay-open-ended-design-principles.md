@@ -30,6 +30,11 @@ The proposed future must not dictate the present architecture.
   evidence: a prototype, a real use, or a limit found in practice.
 - Architecture preserves useful optionality without speculative
   over-engineering.
+- Contributors don't have to resolve what Relay ultimately is when they
+  propose a feature or an architecture change.
+- Optionality is not a compatibility obligation. Experiments are
+  disposable: keeping a future possible never means supporting every
+  experiment forever.
 
 ## Design principles
 
@@ -41,7 +46,10 @@ The proposed future must not dictate the present architecture.
   resources.
 - **Replaceability.** No single protocol, model, vendor or device becomes
   indispensable.
-- **Local-first.** Relay stays useful without a central service.
+- **Local-first, not local-only.** Relay stays useful without a central
+  service where practical. External infrastructure, remote computation
+  and shared services are welcome when they help, as long as Relay
+  doesn't depend on them.
 - **Emergence.** New uses can grow from combinations of existing
   capabilities.
 - **Reversibility.** An experiment can be tried without committing the
@@ -54,6 +62,15 @@ delivery and conversation are kept separate
 ([relay-reliable-delivery.md](relay-reliable-delivery.md#three-separate-concerns)),
 and the Rust core stays a set of modules until real use shows where the
 boundaries belong.
+
+## Reviewing a Relay proposal
+
+This page is the conceptual reference for Relay proposals and PRs. Ask:
+
+1. Does this solve a real problem today?
+2. Does it preserve useful possibilities?
+3. Is it committing us to an assumed future?
+4. Can we reverse the decision if we learn something different?
 
 ## How Relay moves
 
