@@ -65,7 +65,7 @@ struct NoteListView: View {
             get: { isComposing || isShowingSettings ? nil : model.alert },
             set: { model.alert = $0 }
         )) { action in Task { await model.handle(action) } }
-        .forgeFeedback(model.feedback)
+        .sensoryFeedback(.success, trigger: model.saveCount)
     }
 
     @ViewBuilder private var emptyState: some View {

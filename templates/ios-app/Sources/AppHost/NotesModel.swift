@@ -38,9 +38,8 @@ public final class NotesModel {
     /// Again when that might help). The list presents it with
     /// `.forgeAlert`, which clears it when dismissed.
     public var alert: ForgeAlert<Action>?
-    /// Haptics: success after each successful save. The list plays it with
-    /// `.forgeFeedback(model.feedback)`.
-    public private(set) var feedback = ForgeFeedback()
+    /// Increases after each successful save; views use it as a haptic trigger.
+    public private(set) var saveCount = 0
 
     // Network check (Settings screen): an async Rust request that the user,
     // or the screen closing, can cancel part way.
@@ -82,7 +81,7 @@ public final class NotesModel {
     public func add(text: String) async throws {
         _ = try await core.addNote(text: text)
         notes = core.notes()
-        feedback.play(.success)
+        saveCount += 1
     }
 
     /// Saves new text for a note. Returns false (and sets `alert`) on failure.
@@ -175,7 +174,7 @@ public final class NotesModel {
         do {
             try await command(core)
             notes = core.notes()
-            feedback.play(.success)
+            saveCount += 1
             return true
         } catch {
             // `reason` fields are for the log, never the screen.
