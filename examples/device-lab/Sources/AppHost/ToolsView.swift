@@ -1,8 +1,8 @@
 @preconcurrency import ForgeFFI
 import SwiftUI
 
-/// The Tools tab: experiments and developer checks that aren't a sensor
-/// reading or a hosted app.
+/// The Tools tab: what a phone sitting needs (the checks, whether the test
+/// servers are up, recent logs), then experiments and developer checks.
 struct ToolsView: View {
     let model: LabModel
     @State private var transfers = TransferTestModel()
@@ -13,23 +13,13 @@ struct ToolsView: View {
         List {
             Section {
                 NavigationLink {
-                    AiLabView(model: aiLab)
+                    PhoneChecksView()
                 } label: {
-                    Label("AI Lab", systemImage: "sparkles")
+                    Label("Checks", systemImage: "checklist")
                 }
-                .accessibilityIdentifier("dashboard.aiLab")
+                .accessibilityIdentifier("tools.checks")
             } footer: {
-                Text("Experiments with Apple's on-device model: speed, Stop, structured output.")
-            }
-            Section {
-                NavigationLink {
-                    TransferTestView(model: transfers)
-                } label: {
-                    Label("Background Downloads", systemImage: "arrow.down.circle")
-                }
-                .accessibilityIdentifier("dashboard.transfers")
-            } footer: {
-                Text("Downloads that keep going after you leave the app.")
+                Text("The next phone sitting's checks: tick each one here and share the results.")
             }
             Section {
                 NavigationLink {
@@ -50,6 +40,26 @@ struct ToolsView: View {
                 .accessibilityIdentifier("tools.logs")
             } footer: {
                 Text("What Device Lab and its apps logged recently, to read or share without a cable.")
+            }
+            Section {
+                NavigationLink {
+                    AiLabView(model: aiLab)
+                } label: {
+                    Label("AI Lab", systemImage: "sparkles")
+                }
+                .accessibilityIdentifier("dashboard.aiLab")
+            } footer: {
+                Text("Experiments with Apple's on-device model: speed, Stop, structured output.")
+            }
+            Section {
+                NavigationLink {
+                    TransferTestView(model: transfers)
+                } label: {
+                    Label("Background Downloads", systemImage: "arrow.down.circle")
+                }
+                .accessibilityIdentifier("dashboard.transfers")
+            } footer: {
+                Text("Downloads that keep going after you leave the app.")
             }
             Section {
                 NavigationLink {
