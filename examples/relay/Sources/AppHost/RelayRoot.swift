@@ -78,7 +78,7 @@ public struct RelayRoot: View {
 
             if chat.phase == .ready {
                 NavigationStack {
-                    SettingsView(model: chat)
+                    SettingsView(model: chat, relay: host.core)
                 }
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(Tab.settings)

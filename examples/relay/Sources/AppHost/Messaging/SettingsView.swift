@@ -5,6 +5,8 @@ import SwiftUI
 /// signing out.
 struct SettingsView: View {
     let model: ChatModel
+    /// Relay's core, for the pairing policy; `nil` while it opens.
+    var relay: RelayCore? = nil
     @State private var confirmingSignOut = false
 
     private var muted: [ChatConversation] { model.sortedConversations.filter(\.muted) }
@@ -29,6 +31,11 @@ struct SettingsView: View {
                     Text(problem).font(.footnote).foregroundStyle(.secondary)
                 }
             }
+            #if os(iOS)
+                if let relay {
+                    RelaySettingsSection(core: relay)
+                }
+            #endif
             Section {
                 if muted.isEmpty {
                     Text("None").foregroundStyle(.secondary)

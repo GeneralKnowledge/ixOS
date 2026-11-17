@@ -77,23 +77,34 @@ struct RevokedDeviceRow: View {
     }
 }
 
-/// What happens after a code transfer (Rust's `PairingPolicy`).
+/// What happens after a code transfer (Rust's `PairingPolicy`), on the
+/// Devices tab and in Settings.
 struct PairingPolicySection: View {
-    let model: RelayModel
+    let policy: PairingPolicy
+    let choose: (PairingPolicy) -> Void
+
+    init(model: RelayModel) {
+        policy = model.policy
+        choose = { policy in Task { await model.setPolicy(policy) } }
+    }
+
+    init(policy: PairingPolicy, choose: @escaping (PairingPolicy) -> Void) {
+        self.policy = policy
+        self.choose = choose
+    }
 
     var body: some View {
         Section {
-            Picker("After a Code Transfer", selection: Binding(
-                get: { model.policy },
-                set: { policy in Task { await model.setPolicy(policy) } }
-            )) {
+            Picker("After a Code Transfer", selection: Binding(get: { policy }, set: choose)) {
                 Text("Ask to Trust").tag(PairingPolicy.askToPair)
                 Text("Trust Again Automatically").tag(PairingPolicy.pairAutomatically)
                 Text("Codes Only").tag(PairingPolicy.codesOnly)
             }
             .accessibilityIdentifier("devices.policy")
+        } header: {
+            Text("Pairing")
         } footer: {
-            Text(Self.explain(model.policy))
+            Text(Self.explain(policy))
         }
     }
 
@@ -106,6 +117,28 @@ struct PairingPolicySection: View {
         case .codesOnly:
             "A code moves one transfer and nothing is remembered."
         }
+    }
+}
+
+/// The pairing policy in the Settings tab, which has no `RelayModel`:
+/// it asks Relay's core directly. The Devices tab re-reads it after the
+/// change, like any other.
+struct RelaySettingsSection: View {
+    let core: RelayCore
+    @State private var policy: PairingPolicy = .askToPair
+
+    var body: some View {
+        PairingPolicySection(policy: policy) { chosen in
+            policy = chosen
+            Task {
+                do {
+                    try await core.setPairingPolicy(policy: chosen)
+                } catch {
+                    policy = core.pairingPolicy()
+                }
+            }
+        }
+        .onAppear { policy = core.pairingPolicy() }
     }
 }
 
