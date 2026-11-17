@@ -28,6 +28,7 @@ fn track(slug: &str) -> QueueTrack {
             note: String::new(),
             preferred: true,
             generation: None,
+            lyrics: None,
         },
     }
 }

@@ -38,6 +38,7 @@ struct LibraryHome: View {
                 }
             }
             if query.isEmpty {
+                YourMusicSection(model: model, player: player, showDetails: { details = $0 })
                 Section {
                     Picker("Show", selection: $shelf) {
                         ForEach(Shelf.allCases) { Text($0.rawValue).tag($0) }
@@ -61,6 +62,11 @@ struct LibraryHome: View {
         .refreshable { await model.loadLibrary(fresh: true) }
         .navigationDestination(item: $details) { id in
             TrackView(model: model, player: player, id: id)
+        }
+        .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                ImportMusicButton(model: model)
+            }
         }
         .overlay {
             if library.tracks.isEmpty {
@@ -142,7 +148,7 @@ extension LibrarySearch {
 
 // MARK: Rows
 
-private struct PlayShuffleButtons: View {
+struct PlayShuffleButtons: View {
     let disabled: Bool
     let play: (_ shuffle: Bool) -> Void
 
@@ -179,6 +185,8 @@ struct TrackRow: View {
     let showDetails: () -> Void
     let play: () -> Void
 
+    @State private var addingToPlaylist = false
+
     private var isCurrent: Bool { player.current?.id == track.preferred?.id && !player.isComparing }
 
     var body: some View {
@@ -199,6 +207,13 @@ struct TrackRow: View {
                                 .font(.body)
                                 .foregroundStyle(isCurrent ? Color.accentColor : .primary)
                                 .lineLimit(1)
+                            if model.isFavourite(track.id) {
+                                Image(systemName: "heart.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.pink)
+                                    .accessibilityLabel("Favourite")
+                            }
+                            DownloadBadge(model: model, track: track)
                             if isCurrent && player.isPlaying {
                                 Image(systemName: "speaker.wave.2.fill")
                                     .font(.caption)
@@ -239,8 +254,20 @@ struct TrackRow: View {
                 player.add(model.queue([track]), next: false)
             }
             .accessibilityIdentifier("library.addToQueue")
+            Button("Add to Playlist…", systemImage: "text.badge.plus") { addingToPlaylist = true }
+                .accessibilityIdentifier("library.addToPlaylist")
+            let favourite = model.isFavourite(track.id)
+            Button(favourite ? "Remove from Favourites" : "Add to Favourites",
+                   systemImage: favourite ? "heart.slash" : "heart") {
+                Task { await model.toggleFavourite(track.id) }
+            }
+            .accessibilityIdentifier("library.favouriteMenu")
+            DownloadMenuItem(model: model, tracks: [track], identifier: "library.downloadMenu")
             Button("Details", systemImage: "info.circle", action: showDetails)
                 .accessibilityIdentifier("library.detailsMenu")
+        }
+        .sheet(isPresented: $addingToPlaylist) {
+            AddToPlaylistSheet(model: model, trackIds: [track.id])
         }
         .swipeActions(edge: .leading) {
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
@@ -348,12 +375,16 @@ struct ArtistView: View {
                 }
             }
         }
+        .miniPlayerClearance()
         .navigationTitle(current.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $details) { id in
             TrackView(model: model, player: player, id: id)
         }
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                FavouriteButton(model: model, id: current.id, identifier: "artist.favourite")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button("Artwork", systemImage: "photo") { editingArtwork = true }
                     .accessibilityIdentifier("artist.artwork")
@@ -375,6 +406,7 @@ struct AlbumView: View {
 
     @State private var editingArtwork = false
     @State private var details: String?
+    @State private var addingToPlaylist = false
 
     private var current: LibraryAlbum { model.library.albums.first { $0.id == album.id } ?? album }
     private var artist: LibraryArtist? { model.library.artists.first { $0.id == current.artistId } }
@@ -418,6 +450,7 @@ struct AlbumView: View {
                 }
             }
         }
+        .miniPlayerClearance()
         .navigationTitle(current.title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $details) { id in
@@ -425,10 +458,23 @@ struct AlbumView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Artwork", systemImage: "photo") { editingArtwork = true }
-                    .accessibilityIdentifier("album.artwork")
+                FavouriteButton(model: model, id: current.id, identifier: "album.favourite")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Menu("More", systemImage: "ellipsis.circle") {
+                    Button("Add to Playlist…", systemImage: "text.badge.plus") { addingToPlaylist = true }
+                        .accessibilityIdentifier("album.addToPlaylist")
+                    DownloadMenuItem(model: model, tracks: model.tracks(of: current), identifier: "album.download")
+                    Button("Artwork", systemImage: "photo") { editingArtwork = true }
+                        .accessibilityIdentifier("album.artwork")
+                }
+                .accessibilityIdentifier("album.more")
             }
         }
+        .sheet(isPresented: $addingToPlaylist) {
+            AddToPlaylistSheet(model: model, trackIds: model.tracks(of: current).map(\.id))
+        }
+        .forgeFeedback(model.feedback)
         .sheet(isPresented: $editingArtwork) {
             ArtworkSheet(model: model, title: current.title, url: current.artworkUrl,
                          target: .album(id: current.id), circle: false)
@@ -457,6 +503,10 @@ struct TrackView: View {
 
     @State private var detail: TrackDetail?
     @State private var editing = false
+    @State private var addingToPlaylist = false
+    @State private var showingLyrics = false
+    @State private var confirmingRemove = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -469,6 +519,7 @@ struct TrackView: View {
                 )
             }
         }
+        .miniPlayerClearance()
         .navigationTitle(detail?.track.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { detail = model.track(id) }
@@ -477,15 +528,38 @@ struct TrackView: View {
         .toolbar {
             if detail != nil {
                 ToolbarItem(placement: .primaryAction) {
+                    FavouriteButton(model: model, id: id, identifier: "track.favourite")
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button("Edit") { editing = true }
                         .accessibilityIdentifier("track.edit")
                 }
+            }
+        }
+        .sheet(isPresented: $addingToPlaylist) {
+            AddToPlaylistSheet(model: model, trackIds: [id])
+        }
+        .sheet(isPresented: $showingLyrics) {
+            if let detail, let lyrics = detail.track.preferred?.lyrics ?? detail.lyrics {
+                LyricsView(title: detail.track.title, subtitle: detail.track.artist, lyrics: lyrics)
             }
         }
         .sheet(isPresented: $editing) {
             if let detail {
                 EditTrackSheet(model: model, track: detail.track) { updated in self.detail = updated }
             }
+        }
+        .confirmationDialog("Remove this song from your library?", isPresented: $confirmingRemove,
+                            titleVisibility: .visible) {
+            Button("Remove from Library", role: .destructive) {
+                Task {
+                    await model.removeImported(id)
+                    dismiss()
+                }
+            }
+            .accessibilityIdentifier("track.confirmRemove")
+        } message: {
+            Text("Soundscape's copy is deleted. The file you imported it from isn't touched.")
         }
     }
 
@@ -547,6 +621,22 @@ struct TrackView: View {
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                Button {
+                    addingToPlaylist = true
+                } label: {
+                    Label("Add to Playlist", systemImage: "text.badge.plus")
+                }
+                .accessibilityIdentifier("track.addToPlaylist")
+                if track.preferred?.kind == .imported {
+                    Button(role: .destructive) {
+                        confirmingRemove = true
+                    } label: {
+                        Label("Remove from Library", systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("track.remove")
+                } else if track.preferred != nil {
+                    downloadButton(track)
+                }
             }
             Section {
                 ForEach(detail.recordings) { recording in
@@ -592,15 +682,42 @@ struct TrackView: View {
                         }
                         .accessibilityIdentifier("track.caption")
                     }
-                    if let lyrics = detail.lyrics {
-                        DisclosureGroup("Lyrics") {
-                            Text(lyrics).font(.callout).textSelection(.enabled)
+                    if let lyrics = track.preferred?.lyrics ?? detail.lyrics,
+                       !lyricLines(lyrics: lyrics).isEmpty {
+                        Button {
+                            showingLyrics = true
+                        } label: {
+                            Label("Lyrics", systemImage: "quote.bubble")
                         }
                         .accessibilityIdentifier("track.lyrics")
                     }
                 }
             }
         }
+    }
+}
+
+extension TrackView {
+    /// Download, with how far along it is, or Remove Download.
+    @ViewBuilder fileprivate func downloadButton(_ track: LibraryTrack) -> some View {
+        let state = model.downloadState(track.id)
+        Button {
+            Task { await model.keepOnPhone([track], state == .notDownloaded) }
+        } label: {
+            switch state {
+            case .notDownloaded:
+                Label("Download", systemImage: "arrow.down.circle")
+            case .waiting:
+                Label("Waiting to Download", systemImage: "arrow.down.circle.dotted")
+            case .downloading:
+                Label("Downloading…", systemImage: "arrow.down.circle.dotted")
+            case .downloaded:
+                Label("Remove Download", systemImage: "minus.circle")
+            case .failed(let reason):
+                Label("Download failed: \(reason). Tap to stop trying.", systemImage: "exclamationmark.circle")
+            }
+        }
+        .accessibilityIdentifier("track.download")
     }
 }
 

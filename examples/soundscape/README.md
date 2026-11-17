@@ -13,8 +13,11 @@ it runs inside Device Lab (Apps, then Soundscape) and on its own.
 | SS1 | Rust core (`rust/`): projects, tracks, settings checked and mapped to AVAudioEngine units, waveforms, offline mixdown | Done, tested on Linux |
 | SS2 | SwiftUI app: project list, recorder, mixer with Canvas waveforms, AVAudioEngine playback, background audio, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
 | L1 | Listen tab: songs and takes from a take server, A/B at matched loudness, stars, notes and picks, lock-screen playback | Passed on the iPhone (Device Lab, 2026-11-16) |
-| M2 | Music library ([design](docs/library.md)): tracks apart from their recordings and audio sources, artists, albums and songs with search, artwork (from the server or Photos), your own edits, a preferred recording per song, kept on the phone | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| M2 | Music library ([design](docs/library.md)): tracks apart from their recordings and audio sources, artists, albums and songs with search, artwork (from the server or Photos), your own edits, a preferred recording per song, kept on the phone | Passed on the iPhone (Device Lab, 2026-11-17) |
+| M3 | Your collection ([design](docs/collection.md)): favourite songs, albums and artists, playlists (new, rename, reorder, delete, add a song, an album or what's playing), listening history and Recently Played, and lyrics to read along (Now Playing and a song's screen, the playing take's own words; with LRC timings from the generator the line, and with word timings the word, being sung lights up) | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| M4 | Offline ([design](docs/offline.md)): download a song, album or playlist to play it without the take server (its preferred take, replaced when you pick another), a Downloaded screen with the space it takes, and Import Music from Files (your own MP3, M4A, WAV, AIFF, FLAC files, with their tags and cover) as tracks like any other | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | M1 | Music player: play all, an act or a song, shuffle and repeat, Play Next and Add to Queue, previous and next (also on the lock screen), a mini-player on every screen and a Now Playing screen with Up Next | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| N1 | Music sources ([plan](docs/sources.md)): Jamendo and Internet Archive as optional catalogues next to your own music, with each track's licence kept; the first expansion after the six player PRs | Planned |
 | S4 | Spike: one effect in Rust on the real-time audio thread, measured on the phone | Not started; decides whether live effects move to Rust |
 
 ## How the work is split
@@ -91,6 +94,11 @@ and saves picks to `~/band/picks.json`.
   the server and a refresh never undoes an edit. A track plays its
   preferred recording: the server's pick, else the best rated, else the
   newest; choosing another picks it on the server.
+- **The collection (`rust/src/collection.rs`, [design](docs/collection.md))**
+  keeps favourites, playlists and history by library id in
+  `collection.json`, apart from the library, and shows them against the
+  library as it is now: a song the library lost is hidden, not forgotten.
+  A song counts as played after 30 seconds (or half a shorter one).
 - **The queue (`rust/src/queue.rs`)** decides what plays next. Play,
   Shuffle, an act's play button or a song's Play plays songs one after
   another, each with its preferred take (`preferred_take`: the pick, else

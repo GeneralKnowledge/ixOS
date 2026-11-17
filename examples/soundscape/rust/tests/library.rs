@@ -440,3 +440,22 @@ fn an_older_server_without_a_catalogue_is_asked_song_by_song() {
     );
     assert_eq!(t.preferred.as_ref().unwrap().id, "r/ah-one-more-night-1");
 }
+
+#[test]
+fn each_recording_carries_its_own_lyrics() {
+    let (_dir, core, _) = core_with(catalog_server());
+    block(core.refresh_library(false, None)).unwrap();
+    let detail = core.library_track(track_id("ah-one-more-night")).unwrap();
+    let words: Vec<_> = detail
+        .recordings
+        .iter()
+        .map(|r| (r.id.as_str(), r.lyrics.as_deref()))
+        .collect();
+    assert_eq!(
+        words,
+        [
+            ("r/ah-one-more-night-1", Some("[verse]")),
+            ("r/ah-one-more-night-2", None)
+        ]
+    );
+}
