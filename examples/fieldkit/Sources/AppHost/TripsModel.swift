@@ -26,8 +26,9 @@ public final class TripsModel {
     }
 
     public var alert: ForgeAlert<Action>?
-    /// Increases after each saved change; views use it as a haptic trigger.
-    public private(set) var saveCount = 0
+    /// Success after each saved change, played by the views
+    /// (`.forgeFeedback`).
+    public private(set) var feedback = ForgeFeedback()
 
     public let core: FieldKitCore
 
@@ -76,7 +77,7 @@ public final class TripsModel {
         }
         _ = try await core.startTrip(title: title)
         reload()
-        saveCount += 1
+        feedback.play(.success)
     }
 
     public func askToStop() {
@@ -118,7 +119,7 @@ public final class TripsModel {
     public func addNote(to tripID: Int64, text: String) async throws {
         _ = try await core.addTextNote(tripId: tripID, body: text, at: nil)
         reload()
-        saveCount += 1
+        feedback.play(.success)
     }
 
     public func removeNote(_ note: Note) async {
@@ -146,7 +147,7 @@ public final class TripsModel {
         do {
             try await command(core)
             reload()
-            saveCount += 1
+            feedback.play(.success)
             return true
         } catch {
             log.warn("command failed: \(error)")

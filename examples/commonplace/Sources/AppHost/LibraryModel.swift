@@ -23,6 +23,11 @@ public final class LibraryModel {
     public private(set) var lastRefresh: RefreshSummary?
     /// A failed action, presented by the feed list with `.forgeAlert`.
     public var alert: ForgeAlert<Never>?
+    /// A short message at the bottom of the screen: Undo after Mark All as
+    /// Read (presented by the root with `.forgeBanner`).
+    public var banner: ForgeBanner<ReadUndo>?
+    /// Small haptics at the moments that deserve one (`.forgeFeedback`).
+    public private(set) var feedback = ForgeFeedback()
     /// Whether a background refresh that finds new articles sends a
     /// notification (with a Mark All as Read button).
     public private(set) var newArticleAlerts = false
@@ -216,9 +221,24 @@ public final class LibraryModel {
         await perform { try await $0.setBookmarked(articleId: articleID, bookmarked: bookmarked) }
     }
 
-    /// Marks a feed's articles read, or every feed's with nil.
+    /// Marks a feed's articles read, or every feed's with nil, at once,
+    /// and offers Undo for a few seconds (a frequent, cheap action: undo
+    /// rather than a confirmation, decided 2026-11-17).
     public func markAllRead(feedID: Int64?) async {
-        await perform { _ = try await $0.markAllRead(feedId: feedID) }
+        var marked: [Int64] = []
+        let done = await perform { marked = try await $0.markAllRead(feedId: feedID) }
+        guard done, !marked.isEmpty else { return }
+        feedback.play(.success)
+        let what = marked.count == 1 ? "1 article" : "\(marked.count) articles"
+        banner = .undo("Marked \(what) as read", action: .markUnread(marked), identifier: "timeline.undoMarkAllRead")
+    }
+
+    /// Takes back what a banner offered to undo.
+    public func undo(_ action: ReadUndo) async {
+        switch action {
+        case .markUnread(let ids):
+            await perform { _ = try await $0.markUnread(articleIds: ids) }
+        }
     }
 
     /// Turns the new-articles notification on (iOS asks for permission the
@@ -334,4 +354,10 @@ extension AppError: ForgeDescribedError {
         if case .Cancelled = self { return true }
         return false
     }
+}
+
+/// What the Undo banner can take back.
+public enum ReadUndo: Equatable, Sendable {
+    /// Mark these articles unread again.
+    case markUnread([Int64])
 }

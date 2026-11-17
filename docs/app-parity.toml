@@ -55,3 +55,15 @@ app = "checklist"
 rule = "alerts-over-sheets"
 wave = 5
 reason = "A failed rename reports on the list under the Rename sheet (friction audit item 16); fixed in the friction audit's Checklist work"
+
+[[lag]]
+app = "relay"
+rule = "feedback"
+wave = 5
+reason = "Relay's saveCount moves to ForgeFeedback in its redesign pilot, after #268 merges"
+
+[[lag]]
+app = "soundscape"
+rule = "feedback"
+wave = 5
+reason = "Soundscape's saveCount moves to ForgeFeedback after its library PR (#269) merges"

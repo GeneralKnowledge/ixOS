@@ -711,7 +711,13 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * Marks every article of one feed (or of every feed, with nil) read.
      * Returns how many changed.
      */
-    func markAllRead(feedId: Int64?) async throws  -> UInt32
+    func markAllRead(feedId: Int64?) async throws  -> [Int64]
+    
+    /**
+     * Marks articles unread again: Undo after `mark_all_read`, with the
+     * ids it returned. Returns how many changed.
+     */
+    func markUnread(articleIds: [Int64]) async throws  -> UInt32
     
     /**
      * Whether a background refresh that finds new articles shows a
@@ -982,12 +988,32 @@ open func launchReport() -> LaunchReport  {
      * Marks every article of one feed (or of every feed, with nil) read.
      * Returns how many changed.
      */
-open func markAllRead(feedId: Int64?)async throws  -> UInt32  {
+open func markAllRead(feedId: Int64?)async throws  -> [Int64]  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_commonplace_core_fn_method_appcore_mark_all_read(
                         self.uniffiCloneHandle(),FfiConverterOptionInt64.lower(feedId)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceInt64.lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Marks articles unread again: Undo after `mark_all_read`, with the
+     * ids it returned. Returns how many changed.
+     */
+open func markUnread(articleIds: [Int64])async throws  -> UInt32  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_mark_unread(
+                        self.uniffiCloneHandle(),FfiConverterSequenceInt64.lower(articleIds)
                 )
             },
             pollFunc: ffi_commonplace_core_rust_future_poll_u32,
@@ -6704,6 +6730,31 @@ fileprivate struct FfiConverterOptionTypeArticleSummary: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceInt64: FfiConverterRustBuffer {
+    typealias SwiftType = [Int64]
+
+    public static func write(_ value: [Int64], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterInt64.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Int64] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Int64]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterInt64.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -7305,7 +7356,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_launch_report() != 61151) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_commonplace_core_checksum_method_appcore_mark_all_read() != 29790) {
+    if (uniffi_commonplace_core_checksum_method_appcore_mark_all_read() != 11666) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_mark_unread() != 62658) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_new_article_alerts() != 12825) {

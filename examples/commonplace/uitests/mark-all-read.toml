@@ -1,6 +1,7 @@
 # The benchmark's F4 (examples/commonplace/docs/benchmark/spec.md): subscribe to
 # the fixture feed (4 articles, all unread), mark them all read from its
-# timeline, and see the unread count go. Needs the fixture server on the
+# timeline, see Undo bring them back, mark them again, and see the unread
+# count go. Needs the fixture server on the
 # laptop (examples/commonplace/docs/benchmark/fixtures/serve.py); replace the
 # address with the laptop's. Starts on an empty, throwaway library.
 
@@ -26,18 +27,32 @@ tap = { id = "addFeed.save" }
 [[step]]
 expect = { label_contains = "Hello from the fixture" }
 
+# Marked at once, with Undo in a banner instead of a confirmation.
 [[step]]
 tap = { id = "timeline.markAllRead" }
 
 [[step]]
-tap = { id = "timeline.confirmMarkAllRead" }
+expect = { id = "timeline.markAllRead", enabled = false }
+
+[[step]]
+expect = { id = "timeline.undoMarkAllRead" }
+
+[[step]]
+screenshot = "1-all-read"
+
+# Undo brings the four back as unread.
+[[step]]
+tap = { id = "timeline.undoMarkAllRead" }
+
+[[step]]
+expect = { id = "timeline.markAllRead", enabled = true }
+
+[[step]]
+tap = { id = "timeline.markAllRead" }
 
 # Nothing is left to mark.
 [[step]]
 expect = { id = "timeline.markAllRead", enabled = false }
-
-[[step]]
-screenshot = "1-all-read"
 
 [[step]]
 tap = { id = "BackButton" }

@@ -30,9 +30,6 @@ expect = { label_contains = "Hello from the fixture" }
 tap = { id = "timeline.markAllRead" }
 
 [[step]]
-tap = { id = "timeline.confirmMarkAllRead" }
-
-[[step]]
 tap = { id = "BackButton" }
 
 [[step]]

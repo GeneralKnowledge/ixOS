@@ -116,6 +116,16 @@ def rule_forgeui_appearance(app):
     return (False, "keeps its own LaunchAppearance.swift") if own else (True, "")
 
 
+# Haptics come from ForgeAppKit's ForgeFeedback (play(.success) in the
+# model, .forgeFeedback in the view), not a hand-rolled saveCount counter
+# (Ice Cubes audit, proposal 2; 2026-11-17).
+def rule_feedback(app):
+    bad = [p.name for p in swift_sources(app) if re.search(r"\bsaveCount\b", read(p))]
+    if bad:
+        return False, "hand-rolls a saveCount haptic trigger; use ForgeFeedback: " + ", ".join(bad)
+    return True, ""
+
+
 def rule_urlsession(app):
     if app.name in NO_RUST:
         return None
@@ -397,6 +407,7 @@ RULES = [
     ("alerts-over-sheets", "A model alert is held back while a sheet is up; the sheet shows alerts itself", rule_alerts_over_sheets),
     ("picked-files", "Picked files copied with ForgeAppKit's `ForgePickedFile` (off the main thread), never by hand", rule_picked_files),
     ("toned-text", "Warning text in ForgeUI's tone, never raw orange or yellow", rule_toned_text),
+    ("feedback", "Haptics through ForgeAppKit's `ForgeFeedback`, no hand-rolled `saveCount`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
     ("location", "Location through the `location` service", rule_location),

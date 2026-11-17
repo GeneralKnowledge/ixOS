@@ -258,9 +258,27 @@ fn opening_an_article_marks_it_read_and_gives_its_text() {
 fn mark_all_read_by_feed_or_everything() {
     let dir = tempfile::tempdir().unwrap();
     let (core, feed) = subscribed(dir.path());
-    assert_eq!(block_on(core.mark_all_read(Some(feed.id))).unwrap(), 2);
-    assert_eq!(block_on(core.mark_all_read(None)).unwrap(), 0);
+    let marked = block_on(core.mark_all_read(Some(feed.id))).unwrap();
+    assert_eq!(marked.len(), 2);
+    assert!(block_on(core.mark_all_read(None)).unwrap().is_empty());
     assert!(core.timeline(Timeline::Unread).is_empty());
+}
+
+#[test]
+fn mark_all_read_can_be_undone() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _feed) = subscribed(dir.path());
+    let before = core.timeline(Timeline::Unread).len();
+    let marked = block_on(core.mark_all_read(None)).unwrap();
+    assert_eq!(marked.len(), before);
+    assert_eq!(
+        block_on(core.mark_unread(marked.clone())).unwrap(),
+        before as u32
+    );
+    assert_eq!(core.timeline(Timeline::Unread).len(), before);
+    // Undoing twice changes nothing more; a gone article is skipped.
+    assert_eq!(block_on(core.mark_unread(marked)).unwrap(), 0);
+    assert_eq!(block_on(core.mark_unread(vec![999_999])).unwrap(), 0);
 }
 
 #[test]

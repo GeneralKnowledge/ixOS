@@ -46,6 +46,26 @@ struct AppsView: View {
                 Text("Each app is the full example app, running full screen in Device Lab. The round workshop button on its edge comes back here, and shows the app light or dark, at another text size, or at iPhone SE size.")
             }
             Section {
+                NavigationLink {
+                    PatternsView()
+                } label: {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Interaction Patterns")
+                            Text("ForgeAppKit's banner and haptics, with every variant.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "hand.tap")
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                .accessibilityIdentifier("apps.patterns")
+            } footer: {
+                Text("The ForgeUI Showcase above has the visual components; these are the shared behaviours.")
+            }
+            Section {
                 Picker("Open at Launch", selection: $launchApp) {
                     Text("Device Lab").tag("")
                     ForEach(EmbeddedApp.allCases) { app in

@@ -1,9 +1,9 @@
 order = 26
-capability = "ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors)"
+capability = "ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors, Undo and progress banners, haptic feedback)"
 framework = "Yes: ForgeAppKit product of the ForgeKit package"
 rust_api = "n/a"
 ios_native = "Yes"
-in_app = "Partial: Pocket Library (alerts, confirmations, destinations, catalogue load state, form submission and field errors); the forge init template (alerts, form submission)"
+in_app = "Partial: Pocket Library (alerts, confirmations, destinations, catalogue load state, form submission and field errors); the forge init template (alerts, form submission); Commonplace (Undo banner after Mark All as Read); FieldKit, Sketchbook and Commonplace (ForgeFeedback haptics); Device Lab Interaction Patterns page"
 iphone = "No"
 documented = "Yes: forgeappkit.md"
 limits = "0.1: model values tested on Linux; the SwiftUI side compiles with xtool in Device Lab; push destinations and full-screen covers are used by no app yet; no navigation path or tab state"

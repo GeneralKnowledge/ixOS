@@ -8,8 +8,6 @@ import SwiftUI
 struct TimelineView: View {
     let model: LibraryModel
     let timeline: Timeline
-    /// Mark All as Read asks first: one stray tap could clear hundreds.
-    @State private var confirmingMarkAll = false
     @Environment(\.forgeTheme) private var theme
 
     var body: some View {
@@ -53,27 +51,15 @@ struct TimelineView: View {
         .toolbar {
             if timeline != .bookmarked {
                 ToolbarItem(placement: .primaryAction) {
+                    // Done at once, with Undo in a banner (LibraryModel).
                     Button("Mark All as Read", systemImage: "checkmark.circle") {
-                        confirmingMarkAll = true
+                        Task { await model.markAllRead(feedID: timeline.feedID) }
                     }
                     .disabled(!articles.contains { !$0.read })
                     .accessibilityIdentifier("timeline.markAllRead")
                 }
             }
         }
-        .confirmationDialog(
-            markAllTitle(unread: articles.filter { !$0.read }.count),
-            isPresented: $confirmingMarkAll, titleVisibility: .visible
-        ) {
-            Button("Mark All as Read") {
-                Task { await model.markAllRead(feedID: timeline.feedID) }
-            }
-            .accessibilityIdentifier("timeline.confirmMarkAllRead")
-        }
-    }
-
-    private func markAllTitle(unread: Int) -> String {
-        unread == 1 ? "Mark 1 article as read?" : "Mark \(unread) articles as read?"
     }
 
     @ViewBuilder private var emptyState: some View {

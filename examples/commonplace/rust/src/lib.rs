@@ -562,10 +562,22 @@ impl AppCore {
 
     /// Marks every article of one feed (or of every feed, with nil) read.
     /// Returns how many changed.
-    pub async fn mark_all_read(&self, feed_id: Option<i64>) -> Result<u32, AppError> {
+    pub async fn mark_all_read(&self, feed_id: Option<i64>) -> Result<Vec<i64>, AppError> {
         self.rt
             .command("mark-all-read", move |state| {
-                let n = state.store.mark_all_read(feed_id)?;
+                let ids = state.store.mark_all_read(feed_id)?;
+                state.publish();
+                Ok(ids)
+            })
+            .await
+    }
+
+    /// Marks articles unread again: Undo after `mark_all_read`, with the
+    /// ids it returned. Returns how many changed.
+    pub async fn mark_unread(&self, article_ids: Vec<i64>) -> Result<u32, AppError> {
+        self.rt
+            .command("mark-unread", move |state| {
+                let n = state.store.mark_unread(&article_ids)?;
                 state.publish();
                 Ok(n)
             })
