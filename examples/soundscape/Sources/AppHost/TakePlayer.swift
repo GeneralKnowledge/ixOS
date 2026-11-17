@@ -35,9 +35,12 @@ final class TakePlayer {
         let audioUrl: String
         /// The library track it plays for; nil in a comparison.
         let trackId: String?
+        /// The words this recording sings, with section tags.
+        let lyrics: String?
 
         init(_ track: QueueTrack) {
             trackId = track.trackId
+            lyrics = track.recording.lyrics
             song = track.title
             artist = track.artist
             album = track.album
@@ -49,6 +52,7 @@ final class TakePlayer {
 
         init(song: String, take: Take) {
             trackId = nil
+            lyrics = take.lyrics
             self.song = song
             artist = nil
             album = nil

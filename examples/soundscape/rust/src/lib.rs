@@ -28,6 +28,7 @@ pub mod collection;
 pub mod dsp;
 pub mod library;
 pub mod listen;
+pub mod lyrics;
 mod model;
 pub mod project;
 pub mod queue;
@@ -54,6 +55,7 @@ pub use listen::{
     group_songs, loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongGroup, SongSummary,
     Take, TakeMark,
 };
+pub use lyrics::{lyric_lines, LyricKind, LyricLine};
 pub use model::{
     soundscape_error_kind, Clip, Echo, Mixdown, ProjectDetail, ProjectSummary, SoundscapeError,
     Track, TrackMix, TrackSettings, MAX_BARS, MAX_GAIN_DB, MAX_NAME_CHARS, MAX_TEMPO, MAX_TRACKS,
@@ -1003,6 +1005,7 @@ impl SoundscapeCore {
                 bpm: take.bpm,
                 key: take.key.clone(),
             }),
+            lyrics: take.lyrics.clone(),
         };
         match known {
             Some(track) => library::queue_track_with(&track, recording),

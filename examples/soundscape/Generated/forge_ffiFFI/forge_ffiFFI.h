@@ -832,6 +832,11 @@ RustBuffer uniffi_soundscape_core_fn_func_group_songs(RustBuffer songs, int8_t u
 RustBuffer uniffi_soundscape_core_fn_func_loudness_match(RustBuffer a_lufs, RustBuffer b_lufs, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_LYRIC_LINES
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_LYRIC_LINES
+RustBuffer uniffi_soundscape_core_fn_func_lyric_lines(RustBuffer lyrics, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_SOUNDSCAPE_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_SOUNDSCAPE_ERROR_KIND
 RustBuffer uniffi_soundscape_core_fn_func_soundscape_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
@@ -1211,6 +1216,12 @@ uint16_t uniffi_soundscape_core_checksum_func_group_songs(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_LOUDNESS_MATCH
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_LOUDNESS_MATCH
 uint16_t uniffi_soundscape_core_checksum_func_loudness_match(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_LYRIC_LINES
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_LYRIC_LINES
+uint16_t uniffi_soundscape_core_checksum_func_lyric_lines(void
     
 );
 #endif

@@ -93,6 +93,7 @@ final class ListenModelTests: XCTestCase {
             artworkUrls: [], createdMs: 0, modifiedMs: 0
         )
         XCTAssertEqual(TakeFormat.playlistSummary(list), "12 songs, 48 minutes · 2 not in your library")
+        XCTAssertEqual(lyricLines(lyrics: "[chorus]\nOne more night").map(\.text), ["Chorus", "One more night"])
         XCTAssertTrue(countsAsPlayed(listened: 30, length: 200))
         XCTAssertFalse(countsAsPlayed(listened: 10, length: 200))
     }

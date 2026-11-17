@@ -494,6 +494,7 @@ struct TrackView: View {
     @State private var detail: TrackDetail?
     @State private var editing = false
     @State private var addingToPlaylist = false
+    @State private var showingLyrics = false
 
     var body: some View {
         Group {
@@ -524,6 +525,11 @@ struct TrackView: View {
         }
         .sheet(isPresented: $addingToPlaylist) {
             AddToPlaylistSheet(model: model, trackIds: [id])
+        }
+        .sheet(isPresented: $showingLyrics) {
+            if let detail, let lyrics = detail.track.preferred?.lyrics ?? detail.lyrics {
+                LyricsView(title: detail.track.title, subtitle: detail.track.artist, lyrics: lyrics)
+            }
         }
         .sheet(isPresented: $editing) {
             if let detail {
@@ -641,9 +647,12 @@ struct TrackView: View {
                         }
                         .accessibilityIdentifier("track.caption")
                     }
-                    if let lyrics = detail.lyrics {
-                        DisclosureGroup("Lyrics") {
-                            Text(lyrics).font(.callout).textSelection(.enabled)
+                    if let lyrics = track.preferred?.lyrics ?? detail.lyrics,
+                       !lyricLines(lyrics: lyrics).isEmpty {
+                        Button {
+                            showingLyrics = true
+                        } label: {
+                            Label("Lyrics", systemImage: "quote.bubble")
                         }
                         .accessibilityIdentifier("track.lyrics")
                     }

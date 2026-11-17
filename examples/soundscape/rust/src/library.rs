@@ -199,6 +199,8 @@ pub struct Recording {
     /// The one that plays for the track.
     pub preferred: bool,
     pub generation: Option<Generation>,
+    /// The words it sings, with section tags; takes of one song can differ.
+    pub lyrics: Option<String>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -532,6 +534,7 @@ fn recording(take: &SnapTake, snap: &SnapTrack, server: &str) -> Recording {
             bpm: take.bpm,
             key: take.key.clone(),
         }),
+        lyrics: take.lyrics.clone(),
     }
 }
 

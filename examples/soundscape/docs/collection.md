@@ -34,6 +34,14 @@ The Library's home also shows the last few songs you played, so getting back to 
 The rules (dedupe, limits, what counts as a play, building the lists) are Rust, in `rust/src/collection.rs`,
 tested on Linux.
 
+## Lyrics
+
+Reuben asked for lyrics on the songs that have them (55 of 128 on the take server). The takes carry lyrics in
+their sidecars, with section tags like `[verse]` and no timings, and takes of one song can differ, so each
+recording carries its own. Now Playing gets a **Lyrics** button for the playing take, and a song's screen shows
+its preferred recording's. `lyric_lines` (Rust, `rust/src/lyrics.rs`) turns tags into headings and blank lines
+into one gap. Lines that follow the music would need timings made by aligning the words to the audio: not now.
+
 ## Not in this PR
 
 Smart playlists, play counts on rows, sharing playlists, and import from other apps.

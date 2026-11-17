@@ -503,3 +503,65 @@ struct RecentlyPlayedView: View {
     }
 }
 #endif
+
+#if os(iOS)
+// MARK: Lyrics
+
+/// A song's lyrics to read along: section headings ("Verse", "Chorus") in
+/// small capitals, stanzas apart. They don't follow the music: the takes
+/// carry no timings.
+struct LyricsView: View {
+    let title: String
+    let subtitle: String?
+    let lyrics: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let lines = lyricLines(lyrics: lyrics)
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                        switch line.kind {
+                        case .section:
+                            Text(line.text.uppercased())
+                                .font(.caption.weight(.semibold))
+                                .tracking(1.2)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 4)
+                                .accessibilityAddTraits(.isHeader)
+                        case .line:
+                            Text(line.text)
+                                .font(.title3.weight(.semibold))
+                                .fixedSize(horizontal: false, vertical: true)
+                        case .gap:
+                            Spacer().frame(height: 18)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                .textSelection(.enabled)
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 0) {
+                        Text(title).font(.headline).lineLimit(1)
+                        if let subtitle {
+                            Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .accessibilityIdentifier("lyrics.done")
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
+    }
+}
+#endif

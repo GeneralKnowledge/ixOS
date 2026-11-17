@@ -674,6 +674,7 @@ private struct NowPlayingView: View {
     let player: TakePlayer
     @Environment(\.dismiss) private var dismiss
     @State private var addingToPlaylist = false
+    @State private var showingLyrics = false
 
     var body: some View {
         NavigationStack {
@@ -694,6 +695,20 @@ private struct NowPlayingView: View {
                             .accessibilityElement(children: .combine)
                             Scrubber(player: player, showsButtons: false)
                             if player.isComparing { abSwitch } else { transport }
+                            if let lyrics = current.lyrics, !lyricLines(lyrics: lyrics).isEmpty {
+                                Button {
+                                    showingLyrics = true
+                                } label: {
+                                    Label("Lyrics", systemImage: "quote.bubble")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .buttonStyle(.bordered)
+                                .buttonBorderShape(.capsule)
+                                .accessibilityIdentifier("nowPlayingSheet.lyrics")
+                                .sheet(isPresented: $showingLyrics) {
+                                    LyricsView(title: current.song, subtitle: current.artist, lyrics: lyrics)
+                                }
+                            }
                             if let failure = player.failure {
                                 Text(failure).font(.caption).forgeForeground(.danger)
                             }
