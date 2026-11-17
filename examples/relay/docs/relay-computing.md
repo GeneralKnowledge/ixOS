@@ -1,6 +1,11 @@
-# Relay as a personal computing network (idea)
+# Relay as a personal computing network (one possible direction)
 
 Status: an idea from Reuben, 2026-11-17 21:46, recorded so it isn't lost.
+This is **one possible direction emerging from the project, a hypothesis
+and not a plan** to turn Relay into a computing platform (see
+[relay-open-ended-design-principles.md](relay-open-ended-design-principles.md)).
+The positioning, milestones and "strategic decisions" below are the
+proposal as written, not adopted decisions.
 Decided 21:48: the direction after M2 is chosen once M1 and M2 are done.
 **Nothing here is built until he says so.** It proposes a **different
 direction** from [relay-social.md](relay-social.md) (the Relay Social idea, recorded 21:28)

@@ -7,6 +7,25 @@ level below [relay-computing.md](relay-computing.md) and
 [relay-social.md](relay-social.md): it is meant to produce tested design decisions
 *before* the milestones after M2 are restructured.
 
+Under the [open-ended design principles](relay-open-ended-design-principles.md)
+the research is organised around questions, not a predetermined product.
+Some may lead nowhere; others may reveal something more interesting.
+
+## Open questions (Reuben, 22:31)
+
+| Area | Question |
+|---|---|
+| Computing | What could a computer become if it wasn't tied to one device? |
+| Identity | What do ownership and identity mean across machines, people and software? |
+| Communication | What happens when everything can communicate directly? |
+| Intelligence | Could intelligence become a capability of an environment rather than an application? |
+| Resources | Could computing, storage and other resources be shared without central ownership? |
+| Experience | What replaces the conventional distinction between apps, operating systems and services? |
+| Autonomy | How much should a system organise itself, and how much control should its owner keep? |
+
+The sections below are one way into these questions: the abstractions
+underneath, and a programme of small prototypes.
+
 ## Research question
 
 What fundamental abstractions should Relay provide so that higher-level
