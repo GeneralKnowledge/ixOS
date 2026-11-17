@@ -48,6 +48,10 @@ struct PatternsView: View {
                 ForEach(ForgeFeedback.Kind.allCases, id: \.self) { kind in
                     Button {
                         feedback.play(kind)
+                        // A failure is never felt without being explained.
+                        if kind == .failure {
+                            outcome = "Couldn't send: the other device went offline"
+                        }
                     } label: {
                         LabeledContent(kind.rawValue.capitalized, value: use(kind))
                     }

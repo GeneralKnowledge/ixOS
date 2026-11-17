@@ -225,19 +225,21 @@ public final class LibraryModel {
     /// and offers Undo for a few seconds (a frequent, cheap action: undo
     /// rather than a confirmation, decided 2026-11-17).
     public func markAllRead(feedID: Int64?) async {
-        var marked: [Int64] = []
+        var marked: MarkedRead?
         let done = await perform { marked = try await $0.markAllRead(feedId: feedID) }
-        guard done, !marked.isEmpty else { return }
+        guard done, let marked, marked.count > 0 else { return }
         feedback.play(.success)
         let what = marked.count == 1 ? "1 article" : "\(marked.count) articles"
-        banner = .undo("Marked \(what) as read", action: .markUnread(marked), identifier: "timeline.undoMarkAllRead")
+        banner = .undo("Marked \(what) as read", action: .markAllRead(token: marked.undoToken),
+                       identifier: "timeline.undoMarkAllRead")
     }
 
-    /// Takes back what a banner offered to undo.
+    /// Takes back what a banner offered to undo. Rust leaves alone any
+    /// article the person opened or marked in the meantime.
     public func undo(_ action: ReadUndo) async {
         switch action {
-        case .markUnread(let ids):
-            await perform { _ = try await $0.markUnread(articleIds: ids) }
+        case .markAllRead(let token):
+            await perform { _ = try await $0.undoMarkAllRead(undoToken: token) }
         }
     }
 
@@ -358,6 +360,6 @@ extension AppError: ForgeDescribedError {
 
 /// What the Undo banner can take back.
 public enum ReadUndo: Equatable, Sendable {
-    /// Mark these articles unread again.
-    case markUnread([Int64])
+    /// The Mark All as Read that Rust handed this token for.
+    case markAllRead(token: UInt64)
 }

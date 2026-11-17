@@ -3,8 +3,8 @@ import ForgeUI
 import SwiftUI
 
 extension View {
-    /// Shows the model's banner at the bottom of this view, above the tab
-    /// bar and the home indicator. Its button's action goes to `perform`;
+    /// Shows the model's banner at the bottom of this view, above the home
+    /// indicator, as a safe-area inset so it never covers a list's last row. Its button's action goes to `perform`;
     /// the banner goes after its duration, when its button is tapped, or
     /// when it is swiped down. VoiceOver announces it.
     ///
@@ -30,7 +30,11 @@ private struct ForgeBannerModifier<Action>: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .bottom) {
+            // A safe-area inset, not an overlay: lists and scroll views
+            // under it get room to scroll their last row above the banner,
+            // and bottom bars stay where they are. Inside a TabView, attach
+            // it to each tab's content so it sits above the tab bar.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let shown = banner {
                     ForgeBannerView(banner: shown) {
                         if let button = shown.button {
@@ -50,7 +54,13 @@ private struct ForgeBannerModifier<Action>: ViewModifier {
                 guard let duration = shown.duration else { return }
                 // VoiceOver users need time to reach the button.
                 let seconds = voiceOver ? duration * 2 : duration
-                try? await Task.sleep(for: .seconds(seconds))
+                do {
+                    try await Task.sleep(for: .seconds(seconds))
+                } catch {
+                    // Cancelled: the banner changed, or the view went away.
+                    // Neither is the time running out, so leave it be.
+                    return
+                }
                 if banner?.id == shown.id { banner = nil }
             }
     }

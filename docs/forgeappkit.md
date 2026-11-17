@@ -211,8 +211,8 @@ A short message at the bottom of the screen, above the tab bar, for work that co
 // Model (Foundation only)
 public var banner: ForgeBanner<ReadUndo>?
 
-let marked = try await core.markAllRead(feedId: nil)
-banner = .undo("Marked \(marked.count) articles as read", action: .markUnread(marked),
+let marked = try await core.markAllRead(feedId: nil)   // count and an undo token
+banner = .undo("Marked \(marked.count) articles as read", action: .markAllRead(token: marked.undoToken),
                identifier: "timeline.undoMarkAllRead")
 
 // View
@@ -222,11 +222,11 @@ FeedListView(model: model)
 
 | Form | For |
 |---|---|
-| `.undo(_:action:identifier:)` | A frequent, cheap action done at once (a swipe delete, Mark All as Read). Stays 6 seconds |
+| `.undo(_:action:identifier:)` | A frequent, cheap action done at once (a swipe delete, Mark All as Read). Stays 6 seconds. Say exactly what Undo restores, and let Rust protect what the person did in between: Commonplace's Undo marks unread only the articles nobody opened or marked since, and only for the latest Mark All as Read |
 | `.working(_:progress:)` | Work that continues: a spinner, or a bar with `progress`. Stays until the model replaces it; update it with `updated(message:progress:)`, which keeps its id |
 | `.message(_:)` (`ForgeBanner<Never>`), `ForgeBanner(_:)` | A result worth a word ("Saved to Files"). Stays 4 seconds |
 
-VoiceOver announces it and gets twice as long; it can be swiped down or dismissed with a VoiceOver action; Reduce Motion fades instead of sliding. Errors that need a decision stay alerts (`ForgeAlert`).
+It is a bottom safe-area inset rather than an overlay, so a list under it scrolls its last row clear of it and bottom bars aren't covered; inside a `TabView`, attach it to each tab's content. Its timer only dismisses it when the time runs out: a cancelled timer (the banner changed, the screen went away) leaves it. VoiceOver announces it and gets twice as long; it can be swiped down or dismissed with a VoiceOver action; Reduce Motion fades instead of sliding. Errors that need a decision stay alerts (`ForgeAlert`).
 
 **When to use Undo instead of a confirmation** (decided 2026-11-17): undo for frequent, cheap actions, where a question every time is friction; a confirmation for rare, costly ones (deleting a book, a trip, a sketch). The action is done at once and the banner carries what Rust needs to take it back.
 
@@ -244,7 +244,7 @@ feedback.play(.success)                                // after a save
 | Kind | When |
 |---|---|
 | `success` | Something the person did is done and kept: saved, sent, finished |
-| `failure` | It didn't work; always with the message that says why |
+| `failure` | It didn't work; only together with visible text that says why (an alert, a field message, a banner), never on its own |
 | `selection` | A choice among a few options changed: a step, a rating |
 | `refresh` | New content arrived after they asked for it |
 
