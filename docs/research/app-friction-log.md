@@ -724,3 +724,71 @@ streams the audio. What took work:
   refused too (NSURLError -1022 on the phone); Soundscape sets
   `NSAllowsArbitraryLoads` (#263), and the starter now carries that setting
   commented out ([app-config.md](../app-config.md#plain-http-app-transport-security)).
+
+## A38. Reconstructed: AVAudioEngine traps in Soundscape's Studio
+
+Collected on 2026-11-17, like A37 (#277), from fixes that never reached
+this log. Three of Soundscape's recording bugs came from AVFoundation
+rules that only show on the phone:
+
+- **Record crashed** (iOS 26.3.1, two reports): the async
+  `AVAudioApplication.requestRecordPermission()` resumed its bridged
+  continuation from a completion called on the main thread and hit
+  `EXC_BAD_ACCESS`. The app reads the permission first and asks through
+  its own checked continuation (4a997a1). (bug, fixed)
+- **Recording after Play hung**: the engine was already running, so the
+  microphone input never joined the graph and the tap never fired. Record
+  stops the engine before touching the input, and a watchdog fails a take
+  that gets no sound (02aa5cb). (bug, fixed)
+- **Every new take crashed** (2026-11-16): the effects were wired in the
+  main mixer's stereo format, the player in the microphone's mono one, and
+  an effect unit must have the same format in and out. Diagnosed; the fix
+  wires the whole strip in the recording's format and is in the
+  soundscape-fixes patch, not merged. The Studio screens are due to be
+  removed in the music-player direction, so it may never need to land.
+  (bug, open)
+
+**Framework.** Accept. ForgeKit's audio service records voice notes only
+(A24); none of this is shared. If a second app mixes live input, these
+three rules are the start of its notes.
+
+## A39. Reconstructed: alerts under sheets
+
+A33's cousin. An alert attached under a sheet can't present while the
+sheet is up, so failures from inside it went unseen: Commonplace's
+Settings sheet (A34) and Relay's sheets. Both now show their own alerts,
+and the list's alert waits while a sheet is up; the ios-app starter does
+the same since #271. (bug, fixed)
+
+**Framework.** Unlike `alerts-on-top`, no parity rule catches this yet; a
+third app with the same flaw is the reason to add one.
+
+## A40. Reconstructed: Relay froze on big files
+
+Sending a picked file to a paired device copied it on the main thread,
+freezing the screen for seconds on a large video, and the copy stayed in
+Caches for good. It now copies off the main thread and deletes the copy
+when the send ends (#264). (bug, fixed)
+
+**Framework.** A file from `.fileImporter` is security-scoped and has to be
+copied before Rust can read it later; Relay does it in two views. When the
+photo picker is extracted (wave 5), the off-main copy and its cleanup
+belong with it.
+
+## A41. Reconstructed: hosting a drawing app in a sheet
+
+Device Lab opens each app in a sheet that a downward swipe closes. A stroke
+near the top of Sketchbook's canvas dragged the sheet shut (seen on the
+phone). The sketch screen now refuses interactive dismissal (ba0b533). The
+same commit stopped the model caching the bytes of every drawing it had
+read since launch. (bug, fixed)
+
+**Framework.** Accept. Any hosted app with drag gestures near the top
+edge needs the same line.
+
+## A42. Reconstructed: two apps named skipped CSV rows differently
+
+Checklist and Pocket Library both said "Row 2" (the place among readable
+rows) next to "Line 4" (the file's line) when importing a spreadsheet.
+`CsvImport::row_lines` now gives each row's line, and both apps name
+skipped rows by it (#276). (annoyance, fixed in the framework)
