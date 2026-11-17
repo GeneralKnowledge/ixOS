@@ -1,0 +1,65 @@
+{
+  "about": "Commonplace's suggested feeds, by category, in the order the Add Feed sheet lists them. Nothing here is subscribed until the person taps Add. To change the list, edit this file: `id` is a stable lower-case slug (it names the row's accessibility identifier), `url` is the feed itself (not the site), and `about` is one short line. Check every address still answers with a feed: run the ignored test `suggested_feeds_answer_with_feeds` (see the README).",
+  "categories": [
+    {
+      "name": "News",
+      "feeds": [
+        { "id": "bbc-news", "title": "BBC News", "url": "https://feeds.bbci.co.uk/news/rss.xml", "about": "Top stories from the UK and around the world" },
+        { "id": "guardian-world", "title": "The Guardian: World", "url": "https://www.theguardian.com/world/rss", "about": "International news from The Guardian" },
+        { "id": "npr-news", "title": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml", "about": "Headlines from US public radio" },
+        { "id": "al-jazeera", "title": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "about": "World news with a focus beyond the West" }
+      ]
+    },
+    {
+      "name": "Technology",
+      "feeds": [
+        { "id": "hacker-news", "title": "Hacker News", "url": "https://hnrss.org/frontpage", "about": "The front page of Hacker News" },
+        { "id": "ars-technica", "title": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "about": "Technology, science and policy in depth" },
+        { "id": "the-verge", "title": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "about": "Gadgets, apps and tech culture" },
+        { "id": "techcrunch", "title": "TechCrunch", "url": "https://techcrunch.com/feed/", "about": "Startups and the technology business" },
+        { "id": "macrumors", "title": "MacRumors", "url": "https://feeds.macrumors.com/MacRumors-All", "about": "Apple news and rumours" }
+      ]
+    },
+    {
+      "name": "Apple and Developers",
+      "feeds": [
+        { "id": "daring-fireball", "title": "Daring Fireball", "url": "https://daringfireball.net/feeds/main", "about": "John Gruber on Apple and technology" },
+        { "id": "six-colors", "title": "Six Colors", "url": "https://sixcolors.com/feed/", "about": "Jason Snell on Apple and its products" },
+        { "id": "swift-org", "title": "Swift.org", "url": "https://www.swift.org/atom.xml", "about": "News from the Swift language project" },
+        { "id": "hacking-with-swift", "title": "Hacking with Swift", "url": "https://www.hackingwithswift.com/articles/rss", "about": "Swift and SwiftUI articles by Paul Hudson" },
+        { "id": "rust-blog", "title": "Rust Blog", "url": "https://blog.rust-lang.org/feed.xml", "about": "Releases and news from the Rust project" },
+        { "id": "simon-willison", "title": "Simon Willison", "url": "https://simonwillison.net/atom/everything/", "about": "AI, large language models and the web" },
+        { "id": "github-blog", "title": "The GitHub Blog", "url": "https://github.blog/feed/", "about": "Product news and engineering from GitHub" }
+      ]
+    },
+    {
+      "name": "Science",
+      "feeds": [
+        { "id": "quanta", "title": "Quanta Magazine", "url": "https://www.quantamagazine.org/feed/", "about": "Mathematics, physics, biology and computer science" },
+        { "id": "nasa", "title": "NASA", "url": "https://www.nasa.gov/feed/", "about": "Missions, discoveries and pictures from space" },
+        { "id": "nature", "title": "Nature", "url": "https://www.nature.com/nature.rss", "about": "Research and news from the journal Nature" },
+        { "id": "new-scientist", "title": "New Scientist", "url": "https://www.newscientist.com/feed/home/", "about": "Science and technology news" },
+        { "id": "sciencedaily", "title": "ScienceDaily", "url": "https://www.sciencedaily.com/rss/all.xml", "about": "The latest research, from universities and journals" }
+      ]
+    },
+    {
+      "name": "Ideas and Culture",
+      "feeds": [
+        { "id": "kottke", "title": "Kottke.org", "url": "https://feeds.kottke.org/main", "about": "Links to the best of the web since 1998" },
+        { "id": "aeon", "title": "Aeon", "url": "https://aeon.co/feed.rss", "about": "Essays on philosophy, science and culture" },
+        { "id": "marginalian", "title": "The Marginalian", "url": "https://www.themarginalian.org/feed/", "about": "Maria Popova on books, art and ideas" },
+        { "id": "atlas-obscura", "title": "Atlas Obscura", "url": "https://www.atlasobscura.com/feeds/latest", "about": "Curious places, foods and stories" },
+        { "id": "longreads", "title": "Longreads", "url": "https://longreads.com/feed/", "about": "Long-form writing worth your time" }
+      ]
+    },
+    {
+      "name": "Comics and Fun",
+      "feeds": [
+        { "id": "xkcd", "title": "xkcd", "url": "https://xkcd.com/atom.xml", "about": "Romance, sarcasm, maths and language" },
+        { "id": "the-oatmeal", "title": "The Oatmeal", "url": "https://theoatmeal.com/feed/rss", "about": "Comics and stories by Matthew Inman" },
+        { "id": "smbc", "title": "Saturday Morning Breakfast Cereal", "url": "https://www.smbc-comics.com/comic/rss", "about": "A daily comic about science and philosophy" },
+        { "id": "poorly-drawn-lines", "title": "Poorly Drawn Lines", "url": "https://poorlydrawnlines.com/feed/", "about": "Gentle, absurd comics" }
+      ]
+    }
+  ]
+}

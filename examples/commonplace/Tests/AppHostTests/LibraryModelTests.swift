@@ -31,6 +31,18 @@ final class LibraryModelTests: XCTestCase {
     }
 
     @MainActor
+    func testSuggestedFeedsAreOfferedNotSubscribed() async throws {
+        let (host, model) = try await open(try makeDirectory())
+        let suggestions = model.suggestedFeeds()
+        XCTAssertFalse(suggestions.isEmpty)
+        XCTAssertTrue(suggestions.allSatisfy { !$0.feeds.isEmpty })
+        // Offered only: listing them subscribes to nothing.
+        XCTAssertTrue(suggestions.flatMap(\.feeds).allSatisfy { !$0.subscribed })
+        XCTAssertEqual(model.feeds, [])
+        host.close()
+    }
+
+    @MainActor
     func testANewLibraryIsEmpty() async throws {
         let (host, model) = try await open(try makeDirectory())
         XCTAssertEqual(model.feeds, [])

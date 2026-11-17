@@ -550,6 +550,11 @@ RustBuffer uniffi_commonplace_core_fn_method_appcore_settings(uint64_t ptr, Rust
 void uniffi_commonplace_core_fn_method_appcore_shutdown(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SUGGESTED_FEEDS
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SUGGESTED_FEEDS
+RustBuffer uniffi_commonplace_core_fn_method_appcore_suggested_feeds(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_TIMELINE
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_TIMELINE
 RustBuffer uniffi_commonplace_core_fn_method_appcore_timeline(uint64_t ptr, RustBuffer timeline, RustCallStatus *_Nonnull out_status
@@ -1300,6 +1305,12 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_settings(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SHUTDOWN
 uint16_t uniffi_commonplace_core_checksum_method_appcore_shutdown(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SUGGESTED_FEEDS
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SUGGESTED_FEEDS
+uint16_t uniffi_commonplace_core_checksum_method_appcore_suggested_feeds(void
     
 );
 #endif

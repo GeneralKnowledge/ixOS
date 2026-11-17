@@ -234,7 +234,7 @@ struct FeedListView: View {
         if model.feeds.isEmpty {
             ForgeStateView.empty(
                 "No Feeds Yet", systemImage: "dot.radiowaves.up.forward",
-                description: "Add a site's RSS, Atom or JSON feed to read it here. Everything stays on this device.",
+                description: "Add a site's RSS, Atom or JSON feed, or pick from suggested ones, to read it here. Everything stays on this device.",
                 action: ForgeStateAction("Add Feed", identifier: "feeds.addFirst") { isAdding = true }
             )
         }

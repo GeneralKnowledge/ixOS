@@ -34,6 +34,7 @@ The first time you run on an iPhone:
 | `rust/src/lib.rs` | Your app's logic, state, persistence and networking. Everything marked `#[uniffi::export]` is callable from Swift. |
 | `rust/Cargo.toml` | Rust dependencies. Add crates here as usual (`cargo add --manifest-path rust/Cargo.toml <crate>`). The Forge crates (`forge-app`, the runtime the core embeds, and the others) are pinned to a framework release, as ForgeKit is in `Package.swift`. |
 | `rust/src/feed.rs`, `rust/src/store.rs` | Feed parsing and plain text; the SQLite library (`library.sqlite`): feeds, articles, the search index and settings. |
+| `rust/catalogue/suggested-feeds.json` | The suggested feeds Add Feed offers, by category. Edit it to change the list; `cargo test --manifest-path rust/Cargo.toml` checks its shape, and `cargo test --manifest-path rust/Cargo.toml the_suggested_feeds_answer -- --ignored` fetches every feed to check it still answers. |
 | `Sources/AppHost/` | `AppHost.swift`, where ForgeKit's host opens the Rust core once and follows the app lifecycle; the SwiftUI screens (`ContentView.swift` is the root; `FeedListView` with search, `TimelineView`, `ArticleView` on ForgeReader, `AddFeedView`, `SettingsView`); and `LibraryModel.swift`, the model that calls Rust. |
 | `Tests/AppHostTests/` | XCTest suite against the real Rust library (macOS only). |
 | `uitests/` | UI tests that drive the app on a plugged-in iPhone from Linux (`forge ui run uitests/smoke.toml`). They find controls by their accessibility identifiers (`feeds.add`, `addFeed.save`). |

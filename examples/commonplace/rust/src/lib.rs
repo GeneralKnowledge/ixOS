@@ -37,9 +37,11 @@ use forge_runtime::now_ms;
 mod feed;
 mod model;
 mod store;
+mod suggested;
 
 pub use model::*;
 use store::{FetchResult, Fetched, Flag, Searcher, Snapshot, Store};
+pub use suggested::{SuggestedCategory, SuggestedFeed};
 
 // No namespace argument: UniFFI takes the library's name (commonplace_core), so this
 // crate keeps its own bindings when another app links it.
@@ -265,6 +267,14 @@ impl AppCore {
                     .ok_or(AppError::NotFound)
             })
             .await
+    }
+
+    /// Popular feeds to start from, by category, each marked when the
+    /// person already subscribes to it. Offered only: nothing is subscribed
+    /// until the person picks one, which goes through `add_feed`.
+    pub fn suggested_feeds(&self) -> Vec<SuggestedCategory> {
+        let snapshot = self.snapshot.get();
+        suggested::suggestions(|url| snapshot.feeds.iter().any(|f| same_address(&f.url, url)))
     }
 
     /// Unsubscribes, deleting the feed's articles (bookmarked ones too).

@@ -631,3 +631,91 @@ fn settings_are_kept_and_shape_the_timelines() {
         }
     );
 }
+
+#[test]
+fn the_suggested_feeds_catalogue_is_well_formed() {
+    let categories = suggested::suggestions(|_| false);
+    assert!(categories.len() >= 4, "a handful of categories");
+    let mut ids = std::collections::HashSet::new();
+    let mut urls: Vec<String> = Vec::new();
+    for category in &categories {
+        assert!(!category.name.trim().is_empty());
+        assert!(!category.feeds.is_empty(), "{} is empty", category.name);
+        for feed in &category.feeds {
+            assert!(
+                !feed.id.is_empty()
+                    && feed
+                        .id
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                "{}: an id is a lower-case slug",
+                feed.id
+            );
+            assert!(ids.insert(feed.id.clone()), "{} is listed twice", feed.id);
+            assert!(!feed.title.trim().is_empty() && !feed.about.trim().is_empty());
+            assert!(feed.url.starts_with("https://"), "{}: https only", feed.url);
+            assert_eq!(normalise_url(&feed.url).unwrap(), feed.url);
+            assert!(
+                !urls.iter().any(|u| same_address(u, &feed.url)),
+                "{} is listed twice",
+                feed.url
+            );
+            urls.push(feed.url.clone());
+            assert!(!feed.subscribed);
+        }
+    }
+}
+
+#[test]
+fn suggestions_are_offered_not_subscribed_and_show_what_is_subscribed() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = suggested::suggestions(|_| false).remove(0).feeds.remove(0);
+    let http = StaticClient::new().route(Method::Get, &first.url, ok(rss(&[("a", "Alpha")]), None));
+    let (core, _) = open_with(dir.path(), http);
+    // Listing suggestions subscribes to nothing.
+    assert!(core
+        .suggested_feeds()
+        .iter()
+        .flat_map(|c| &c.feeds)
+        .all(|f| !f.subscribed));
+    assert_eq!(core.feeds(), vec![]);
+    // Picking one goes through add_feed, and then it shows as subscribed.
+    block_on(core.add_feed(first.url.clone(), None)).unwrap();
+    let marked: Vec<_> = core
+        .suggested_feeds()
+        .into_iter()
+        .flat_map(|c| c.feeds)
+        .filter(|f| f.subscribed)
+        .map(|f| f.id)
+        .collect();
+    assert_eq!(marked, vec![first.id]);
+}
+
+/// Every suggested feed answers with a feed Commonplace can read. Needs the
+/// internet, so it only runs when asked:
+/// `cargo test the_suggested_feeds_answer -- --ignored`.
+#[test]
+#[ignore = "fetches every suggested feed over the internet"]
+fn the_suggested_feeds_answer_with_feeds() {
+    let http = UreqClient::new();
+    let mut failures = Vec::new();
+    for feed in suggested::suggestions(|_| false)
+        .into_iter()
+        .flat_map(|c| c.feeds)
+    {
+        match fetch(&http, &feed.url, None, None, &CancelHandle::new()) {
+            Ok(FetchResult::Parsed { feed: parsed, .. }) => {
+                println!("ok    {:<20} {} articles", feed.id, parsed.articles.len());
+                if parsed.articles.is_empty() {
+                    failures.push(format!("{}: no articles", feed.id));
+                }
+            }
+            Ok(FetchResult::NotModified) => failures.push(format!("{}: 304", feed.id)),
+            Err(e) => {
+                println!("FAIL  {:<20} {e:?}", feed.id);
+                failures.push(format!("{}: {e:?}", feed.id));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
