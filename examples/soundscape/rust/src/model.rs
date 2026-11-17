@@ -170,6 +170,10 @@ pub enum SoundscapeError {
     /// something other than what was asked.
     #[error("{reason}")]
     Server { reason: String },
+    /// Library: no artist, album or track with that id (it may have gone
+    /// from the server since the screen was opened).
+    #[error("that isn't in the library any more")]
+    NotInLibrary { id: String },
     /// Stopped by the runtime: cancelled, interrupted by the background,
     /// or shut down. `kind` says which.
     #[error("stopped ({kind:?})")]
@@ -187,7 +191,9 @@ pub fn soundscape_error_kind(error: SoundscapeError) -> ErrorKind {
         | SoundscapeError::Audio { .. }
         | SoundscapeError::Silent
         | SoundscapeError::BadAddress { .. } => ErrorKind::Invalid,
-        SoundscapeError::NotFound { .. } => ErrorKind::NotFound,
+        SoundscapeError::NotFound { .. } | SoundscapeError::NotInLibrary { .. } => {
+            ErrorKind::NotFound
+        }
         SoundscapeError::Unreachable { .. } => ErrorKind::Network,
         SoundscapeError::Server { .. } => ErrorKind::Refused,
         SoundscapeError::InUse => ErrorKind::Unavailable,

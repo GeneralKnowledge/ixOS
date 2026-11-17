@@ -1,39 +1,34 @@
 //! The play queue: order, shuffle, repeat, and the take each song plays.
 
-use std::sync::Arc;
-
-use forge_net::{Method, Response, StaticClient};
 use soundscape_core::queue::{
-    preferred_take, queue_add, queue_advance, queue_back, queue_current, queue_jump, queue_remove,
+    queue_add, queue_advance, queue_back, queue_current, queue_jump, queue_remove,
     queue_set_shuffle, queue_start, queue_upcoming, repeat_after,
 };
-use soundscape_core::{QueueTrack, RepeatMode, SongDetail, SoundscapeCore, Take};
-
-fn take(id: &str, stars: u8, picked: bool, made_ms: i64) -> Take {
-    Take {
-        id: id.into(),
-        label: id.into(),
-        audio_url: format!("http://x/audio/{id}.mp3"),
-        seed: None,
-        model: None,
-        bpm: None,
-        key: None,
-        caption: None,
-        lyrics: None,
-        lufs: None,
-        stars,
-        note: String::new(),
-        picked,
-        made_ms,
-    }
-}
+use soundscape_core::{AudioSource, QueueTrack, Recording, RecordingKind, RepeatMode};
 
 fn track(slug: &str) -> QueueTrack {
     QueueTrack {
-        slug: slug.into(),
-        song_title: slug.into(),
-        act: None,
-        take: take(slug, 0, false, 0),
+        track_id: slug.into(),
+        title: slug.into(),
+        artist: "Band".into(),
+        album: None,
+        artwork_url: None,
+        recording: Recording {
+            id: slug.into(),
+            label: slug.into(),
+            kind: RecordingKind::Generated,
+            source: AudioSource::TakeServer {
+                server: "http://x".into(),
+            },
+            audio_url: format!("http://x/audio/{slug}.mp3"),
+            made_ms: 0,
+            duration_seconds: None,
+            lufs: None,
+            stars: 0,
+            note: String::new(),
+            preferred: true,
+            generation: None,
+        },
     }
 }
 
@@ -42,30 +37,7 @@ fn tracks(n: usize) -> Vec<QueueTrack> {
 }
 
 fn now(q: &soundscape_core::PlayQueue) -> String {
-    queue_current(q.clone()).unwrap().slug
-}
-
-#[test]
-fn a_song_plays_its_pick_else_its_best_rated_else_its_newest_take() {
-    let song = |takes| SongDetail {
-        slug: "s".into(),
-        title: "S".into(),
-        act: None,
-        takes,
-        caption: None,
-        lyrics: None,
-    };
-    let picked = song(vec![take("a", 5, false, 3), take("b", 1, true, 1)]);
-    assert_eq!(preferred_take(picked).unwrap().id, "b");
-    let rated = song(vec![
-        take("a", 2, false, 3),
-        take("b", 4, false, 1),
-        take("c", 4, false, 2),
-    ]);
-    assert_eq!(preferred_take(rated).unwrap().id, "c");
-    let unrated = song(vec![take("a", 0, false, 3), take("b", 0, false, 9)]);
-    assert_eq!(preferred_take(unrated).unwrap().id, "b");
-    assert_eq!(preferred_take(song(vec![])), None);
+    queue_current(q.clone()).unwrap().track_id
 }
 
 #[test]
@@ -150,7 +122,7 @@ fn songs_can_be_added_next_or_last_and_removed() {
     let q = queue_add(q, vec![track("last")], false);
     let upcoming: Vec<String> = queue_upcoming(q.clone())
         .into_iter()
-        .map(|e| e.track.slug)
+        .map(|e| e.track.track_id)
         .collect();
     assert_eq!(upcoming, ["next", "s1", "s2", "last"]);
 
@@ -167,57 +139,11 @@ fn songs_can_be_added_next_or_last_and_removed() {
     assert_eq!(same, q, "the song playing can't be removed");
     let upcoming = queue_upcoming(q);
     assert_eq!(upcoming[0].position, 2);
-    assert_eq!(upcoming[0].track.slug, "s2");
+    assert_eq!(upcoming[0].track.track_id, "s2");
 
     let empty = queue_start(vec![], 0, true, RepeatMode::All, 1);
     assert_eq!(queue_current(empty.clone()), None);
     assert_eq!(queue_advance(empty.clone(), true), None);
     let added = queue_add(empty, vec![track("only")], true);
     assert_eq!(now(&added), "only");
-}
-
-const SONG_A: &str = r#"{"slug": "a", "title": "LOWBRIDGE · Alpha", "actTitle": "LOWBRIDGE", "pick": "a-2",
- "takes": [{"id": "a-1", "file": "a-1.mp3", "stars": 5}, {"id": "a-2", "file": "a-2.mp3"}]}"#;
-const SONG_C: &str = r#"{"slug": "c", "title": "Gamma", "takes": []}"#;
-
-#[test]
-fn a_list_of_songs_becomes_tracks_with_their_preferred_takes() {
-    const SERVER: &str = "http://100.64.0.7:8642";
-    let http = StaticClient::new()
-        .route(
-            Method::Get,
-            format!("{SERVER}/api/song?slug=a"),
-            Ok(Response::new(200, SONG_A)),
-        )
-        .route(
-            Method::Get,
-            format!("{SERVER}/api/song?slug=gone"),
-            Ok(Response::new(404, "")),
-        )
-        .route(
-            Method::Get,
-            format!("{SERVER}/api/song?slug=c"),
-            Ok(Response::new(200, SONG_C)),
-        );
-    let dir = tempfile::tempdir().unwrap();
-    let core = SoundscapeCore::open_with_http(
-        dir.path().join("data").to_str().unwrap(),
-        dir.path().join("caches").to_str().unwrap(),
-        Arc::new(http),
-    )
-    .unwrap();
-    forge_runtime::block_on(core.set_listen_server(SERVER.into())).unwrap();
-    let tracks = forge_runtime::block_on(
-        core.listen_tracks(vec!["a".into(), "gone".into(), "c".into()], None),
-    )
-    .unwrap();
-    assert_eq!(
-        tracks.len(),
-        1,
-        "a song that's gone or has no takes is left out"
-    );
-    assert_eq!(tracks[0].take.id, "a-2");
-    assert_eq!(tracks[0].song_title, "Alpha");
-    assert_eq!(tracks[0].act.as_deref(), Some("LOWBRIDGE"));
-    assert_eq!(tracks[0].take.audio_url, format!("{SERVER}/audio/a-2.mp3"));
 }

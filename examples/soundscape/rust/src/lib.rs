@@ -20,10 +20,12 @@
 //! - **Listen** ([`listen`]) plays, compares and picks song takes kept on
 //!   another computer's take server. Rust keeps the address, asks the
 //!   server (URLSession on iOS) and works out matched loudness; AVPlayer
-//!   streams the audio. [`queue`] decides what plays next: in order or
-//!   shuffled, with repeat.
+//!   streams the audio. [`library`] makes the server's songs a music
+//!   library (artists, albums, tracks with their recordings, artwork, the
+//!   person's edits) kept on the phone; [`queue`] decides what plays next.
 
 pub mod dsp;
+pub mod library;
 pub mod listen;
 mod model;
 pub mod project;
@@ -38,6 +40,11 @@ use forge_net::{HttpClient, UreqClient};
 use forge_runtime::now_ms;
 use forge_storage::{files, FileStore};
 
+use library::LibraryFile;
+pub use library::{
+    ArtworkTarget, AudioSource, Generation, Library, LibraryAlbum, LibraryArtist, LibrarySearch,
+    LibraryTrack, Recording, RecordingKind, TrackDetail, TrackEdit,
+};
 pub use listen::{
     group_songs, loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongGroup, SongSummary,
     Take, TakeMark,
@@ -64,6 +71,10 @@ forge_services::native_services!(http);
 const SAVE_FILE: &str = "soundscape.json";
 /// Listen's settings (the take server's address), apart from the projects.
 const LISTEN_FILE: &str = "listen.json";
+/// The music library (the server's last catalogue, edits, artwork names).
+const LIBRARY_FILE: &str = "library.json";
+/// The largest picture accepted as artwork.
+const MAX_ARTWORK_BYTES: u64 = 20 * 1024 * 1024;
 /// The largest answer the take server may give (a library of a few hundred
 /// songs is well under this).
 const MAX_ANSWER_BYTES: u64 = 4 * 1024 * 1024;
@@ -82,6 +93,9 @@ struct State {
     published: Arc<Published<Projects>>,
     listen: Document<ListenSettings>,
     listen_published: Arc<Published<ListenSettings>>,
+    library: Document<LibraryFile>,
+    library_published: Arc<Published<LibraryFile>>,
+    artwork: FileStore,
 }
 
 impl State {
@@ -101,6 +115,21 @@ impl State {
         self.published.set(self.projects.value().clone());
         Ok(value)
     }
+
+    /// Changes the library, saves it, publishes, and removes artwork files
+    /// nothing names any more.
+    fn change_library<T>(
+        &mut self,
+        edit: impl FnOnce(&mut LibraryFile) -> Result<T, SoundscapeError>,
+    ) -> Result<T, SoundscapeError> {
+        let before = self.library.value().artwork_files();
+        let value = self.library.change(edit)?;
+        for name in before.difference(&self.library.value().artwork_files()) {
+            self.artwork.remove(name);
+        }
+        self.library_published.set(self.library.value().clone());
+        Ok(value)
+    }
 }
 
 /// The app's core. The Swift app opens one per process and shares it.
@@ -111,6 +140,8 @@ pub struct SoundscapeCore {
     recordings: PathBuf,
     caches: PathBuf,
     listen: Arc<Published<ListenSettings>>,
+    library: Arc<Published<LibraryFile>>,
+    artwork: PathBuf,
     http: Arc<dyn HttpClient>,
 }
 
@@ -536,43 +567,6 @@ impl SoundscapeCore {
             .await
     }
 
-    /// The songs `slugs`, in that order, each with its preferred take, to
-    /// play one after another. Songs the server no longer has, or that
-    /// have no takes, are left out. On-screen work.
-    pub async fn listen_tracks(
-        &self,
-        slugs: Vec<String>,
-        cancellation: Option<Arc<Cancellation>>,
-    ) -> Result<Vec<QueueTrack>, SoundscapeError> {
-        let server = self.server()?;
-        let http = Arc::clone(&self.http);
-        let work = self.rt.foreground(cancellation.as_deref());
-        self.rt
-            .run("listen-tracks", work, move |cancel| {
-                let mut tracks = Vec::with_capacity(slugs.len());
-                for slug in &slugs {
-                    let song = match listen::fetch_song(http.as_ref(), &server, slug, cancel) {
-                        Ok(song) => song,
-                        // gone from the server since the list was loaded
-                        Err(SoundscapeError::Server { .. }) => continue,
-                        Err(other) => return Err(other),
-                    };
-                    let (slug, song_title, act) =
-                        (song.slug.clone(), song.title.clone(), song.act.clone());
-                    if let Some(take) = queue::preferred_take(song) {
-                        tracks.push(QueueTrack {
-                            slug,
-                            song_title,
-                            act,
-                            take,
-                        });
-                    }
-                }
-                Ok(tracks)
-            })
-            .await
-    }
-
     /// Picks a take, rates it (0 to 5 stars) or notes something on it, on
     /// the server, and returns the song as it now is. Finishing work: a
     /// pick made just before leaving the app still arrives.
@@ -586,12 +580,286 @@ impl SoundscapeCore {
         listen::mark_body(&slug, &take_id, &mark)?;
         let http = Arc::clone(&self.http);
         let work = self.rt.finishing(None);
-        self.rt
+        let detail = self
+            .rt
             .run("mark-take", work, move |cancel| {
                 listen::send_mark(http.as_ref(), &server, &slug, &take_id, &mark, cancel)?;
                 listen::fetch_song(http.as_ref(), &server, &slug, cancel)
             })
-            .await
+            .await?;
+        // The library shows the pick and the stars too.
+        let song = detail.clone();
+        self.rt
+            .command("library-apply-song", move |state| {
+                if state.library.value().snapshot.is_none() {
+                    return Ok(());
+                }
+                state.change_library(|lib| {
+                    if let Some(snapshot) = &mut lib.snapshot {
+                        library::apply_song(snapshot, &song);
+                    }
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(detail)
+    }
+
+    // MARK: Library
+
+    /// The library as kept on the phone: artists, albums and tracks, each
+    /// track with its preferred recording. Empty until the first refresh.
+    pub fn library(&self) -> Library {
+        library::build_library(&self.library.get(), &self.artwork_url())
+    }
+
+    /// Asks the take server for its catalogue and keeps it. `fresh` makes
+    /// the server look for new takes now. An older server without a
+    /// catalogue is asked song by song. On-screen work.
+    pub async fn refresh_library(
+        &self,
+        fresh: bool,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Library, SoundscapeError> {
+        let server = self.server()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        let snapshot = self
+            .rt
+            .run("library-refresh", work, move |cancel| {
+                let now = now_ms();
+                if let Some(snapshot) =
+                    listen::fetch_catalog(http.as_ref(), &server, fresh, now, cancel)?
+                {
+                    return Ok(snapshot);
+                }
+                let songs = listen::fetch_library(http.as_ref(), &server, fresh, cancel)?;
+                let mut both = Vec::with_capacity(songs.len());
+                for summary in songs {
+                    match listen::fetch_song(http.as_ref(), &server, &summary.slug, cancel) {
+                        Ok(detail) => both.push((summary, detail)),
+                        Err(SoundscapeError::Server { .. }) => continue,
+                        Err(other) => return Err(other),
+                    }
+                }
+                Ok(library::snapshot_from_songs(&server, now, &both))
+            })
+            .await?;
+        self.rt
+            .command("library-keep", move |state| {
+                state.change_library(|lib| {
+                    lib.snapshot = Some(snapshot);
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.library())
+    }
+
+    /// Artists, albums and tracks matching `query`.
+    pub fn search_library(&self, query: String) -> LibrarySearch {
+        library::search(&self.library(), &query)
+    }
+
+    /// An album's tracks in order.
+    pub fn album_tracks(&self, album_id: String) -> Vec<LibraryTrack> {
+        library::album_tracks(&self.library(), &album_id)
+    }
+
+    /// An artist's albums, newest first.
+    pub fn artist_albums(&self, artist_id: String) -> Vec<LibraryAlbum> {
+        library::artist_albums(&self.library(), &artist_id)
+    }
+
+    /// An artist's tracks, by title.
+    pub fn artist_tracks(&self, artist_id: String) -> Vec<LibraryTrack> {
+        self.library()
+            .tracks
+            .into_iter()
+            .filter(|t| t.artist_id.as_deref() == Some(artist_id.as_str()))
+            .collect()
+    }
+
+    /// A track with every recording of it.
+    pub fn library_track(&self, id: String) -> Result<TrackDetail, SoundscapeError> {
+        library::build_track(&self.library.get(), &self.artwork_url(), &id)
+            .ok_or(SoundscapeError::NotInLibrary { id })
+    }
+
+    /// What the queue plays for `track_ids`, in that order: each track's
+    /// preferred recording. Tracks that are gone are left out.
+    pub fn queue_tracks(&self, track_ids: Vec<String>) -> Vec<QueueTrack> {
+        let library = self.library();
+        track_ids
+            .iter()
+            .filter_map(|id| library.tracks.iter().find(|t| &t.id == id))
+            .filter_map(library::queue_track)
+            .collect()
+    }
+
+    /// One recording of a track, to play instead of the preferred one.
+    pub fn queue_recording(
+        &self,
+        track_id: String,
+        recording_id: String,
+    ) -> Result<QueueTrack, SoundscapeError> {
+        let detail = self.library_track(track_id.clone())?;
+        let recording = detail
+            .recordings
+            .into_iter()
+            .find(|r| r.id == recording_id)
+            .ok_or(SoundscapeError::NotInLibrary { id: recording_id })?;
+        Ok(library::queue_track_with(&detail.track, recording))
+    }
+
+    /// Changes a track's title, artist, album, number or genre on the
+    /// phone. An empty text goes back to what the server says.
+    pub async fn edit_track(
+        &self,
+        id: String,
+        edit: TrackEdit,
+    ) -> Result<TrackDetail, SoundscapeError> {
+        let key = id.clone();
+        self.rt
+            .command("library-edit", move |state| {
+                let known =
+                    state.library.value().snapshot.as_ref().is_some_and(|s| {
+                        s.tracks.iter().any(|t| library::track_id(&t.slug) == key)
+                    });
+                if !known {
+                    return Err(SoundscapeError::NotInLibrary { id: key });
+                }
+                state.change_library(|lib| {
+                    let entry = lib.edits.entry(key.clone()).or_default();
+                    entry.merge(edit)?;
+                    if entry.is_empty() {
+                        lib.edits.remove(&key);
+                    }
+                    Ok(())
+                })
+            })
+            .await?;
+        self.library_track(id)
+    }
+
+    /// Uses the picture at `source_path` (JPEG or PNG) as an artist's,
+    /// album's or track's artwork. The file is copied into Soundscape.
+    pub async fn set_artwork(
+        &self,
+        target: ArtworkTarget,
+        source_path: String,
+    ) -> Result<Library, SoundscapeError> {
+        self.rt
+            .command("library-artwork", move |state| {
+                let source = Path::new(&source_path);
+                let extension = match source
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_ascii_lowercase())
+                    .as_deref()
+                {
+                    Some("jpg") | Some("jpeg") => "jpg",
+                    Some("png") => "png",
+                    Some("heic") => "heic",
+                    _ => return Err(SoundscapeError::range("artwork")),
+                };
+                let name = state
+                    .artwork
+                    .import_hashed_with_extension(source, Some(extension))?
+                    .name;
+                let id = target.id().to_string();
+                let result = state.change_library(|lib| {
+                    lib.artwork.insert(id, name.clone());
+                    Ok(())
+                });
+                if result.is_err() && !state.library.value().artwork_files().contains(&name) {
+                    state.artwork.remove(&name);
+                }
+                result
+            })
+            .await?;
+        Ok(self.library())
+    }
+
+    /// Goes back to the server's artwork (or the drawn stand-in).
+    pub async fn clear_artwork(&self, target: ArtworkTarget) -> Result<Library, SoundscapeError> {
+        self.rt
+            .command("library-artwork-clear", move |state| {
+                state.change_library(|lib| {
+                    lib.artwork.remove(target.id());
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.library())
+    }
+
+    /// Makes `recording_id` the one that plays for the track. For a take
+    /// on the server that is the server's pick, so JewGrass's picks file
+    /// stays the record. Finishing work.
+    pub async fn choose_recording(
+        &self,
+        track_id: String,
+        recording_id: String,
+    ) -> Result<TrackDetail, SoundscapeError> {
+        let slug = library::slug_of(&track_id)
+            .ok_or_else(|| SoundscapeError::NotInLibrary {
+                id: track_id.clone(),
+            })?
+            .to_string();
+        self.mark_take(
+            slug,
+            recording_id,
+            TakeMark {
+                picked: Some(true),
+                stars: None,
+                note: None,
+            },
+        )
+        .await?;
+        self.library_track(track_id)
+    }
+
+    /// A take from the takes screen as a queue track, with the library's
+    /// title, artist, album and artwork when the library has its song.
+    pub fn take_queue_track(&self, song: SongDetail, take: Take) -> QueueTrack {
+        let id = library::track_id(&song.slug);
+        let known = self.library().tracks.into_iter().find(|t| t.id == id);
+        let recording = Recording {
+            id: take.id.clone(),
+            label: take.label.clone(),
+            kind: RecordingKind::Generated,
+            source: AudioSource::TakeServer {
+                server: self.listen_server().unwrap_or_default(),
+            },
+            audio_url: take.audio_url.clone(),
+            made_ms: take.made_ms,
+            duration_seconds: None,
+            lufs: take.lufs,
+            stars: take.stars,
+            note: take.note.clone(),
+            preferred: take.picked,
+            generation: Some(Generation {
+                seed: take.seed,
+                model: take.model.clone(),
+                bpm: take.bpm,
+                key: take.key.clone(),
+            }),
+        };
+        match known {
+            Some(track) => library::queue_track_with(&track, recording),
+            None => QueueTrack {
+                track_id: id,
+                title: song.title.clone(),
+                artist: song
+                    .act
+                    .clone()
+                    .unwrap_or_else(|| library::UNKNOWN_ARTIST.into()),
+                album: song.act.clone(),
+                artwork_url: None,
+                recording,
+            },
+        }
     }
 }
 
@@ -603,6 +871,15 @@ impl SoundscapeCore {
         http: Arc<dyn HttpClient>,
     ) -> Result<Arc<Self>, SoundscapeError> {
         Self::open(data_directory, caches_directory, false, http)
+    }
+
+    /// Turns a stored artwork file name into a `file://` URL.
+    fn artwork_url(&self) -> impl Fn(&str) -> Option<String> {
+        let root = self.artwork.clone();
+        move |name: &str| {
+            let path = root.join(name);
+            path.exists().then(|| library::file_url(&path))
+        }
     }
 
     fn server(&self) -> Result<String, SoundscapeError> {
@@ -659,12 +936,32 @@ impl SoundscapeCore {
             );
         }
         let listen_published = Arc::new(Published::new(listen.value().clone()));
+        // The library is a copy of the server's catalogue plus edits: an
+        // unreadable one is set aside and starts again empty.
+        let (library_doc, kept) = Document::<LibraryFile>::start_fresh(
+            directory.path().join(LIBRARY_FILE),
+            library::LIBRARY_VERSION,
+            None,
+            now_ms(),
+        )?;
+        if let Some(kept) = kept {
+            forge_runtime::logging::warn!("unreadable library set aside as {}", kept.display());
+        }
+        let artwork =
+            FileStore::new(directory.path().join("artwork")).with_max_bytes(MAX_ARTWORK_BYTES);
+        let named = library_doc.value().artwork_files();
+        artwork.sweep(|name| named.contains(name));
+        let artwork_root = artwork.root().to_path_buf();
+        let library_published = Arc::new(Published::new(library_doc.value().clone()));
         let state = State {
             projects,
             recordings,
             published: Arc::clone(&published),
             listen,
             listen_published: Arc::clone(&listen_published),
+            library: library_doc,
+            library_published: Arc::clone(&library_published),
+            artwork,
         };
         Ok(Arc::new(Self {
             rt: Runtime::with_directory("soundscape", directory, state),
@@ -672,6 +969,8 @@ impl SoundscapeCore {
             recordings: root,
             caches: PathBuf::from(caches_directory),
             listen: listen_published,
+            library: library_published,
+            artwork: artwork_root,
             http,
         }))
     }

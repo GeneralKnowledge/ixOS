@@ -260,6 +260,7 @@ public final class SoundscapeModel {
             return "Can't reach the take server. Check that it's running on the computer and that this phone is on Tailscale (or the same network)."
                 + (reason.isEmpty ? "" : "\n\n" + Self.sentence(reason))
         case .Server(let reason): return Self.sentence(reason)
+        case .NotInLibrary: return "That isn't in your library any more. Pull down to refresh it."
         case .Stopped: return "Stopped."
         }
     }
@@ -283,6 +284,7 @@ public final class SoundscapeModel {
         case .BadAddress: return "Check the Address"
         case .Unreachable: return "Can't Reach the Server"
         case .Server: return "The Server Said No"
+        case .NotInLibrary: return "Not in the Library"
         case .Stopped: return "Stopped"
         }
     }

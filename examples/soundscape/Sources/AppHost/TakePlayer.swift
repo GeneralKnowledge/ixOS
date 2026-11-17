@@ -21,10 +21,37 @@ private let log = ForgeLog("Listen")
 final class TakePlayer {
     enum Side: Equatable { case a, b }
 
+    /// What one player has loaded: a recording, with what to show for it.
     struct Loaded: Equatable {
+        /// The track's title.
         let song: String
-        let act: String?
-        let take: Take
+        let artist: String?
+        let album: String?
+        let artworkUrl: String?
+        /// The recording's id and label ("seed 7202 · xl-turbo").
+        let id: String
+        let label: String
+        let audioUrl: String
+
+        init(_ track: QueueTrack) {
+            song = track.title
+            artist = track.artist
+            album = track.album
+            artworkUrl = track.artworkUrl
+            id = track.recording.id
+            label = track.recording.label
+            audioUrl = track.recording.audioUrl
+        }
+
+        init(song: String, take: Take) {
+            self.song = song
+            artist = nil
+            album = nil
+            artworkUrl = nil
+            id = take.id
+            label = take.label
+            audioUrl = take.audioUrl
+        }
     }
 
     /// What is loaded: one take, or two when comparing.
@@ -85,11 +112,6 @@ final class TakePlayer {
         loadQueued(playing: true)
     }
 
-    /// Plays one take on its own.
-    func play(_ take: Take, of song: SongDetail) {
-        play([QueueTrack(slug: song.slug, songTitle: song.title, act: song.act, take: take)])
-    }
-
     /// Adds songs right after the one playing (`next`) or at the end; with
     /// nothing playing, they start.
     func add(_ tracks: [QueueTrack], next: Bool) {
@@ -105,8 +127,8 @@ final class TakePlayer {
     func compare(_ first: Take, _ second: Take, of song: String, match: LoudnessMatch) {
         queue = nil
         load(
-            a: Loaded(song: song, act: nil, take: first),
-            b: Loaded(song: song, act: nil, take: second), match: match
+            a: Loaded(song: song, take: first),
+            b: Loaded(song: song, take: second), match: match
         )
         resume()
     }
@@ -135,15 +157,15 @@ final class TakePlayer {
         active = .a
         time = 0
         duration = 0
-        playerA.replaceCurrentItem(with: Self.item(a.take))
-        playerB.replaceCurrentItem(with: b.flatMap { Self.item($0.take) })
+        playerA.replaceCurrentItem(with: Self.item(a.audioUrl))
+        playerB.replaceCurrentItem(with: b.flatMap { Self.item($0.audioUrl) })
         applyVolumes()
         observeEnds()
         setUpRemoteCommands()
     }
 
-    private static func item(_ take: Take) -> AVPlayerItem? {
-        guard let url = URL(string: take.audioUrl) else { return nil }
+    private static func item(_ audioUrl: String) -> AVPlayerItem? {
+        guard let url = URL(string: audioUrl) else { return nil }
         let item = AVPlayerItem(url: url)
         item.preferredForwardBufferDuration = 30
         return item
@@ -152,7 +174,7 @@ final class TakePlayer {
     /// Loads the queue's current song from its start.
     private func loadQueued(playing: Bool) {
         guard let queue, let track = queueCurrent(queue: queue) else { return }
-        load(a: Loaded(song: track.songTitle, act: track.act, take: track.take), b: nil, match: nil)
+        load(a: Loaded(track), b: nil, match: nil)
         if playing { resume() } else { pause() }
     }
 
@@ -345,10 +367,10 @@ final class TakePlayer {
         guard let current else { return }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: isComparing
-                ? "\(active == .a ? "A" : "B"): \(current.take.label)"
+                ? "\(active == .a ? "A" : "B"): \(current.label)"
                 : current.song,
-            MPMediaItemPropertyAlbumTitle: isComparing ? current.song : current.act ?? current.take.label,
-            MPMediaItemPropertyArtist: isComparing ? "Comparing takes" : current.take.label,
+            MPMediaItemPropertyAlbumTitle: isComparing ? current.song : current.album ?? current.label,
+            MPMediaItemPropertyArtist: isComparing ? "Comparing takes" : current.artist ?? current.label,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: time,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
         ]
