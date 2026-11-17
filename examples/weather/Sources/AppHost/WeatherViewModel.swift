@@ -152,7 +152,7 @@ public final class WeatherViewModel {
 
     /// Follows the app's phases through `host`, for as long as this model
     /// lives: each return from the background calls `becameActive`.
-    public func follow(_ host: ForgeHost<ForgeWeatherApp>) {
+    public func follow<Core: ForgeCore>(_ host: ForgeHost<Core>) {
         host.onResume(self) { [weak self] _ in self?.becameActive() }
     }
 
