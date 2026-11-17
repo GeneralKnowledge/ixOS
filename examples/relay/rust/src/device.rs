@@ -300,6 +300,7 @@ impl DeviceHandler {
         };
         let progress = Arc::new(CodeProgress::default());
         progress.total.store(size, Ordering::SeqCst);
+        crate::code::hold(node, content).await?;
         let fetching = crate::code::fetch(node, content, conn.remote_id(), &progress);
         tokio::pin!(fetching);
         let fetched = loop {
@@ -317,11 +318,11 @@ impl DeviceHandler {
         let folder = self.host.folder();
         let saved = match fetched {
             Ok(()) => {
-                std::fs::create_dir_all(&folder).map_err(crate::node::file_error)?;
-                let out = crate::code::unique_path(&folder, &name);
-                crate::code::save(node, hash, collection, &folder, &out)
-                    .await
-                    .map(|()| out)
+                let out = crate::code::place(node, hash, collection, &folder, &name).await;
+                if out.is_ok() {
+                    crate::code::release(node, hash).await;
+                }
+                out
             }
             Err(e) => Err(e),
         };

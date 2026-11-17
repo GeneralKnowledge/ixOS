@@ -54,6 +54,8 @@ use code::CodeProgress;
 pub use code::{CodeReceipt, CODE_SERVICE_TYPE};
 use code_send::CodeSendShared;
 pub use code_send::{CodeSend, NearbySender};
+#[doc(hidden)]
+pub use node::set_store_cleanup_interval;
 use node::NodeCell;
 pub use trust::PairingPolicy;
 use trust::{AfterCode, SavedTrust};
