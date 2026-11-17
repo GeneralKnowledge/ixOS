@@ -22,6 +22,18 @@ The task people repeat most in a feed reader is: open the app, read what's new, 
 | Know it refreshed | A thin progress bar while refreshing, then "Updated Just Now" / "Updated …" in the toolbar (`iOS/MainFeed/RefreshProgressView.swift`) | Status text in the bottom bar: "Refreshing…", counts, "Updated 10:41", or a long offline sentence that may truncate (V4) |
 | Recognise a source | Feed icons on rows (`iOS/MainTimeline/Cell/MainTimelineCell.swift`, `IconView`) | Text only (audit CP4) |
 
+### The loop, counted
+
+Five new articles in one feed, from the timeline. Commonplace marks an article read when it opens (`ArticleView`).
+
+| | Commonplace today | With lesson 1 |
+|---|---|---|
+| Taps | 10: open and Back for each article | 6: open, Next four times, Back once |
+| Trips to the timeline | 5 | 1, at the end |
+| Finding the next one | Scroll to find the next unread row each time (read rows stay unless Hide Read Articles is on) | None: Next Unread goes there |
+
+**Success criterion for the redesigned reading loop:** a person reads five new articles in a row without going back to the timeline, in at most six taps, and lands back in the timeline at the position they left, with those five shown as read. Phase 5 checks it on the phone with a real feed (evidence level U).
+
 ## Lessons, and where each belongs
 
 ### 1. Next unread is the reader's main button
@@ -30,7 +42,7 @@ The task people repeat most in a feed reader is: open the app, read what's new, 
 **Commonplace:** no way to move between articles without going back (audit CP1, P1).
 **Why it's better:** reading a timeline becomes read, next, read, next, with no trips back to the list. It is the single largest speed difference between the two apps.
 **Where:** ForgeReader for the controls (Pocket Library's reader already has previous and next chapter, so this is its second use), Commonplace for "what is next" (its timeline order and unread state come from Rust).
-**Proposal (P1):** ForgeReader takes optional previous, next and "next unread" actions and shows them in its toolbar; Commonplace supplies them from the timeline the article was opened from. Sideways paging is a later step.
+**Proposal (P1):** ForgeReader takes optional previous, next and "next unread" actions and shows them in its toolbar; Commonplace supplies them from the timeline the article was opened from. Sideways paging is a later step. Done when it meets the success criterion above.
 
 ### 2. Start with something to read
 
