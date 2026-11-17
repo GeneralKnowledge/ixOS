@@ -68,7 +68,8 @@ use relay_core::{
 
 const USAGE: &str = "usage: relay listen [--port N] | pair <code> | peers | devices | \
 send <peer> [--to host:port] (--note TEXT | FILE) | send PATH... | receive <code> | \
-send <device> (--note TEXT | PATH...) [--to host:port] | revoke <device> | forget <device> | \
+send <device> (--note TEXT | --text TEXT | PATH...) [--to host:port] | \
+messages <device> | revoke <device> | forget <device> | \
 trust <device> | policy [codes-only | ask | automatic] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
@@ -188,6 +189,23 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             }
             _ => return None,
         },
+        "messages" => (|| {
+            let who = rest.first().ok_or(USAGE)?;
+            let device = find_device(core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            for m in core
+                .device_messages(&device.endpoint_id)
+                .map_err(|e| e.to_string())?
+            {
+                let who = if m.author_id == device.endpoint_id {
+                    device.name.as_str()
+                } else {
+                    "me"
+                };
+                out += &format!("{who}: {}\n", m.body);
+            }
+            Ok(())
+        })(),
         "devices" => {
             for d in core.devices() {
                 let state = if d.trusted { "trusted" } else { "revoked" };
@@ -382,7 +400,12 @@ fn listen(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
             peers = now.len();
         }
         for t in core.transfers().into_iter().rev() {
-            if t.id > seen && !matches!(t.status, TransferStatus::InProgress { .. }) {
+            if t.id > seen
+                && !matches!(
+                    t.status,
+                    TransferStatus::InProgress { .. } | TransferStatus::Waiting
+                )
+            {
                 println!("{}", describe(&t));
                 seen = t.id;
             }
@@ -480,16 +503,28 @@ fn send_to_device(core: &RelayCore, args: &[String]) -> Result<String, String> {
     let mut args = args.to_vec();
     let to = take_flag(&mut args, "--to")?;
     let note = take_flag(&mut args, "--note")?;
+    let text = take_flag(&mut args, "--text")?;
     let (who, paths) = args.split_first().ok_or(USAGE)?;
     let device = find_device(core, who).ok_or(USAGE)?;
+    // Not found: it is queued, and goes when it is reached (where it was
+    // last seen, or when it connects here) while `relay listen` runs.
     let addresses = match to {
         Some(address) => vec![address],
-        None => find_device_addresses(&device.endpoint_id)?,
+        None => find_device_addresses(&device.endpoint_id).unwrap_or_default(),
     };
-    core.devices_nearby(vec![relay_core::NearbyDevice {
-        endpoint_id: device.endpoint_id.clone(),
-        addresses,
-    }]);
+    if !addresses.is_empty() {
+        core.devices_nearby(vec![relay_core::NearbyDevice {
+            endpoint_id: device.endpoint_id.clone(),
+            addresses,
+        }]);
+    }
+    if let Some(text) = text {
+        if note.is_some() || !paths.is_empty() {
+            return Err(USAGE.into());
+        }
+        block_on(core.send_device_message(&device.endpoint_id, text)).map_err(|e| e.to_string())?;
+        return Ok(format!("to {}: message sent\n", device.name));
+    }
     let transfer = match (note, paths) {
         (Some(text), []) => block_on(core.send_note_to_device(device.endpoint_id, text)),
         (None, paths) if !paths.is_empty() => {
@@ -904,6 +939,9 @@ fn describe(t: &relay_core::Transfer) -> String {
     };
     let status = match &t.status {
         TransferStatus::Done => "done".to_string(),
+        TransferStatus::Waiting => {
+            "waiting: it goes when the device is reached, while relay listen runs".to_string()
+        }
         TransferStatus::InProgress { done } => format!("{done} bytes so far"),
         TransferStatus::Failed { reason } => format!("failed: {reason}"),
     };

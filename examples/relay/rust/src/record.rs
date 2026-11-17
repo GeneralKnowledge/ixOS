@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Direction, Item, Peer, Transfer, TransferStatus};
+use crate::outbox::{ReceivedId, SavedDelivery};
 use crate::trust::Devices;
 use crate::wire::{hex, unhex};
 
@@ -31,6 +32,13 @@ pub struct Record {
     /// Devices trusted on iroh, and the pairing policy (`trust`).
     #[serde(default)]
     pub devices: Devices,
+    /// Items waiting for a trusted device, oldest first (`outbox`).
+    #[serde(default)]
+    pub deliveries: Vec<SavedDelivery>,
+    /// Ids of items received from trusted devices, so a retry isn't saved
+    /// twice (`outbox`).
+    #[serde(default)]
+    pub received_ids: Vec<ReceivedId>,
 }
 
 fn first_id() -> u64 {
@@ -76,9 +84,13 @@ pub enum SavedItem {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum SavedStatus {
+    /// Queued for a trusted device that hasn't been reached yet.
+    Waiting,
     InProgress,
     Done,
-    Failed { reason: String },
+    Failed {
+        reason: String,
+    },
 }
 
 impl Record {
@@ -171,11 +183,17 @@ impl Record {
         id
     }
 
-    /// Transfers that were running when the app ended didn't finish.
+    /// Transfers that were running when the app ended didn't finish; those
+    /// still in the outbox wait to be sent again.
     pub fn interrupted(&mut self) -> bool {
         let mut any = false;
+        let queued: std::collections::HashSet<u64> =
+            self.deliveries.iter().map(|d| d.transfer).collect();
         for t in &mut self.transfers {
-            if t.status == SavedStatus::InProgress {
+            if t.status == SavedStatus::InProgress && queued.contains(&t.id) {
+                t.status = SavedStatus::Waiting;
+                any = true;
+            } else if t.status == SavedStatus::InProgress {
                 t.status = SavedStatus::Failed {
                     reason: "Relay closed before it finished".into(),
                 };
@@ -234,6 +252,7 @@ impl Record {
                     },
                 },
                 status: match &t.status {
+                    SavedStatus::Waiting => TransferStatus::Waiting,
                     SavedStatus::InProgress => TransferStatus::InProgress {
                         done: progress(t.id),
                     },

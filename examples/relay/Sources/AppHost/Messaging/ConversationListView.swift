@@ -55,9 +55,13 @@ struct ConversationListView: View {
         }
         .navigationTitle("Chats")
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("New Conversation", systemImage: "square.and.pencil") { creating = true }
-                    .accessibilityIdentifier("chats.new")
+            // Conversations are made on a chat server; a device's comes
+            // with trusting it.
+            if model.account != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("New Conversation", systemImage: "square.and.pencil") { creating = true }
+                        .accessibilityIdentifier("chats.new")
+                }
             }
         }
         .sheet(isPresented: $creating) {

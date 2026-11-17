@@ -542,6 +542,11 @@ RustBuffer uniffi_relay_core_fn_method_relaycore_code_send_status(uint64_t ptr, 
 RustBuffer uniffi_relay_core_fn_method_relaycore_create_invitation(uint64_t ptr, RustBuffer hosts, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DELIVER_WAITING
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DELIVER_WAITING
+void uniffi_relay_core_fn_method_relaycore_deliver_waiting(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICE_SERVICE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICE_SERVICE
 uint64_t uniffi_relay_core_fn_method_relaycore_device_service(uint64_t ptr
@@ -945,6 +950,11 @@ void uniffi_relay_core_fn_method_chatcore_unsubscribe(uint64_t ptr, RustBuffer c
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_UNWATCH
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_UNWATCH
 void uniffi_relay_core_fn_method_chatcore_unwatch(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_USE_RELAY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_USE_RELAY
+void uniffi_relay_core_fn_method_chatcore_use_relay(uint64_t ptr, uint64_t relay, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_WATCH
@@ -1927,6 +1937,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_create_invitation(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DELIVER_WAITING
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DELIVER_WAITING
+uint16_t uniffi_relay_core_checksum_method_relaycore_deliver_waiting(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICE_SERVICE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICE_SERVICE
 uint16_t uniffi_relay_core_checksum_method_relaycore_device_service(void
@@ -2386,6 +2402,12 @@ uint16_t uniffi_relay_core_checksum_method_chatcore_unsubscribe(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_UNWATCH
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_UNWATCH
 uint16_t uniffi_relay_core_checksum_method_chatcore_unwatch(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_USE_RELAY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_USE_RELAY
+uint16_t uniffi_relay_core_checksum_method_chatcore_use_relay(void
     
 );
 #endif

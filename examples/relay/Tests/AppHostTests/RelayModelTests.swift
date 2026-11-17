@@ -59,6 +59,10 @@ final class RelayModelTests: XCTestCase {
         XCTAssertEqual(
             RelayModel.arrival(from: [running], to: [transfer(1, .received, .failed(reason: "gone")), transfer(3, .received, .done)]),
             .failure)
+        // A send waiting in the outbox says who for, and plays nothing.
+        let waiting = transfer(4, .sent, .waiting)
+        XCTAssertEqual(RelayFormat.status(waiting), "Waiting for Phone")
+        XCTAssertNil(RelayModel.arrival(from: [waiting], to: [transfer(4, .sent, .done)]))
     }
 
     /// A code transfer, "Trust this device?" on both sides, then a note to
