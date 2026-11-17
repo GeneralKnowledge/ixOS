@@ -321,4 +321,25 @@ final class TranscriptTests: XCTestCase {
         XCTAssertEqual(place["m3"]?.startsGroup, true)
         XCTAssertEqual(place["m3"]?.showsDelivery, true, "failed ones always say so")
     }
+
+    /// Three messages arrive while you read further up: the divider sits
+    /// above the first and counts the others' messages, not your own.
+    func testTheUnreadDividerMarksWhereNewMessagesStart() {
+        let messages = [
+            message("a1", by: "Ana", at: 0),
+            message("a2", by: "Ana", at: 1),
+            message("m1", by: "Me", at: 2, mine: true),
+            message("a3", by: "Ana", at: 3),
+        ]
+        XCTAssertEqual(Transcript.unreadCount(messages, from: "a2"), 2)
+        let ids = Transcript.rows(messages, unreadFrom: "a2").map(\.id)
+        XCTAssertEqual(ids.filter { $0 == "unread" }.count, 1)
+        XCTAssertEqual(ids.firstIndex(of: "unread").map { ids[$0 + 1] }, "a2")
+        guard let row = Transcript.rows(messages, unreadFrom: "a2").first(where: { $0.id == "unread" }),
+              case .unread(let count) = row.kind
+        else { return XCTFail("no divider") }
+        XCTAssertEqual(count, 2)
+        XCTAssertFalse(Transcript.rows(messages).contains { $0.id == "unread" })
+        XCTAssertFalse(Transcript.rows(messages, unreadFrom: "gone").contains { $0.id == "unread" })
+    }
 }
