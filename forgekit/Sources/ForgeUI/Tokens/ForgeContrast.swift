@@ -43,11 +43,17 @@ public struct ForgeContrastIssue: Hashable, Sendable, CustomStringConvertible {
 
 extension ForgeTheme {
     /// Every foreground/background pairing ForgeUI's components draw, in
-    /// light and dark, that falls below WCAG AA. Empty means the theme is
-    /// readable everywhere ForgeUI puts text or meaningful shapes.
+    /// light and dark (and both with Increase Contrast on), that falls below
+    /// WCAG AA. Empty means the theme is readable everywhere ForgeUI puts
+    /// text or meaningful shapes.
     public func contrastIssues() -> [ForgeContrastIssue] {
         var issues: [ForgeContrastIssue] = []
-        for (appearance, colors) in [("light", palette.light), ("dark", palette.dark)] {
+        let increased = palette.increasedContrast
+        let appearances = [
+            ("light", palette.light), ("dark", palette.dark),
+            ("light, increased contrast", increased.light), ("dark, increased contrast", increased.dark),
+        ]
+        for (appearance, colors) in appearances {
             func check(_ pairing: String, _ fg: ForgeRGBA, _ bg: ForgeRGBA, _ minimum: Double) {
                 let ratio = ForgeContrast.ratio(fg, on: bg)
                 if ratio < minimum {

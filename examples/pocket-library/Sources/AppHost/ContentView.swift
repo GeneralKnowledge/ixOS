@@ -54,7 +54,7 @@ public struct ContentView: View {
         .environment(model)
         // ForgeUI's theme for the whole app: tokens in the environment, and
         // its accent on plain SwiftUI controls.
-        .forgeTheme(.standard)
+        .forgeTheme(ForgeTheme(accent: .orange))
         .task { await model.open() }
         // Rust committed something, missed events were caught up, or the
         // app came back from the background: read everything again.

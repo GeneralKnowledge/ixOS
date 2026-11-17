@@ -10,6 +10,7 @@ struct TimelineView: View {
     let timeline: Timeline
     /// Mark All as Read asks first: one stray tap could clear hundreds.
     @State private var confirmingMarkAll = false
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         let articles = model.timeline(timeline)
@@ -28,7 +29,7 @@ struct TimelineView: View {
                     ) {
                         Task { await model.setRead(article, !article.read) }
                     }
-                    .tint(.accentColor)
+                    .tint(theme.colors.accent.solid)
                     .accessibilityIdentifier("timeline.toggleRead")
                 }
                 .swipeActions(edge: .trailing) {

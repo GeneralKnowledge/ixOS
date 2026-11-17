@@ -16,7 +16,7 @@ public struct ContentView: View {
         ForgeRoot(host) { core in
             TripsScreen(core: core, changes: host.changes)
         }
-        .forgeTheme(.standard)
+        .forgeTheme(ForgeTheme(accent: .teal))
     }
 }
 

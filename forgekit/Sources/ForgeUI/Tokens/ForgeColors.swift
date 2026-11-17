@@ -222,3 +222,60 @@ extension ForgePalette {
     public static let lightSoft = 0.12
     public static let darkSoft = 0.24
 }
+
+// MARK: - Increased contrast
+
+extension ForgeRGBA {
+    /// This colour moved `amount` (0...1) of the way to `other`, in sRGB.
+    public func mixed(with other: ForgeRGBA, amount: Double) -> ForgeRGBA {
+        ForgeRGBA(
+            red: red + (other.red - red) * amount,
+            green: green + (other.green - green) * amount,
+            blue: blue + (other.blue - blue) * amount,
+            alpha: alpha + (other.alpha - alpha) * amount
+        )
+    }
+}
+
+extension ForgeColors {
+    /// How far secondary text, tone text and separators move toward primary
+    /// text when the person turns on Increase Contrast.
+    public static let increasedContrastAmount = 0.4
+
+    /// The same colours for Settings > Accessibility > Increase Contrast:
+    /// quieter text and tone text move toward primary text (secondary and
+    /// tertiary text reach WCAG AAA, 7:1) and separators get stronger.
+    /// Backgrounds and solids stay, so the app still looks like itself.
+    public var increasedContrast: ForgeColors {
+        let amount = Self.increasedContrastAmount
+        var copy = self
+        copy.textSecondary = textSecondary.mixed(with: textPrimary, amount: amount)
+        copy.textTertiary = textTertiary.mixed(with: textPrimary, amount: amount)
+        copy.separator = separator.mixed(with: textPrimary, amount: amount)
+        for kind in ForgeTone.allCases {
+            var colors = self.tone(kind)
+            colors.text = colors.text.mixed(with: textPrimary, amount: amount)
+            copy.setTone(kind, colors)
+        }
+        return copy
+    }
+
+    mutating func setTone(_ tone: ForgeTone, _ colors: ForgeToneColors) {
+        switch tone {
+        case .accent: accent = colors
+        case .neutral: neutral = colors
+        case .success: success = colors
+        case .warning: warning = colors
+        case .danger: danger = colors
+        case .info: info = colors
+        }
+    }
+}
+
+extension ForgePalette {
+    /// This palette for Increase Contrast. ForgeUI's SwiftUI colours switch
+    /// to it by themselves; it is here so it can be checked.
+    public var increasedContrast: ForgePalette {
+        ForgePalette(light: light.increasedContrast, dark: dark.increasedContrast)
+    }
+}
