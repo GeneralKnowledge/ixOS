@@ -1,4 +1,5 @@
 @preconcurrency import ChatFFI
+import ForgeAppKit
 import Foundation
 import ImageIO
 import SwiftUI
@@ -81,16 +82,15 @@ enum AttachmentFiles {
         return StagedFile(url: url, name: name, mime: "image/jpeg")
     }
 
-    /// A document from the Files picker, copied while its security scope is
-    /// open (the picker's URL may stop working afterwards).
-    static func prepareDocument(_ picked: URL) throws -> StagedFile {
-        let scoped = picked.startAccessingSecurityScopedResource()
-        defer { if scoped { picked.stopAccessingSecurityScopedResource() } }
-        let url = try stagingFolder().appendingPathComponent(picked.lastPathComponent)
-        try FileManager.default.copyItem(at: picked, to: url)
+    /// A document from the Files picker, copied off the main thread while
+    /// its security scope is open (ForgeAppKit's `ForgePickedFile`; the
+    /// picker's URL may stop working afterwards, and a large document takes
+    /// seconds to copy).
+    static func prepareDocument(_ picked: URL) async throws -> StagedFile {
+        let copy = try await ForgePickedFile.copy(of: picked)
         let type = UTType(filenameExtension: picked.pathExtension)
         return StagedFile(
-            url: url, name: picked.lastPathComponent,
+            url: copy.url, name: copy.name,
             mime: type?.preferredMIMEType ?? "application/octet-stream")
     }
 

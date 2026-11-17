@@ -1,6 +1,7 @@
 #if os(iOS)
 @preconcurrency import RelayFFI
 import Darwin
+import ForgeAppKit
 import Foundation
 import SwiftUI
 import UIKit
@@ -16,6 +17,8 @@ struct SendCodeSheet: View {
     let network: RelayNetwork
 
     @State private var picking = false
+    /// The copy of the file being sent, kept until the next send starts.
+    @State private var outgoing: ForgePickedFile?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -141,29 +144,21 @@ struct SendCodeSheet: View {
         }
     }
 
-    /// Copies the picked file into this app's temporary folder (the picker's
-    /// access ends with this call; Rust reads the file for the whole send),
-    /// then starts the send.
+    /// Copies the picked file off the main thread (ForgeAppKit's
+    /// `ForgePickedFile`: the picker's access ends with this call, and Rust
+    /// reads the file for the whole send), then starts the send. The
+    /// previous send's copy is deleted when the next one starts.
     private func start(_ url: URL) {
         model.preparing(name: url.lastPathComponent)
         Task {
-            let copied = await Task.detached(priority: .userInitiated) { () -> Result<URL, Error> in
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                do {
-                    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("relay-send", isDirectory: true)
-                    try? FileManager.default.removeItem(at: folder)
-                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                    let target = folder.appendingPathComponent(url.lastPathComponent)
-                    try FileManager.default.copyItem(at: url, to: target)
-                    return .success(target)
-                } catch {
-                    return .failure(error)
-                }
-            }.value
-            switch copied {
-            case .success(let file): model.send(fileAt: file.path)
-            case .failure(let error): model.failSend("Couldn't read the file: \(error.localizedDescription)")
+            outgoing?.release()
+            outgoing = nil
+            do {
+                let copy = try await ForgePickedFile.copy(of: url)
+                outgoing = copy
+                model.send(fileAt: copy.url.path)
+            } catch {
+                model.failSend("Couldn't read the file: \(error.localizedDescription)")
             }
         }
     }

@@ -188,4 +188,38 @@ final class ForgeAppKitTests: XCTestCase {
         XCTAssertTrue(errors.isEmpty)
         XCTAssertEqual(ForgeFieldErrors(), [:])
     }
+
+    // MARK: Picked files
+
+    func testPickedFileCopyKeepsTheNameAndIsReleased() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("picked-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let source = base.appendingPathComponent("Holiday video.mov")
+        try Data("frames".utf8).write(to: source)
+        let inbox = base.appendingPathComponent("inbox")
+
+        let first = try await ForgePickedFile.copy(of: source, into: inbox)
+        let second = try await ForgePickedFile.copy(of: source, into: inbox)
+        XCTAssertEqual(first.name, "Holiday video.mov")
+        XCTAssertNotEqual(first.url, second.url, "each copy has a folder of its own")
+        XCTAssertEqual(try Data(contentsOf: first.url), Data("frames".utf8))
+
+        first.release()
+        first.release()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: first.url.deletingLastPathComponent().path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.url.path), "releasing one copy leaves the other")
+    }
+
+    func testPickedFileThatCantBeReadLeavesNothingBehind() async throws {
+        let inbox = FileManager.default.temporaryDirectory.appendingPathComponent("picked-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: inbox) }
+        let missing = inbox.appendingPathComponent("gone.pdf")
+        do {
+            _ = try await ForgePickedFile.copy(of: missing, into: inbox)
+            XCTFail("a missing file can't be copied")
+        } catch {}
+        let left = (try? FileManager.default.contentsOfDirectory(atPath: inbox.path)) ?? []
+        XCTAssertEqual(left, [])
+    }
 }

@@ -63,7 +63,12 @@ struct TripListView: View {
         }
         // On the stack, not its first screen: Stop and Delete are asked from
         // pushed screens, and an alert on the root screen showed behind them.
-        .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
+        // Held back while the Start sheet is up (it shows its own failures);
+        // it shows once the sheet closes.
+        .forgeAlert(Binding(
+            get: { isStarting ? nil : model.alert },
+            set: { model.alert = $0 }
+        )) { action in Task { await model.handle(action) } }
         .sensoryFeedback(.success, trigger: model.saveCount)
     }
 

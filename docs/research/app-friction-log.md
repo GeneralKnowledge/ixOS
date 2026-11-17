@@ -760,8 +760,14 @@ Settings sheet (A34) and Relay's sheets. Both now show their own alerts,
 and the list's alert waits while a sheet is up; the ios-app starter does
 the same since #271. (bug, fixed)
 
-**Framework.** Unlike `alerts-on-top`, no parity rule catches this yet; a
-third app with the same flaw is the reason to add one.
+**Framework.** Unlike `alerts-on-top`, no parity rule caught this at
+first. **Since then (2026-11-17,
+[better-by-default](better-by-default.md) item 2):** the rule
+`alerts-over-sheets` fails on a model alert that isn't held back while a
+sheet is up. Run on the code before the fixes it names the starter and
+Commonplace; on main it named FieldKit's trip list (now held back while
+Start Trip is up) and Checklist's rename sheet (listed as lag for the
+friction audit's Checklist work).
 
 ## A40. Reconstructed: Relay froze on big files
 
@@ -774,6 +780,13 @@ when the send ends (#264). (bug, fixed)
 copied before Rust can read it later; Relay does it in two views. When the
 photo picker is extracted (wave 5), the off-main copy and its cleanup
 belong with it.
+
+**Since then (2026-11-17, [better-by-default](better-by-default.md) item
+1).** Chat copied picked documents on the main thread the same way.
+ForgeAppKit's `ForgePickedFile` copies off the main thread, keeps the name
+and deletes the copy on `release()`; Relay's two views and Chat use it, and
+the parity rule `picked-files` fails on an app that copies a picked file
+itself.
 
 ## A41. Reconstructed: hosting a drawing app in a sheet
 

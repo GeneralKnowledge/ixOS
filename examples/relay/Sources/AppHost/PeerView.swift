@@ -92,39 +92,24 @@ struct PeerView: View {
         }
     }
 
-    /// The picked file is copied into Relay's caches first: the picker's
-    /// access ends, and Rust reads the file until the transfer ends. The
-    /// copy runs off the main thread (a large video takes seconds) and is
-    /// deleted once the send has ended, sent or not.
+    /// The picked file is copied first (ForgeAppKit's `ForgePickedFile`):
+    /// the picker's access ends, and Rust reads the file until the transfer
+    /// ends. The copy runs off the main thread (a large video takes seconds),
+    /// keeps the file's name so the other device does too, and is deleted
+    /// once the send has ended, sent or not.
     private func sendFile(_ picked: URL) {
         sending = true
         Task {
-            let copied = await Task.detached(priority: .userInitiated) {
-                Result { try Self.outboxCopy(of: picked) }
-            }.value
-            switch copied {
-            case .success(let copy):
+            do {
+                let copy = try await ForgePickedFile.copy(of: picked)
+                defer { copy.release() }
                 let addresses = await network.addresses(for: peer.deviceId)
-                await model.send(file: copy, to: peer, addresses: addresses)
-                try? FileManager.default.removeItem(at: copy.deletingLastPathComponent())
-            case .failure(let error):
+                await model.send(file: copy.url, to: peer, addresses: addresses)
+            } catch {
                 model.report(error)
             }
             sending = false
         }
-    }
-
-    private nonisolated static func outboxCopy(of picked: URL) throws -> URL {
-        let access = picked.startAccessingSecurityScopedResource()
-        defer { if access { picked.stopAccessingSecurityScopedResource() } }
-        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("RelayOutbox", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        // Same name, so the other device keeps it.
-        let copy = folder.appendingPathComponent(picked.lastPathComponent)
-        try FileManager.default.copyItem(at: picked, to: copy)
-        return copy
     }
 }
 #endif

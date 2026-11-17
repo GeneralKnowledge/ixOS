@@ -60,6 +60,14 @@ place inside the security scope, off the main thread, with no copy.
 picked URL in app code; use ForgeFiles. Run on main today it would name
 Relay and Chat.
 
+**Done (2026-11-17, Reuben agreed items 1 and 2).** The copy went into
+ForgeAppKit as `ForgePickedFile`, not into the native services'
+`ForgeFiles.importCopy`: Relay doesn't use the native services' Swift, and
+every app uses ForgeAppKit, whose model code tests on Linux. `importCopy`
+is left as it is (no app calls it) and can go when the native services get
+one route (everyday capabilities Phase 4). Chat and Relay use
+`ForgePickedFile`; `picked-files` is in `check-app-parity.sh`.
+
 **Not included.** The photo picker extraction (wave 5) stays where it is;
 it should use this copy when it comes.
 
@@ -83,6 +91,14 @@ an action shows that action's failure itself, and a model alert on a screen
 that presents sheets is gated while one is open. Like `alerts-on-top`, it
 runs on every app and both starters; Checklist goes in the lag list until
 the audit thread's fix lands.
+
+**Done (2026-11-17).** `alerts-over-sheets` is in `check-app-parity.sh`.
+It checks the first half (the model alert held back while a sheet is up);
+whether a sheet shows its own failures is left to review, since a script
+can't tell which sheet raises which failure. On main it named FieldKit's
+trip list (now held back while Start Trip is up) and Checklist (listed as
+lag); on the code before the A39 fixes it names the starter and
+Commonplace.
 
 ### 3. Plain http as a `forge.toml` key that hosts merge
 
