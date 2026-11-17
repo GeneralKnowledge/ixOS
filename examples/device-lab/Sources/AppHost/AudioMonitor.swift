@@ -45,14 +45,21 @@ public final class AudioMonitor {
             observers.append(center.addObserver(
                 forName: AVAudioSession.interruptionNotification, object: session, queue: .main
             ) { [weak self] note in
+                // Only plain numbers cross into the main actor: userInfo
+                // isn't Sendable.
                 let info = note.userInfo ?? [:]
-                MainActor.assumeIsolated { self?.interruption(info) }
+                let type = info[AVAudioSessionInterruptionTypeKey] as? UInt
+                let reason = info[AVAudioSessionInterruptionReasonKey] as? UInt
+                let options = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+                MainActor.assumeIsolated {
+                    self?.interruption(type: type, reason: reason, options: options)
+                }
             })
             observers.append(center.addObserver(
                 forName: AVAudioSession.routeChangeNotification, object: session, queue: .main
             ) { [weak self] note in
-                let info = note.userInfo ?? [:]
-                MainActor.assumeIsolated { self?.routeChange(info) }
+                let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt ?? 0
+                MainActor.assumeIsolated { self?.routeChange(reason: reason) }
             })
             observers.append(center.addObserver(
                 forName: AVAudioSession.mediaServicesWereResetNotification, object: session, queue: .main
@@ -102,13 +109,12 @@ public final class AudioMonitor {
             return port.portName == kind ? kind : "\(kind): \(port.portName)"
         }
 
-        private func interruption(_ info: [AnyHashable: Any]) {
-            guard let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+        private func interruption(type raw: UInt?, reason reasonRaw: UInt?, options optionsRaw: UInt) {
+            guard let raw, let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
             switch type {
             case .began:
                 var detail = "Playback and recording stop."
-                if let reasonRaw = info[AVAudioSessionInterruptionReasonKey] as? UInt,
+                if let reasonRaw,
                    let reason = AVAudioSession.InterruptionReason(rawValue: reasonRaw) {
                     switch reason {
                     case .appWasSuspended: detail = "The app was suspended."
@@ -119,7 +125,6 @@ public final class AudioMonitor {
                 }
                 log("Interruption began", detail)
             case .ended:
-                let optionsRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
                 let resume = AVAudioSession.InterruptionOptions(rawValue: optionsRaw).contains(.shouldResume)
                 log("Interruption ended", resume ? "iOS says the app may resume." : "iOS says not to resume on its own.")
             @unknown default:
@@ -128,8 +133,7 @@ public final class AudioMonitor {
             refresh()
         }
 
-        private func routeChange(_ info: [AnyHashable: Any]) {
-            let raw = info[AVAudioSessionRouteChangeReasonKey] as? UInt ?? 0
+        private func routeChange(reason raw: UInt) {
             let reason = AVAudioSession.RouteChangeReason(rawValue: raw)
             let title: String = switch reason {
             case .newDeviceAvailable: "Device connected"
