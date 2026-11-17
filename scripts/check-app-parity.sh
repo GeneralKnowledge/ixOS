@@ -151,6 +151,16 @@ def rule_location(app):
     return False, f"own Core Location code ({own[0].name}), not the `location` service"
 
 
+# Network changes come from the `connectivity` service (Rust watches it),
+# not an NWPathMonitor of the app's own (Commonplace's offline refresh,
+# 2026-11-17).
+def rule_connectivity(app):
+    own = [p for p in swift_sources(app) if "NWPathMonitor" in read(p)]
+    if not own:
+        return None
+    return False, f"own network monitor ({own[0].name}), not the `connectivity` service"
+
+
 def rule_requirements(app):
     if app.name == HOST or app.name in NO_RUST:
         return None
@@ -423,6 +433,7 @@ RULES = [
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
     ("location", "Location through the `location` service", rule_location),
+    ("connectivity", "Network changes through the `connectivity` service, no own `NWPathMonitor`", rule_connectivity),
     ("requirements", "requirements.toml, every requirement with a test", rule_requirements),
     ("device-checks", "Every requirement has a device scenario", rule_device_checks),
     ("ui-test", "At least one `uitests/*.toml` scenario for `forge ui run`", rule_ui_test),

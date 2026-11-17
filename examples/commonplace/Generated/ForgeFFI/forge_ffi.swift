@@ -813,6 +813,14 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      */
     func undoMarkAllRead(undoToken: UInt64) async throws  -> UInt32
     
+    /**
+     * Waits until the network comes back after being unavailable, so the
+     * host can retry a refresh that found the device offline. `true` when
+     * it came back; `false` straight away where there is no connectivity
+     * service (tests on Linux). Stopped by `cancellation` or shutdown.
+     */
+    func waitUntilBackOnline(cancellation: Cancellation?) async throws  -> Bool
+    
 }
 /**
  * The app instance. ForgeKit's `ForgeHost` opens one per process.
@@ -1305,6 +1313,28 @@ open func undoMarkAllRead(undoToken: UInt64)async throws  -> UInt32  {
             completeFunc: ffi_commonplace_core_rust_future_complete_u32,
             freeFunc: ffi_commonplace_core_rust_future_free_u32,
             liftFunc: FfiConverterUInt32.lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Waits until the network comes back after being unavailable, so the
+     * host can retry a refresh that found the device offline. `true` when
+     * it came back; `false` straight away where there is no connectivity
+     * service (tests on Linux). Stopped by `cancellation` or shutdown.
+     */
+open func waitUntilBackOnline(cancellation: Cancellation?)async throws  -> Bool  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_wait_until_back_online(
+                        self.uniffiCloneHandle(),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_i8,
+            completeFunc: ffi_commonplace_core_rust_future_complete_i8,
+            freeFunc: ffi_commonplace_core_rust_future_free_i8,
+            liftFunc: FfiConverterBool.lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
 }
@@ -1991,6 +2021,412 @@ public func FfiConverterTypeBackgroundTaskRun_lift(_ handle: UInt64) throws -> B
 #endif
 public func FfiConverterTypeBackgroundTaskRun_lower(_ value: BackgroundTaskRun) -> UInt64 {
     return FfiConverterTypeBackgroundTaskRun.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Implemented by the host (iOS: `NWPathMonitor`).
+ */
+public protocol ConnectivityMonitor: AnyObject, Sendable {
+    
+    /**
+     * The status now.
+     */
+    func current()  -> ConnectivityStatus
+    
+    /**
+     * Send every change to `sink` (and the current status
+     * straight away) until `stop`.
+     */
+    func start(sink: ConnectivitySink) 
+    
+    func stop() 
+    
+}
+/**
+ * Implemented by the host (iOS: `NWPathMonitor`).
+ */
+open class ConnectivityMonitorImpl: ConnectivityMonitor, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_commonplace_core_fn_clone_connectivitymonitor(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_commonplace_core_fn_free_connectivitymonitor(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The status now.
+     */
+open func current() -> ConnectivityStatus  {
+    return try!  FfiConverterTypeConnectivityStatus_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_connectivitymonitor_current(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Send every change to `sink` (and the current status
+     * straight away) until `stop`.
+     */
+open func start(sink: ConnectivitySink)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_connectivitymonitor_start(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeConnectivitySink_lower(sink),uniffiCallStatus
+    )
+}
+}
+    
+open func stop()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_connectivitymonitor_stop(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceConnectivityMonitor {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceConnectivityMonitor = UniffiVTableCallbackInterfaceConnectivityMonitor(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeConnectivityMonitor.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface ConnectivityMonitor: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeConnectivityMonitor.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface ConnectivityMonitor: handle missing in uniffiClone")
+            }
+        },
+        current: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> ConnectivityStatus in
+                guard let uniffiObj = try? FfiConverterTypeConnectivityMonitor.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.current(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeConnectivityStatus_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        start: { (
+            uniffiHandle: UInt64,
+            sink: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeConnectivityMonitor.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.start(
+                     sink: try FfiConverterTypeConnectivitySink_lift(sink)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        stop: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeConnectivityMonitor.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.stop(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceConnectivityMonitor> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceConnectivityMonitor>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitConnectivityMonitor() {
+    uniffi_commonplace_core_fn_init_callback_vtable_connectivitymonitor(UniffiCallbackInterfaceConnectivityMonitor.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeConnectivityMonitor: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<ConnectivityMonitor>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = ConnectivityMonitor
+
+    public static func lift(_ handle: UInt64) throws -> ConnectivityMonitor {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return ConnectivityMonitorImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: ConnectivityMonitor) -> UInt64 {
+         if let rustImpl = value as? ConnectivityMonitorImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ConnectivityMonitor {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: ConnectivityMonitor, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectivityMonitor_lift(_ handle: UInt64) throws -> ConnectivityMonitor {
+    return try FfiConverterTypeConnectivityMonitor.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectivityMonitor_lower(_ value: ConnectivityMonitor) -> UInt64 {
+    return FfiConverterTypeConnectivityMonitor.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Where the host sends connectivity changes.
+ */
+public protocol ConnectivitySinkProtocol: AnyObject, Sendable {
+    
+    func send(status: ConnectivityStatus) 
+    
+}
+/**
+ * Where the host sends connectivity changes.
+ */
+open class ConnectivitySink: ConnectivitySinkProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_commonplace_core_fn_clone_connectivitysink(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_commonplace_core_fn_free_connectivitysink(handle, $0) }
+    }
+
+    
+
+    
+open func send(status: ConnectivityStatus)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_connectivitysink_send(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeConnectivityStatus_lower(status),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeConnectivitySink: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = ConnectivitySink
+
+    public static func lift(_ handle: UInt64) throws -> ConnectivitySink {
+        return ConnectivitySink(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: ConnectivitySink) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ConnectivitySink {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: ConnectivitySink, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectivitySink_lift(_ handle: UInt64) throws -> ConnectivitySink {
+    return try FfiConverterTypeConnectivitySink.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectivitySink_lower(_ value: ConnectivitySink) -> UInt64 {
+    return FfiConverterTypeConnectivitySink.lower(value)
 }
 
 
@@ -3898,6 +4334,112 @@ public func FfiConverterTypeBackgroundTaskRequest_lift(_ buf: RustBuffer) throws
 #endif
 public func FfiConverterTypeBackgroundTaskRequest_lower(_ value: BackgroundTaskRequest) -> RustBuffer {
     return FfiConverterTypeBackgroundTaskRequest.lower(value)
+}
+
+
+public struct ConnectivityStatus: Equatable, Hashable {
+    public var reachability: Reachability
+    /**
+     * The interfaces the current route uses, preferred first.
+     */
+    public var interfaces: [NetworkInterface]
+    /**
+     * Metered: cellular, or a personal hotspot.
+     */
+    public var isExpensive: Bool
+    /**
+     * Low Data Mode is on for this network.
+     */
+    public var isConstrained: Bool
+    public var supportsIpv4: Bool
+    public var supportsIpv6: Bool
+    public var supportsDns: Bool
+    public var offlineReason: OfflineReason?
+    /**
+     * When the host saw this status (Unix milliseconds).
+     */
+    public var observedAtMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(reachability: Reachability, 
+        /**
+         * The interfaces the current route uses, preferred first.
+         */interfaces: [NetworkInterface], 
+        /**
+         * Metered: cellular, or a personal hotspot.
+         */isExpensive: Bool, 
+        /**
+         * Low Data Mode is on for this network.
+         */isConstrained: Bool, supportsIpv4: Bool, supportsIpv6: Bool, supportsDns: Bool, offlineReason: OfflineReason?, 
+        /**
+         * When the host saw this status (Unix milliseconds).
+         */observedAtMs: Int64) {
+        self.reachability = reachability
+        self.interfaces = interfaces
+        self.isExpensive = isExpensive
+        self.isConstrained = isConstrained
+        self.supportsIpv4 = supportsIpv4
+        self.supportsIpv6 = supportsIpv6
+        self.supportsDns = supportsDns
+        self.offlineReason = offlineReason
+        self.observedAtMs = observedAtMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ConnectivityStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeConnectivityStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ConnectivityStatus {
+        return
+            try ConnectivityStatus(
+                reachability: FfiConverterTypeReachability.read(from: &buf), 
+                interfaces: FfiConverterSequenceTypeNetworkInterface.read(from: &buf), 
+                isExpensive: FfiConverterBool.read(from: &buf), 
+                isConstrained: FfiConverterBool.read(from: &buf), 
+                supportsIpv4: FfiConverterBool.read(from: &buf), 
+                supportsIpv6: FfiConverterBool.read(from: &buf), 
+                supportsDns: FfiConverterBool.read(from: &buf), 
+                offlineReason: FfiConverterOptionTypeOfflineReason.read(from: &buf), 
+                observedAtMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ConnectivityStatus, into buf: inout [UInt8]) {
+        FfiConverterTypeReachability.write(value.reachability, into: &buf)
+        FfiConverterSequenceTypeNetworkInterface.write(value.interfaces, into: &buf)
+        FfiConverterBool.write(value.isExpensive, into: &buf)
+        FfiConverterBool.write(value.isConstrained, into: &buf)
+        FfiConverterBool.write(value.supportsIpv4, into: &buf)
+        FfiConverterBool.write(value.supportsIpv6, into: &buf)
+        FfiConverterBool.write(value.supportsDns, into: &buf)
+        FfiConverterOptionTypeOfflineReason.write(value.offlineReason, into: &buf)
+        FfiConverterInt64.write(value.observedAtMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectivityStatus_lift(_ buf: RustBuffer) throws -> ConnectivityStatus {
+    return try FfiConverterTypeConnectivityStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectivityStatus_lower(_ value: ConnectivityStatus) -> RustBuffer {
+    return FfiConverterTypeConnectivityStatus.lower(value)
 }
 
 
@@ -6242,6 +6784,93 @@ public func FfiConverterTypeNativeServiceError_lower(_ value: NativeServiceError
 }
 
 
+
+public enum NetworkInterface: Equatable, Hashable {
+    
+    case wifi
+    case cellular
+    case wired
+    case loopback
+    case other
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NetworkInterface: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNetworkInterface: FfiConverterRustBuffer {
+    typealias SwiftType = NetworkInterface
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NetworkInterface {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .wifi
+        
+        case 2: return .cellular
+        
+        case 3: return .wired
+        
+        case 4: return .loopback
+        
+        case 5: return .other
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NetworkInterface, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .wifi:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .cellular:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .wired:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .loopback:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .other:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNetworkInterface_lift(_ buf: RustBuffer) throws -> NetworkInterface {
+    return try FfiConverterTypeNetworkInterface.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNetworkInterface_lower(_ value: NetworkInterface) -> RustBuffer {
+    return FfiConverterTypeNetworkInterface.lower(value)
+}
+
+
+
 /**
  * What an action button does.
  */
@@ -6429,6 +7058,108 @@ public func FfiConverterTypeNotificationTrigger_lower(_ value: NotificationTrigg
 
 
 /**
+ * Why the device is offline, when the platform says.
+ */
+
+public enum OfflineReason: Equatable, Hashable {
+    
+    /**
+     * No network is available (airplane mode, no signal).
+     */
+    case notAvailable
+    /**
+     * The user turned off mobile data for this app.
+     */
+    case cellularDenied
+    /**
+     * The user turned off Wi-Fi for this app (some regions).
+     */
+    case wifiDenied
+    /**
+     * The user refused local network access.
+     */
+    case localNetworkDenied
+    case other
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension OfflineReason: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOfflineReason: FfiConverterRustBuffer {
+    typealias SwiftType = OfflineReason
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OfflineReason {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .notAvailable
+        
+        case 2: return .cellularDenied
+        
+        case 3: return .wifiDenied
+        
+        case 4: return .localNetworkDenied
+        
+        case 5: return .other
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: OfflineReason, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .notAvailable:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .cellularDenied:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .wifiDenied:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .localNetworkDenied:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .other:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOfflineReason_lift(_ buf: RustBuffer) throws -> OfflineReason {
+    return try FfiConverterTypeOfflineReason.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOfflineReason_lower(_ value: OfflineReason) -> RustBuffer {
+    return FfiConverterTypeOfflineReason.lower(value)
+}
+
+
+
+/**
  * The same states on every platform.
  */
 
@@ -6537,6 +7268,96 @@ public func FfiConverterTypePermissionStatus_lift(_ buf: RustBuffer) throws -> P
 #endif
 public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) -> RustBuffer {
     return FfiConverterTypePermissionStatus.lower(value)
+}
+
+
+
+/**
+ * Whether the device can reach the network now.
+ */
+
+public enum Reachability: Equatable, Hashable {
+    
+    case online
+    case offline
+    /**
+     * Not connected, but a connection would be made on demand
+     * (a VPN or Wi-Fi Assist waiting to start).
+     */
+    case requiresConnection
+    /**
+     * The host has not reported yet.
+     */
+    case unknown
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension Reachability: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReachability: FfiConverterRustBuffer {
+    typealias SwiftType = Reachability
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Reachability {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .online
+        
+        case 2: return .offline
+        
+        case 3: return .requiresConnection
+        
+        case 4: return .unknown
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Reachability, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .online:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .offline:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .requiresConnection:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .unknown:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReachability_lift(_ buf: RustBuffer) throws -> Reachability {
+    return try FfiConverterTypeReachability.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReachability_lower(_ value: Reachability) -> RustBuffer {
+    return FfiConverterTypeReachability.lower(value)
 }
 
 
@@ -6974,6 +7795,30 @@ fileprivate struct FfiConverterOptionTypeArticleSummary: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeOfflineReason: FfiConverterRustBuffer {
+    typealias SwiftType = OfflineReason?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeOfflineReason.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeOfflineReason.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -7270,6 +8115,31 @@ fileprivate struct FfiConverterSequenceTypeSuggestedFeed: FfiConverterRustBuffer
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeNetworkInterface: FfiConverterRustBuffer {
+    typealias SwiftType = [NetworkInterface]
+
+    public static func write(_ value: [NetworkInterface], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNetworkInterface.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NetworkInterface] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NetworkInterface]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNetworkInterface.read(from: &buf))
+        }
+        return seq
+    }
+}
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
 
@@ -7542,6 +8412,16 @@ public func runNativeBackgroundTask(identifier: String, completion: BackgroundTa
 /**
  * Called by the host at launch (`ForgeServices.install()`).
  */
+public func installNativeConnectivity(monitor: ConnectivityMonitor)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_func_install_native_connectivity(
+        FfiConverterTypeConnectivityMonitor_lower(monitor),uniffiCallStatus
+    )
+}
+}
+/**
+ * Called by the host at launch (`ForgeServices.install()`).
+ */
 public func installNativeHttp(transport: HttpTransport)  {try! rustCall() {
         uniffiCallStatus in
     uniffi_commonplace_core_fn_func_install_native_http(
@@ -7596,6 +8476,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_func_run_native_background_task() != 57156) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_func_install_native_connectivity() != 12617) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_func_install_native_http() != 36437) {
@@ -7682,6 +8565,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_undo_mark_all_read() != 28434) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_wait_until_back_online() != 9955) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_localnotifier_schedule() != 37230) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7724,6 +8610,18 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_backgroundtaskrun_expire() != 42460) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_connectivitymonitor_current() != 50663) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_connectivitymonitor_start() != 25635) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_connectivitymonitor_stop() != 16958) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_connectivitysink_send() != 53846) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_httpstreambody_fail() != 56233) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7748,6 +8646,7 @@ private let initializationResult: InitializationResult = {
 
     uniffiCallbackInitBackgroundScheduler()
     uniffiCallbackInitBackgroundTaskCompletion()
+    uniffiCallbackInitConnectivityMonitor()
     uniffiCallbackInitHttpTransport()
     uniffiCallbackInitLocalNotifier()
     uniffiCallbackInitPermissionProvider()

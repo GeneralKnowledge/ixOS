@@ -53,9 +53,10 @@ forge_reader::reader_types!();
 
 // Native services the host implements (Keychain, app directories, local
 // notifications, permissions, deep links), as `crate::native`, `http` (on
-// iOS feeds are fetched with URLSession) and `background` (refreshing while
-// the app is closed).
-forge_services::native_services!(http, background);
+// iOS feeds are fetched with URLSession), `background` (refreshing while
+// the app is closed) and `connectivity` (refreshing when the network comes
+// back after a refresh found the device offline).
+forge_services::native_services!(http, background, connectivity);
 
 /// The background refresh task: forge.toml `[ios] background_tasks`.
 const BACKGROUND_REFRESH: &str = "org.forgemobile.agentlab.commonplace.refresh";
@@ -332,6 +333,56 @@ impl AppCore {
     ) -> Result<RefreshReport, AppError> {
         let work = self.rt.foreground(cancellation.as_deref());
         self.refresh_in(work).await
+    }
+
+    /// Waits until the network comes back after being unavailable, so the
+    /// host can retry a refresh that found the device offline. `true` when
+    /// it came back; `false` straight away where there is no connectivity
+    /// service (tests on Linux). Stopped by `cancellation` or shutdown.
+    pub async fn wait_until_back_online(
+        &self,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<bool, AppError> {
+        let Ok(connectivity) = native::connectivity::ConnectivityService::installed() else {
+            return Ok(false);
+        };
+        let work = self.rt.lifetime(cancellation.as_deref());
+        self.rt
+            .run("wait-online", work, move |cancel| {
+                wait_until_back_online(&connectivity, cancel)
+            })
+            .await
+    }
+}
+
+/// Blocks until `connectivity` reports online after reporting anything
+/// else, or `cancel` stops it. Watching the service costs nothing while the
+/// network doesn't change.
+fn wait_until_back_online(
+    connectivity: &native::connectivity::ConnectivityService,
+    cancel: &CancelHandle,
+) -> Result<bool, AppError> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
+
+    let was_offline = AtomicBool::new(false);
+    let (back, came_back) = mpsc::channel();
+    let _watch = connectivity.watch(move |status| {
+        if !status.is_online() {
+            was_offline.store(true, Ordering::SeqCst);
+        } else if was_offline.swap(false, Ordering::SeqCst) {
+            let _ = back.send(());
+        }
+    });
+    loop {
+        if cancel.is_cancelled() {
+            return Err(AppError::Cancelled);
+        }
+        match came_back.recv_timeout(Duration::from_millis(250)) {
+            Ok(()) => return Ok(true),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(false),
+        }
     }
 }
 

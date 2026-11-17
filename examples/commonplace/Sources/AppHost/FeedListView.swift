@@ -3,10 +3,6 @@ import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
-#if canImport(Network)
-    import Network
-#endif
-
 /// Screen 1: the smart timelines (unread, bookmarks, everything) and every
 /// subscription with its unread count. Pull to refresh or the refresh
 /// button fetches every feed; + adds one; the search field searches every
@@ -46,7 +42,7 @@ struct FeedListView: View {
             }
             .overlay { emptyState }
             .refreshable { await model.refresh() }
-            .task { await refreshWhenConnected() }
+            .task { await model.refreshWhenBackOnline() }
             // Fresh articles on launch, without a pull.
             .task { await model.refreshIfStale() }
             .onChange(of: scenePhase) { _, phase in
@@ -199,22 +195,6 @@ struct FeedListView: View {
             }
         }
         .accessibilityIdentifier("feeds.\(timeline.identifier)")
-    }
-
-    /// Keeps the offline footer's promise: refreshes once the network is
-    /// back after a refresh that found the device offline.
-    private func refreshWhenConnected() async {
-        #if canImport(Network)
-            let paths = AsyncStream<Bool> { continuation in
-                let monitor = NWPathMonitor()
-                monitor.pathUpdateHandler = { continuation.yield($0.status == .satisfied) }
-                continuation.onTermination = { _ in monitor.cancel() }
-                monitor.start(queue: DispatchQueue(label: "commonplace.network"))
-            }
-            for await connected in paths where connected {
-                await model.refreshIfOffline()
-            }
-        #endif
     }
 
     @ViewBuilder private var refreshButton: some View {

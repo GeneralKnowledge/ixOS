@@ -225,6 +225,29 @@ public final class LibraryModel {
         await refresh()
     }
 
+    /// Keeps the offline footer's promise while the feed list is open:
+    /// each time the network comes back (Rust watches Forge's connectivity
+    /// service), refreshes if the last refresh found the device offline.
+    /// Returns when the task is cancelled, or at once where there is no
+    /// connectivity service.
+    public func refreshWhenBackOnline() async {
+        while !Task.isCancelled {
+            let cancellation = Cancellation()
+            do {
+                let back = try await withTaskCancellationHandler {
+                    try await core.waitUntilBackOnline(cancellation: cancellation)
+                } onCancel: {
+                    cancellation.cancel()
+                }
+                guard back else { return }
+            } catch {
+                log.info("stopped waiting for the network: \(error)")
+                return
+            }
+            await refreshIfOffline()
+        }
+    }
+
     public func cancelRefresh() {
         refreshing?.cancel()
     }

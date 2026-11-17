@@ -56,6 +56,9 @@ final class LibraryModelTests: XCTestCase {
         // Only a refresh that found the device offline is repeated.
         await model.refreshIfOffline()
         XCTAssertNil(model.lastRefresh)
+        // Linux has no connectivity service: waiting for the network ends
+        // at once instead of hanging the feed list's task.
+        await model.refreshWhenBackOnline()
         host.close()
     }
 

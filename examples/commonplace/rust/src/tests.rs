@@ -783,3 +783,61 @@ fn the_suggested_feeds_answer_with_feeds() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+mod back_online {
+    use super::super::native::connectivity::{
+        ConnectivityService, ConnectivityStatus, Reachability,
+    };
+    use super::super::{wait_until_back_online, AppError};
+    use forge_net::CancelHandle;
+    use std::time::Duration;
+
+    fn reachability(reachability: Reachability) -> ConnectivityStatus {
+        ConnectivityStatus {
+            reachability,
+            ..ConnectivityStatus::unknown()
+        }
+    }
+
+    #[test]
+    fn returns_when_the_network_comes_back_after_being_offline() {
+        let (service, fake) = ConnectivityService::for_tests();
+        fake.set(reachability(Reachability::Online));
+        let cancel = CancelHandle::new();
+        let waiting = {
+            let cancel = cancel.clone();
+            std::thread::spawn(move || wait_until_back_online(&service, &cancel))
+        };
+        while !fake.is_started() {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        // Online on its own doesn't count: the network must come back.
+        fake.set(reachability(Reachability::Online));
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!waiting.is_finished());
+        fake.set(reachability(Reachability::Offline));
+        fake.set(reachability(Reachability::Online));
+        assert!(matches!(waiting.join().unwrap(), Ok(true)));
+        assert!(!fake.is_started(), "the watch ends with the wait");
+    }
+
+    #[test]
+    fn cancelling_stops_the_wait() {
+        let (service, fake) = ConnectivityService::for_tests();
+        fake.set(reachability(Reachability::Offline));
+        let cancel = CancelHandle::new();
+        let waiting = {
+            let cancel = cancel.clone();
+            std::thread::spawn(move || wait_until_back_online(&service, &cancel))
+        };
+        cancel.cancel();
+        assert!(matches!(waiting.join().unwrap(), Err(AppError::Cancelled)));
+    }
+}
+
+#[test]
+fn waiting_for_the_network_without_the_service_returns_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _) = open_with(dir.path(), StaticClient::new());
+    assert!(!block_on(core.wait_until_back_online(None)).unwrap());
+}
