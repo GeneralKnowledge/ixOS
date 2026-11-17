@@ -96,7 +96,7 @@ Then a look at each affected app in Device Lab.
 
 Done before any screen changed. Each row is a place an app drew a state with `ContentUnavailableView`, what it showed, its actions and identifiers, and what it is now. The 22 counted on 17 November grew to 33 with screens added since (Device Lab's dashboard and logs, Relay's assistant and trusted devices). 31 moved; Checklist's 2 stay.
 
-Three things ForgeUI's `ForgeStateView` couldn't do, which several apps needed, were added to it rather than left as exceptions: a second action (Pocket Library's "Enter Details by Hand", Weather's "Search for a City"), an action that is a menu (Relay's "Start a Chat", Pocket Library's "Add Book"), and a title or message from the app's data shown as written (a place name, a reason from Rust). `noResults` now draws the system's own search state, in the system's own language, instead of a copy of its English words.
+Four things ForgeUI's `ForgeStateView` couldn't do, which several apps needed, were added to it rather than left as exceptions: a second action (Pocket Library's "Enter Details by Hand", Weather's "Search for a City"), advice and an action on a search with no results (Find a Book), an action that is a menu (Relay's "Start a Chat", Pocket Library's "Add Book"), and a title or message from the app's data shown as written (a place name, a reason from Rust). `noResults` now draws the system's own search state, in the system's own language, instead of a copy of its English words.
 
 | App | Screen | Showed | Actions (identifiers) | Now |
 |---|---|---|---|---|
@@ -118,7 +118,7 @@ Three things ForgeUI's `ForgeStateView` couldn't do, which several apps needed, 
 | Good Dog | Learn search | no results | none | `noResults` |
 | Pocket Library | Find a Book, before searching | empty | none | `empty` |
 | Pocket Library | Find a Book, search failed | failed | Try Again when retryable (`catalogue.retry`), Enter Details by Hand (`catalogue.manual`) | `failed` with retry and a second action; tested by `testTryAgainRepeatsTheFailedCatalogueSearch` |
-| Pocket Library | Find a Book, no results | no results with its own advice | Enter Details by Hand (`catalogue.noResults.manual`) | `empty` titled No Results, with the action |
+| Pocket Library | Find a Book, no results | no results with its own advice | Enter Details by Hand (`catalogue.noResults.manual`) | `noResults` with its advice and the action |
 | Pocket Library | Book | missing (deleted) | back | `empty` |
 | Pocket Library | Chapter summary, book summary | unavailable (reason from the system) | none | `empty` with the reason as written |
 | Pocket Library | Reader | failed to open | back | `failed` with no retry, as before |
@@ -130,3 +130,10 @@ Three things ForgeUI's `ForgeStateView` couldn't do, which several apps needed, 
 | Checklist | Items | empty, no results | none | unchanged: Checklist uses ForgeKit without ForgeUI, so the rule doesn't apply to it |
 
 What changes on screen: failed states now use ForgeUI's warning triangle instead of each app's own symbol, and their buttons use ForgeUI's styles instead of `.borderedProminent`. Everything else (wording, actions, identifiers, when each state shows) is as it was. The rule `state-views` fails an app that uses ForgeUI and draws `ContentUnavailableView` itself.
+
+Reuben's review of PR B (2026-11-17) approved it. Two follow-ups are left for later, outside this PR:
+
+- A menu action is a `ForgeStateAction` with an empty `action`. The type could tell a button from a menu explicitly the next time ForgeUI's API changes anyway.
+- Pocket Library's retry test checks the request and the Rust search, not the button. A UI scenario that taps Try Again on a failed Find a Book search would cover the whole interaction.
+
+The `state-views` rule shows that the old view has gone, not that every state is the right one; the audit table above is the record of that.

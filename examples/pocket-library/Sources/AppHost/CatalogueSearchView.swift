@@ -80,11 +80,10 @@ struct CatalogueSearchView: View {
                 secondary: ForgeStateAction("Enter Details by Hand", identifier: "catalogue.manual") { showingManualForm = true }
             )
         case .loaded(let results) where results.isEmpty:
-            ForgeStateView.empty(
-                "No Results",
-                systemImage: "book.closed",
-                description: "Try other words, or enter the book's details yourself.",
-                secondary: ForgeStateAction("Enter Details by Hand", identifier: "catalogue.noResults.manual") {
+            ForgeStateView.noResults(
+                for: submitted?.text ?? query,
+                advice: "Try other words, or enter the book's details yourself.",
+                action: ForgeStateAction("Enter Details by Hand", identifier: "catalogue.noResults.manual") {
                     showingManualForm = true
                 }
             )

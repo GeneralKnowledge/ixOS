@@ -58,7 +58,7 @@ public struct ForgeStateAction {
 public struct ForgeStateView: View {
     private enum Kind {
         case empty(title: Text, systemImage: String, description: Text?)
-        case noResults(String)
+        case noResults(query: String, advice: Text?)
         case loading(Text?)
         case failed(title: Text, message: String?)
     }
@@ -105,9 +105,15 @@ public struct ForgeStateView: View {
     }
 
     /// No results for a search: the system's own state, in the system's
-    /// words and language, with the query when there is one.
-    public static func noResults(for query: String = "") -> ForgeStateView {
-        ForgeStateView(kind: .noResults(query))
+    /// words and language, with the query when there is one. A search with
+    /// its own advice or a way forward (enter the details by hand) passes
+    /// `advice` and `action`; it then keeps the system's title and symbol.
+    public static func noResults(
+        for query: String = "",
+        advice: LocalizedStringKey? = nil,
+        action: ForgeStateAction? = nil
+    ) -> ForgeStateView {
+        ForgeStateView(kind: .noResults(query: query, advice: advice.map { Text($0) }), action: action)
     }
 
     public static func loading(_ label: LocalizedStringKey? = nil) -> ForgeStateView {
@@ -148,8 +154,16 @@ public struct ForgeStateView: View {
                 actionButton(action, .forgePrimary)
                 actionButton(secondary, .forgeTertiary)
             }
-        case let .noResults(query):
-            if query.isEmpty {
+        case let .noResults(query, advice):
+            if advice != nil || action != nil {
+                ContentUnavailableView {
+                    Label("No Results", systemImage: "magnifyingglass")
+                } description: {
+                    if let advice { advice }
+                } actions: {
+                    actionButton(action, .forgeTertiary)
+                }
+            } else if query.isEmpty {
                 ContentUnavailableView.search
             } else {
                 ContentUnavailableView.search(text: query)

@@ -217,7 +217,7 @@ ForgeStateView.noResults(for: model.searchText)
 Built on `ContentUnavailableView`, so they look like the system's own; `noResults` is the system's own search state, in the system's words and language. Keep the states apart:
 
 - Show `loading` until the model has loaded, never an empty list that is still loading.
-- `noResults` is only for a search; `empty` is for a screen with nothing in it yet, or an item that has gone (`"Book Deleted"`, no action).
+- `noResults` is for every search that found nothing (with `advice:` and `action:` when the search has its own way forward); `empty` is for a screen with nothing in it yet, or an item that has gone (`"Book Deleted"`, no action).
 - `failed` takes a retry that repeats the operation that failed, and a model test shows it does.
 
 A state can offer a second way forward, and an action can be a menu when there is a choice to make. Titles and messages from the app's data (a place name, a reason from Rust) are shown as written:
