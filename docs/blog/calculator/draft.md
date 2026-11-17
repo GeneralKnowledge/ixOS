@@ -2,6 +2,8 @@
 
 *Or: how rebuilding a calculator became an exercise in digital archaeology, accessibility-tree archaeology, and questioning my life choices.*
 
+<!-- Kept in step with what actually happened: see log.md next to this file. As of 2026-11-17 nothing has run yet, so everything from "Step one" on is still the plan. -->
+
 I thought rebuilding a calculator would be easy.
 
 There are buttons. There are numbers. There are some operators. You press things, numbers appear, and eventually you get an answer.
@@ -18,7 +20,7 @@ Essentially, we're treating an ordinary app like a crime scene.
 
 The first job is to understand what the original app actually exposes.
 
-Using forge ui tree to inspect its accessibility hierarchy, alongside xtool and a handful of small scripts for the surrounding build and device workflow, we can start building a picture of the application.
+Using `forge ui tree`, which asks WebDriverAgent (a small test runner that lives on the iPhone) what is on screen, from a Linux laptop over a USB cable, we can start building a picture of the application. No Mac, no Xcode, no simulator: the real calculator on a real phone.
 
 The accessibility tree is particularly interesting. It gives us a structured view of the interface: elements, labels, roles, and the controls available to interact with.
 
@@ -72,7 +74,7 @@ Instead, we'll manually recreate the interface and its behaviour, using the info
 
 This is the interesting part.
 
-We have to make our own implementation behave like the original, despite having no access to its internal code. We need to reproduce the visible interface, the available controls, the interaction model, and the important behavioural details.
+We have to make our own implementation behave like the original, despite having no access to its internal code. We need to reproduce the available controls, the interaction model, and the important behavioural details. Not the look, though: ours gets its own name and its own buttons. Apple's design is Apple's, and the test doesn't care what colour the equals key is.
 
 The accessibility tree gives us clues. The screenshots give us visual references. The recorded interactions give us tests.
 
@@ -84,7 +86,7 @@ Or, depending on the afternoon, increasingly elaborate guesswork.
 
 Once the recreation exists, we can replay the same interaction sequences against both applications.
 
-We can compare the resulting values, inspect their accessibility structures, and examine screenshots to identify differences.
+We can compare the resulting values and inspect their accessibility structures. We leave the screenshots out of the fight: the two calculators are meant to look different, so comparing pixels would only tell us what we already know.
 
 The point isn't necessarily to produce a perfect clone immediately. It's to establish a repeatable way of finding out where our implementation differs from the original.
 

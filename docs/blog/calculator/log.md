@@ -16,6 +16,8 @@ A factual log for the blog post about recreating Calculator ([the plan](../../re
 - **The key idea from planning:** compare values before screens. A table of key sequences and what each leaves on the display, recorded from the original and replayed on the copy, needs no explorer at all, and can also run as a plain Rust test on Linux.
 - **20:19.** Reuben decides the explorer question can wait until phase R3, once the value comparison has results.
 
+- **20:29.** Reuben shares his draft of the post ([draft.md](draft.md)), "silly" and fictional by his own description. Three things in it didn't match the plan and were corrected: the tree is read through WebDriverAgent over a USB cable (xtool builds our copy, it doesn't inspect the original); the copy reproduces behaviour, not Apple's look; and screenshots aren't compared, because the two apps are meant to look different.
+
 ## Next
 
 R0: ten minutes with the phone on the cable, reading Calculator's tree and taking screenshots.
