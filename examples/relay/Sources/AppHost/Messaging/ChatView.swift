@@ -38,6 +38,9 @@ struct ChatView: View {
     @State private var atBottom = true
     /// A message came in while you were reading further up.
     @State private var newBelow = false
+    /// The first message that came in while you were reading further up:
+    /// an "X new messages" divider sits above it until you leave the chat.
+    @State private var firstUnread: String?
     /// Photos and documents picked for the next message.
     @State private var staged: [StagedFile] = []
     @State private var pickingPhotos = false
@@ -73,7 +76,7 @@ struct ChatView: View {
             scrolling(transcriptList, proxy: proxy)
                 .overlay(alignment: .bottom) {
                     if newBelow {
-                        Button("New Messages", systemImage: "arrow.down") {
+                        Button(newMessagesLabel, systemImage: "arrow.down") {
                             withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
                         }
                         .buttonStyle(.borderedProminent)
@@ -90,24 +93,51 @@ struct ChatView: View {
     private var transcriptList: some View {
         ScrollView {
             LazyVStack(spacing: 2) {
-                ForEach(Transcript.rows(messages)) { row in
+                ForEach(Transcript.rows(messages, unreadFrom: firstUnread)) { row in
                     transcriptRow(row)
                 }
                 Color.clear.frame(height: 1).id(Self.bottom)
-                    .onAppear {
-                        atBottom = true
-                        newBelow = false
-                    }
-                    .onDisappear { atBottom = false }
+                    .onAppear { if !Self.measuresScroll { reachedBottom(true) } }
+                    .onDisappear { if !Self.measuresScroll { reachedBottom(false) } }
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
         }
+        .modifier(BottomTracking(reached: reachedBottom))
+    }
+
+    /// iOS 18 measures how far the end is (`BottomTracking`); iOS 17 relies
+    /// on the end marker appearing, which a lazy stack may keep "on screen"
+    /// a little after you scroll up.
+    private static var measuresScroll: Bool {
+        if #available(iOS 18, macOS 15, *) { return true }
+        return false
+    }
+
+    private func reachedBottom(_ reached: Bool) {
+        atBottom = reached
+        if reached { withAnimation { newBelow = false } }
+    }
+
+    private var newMessagesLabel: String {
+        let count = Transcript.unreadCount(messages, from: firstUnread)
+        return count == 1 ? "1 New Message" : "\(count) New Messages"
     }
 
     @ViewBuilder
     private func transcriptRow(_ row: Transcript.Row) -> some View {
         switch row.kind {
+        case .unread(let count):
+            HStack(spacing: 8) {
+                VStack { Divider() }
+                Text(count == 1 ? "1 new message" : "\(count) new messages")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                VStack { Divider() }
+            }
+            .padding(.vertical, 8)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("chat.unreadDivider")
         case .separator(let date):
             Text(date.transcriptLabel)
                 .font(.caption)
@@ -129,11 +159,14 @@ struct ChatView: View {
 
     private func scrolling(_ content: some View, proxy: ScrollViewProxy) -> some View {
         content
-            .defaultScrollAnchor(.bottom)
+            .modifier(OpensAtBottom())
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: messages.last?.id) { _, _ in
                 guard jumpTarget == nil, highlighted == nil else { return }
                 guard atBottom || messages.last?.isMine == true else {
+                    // Stay where you are reading; the pill counts what came
+                    // in, and the divider marks where it starts.
+                    if !newBelow { firstUnread = messages.last?.id }
                     withAnimation { newBelow = true }
                     return
                 }
@@ -519,12 +552,25 @@ enum Transcript {
         enum Kind {
             case separator(Date)
             case message(ChatMessage, Place)
+            /// "X new messages": what came in while you were reading
+            /// further up starts below it.
+            case unread(Int)
         }
         let id: String
         let kind: Kind
     }
 
-    static func rows(_ messages: [ChatMessage], calendar: Calendar = .current) -> [Row] {
+    /// Messages from others at and after `from` (the first that came in
+    /// while you were reading further up).
+    static func unreadCount(_ messages: [ChatMessage], from: String?) -> Int {
+        guard let from, let start = messages.firstIndex(where: { $0.id == from }) else { return 0 }
+        return messages[start...].filter { !$0.isMine }.count
+    }
+
+    static func rows(
+        _ messages: [ChatMessage], unreadFrom: String? = nil, calendar: Calendar = .current
+    ) -> [Row] {
+        let unread = unreadCount(messages, from: unreadFrom)
         let newestSentMine = messages.lastIndex { $0.isMine && $0.status == .sent }
         var rows: [Row] = []
         for (index, message) in messages.enumerated() {
@@ -550,6 +596,9 @@ enum Transcript {
                 showsDelivery: message.isMine
                     && (message.status != .sent || index == newestSentMine)
             )
+            if unread > 0, message.id == unreadFrom {
+                rows.append(Row(id: "unread", kind: .unread(unread)))
+            }
             rows.append(Row(id: message.id, kind: .message(message, place)))
         }
         return rows
@@ -570,6 +619,37 @@ enum Transcript {
             && (a.authorId.isEmpty || b.authorId.isEmpty
                 ? a.author == b.author : a.authorId == b.authorId)
         return sameAuthor && b.sentAt - a.sentAt <= groupGap
+    }
+}
+
+/// Opens a conversation at its newest message. On iOS 18 only the first
+/// position is anchored: anchoring size changes too pulls you to the end
+/// whenever a message arrives, even while you read further up.
+private struct OpensAtBottom: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18, macOS 15, *) {
+            content.defaultScrollAnchor(.bottom, for: .initialOffset)
+        } else {
+            content.defaultScrollAnchor(.bottom)
+        }
+    }
+}
+
+/// Reports whether the end of the transcript is in view, from the scroll
+/// position (iOS 18). Within 40 points of the end counts as there.
+private struct BottomTracking: ViewModifier {
+    let reached: (Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18, macOS 15, *) {
+            content.onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentSize.height - geometry.visibleRect.maxY < 40
+            } action: { _, atEnd in
+                reached(atEnd)
+            }
+        } else {
+            content
+        }
     }
 }
 
