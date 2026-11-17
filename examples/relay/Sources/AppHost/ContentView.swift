@@ -198,7 +198,7 @@ struct DevicesView: View {
             }
             .onChange(of: anySheet) { if !anySheet { model.refreshTrustOffer() } }
             .quickLookPreview($preview)
-            .sensoryFeedback(.success, trigger: model.saveCount)
+            .forgeFeedback(model.feedback)
             // Progress of what is on its way, twice a second.
             .task(id: model.isTransferring) {
                 while model.isTransferring, (try? await Task.sleep(for: .milliseconds(500))) != nil {

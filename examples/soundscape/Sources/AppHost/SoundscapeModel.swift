@@ -25,8 +25,8 @@ public final class SoundscapeModel {
     }
 
     public var alert: ForgeAlert<Action>?
-    /// Increases after each saved change; views use it as a haptic trigger.
-    public private(set) var saveCount = 0
+    /// Success after each saved change.
+    public private(set) var feedback = ForgeFeedback()
     /// Whether a mixdown is running, and how to stop it.
     public private(set) var isMixing = false
     private var mixing: Cancellation?
@@ -63,7 +63,7 @@ public final class SoundscapeModel {
     public func create(title: String, tempo: Double, bars: Int) async throws -> ProjectDetail {
         let detail = try await core.createProject(title: title, tempoBpm: tempo, bars: UInt32(max(1, bars)))
         reload()
-        saveCount += 1
+        feedback.play(.success)
         return detail
     }
 
@@ -229,7 +229,7 @@ public final class SoundscapeModel {
         do {
             let value = try await command(core)
             reload()
-            if haptic { saveCount += 1 }
+            if haptic { feedback.play(.success) }
             return value
         } catch {
             log.warn("command failed: \(error)")

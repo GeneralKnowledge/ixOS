@@ -15,6 +15,8 @@
 
 pub mod ai_lab;
 pub mod crash_test;
+pub mod logs;
+pub mod power;
 pub mod stats;
 pub mod transfer_test;
 
@@ -157,6 +159,8 @@ pub struct DeviceStats {
     /// Forge's default heavy-work policy, applied to `status` (what a model
     /// download would do now). `None`: go ahead.
     pub heavy_work_deferred: Option<DeferReason>,
+    /// Battery drain and thermal changes since launch ([`power`]).
+    pub power: power::PowerStats,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -225,6 +229,7 @@ struct State {
     connectivity_log: ChangeLog<ConnectivityStatus>,
     device_status: Option<DeviceStatus>,
     status_read_at_ms: i64,
+    power: power::PowerLog,
     bluetooth: Option<BluetoothState>,
     accelerometer: Axis,
     gyroscope: Axis,
@@ -254,6 +259,7 @@ impl Default for State {
             connectivity_log: ChangeLog::default(),
             device_status: None,
             status_read_at_ms: 0,
+            power: power::PowerLog::default(),
             bluetooth: None,
             accelerometer: Axis::default(),
             gyroscope: Axis::default(),
@@ -451,6 +457,7 @@ impl DeviceLab {
                     .as_ref()
                     .and_then(|status| status.defer_heavy_work(None)),
                 status: state.device_status.clone(),
+                power: state.power.stats(),
             },
             bluetooth: BluetoothStats {
                 available: s.bluetooth.is_some(),
@@ -612,13 +619,18 @@ impl DeviceLab {
         };
         let now = now_ms();
         {
+            // While another tab or a hosted app is on screen, the battery
+            // and heat are still sampled (every 30 s), so the drain an app
+            // causes shows when you come back.
             let state = lock(&self.state);
-            if !state.active || now - state.status_read_at_ms < STATUS_POLL_MS {
+            let dashboard_due = state.active && now - state.status_read_at_ms >= STATUS_POLL_MS;
+            if !dashboard_due && !state.power.due(now) {
                 return;
             }
         }
         let status = device.status();
         let mut state = lock(&self.state);
+        state.power.record(&status);
         state.device_status = Some(status);
         state.status_read_at_ms = now;
     }
@@ -641,6 +653,7 @@ impl DeviceLab {
             let state = self.state.clone();
             watches.device = Some(service.watch(move |status| {
                 let mut state = lock(&state);
+                state.power.record(status);
                 state.device_status = Some(status.clone());
                 state.status_read_at_ms = now_ms();
             }));

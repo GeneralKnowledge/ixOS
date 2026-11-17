@@ -761,6 +761,7 @@ struct CelebrationView: View {
     let celebration: StageCelebration
     let done: () -> Void
     @State private var appeared = false
+    @State private var haptics = ForgeFeedback()
 
     var body: some View {
         VStack(spacing: 20) {
@@ -796,8 +797,11 @@ struct CelebrationView: View {
             .accessibilityIdentifier("celebration.done")
         }
         .padding(24)
-        .sensoryFeedback(.success, trigger: appeared)
-        .onAppear { appeared = true }
+        .forgeFeedback(haptics)
+        .onAppear {
+            appeared = true
+            haptics.play(.success)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("celebration")
     }

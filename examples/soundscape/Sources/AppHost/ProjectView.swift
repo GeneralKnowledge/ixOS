@@ -58,7 +58,7 @@ struct ProjectView: View {
         )) { action in
             Task { if let changed = await model.handle(action) { show(changed) } }
         }
-        .sensoryFeedback(.success, trigger: model.saveCount)
+        .forgeFeedback(model.feedback)
         .onAppear { show(model.detail(projectID)) }
         .onDisappear { engine.stop() }
         .onChange(of: changes) {

@@ -1,6 +1,7 @@
 @testable import RelayApp
 @preconcurrency import RelayFFI
 @preconcurrency import ForgeKit
+import ForgeAppKit
 import XCTest
 
 /// The model against the real Rust core and the real chat server: no mocks.
@@ -16,6 +17,21 @@ final class ChatModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .signedOut)
         XCTAssertNil(model.account)
         model.close()
+    }
+
+    /// Someone else's message in a chat that isn't open taps once; Rust
+    /// decides which messages those are (not mine, not muted, not open).
+    func testAMessageInAnotherChatTaps() throws {
+        let model = try model()
+        let message = ChatMessage(
+            id: "m1", conversationId: "general", author: "Laptop", authorId: "id-laptop",
+            isMine: false, body: "hi", sentAt: 0, status: .sent,
+            replyTo: nil, edited: false, deleted: false, reactions: [], attachments: [])
+        model.apply(.messageReceived(message: message))
+        XCTAssertNil(model.feedback.kind)
+        model.apply(.notify(message: message))
+        XCTAssertEqual(model.feedback.kind, .refresh)
+        XCTAssertEqual(model.feedback.count, 1)
     }
 
     func testSignUpThenSendAndReceive() async throws {

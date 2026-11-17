@@ -154,7 +154,7 @@ struct ExerciseView: View {
             } message: { feedback in
                 Text(feedback.message)
             }
-            .sensoryFeedback(.success, trigger: model.sessionCount)
+            .forgeFeedback(model.haptics)
         } else {
             ContentUnavailableView("Exercise Not Found", systemImage: "questionmark.circle")
         }

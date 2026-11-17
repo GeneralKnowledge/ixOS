@@ -6913,6 +6913,10 @@ public struct DeviceStats: Equatable, Hashable {
      * download would do now). `None`: go ahead.
      */
     public var heavyWorkDeferred: DeferReason?
+    /**
+     * Battery drain and thermal changes since launch ([`power`]).
+     */
+    public var power: PowerStats
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6920,11 +6924,15 @@ public struct DeviceStats: Equatable, Hashable {
         /**
          * Forge's default heavy-work policy, applied to `status` (what a model
          * download would do now). `None`: go ahead.
-         */heavyWorkDeferred: DeferReason?) {
+         */heavyWorkDeferred: DeferReason?, 
+        /**
+         * Battery drain and thermal changes since launch ([`power`]).
+         */power: PowerStats) {
         self.available = available
         self.info = info
         self.status = status
         self.heavyWorkDeferred = heavyWorkDeferred
+        self.power = power
     }
 
     
@@ -6946,7 +6954,8 @@ public struct FfiConverterTypeDeviceStats: FfiConverterRustBuffer {
                 available: FfiConverterBool.read(from: &buf), 
                 info: FfiConverterOptionTypeDeviceInfo.read(from: &buf), 
                 status: FfiConverterOptionTypeDeviceStatus.read(from: &buf), 
-                heavyWorkDeferred: FfiConverterOptionTypeDeferReason.read(from: &buf)
+                heavyWorkDeferred: FfiConverterOptionTypeDeferReason.read(from: &buf), 
+                power: FfiConverterTypePowerStats.read(from: &buf)
         )
     }
 
@@ -6955,6 +6964,7 @@ public struct FfiConverterTypeDeviceStats: FfiConverterRustBuffer {
         FfiConverterOptionTypeDeviceInfo.write(value.info, into: &buf)
         FfiConverterOptionTypeDeviceStatus.write(value.status, into: &buf)
         FfiConverterOptionTypeDeferReason.write(value.heavyWorkDeferred, into: &buf)
+        FfiConverterTypePowerStats.write(value.power, into: &buf)
     }
 }
 
@@ -7715,6 +7725,85 @@ public func FfiConverterTypeLocationStats_lower(_ value: LocationStats) -> RustB
 
 
 /**
+ * One record, as the Logs screen shows it.
+ */
+public struct LogLine: Equatable, Hashable {
+    /**
+     * Unix time in milliseconds.
+     */
+    public var timeMs: Int64
+    public var level: LogLevel
+    /**
+     * Where it came from: a module path, or the target the app named
+     * (`relay::transfer`, `crash-test`).
+     */
+    public var target: String
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Unix time in milliseconds.
+         */timeMs: Int64, level: LogLevel, 
+        /**
+         * Where it came from: a module path, or the target the app named
+         * (`relay::transfer`, `crash-test`).
+         */target: String, message: String) {
+        self.timeMs = timeMs
+        self.level = level
+        self.target = target
+        self.message = message
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LogLine: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLogLine: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LogLine {
+        return
+            try LogLine(
+                timeMs: FfiConverterInt64.read(from: &buf), 
+                level: FfiConverterTypeLogLevel.read(from: &buf), 
+                target: FfiConverterString.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LogLine, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.timeMs, into: &buf)
+        FfiConverterTypeLogLevel.write(value.level, into: &buf)
+        FfiConverterString.write(value.target, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogLine_lift(_ buf: RustBuffer) throws -> LogLine {
+    return try FfiConverterTypeLogLine.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogLine_lower(_ value: LogLine) -> RustBuffer {
+    return FfiConverterTypeLogLine.lower(value)
+}
+
+
+/**
  * Which sensors this device has.
  */
 public struct MotionAvailability: Equatable, Hashable {
@@ -8142,6 +8231,99 @@ public func FfiConverterTypePermissionStatuses_lower(_ value: PermissionStatuses
 
 
 /**
+ * What the Battery & Power section shows about the time since launch.
+ */
+public struct PowerStats: Equatable, Hashable {
+    /**
+     * Percent an hour since the phone was last unplugged (or since launch),
+     * once it has been on battery for 10 minutes. `None` on power or
+     * before then.
+     */
+    public var drainPercentPerHour: Double?
+    /**
+     * How long the current stretch on battery has lasted, in minutes.
+     */
+    public var onBatteryMinutes: Double
+    /**
+     * Battery level samples, oldest first, for a sparkline (0 to 100).
+     */
+    public var levels: [Double]
+    /**
+     * Thermal state changes, newest first.
+     */
+    public var thermalChanges: [ThermalChange]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Percent an hour since the phone was last unplugged (or since launch),
+         * once it has been on battery for 10 minutes. `None` on power or
+         * before then.
+         */drainPercentPerHour: Double?, 
+        /**
+         * How long the current stretch on battery has lasted, in minutes.
+         */onBatteryMinutes: Double, 
+        /**
+         * Battery level samples, oldest first, for a sparkline (0 to 100).
+         */levels: [Double], 
+        /**
+         * Thermal state changes, newest first.
+         */thermalChanges: [ThermalChange]) {
+        self.drainPercentPerHour = drainPercentPerHour
+        self.onBatteryMinutes = onBatteryMinutes
+        self.levels = levels
+        self.thermalChanges = thermalChanges
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PowerStats: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePowerStats: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PowerStats {
+        return
+            try PowerStats(
+                drainPercentPerHour: FfiConverterOptionDouble.read(from: &buf), 
+                onBatteryMinutes: FfiConverterDouble.read(from: &buf), 
+                levels: FfiConverterSequenceDouble.read(from: &buf), 
+                thermalChanges: FfiConverterSequenceTypeThermalChange.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PowerStats, into buf: inout [UInt8]) {
+        FfiConverterOptionDouble.write(value.drainPercentPerHour, into: &buf)
+        FfiConverterDouble.write(value.onBatteryMinutes, into: &buf)
+        FfiConverterSequenceDouble.write(value.levels, into: &buf)
+        FfiConverterSequenceTypeThermalChange.write(value.thermalChanges, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePowerStats_lift(_ buf: RustBuffer) throws -> PowerStats {
+    return try FfiConverterTypePowerStats.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePowerStats_lower(_ value: PowerStats) -> RustBuffer {
+    return FfiConverterTypePowerStats.lower(value)
+}
+
+
+/**
  * One `name=value` pair of a URL query, decoded.
  */
 public struct QueryItem: Equatable, Hashable {
@@ -8268,6 +8450,63 @@ public func FfiConverterTypeSessionTaskInfo_lift(_ buf: RustBuffer) throws -> Se
 #endif
 public func FfiConverterTypeSessionTaskInfo_lower(_ value: SessionTaskInfo) -> RustBuffer {
     return FfiConverterTypeSessionTaskInfo.lower(value)
+}
+
+
+/**
+ * One change of the phone's thermal state.
+ */
+public struct ThermalChange: Equatable, Hashable {
+    public var atMs: Int64
+    public var state: ThermalState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(atMs: Int64, state: ThermalState) {
+        self.atMs = atMs
+        self.state = state
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ThermalChange: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeThermalChange: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ThermalChange {
+        return
+            try ThermalChange(
+                atMs: FfiConverterInt64.read(from: &buf), 
+                state: FfiConverterTypeThermalState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ThermalChange, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.atMs, into: &buf)
+        FfiConverterTypeThermalState.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeThermalChange_lift(_ buf: RustBuffer) throws -> ThermalChange {
+    return try FfiConverterTypeThermalChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeThermalChange_lower(_ value: ThermalChange) -> RustBuffer {
+    return FfiConverterTypeThermalChange.lower(value)
 }
 
 
@@ -9536,6 +9775,96 @@ public func FfiConverterTypeLocationEvent_lift(_ buf: RustBuffer) throws -> Loca
 #endif
 public func FfiConverterTypeLocationEvent_lower(_ value: LocationEvent) -> RustBuffer {
     return FfiConverterTypeLocationEvent.lower(value)
+}
+
+
+
+/**
+ * A record's level, for the screen's filter and colour.
+ */
+
+public enum LogLevel: Equatable, Hashable {
+    
+    case error
+    case warn
+    case info
+    case debug
+    case trace
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LogLevel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLogLevel: FfiConverterRustBuffer {
+    typealias SwiftType = LogLevel
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LogLevel {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .error
+        
+        case 2: return .warn
+        
+        case 3: return .info
+        
+        case 4: return .debug
+        
+        case 5: return .trace
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LogLevel, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .error:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .warn:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .info:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .debug:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .trace:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogLevel_lift(_ buf: RustBuffer) throws -> LogLevel {
+    return try FfiConverterTypeLogLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogLevel_lower(_ value: LogLevel) -> RustBuffer {
+    return FfiConverterTypeLogLevel.lower(value)
 }
 
 
@@ -11528,6 +11857,31 @@ fileprivate struct FfiConverterSequenceTypeConnectivityChange: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeLogLine: FfiConverterRustBuffer {
+    typealias SwiftType = [LogLine]
+
+    public static func write(_ value: [LogLine], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLogLine.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LogLine] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LogLine]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLogLine.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer {
     typealias SwiftType = [NotificationAction]
 
@@ -11620,6 +11974,31 @@ fileprivate struct FfiConverterSequenceTypeSessionTaskInfo: FfiConverterRustBuff
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeSessionTaskInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeThermalChange: FfiConverterRustBuffer {
+    typealias SwiftType = [ThermalChange]
+
+    public static func write(_ value: [ThermalChange], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeThermalChange.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ThermalChange] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ThermalChange]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeThermalChange.read(from: &buf))
         }
         return seq
     }
@@ -11862,6 +12241,29 @@ public func crashTestRustPanic()  {try! rustCall() {
 }
 }
 /**
+ * The records as plain text, one per line, for sharing:
+ * `2026-11-17 15:02:11.042 WARN [soundscape::player] message`.
+ */
+public func logsAsText(lines: [LogLine]) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_logs_as_text(
+        FfiConverterSequenceTypeLogLine.lower(lines),uniffiCallStatus
+    )
+})
+}
+/**
+ * The newest `limit` records, oldest first.
+ */
+public func recentLogs(limit: UInt32) -> [LogLine]  {
+    return try!  FfiConverterSequenceTypeLogLine.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_recent_logs(
+        FfiConverterUInt32.lower(limit),uniffiCallStatus
+    )
+})
+}
+/**
  * Called by the host when the person responds to a
  * notification. Kept until the app sets a handler with
  * [`on_notification_response`].
@@ -12056,6 +12458,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_crash_test_rust_panic() != 23512) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_logs_as_text() != 31571) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_recent_logs() != 59185) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_deliver_notification_response() != 24007) {

@@ -201,7 +201,7 @@ Don't show errors as red text inside a list. An alert names what failed and has 
 
 ## Feedback and motion
 
-- Use `.sensoryFeedback(.success, trigger:)` for a completed save, `.selection` for a changed choice and `.warning` or `.error` for a failure. Use them sparingly; the system already gives feedback for its own controls (toggles, swipe actions, pickers).
+- Play outcome haptics through ForgeAppKit's `ForgeFeedback` ([forgeappkit.md](forgeappkit.md#haptics-forgefeedback)): `.success` for something done and kept, `.failure` only with text that says why, `.refresh` for new content (a message in another chat). Use them sparingly; the system already gives feedback for its own controls (toggles, swipe actions, pickers). A haptic that is part of the app's own interaction (a step tap, a quiz answer) can stay a plain `.sensoryFeedback`.
 - Animate state changes with `withAnimation` or `.animation(_:value:)` using the default curves. Lists already animate inserts and deletes when the array changes.
 
 ## Native iOS capabilities

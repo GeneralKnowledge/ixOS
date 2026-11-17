@@ -34,8 +34,8 @@ public final class ListenModel {
     /// Why the last refresh failed while the kept library still shows.
     public var refreshProblem: String?
     public var alert: ForgeAlert<Action>?
-    /// Increases after each pick or rating; views use it as a haptic trigger.
-    public private(set) var markCount = 0
+    /// Success after each pick or rating.
+    public private(set) var feedback = ForgeFeedback()
 
     public let core: SoundscapeCore
 
@@ -138,7 +138,7 @@ public final class ListenModel {
         do {
             let detail = try await core.chooseRecording(trackId: track.id, recordingId: recording.id)
             library = core.library()
-            markCount += 1
+            feedback.play(.success)
             return detail
         } catch {
             report(error)
@@ -214,7 +214,7 @@ public final class ListenModel {
     private func mark(_ take: Take, in song: SongDetail, _ mark: TakeMark) async -> SongDetail? {
         do {
             let updated = try await core.markTake(slug: song.slug, takeId: take.id, mark: mark)
-            markCount += 1
+            feedback.play(.success)
             // Rust brought the library's copy of the song up to date.
             library = core.library()
             return updated

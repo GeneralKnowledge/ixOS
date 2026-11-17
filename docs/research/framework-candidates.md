@@ -59,4 +59,33 @@ Already in flight: outcome haptics through `ForgeFeedback` in every app (#309).
 
 These were checked and are already used where they apply: share sheets, Keychain, notifications, permissions, URLSession requests (`http`), location, picked files, web images, file storage (`FileStore`, `JsonFile`, atomic writes), Rust logging and date formatting. Plain SwiftUI `ShareLink` for app-made content is fine: `ForgeShareLink` is for share items that come from Rust.
 
-Order: PR A (items 1 to 3, mechanical, Linux tests plus the iPhone build) after #311 merges, then PR B.
+Order: PR A (items 1 to 3, mechanical, Linux tests plus the iPhone build) after #311 merges and passes its phone check, then PR B. Neither PR touches the photo picker or Now Playing: those stay gated on their second-app phone checks.
+
+### Reuben's review (2026-11-17)
+
+He approved the direction and the two-PR split, with four tightenings and one rule:
+
+**A parity rule proves adoption, not correct use.** Banning `print` shows the old way has gone, not that useful logs arrive. Each rule below is paired with a test of the behaviour where one can be written.
+
+**PR A, cancellation: behaviour, not just compiling.** Tests and phone checks show that:
+
+- cancelling while the Rust operation runs stops it in Rust (`Cancelled` comes back), not only the Swift task;
+- closing the screen mid-operation cancels it;
+- nothing updates the screen after a cancellation (no late `lastRefresh`, no alert for `Cancelled`);
+- Commonplace's Stop still stops the refresh itself. The `Cancellation` handed to `withRustCancellation` is stored for Stop, and a Linux model test starts a refresh against a slow fixture, presses Stop, and checks that Rust reports `Cancelled` and nothing was saved.
+
+**PR A, red text: only error presentation.** The rule doesn't ban `.red`. It matches error text: `Text(<problem|error|failure>…).foregroundStyle(.red)`, and a `.red` foreground on a line that shows a model's problem or error message. A state colour such as Soundscape's recording indicator is left alone and doesn't count as a lag. Fills and tints stay any colour, as `toned-text` already allows.
+
+**PR A, logging: the bridge in every affected app.** Pocket Library and Checklist gain `forge_runtime::log_export!()` and regenerated bindings, so `ForgeLog` exists in them. Pocket Library's `print` and Relay's `NSLog` become `ForgeLog` calls. The rule exempts exactly two named files, `*Launcher/AppMain.swift` (command-line launchers, which print to a terminal) and Device Lab's `LabModel.crashTestSwift`, and nothing else. Behaviour test: a Linux test per app writes through `ForgeLog` and reads the record back from `forge_runtime::logging`'s recent records.
+
+**PR B, state views: an interaction audit before any change.** For each of the 22 screens, a table records what it shows today (empty, no results, missing, failed, loading), its actions, and its identifiers. The migration keeps:
+
+- empty, no results and failed as distinct states;
+- Try Again calling the operation that failed (a model test per app with a retry);
+- loading never showing briefly as empty (state comes from the model's load state, not from an empty list);
+- every existing navigation and recovery action;
+- identifiers that stay stable, so existing UI scenarios still find them; new ones are named `screen.element`.
+
+Then a look at each affected app in Device Lab.
+
+**What stays out.** This is not a campaign against every app-specific implementation. `perform`, the distance maths, each app's error wording and other app behaviour stay where they are.
