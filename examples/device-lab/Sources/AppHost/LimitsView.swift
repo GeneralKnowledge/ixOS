@@ -31,8 +31,8 @@ struct LimitsView: View {
             title: "Ambient Light Sensor", symbol: "sun.max",
             detail: "Used by iOS for auto-brightness only. Apps see the screen brightness it sets."),
         Limit(
-            title: "MAC and IP Addresses", symbol: "number",
-            detail: "Hardware addresses are hidden from apps, and Wi-Fi addresses are private per network."),
+            title: "MAC Address", symbol: "number",
+            detail: "The hardware address is hidden from apps, and the Wi-Fi one is private per network. IP addresses are not hidden: This iPhone shows them under Network."),
         Limit(
             title: "Nearby Bluetooth Devices", symbol: "dot.radiowaves.left.and.right",
             detail: "Possible for Bluetooth Low Energy devices that advertise, after asking. Not built yet: Forge's Bluetooth service reports on and off only."),

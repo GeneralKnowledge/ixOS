@@ -1,8 +1,8 @@
 @preconcurrency import ForgeFFI
 import SwiftUI
 
-/// The Tools tab: experiments and developer checks that aren't a sensor
-/// reading or a hosted app.
+/// The Tools tab: what a phone sitting needs (the checks, whether the test
+/// servers are up, recent logs), then experiments and developer checks.
 struct ToolsView: View {
     let model: LabModel
     @State private var transfers = TransferTestModel()
@@ -11,6 +11,36 @@ struct ToolsView: View {
 
     var body: some View {
         List {
+            Section {
+                NavigationLink {
+                    PhoneChecksView()
+                } label: {
+                    Label("Checks", systemImage: "checklist")
+                }
+                .accessibilityIdentifier("tools.checks")
+            } footer: {
+                Text("The next phone sitting's checks: tick each one here and share the results.")
+            }
+            Section {
+                NavigationLink {
+                    ServersView()
+                } label: {
+                    Label("Servers", systemImage: "server.rack")
+                }
+                .accessibilityIdentifier("tools.servers")
+            } footer: {
+                Text("Whether the chat server and the take server answer from this phone.")
+            }
+            Section {
+                NavigationLink {
+                    LogsView()
+                } label: {
+                    Label("Logs", systemImage: "text.alignleft")
+                }
+                .accessibilityIdentifier("tools.logs")
+            } footer: {
+                Text("What Device Lab and its apps logged recently, to read or share without a cable.")
+            }
             Section {
                 NavigationLink {
                     AiLabView(model: aiLab)

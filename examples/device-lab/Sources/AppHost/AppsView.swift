@@ -213,6 +213,21 @@ public enum EmbeddedApps {
     /// notifications don't multiply each time the app opens.
     static let chat = RelayApp.RelayRoot.makeChatModel()
 
+    /// The servers the hosted apps talk to, at the addresses the apps use
+    /// now (Tools, Servers).
+    static func servers() -> [ServersModel.Server] {
+        [
+            ServersModel.Server(
+                app: "Relay Chats", role: "Chat server",
+                address: chat.account?.serverUrl,
+                setUp: "Sign up in Relay's Chats tab first."),
+            ServersModel.Server(
+                app: "Soundscape", role: "Take server",
+                address: soundscape.core?.listenServer(),
+                setUp: "Add the address in Soundscape's Listen screen first."),
+        ]
+    }
+
     /// Hands `url` to the hosted app whose URL scheme it uses. Each app's
     /// bindings have their own `ForgeDeepLinks`, so a link reaches an app
     /// only through its own. Returns false for links that are Device Lab's.

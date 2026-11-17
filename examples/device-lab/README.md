@@ -8,15 +8,20 @@ It has three tabs:
 
 - **Apps** (the home screen): the build that is installed, the hosted apps, Interaction Patterns and Open at Launch ([below](#the-other-apps-apps-tab)).
 - **This iPhone**: the live sensor dashboard (the table below, down to What iOS Keeps from Apps). Its sensors run only while this tab is on screen.
-- **Tools**: AI Lab, Background Downloads and Crash Test.
+- **Tools**: what a phone sitting needs, then experiments and developer checks:
+  - **Checks**: the next sitting's checks, built into the app (`Sources/AppHost/PhoneChecks.swift`). Tick Pass, Fail or Skip, add a note, and share the results as text. Answers are kept per build number. Whoever prepares a sitting replaces that file's text in the PR the build comes from.
+  - **Servers**: whether the chat server (Relay's Chats) and the take server (Soundscape) answer from the phone, at the address each app uses, with the time it took or why not. Tailscale addresses are marked, since Tailscale must be on for the phone too.
+  - **Logs**: the last 512 records from Device Lab and every hosted app, kept in memory by Forge's logging pipeline (`rust/src/logs.rs`), with a level filter, search and Share, so a problem can be sent without the cable.
+  - AI Lab, Background Downloads and Crash Test.
 
 ## What it shows
 
 | Section | Values | Needs |
 |---------|--------|-------|
-| **Network** | Online or offline and why, Wi-Fi, cellular or wired, metered, Low Data Mode, IPv4/IPv6/DNS, whether a Wi-Fi-only download would start, a log of every change | Nothing |
+| **Network** | Online or offline and why, Wi-Fi, cellular or wired, metered, Low Data Mode, IPv4/IPv6/DNS, this phone's own IP addresses (Wi-Fi, cellular, VPN, with Tailscale named), whether a Wi-Fi-only download would start, a log of every change | Nothing |
 | **Bluetooth** | On, off, not allowed, not supported | Bluetooth permission (asked from a button) |
-| **Battery & Power** | Level and charging state, Low Power Mode, thermal state, screen brightness, whether Forge's heavy-work rule would let a big download run | Nothing |
+| **Battery & Power** | Level and charging state, Low Power Mode, thermal state, screen brightness, whether Forge's heavy-work rule would let a big download run, the drain in percent an hour on battery (after 10 minutes) with a sparkline, and every heat change since launch. Drain and heat keep counting while another tab or a hosted app is open, so they show what an AI Lab run or a big transfer cost | Nothing |
+| **Audio** | Where sound is going (speaker, headphones, Bluetooth, AirPlay, CarPlay), the microphone in use, the volume, whether another app is playing, and every interruption and route change since launch, including those a hosted app (Soundscape) gets while it plays | Nothing |
 | **Storage & Memory** | Free and total storage, memory the app uses, memory it has left before iOS ends it, device RAM | Nothing |
 | **Motion** | Accelerometer, gyroscope and magnetometer (each axis, magnitude, peak, measured rate, sparkline), roll, pitch, yaw, tilt, movement without gravity, compass calibration | Nothing |
 | **Compass** | A turning dial. True north from Core Location when location is allowed, magnetic north from device motion otherwise | Nothing (location for true north) |
