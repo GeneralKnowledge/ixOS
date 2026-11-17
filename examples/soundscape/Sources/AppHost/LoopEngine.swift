@@ -23,12 +23,14 @@ final class LoopEngine {
         case noMicrophone
         case noInput
         case noSound
+        case interrupted
 
         var errorDescription: String? {
             switch self {
             case .noMicrophone: "Soundscape can't use the microphone. Allow it in Settings, then try again."
             case .noInput: "There's no microphone to record from."
             case .noSound: "No sound came from the microphone, so nothing was kept. Try again."
+            case .interrupted: "A call or another app took over the sound, so the recording stopped. Try again."
             }
         }
     }
@@ -54,9 +56,51 @@ final class LoopEngine {
     private(set) var isRecording = false
     /// The bar of clicks before a recording starts.
     private(set) var isCountingIn = false
+    /// Why playback stopped by itself (a call, Siri, another app, or the
+    /// headphones unplugged), until the next Play. `nil` otherwise.
+    private(set) var stoppedBecause: String?
+    @ObservationIgnored private let observers = Observers()
 
     init() {
         engine.attach(clickPlayer)
+        // Without these the transport kept showing Stop after an
+        // interruption while nothing played, and a recording cut by a
+        // call waited for its watchdog.
+        let center = NotificationCenter.default
+        observers.tokens.append(
+            center.addObserver(
+                forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+            ) { [weak self] note in
+                let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
+                    .flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+                guard type == .began else { return }
+                MainActor.assumeIsolated {
+                    self?.stopForSystem("A call or another app took over the sound.")
+                }
+            })
+        observers.tokens.append(
+            center.addObserver(
+                forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.stopForSystem("The audio output changed.")
+                }
+            })
+    }
+
+    /// iOS stopped the sound (an interruption, or the route changed and
+    /// the engine stopped): end a recording with a reason, stop playback
+    /// and say why.
+    private func stopForSystem(_ reason: String) {
+        guard isPlaying || isRecording else { return }
+        if isRecording {
+            // `record` stops everything on its way out, and its error
+            // says why.
+            recorder?.fail(Failure.interrupted)
+        } else {
+            stop()
+            stoppedBecause = reason
+        }
     }
 
     /// Makes the engine match `project`: a strip per track with a recording,
@@ -89,9 +133,18 @@ final class LoopEngine {
             if strip.clipPath != clip.path || timingChanged {
                 strip.buffer = Self.loopBuffer(clip, seconds: project.loopSeconds)
                 strip.clipPath = clip.path
-                // A recording's sample rate decides the player's format.
+                // A recording's format (the microphone's: often one
+                // channel) runs through the whole strip. Effect units must
+                // have the same format in and out, so connecting only the
+                // player in mono to a tone wired in the mixer's stereo threw
+                // an exception and ended the app after every new take
+                // (crash on the phone, 2026-11-16). The main mixer converts.
                 engine.disconnectNodeOutput(strip.player)
                 if let buffer = strip.buffer {
+                    engine.disconnectNodeOutput(strip.tone)
+                    engine.disconnectNodeOutput(strip.echo)
+                    engine.connect(strip.echo, to: engine.mainMixerNode, format: buffer.format)
+                    engine.connect(strip.tone, to: strip.echo, format: buffer.format)
                     engine.connect(strip.player, to: strip.tone, format: buffer.format)
                 }
                 reloaded = true
@@ -113,6 +166,7 @@ final class LoopEngine {
 
     /// Plays every loaded loop from the top, in step.
     func play() throws {
+        stoppedBecause = nil
         try ForgeAudioSession.activate(.record)
         try startEngine()
         let start = Self.startTime()
@@ -145,6 +199,7 @@ final class LoopEngine {
     /// so what you played along to lines up with the loop.
     func record(frames: (Double) -> Int?) async throws -> URL {
         guard await Self.microphoneAllowed() else { throw Failure.noMicrophone }
+        stoppedBecause = nil
         try ForgeAudioSession.activate(.record)
         stop()
         // The microphone joins the graph only when the engine starts with
@@ -256,8 +311,7 @@ final class LoopEngine {
         engine.attach(strip.player)
         engine.attach(strip.tone)
         engine.attach(strip.echo)
-        engine.connect(strip.tone, to: strip.echo, format: nil)
-        engine.connect(strip.echo, to: engine.mainMixerNode, format: nil)
+        // Wired in `load`, in the recording's format.
         return strip
     }
 
@@ -346,6 +400,15 @@ final class LoopEngine {
 
 /// Writes the input to a WAV file from a host time until it has `frames`
 /// frames. Fed on the audio engine's tap thread; finished on the caller's.
+/// Notification observers, removed when the engine that owns them goes.
+private final class Observers {
+    var tokens: [NSObjectProtocol] = []
+
+    deinit {
+        for token in tokens { NotificationCenter.default.removeObserver(token) }
+    }
+}
+
 private final class Recorder: @unchecked Sendable {
     private let lock = NSLock()
     private var file: AVAudioFile?
