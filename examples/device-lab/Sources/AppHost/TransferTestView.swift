@@ -1,5 +1,6 @@
 @preconcurrency import ForgeFFI
 import SwiftUI
+import ForgeUI
 
 /// Background downloads through Forge's `transfers` service, for checking it
 /// on a phone: start a download, leave the app, end it or swipe it away, and
@@ -24,7 +25,7 @@ struct TransferTestView: View {
             }
             if let error = model.error {
                 Section {
-                    Text(error).foregroundStyle(.red)
+                    Text(error).forgeForeground(.danger)
                 }
             }
             Section("Transfers") {

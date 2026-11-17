@@ -42,7 +42,7 @@ reason = "CL-3 (background and cancelling) is proved by twin tests only; a phone
 app = "commonplace"
 rule = "device-checks"
 wave = 4
-reason = "CP-5 (error words) needs the fixture server offline; written with slice 2"
+reason = "CP-5 (error words) needs the fixture server offline, and CP-7 (Stop ends a refresh in Rust) a feed that hangs; written with slice 2"
 
 [[lag]]
 app = "relay"

@@ -165,6 +165,41 @@ def rule_connectivity(app):
     return False, f"own network monitor ({own[0].name}), not the `connectivity` service"
 
 
+# Rust work cancelled from Swift goes through ForgeKit's withRustCancellation,
+# not a Cancellation wired to withTaskCancellationHandler by hand (framework
+# candidates PR A, 2026-11-17). withTaskCancellationHandler on its own (an
+# audio continuation, a URLSession call) is fine.
+def rule_rust_cancellation(app):
+    bad = [
+        p.name
+        for p in swift_sources(app)
+        if re.search(r"(?<![\w.])Cancellation\(\)", read(p)) and "withTaskCancellationHandler" in read(p)
+    ]
+    if bad:
+        return False, "wires a Cancellation to withTaskCancellationHandler by hand; use withRustCancellation: " + ", ".join(bad)
+    return True, ""
+
+
+# Swift logs through ForgeLog, so records reach `forge device logs` and crash
+# reports; print and NSLog only reach a debugger (framework candidates PR A,
+# 2026-11-17). Exempt: the command-line launchers (`*Launcher/AppMain.swift`),
+# which print to the terminal that runs them.
+SWIFT_PRINT = re.compile(r"(?<![\w.])(?:print|NSLog|debugPrint)\(")
+
+
+def rule_swift_logging(app):
+    bad = []
+    for path in swift_sources(app):
+        if path.name == "AppMain.swift" and path.parent.name.endswith("Launcher"):
+            continue
+        for i, line in enumerate(read(path).splitlines()):
+            if SWIFT_PRINT.search(line.split("//", 1)[0]):
+                bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "logs with print or NSLog; use ForgeLog: " + ", ".join(bad)
+    return True, ""
+
+
 def rule_requirements(app):
     if app.name == HOST or app.name in NO_RUST:
         return None
@@ -394,12 +429,34 @@ def rule_errors_shown(app):
 RAW_TONE_TEXT = re.compile(r"\.foregroundStyle\(\s*(?:Color)?\.(orange|yellow)\s*\)")
 
 
+# Error text in raw red (framework candidates PR A, 2026-11-17): the
+# message a Text or Label shows is an error, problem, failure or reason, and
+# the same view is styled `.red`. Red that marks a state (recording) is left
+# alone: only these error presentations count.
+RAW_RED = re.compile(r"\.foreground(?:Style|Color)\(\s*(?:Color)?\.red\s*\)")
+ERROR_TEXT = re.compile(r"\b(?:Text|Label)\(\s*(?:\w+\.)*(?:error|problem|failure|reason)\b")
+
+
 def raw_tone_problems(text):
-    return [
-        i + 1
-        for i, line in enumerate(text.splitlines())
-        if RAW_TONE_TEXT.search(line.split("//", 1)[0])
-    ]
+    lines = text.splitlines()
+    found = []
+    for i, line in enumerate(lines):
+        code = line.split("//", 1)[0]
+        if RAW_TONE_TEXT.search(code):
+            found.append(i + 1)
+            continue
+        if not RAW_RED.search(code):
+            continue
+        # The view this modifier styles: this line, or the lines above it up
+        # to the one that starts the view.
+        for j in range(i, max(-1, i - 4), -1):
+            start = lines[j].split("//", 1)[0]
+            if ERROR_TEXT.search(start):
+                found.append(i + 1)
+                break
+            if j < i and not start.strip().startswith("."):
+                break
+    return found
 
 
 def rule_toned_text(app):
@@ -408,7 +465,7 @@ def rule_toned_text(app):
         for line in raw_tone_problems(read(path)):
             bad.append(f"{path.name}:{line}")
     if bad:
-        return False, "orange or yellow text (low contrast); use .forgeForeground(.warning): " + ", ".join(bad)
+        return False, "orange, yellow or red error text; use .forgeForeground(.warning) or .forgeForeground(.danger): " + ", ".join(bad)
     return True, ""
 
 
@@ -432,11 +489,13 @@ RULES = [
     ("alerts-over-sheets", "A model alert is held back while a sheet is up; the sheet shows alerts itself", rule_alerts_over_sheets),
     ("picked-files", "Picked files copied with ForgeAppKit's `ForgePickedFile` (off the main thread), never by hand", rule_picked_files),
     ("web-images", "Pictures from the web through `ForgeRemoteImage` (kept on disk, decoded at the size shown), never `AsyncImage`", rule_web_images),
-    ("toned-text", "Warning text in ForgeUI's tone, never raw orange or yellow", rule_toned_text),
+    ("toned-text", "Warning and error text in ForgeUI's tones, never raw orange, yellow or (for errors) red", rule_toned_text),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
     ("location", "Location through the `location` service", rule_location),
+    ("rust-cancellation", "Rust work cancelled from Swift through ForgeKit's `withRustCancellation`", rule_rust_cancellation),
+    ("swift-logging", "Swift logs through `ForgeLog`, never `print` or `NSLog`", rule_swift_logging),
     ("connectivity", "Network changes through the `connectivity` service, no own `NWPathMonitor`", rule_connectivity),
     ("requirements", "requirements.toml, every requirement with a test", rule_requirements),
     ("device-checks", "Every requirement has a device scenario", rule_device_checks),

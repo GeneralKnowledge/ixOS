@@ -16,11 +16,13 @@ When the framework gains a better way to do something, every app moves to it, or
 | `alerts-over-sheets` | A model alert is held back while a sheet is up; the sheet shows alerts itself |
 | `picked-files` | Picked files copied with ForgeAppKit's `ForgePickedFile` (off the main thread), never by hand |
 | `web-images` | Pictures from the web through `ForgeRemoteImage` (kept on disk, decoded at the size shown), never `AsyncImage` |
-| `toned-text` | Warning text in ForgeUI's tone, never raw orange or yellow |
+| `toned-text` | Warning and error text in ForgeUI's tones, never raw orange, yellow or (for errors) red |
 | `feedback` | Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback` |
 | `forgeui-appearance` | Launch appearance from ForgeUI, no own LaunchAppearance.swift |
 | `urlsession` | iOS requests through the URLSession `http` service |
 | `location` | Location through the `location` service |
+| `rust-cancellation` | Rust work cancelled from Swift through ForgeKit's `withRustCancellation` |
+| `swift-logging` | Swift logs through `ForgeLog`, never `print` or `NSLog` |
 | `connectivity` | Network changes through the `connectivity` service, no own `NWPathMonitor` |
 | `requirements` | requirements.toml, every requirement with a test |
 | `device-checks` | Every requirement has a device scenario |
@@ -32,26 +34,26 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 ## Apps
 
-| App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `web-images` | `toned-text` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `connectivity` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
-| fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
-| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | n/a | n/a | n/a | Yes | Yes | Yes |
-| good-dog | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
-| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
+| App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `web-images` | `toned-text` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `rust-cancellation` | `swift-logging` | `connectivity` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | n/a | n/a | Yes |
+| fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | Yes | Yes | Yes |
+| good-dog | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 
 ## Known lag
 
 | App | Rule | Status | Why | Wave |
 |---|---|---|---|---|
 | checklist | `device-checks` | missing | CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt | 4 |
-| commonplace | `device-checks` | missing | CP-5 (error words) needs the fixture server offline; written with slice 2 | 4 |
+| commonplace | `device-checks` | missing | CP-5 (error words) needs the fixture server offline, and CP-7 (Stop ends a refresh in Rust) a feed that hangs; written with slice 2 | 4 |
 | good-dog | `device-checks` | missing | GD requirements without a scenario yet; written with GD2b's phone run | 4 |
 | relay | `device-checks` | missing | CH-12 (Chat's, now Relay's messaging: data held by a second core) is proved by its twin test only; the phone can't open a second core from the UI | 4 |
 | sketchbook | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |

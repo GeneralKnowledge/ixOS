@@ -42,6 +42,7 @@ public func makeChatHost(storageDirectory: String? = nil, useKeychain: Bool? = n
 /// (`forge device logs`, the live stream).
 let attachmentLog = ForgeLog("Attachments")
 private let draftLog = ForgeLog("Drafts")
+private let chatLog = ForgeLog("Chat")
 
 /// The state of a room's live connection, as the chat screen shows it.
 public enum ConnectionState: Equatable, Sendable {
@@ -635,7 +636,7 @@ public final class ChatModel {
     /// empty or too long name, say).
     nonisolated public static func describe(_ error: Error) -> String {
         guard let error = error as? ChatError else { return error.localizedDescription }
-        NSLog("[chat] %@", String(describing: error))
+        chatLog.warn("\(error)")
         switch error {
         case .Network:
             return "Can't reach the chat server. Check your connection and try again."

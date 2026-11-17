@@ -4,6 +4,8 @@ import ForgeKit
 import Foundation
 import Observation
 
+private let log = ForgeLog("Library")
+
 // The Rust library runs on forge-app's runtime (`export_runtime!`), so
 // ForgeKit can host it: one core per process, lifecycle, background time.
 extension Library: ForgeCore {}
@@ -485,7 +487,7 @@ public final class LibraryModel {
             try writeSampleEpub(path: file.path)
             _ = try await importEpub(at: file)
         } catch {
-            print("[pocket-library] sample book not added: \(error)")
+            log.warn("sample book not added: \(error)")
         }
         try? FileManager.default.removeItem(at: file)
     }

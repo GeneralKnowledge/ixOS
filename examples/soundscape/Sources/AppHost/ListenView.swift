@@ -145,7 +145,7 @@ private struct ServerForm: View {
                 Text("The computer's IP address, with :port if it isn't 8642. Over Tailscale it starts with 100.")
             }
             if let problem {
-                Section { Text(problem).foregroundStyle(.red) }
+                Section { Text(problem).forgeForeground(.danger) }
             }
             Section("Starting the server") {
                 Text("On the computer with the songs, run:")
@@ -601,7 +601,7 @@ private struct NowPlayingBar: View {
                 if let failure = player.failure {
                     Text(failure)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .forgeForeground(.danger)
                         .padding(.horizontal)
                         .padding(.bottom, 6)
                 }
@@ -680,7 +680,7 @@ private struct NowPlayingView: View {
                             Scrubber(player: player, showsButtons: false)
                             if player.isComparing { abSwitch } else { transport }
                             if let failure = player.failure {
-                                Text(failure).font(.caption).foregroundStyle(.red)
+                                Text(failure).font(.caption).forgeForeground(.danger)
                             }
                         }
                         .frame(maxWidth: .infinity)

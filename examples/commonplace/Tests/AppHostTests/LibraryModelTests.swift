@@ -62,6 +62,71 @@ final class LibraryModelTests: XCTestCase {
         host.close()
     }
 
+    private static let feed = Data(
+        """
+        <?xml version="1.0"?><rss version="2.0"><channel><title>Fixture Feed</title>\
+        <link>https://fixtures.example/</link><item><title>Alpha</title><guid>a</guid>\
+        <link>https://fixtures.example/a</link></item></channel></rss>
+        """.utf8)
+
+    /// Subscribes to a local feed, then makes the next fetch hang.
+    @MainActor
+    private func stalledRefresh() async throws -> (ForgeHost<AppCore>, LibraryModel, FeedServer) {
+        let server = try FeedServer(body: Self.feed)
+        let (host, model) = try await open(try makeDirectory())
+        _ = try await model.add(url: server.url)
+        XCTAssertEqual(model.feeds.count, 1)
+        server.stalling = true
+        return (host, model, server)
+    }
+
+    @MainActor
+    private func waitUntilRefreshing(_ model: LibraryModel) async throws {
+        for _ in 0..<200 where !model.isRefreshing {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(model.isRefreshing)
+        // Long enough for Rust to be waiting on the hung server.
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    /// Stop stops the refresh in Rust, not just the Swift task: it returns
+    /// long before the 20 s fetch timeout, nothing is reported or saved, and
+    /// no alert says "cancelled".
+    @MainActor
+    func testStopEndsARefreshInRust() async throws {
+        let (host, model, server) = try await stalledRefresh()
+        let started = Date()
+        let refreshing = Task { await model.refresh() }
+        try await waitUntilRefreshing(model)
+        model.cancelRefresh()
+        await refreshing.value
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10)
+        XCTAssertFalse(model.isRefreshing)
+        XCTAssertNil(model.lastRefresh)
+        XCTAssertNil(model.alert)
+        withExtendedLifetime(server) {}
+        host.close()
+    }
+
+    /// Leaving the screen (the task that started the refresh is cancelled)
+    /// stops it in Rust the same way.
+    @MainActor
+    func testCancellingTheTaskEndsARefreshInRust() async throws {
+        let (host, model, server) = try await stalledRefresh()
+        let started = Date()
+        let refreshing = Task { await model.refresh() }
+        try await waitUntilRefreshing(model)
+        refreshing.cancel()
+        await refreshing.value
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10)
+        XCTAssertFalse(model.isRefreshing)
+        XCTAssertNil(model.lastRefresh)
+        XCTAssertNil(model.alert)
+        withExtendedLifetime(server) {}
+        host.close()
+    }
+
     @MainActor
     func testABadAddressIsRefusedWithWordsForTheScreen() async throws {
         let (host, model) = try await open(try makeDirectory())

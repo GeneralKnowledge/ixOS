@@ -1,5 +1,6 @@
 @preconcurrency import ForgeFFI
 import SwiftUI
+import ForgeUI
 
 /// AI Lab: repeatable experiments with Apple's on-device model, with the
 /// timings and device readings of each run (AiLabModel, rust/src/ai_lab.rs).
@@ -21,7 +22,7 @@ struct AiLabView: View {
             }
             if let error = model.error {
                 Section {
-                    Text(error).foregroundStyle(.red)
+                    Text(error).forgeForeground(.danger)
                 }
             }
             historySection
@@ -124,7 +125,7 @@ private struct RunView: View {
                 Text(device).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
             }
             if let error = run.error {
-                Text(error).font(.footnote).foregroundStyle(.red)
+                Text(error).font(.footnote).forgeForeground(.danger)
             }
             if live {
                 Text(run.answer.isEmpty ? "Waiting for the first text…" : run.answer)

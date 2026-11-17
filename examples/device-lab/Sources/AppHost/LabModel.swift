@@ -64,7 +64,7 @@ public final class LabModel {
     public func crashTestSwift() {
         let typed = String("not a number")
         let value = Int(typed)!
-        print(value)
+        _ = value
     }
 
     /// Crashes the app on purpose with a Rust panic nothing catches

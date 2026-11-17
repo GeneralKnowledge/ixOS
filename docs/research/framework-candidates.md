@@ -59,6 +59,8 @@ Already in flight: outcome haptics through `ForgeFeedback` in every app (#309).
 
 These were checked and are already used where they apply: share sheets, Keychain, notifications, permissions, URLSession requests (`http`), location, picked files, web images, file storage (`FileStore`, `JsonFile`, atomic writes), Rust logging and date formatting. Plain SwiftUI `ShareLink` for app-made content is fine: `ForgeShareLink` is for share items that come from Rust.
 
+**PR A is up (items 1 to 3):** rules `rust-cancellation`, `swift-logging` and a wider `toned-text`. Soundscape's mixdown moved onto `withRustCancellation` too, which also makes leaving its screen stop the mixdown in Rust; before, only Stop did.
+
 Order: PR A (items 1 to 3, mechanical, Linux tests plus the iPhone build) after #311 merges and passes its phone check, then PR B. Neither PR touches the photo picker or Now Playing: those stay gated on their second-app phone checks.
 
 ### Reuben's review (2026-11-17)

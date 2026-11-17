@@ -827,6 +827,16 @@ uint32_t uniffi_pocket_library_core_fn_func_epub_words_per_page(RustCallStatus *
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_FORGE_LOG
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_FORGE_LOG
+void uniffi_pocket_library_core_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_FORGE_LOG_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_FORGE_LOG_ENABLED
+int8_t uniffi_pocket_library_core_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_LIBRARY_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_LIBRARY_ERROR_KIND
 RustBuffer uniffi_pocket_library_core_fn_func_library_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
@@ -1143,6 +1153,18 @@ uint16_t uniffi_pocket_library_core_checksum_func_default_query(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_EPUB_WORDS_PER_PAGE
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_EPUB_WORDS_PER_PAGE
 uint16_t uniffi_pocket_library_core_checksum_func_epub_words_per_page(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_FORGE_LOG
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_FORGE_LOG
+uint16_t uniffi_pocket_library_core_checksum_func_forge_log(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
+uint16_t uniffi_pocket_library_core_checksum_func_forge_log_enabled(void
     
 );
 #endif

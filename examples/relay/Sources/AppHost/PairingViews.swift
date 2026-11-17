@@ -6,6 +6,7 @@ import SwiftUI
 import UIKit
 import Vision
 import VisionKit
+import ForgeUI
 
 private let scanLog = ForgeLog("Scanner")
 
@@ -126,7 +127,7 @@ struct ScanCodeSheet: View {
                 }
                 if let problem {
                     Section {
-                        Text(problem).foregroundStyle(.red)
+                        Text(problem).forgeForeground(.danger)
                     }
                 }
             }

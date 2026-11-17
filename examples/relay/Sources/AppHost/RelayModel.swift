@@ -144,11 +144,8 @@ public final class RelayModel {
     /// Pairs with the device whose code was scanned or pasted. Throws, so
     /// the scanner can keep going and say why.
     public func pair(code: String) async throws -> Peer {
-        let cancellation = Cancellation()
-        let peer = try await withTaskCancellationHandler {
+        let peer = try await withRustCancellation { cancellation in
             try await core.pair(code: code.trimmingCharacters(in: .whitespacesAndNewlines), cancellation: cancellation)
-        } onCancel: {
-            cancellation.cancel()
         }
         reload()
         feedback.play(.success)
@@ -222,14 +219,11 @@ public final class RelayModel {
     }
 
     private func sending(_ send: (RelayCore, Cancellation) async throws -> Transfer) async -> Bool {
-        let cancellation = Cancellation()
         // The transfer appears in the history at once; show it.
         reload()
         do {
-            _ = try await withTaskCancellationHandler {
+            _ = try await withRustCancellation { cancellation in
                 try await send(core, cancellation)
-            } onCancel: {
-                cancellation.cancel()
             }
             reload()
             feedback.play(.success)
