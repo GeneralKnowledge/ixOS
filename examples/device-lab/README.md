@@ -28,8 +28,42 @@ The **Apps** button on the dashboard opens the other example apps, each the
 full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Chat,
 FieldKit and the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
 in one of them (the `-launchApp weather` launch argument does the same).
-Swipe down to get back to Device Lab. One app on the phone holds all of them.
-(Counter isn't hosted.)
+One app on the phone holds all of them. (Counter isn't hosted.)
+
+### The workshop
+
+An app opens full screen, laid out exactly as when it is launched on its own:
+its own status bar, safe areas and gestures. A small round button on its
+trailing edge (**Workshop**) is all Device Lab adds. Its menu:
+
+| Item | What it does |
+|------|--------------|
+| **Back to Device Lab** | Closes the app (its core keeps running, as in the background). VoiceOver's two-finger scrub does the same once the app has nothing left to dismiss |
+| **Appearance** | Light, dark, or match the iPhone, without changing the phone's setting |
+| **Text Size** | Default, the largest ordinary size, Accessibility 3 or 5, without changing the phone's setting |
+| **Screen Size** | The app in a 375 × 667 point frame, the smallest iPhone iOS 17 runs on (iPhone SE), centred on this phone. An approximation: the safe areas are this phone's |
+| **Move This Button** | Top, middle or bottom of the edge, off whatever it covers |
+
+The choices change only how the app is shown, never its data, and last until
+Device Lab quits. Launch arguments set them for UI tests and screenshots:
+`-launchApp <app>` opens an app, `-ForgeAppearance dark|light`,
+`-WorkshopTextSize large|xxxl|ax3|ax5`, `-WorkshopScreen compact`, and
+`-ForgeTemporaryData` starts every app on empty throwaway data.
+
+### The screenshot catalogue
+
+`uitests/catalogue.toml` shoots every app's first screen, light and dark, on
+throwaway data: the "before" of every redesign. Run it with the phone on the
+cable, look at the screens, and approve them as baselines
+([visual-regression.md](../../docs/visual-regression.md)):
+
+```bash
+forge ui run examples/device-lab/uitests/catalogue.toml --visual record
+forge ui accept <run>    # after looking at them
+```
+
+After a change, `forge ui run examples/device-lab/uitests/catalogue.toml`
+says which screens changed and where.
 
 Each app stays in its own folder and is updated there; Device Lab uses it as
 it is:
