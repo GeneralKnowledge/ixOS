@@ -59,7 +59,7 @@ The `forge` CLI also has app paths built in: some commands default `--project` t
 | `templates/` | What `forge init` and `forge agent setup` copy |
 | `examples/device-lab` | The test bed on the phone |
 | `scripts/` build pipeline: `build-rust-*`, `forge-crate`, `generate-bindings`, `package-*-library`, `ios-no-dylib-linker`, `native-lib-needs-rebuild`, `write-native-build-meta` | Run by `forge build` |
-| `scripts/` checks: `check-*`, `test-native-rebuild`, `test-swift-host`, `validate-xcode-project`, `verify-android-packaging`, `iphone-acceptance`, `ios-screenshots`, `ios-simulator`, `make-*-check-app`, `ai-check/` | Repository and device checks |
+| `scripts/` checks: `check-*`, `test-native-rebuild`, `test-swift-host`, `validate-xcode-project`, `verify-android-packaging`, `iphone-acceptance`, `ios-screenshots`, `ios-simulator`, `make-*-check-app`, `ai-check/`, `a11y-report` (report only) | Repository and device checks |
 
 forge-lab, the agent tooling, is a separate repository built on these tools.
 

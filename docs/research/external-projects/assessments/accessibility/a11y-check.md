@@ -91,6 +91,8 @@ Reopen when: its maintenance stops, a Linux build breaks, or Apple's audit (the 
 
 ## Next step
 
+Step 1 (report only) is built: [accessibility-report.md](../../../../accessibility-report.md).
+
 One implementation PR, after Reuben agrees. Its first phase is **report-only: nothing fails a build**.
 
 1. **Report only.** Add a pinned build of `a11y-check` (tag `0.7.0` or later) to the Linux CI job that already uses `swift:6.2`, cached, run with `--no-trend --format json`. It writes a report and never fails. Add a repository `.a11ycheck.yml` that turns off sheet-focus-return and heading-trait-missing until a VoiceOver check on the phone shows whether they're real.
