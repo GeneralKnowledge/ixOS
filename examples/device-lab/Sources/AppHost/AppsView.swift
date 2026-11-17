@@ -40,10 +40,10 @@ struct AppsView: View {
                         AppRow(app: app)
                     }
                     .accessibilityIdentifier("apps.\(app.rawValue)")
-                    .accessibilityHint("Opens \(app.name). Swipe down to come back.")
+                    .accessibilityHint("Opens \(app.name) full screen. The Workshop button on its edge comes back.")
                 }
             } footer: {
-                Text("Each app is the full example app, running in Device Lab. Swipe down to come back.")
+                Text("Each app is the full example app, running full screen in Device Lab. The round workshop button on its edge comes back here, and shows the app light or dark, at another text size, or at iPhone SE size.")
             }
             Section {
                 Picker("Open at Launch", selection: $launchApp) {
@@ -54,7 +54,7 @@ struct AppsView: View {
                 }
                 .accessibilityIdentifier("apps.launch")
             } footer: {
-                Text("Device Lab opens straight into this app. Swipe down to get back to Device Lab.")
+                Text("Device Lab opens straight into this app. Its workshop button gets back to Device Lab.")
             }
             BuildSection(info: .current)
         }
@@ -182,7 +182,7 @@ private struct AppRow: View {
 public enum EmbeddedApps {
     /// Weather, Good Dog, Checklist, Pocket Library, Commonplace, FieldKit, Sketchbook, Soundscape and Relay run on the application
     /// runtime: each host owns its Rust core for the whole process, as in
-    /// the standalone app, so closing the sheet doesn't close the core.
+    /// the standalone app, so closing the app doesn't close the core.
     static let weather = WeatherApp.makeAppHost()
     static let goodDog = GoodDogApp.makeAppHost()
     static let checklist = Checklist.makeHost()
@@ -193,7 +193,7 @@ public enum EmbeddedApps {
     static let soundscape = SoundscapeApp.makeAppHost()
     static let relay = RelayApp.makeAppHost()
     /// One Chat core for the process, so its room connections and message
-    /// notifications don't multiply each time the sheet opens.
+    /// notifications don't multiply each time the app opens.
     static let chat = ChatApp.ContentView.makeModel()
 
     /// Hands `url` to the hosted app whose URL scheme it uses. Each app's
