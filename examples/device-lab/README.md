@@ -26,8 +26,8 @@ Nothing asks for a permission until you tap its button. Everything stops when th
 ## The other apps (Apps screen)
 
 The **Apps** button on the dashboard opens the other example apps, each the
-full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Chat,
-FieldKit and the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
+full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Relay (with Chat's
+messaging, merged into it), FieldKit and the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
 in one of them (the `-launchApp weather` launch argument does the same).
 One app on the phone holds all of them. (Counter isn't hosted.)
 
@@ -73,9 +73,9 @@ it is:
   library after the app (`weather_core`, `relay_core`, ...), and `rust/src/lib.rs`
   links it with `use <library> as _;`.
 - **Swift:** `Package.swift` depends on each app's own package
-  (`.package(path: "../chat")`) and its app product (`ChatApp`). Each app names
+  (`.package(path: "../relay")`) and its app product (`RelayApp`). Each app names
   its Swift modules after itself in its `forge.toml` (`[swift] bindings_module
-  = "ChatFFI"`, `app_module = "ChatApp"`), so no two modules share a name. An
+  = "RelayFFI"`, `app_module = "RelayApp"`), so no two modules share a name. An
   app's package links its Rust library only from its app, launcher and test
   targets, so here only Device Lab's library is linked, which holds them all.
 - `Sources/AppHost/AppsView.swift` lists the apps, opens them, and installs
