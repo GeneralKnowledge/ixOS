@@ -1,0 +1,283 @@
+# The screenshot catalogue: every hosted app's first screen, light and dark,
+# full screen in Device Lab on throwaway data, so a redesign can be compared
+# with the screen before it (docs/visual-regression.md).
+#
+#   forge ui run examples/device-lab/uitests/catalogue.toml            compare
+#   forge ui run examples/device-lab/uitests/catalogue.toml --visual record
+#
+# Each launch opens one app (-launchApp) on empty throwaway data
+# (-ForgeTemporaryData), so your own books, notes and messages never appear
+# and the screens are the same every run. The workshop button is masked:
+# it floats over the app and isn't part of it. Baselines are approved with
+# `forge ui accept` after a person has looked at them (uitests/baselines/).
+# About 3 minutes on the phone.
+
+name = "Catalogue: every app's first screen, light and dark"
+app = "org.forgemobile.devicelab"
+
+[visual]
+mask = [{ id = "workshop.menu" }]
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "weather", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "weather"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "weather", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "weather"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "checklist", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "checklist"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "checklist", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "checklist"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "library", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "pocket-library"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "library", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "pocket-library"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "goodDog", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "good-dog"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "goodDog", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "good-dog"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "commonplace", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "commonplace"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "commonplace", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "commonplace"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "chat", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "chat"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "chat", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "chat"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "fieldKit", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "fieldkit"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "fieldKit", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "fieldkit"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "sketchbook", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "sketchbook"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "sketchbook", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "sketchbook"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "soundscape", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "soundscape"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "soundscape", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "soundscape"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "relay", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "relay"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "relay", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "relay"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "forgeUI", "-ForgeAppearance", "light"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "forgeui-showcase"
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "forgeUI", "-ForgeAppearance", "dark"] }
+
+[[step]]
+expect = { id = "workshop.menu" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "forgeui-showcase"

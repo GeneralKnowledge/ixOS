@@ -1,5 +1,7 @@
 # Chat demo: design
 
+> **Agreed, 2026-11-17:** Chat merges into Relay as its messaging, after Relay's PR 2 (#268) lands; this page becomes history then. See [relay-chat-merge.md](../../relay/docs/relay-chat-merge.md).
+
 The Chat example is the third demo, after Counter (FFI basics) and Weather (real HTTP, nested types, cancelling one request). It proves what those two do not:
 
 | Goal | Why Counter / Weather don't prove it |

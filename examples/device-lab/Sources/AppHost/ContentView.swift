@@ -14,6 +14,9 @@ public struct ContentView: View {
     /// argument (`-launchApp weather`) sets it too.
     @AppStorage(EmbeddedApp.launchKey) private var launchApp = ""
     @State private var launched = false
+    /// How the workshop shows hosted apps (WorkshopView.swift), starting
+    /// from launch arguments and kept until Device Lab quits.
+    @State private var workshop = WorkshopSettings.fromLaunch()
 
     public init() {}
 
@@ -21,9 +24,10 @@ public struct ContentView: View {
         NavigationStack {
             DashboardView(model: model, openApp: $openApp)
         }
-        .sheet(item: $openApp) { app in
-            app.content
-                .presentationDragIndicator(.visible)
+        // Full screen, so an app looks and behaves as it does on its own;
+        // the workshop button on its edge comes back here.
+        .fullScreenCover(item: $openApp) { app in
+            HostedAppView(app: app, settings: $workshop) { openApp = nil }
         }
         .onAppear {
             guard !launched else { return }

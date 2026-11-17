@@ -1,5 +1,6 @@
 @preconcurrency import FieldKitFFI
 import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 private let log = ForgeLog("Recording")
@@ -42,7 +43,7 @@ struct RecordingView: View {
             if failedReads >= 3 {
                 Label("The map can't be updated right now. Recording carries on.", systemImage: "map")
                     .font(.footnote)
-                    .foregroundStyle(.orange)
+                    .forgeForeground(.warning)
                     .accessibilityIdentifier("recording.mapProblem")
             }
             if let problem = model.locationProblem {
@@ -54,7 +55,7 @@ struct RecordingView: View {
                             .accessibilityIdentifier("recording.allowLocation")
                     }
                 }
-                .foregroundStyle(.orange)
+                .forgeForeground(.warning)
             }
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 HStack {

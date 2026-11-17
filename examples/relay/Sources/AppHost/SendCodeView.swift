@@ -3,6 +3,7 @@
 import Darwin
 import ForgeAppKit
 import Foundation
+import ForgeUI
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -130,7 +131,7 @@ struct SendCodeSheet: View {
                 if let note {
                     Text(note)
                         .font(.callout)
-                        .foregroundStyle(.orange)
+                        .forgeForeground(.warning)
                 }
                 Text(code)
                     .font(.title2.monospaced().weight(.semibold))
