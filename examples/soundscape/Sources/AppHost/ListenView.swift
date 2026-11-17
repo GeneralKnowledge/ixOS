@@ -620,15 +620,15 @@ struct Artwork: View {
     let size: CGFloat
     var circle = false
 
+    @Environment(\.displayScale) private var displayScale
+
     var body: some View {
         Group {
             if let url, let link = URL(string: url) {
-                AsyncImage(url: link) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        standIn
-                    }
+                ForgeRemoteImage(url: link, maxPixels: ForgeImages.pixels(size, scale: displayScale)) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: { _ in
+                    standIn
                 }
             } else {
                 standIn

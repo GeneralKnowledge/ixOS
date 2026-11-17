@@ -2,7 +2,7 @@
 import SwiftUI
 
 /// A book cover: the copy saved on the device if there is one (works
-/// offline), else the remote image, else a placeholder with the title.
+/// offline), else the remote image (kept on disk by `ForgeRemoteImage`), else a placeholder with the title.
 struct CoverImage: View {
     /// Not drawn; names the book for callers and debugging.
     let title: String
@@ -20,16 +20,13 @@ struct CoverImage: View {
             if let local {
                 local.resizable().scaledToFill()
             } else if file == nil, let url, let remote = URL(string: url) {
-                AsyncImage(url: remote, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    case .empty:
+                ForgeRemoteImage(url: remote, maxPixels: Int(height * displayScale)) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: { failed in
+                    if failed {
+                        placeholder
+                    } else {
                         placeholder.overlay { ProgressView().controlSize(.small) }
-                    case .failure:
-                        placeholder
-                    @unknown default:
-                        placeholder
                     }
                 }
             } else {
