@@ -1,5 +1,4 @@
 use forge_app::{ErrorKind, FieldError, Invalid, OpenError, Stopped};
-use forge_net::NetError;
 use forge_storage::{FileStoreError, StorageError};
 
 /// Every error the API returns. `reason` fields are diagnostics for logs and
@@ -157,20 +156,8 @@ impl From<StorageError> for LibraryError {
     }
 }
 
-impl From<NetError> for LibraryError {
-    fn from(err: NetError) -> Self {
-        match err {
-            NetError::InvalidRequest { reason } => Self::InvalidInput { reason },
-            NetError::Offline { reason } => Self::Offline { reason },
-            NetError::Certificate { reason } => Self::Certificate { reason },
-            NetError::Timeout => Self::Timeout,
-            NetError::Cancelled => Self::Cancelled,
-            other => Self::Network {
-                reason: other.to_string(),
-            },
-        }
-    }
-}
+// Network failures keep their category (forge-app's shared mapping).
+forge_app::app_error_conversions!(LibraryError: NetError);
 
 impl From<FileStoreError> for LibraryError {
     fn from(err: FileStoreError) -> Self {

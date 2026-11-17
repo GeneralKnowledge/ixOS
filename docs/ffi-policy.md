@@ -166,7 +166,7 @@ Each app has its own error enum, and maps every case to a framework `ErrorKind` 
 | `ShutDown` | The core has shut down | Reopen |
 | `Internal` | A bug or an unexpected failure | Message; Try Again |
 
-`forge_app::app_error_conversions!` writes the runtime and storage conversions for the usual cases ([app-crate.md](app-crate.md#rules-that-keep-it-working)). Expected errors never panic and never turn into success.
+`forge_app::app_error_conversions!` writes the runtime, storage and network conversions for the usual cases ([app-crate.md](app-crate.md#rules-that-keep-it-working)). Expected errors never panic and never turn into success.
 
 ## Exposing a new operation
 

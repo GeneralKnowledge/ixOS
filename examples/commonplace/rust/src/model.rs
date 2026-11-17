@@ -1,7 +1,6 @@
 //! What the SwiftUI app sees: records, the timeline filter and errors.
 
 use forge_app::{ErrorKind, OpenError, Stopped};
-use forge_net::NetError;
 use forge_storage::StorageError;
 
 /// A subscription.
@@ -182,20 +181,8 @@ impl From<OpenError> for AppError {
     }
 }
 
-impl From<NetError> for AppError {
-    fn from(err: NetError) -> Self {
-        match err {
-            NetError::InvalidRequest { reason } => Self::InvalidInput { reason },
-            NetError::Offline { reason } => Self::Offline { reason },
-            NetError::Certificate { reason } => Self::Certificate { reason },
-            NetError::Timeout => Self::Timeout,
-            NetError::Cancelled => Self::Cancelled,
-            other => Self::Network {
-                reason: other.to_string(),
-            },
-        }
-    }
-}
+// Network failures keep their category (forge-app's shared mapping).
+forge_app::app_error_conversions!(AppError: NetError);
 
 impl AppError {
     /// What a feed's last refresh hit, as stored on the feed for the screen
