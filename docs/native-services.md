@@ -18,7 +18,7 @@ Every app from `forge init` has these services installed. Device capabilities (c
 
 The services reach an app by one of two routes while apps move from the first to the second (the first goes once every app has moved):
 
-- **Shared crate (the starter app and Good Dog).** The app crate re-exports `forge-native` (`pub use forge_native as native;`). Its types are UniFFI external types in your API, and their Swift, with Forge's adapters, is ForgeKit's `ForgeNative` product, like the runtime's contract types in `ForgeApp`. Nothing is copied into `Generated/`; app code that uses the adapters imports `ForgeNative`. Optional services are not on this route yet.
+- **Shared crate (the starter app and Good Dog).** The app crate re-exports `forge-native` (`pub use forge_native as native;`). Its types are UniFFI external types in your API, and their Swift, with Forge's adapters, is ForgeKit's `ForgeNative` product, like the runtime's contract types in `ForgeApp`. Nothing is copied into `Generated/`; app code that uses the adapters imports `ForgeNative`. Optional services are not on this route yet, which is why an app outside this repository can't get them from the ForgeKit release alone. Whether and how they move to it is phase 4 of the [everyday capabilities plan](research/everyday-capabilities.md), which starts with an investigation.
 - **Macro (the other apps).** `forge_services::native_services!()` emits the same items into your crate, and `forge build` copies the adapters into `Generated/ForgeFFI`, as described below.
 
 

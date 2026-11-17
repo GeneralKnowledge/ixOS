@@ -35,7 +35,7 @@ Crates under `crates/` must declare it. Crates under `examples/` are apps unless
 Known crossings are listed in [boundaries.toml](boundaries.toml), each with a reason. Its status is either `fix`, with the plan that removes it, or `keep`, an allowed exception. The check fails on an unlisted crossing and on a listed one that no longer exists, so the list only shrinks. Today it holds:
 
 - **Device Lab hosts every app** (`keep`). It is the test bed on the phone, so its crate links each app's crate.
-- **Relay uses forge-devproto** (`fix`, wave 4). Relay's encrypted channel is the dev-connection protocol crate. The channel moves into forge-net.
+- **Relay uses forge-devproto** (`fix`). Relay's encrypted channel is the dev-connection protocol crate. Relay's iroh transfer (#267) replaces that channel, and the crossing goes when Relay no longer needs forge-devproto; the channel does not move into forge-net (roadmap, wave 4).
 - **Chat's and Good Dog's core crates sit in the root workspace** (`fix`). They move into their apps' own folders and workspaces.
 
 The `forge` CLI also has app paths built in: some commands default `--project` to `examples/pocket-library`, and `forge check` runs named apps. A path is not a dependency, so the check doesn't see it. It is removed in the same round of fixes.
