@@ -43,6 +43,7 @@ The VPN repository ([GeneralKnowledge/VPN](https://github.com/GeneralKnowledge/V
 > - `ESIM_PROVIDER=mock` is the default; ResellPortal needs a wallet balance for live orders ([esim-resellportal.md](https://github.com/GeneralKnowledge/VPN/blob/bbffa86/docs/esim-resellportal.md)).
 > - An order response carries `qr_code_url`, `activation_url`, `iccid` and `esim_status`. What format `activation_url` uses (Apple's setup link, an LPA string or a web page) is not documented and is a question for E1.
 > - Retail prices are wholesale times a flat markup (`retailMarkup`, 1.4) until an explicit price map replaces it.
+> - The mock checkout is a test path, not a production payment flow. Real eSIM payment is step 3 of E0.
 > - PR #17 (branch `claude/project-thread-bvh8b8`, 2026-10-22, four commits) closes free-access holes. It refuses a production boot with mock crypto billing, or with mock billing next to a live eSIM provider. It refuses an eSIM checkout that can never take payment, trusts only a known proxy for the client IP, refuses cross-site API writes, and stops Stripe renewals being counted twice. It belongs at the start of E0.
 
 ### Phase E0: validate the existing business
@@ -53,8 +54,13 @@ Before building a native app, prove that the backend can reliably fulfil a real 
 
 1. Review and resolve VPN repo PR #17.
 2. Confirm the ResellPortal integration and wallet behaviour.
-3. Configure real payment processing.
-4. Restore checkout only when payment and provisioning safeguards are in place.
+3. Implement Stripe one-time eSIM Checkout. It doesn't exist yet: with any billing provider other than mock, the checkout route returns HTTP 501 (since PR #17, before it creates an order). This is real implementation work, not configuration:
+   - create a payment session for each eSIM order and track it against the order;
+   - provision only after verified payment confirmation (the signed webhook, not the browser's return);
+   - make webhook processing idempotent, so a repeated delivery never provisions twice;
+   - handle payment success followed by provisioning failure (retry, then refund or manual resolution, never a silent loss);
+   - handle refunds and reconciliation between Stripe and ResellPortal records.
+4. Restore checkout only when those payment and provisioning safeguards are in place and tested.
 5. Complete an actual paid eSIM purchase.
 6. Verify provider provisioning and the delivery of activation information.
 7. Test successful payments, declined payments, duplicate webhook delivery, failed provisioning, refunds, cancellations and expiry, and reconciliation between payment and provider records.
@@ -139,7 +145,15 @@ Priority: after the native app works.
 - Test the complete journey with a small group of users.
 - A repeatable process for provider failures.
 
-**Company formation.** A new UK Ltd will be needed for the intended business structure and for future organisation-enrolled VPN distribution on Apple. Investigate company registration and ongoing obligations, business banking, accounting and tax, payment-provider requirements and Apple organisation enrolment. This is business readiness, not a prerequisite for the activation experiment.
+### Gate before commercial launch: the company
+
+A new UK Ltd will be needed for the intended business structure and for future organisation-enrolled VPN distribution on Apple.
+
+- **Not a blocker for technical validation.** E0's test purchases and E1's activation experiments go ahead without it.
+- **A blocker for public commercial orders.** Before the product takes orders from the public under the intended structure, these are in place: the Ltd registered and its ongoing obligations understood, business banking, the payment provider's account in the company's name, and accounting and tax responsibilities.
+- Apple organisation enrolment belongs to the same set-up, but it is only needed for an App Store release, and for the VPN app later.
+
+Start it during E2 so it is ready by E3, not after.
 
 ## 3. Workstream B: AI Lab
 
@@ -204,7 +218,7 @@ Exit criteria: AI Lab can switch between Apple on-device inference and the lapto
 
 > **From the code:**
 > - The contract is OpenAI chat completions with streaming, already spoken by `OpenAiServer`, so A1 needs no new protocol.
-> - Secure connectivity is Tailscale: the phone and the laptop are both on the tailnet. The model server listens only on the laptop's tailnet address, never on the LAN or the internet.
+> - Secure connectivity is meant to be Tailscale. **Prerequisite to verify at the start of A1:** the iPhone and the GTX 1060 laptop are both on the tailnet and reach each other. (The build laptop and the iPhone were on it on 2026-11-16; whether that is the same machine as the Dell G3 isn't recorded.) The model server listens only on the laptop's tailnet address, never on the LAN or the internet, and no GPU work starts without Reuben's approval.
 > - Plain http inside the tailnet needs an App Transport Security exception, as Soundscape already has for its take server.
 > - Task 1 ("identify the existing inference service") is a read-only look and is done before anything is started on the laptop.
 
@@ -222,7 +236,11 @@ Priority: deferred.
 
 Only after A0 to A2 have shown value: background model downloads, model management, persistent experiment history, lightweight specialist models, larger external hosts, and background processing and task queues.
 
-No Apple Background Assets, complex asset delivery or multi-machine orchestration until a concrete workload needs them. (Background Assets also needs the paid Apple team.)
+No Apple Background Assets, complex asset delivery or multi-machine orchestration until a concrete workload needs them. Background Assets, if it is ever needed:
+
+- Ordinary downloads (`URLSession`, including background transfers) don't need Background Assets at all.
+- Self-hosted asset packs: the framework and signing requirements still need checking before anyone relies on them.
+- Apple-hosted asset packs: storage comes with the paid Apple Developer Program membership.
 
 ## 4. Shared architecture and boundaries
 
@@ -249,13 +267,13 @@ Architecture rules:
 
 | Order | Milestone | Outcome |
 |---|---|---|
-| 1 | E0 | Paid eSIM provisioning proven |
+| 1 | E0 | Stripe one-time eSIM checkout built; paid eSIM provisioning proven |
 | 2 | A0 | A working Apple-model AI Lab |
 | 3 | E1 | eSIM installation proven on the iPhone |
 | 4 | A1 | AI Lab connected to the GTX 1060 |
 | 5 | E2 | Native eSIM purchase and installation app |
 | 6 | A2 | Repeatable model experiments |
-| 7 | E3 | Commercial launch preparation |
+| 7 | E3 | Commercial launch preparation, behind the company gate |
 | 8 | A3 | Background and continuous AI experiments |
 
 E0, A0 and E1 can overlap. The order shows dependencies; it doesn't require finishing one workstream before touching the other.
