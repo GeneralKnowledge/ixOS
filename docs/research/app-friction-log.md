@@ -730,17 +730,22 @@ streams the audio. What took work:
 AI Lab (PR #277) runs experiments with Apple's on-device model inside Device
 Lab. What got in the way:
 
-- **`@Generable` needs Xcode.** Foundation Models' typed answers use the
-  `@Generable` and `@Guide` macros, and their compiler plugin ships only
-  inside Xcode, built for macOS. A Linux build has nothing to expand them
-  with (blocker for that path; the laptop build check settles it). The app
-  got round it with `StructuredShape` (Device Lab,
-  `Sources/AppHost/StructuredShape.swift`): the shape is a plain Swift value
-  that becomes a `DynamicGenerationSchema` at run time, and the answer
-  decodes into an ordinary `Decodable` struct. Foundation only, so it builds
-  and tests anywhere. It stays in Device Lab until a second app needs typed
-  answers (Pocket Library's fact fields are the likely one); then it belongs
-  next to `ForgeAppleModel`. (limit)
+- **`@Generable` looked like it needed Xcode, and doesn't.** Foundation
+  Models' typed answers use the `@Generable` and `@Guide` macros, and
+  Apple's compiler plugin for them ships only inside Xcode, built for
+  macOS. The laptop build check (2026-11-17, xtool 1.24.0, Swift 6.2.3)
+  showed xtool's Darwin SDK covers this: its `OpenAppleMacrosServer`, an
+  open reimplementation of Apple's macro plugins built for Linux, expands
+  both, and the build's objects hold the generated `PartiallyGenerated`
+  type and the `Generable` conformance. The plan (and `ForgeAppleModel`'s
+  comment) had assumed otherwise, so this cost a stand-in built before the
+  check ran: `StructuredShape` (Device Lab,
+  `Sources/AppHost/StructuredShape.swift`) describes the shape as a plain
+  value that becomes a `DynamicGenerationSchema` at run time, decoded into a
+  `Decodable` struct. It stays as the second experiment, for answers whose
+  shape is only known at run time and as the comparison on the phone. Still
+  open: whether the open expansion behaves like Apple's on a device (the
+  phone check). (annoyance)
 - **A copy of `ForgeAppleModel` per app.** Each hosted app that selects
   `native_services!(ai)` (Chat, Pocket Library, now Device Lab) gets its own
   `AiModel` protocol and its own copy of the adapter in its own Swift
