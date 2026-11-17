@@ -13,7 +13,7 @@ Status: 2026-11-17. Phase 1b of [ixOS Experience Research](../README.md), added 
 
 **ixOS app:** Relay on main (`560eecb`, after #268). Relay's decisions (iroh, word codes with SPAKE2, pairing policies, trusted devices in brief PR 3, wait-until-seen messages after the [Chat merge](../../../../examples/relay/docs/relay-chat-merge.md)) are taken as given. **Evidence:** S (source) on both sides.
 
-The headline: none of the four does something Relay has decided against for a good reason, and Relay's security is already at least as strong as each. What they add is behaviour around the transfer: asking before anything lands, catching up after being apart, retrying cleverly, and saying plainly what a broadcast exposes.
+The headline: none of the four does something Relay has decided against for a good reason, and on the specific properties examined here (how codes are protected, what trust is keyed on, resume) Relay already has protections as strong or stronger. This comparison is not a full security audit of Relay or of the referenced apps. What they add is behaviour around the transfer: asking before anything lands, catching up after being apart, retrying cleverly, and saying plainly what a broadcast exposes.
 
 ## What they do better, and why
 
@@ -66,6 +66,8 @@ The headline: none of the four does something Relay has decided against for a go
 **Proposal (P2):** photos and videos from a transfer get **Save to Photos** on the received item, and a setting to do it automatically. Add-only Photos access works with the free team.
 
 ## What Relay already does as well or better
+
+On these properties only; the references' other security choices were not reviewed.
 
 - **Codes are protected by a PAKE.** Drift's 6-character code is a lookup key on its rendezvous server for five minutes (`crates/server`, `DISCOVERY_TTL_SECONDS = 300`), rate-limited by IP: whoever guesses it first gets the ticket. Relay's word codes use SPAKE2, so a wrong guess burns the code. iroh-drop reached the same conclusion: its word codes are blocked because "the exchange needs a PAKE … and a rendezvous" (`docs/roadmap.md`, U12), the two things Relay's plan already has (PR 7 for the internet rendezvous).
 - **Trust keyed on the key, never the name.** RelayPony pins the public key and lets a discovered device be one-tap only if the key it advertises is already pinned. Relay's trusted devices are endpoint ids, which is the same rule; keep showing a device as trusted only by id, whatever name it advertises.
