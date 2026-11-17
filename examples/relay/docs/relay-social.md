@@ -171,6 +171,14 @@ can't express instead of pretending it is equivalent.
 Rooms on Nostr (Marmot, NIP-29, NIP-11) are already approved in the
 platform plan, so this extends an existing choice rather than adding one.
 
+**Governance is not encryption:** NIP-29 describes relay-managed group
+membership and moderation; it does not by itself provide end-to-end
+encryption. A public or private NIP-29 group must not be described as
+E2EE merely because it has membership controls. Private Spaces require a
+separate, correctly integrated end-to-end encryption layer such as
+Marmot/MLS, with its own membership, key-rotation and removal guarantees.
+The compatibility profile and UI must state these properties separately.
+
 The table is a start. S0's compatibility profile says, for each protocol
 feature, what Relay implements, what it only understands, what it keeps but
 can't show, what it can publish, and what happens when an external client
@@ -188,11 +196,16 @@ author's own services honour, while independent providers keep their own
 retention (to be disclosed). Copies already received can't be guaranteed to
 disappear.
 
-**One person, several devices:** the person's key signs device
-associations; each device keeps its own key, so devices are revoked
-individually and the identity survives a lost device. Person identity and
-recovery come before profiles depend on them (deferred today until people
-and groups need it, M4).
+**One person, several devices:** distinguish the long-term person identity
+key from the keys used by individual devices. The identity key (or a
+documented recovery mechanism rooted in it) authorises device associations;
+each device keeps its own revocable key. Where supported, scoped or
+time-limited delegated signing keys can reduce exposure of the identity key.
+The protocol profile must specify which key signs each event, how rotation
+and revocation work, and what happens when the identity key is lost. Do not
+silently treat an iroh device key as the person's Nostr identity key.
+Person identity and recovery come before profiles depend on them (deferred
+today until people and groups need them, M4).
 
 ## Portability, precisely
 
@@ -240,9 +253,16 @@ operator, several relays and indexes, personal hosting, federation.
 | S3 | Spaces and membership: create, discover, join, invite, roles, channels, NIP-29 adapter, operator and policy shown | A Space hosted independently works for two clients with no central Relay account service |
 | S4 | Moderation and governance: moderator rights, remove and restrict, block and mute, reports and appeals, audit, rate limits | An independent operator runs a usable community without Relay's moderators |
 | S5 | Private Spaces: Marmot/MLS, device-aware membership, removal and key rotation, Chat integration, attachments through Relay Transfer | A removed member can't read later messages; Relay messaging keeps working |
-| S6 | The client: Pulse, Explore, Spaces, Inbox, Identity, search, several indexes, user-built views | Someone can discover, join, publish and talk without knowing what a relay is |
+| S6 | The full client experience: Pulse, Explore, Spaces, Inbox, Identity, search, several indexes, user-built views | Someone can discover, join, publish and talk without knowing what a relay is |
 | S7 | Independent hosting and migration: operator package, backups, export, Space migration, provider choice, diagnostics, limits | A community changes provider without losing identity, members or portable content |
 | S8 | Federation and developers: ActivityPub bridge, public API, third-party clients, Space app manifests, extension permissions | Third parties build interoperable apps without the official client |
+
+S6 is the complete first-party client experience, not a gate that prevents
+earlier end-to-end testing. S2 and S3 will need small temporary or minimal
+test clients, command-line tools, and/or development screens to prove
+publishing, verification, membership and independent hosting before S6.
+Those are validation tools, not an attempt to build the finished client
+early.
 
 Each phase is several small PRs with their own tests, fixtures and phone
 checks; never one giant Social PR.
@@ -261,8 +281,10 @@ Identity made on instance A works on B; a post published on A is read on
 B; a relay disappears and another still has the post; a follow list moves
 to a new client; a Space runs on an independent host; leaving a Space is
 respected; a ban is enforced; a block holds; a revoked device stays
-separate from the social identity; a removed MLS member can't send into the
-group; a missing media provider is reported accurately; an ActivityPub user
+separate from the social identity; after an MLS member is removed, they
+cannot send valid group messages or decrypt messages created after removal
+(and the test documents the exact MLS epoch/key-update boundary); a missing
+media provider is reported accurately; an ActivityPub user
 replies to a Relay post; a client keeps an extension it doesn't understand.
 And the failure test: **take the official Relay infrastructure offline**,
 and people with identities on independent infrastructure keep working.
