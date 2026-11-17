@@ -18,9 +18,9 @@ crate-type = ["staticlib", "cdylib", "lib"]
 # Forge's runtime crates, from the Forge checkout this app was created with.
 forge-runtime = { path = "../../../crates/forge-runtime" }
 # Native services, with the optional connectivity, device status, motion,
-# location, Bluetooth and background transfer services selected in
-# src/lib.rs. See docs/native-services.md.
-forge-services = { path = "../../../crates/forge-services", features = ["transfers"] }
+# location, Bluetooth, background transfer and on-device model (AI Lab)
+# services selected in src/lib.rs. See docs/native-services.md.
+forge-services = { path = "../../../crates/forge-services", features = ["transfers", "ai"] }
 # The folder background downloads are delivered into.
 forge-storage = { path = "../../../crates/forge-storage" }
 thiserror = "2"

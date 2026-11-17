@@ -182,9 +182,30 @@ ForgeField("Pages", message: model.errors.message(for: "total_pages", otherwise:
 
 `fields` keeps the order they were reported in, so the first problem can be focused or announced; `summary` is every problem as one line each.
 
+## Files the person picks: `ForgePickedFile`
+
+A URL from `fileImporter`, the document picker or a drop is security-scoped: the app may read it only briefly. When Rust reads the file straight away, inside the call, hold the scope around that call and copy nothing (Checklist's and Pocket Library's imports). When Rust reads it later (an upload, a send that takes minutes), copy it first with `ForgePickedFile`, which copies off the main thread (a large video takes seconds), keeps the file's name, and deletes the copy on `release()`:
+
+```swift
+.fileImporter(isPresented: $picking, allowedContentTypes: [.item]) { result in
+    guard case .success(let url) = result else { return }
+    Task {
+        do {
+            let file = try await ForgePickedFile.copy(of: url)
+            defer { file.release() }
+            await model.send(file: file.url)
+        } catch {
+            model.report(error)
+        }
+    }
+}
+```
+
+Copies go to their own folder under the temporary directory, which iOS clears. `scripts/check-app-parity.sh` (rule `picked-files`) fails on an app that copies a picked file itself.
+
 ## What's not in 0.1
 
-Navigation paths and tab selection as model state, toasts, undo, settings screens as data, and anything that needs a dependency: ForgeAppKit is about 600 lines of plain Swift, borrowing ideas (alerts as data, destination enums) from Point-Free's swift-navigation without depending on it, because its macros are slow and fragile to build with xtool on Linux.
+Navigation paths and tab selection as model state, toasts, undo, settings screens as data, and anything that needs a dependency: ForgeAppKit is about 650 lines of plain Swift, borrowing ideas (alerts as data, destination enums) from Point-Free's swift-navigation without depending on it, because its macros are slow and fragile to build with xtool on Linux.
 
 ## Building on Linux
 

@@ -81,6 +81,9 @@ public final class WeatherViewModel {
     @ObservationIgnored private var refreshTokens: [String: Int] = [:]
     @ObservationIgnored private var nextToken = 0
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    /// Bumped by every search and clear: a search whose number is no longer
+    /// current was replaced or cleared, and must not write its results.
+    @ObservationIgnored private var searchGeneration = 0
     @ObservationIgnored private var started = false
     /// When "My Location" last got a fix. The process can stay alive for
     /// days while the phone travels, so an old fix is looked up again.
@@ -292,8 +295,10 @@ public final class WeatherViewModel {
     // MARK: Saved places
 
     /// Saves `place` (or finds it already saved), shows its page and
-    /// refreshes it.
-    public func add(_ place: Place) {
+    /// refreshes it. False when it couldn't be saved: `searchMessage` says
+    /// why, so the search sheet should stay open to show it.
+    @discardableResult
+    public func add(_ place: Place) -> Bool {
         do {
             let saved = try client.save(place)
             rebuildPages(saved: saved)
@@ -303,8 +308,10 @@ public final class WeatherViewModel {
             searchResults = []
             searchMessage = nil
             refresh(selection)
+            return true
         } catch {
-            searchMessage = (error as? WeatherClientError)?.userMessage ?? "\(error)"
+            searchMessage = Self.message(error, doing: "add \(place.name)")
+            return false
         }
     }
 
@@ -342,9 +349,21 @@ public final class WeatherViewModel {
 
     // MARK: Search
 
+    /// Clears results that no longer match the query (it got too short to
+    /// search), and stops a search still running.
+    public func clearSearch() {
+        searchGeneration += 1
+        searchTask?.cancel()
+        searchResults = []
+        searchMessage = nil
+        isSearching = false
+    }
+
     /// Searches for places by name. A newer search replaces an older one.
     @discardableResult
     public func search(_ query: String) -> Task<Void, Never> {
+        searchGeneration += 1
+        let generation = searchGeneration
         searchTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 2 else {
@@ -357,22 +376,23 @@ public final class WeatherViewModel {
         searchMessage = nil
         let client = self.client
         let task = Task {
+            let outcome: (places: [Place], message: String?)
             do {
                 let places = try await client.searchPlaces(trimmed)
-                searchResults = places
-                searchMessage = places.isEmpty ? "No places match “\(trimmed)”." : nil
-                isSearching = false
+                outcome = (places, places.isEmpty ? "No places match “\(trimmed)”." : nil)
             } catch is CancellationError {
-                // A newer search is running.
+                return
             } catch let error as WeatherClientError {
-                searchResults = []
-                searchMessage = error.userMessage
-                isSearching = false
+                outcome = ([], error.userMessage)
             } catch {
-                searchResults = []
-                searchMessage = "\(error)"
-                isSearching = false
+                outcome = ([], "\(error)")
             }
+            // Replaced by a newer search or cleared while this one ran: its
+            // answer is for a query that is no longer on screen.
+            guard generation == searchGeneration else { return }
+            searchResults = outcome.places
+            searchMessage = outcome.message
+            isSearching = false
         }
         searchTask = task
         return task

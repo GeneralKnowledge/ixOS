@@ -6,6 +6,8 @@ struct DashboardView: View {
     let model: LabModel
     @Binding var openApp: EmbeddedApp?
     @State private var transfers = TransferTestModel()
+    @State private var aiLab = AiLabModel(
+        lab: AiLab(model: ForgeAppleModel()), structured: AiLabStructured.run)
 
     private var s: LabSnapshot { model.snapshot }
 
@@ -20,6 +22,16 @@ struct DashboardView: View {
             barometerSection
             locationSection
             deviceSection
+            Section {
+                NavigationLink {
+                    AiLabView(model: aiLab)
+                } label: {
+                    Label("AI Lab", systemImage: "sparkles")
+                }
+                .accessibilityIdentifier("dashboard.aiLab")
+            } footer: {
+                Text("Experiments with Apple's on-device model: speed, Stop, structured output.")
+            }
             Section {
                 NavigationLink {
                     LimitsView()

@@ -302,6 +302,19 @@ typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, 
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD0
+typedef void (*UniffiCallbackInterfaceAiModelMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD1
+typedef void (*UniffiCallbackInterfaceAiModelMethod1)(uint64_t, RustBuffer, uint64_t, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BLUETOOTH_MONITOR_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BLUETOOTH_MONITOR_METHOD0
 typedef void (*UniffiCallbackInterfaceBluetoothMonitorMethod0)(uint64_t, RustBuffer* _Nonnull, 
@@ -489,6 +502,16 @@ typedef struct UniffiVTableCallbackInterfaceSecureStore {
 } UniffiVTableCallbackInterfaceSecureStore;
 
 #endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AI_MODEL
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AI_MODEL
+typedef struct UniffiVTableCallbackInterfaceAiModel {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceAiModelMethod0 _Nonnull describe;
+    UniffiCallbackInterfaceAiModelMethod1 _Nonnull generate;
+} UniffiVTableCallbackInterfaceAiModel;
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BLUETOOTH_MONITOR
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BLUETOOTH_MONITOR
 typedef struct UniffiVTableCallbackInterfaceBluetoothMonitor {
@@ -605,6 +628,66 @@ void uniffi_forge_ffi_fn_method_devicelab_set_in_foreground(uint64_t ptr, int8_t
 RustBuffer uniffi_forge_ffi_fn_method_devicelab_snapshot(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AILAB
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AILAB
+uint64_t uniffi_forge_ffi_fn_clone_ailab(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_AILAB
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_AILAB
+void uniffi_forge_ffi_fn_free_ailab(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_AILAB_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_AILAB_NEW
+uint64_t uniffi_forge_ffi_fn_constructor_ailab_new(uint64_t model, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_BEGIN_EXTERNAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_BEGIN_EXTERNAL
+uint64_t uniffi_forge_ffi_fn_method_ailab_begin_external(uint64_t ptr, RustBuffer kind, RustBuffer prompt, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_CLEAR_HISTORY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_CLEAR_HISTORY
+void uniffi_forge_ffi_fn_method_ailab_clear_history(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_FINISH_EXTERNAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_FINISH_EXTERNAL
+void uniffi_forge_ffi_fn_method_ailab_finish_external(uint64_t ptr, RustBuffer answer, RustBuffer error, int8_t refused, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_REFRESH_MODEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_REFRESH_MODEL
+RustBuffer uniffi_forge_ffi_fn_method_ailab_refresh_model(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_RUN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_RUN
+uint64_t uniffi_forge_ffi_fn_method_ailab_run(uint64_t ptr, RustBuffer kind, RustBuffer instructions, RustBuffer prompt, uint32_t max_tokens, double temperature, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_SNAPSHOT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_SNAPSHOT
+RustBuffer uniffi_forge_ffi_fn_method_ailab_snapshot(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_STOP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_STOP
+void uniffi_forge_ffi_fn_method_ailab_stop(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_STOP_REQUESTED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_STOP_REQUESTED
+int8_t uniffi_forge_ffi_fn_method_ailab_stop_requested(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_UPDATE_EXTERNAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_UPDATE_EXTERNAL
+void uniffi_forge_ffi_fn_method_ailab_update_external(uint64_t ptr, RustBuffer so_far, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_LOCALNOTIFIER
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_LOCALNOTIFIER
 uint64_t uniffi_forge_ffi_fn_clone_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -693,6 +776,51 @@ void uniffi_forge_ffi_fn_method_securestore_set(uint64_t ptr, RustBuffer key, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_SECURESTORE_DELETE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_SECURESTORE_DELETE
 void uniffi_forge_ffi_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AIMODEL
+uint64_t uniffi_forge_ffi_fn_clone_aimodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_AIMODEL
+void uniffi_forge_ffi_fn_free_aimodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_AIMODEL
+void uniffi_forge_ffi_fn_init_callback_vtable_aimodel(const UniffiVTableCallbackInterfaceAiModel* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AIMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AIMODEL_DESCRIBE
+RustBuffer uniffi_forge_ffi_fn_method_aimodel_describe(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AIMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AIMODEL_GENERATE
+uint64_t uniffi_forge_ffi_fn_method_aimodel_generate(uint64_t ptr, RustBuffer request, uint64_t sink
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_TEXTSINK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_TEXTSINK
+uint64_t uniffi_forge_ffi_fn_clone_textsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_TEXTSINK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_TEXTSINK
+void uniffi_forge_ffi_fn_free_textsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TEXTSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TEXTSINK_IS_STOPPED
+int8_t uniffi_forge_ffi_fn_method_textsink_is_stopped(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TEXTSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TEXTSINK_PUSH
+int8_t uniffi_forge_ffi_fn_method_textsink_push(uint64_t ptr, RustBuffer text, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_BLUETOOTHMONITOR
@@ -1005,6 +1133,12 @@ void uniffi_forge_ffi_fn_method_transfersink_progress(uint64_t ptr, RustBuffer i
 void uniffi_forge_ffi_fn_method_transfersink_reconcile(uint64_t ptr, RustBuffer tasks, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_AI_LAB_EXPERIMENTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_AI_LAB_EXPERIMENTS
+RustBuffer uniffi_forge_ffi_fn_func_ai_lab_experiments(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_CRASH_TEST_RUST_PANIC
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_CRASH_TEST_RUST_PANIC
 void uniffi_forge_ffi_fn_func_crash_test_rust_panic(RustCallStatus *_Nonnull out_status
@@ -1036,6 +1170,11 @@ uint32_t uniffi_forge_ffi_fn_func_native_services_version(RustCallStatus *_Nonnu
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PARSE_DEEP_LINK
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PARSE_DEEP_LINK
 RustBuffer uniffi_forge_ffi_fn_func_parse_deep_link(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_AI
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_AI
+void uniffi_forge_ffi_fn_func_install_native_ai(uint64_t model, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_BLUETOOTH
@@ -1361,6 +1500,12 @@ void ffi_forge_ffi_rust_future_free_void(uint64_t handle
 void ffi_forge_ffi_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_AI_LAB_EXPERIMENTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_AI_LAB_EXPERIMENTS
+uint16_t uniffi_forge_ffi_checksum_func_ai_lab_experiments(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CRASH_TEST_RUST_PANIC
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CRASH_TEST_RUST_PANIC
 uint16_t uniffi_forge_ffi_checksum_func_crash_test_rust_panic(void
@@ -1394,6 +1539,12 @@ uint16_t uniffi_forge_ffi_checksum_func_native_services_version(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PARSE_DEEP_LINK
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PARSE_DEEP_LINK
 uint16_t uniffi_forge_ffi_checksum_func_parse_deep_link(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_AI
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_AI
+uint16_t uniffi_forge_ffi_checksum_func_install_native_ai(void
     
 );
 #endif
@@ -1505,6 +1656,60 @@ uint16_t uniffi_forge_ffi_checksum_method_devicelab_snapshot(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_BEGIN_EXTERNAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_BEGIN_EXTERNAL
+uint16_t uniffi_forge_ffi_checksum_method_ailab_begin_external(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_CLEAR_HISTORY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_CLEAR_HISTORY
+uint16_t uniffi_forge_ffi_checksum_method_ailab_clear_history(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_FINISH_EXTERNAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_FINISH_EXTERNAL
+uint16_t uniffi_forge_ffi_checksum_method_ailab_finish_external(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_REFRESH_MODEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_REFRESH_MODEL
+uint16_t uniffi_forge_ffi_checksum_method_ailab_refresh_model(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_RUN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_RUN
+uint16_t uniffi_forge_ffi_checksum_method_ailab_run(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_SNAPSHOT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_SNAPSHOT
+uint16_t uniffi_forge_ffi_checksum_method_ailab_snapshot(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_STOP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_STOP
+uint16_t uniffi_forge_ffi_checksum_method_ailab_stop(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_STOP_REQUESTED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_STOP_REQUESTED
+uint16_t uniffi_forge_ffi_checksum_method_ailab_stop_requested(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_UPDATE_EXTERNAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_UPDATE_EXTERNAL
+uint16_t uniffi_forge_ffi_checksum_method_ailab_update_external(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
 uint16_t uniffi_forge_ffi_checksum_method_localnotifier_schedule(void
@@ -1556,6 +1761,30 @@ uint16_t uniffi_forge_ffi_checksum_method_securestore_set(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_SECURESTORE_DELETE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_SECURESTORE_DELETE
 uint16_t uniffi_forge_ffi_checksum_method_securestore_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AIMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AIMODEL_DESCRIBE
+uint16_t uniffi_forge_ffi_checksum_method_aimodel_describe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AIMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AIMODEL_GENERATE
+uint16_t uniffi_forge_ffi_checksum_method_aimodel_generate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TEXTSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TEXTSINK_IS_STOPPED
+uint16_t uniffi_forge_ffi_checksum_method_textsink_is_stopped(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TEXTSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TEXTSINK_PUSH
+uint16_t uniffi_forge_ffi_checksum_method_textsink_push(void
     
 );
 #endif
@@ -1754,6 +1983,12 @@ uint16_t uniffi_forge_ffi_checksum_method_transfersink_reconcile(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_DEVICELAB_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_DEVICELAB_NEW
 uint16_t uniffi_forge_ffi_checksum_constructor_devicelab_new(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_AILAB_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_AILAB_NEW
+uint16_t uniffi_forge_ffi_checksum_constructor_ailab_new(void
     
 );
 #endif

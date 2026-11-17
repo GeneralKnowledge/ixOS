@@ -330,7 +330,7 @@ fn text(v: &Option<serde_json::Value>) -> Option<String> {
     }
 }
 
-fn non_empty(s: Option<String>) -> Option<String> {
+pub(crate) fn non_empty(s: Option<String>) -> Option<String> {
     s.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
@@ -535,6 +535,31 @@ pub fn fetch_song(
 ) -> Result<SongDetail, SoundscapeError> {
     let url = format!("{server}/api/song?slug={}", encode(slug, false));
     parse_song(&send(http, Request::get(url), cancel)?, server)
+}
+
+/// The server's whole catalogue (`/api/catalog`), or `None` from a server
+/// too old to have it.
+pub fn fetch_catalog(
+    http: &dyn HttpClient,
+    server: &str,
+    fresh: bool,
+    now: i64,
+    cancel: &CancelHandle,
+) -> Result<Option<crate::library::Snapshot>, SoundscapeError> {
+    let url = format!(
+        "{server}/api/catalog{}",
+        if fresh { "?fresh=1" } else { "" }
+    );
+    let response = http
+        .send_cancellable(&Request::get(url).timeout(TIMEOUT), cancel)
+        .map_err(SoundscapeError::from)?;
+    match response.status {
+        404 => Ok(None),
+        s if !(200..300).contains(&s) => Err(SoundscapeError::Server {
+            reason: format!("the server answered {s}"),
+        }),
+        _ => crate::library::parse_catalog(&response.body, server, now).map(Some),
+    }
 }
 
 pub fn send_mark(

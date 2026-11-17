@@ -724,3 +724,151 @@ streams the audio. What took work:
   refused too (NSURLError -1022 on the phone); Soundscape sets
   `NSAllowsArbitraryLoads` (#263), and the starter now carries that setting
   commented out ([app-config.md](../app-config.md#plain-http-app-transport-security)).
+
+## A36. AI Lab in Device Lab (structured output on Linux)
+
+AI Lab (PR #277) runs experiments with Apple's on-device model inside Device
+Lab. What got in the way:
+
+- **`@Generable` looked like it needed Xcode, and doesn't.** Foundation
+  Models' typed answers use the `@Generable` and `@Guide` macros, and
+  Apple's compiler plugin for them ships only inside Xcode, built for
+  macOS. The laptop build check (2026-11-17, xtool 1.24.0, Swift 6.2.3)
+  showed xtool's Darwin SDK covers this: its `OpenAppleMacrosServer`, an
+  open reimplementation of Apple's macro plugins built for Linux, expands
+  both, and the build's objects hold the generated `PartiallyGenerated`
+  type and the `Generable` conformance. The plan (and `ForgeAppleModel`'s
+  comment) had assumed otherwise, so this cost a stand-in built before the
+  check ran: `StructuredShape` (Device Lab,
+  `Sources/AppHost/StructuredShape.swift`) describes the shape as a plain
+  value that becomes a `DynamicGenerationSchema` at run time, decoded into a
+  `Decodable` struct. It stays as the second experiment, for answers whose
+  shape is only known at run time and as the comparison on the phone. Still
+  open: whether the open expansion behaves like Apple's on a device (the
+  phone check). (annoyance)
+- **A copy of `ForgeAppleModel` per app.** Each hosted app that selects
+  `native_services!(ai)` (Chat, Pocket Library, now Device Lab) gets its own
+  `AiModel` protocol and its own copy of the adapter in its own Swift
+  module, so Device Lab carries three. It works because no file imports two
+  of them; it is the "native services once per process" problem (showcase
+  log F15) again. ForgeNative fixed it for the core services; `ai` should
+  follow when it moves. (annoyance)
+- **Rust error messages don't reach Swift.** UniFFI's generated
+  `errorDescription` is `String(reflecting: self)` (`AiLabError.Busy`), not
+  the Rust `Display` text, so the app repeats each message in a Swift
+  `switch`. Every app with errors does this. (annoyance)
+- **Regenerating bindings without swift-format** writes unformatted Swift.
+  Device Lab's `forge_ffi.swift` had been generated on the laptop with
+  swift-format, so regenerating it in the cloud for one new type turned into
+  an 8,800-line diff that hides the real change. Chat's committed copy is
+  unformatted, so the repository already holds both. Bindings should come
+  out the same wherever they are generated: format always or never.
+  (annoyance)
+
+**Measure.** Rust for the screen (run, Stop, timings, history): about 700
+lines with tests; Swift: model, view, two structured runs and the shape
+helper. Start to first run on the phone: not yet run.
+
+## A37. Reconstructed: friction met since A35 but not logged
+
+Collected on 2026-11-17 from the project's notes, because these cost time
+in other threads and never reached this log.
+
+- **Swift compiles only on the laptop.** Cloud sessions build and test Rust
+  but can't compile SwiftUI (no Darwin SDK), so every Swift change waits
+  for the laptop: a Remote Control session the person has to approve in the
+  thread itself (an approval relayed from the project chat is refused),
+  which sleeps overnight, and one heavy build at a time through the queue.
+  Several PRs merged with Swift not yet compiled (#196, #257). (limit)
+- **The phone drops off USB.** Installs and log reads fail when the iPhone
+  disappears from usbmuxd mid-build; `forge` now restarts usbmuxd by itself,
+  but a bad cable or port still interrupts phone sittings (2026-11-14,
+  2026-11-16). (annoyance)
+- **Over-the-air installs don't replace the app on a free team.** iOS
+  downloads the build and then silently keeps the old one; a new expiry
+  date in `forge device apps` misled an earlier conclusion. Installs are by
+  cable until a paid team ([over-the-air.md](../over-the-air.md)). (limit)
+- **Cloud disk can't hold every example's targets.** `check-app-crates.sh`
+  runs out of space in a cloud session; it runs on the laptop instead.
+  (annoyance)
+
+## A38. Reconstructed: AVAudioEngine traps in Soundscape's Studio
+
+Collected on 2026-11-17, like A37 (#277), from fixes that never reached
+this log. Three of Soundscape's recording bugs came from AVFoundation
+rules that only show on the phone:
+
+- **Record crashed** (iOS 26.3.1, two reports): the async
+  `AVAudioApplication.requestRecordPermission()` resumed its bridged
+  continuation from a completion called on the main thread and hit
+  `EXC_BAD_ACCESS`. The app reads the permission first and asks through
+  its own checked continuation (4a997a1). (bug, fixed)
+- **Recording after Play hung**: the engine was already running, so the
+  microphone input never joined the graph and the tap never fired. Record
+  stops the engine before touching the input, and a watchdog fails a take
+  that gets no sound (02aa5cb). (bug, fixed)
+- **Every new take crashed** (2026-11-16): the effects were wired in the
+  main mixer's stereo format, the player in the microphone's mono one, and
+  an effect unit must have the same format in and out. Diagnosed; the fix
+  wires the whole strip in the recording's format and is in the
+  soundscape-fixes patch, not merged. The Studio screens are due to be
+  removed in the music-player direction, so it may never need to land.
+  (bug, open)
+
+**Framework.** Accept. ForgeKit's audio service records voice notes only
+(A24); none of this is shared. If a second app mixes live input, these
+three rules are the start of its notes.
+
+## A39. Reconstructed: alerts under sheets
+
+A33's cousin. An alert attached under a sheet can't present while the
+sheet is up, so failures from inside it went unseen: Commonplace's
+Settings sheet (A34) and Relay's sheets. Both now show their own alerts,
+and the list's alert waits while a sheet is up; the ios-app starter does
+the same since #271. (bug, fixed)
+
+**Framework.** Unlike `alerts-on-top`, no parity rule caught this at
+first. **Since then (2026-11-17,
+[better-by-default](better-by-default.md) item 2):** the rule
+`alerts-over-sheets` fails on a model alert that isn't held back while a
+sheet is up. Run on the code before the fixes it names the starter and
+Commonplace; on main it named FieldKit's trip list (now held back while
+Start Trip is up) and Checklist's rename sheet (listed as lag for the
+friction audit's Checklist work).
+
+## A40. Reconstructed: Relay froze on big files
+
+Sending a picked file to a paired device copied it on the main thread,
+freezing the screen for seconds on a large video, and the copy stayed in
+Caches for good. It now copies off the main thread and deletes the copy
+when the send ends (#264). (bug, fixed)
+
+**Framework.** A file from `.fileImporter` is security-scoped and has to be
+copied before Rust can read it later; Relay does it in two views. When the
+photo picker is extracted (wave 5), the off-main copy and its cleanup
+belong with it.
+
+**Since then (2026-11-17, [better-by-default](better-by-default.md) item
+1).** Chat copied picked documents on the main thread the same way.
+ForgeAppKit's `ForgePickedFile` copies off the main thread, keeps the name
+and deletes the copy on `release()`; Relay's two views and Chat use it, and
+the parity rule `picked-files` fails on an app that copies a picked file
+itself.
+
+## A41. Reconstructed: hosting a drawing app in a sheet
+
+Device Lab opens each app in a sheet that a downward swipe closes. A stroke
+near the top of Sketchbook's canvas dragged the sheet shut (seen on the
+phone). The sketch screen now refuses interactive dismissal (ba0b533). The
+same commit stopped the model caching the bytes of every drawing it had
+read since launch. (bug, fixed)
+
+**Framework.** Accept. Any hosted app with drag gestures near the top
+edge needs the same line.
+
+## A42. Reconstructed: two apps named skipped CSV rows differently
+
+Checklist and Pocket Library both said "Row 2" (the place among readable
+rows) next to "Line 4" (the file's line) when importing a spreadsheet.
+`CsvImport::row_lines` now gives each row's line, and both apps name
+skipped rows by it (#276). (annoyance, fixed in the framework)

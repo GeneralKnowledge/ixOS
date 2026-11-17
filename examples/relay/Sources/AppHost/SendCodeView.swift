@@ -1,6 +1,7 @@
 #if os(iOS)
 @preconcurrency import RelayFFI
 import Darwin
+import ForgeAppKit
 import Foundation
 import PhotosUI
 import SwiftUI
@@ -20,6 +21,8 @@ struct SendCodeSheet: View {
     @State private var picking: Pick?
     @State private var pickingPhotos = false
     @State private var photos: [PhotosPickerItem] = []
+    /// The copies of what is being sent, kept until the next send starts.
+    @State private var outgoing: [ForgePickedFile] = []
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -167,32 +170,23 @@ struct SendCodeSheet: View {
         }
     }
 
-    /// Copies what was picked into this app's temporary folder (the
-    /// picker's access ends with this call; Rust reads the files for the
-    /// whole send), then starts the send.
+    /// Copies what was picked off the main thread (ForgeAppKit's
+    /// `ForgePickedFile`: the picker's access ends with this call, and Rust
+    /// reads the files for the whole send), then starts the send. The
+    /// previous send's copies are deleted when the next one starts.
     private func start(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         model.preparing(name: Self.name(urls.map(\.lastPathComponent)))
         Task {
-            let copied = await Task.detached(priority: .userInitiated) { () -> Result<[String], Error> in
-                do {
-                    let folder = try SendStaging.fresh()
-                    var paths: [String] = []
-                    for url in urls {
-                        let scoped = url.startAccessingSecurityScopedResource()
-                        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                        let target = SendStaging.unique(url.lastPathComponent, in: folder)
-                        try FileManager.default.copyItem(at: url, to: target)
-                        paths.append(target.path)
-                    }
-                    return .success(paths)
-                } catch {
-                    return .failure(error)
+            releaseOutgoing()
+            do {
+                for url in urls {
+                    outgoing.append(try await ForgePickedFile.copy(of: url))
                 }
-            }.value
-            switch copied {
-            case .success(let paths): model.send(paths: paths)
-            case .failure(let error): model.failSend("Couldn't read what you chose: \(error.localizedDescription)")
+                model.send(paths: outgoing.map(\.url.path))
+            } catch {
+                releaseOutgoing()
+                model.failSend("Couldn't read what you chose: \(error.localizedDescription)")
             }
         }
     }
@@ -202,14 +196,13 @@ struct SendCodeSheet: View {
     private func start(photos: [PhotosPickerItem]) {
         model.preparing(name: photos.count == 1 ? "a photo" : "\(photos.count) photos")
         Task {
+            releaseOutgoing()
             do {
-                let folder = try SendStaging.fresh()
                 var paths: [String] = []
                 for item in photos {
-                    guard let file = try await item.loadTransferable(type: PickedFile.self) else { continue }
-                    let target = SendStaging.unique(file.url.lastPathComponent, in: folder)
-                    try FileManager.default.moveItem(at: file.url, to: target)
-                    paths.append(target.path)
+                    if let file = try await item.loadTransferable(type: PickedPhoto.self) {
+                        paths.append(file.url.path)
+                    }
                 }
                 if paths.isEmpty {
                     model.failSend("Couldn't read the photos you chose.")
@@ -222,6 +215,13 @@ struct SendCodeSheet: View {
         }
     }
 
+    /// Deletes the copies an earlier send made.
+    private func releaseOutgoing() {
+        outgoing.forEach { $0.release() }
+        outgoing = []
+        PickedPhoto.releaseAll()
+    }
+
     private static func name(_ names: [String]) -> String {
         names.count == 1 ? names[0] : "\(names.count) items"
     }
@@ -231,57 +231,32 @@ struct SendCodeSheet: View {
     }
 }
 
-/// Where picked items are copied for the send: one folder in the app's
-/// temporary directory, emptied for each new send.
-enum SendStaging {
-    static var folder: URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("relay-send", isDirectory: true)
-    }
-
-    static func fresh() throws -> URL {
-        let folder = folder
-        try? FileManager.default.removeItem(at: folder)
-        try? FileManager.default.removeItem(at: PickedFile.holding)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder
-    }
-
-    /// `name` in `folder`, numbered ("photo 2.jpg") if it is taken: items
-    /// in one send need different names.
-    static func unique(_ name: String, in folder: URL) -> URL {
-        var target = folder.appendingPathComponent(name)
-        let stem = (name as NSString).deletingPathExtension
-        let ext = (name as NSString).pathExtension
-        var n = 2
-        while FileManager.default.fileExists(atPath: target.path) {
-            let numbered = ext.isEmpty ? "\(stem) \(n)" : "\(stem) \(n).\(ext)"
-            target = folder.appendingPathComponent(numbered)
-            n += 1
-        }
-        return target
-    }
-}
-
 /// A picked photo or video as a file. iOS hands over a file that lives only
-/// for the import, so it is moved somewhere that lasts first.
-struct PickedFile: Transferable {
+/// for the import, so it is copied first, into a folder of its own that
+/// keeps its name (Photos already gives each one a distinct name).
+struct PickedPhoto: Transferable {
     let url: URL
 
-    static var holding: URL {
+    static var directory: URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("relay-photos", isDirectory: true)
     }
 
     static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .image) { try PickedFile(keeping: $0.file) }
-        FileRepresentation(importedContentType: .movie) { try PickedFile(keeping: $0.file) }
+        FileRepresentation(importedContentType: .image) { try PickedPhoto(keeping: $0.file) }
+        FileRepresentation(importedContentType: .movie) { try PickedPhoto(keeping: $0.file) }
     }
 
     init(keeping file: URL) throws {
-        let holding = Self.holding.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: holding, withIntermediateDirectories: true)
-        let kept = holding.appendingPathComponent(file.lastPathComponent)
+        let folder = Self.directory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let kept = folder.appendingPathComponent(file.lastPathComponent)
         try FileManager.default.copyItem(at: file, to: kept)
         url = kept
+    }
+
+    /// Deletes every kept photo.
+    static func releaseAll() {
+        try? FileManager.default.removeItem(at: directory)
     }
 }
 

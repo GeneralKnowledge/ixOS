@@ -4,15 +4,23 @@ import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
-/// The Listen tab: songs from the take server (generated takes on another
-/// computer), each song's takes to play, compare, rate and pick.
+/// Where the Listen stack can go.
+enum ListenRoute: Hashable {
+    case artist(LibraryArtist)
+    case album(LibraryAlbum)
+    case track(String)
+    /// A song's takes on the take server, to compare and pick.
+    case takes(String)
+}
+
+/// The Listen tab: your music library (artists, albums, songs, each song
+/// with its recordings), from the take server and kept on the phone, with
+/// the player under every screen.
 struct ListenView: View {
     @State private var model: ListenModel
     @State private var player = TakePlayer()
     @State private var editingServer = false
-    @State private var search = ""
     @State private var showingNowPlaying = false
-    @AppStorage("listen.unpickedOnly") private var unpickedOnly = false
 
     init(core: SoundscapeCore) {
         _model = State(initialValue: ListenModel(core: core))
@@ -21,20 +29,16 @@ struct ListenView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Listen")
-                .navigationDestination(for: String.self) { slug in
-                    SongView(model: model, player: player, slug: slug)
+                .navigationTitle("Library")
+                .navigationDestination(for: ListenRoute.self) { route in
+                    switch route {
+                    case .artist(let artist): ArtistView(model: model, player: player, artist: artist)
+                    case .album(let album): AlbumView(model: model, player: player, album: album)
+                    case .track(let id): TrackView(model: model, player: player, id: id)
+                    case .takes(let slug): SongView(model: model, player: player, slug: slug)
+                    }
                 }
                 .toolbar {
-                    if model.server != nil, model.phase == .ready {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Toggle(isOn: $unpickedOnly) {
-                                Label("Unpicked Only", systemImage: "line.3.horizontal.decrease.circle")
-                            }
-                            .toggleStyle(.button)
-                            .accessibilityIdentifier("listen.unpickedOnly")
-                        }
-                    }
                     if model.server != nil {
                         ToolbarItem(placement: .primaryAction) {
                             Button("Take Server", systemImage: "server.rack") { editingServer = true }
@@ -47,7 +51,7 @@ struct ListenView: View {
                 }
         }
         // On the stack, not its first screen, so the bar stays in front on
-        // a song's screen too.
+        // every screen.
         .safeAreaInset(edge: .bottom) {
             NowPlayingBar(player: player) { showingNowPlaying = true }
         }
@@ -62,7 +66,7 @@ struct ListenView: View {
             get: { editingServer ? nil : model.alert },
             set: { model.alert = $0 }
         )) { action in Task { await model.handle(action) } }
-        .task(id: model.server) { await model.loadSongs() }
+        .task(id: model.server) { await model.loadLibrary() }
     }
 
     @ViewBuilder private var content: some View {
@@ -73,9 +77,9 @@ struct ListenView: View {
             ForgeStateView.loading("Asking the take server")
         case .failed(let message):
             ForgeStateView.failed(
-                "Can't Load the Songs", message: message,
+                "Can't Load the Library", message: message,
                 retry: ForgeStateAction("Try Again", identifier: "listen.retry") {
-                    Task { await model.loadSongs() }
+                    Task { await model.loadLibrary() }
                 }
             )
             .toolbar {
@@ -85,146 +89,8 @@ struct ListenView: View {
                 }
             }
         case .ready:
-            songList
+            LibraryHome(model: model, player: player)
         }
-    }
-
-    private var songList: some View {
-        List {
-            if !groups.isEmpty {
-                Section {
-                    HStack(spacing: 12) {
-                        bigButton("Play", systemImage: "play.fill", identifier: "listen.playAll") {
-                            play(groups.flatMap(\.songs), shuffle: false)
-                        }
-                        bigButton("Shuffle", systemImage: "shuffle", identifier: "listen.shuffleAll") {
-                            play(groups.flatMap(\.songs), shuffle: true)
-                        }
-                    }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
-                }
-            }
-            ForEach(groups) { group in
-                Section {
-                    ForEach(group.songs) { song in songRow(song, in: group) }
-                } header: {
-                    HStack {
-                        Text(group.act ?? "Other")
-                        Spacer()
-                        Button {
-                            play(group.songs, shuffle: false)
-                        } label: {
-                            Image(systemName: "play.circle")
-                        }
-                        .disabled(model.isQueueing)
-                        .accessibilityLabel("Play \(group.act ?? "Other")")
-                        .accessibilityIdentifier("listen.playAct")
-                    }
-                }
-            }
-        }
-        .overlay {
-            if model.songs.isEmpty {
-                ForgeStateView.empty(
-                    "No Takes Yet", systemImage: "music.note.list",
-                    description: "The server found no audio in its folders. New renders show up here when you pull down."
-                )
-            } else if groups.isEmpty && !search.trimmingCharacters(in: .whitespaces).isEmpty {
-                ForgeStateView.noResults(for: search)
-            } else if groups.isEmpty {
-                ForgeStateView.empty(
-                    "Every Song Is Picked", systemImage: "checkmark.seal",
-                    description: "Turn off Unpicked Only to see them all."
-                )
-            }
-        }
-        .searchable(text: $search, prompt: "Songs or acts")
-        .refreshable { await model.loadSongs(fresh: true) }
-    }
-
-    private func bigButton(
-        _ title: String, systemImage: String, identifier: String, action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.headline)
-                .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .buttonStyle(.bordered)
-        .disabled(model.isQueueing)
-        .accessibilityIdentifier(identifier)
-    }
-
-    /// Plays `songs` in order (from `start`) or shuffled, each song's pick
-    /// or best take.
-    private func play(_ songs: [SongSummary], from start: SongSummary? = nil, shuffle: Bool) {
-        let slugs = songs.map(\.slug)
-        Task {
-            guard let tracks = await model.tracks(slugs), !tracks.isEmpty else { return }
-            let index = start.flatMap { s in tracks.firstIndex { $0.slug == s.slug } } ?? 0
-            player.play(tracks, from: index, shuffle: shuffle)
-        }
-    }
-
-    private func queue(_ song: SongSummary, next: Bool) {
-        Task {
-            guard let tracks = await model.tracks([song.slug]) else { return }
-            player.add(tracks, next: next)
-        }
-    }
-
-    private func songRow(_ song: SongSummary, in group: SongGroup) -> some View {
-        NavigationLink(value: song.slug) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(song.title).font(.headline)
-                    if song.pickLabel != nil {
-                        Image(systemName: "checkmark.seal.fill")
-                            .foregroundStyle(.tint)
-                            .accessibilityLabel("Picked")
-                    }
-                }
-                Text(TakeFormat.summary(song))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text(SoundFormat.date(song.updatedMs), format: .relative(presentation: .named))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .accessibilityElement(children: .combine)
-        }
-        .accessibilityIdentifier("listen.song")
-        .contextMenu {
-            Button("Play", systemImage: "play") { play(group.songs, from: song, shuffle: false) }
-                .accessibilityIdentifier("listen.songPlay")
-            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                queue(song, next: true)
-            }
-            .accessibilityIdentifier("listen.songPlayNext")
-            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                queue(song, next: false)
-            }
-            .accessibilityIdentifier("listen.songAddToQueue")
-        }
-        .swipeActions(edge: .leading) {
-            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                queue(song, next: true)
-            }
-            .tint(.indigo)
-            .accessibilityIdentifier("listen.songSwipePlayNext")
-        }
-        .swipeActions(edge: .trailing) {
-            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                queue(song, next: false)
-            }
-            .tint(.orange)
-            .accessibilityIdentifier("listen.songSwipeAddToQueue")
-        }
-    }
-
-    private var groups: [SongGroup] {
-        model.groups(search: search, unpickedOnly: unpickedOnly)
     }
 }
 
@@ -373,12 +239,12 @@ private struct SongView: View {
                 ForEach(song.takes) { take in
                     TakeRow(
                         take: take,
-                        playing: player.current?.take.id == take.id && player.isPlaying && !player.isComparing,
+                        playing: player.current?.id == take.id && player.isPlaying && !player.isComparing,
                         play: {
-                            if player.current?.take.id == take.id && !player.isComparing {
+                            if player.current?.id == take.id && !player.isComparing {
                                 player.toggle()
                             } else {
-                                player.play(take, of: song)
+                                player.play([model.queue(take, of: song)])
                             }
                         },
                         rate: { stars in Task { if let s = await model.rate(take, in: song, stars: stars) { self.song = s } } }
@@ -408,11 +274,11 @@ private struct SongView: View {
                         }
                         .accessibilityIdentifier("take.noteMenu")
                         Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                            player.add([ListenModel.track(take, of: song)], next: true)
+                            player.add([model.queue(take, of: song)], next: true)
                         }
                         .accessibilityIdentifier("take.playNext")
                         Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                            player.add([ListenModel.track(take, of: song)], next: false)
+                            player.add([model.queue(take, of: song)], next: false)
                         }
                         .accessibilityIdentifier("take.addToQueue")
                     }
@@ -544,7 +410,7 @@ private struct ComparePanel: View {
     }
     private var loaded: Bool {
         guard player.isComparing, let sides else { return false }
-        return player.a?.take.id == sides.0.id && player.b?.take.id == sides.1.id
+        return player.a?.id == sides.0.id && player.b?.id == sides.1.id
     }
     private var hidden: Bool { blind && !revealed }
 
@@ -690,12 +556,12 @@ private struct NowPlayingBar: View {
                 HStack(spacing: 12) {
                     Button(action: open) {
                         HStack(spacing: 10) {
-                            Artwork(title: current.song, size: 40)
+                            Artwork(title: current.song, url: current.artworkUrl, size: 40)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(player.isComparing ? "Comparing · \(player.active == .a ? "A" : "B")" : current.song)
                                     .font(.subheadline.bold())
                                     .lineLimit(1)
-                                Text(player.isComparing ? current.song : current.take.label)
+                                Text(player.isComparing ? current.song : [current.artist, current.label].compactMap { $0 }.joined(separator: " · "))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -705,7 +571,7 @@ private struct NowPlayingBar: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Now Playing: \(current.song), \(current.take.label)")
+                    .accessibilityLabel("Now Playing: \(current.song), \(current.label)")
                     .accessibilityHint("Opens the player")
                     .accessibilityIdentifier("nowPlaying.open")
                     if player.isBuffering { ProgressView() }
@@ -745,27 +611,46 @@ private struct NowPlayingBar: View {
     }
 }
 
-/// Stand-in artwork until songs have their own: the song's initial on a
-/// colour taken from its title, so each song keeps its colour.
-private struct Artwork: View {
+/// A picture for an artist, album or track: its artwork when it has some
+/// (from the server or chosen on the phone), else a stand-in, the title's
+/// initial on a colour taken from the title, so each keeps its colour.
+struct Artwork: View {
     let title: String
+    var url: String? = nil
     let size: CGFloat
+    var circle = false
 
     var body: some View {
-        let hue = Double(title.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF } % 360) / 360
-        RoundedRectangle(cornerRadius: size * 0.12)
-            .fill(LinearGradient(
-                colors: [Color(hue: hue, saturation: 0.55, brightness: 0.85),
-                         Color(hue: hue, saturation: 0.75, brightness: 0.45)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ))
-            .overlay {
-                Text(title.first.map { String($0).uppercased() } ?? "♪")
-                    .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.9))
+        Group {
+            if let url, let link = URL(string: url) {
+                AsyncImage(url: link) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        standIn
+                    }
+                }
+            } else {
+                standIn
             }
-            .frame(width: size, height: size)
-            .accessibilityHidden(true)
+        }
+        .frame(width: size, height: size)
+        .clipShape(circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.12)))
+        .accessibilityHidden(true)
+    }
+
+    private var standIn: some View {
+        let hue = Double(title.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF } % 360) / 360
+        return LinearGradient(
+            colors: [Color(hue: hue, saturation: 0.55, brightness: 0.85),
+                     Color(hue: hue, saturation: 0.75, brightness: 0.45)],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+        .overlay {
+            Text(title.first.map { String($0).uppercased() } ?? "♪")
+                .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.9))
+        }
     }
 }
 
@@ -781,12 +666,12 @@ private struct NowPlayingView: View {
                 if let current = player.current {
                     Section {
                         VStack(spacing: 16) {
-                            Artwork(title: current.song, size: 260)
+                            Artwork(title: current.song, url: current.artworkUrl, size: 260)
                                 .shadow(radius: 12, y: 6)
                                 .padding(.top, 8)
                             VStack(spacing: 4) {
                                 Text(current.song).font(.title2.bold()).multilineTextAlignment(.center)
-                                Text([current.act, current.take.label].compactMap { $0 }.joined(separator: " · "))
+                                Text([current.artist, current.album, current.label].compactMap { $0 }.joined(separator: " · "))
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
@@ -808,10 +693,10 @@ private struct NowPlayingView: View {
                                     player.jump(to: entry.position)
                                 } label: {
                                     HStack(spacing: 12) {
-                                        Artwork(title: entry.track.songTitle, size: 40)
+                                        Artwork(title: entry.track.title, url: entry.track.artworkUrl, size: 40)
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text(entry.track.songTitle).font(.body).foregroundStyle(.primary)
-                                            Text(entry.track.take.label).font(.caption).foregroundStyle(.secondary)
+                                            Text(entry.track.title).font(.body).foregroundStyle(.primary)
+                                            Text(entry.track.artist).font(.caption).foregroundStyle(.secondary)
                                         }
                                     }
                                 }

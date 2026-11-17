@@ -237,6 +237,51 @@ final class WeatherViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAFailedAddSaysWhyAndKeepsTheSearchOpen() async throws {
+        let client = try offlineClient()
+        let model = WeatherViewModel(
+            client: client, location: FakeLocation(result: .failure(.denied)))
+        await model.start()
+        let nowhere = Place(
+            name: "Nowhere", region: nil, country: nil, countryCode: nil,
+            coordinate: Coordinate(latitude: 200, longitude: 0), timezone: nil,
+            population: nil, source: .search(geocodingId: nil))
+        XCTAssertFalse(model.add(nowhere), "the sheet stays open")
+        XCTAssertTrue(
+            model.searchMessage?.hasPrefix("Couldn't add Nowhere.") ?? false,
+            "\(model.searchMessage ?? "no message")")
+        XCTAssertEqual(model.pages.map(\.id), [WeatherPage.myLocationID])
+        XCTAssertTrue(client.savedPlaces.isEmpty)
+        model.close()
+    }
+
+    @MainActor
+    func testClearingStopsASearchStillRunning() async throws {
+        let model = WeatherViewModel(
+            client: try offlineClient(), location: FakeLocation(result: .failure(.denied)))
+        let running = model.search("Paris")
+        XCTAssertTrue(model.isSearching)
+        model.clearSearch()
+        await running.value
+        XCTAssertTrue(model.searchResults.isEmpty)
+        XCTAssertNil(model.searchMessage, "the cleared search's answer isn't shown")
+        XCTAssertFalse(model.isSearching)
+    }
+
+    @MainActor
+    func testANewerSearchReplacesAnOlderOne() async throws {
+        let model = WeatherViewModel(
+            client: try offlineClient(), location: FakeLocation(result: .failure(.denied)))
+        let older = model.search("Paris")
+        let newer = model.search("Prague")
+        await older.value
+        XCTAssertTrue(model.isSearching, "the older answer doesn't end the newer search")
+        await newer.value
+        XCTAssertFalse(model.isSearching)
+        XCTAssertEqual(model.searchMessage, WeatherClientError.offline(detail: "").userMessage)
+    }
+
+    @MainActor
     func testFormatting() {
         XCTAssertEqual(WeatherFormat.temperature(9.6), "10°")
         XCTAssertEqual(WeatherFormat.temperature(-0.4), "0°")

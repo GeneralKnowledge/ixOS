@@ -6,11 +6,11 @@ import Observation
 
 private let log = ForgeLog("Listen")
 
-/// What the Listen screens show: the take server's songs, one song's takes,
-/// and the actions on them. The rules (the address, the requests, matched
-/// loudness) are Soundscape's Rust core (`rust/src/listen.rs`); playback is
-/// `TakePlayer`. Foundation and Observation only, so it compiles and tests
-/// on Linux.
+/// What the Listen screens show: the music library (artists, albums,
+/// tracks and their recordings), one song's takes to compare, and the
+/// actions on them. The rules are Soundscape's Rust core
+/// (`rust/src/library.rs`, `listen.rs`); playback is `TakePlayer`.
+/// Foundation and Observation only, so it compiles and tests on Linux.
 @Observable
 @MainActor
 public final class ListenModel {
@@ -28,20 +28,22 @@ public final class ListenModel {
 
     /// The take server's address, as Rust saved it.
     public private(set) var server: String?
-    public private(set) var songs: [SongSummary] = []
+    /// The library as kept on the phone; refreshed from the take server.
+    public private(set) var library: Library
     public private(set) var phase: Phase = .needsServer
+    /// Why the last refresh failed while the kept library still shows.
+    public var refreshProblem: String?
     public var alert: ForgeAlert<Action>?
     /// Increases after each pick or rating; views use it as a haptic trigger.
     public private(set) var markCount = 0
-    /// True while songs are being looked up to play.
-    public private(set) var isQueueing = false
 
     public let core: SoundscapeCore
 
     public init(core: SoundscapeCore) {
         self.core = core
         server = core.listenServer()
-        phase = server == nil ? .needsServer : .loading
+        library = core.library()
+        phase = server == nil ? .needsServer : library.tracks.isEmpty ? .loading : .ready
     }
 
     // MARK: Server
@@ -50,7 +52,6 @@ public final class ListenModel {
     /// can't be used, so the form can say what to change.
     public func setServer(_ address: String) async throws {
         server = try await core.setListenServer(address: address)
-        songs = []
         // The Listen screen reloads when the server changes.
         phase = server == nil ? .needsServer : .loading
     }
@@ -77,35 +78,105 @@ public final class ListenModel {
         }
     }
 
-    // MARK: Songs
+    // MARK: Library
 
-    /// Asks the server for its songs. `fresh` makes it look for new takes
-    /// now (pull to refresh). Cancelling the calling task stops the request.
-    public func loadSongs(fresh: Bool = false) async {
+    /// Asks the take server for its catalogue and keeps it. `fresh` makes
+    /// it look for new takes now (pull to refresh). Without the server the
+    /// kept library still shows, with the reason in `refreshProblem`.
+    public func loadLibrary(fresh: Bool = false) async {
         guard server != nil else {
             phase = .needsServer
             return
         }
-        if songs.isEmpty { phase = .loading }
+        if library.tracks.isEmpty { phase = .loading }
         let cancellation = Cancellation()
         do {
-            let loaded = try await withTaskCancellationHandler {
-                try await core.listenSongs(fresh: fresh, cancellation: cancellation)
+            library = try await withTaskCancellationHandler {
+                try await core.refreshLibrary(fresh: fresh, cancellation: cancellation)
             } onCancel: {
                 cancellation.cancel()
             }
-            songs = loaded
+            refreshProblem = nil
             phase = .ready
         } catch {
             if Self.isStop(error) { return }
-            log.warn("songs failed: \(error)")
-            if songs.isEmpty {
+            log.warn("library failed: \(error)")
+            if library.tracks.isEmpty {
                 phase = .failed(Self.message(error))
             } else {
-                alert = .failure(error)
+                refreshProblem = Self.message(error)
+                phase = .ready
             }
         }
     }
+
+    public func search(_ query: String) -> LibrarySearch { core.searchLibrary(query: query) }
+    public func albums(of artist: LibraryArtist) -> [LibraryAlbum] { core.artistAlbums(artistId: artist.id) }
+    public func tracks(of artist: LibraryArtist) -> [LibraryTrack] { core.artistTracks(artistId: artist.id) }
+    public func tracks(of album: LibraryAlbum) -> [LibraryTrack] { core.albumTracks(albumId: album.id) }
+
+    /// A track with its recordings, or `nil` once it has left the library.
+    public func track(_ id: String) -> TrackDetail? { try? core.libraryTrack(id: id) }
+
+    /// What plays for `tracks`: each one's preferred recording, in order.
+    public func queue(_ tracks: [LibraryTrack]) -> [QueueTrack] {
+        core.queueTracks(trackIds: tracks.map(\.id))
+    }
+
+    /// One recording of a track, to play instead of the preferred one.
+    public func queue(_ recording: Recording, of track: LibraryTrack) -> QueueTrack? {
+        try? core.queueRecording(trackId: track.id, recordingId: recording.id)
+    }
+
+    /// A take from the takes screen, with the library's details for its song.
+    public func queue(_ take: Take, of song: SongDetail) -> QueueTrack {
+        core.takeQueueTrack(song: song, take: take)
+    }
+
+    /// Makes `recording` the one that plays for its track (the server's pick).
+    public func choose(_ recording: Recording, of track: LibraryTrack) async -> TrackDetail? {
+        do {
+            let detail = try await core.chooseRecording(trackId: track.id, recordingId: recording.id)
+            library = core.library()
+            markCount += 1
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
+    /// Changes a track's details on the phone; empty fields go back to the
+    /// server's.
+    public func edit(_ track: LibraryTrack, _ edit: TrackEdit) async -> TrackDetail? {
+        do {
+            let detail = try await core.editTrack(id: track.id, edit: edit)
+            library = core.library()
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
+    /// Uses the picture file at `path` for an artist, album or track.
+    public func setArtwork(_ target: ArtworkTarget, path: String) async {
+        do {
+            library = try await core.setArtwork(target: target, sourcePath: path)
+        } catch {
+            report(error)
+        }
+    }
+
+    public func clearArtwork(_ target: ArtworkTarget) async {
+        do {
+            library = try await core.clearArtwork(target: target)
+        } catch {
+            report(error)
+        }
+    }
+
+    // MARK: Songs and takes
 
     /// One song's takes, or `nil` with the reason in `failure`.
     public func song(_ slug: String) async -> Result<SongDetail, ListenFailure> {
@@ -121,33 +192,6 @@ public final class ListenModel {
             if !Self.isStop(error) { log.warn("song failed: \(error)") }
             return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
         }
-    }
-
-    // MARK: Playing songs
-
-    /// The songs `slugs`, in that order, each with the take it plays (its
-    /// pick, else its best rated, else its newest; Rust decides). `nil`
-    /// after showing why it failed.
-    public func tracks(_ slugs: [String]) async -> [QueueTrack]? {
-        guard !slugs.isEmpty else { return [] }
-        isQueueing = true
-        defer { isQueueing = false }
-        let cancellation = Cancellation()
-        do {
-            return try await withTaskCancellationHandler {
-                try await core.listenTracks(slugs: slugs, cancellation: cancellation)
-            } onCancel: {
-                cancellation.cancel()
-            }
-        } catch {
-            if !Self.isStop(error) { report(error) }
-            return nil
-        }
-    }
-
-    /// A song's take as a queue track.
-    public static func track(_ take: Take, of song: SongDetail) -> QueueTrack {
-        QueueTrack(slug: song.slug, songTitle: song.title, act: song.act, take: take)
     }
 
     // MARK: Picks and ratings
@@ -171,12 +215,8 @@ public final class ListenModel {
         do {
             let updated = try await core.markTake(slug: song.slug, takeId: take.id, mark: mark)
             markCount += 1
-            // The list shows each song's pick and how many takes are rated.
-            if let i = songs.firstIndex(where: { $0.slug == song.slug }) {
-                let picked = updated.takes.first(where: \.picked)
-                songs[i].pickLabel = picked?.label
-                songs[i].ratedCount = UInt32(updated.takes.filter { $0.stars > 0 }.count)
-            }
+            // Rust brought the library's copy of the song up to date.
+            library = core.library()
             return updated
         } catch {
             report(error)
@@ -185,23 +225,6 @@ public final class ListenModel {
     }
 
     // MARK: Comparing
-
-    // MARK: The list
-
-    /// The songs in sections by act (Rust decides the order), narrowed to
-    /// those matching `search` and, with `unpickedOnly`, to those without a
-    /// pick yet.
-    public func groups(search: String = "", unpickedOnly: Bool = false) -> [SongGroup] {
-        let q = search.trimmingCharacters(in: .whitespaces)
-        let matching = q.isEmpty ? songs : songs.filter {
-            $0.title.localizedCaseInsensitiveContains(q) || $0.slug.localizedCaseInsensitiveContains(q)
-                || ($0.act?.localizedCaseInsensitiveContains(q) ?? false)
-        }
-        return groupSongs(songs: matching, unpickedOnly: unpickedOnly)
-    }
-
-    /// How many songs have no pick yet, for the filter's label.
-    public var unpickedCount: Int { songs.filter { $0.pickLabel == nil }.count }
 
     /// AVPlayer volumes for two takes at matched loudness (Rust decides).
     public func match(_ a: Take, _ b: Take) -> LoudnessMatch {
@@ -232,9 +255,10 @@ public struct ListenFailure: Error, Equatable {
     public let stopped: Bool
 }
 
-extension SongSummary: Identifiable {
-    public var id: String { slug }
-}
+extension LibraryTrack: Identifiable {}
+extension LibraryAlbum: Identifiable {}
+extension LibraryArtist: Identifiable {}
+extension Recording: Identifiable {}
 
 extension Take: Identifiable {}
 
@@ -242,9 +266,6 @@ extension QueueEntry: Identifiable {
     public var id: UInt32 { position }
 }
 
-extension SongGroup: Identifiable {
-    public var id: String { act ?? "" }
-}
 
 // MARK: Formatting (Foundation only, so it tests on Linux)
 
@@ -282,10 +303,32 @@ public enum TakeFormat {
         return "\(s / 60):\(String(format: "%02d", s % 60))"
     }
 
-    /// "3 takes · picked seed 7202".
-    public static func summary(_ song: SongSummary) -> String {
-        var text = "\(song.takeCount) \(song.takeCount == 1 ? "take" : "takes")"
-        if let pick = song.pickLabel { text += " · picked \(pick)" } else if song.ratedCount > 0 { text += " · \(song.ratedCount) rated" }
-        return text
+    /// "AFTER HOURS · 3:45".
+    public static func subtitle(_ track: LibraryTrack) -> String {
+        var parts = [track.artist]
+        if let d = track.durationSeconds { parts.append(time(d)) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// "3 recordings", or nothing for one.
+    public static func recordings(_ count: UInt32) -> String? {
+        count > 1 ? "\(count) recordings" : nil
+    }
+
+    /// "Seed 7202 · 112 BPM · A major · xl-turbo".
+    public static func generation(_ recording: Recording) -> String {
+        guard let g = recording.generation else { return "" }
+        var parts: [String] = []
+        if let bpm = g.bpm { parts.append("\(Int(bpm.rounded())) BPM") }
+        if let key = g.key { parts.append(key) }
+        if let model = g.model, model != "turbo" { parts.append(model) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// "2 albums · 12 songs".
+    public static func artistSummary(_ artist: LibraryArtist) -> String {
+        let albums = "\(artist.albumCount) \(artist.albumCount == 1 ? "album" : "albums")"
+        let songs = "\(artist.trackCount) \(artist.trackCount == 1 ? "song" : "songs")"
+        return artist.albumCount > 0 ? "\(albums) · \(songs)" : songs
     }
 }

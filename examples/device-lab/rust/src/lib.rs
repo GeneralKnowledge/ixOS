@@ -13,6 +13,7 @@
 //! dashboard is on screen; a snapshot only copies memory. Sensors run only
 //! while the app is active ([`DeviceLab::set_active`]).
 
+pub mod ai_lab;
 pub mod crash_test;
 pub mod stats;
 pub mod transfer_test;
@@ -40,14 +41,16 @@ use weather_core as _;
 
 // The framework services this app uses. Each optional one brings its own
 // Swift adapter into the app, and nothing else does: Core Location, Core
-// Motion and Core Bluetooth are linked because they are named here.
+// Motion and Core Bluetooth are linked because they are named here. `ai` is
+// the on-device model the AI Lab runs (`ai_lab`, Swift `ForgeAppleModel`).
 forge_services::native_services!(
     connectivity,
     device_status,
     motion,
     location,
     bluetooth,
-    transfers
+    transfers,
+    ai
 );
 
 use native::bluetooth::{BluetoothService, BluetoothState};

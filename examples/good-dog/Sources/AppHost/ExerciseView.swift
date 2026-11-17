@@ -122,7 +122,9 @@ struct ExerciseView: View {
                         Text("How Did It Go?")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    // Secondary: Start Guided Session is the one main action
+                    // until something is recorded.
+                    .buttonStyle(.bordered)
                     .controlSize(.large)
                     .padding()
                     .background(.regularMaterial)

@@ -240,6 +240,81 @@ def rule_alerts_on_top(app):
     return True, ""
 
 
+# A model-wide alert can't show while a sheet is up: iOS presents it from the
+# screen under the sheet, so a failure from inside the sheet is never seen
+# (Commonplace's Settings, Relay's sheets and the starter, friction log A39).
+# A screen that presents sheets gates the model's alert while one is open,
+# and the sheet shows the alerts itself. Each var or func is looked at on its
+# own, so an alert inside a sheet's own content is fine.
+SHARED_ALERT = re.compile(r"\$model\.|Bindable\(model\)|model\.(alert|actionError|errorMessage)")
+MEMBER = re.compile(
+    r"(?:(?:private|fileprivate|public|internal|static|@ViewBuilder|@MainActor)\s+)*"
+    r"(?:var|func|struct|extension|class|init|enum)\b"
+)
+
+
+def sheet_alert_problems(text):
+    lines = text.splitlines()
+    starts = [
+        i for i, line in enumerate(lines)
+        if len(line) - len(line.lstrip()) <= 4 and MEMBER.match(line.strip())
+    ]
+    found = []
+    for begin, end in zip([0] + starts, starts + [len(lines)]):
+        member = lines[begin:end]
+        sheets = set()
+        for line in member:
+            for m in re.finditer(r"\.(?:sheet|fullScreenCover)\(\s*(?:isPresented|item):\s*\$([\w.]+)", line):
+                sheets.add(m.group(1).split(".")[-1])
+        if not sheets:
+            continue
+        for j, line in enumerate(member):
+            if not re.match(r"\.(forgeAlert|alert)\(", line.strip()):
+                continue
+            binding = " ".join(l.strip() for l in member[j : j + 4]).split(") {")[0]
+            if not SHARED_ALERT.search(binding):
+                continue
+            if any(re.search(r"\b" + re.escape(name) + r"\b", binding) for name in sheets):
+                continue
+            found.append(begin + j + 1)
+    return found
+
+
+def rule_alerts_over_sheets(app):
+    bad = []
+    for path in swift_sources(app):
+        for line in sheet_alert_problems(read(path)):
+            bad.append(f"{path.name}:{line}")
+    if bad:
+        return False, "model alert on a screen with sheets, not held back while one is up: " + ", ".join(bad)
+    return True, ""
+
+
+# A picked file is copied with ForgeAppKit's ForgePickedFile, which copies
+# off the main thread and deletes the copy when released. Relay froze for
+# seconds copying a large video on the main thread (friction log A40), and
+# Chat copied picked documents the same way. Reading a picked file in place
+# inside its security scope, with no copy, is fine.
+def picked_copy_problems(text):
+    if "startAccessingSecurityScopedResource" not in text:
+        return []
+    return [
+        i + 1
+        for i, line in enumerate(text.splitlines())
+        if re.search(r"\.copyItem\(", line.split("//", 1)[0])
+    ]
+
+
+def rule_picked_files(app):
+    bad = []
+    for path in swift_sources(app):
+        for line in picked_copy_problems(read(path)):
+            bad.append(f"{path.name}:{line}")
+    if bad:
+        return False, "copies a picked file itself; use ForgePickedFile.copy(of:): " + ", ".join(bad)
+    return True, ""
+
+
 # A user's action that fails must say so (FieldKit's Rename, 2026-11-16).
 # `try?` throws the reason away, so it may wrap reads and clean-up but not a
 # call that changes something; a catch-all `catch` that does nothing hides
@@ -295,6 +370,8 @@ RULES = [
     ("appkit-alerts", "Errors shown with ForgeAppKit's `forgeAlert`, no own ErrorAlert.swift", rule_appkit_alerts),
     ("errors-shown", "A failed action says so: no `try?` on a change, no empty catch-all", rule_errors_shown),
     ("alerts-on-top", "App-wide alerts on the navigation stack or tabs, never on a first screen that pushes others", rule_alerts_on_top),
+    ("alerts-over-sheets", "A model alert is held back while a sheet is up; the sheet shows alerts itself", rule_alerts_over_sheets),
+    ("picked-files", "Picked files copied with ForgeAppKit's `ForgePickedFile` (off the main thread), never by hand", rule_picked_files),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
     ("location", "Location through the `location` service", rule_location),
@@ -370,6 +447,15 @@ for template in sorted((root / "templates").glob("ios-*")):
         for line in dropped_error_problems(text):
             problems.append(
                 f"{path.relative_to(root)}:{line}: errors-shown: a failed action is dropped"
+            )
+        for line in sheet_alert_problems(text):
+            problems.append(
+                f"{path.relative_to(root)}:{line}: alerts-over-sheets: model alert not held "
+                "back while a sheet is up"
+            )
+        for line in picked_copy_problems(text):
+            problems.append(
+                f"{path.relative_to(root)}:{line}: picked-files: use ForgePickedFile.copy(of:)"
             )
 
 
