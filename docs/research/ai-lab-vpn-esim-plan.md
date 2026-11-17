@@ -9,6 +9,8 @@ This page brings two earlier plans together and moves each to its next small, ph
 - the Forge AI plan ([forge-ai-plan.md](../forge-ai-plan.md), approved 2026-11-14), where step A2, the AI Lab, is next;
 - the VPN and eSIM plan ([VPN and eSIM apps plan](https://claude.ai/artifact/HqXN9pQXSVi3BYZhYAJgYR), 2026-11-15), which is still waiting on his answers. Those open questions are carried forward below, each with a recommendation.
 
+The VPN and eSIM parts build on Reuben's web project, [GeneralKnowledge/VPN](https://github.com/GeneralKnowledge/VPN) ("Northstar VPN" and "Northstar SIM"), read at main `bbffa86` (2026-10-12), which is still its latest main on 2026-11-17. One unmerged branch, `claude/project-thread-bvh8b8`, fixes Stripe renewals being counted twice and should land before the web launch.
+
 ## Summary
 
 | | Where it lives | Free team? | First step | Waits on |
