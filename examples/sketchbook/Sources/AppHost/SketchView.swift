@@ -1,6 +1,7 @@
 #if os(iOS)
 @preconcurrency import SketchbookFFI
 import ForgeAppKit
+import ForgeUI
 import PencilKit
 import SwiftUI
 
@@ -34,7 +35,7 @@ struct SketchView: View {
             if let detail {
                 canvas(detail)
             } else {
-                ContentUnavailableView("Sketch Deleted", systemImage: "trash")
+                ForgeStateView.empty("Sketch Deleted", systemImage: "trash")
             }
         }
         .navigationTitle(detail?.summary.title ?? "")

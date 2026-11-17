@@ -1,3 +1,4 @@
+import ForgeUI
 import SwiftUI
 import WeatherFFI
 
@@ -530,26 +531,38 @@ private struct EmptyPage: View {
     let showLocations: () -> Void
 
     var body: some View {
-        ContentUnavailableView {
-            Label(
-                page.isMyLocation ? "Weather where you are" : (page.place?.name ?? "No weather yet"),
-                systemImage: page.isMyLocation ? "location.circle" : "cloud.sun")
-        } description: {
-            Text(message)
-        } actions: {
+        Group {
             if page.isMyLocation {
-                Button("Use My Location") { model.useCurrentLocation() }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("forecast.useLocation")
+                // Found nowhere yet (no permission, no fix) or the forecast
+                // failed: either way, asking for the location again is the
+                // way forward.
+                let useLocation = ForgeStateAction("Use My Location", identifier: "forecast.useLocation") {
+                    model.useCurrentLocation()
+                }
+                if page.errorMessage != nil {
+                    ForgeStateView.failed("Weather where you are", message: message, retry: useLocation, secondary: search)
+                } else {
+                    ForgeStateView.empty(
+                        "Weather where you are", systemImage: "location.circle",
+                        message: message, action: useLocation, secondary: search)
+                }
             } else {
-                Button("Try Again") { model.refresh(page.id) }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("forecast.retry")
+                let retry = ForgeStateAction("Try Again", identifier: "forecast.retry") { _ = model.refresh(page.id) }
+                if page.errorMessage != nil {
+                    ForgeStateView.failed(page.place?.name ?? String(localized: "No weather yet"),
+                                          message: message, retry: retry, secondary: search)
+                } else {
+                    ForgeStateView.empty(
+                        page.place?.name ?? String(localized: "No weather yet"), systemImage: "cloud.sun",
+                        message: message, action: retry, secondary: search)
+                }
             }
-            Button("Search for a City", action: showLocations)
-                .accessibilityIdentifier("forecast.search")
         }
         .foregroundStyle(.white)
+    }
+
+    private var search: ForgeStateAction {
+        ForgeStateAction("Search for a City", identifier: "forecast.search", action: showLocations)
     }
 
     private var message: String {

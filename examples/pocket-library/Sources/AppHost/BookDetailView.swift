@@ -35,7 +35,7 @@ struct BookDetailView: View {
             if let book {
                 details(book)
             } else {
-                ContentUnavailableView("Book Deleted", systemImage: "book.closed")
+                ForgeStateView.empty("Book Deleted", systemImage: "book.closed")
             }
         }
         .navigationTitle(book?.title ?? "")

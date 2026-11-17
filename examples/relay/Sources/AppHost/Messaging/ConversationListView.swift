@@ -1,5 +1,6 @@
 @preconcurrency import RelayFFI
 import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// The Chats tab: its own navigation stack, so a new conversation can open
@@ -80,9 +81,9 @@ struct ConversationListView: View {
         .overlay {
             if results.isEmpty {
                 if resultsFor == query {
-                    ContentUnavailableView.search(text: query)
+                    ForgeStateView.noResults(for: query)
                 } else {
-                    ProgressView()
+                    ForgeStateView.loading()
                 }
             }
         }
@@ -128,11 +129,11 @@ struct ConversationListView: View {
         .overlay {
             if model.conversations.isEmpty && model.listError == nil {
                 if model.hasListed {
-                    ContentUnavailableView(
+                    ForgeStateView.empty(
                         "No Conversations", systemImage: "bubble.left.and.bubble.right",
-                        description: Text("Start one with the New Conversation button."))
+                        description: "Start one with the New Conversation button.")
                 } else {
-                    ProgressView()
+                    ForgeStateView.loading()
                 }
             }
         }

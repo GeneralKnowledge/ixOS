@@ -1,6 +1,7 @@
 #if os(iOS)
 @preconcurrency import RelayFFI
 import ForgeAppKit
+import ForgeUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -158,7 +159,7 @@ struct TrustedDeviceView: View {
         if let device = model.device(endpointID), device.trusted {
             content(device)
         } else {
-            ContentUnavailableView("No Longer Trusted", systemImage: "xmark.shield")
+            ForgeStateView.empty("No Longer Trusted", systemImage: "xmark.shield")
         }
     }
 

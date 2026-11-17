@@ -159,6 +159,34 @@ final class LibraryModelTests: XCTestCase {
         model.close()
     }
 
+    /// Find a Book's Try Again repeats the search that failed: the same
+    /// words as a new attempt, which restarts the screen's search, and Rust
+    /// runs that search again (here it fails the same way again).
+    @MainActor
+    func testTryAgainRepeatsTheFailedCatalogueSearch() async throws {
+        XCTAssertNil(CatalogueSearchRequest.submitted("   ", after: nil), "nothing to find")
+        let first = try XCTUnwrap(CatalogueSearchRequest.submitted("  dune ", after: nil))
+        XCTAssertEqual(first.text, "dune")
+        let again = first.retried
+        XCTAssertEqual(again.text, first.text)
+        XCTAssertNotEqual(again, first, "a new value, so the screen's search runs again")
+        let next = try XCTUnwrap(CatalogueSearchRequest.submitted("dune", after: again))
+        XCTAssertNotEqual(next, again, "searching the same words again also runs again")
+
+        let model = await openModel(try makeDirectory())
+        var settings = model.settings
+        settings.catalogueEnabled = false
+        try await model.updateSettings(settings)
+        for request in [first, again] {
+            do {
+                _ = try await model.searchCatalogue(request.text)
+                XCTFail("expected CatalogueDisabled")
+            } catch LibraryError.CatalogueDisabled {
+            }
+        }
+        model.close()
+    }
+
     @MainActor
     func testCancellingTheTaskStopsTheRustSearch() async throws {
         let model = await openModel(try makeDirectory())

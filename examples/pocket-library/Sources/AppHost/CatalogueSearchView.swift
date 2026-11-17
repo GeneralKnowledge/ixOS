@@ -13,7 +13,7 @@ struct CatalogueSearchView: View {
     @State private var query = ""
     /// The search being shown. Changing it (a new query, or a retry of the
     /// same one) cancels the previous `.task`.
-    @State private var submitted: SearchRequest?
+    @State private var submitted: CatalogueSearchRequest?
     /// The search's state as one value (ForgeAppKit).
     @State private var state: ForgeLoad<[CatalogueBook]> = .idle
     /// Counts searches, so a stopped one only tidies up after itself.
@@ -24,11 +24,6 @@ struct CatalogueSearchView: View {
     @State private var showingManualForm = false
     /// Starts with the search field active and the keyboard up.
     @State private var searchActive = true
-
-    struct SearchRequest: Equatable {
-        let text: String
-        let attempt: Int
-    }
 
     struct ImportNotes: Identifiable {
         let id = UUID()
@@ -70,38 +65,28 @@ struct CatalogueSearchView: View {
     private var content: some View {
         switch state {
         case .idle:
-            ContentUnavailableView(
+            ForgeStateView.empty(
                 "Search Open Library",
                 systemImage: "magnifyingglass",
-                description: Text("Find a book by title or author and add it with its cover and description.")
+                description: "Find a book by title or author and add it with its cover and description."
             )
         case .loading:
             ForgeStateView.loading("Searching…")
         case .failed(let failure):
-            ContentUnavailableView {
-                Label(failure.title, systemImage: "wifi.exclamationmark")
-            } description: {
-                Text(failure.message)
-            } actions: {
-                if failure.isRetryable {
-                    Button("Try Again") { retry() }
-                        .buttonStyle(.forgePrimary)
-                        .accessibilityIdentifier("catalogue.retry")
-                }
-                Button("Enter Details by Hand") { showingManualForm = true }
-                    .buttonStyle(.forgeTertiary)
-                    .accessibilityIdentifier("catalogue.manual")
-            }
+            ForgeStateView.failed(
+                failure.title,
+                message: failure.message,
+                retry: failure.isRetryable ? ForgeStateAction("Try Again", identifier: "catalogue.retry") { retry() } : nil,
+                secondary: ForgeStateAction("Enter Details by Hand", identifier: "catalogue.manual") { showingManualForm = true }
+            )
         case .loaded(let results) where results.isEmpty:
-            ContentUnavailableView {
-                Label("No Results", systemImage: "book.closed")
-            } description: {
-                Text("Try other words, or enter the book's details yourself.")
-            } actions: {
-                Button("Enter Details by Hand") { showingManualForm = true }
-                    .buttonStyle(.forgeTertiary)
-                    .accessibilityIdentifier("catalogue.noResults.manual")
-            }
+            ForgeStateView.noResults(
+                for: submitted?.text ?? query,
+                advice: "Try other words, or enter the book's details yourself.",
+                action: ForgeStateAction("Enter Details by Hand", identifier: "catalogue.noResults.manual") {
+                    showingManualForm = true
+                }
+            )
         case .loaded(let results):
             List(results, id: \.key) { result in
                 CatalogueRow(
@@ -122,14 +107,13 @@ struct CatalogueSearchView: View {
     }
 
     private func submit() {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        submitted = SearchRequest(text: trimmed, attempt: (submitted?.attempt ?? 0) + 1)
+        guard let request = CatalogueSearchRequest.submitted(query, after: submitted) else { return }
+        submitted = request
     }
 
     private func retry() {
         guard let current = submitted else { return }
-        submitted = SearchRequest(text: current.text, attempt: current.attempt + 1)
+        submitted = current.retried
     }
 
     private func search(showingProgress: Bool = true) async {

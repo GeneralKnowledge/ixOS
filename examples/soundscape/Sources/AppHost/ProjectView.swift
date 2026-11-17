@@ -30,7 +30,7 @@ struct ProjectView: View {
             if let detail {
                 mixer(detail)
             } else {
-                ContentUnavailableView("Project Deleted", systemImage: "trash")
+                ForgeStateView.empty("Project Deleted", systemImage: "trash")
             }
         }
         .navigationTitle(detail?.summary.title ?? "")

@@ -1,6 +1,7 @@
 @preconcurrency import RelayFFI
 import PhotosUI
 import QuickLook
+import ForgeUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -1113,7 +1114,7 @@ private struct MessageSearchSheet: View {
             }
             .overlay {
                 if !query.isEmpty && results.isEmpty {
-                    ContentUnavailableView.search(text: query)
+                    ForgeStateView.noResults(for: query)
                 }
             }
             .searchable(text: $query, prompt: "Search messages")

@@ -1,4 +1,5 @@
 @preconcurrency import GoodDogFFI
+import ForgeUI
 import SwiftUI
 
 /// The exercise library by topic, the glossary, and search across both.
@@ -44,7 +45,7 @@ struct LearnView: View {
             }
             .overlay {
                 if let results = model.searchResults, results.exercises.isEmpty, results.terms.isEmpty {
-                    ContentUnavailableView.search(text: model.searchText)
+                    ForgeStateView.noResults(for: model.searchText)
                 }
             }
             .searchable(text: $model.searchText, prompt: "Exercises and words")

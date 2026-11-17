@@ -156,7 +156,7 @@ struct ExerciseView: View {
             }
             .forgeFeedback(model.haptics)
         } else {
-            ContentUnavailableView("Exercise Not Found", systemImage: "questionmark.circle")
+            ForgeStateView.empty("Exercise Not Found", systemImage: "questionmark.circle")
         }
     }
 

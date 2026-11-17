@@ -1,5 +1,6 @@
 @preconcurrency import RelayFFI
 import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// The Assistant tab (and the sign-up screen's Assistant sheet): private
@@ -38,16 +39,13 @@ struct AssistantListView: View {
                 }
             }
             if model.conversations.isEmpty {
-                ContentUnavailableView {
-                    Label("No Assistant Chats", systemImage: "sparkles")
-                } description: {
-                    Text(
-                        "Chat with a model that runs on this iPhone. Nothing you write leaves the phone."
-                    )
-                } actions: {
-                    newMenu(title: "Start a Chat")
-                        .buttonStyle(.borderedProminent)
-                }
+                ForgeStateView.empty(
+                    "No Assistant Chats", systemImage: "sparkles",
+                    description: "Chat with a model that runs on this iPhone. Nothing you write leaves the phone.",
+                    action: .menu("Start a Chat", systemImage: "square.and.pencil", identifier: "assistant.new") {
+                        characterButtons
+                    }
+                )
                 .listRowBackground(Color.clear)
             }
             ForEach(model.conversations, id: \.id) { conversation in
@@ -83,19 +81,24 @@ struct AssistantListView: View {
     /// Picks who to talk to.
     private func newMenu(title: String) -> some View {
         Menu {
-            ForEach(model.characters, id: \.id) { character in
-                Button {
-                    if let id = model.start(characterId: character.id) { open(id) }
-                } label: {
-                    Text("\(character.emoji) \(character.name)")
-                    Text(character.description)
-                }
-                .accessibilityIdentifier("assistant.character.\(character.id)")
-            }
+            characterButtons
         } label: {
             Label(title, systemImage: "square.and.pencil")
         }
         .accessibilityIdentifier("assistant.new")
+    }
+
+    /// One button per character, each starting a chat with it.
+    private var characterButtons: some View {
+        ForEach(model.characters, id: \.id) { character in
+            Button {
+                if let id = model.start(characterId: character.id) { open(id) }
+            } label: {
+                Text("\(character.emoji) \(character.name)")
+                Text(character.description)
+            }
+            .accessibilityIdentifier("assistant.character.\(character.id)")
+        }
     }
 }
 

@@ -96,15 +96,11 @@ public struct RelayRoot: View {
         case .ready:
             ChatsTab(model: chat, path: $chatPath)
         case .failed(let message):
-            ContentUnavailableView {
-                Label("Can't Open Chats", systemImage: "exclamationmark.bubble")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("Try Again") { Task { await chat.open() } }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("content.retry")
-            }
+            ForgeStateView.failed(
+                "Can't Open Chats",
+                message: message,
+                retry: ForgeStateAction("Try Again", identifier: "content.retry") { Task { await chat.open() } }
+            )
         }
     }
 }

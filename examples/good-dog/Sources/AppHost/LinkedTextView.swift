@@ -1,4 +1,5 @@
 @preconcurrency import GoodDogFFI
+import ForgeUI
 import SwiftUI
 
 /// Text from Rust whose glossary terms are tappable. A tap opens the term in
@@ -117,7 +118,7 @@ struct TermView: View {
             .navigationDestination(for: TermRoute.self) { TermView(model: model, termId: $0.id) }
             .navigationDestination(for: ExerciseRoute.self) { ExerciseView(model: model, route: $0) }
         } else {
-            ContentUnavailableView("Term Not Found", systemImage: "questionmark.circle")
+            ForgeStateView.empty("Term Not Found", systemImage: "questionmark.circle")
         }
     }
 }
