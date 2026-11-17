@@ -128,7 +128,7 @@ private struct WorkshopMenu: View {
                 }
             }
 
-            Picker(selection: $settings.handle) {
+            Picker(selection: handlePosition) {
                 ForEach(WorkshopSettings.HandlePosition.allCases) { option in
                     Text(option.name).tag(option)
                 }
@@ -149,6 +149,20 @@ private struct WorkshopMenu: View {
         .accessibilityIdentifier("workshop.menu")
         .accessibilityLabel("Workshop")
         .accessibilityHint("Goes back to Device Lab, switches to another app, or changes how \(app.name) is shown.")
+    }
+
+    /// Moves the button only once the menu has finished closing: moving it
+    /// at once dragged the still-closing menu along with it (seen on the
+    /// phone, 2026-11-17).
+    private var handlePosition: Binding<WorkshopSettings.HandlePosition> {
+        Binding {
+            settings.handle
+        } set: { position in
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(350))
+                withAnimation(.snappy) { settings.handle = position }
+            }
+        }
     }
 }
 
