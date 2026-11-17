@@ -282,7 +282,6 @@ struct ChatView: View {
     private func lifecycle(_ content: some View) -> some View {
         content
             .sensoryFeedback(.impact(weight: .light), trigger: model.sentCount)
-            .sensoryFeedback(.error, trigger: model.failedCount)
             .task { await appear() }
             .task(id: draft) { await autosaveDraft() }
             .onDisappear(perform: disappear)

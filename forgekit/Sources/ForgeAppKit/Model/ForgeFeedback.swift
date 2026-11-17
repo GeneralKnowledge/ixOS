@@ -19,14 +19,16 @@ import Foundation
 public struct ForgeFeedback: Equatable, Sendable {
     /// What happened, from the person's point of view.
     public enum Kind: String, CaseIterable, Sendable {
-        /// Something they did is done and kept: saved, sent, finished.
+        /// Something is done and kept: saved, sent, finished, or a file
+        /// that finished arriving.
         case success
         /// Something they did didn't work. Pair it with the message that
         /// says why; never use it alone.
         case failure
         /// A choice changed among a few options: a step, a rating, a page.
         case selection
-        /// New content arrived after they asked for it.
+        /// New content arrived: after they asked for it, or by itself
+        /// somewhere they aren't looking (a message in another chat).
         case refresh
     }
 

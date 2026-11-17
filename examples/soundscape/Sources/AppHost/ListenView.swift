@@ -215,7 +215,7 @@ private struct SongView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .refreshable { await load() }
-        .sensoryFeedback(.success, trigger: model.markCount)
+        .forgeFeedback(model.feedback)
         .alert("Note", isPresented: Binding(get: { noting != nil }, set: { if !$0 { noting = nil } })) {
             TextField("What stands out", text: $noteText)
                 .accessibilityIdentifier("take.noteText")

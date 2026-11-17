@@ -27,7 +27,8 @@ struct ReaderView: View {
     @State private var showingSummary = false
     @State private var showingBookSummary = false
     @State private var lastSaved: SavedPlace?
-    @State private var finishedCount = 0
+    /// Success when the book is marked finished.
+    @State private var feedback = ForgeFeedback()
     /// Counts chapter loads: each gets a fresh scroll view.
     @State private var loadCount = 0
     @State private var readAloud = ReadAloud()
@@ -79,7 +80,7 @@ struct ReaderView: View {
             )
         }
         .forgeAlert($error)
-        .sensoryFeedback(.success, trigger: finishedCount)
+        .forgeFeedback(feedback)
         .task { await open() }
         // Save a moment after scrolling stops, when leaving, and when the
         // app goes to the background.
@@ -367,7 +368,7 @@ struct ReaderView: View {
         Task {
             do {
                 try await model.setStatus(bookID, .finished)
-                finishedCount += 1
+                feedback.play(.success)
             } catch {
                 self.error = .failure(error)
             }

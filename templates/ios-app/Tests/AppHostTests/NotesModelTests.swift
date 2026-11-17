@@ -76,7 +76,8 @@ final class NotesModelTests: XCTestCase {
             XCTAssertEqual(model.notes.map(\.text), ["second\nwith more", "first"])
             XCTAssertEqual(model.notes[0].title, "second")
             XCTAssertEqual(model.notes[0].preview, "with more")
-            XCTAssertEqual(model.saveCount, 2)
+            XCTAssertEqual(model.feedback.count, 2)
+            XCTAssertEqual(model.feedback.kind, .success)
             host.close()
         }
         // The core is released with the host and model above, so the next

@@ -132,7 +132,7 @@ struct ProjectListView: View {
                 get: { creating || !path.isEmpty ? nil : model.alert },
                 set: { model.alert = $0 }
             )) { action in Task { await model.handle(action) } }
-            .sensoryFeedback(.success, trigger: model.saveCount)
+            .forgeFeedback(model.feedback)
         }
     }
 

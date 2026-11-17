@@ -1,5 +1,6 @@
 #if os(iOS)
 @preconcurrency import SketchbookFFI
+import ForgeAppKit
 import Photos
 import QuickLook
 import SwiftUI
@@ -12,6 +13,7 @@ struct ExportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var saving = false
     @State private var saved = false
+    @State private var feedback = ForgeFeedback()
     @State private var problem: String?
     @State private var preview: URL?
 
@@ -66,7 +68,7 @@ struct ExportSheet: View {
                 }
             }
             .quickLookPreview($preview)
-            .sensoryFeedback(.success, trigger: saved)
+            .forgeFeedback(feedback)
         }
         .presentationDetents([.medium, .large])
     }
@@ -89,6 +91,7 @@ struct ExportSheet: View {
                     _ = PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: url)
                 }
                 saved = true
+                feedback.play(.success)
             } catch {
                 problem = "Couldn't save to Photos: \(error.localizedDescription)"
             }

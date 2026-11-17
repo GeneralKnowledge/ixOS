@@ -33,22 +33,35 @@ public final class RelayModel {
     }
 
     public var alert: ForgeAlert<Action>?
-    /// Increases after each saved change; views use it as a haptic trigger.
-    public private(set) var saveCount = 0
+    /// Haptics: success when something is done (paired, sent, or a file
+    /// or note finished arriving), failure with the alert or message that
+    /// says why.
+    public private(set) var feedback = ForgeFeedback()
 
     public let core: RelayCore
 
     public init(core: RelayCore) {
         self.core = core
         identity = core.identity()
-        reload()
+        reload(announcing: false)
     }
 
     /// Re-reads Rust's published state. Cheap: no command is waited for.
     public func reload() {
+        reload(announcing: true)
+    }
+
+    /// `announcing`: whether a transfer that finished arriving since the
+    /// last read plays its haptic. False when the action that received it
+    /// plays its own (a code receive), so it isn't felt twice.
+    private func reload(announcing: Bool) {
         identity = core.identity()
         peers = core.peers()
+        let previous = transfers
         transfers = core.transfers()
+        if announcing, !isReceivingCode, let kind = Self.arrival(from: previous, to: transfers) {
+            feedback.play(kind)
+        }
         port = core.listeningPort()
         devices = core.devices()
         policy = core.pairingPolicy()
@@ -59,6 +72,30 @@ public final class RelayModel {
     /// progress.
     public var isTransferring: Bool {
         transfers.contains { if case .inProgress = $0.status { true } else { false } }
+    }
+
+    /// The haptic for what arrived between two reads of the history: success
+    /// when a received file or note finished (one tap however many did),
+    /// failure when one stopped part way. Sends are left to the action that
+    /// started them. The first read (`init`) announces nothing.
+    nonisolated static func arrival(from previous: [Transfer], to current: [Transfer]) -> ForgeFeedback.Kind? {
+        let before = Dictionary(previous.map { ($0.id, $0.status) }, uniquingKeysWith: { a, _ in a })
+        var kind: ForgeFeedback.Kind?
+        for transfer in current where transfer.direction == .received {
+            // New since the last read, or still on its way then.
+            let wasRunning: Bool
+            switch before[transfer.id] {
+            case .none, .some(.inProgress): wasRunning = true
+            case .some(.done), .some(.failed): wasRunning = false
+            }
+            guard wasRunning else { continue }
+            switch transfer.status {
+            case .done: kind = kind ?? .success
+            case .failed: kind = .failure
+            case .inProgress: break
+            }
+        }
+        return kind
     }
 
     public func transfers(with peer: Peer) -> [Transfer] {
@@ -114,7 +151,7 @@ public final class RelayModel {
             cancellation.cancel()
         }
         reload()
-        saveCount += 1
+        feedback.play(.success)
         return peer
     }
 
@@ -181,6 +218,7 @@ public final class RelayModel {
     public func report(_ error: Error) {
         log.warn("failed: \(error)")
         alert = .failure(error)
+        feedback.play(.failure)
     }
 
     private func sending(_ send: (RelayCore, Cancellation) async throws -> Transfer) async -> Bool {
@@ -194,7 +232,7 @@ public final class RelayModel {
                 cancellation.cancel()
             }
             reload()
-            saveCount += 1
+            feedback.play(.success)
             return true
         } catch {
             reload()
@@ -208,7 +246,7 @@ public final class RelayModel {
         do {
             try await command(core)
             reload()
-            saveCount += 1
+            feedback.play(.success)
         } catch {
             report(error)
         }
@@ -332,7 +370,7 @@ public final class RelayModel {
         do {
             _ = try await send(core)
             reload()
-            saveCount += 1
+            feedback.play(.success)
             return true
         } catch {
             reload()
@@ -393,12 +431,14 @@ public final class RelayModel {
             codeReceive = .receiving(size: nil, since: Date())
             do {
                 let receipt = try await core.receiveWithCode(code: code, addresses: addresses, endpointId: endpointID)
+                reload(announcing: false)
                 codeReceive = .received(receipt)
-                saveCount += 1
+                feedback.play(.success)
                 refreshTrustOffer()
             } catch {
                 log.warn("code receive failed: \(error)")
                 codeReceive = .failed(Self.message(error))
+                feedback.play(.failure)
             }
         }
     }

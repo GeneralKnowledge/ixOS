@@ -54,6 +54,9 @@ public struct RelayRoot: View {
             }
             // Failed swipes and menu actions in messaging.
             .forgeAlert(failure: Bindable(chat).actionError)
+            // Messaging's haptics, whichever tab is showing: a message in
+            // another chat, a message that failed to send.
+            .forgeFeedback(chat.feedback)
     }
 
     private var tabs: some View {

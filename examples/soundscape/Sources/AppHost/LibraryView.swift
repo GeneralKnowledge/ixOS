@@ -473,7 +473,7 @@ struct TrackView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { detail = model.track(id) }
         .onChange(of: model.library) { detail = model.track(id) }
-        .sensoryFeedback(.success, trigger: model.markCount)
+        .forgeFeedback(model.feedback)
         .toolbar {
             if detail != nil {
                 ToolbarItem(placement: .primaryAction) {
