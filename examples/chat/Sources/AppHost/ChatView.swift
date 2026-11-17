@@ -257,7 +257,7 @@ struct ChatView: View {
                 isPresented: $pickingFiles, allowedContentTypes: [.item],
                 allowsMultipleSelection: true
             ) { result in
-                stageDocuments(result)
+                Task { await stageDocuments(result) }
             }
             .quickLookPreview($previewURL)
             .alert("Microphone Access Is Off", isPresented: $microphoneDenied) {
@@ -409,13 +409,14 @@ struct ChatView: View {
         }
     }
 
-    /// Copies picked documents and adds them to the next message.
-    private func stageDocuments(_ result: Result<[URL], Error>) {
+    /// Copies picked documents (off the main thread) and adds them to the
+    /// next message.
+    private func stageDocuments(_ result: Result<[URL], Error>) async {
         switch result {
         case .success(let urls):
             for url in urls.prefix(MAX_ATTACHMENTS_PER_MESSAGE_SWIFT - staged.count) {
                 do {
-                    staged.append(try AttachmentFiles.prepareDocument(url))
+                    staged.append(try await AttachmentFiles.prepareDocument(url))
                 } catch {
                     attachmentLog.warn("document not added: \(error)")
                     model.showError(String(localized: "\(url.lastPathComponent) couldn't be added (\(error.localizedDescription))."))
