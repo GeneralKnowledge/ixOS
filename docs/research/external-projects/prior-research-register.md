@@ -11,7 +11,7 @@ State is one of the four in the [README](README.md#four-different-states) (known
 | Project | Where it was looked at | What we already know | State | Disposition |
 |---|---|---|---|---|
 | [swift-navigation](https://github.com/pointfreeco/swift-navigation) (MIT) | [references.md, Libraries](../experience/references.md#libraries) (#297, 2026-11-17) | ForgeAppKit's destinations (`.forgeSheet`, `.forgeNavigationDestination`) are its state-driven pattern, without the package or its macros | Borrowed | **Borrow.** Keep using the pattern; don't add the package |
-| [Nuke](https://github.com/kean/Nuke) (MIT) | [references.md, Libraries](../experience/references.md#libraries) (#297) | A good library, not rejected on quality. ixOS has no third-party Swift packages, and ForgeImages already decodes at the size shown with a memory cache | Researched | **Superseded by an implementation decision (Reuben, 2026-11-17):** extend ForgeImages with a disk-cached download instead, PR #298 (open). Revisit only if prefetching, progressive or animated images become a real need |
+| [Nuke](https://github.com/kean/Nuke) (MIT) | [references.md, Libraries](../experience/references.md#libraries) (#297) | A good library, not rejected on quality. ixOS has no third-party Swift packages, and ForgeImages already decodes at the size shown with a memory cache | Researched | **Superseded by an implementation decision (Reuben, 2026-11-17):** extend ForgeImages with a disk-cached download instead, PR #298, merged 2026-11-17. Revisit only if prefetching, progressive or animated images become a real need |
 | [Pulse](https://github.com/kean/Pulse) (MIT) | [references.md, Libraries](../experience/references.md#libraries) (#297) | Most networking is in Rust and logging goes through `forge_runtime::logging`, so a URLSession inspector would see little | Researched | **Idea only:** its viewer is a model for a Device Lab diagnostics screen |
 | [GRDB.swift](https://github.com/groue/GRDB.swift) (MIT) | [references.md, Libraries](../experience/references.md#libraries) (#297) | Persistence belongs to the Rust core (`forge-storage`, rusqlite); a Swift database would split state across the boundary | Researched | **Reject** |
 | [SwiftUI Introspect](https://github.com/siteline/swiftui-introspect) (MIT) | [references.md, Libraries](../experience/references.md#libraries) (#297) | Reaches the UIKit view under a SwiftUI one | Researched | **Escape hatch, per app only.** Never in ForgeUI |
@@ -23,6 +23,8 @@ State is one of the four in the [README](README.md#four-different-states) (known
 | [MLX Swift](https://github.com/ml-explore/mlx-swift) (MIT) | [local-ai.md](../../local-ai.md) (2026-11-07) | MLX's own README says SwiftPM cannot build its Metal shaders; the final build needs Xcode | Researched | **Poor fit for Linux.** The atlas's P1 spike must start from this finding, not from scratch |
 | [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT) | [local-ai.md](../../local-ai.md), [forge-ai-plan.md](../../forge-ai-plan.md) | Prebuilt XCFramework as a binary target, so nothing compiles on Linux; untested with xtool. Also the laptop-side server for AI over Relay | Researched | **Fallback** iOS adapter if CoreML-LLM fails; laptop upstream for `relay serve-ai` |
 | Apple Foundation Models | [local-ai.md](../../local-ai.md) | On-device model, iOS 26, Apple Intelligence must be on. L1 passed on the phone | Adopted | **Adopt** (Chat's Assistant, now in Relay) |
+| [a11y-check](https://github.com/cvs-health/ios-swiftui-accessibility-techniques) (Apache-2.0) | [assessment](assessments/accessibility/a11y-check.md) (2026-11-17, `3aa074c`) | SwiftSyntax source checker, 47 WCAG rules; builds and passes 340 tests on Linux in `swift:6.2`; real findings in ixOS apps, but several frequent rules are noisy or blind to `#if` | Researched | **Adopt as a CI tool** (recommendation; not added yet), report-only, gating on chosen rules with a baseline |
+| [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache-2.0; models licensed separately) | [assessment](assessments/ai/fluidaudio.md) (2026-11-17, `16780f0`) | Core ML speech models downloaded precompiled; the binary NeMo target is an opt-out trait. Not built with xtool yet | Researched | **Watch:** Apple's on-device speech recognition first |
 | [re-appintentsmetadataprocessor](https://codeberg.org/viraptor/re-appintentsmetadataprocessor) (MIT) | [app-intents-on-linux.md](../app-intents-on-linux.md) (2026-11-11) | Rust reimplementation of Xcode's App Intents metadata step, which xtool lacks; English-only App Shortcuts | Researched | **Undecided:** two checks (laptop build, one intent in Shortcuts on the phone) before any Forge code |
 
 ## Relay and networking
@@ -36,6 +38,7 @@ State is one of the four in the [README](README.md#four-different-states) (known
 | [Drift](https://github.com/vsamarth/drift) (MIT) | [relay-transfer-peers.md](../experience/references/relay-transfer-peers.md) (#297, `f840ce5`) | Rust on iroh 0.97, Flutter, no iOS app yet | Researched | **Study:** reference; iOS feasibility unknown |
 | [Daak](https://github.com/darshitpp/daak) (Apache-2.0) | [relay-transfer-peers.md](../experience/references/relay-transfer-peers.md) (#297, `de23b51`) | Rust core over UniFFI like ixOS; backoff reset on presence. Self-described "fully vibecoded", two stars: trust none of its protocol | Researched | **Study:** experimental reference |
 | [RelayPonyCore](https://github.com/norsehorse-dev/RelayPonyCore) (Apache-2.0) | [relay-transfer-peers.md](../experience/references/relay-transfer-peers.md) (#297, `72d4f8f`) | Open core of a shipping iPhone app: age over Bonjour and Network.framework; the app itself is closed | Researched | **Study:** UX and implementation reference |
+| [Lightning P2P](https://github.com/Kerim-Sabic/lightning-p2p) (Apache-2.0) | [assessment](assessments/networking/lightning-p2p.md) (2026-11-17, `ce2ee63`) | Same iroh stack; bearer tickets; no iOS app. Its retention code led to measuring that Relay keeps received files twice | Researched | **Borrow** (retention, request cap, relay wait, receive journal) |
 | [libp2p](https://github.com/libp2p/rust-libp2p) | [relay-transfer-plan.md](../../../examples/relay/docs/relay-transfer-plan.md) | Does what iroh does with more moving parts and a weaker iOS story | Researched | **Reject** as Relay's transport |
 | [Syncthing](https://github.com/syncthing/syncthing) (MPL-2.0) | [relay-transfer-plan.md](../../../examples/relay/docs/relay-transfer-plan.md) | Continuous folder sync is a different product; a later "keep this folder in sync" mode could borrow its ideas | Researched | **Watch** for a sync mode |
 | croc, magic-wormhole, Floe, wush, derphole, WebRTC, BitTorrent/IPFS | [relay-transfer-plan.md](../../../examples/relay/docs/relay-transfer-plan.md) | croc: borrow the flow. magic-wormhole: borrow SPAKE2 word codes, not the protocol (internet rendezvous, EUPL crate). Floe: browser receiver idea for stage 3. wush/derphole: ride Tailscale's DERP. Torrent/IPFS: built for one-to-many | Researched | **Borrow** (croc, magic-wormhole designs); **Watch** (Floe browser receiver); **Reject** as base (the rest) |
@@ -57,6 +60,12 @@ From [ixOS Experience Research](../experience/README.md) (#285 and its deep audi
 | [Mira](https://github.com/Dtheme/Mira) (MIT) | [references.md](../experience/references.md#design-systems) | Design-system reference for agent-assisted design specs |
 | [Awesome iOS Design MD](https://github.com/Meliwat/awesome-ios-design-md) (MIT) | [references.md](../experience/references.md#tools-for-keeping-quality-from-slipping) | Format reference for ixOS's own design spec |
 
+## Apps studied for techniques
+
+| Project | Where it was looked at | Disposition |
+|---|---|---|
+| [Offscan](https://github.com/bartoszpiech/offscan) (MIT) | [assessment](assessments/media/offscan.md) (2026-11-17, `7b8d682`) | **Borrow and Study:** pipeline and recipe design for roadmap item 18; not a dependency (SwiftData state, five days old) |
+
 ## Tooling
 
 | Project | Where it was looked at | What we already know | Disposition |
@@ -75,4 +84,4 @@ Checked against the repository while writing this page:
 - **Maestro and App Intents were already looked at** ([reinvention-audit.md](../reinvention-audit.md), [app-intents-on-linux.md](../app-intents-on-linux.md)).
 - **libp2p and Syncthing were already compared** for Relay and not chosen.
 - **iroh-drop** was the fourth project in #297 next to Drift, Daak and RelayPony, and the most relevant one.
-- **#298 is still open.** The decision to extend ForgeImages instead of adding Nuke stands either way.
+- **#298 merged on 2026-11-17** (after the summary): ForgeImages now downloads and disk-caches web pictures, so the Nuke decision is implemented.
