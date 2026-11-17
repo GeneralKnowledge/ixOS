@@ -94,9 +94,10 @@ public final class ChatModel {
     public var actionError: ForgeFailure?
     /// Increases after each message this device sends; a haptic trigger.
     public private(set) var sentCount = 0
-    /// Increases each time one of this device's messages fails to send; a
-    /// haptic trigger.
-    public private(set) var failedCount = 0
+    /// Haptics (attached once, at the app's root): failure when one of this
+    /// device's messages fails to send (its bubble says so), and a light tap
+    /// for someone else's message in a chat that isn't open.
+    public private(set) var feedback = ForgeFeedback()
     /// Our messages waiting in Rust's outbox (written offline, or the
     /// server could not be reached). Rust sends them by itself.
     public private(set) var waitingCount = 0
@@ -519,9 +520,10 @@ public final class ChatModel {
                 conversations.append(conversation)
             }
         case .notify:
-            // Rust posts the notification itself (rust/src/alerts.rs) and
-            // keeps every room live for it.
-            break
+            // Someone else's new message in a room that isn't open (and isn't
+            // muted). Rust posts the notification itself (rust/src/alerts.rs)
+            // and keeps every room live for it; in the app, a light tap.
+            feedback.play(.refresh)
         case .messageReceived(let message):
             upsert(message)
             if message.isMine { updateWaitingCount() }
@@ -540,7 +542,7 @@ public final class ChatModel {
             else { break }
             // A `.sent` message also carries the server's time and may move:
             // re-read the store.
-            if status == .failed && list[index].isMine { failedCount += 1 }
+            if status == .failed && list[index].isMine { feedback.play(.failure) }
             let stored = core?.cachedMessages(conversationId: room) ?? []
             if stored.contains(where: { $0.id == id }) {
                 messages[room] = stored

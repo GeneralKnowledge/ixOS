@@ -137,7 +137,7 @@ final class GoodDogModelTests: XCTestCase {
         XCTAssertEqual(model.today?.activities.first?.result, .easy)
         XCTAssertEqual(model.history.first?.exerciseId, activity.exerciseId)
         XCTAssertEqual(model.progress?.sessionsThisWeek, 1)
-        XCTAssertEqual(model.sessionCount, 1)
+        XCTAssertEqual(model.haptics.count, 1)
         XCTAssertEqual(model.exercise(id: activity.exerciseId)?.skill.level, .started)
 
         // Recording it again is refused, and Rust's error arrives typed.
@@ -268,7 +268,7 @@ final class GoodDogModelTests: XCTestCase {
         XCTAssertEqual(guidedModel.today?.activities.first?.result, .gettingThere)
         XCTAssertEqual(guidedModel.history, plainModel.history)
         XCTAssertEqual(guidedModel.progress, plainModel.progress)
-        XCTAssertEqual(guidedModel.sessionCount, 1)
+        XCTAssertEqual(guidedModel.haptics.count, 1)
         XCTAssertTrue(guided.card.recorded)
         XCTAssertFalse(guided.card.canRecord)
 

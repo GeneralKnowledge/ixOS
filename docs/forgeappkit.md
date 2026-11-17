@@ -243,12 +243,12 @@ feedback.play(.success)                                // after a save
 
 | Kind | When |
 |---|---|
-| `success` | Something the person did is done and kept: saved, sent, finished |
+| `success` | Something is done and kept: saved, sent, finished, or a file that finished arriving |
 | `failure` | It didn't work; only together with visible text that says why (an alert, a field message, a banner), never on its own |
 | `selection` | A choice among a few options changed: a step, a rating |
-| `refresh` | New content arrived after they asked for it |
+| `refresh` | New content arrived: after they asked for it, or by itself somewhere they aren't looking (a message in another chat; none for the chat on screen) |
 
-Feedback is proportional: a routine tap, a toggle or a scroll gets none (system controls already give their own). No per-app haptics setting: iOS's System Haptics switch covers it. `scripts/check-app-parity.sh` (rule `feedback`) flags a hand-rolled `saveCount` trigger.
+Feedback is proportional: a routine tap, a toggle or a scroll gets none (system controls already give their own). No per-app haptics setting: iOS's System Haptics switch covers it. `scripts/check-app-parity.sh` (rule `feedback`) flags a hand-rolled `saveCount` trigger and outcome haptics (`.sensoryFeedback(.success` or `.error`) played outside `ForgeFeedback`; a haptic that is part of an app's own interaction (Good Dog's step taps, Relay's light tap on send) stays the app's.
 
 Device Lab's **Apps > Interaction Patterns** shows every banner and haptic on the phone.
 

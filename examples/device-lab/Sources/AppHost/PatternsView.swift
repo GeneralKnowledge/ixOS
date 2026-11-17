@@ -75,10 +75,10 @@ struct PatternsView: View {
 
     private func use(_ kind: ForgeFeedback.Kind) -> String {
         switch kind {
-        case .success: "Saved, sent, finished"
+        case .success: "Saved, sent, file arrived"
         case .failure: "With the message why"
         case .selection: "A step or a rating"
-        case .refresh: "New content arrived"
+        case .refresh: "Message in another chat"
         }
     }
 

@@ -72,8 +72,9 @@ public final class GoodDogModel {
     public private(set) var todayError: String?
     /// The daily reminder's time in minutes after midnight; nil when off.
     public private(set) var reminderMinute: UInt32?
-    /// Increases after each recorded session; views use it as a haptic trigger.
-    public private(set) var sessionCount = 0
+    /// Haptics: success after each recorded session. (`feedback` is the
+    /// trainer's words after a session, `SessionFeedback`.)
+    public private(set) var haptics = ForgeFeedback()
     /// The owner's goals: active first, then paused, finished, set aside.
     public private(set) var goals: [GoalSummary] = []
     /// The goals that suit the dog, to choose from.
@@ -288,7 +289,7 @@ public final class GoodDogModel {
             welfareConcern: welfareConcern,
             now: clock()
         )
-        sessionCount += 1
+        haptics.play(.success)
         await reload()
         return feedback
     }
@@ -316,7 +317,7 @@ public final class GoodDogModel {
             welfareConcern: welfareConcern,
             now: clock()
         )
-        sessionCount += 1
+        haptics.play(.success)
         await reload()
         return feedback
     }

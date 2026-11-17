@@ -18,7 +18,8 @@ struct BookDetailView: View {
     #endif
     /// The delete confirmation, or an error (ForgeAppKit).
     @State private var alert: ForgeAlert<DetailAction>?
-    @State private var finishedCount = 0
+    /// Success when the book is marked finished.
+    @State private var feedback = ForgeFeedback()
     @FocusState private var pageFieldFocused: Bool
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.forgeTheme) private var theme
@@ -44,7 +45,7 @@ struct BookDetailView: View {
             case .delete: deleteBook()
             }
         }
-        .sensoryFeedback(.success, trigger: finishedCount)
+        .forgeFeedback(feedback)
     }
 
     private func details(_ book: Book) -> some View {
@@ -289,7 +290,7 @@ struct BookDetailView: View {
             do {
                 let updated = try await command()
                 if !wasFinished, updated.status == .finished {
-                    finishedCount += 1
+                    feedback.play(.success)
                 }
             } catch {
                 alert = .failure(error)
