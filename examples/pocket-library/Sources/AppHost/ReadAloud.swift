@@ -370,11 +370,19 @@ final class ReadAloud: NSObject {
             MPNowPlayingInfoPropertyPlaybackRate: state == .playing ? 1.0 : 0.0,
         ]
         if let coverFile, let image = UIImage(contentsOfFile: coverFile) {
-            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            info[MPMediaItemPropertyArtwork] = Self.lockScreenArtwork(image)
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         #endif
     }
+
+    #if os(iOS)
+    /// Made outside the main actor: MediaPlayer asks for the picture on a
+    /// background queue, and a closure made on the main actor traps there.
+    nonisolated private static func lockScreenArtwork(_ image: UIImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+    }
+    #endif
 
     private func clearNowPlaying() {
         #if os(iOS)

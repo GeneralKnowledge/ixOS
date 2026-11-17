@@ -3,6 +3,7 @@
 @preconcurrency import ForgeKit
 import AVFoundation
 import MediaPlayer
+import UIKit
 import Observation
 
 private let log = ForgeLog("Listen")
@@ -86,6 +87,10 @@ final class TakePlayer {
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var remoteReady = false
+    /// The lock screen's picture for `current`, and the address it came from.
+    @ObservationIgnored private var artwork: MPMediaItemArtwork?
+    @ObservationIgnored private var artworkUrl: String?
+    @ObservationIgnored private var artworkTask: Task<Void, Never>?
 
     init() {
         for player in [playerA, playerB] {
@@ -145,6 +150,9 @@ final class TakePlayer {
         isPlaying = false
         time = 0
         duration = 0
+        artworkTask?.cancel()
+        artwork = nil
+        artworkUrl = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         ForgeAudioSession.deactivate()
     }
@@ -162,6 +170,7 @@ final class TakePlayer {
         applyVolumes()
         observeEnds()
         setUpRemoteCommands()
+        loadArtwork(a.artworkUrl)
     }
 
     private static func item(_ audioUrl: String) -> AVPlayerItem? {
@@ -312,7 +321,12 @@ final class TakePlayer {
         let heard = active == .b && isComparing ? playerB : playerA
         let seconds = heard.currentTime().seconds
         if seconds.isFinite { time = seconds }
-        if let d = heard.currentItem?.duration.seconds, d.isFinite, d > 0 { duration = d }
+        if let d = heard.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration {
+            // The length is known only once the stream has started, after
+            // the lock screen was first told about the song.
+            duration = d
+            updateNowPlaying()
+        }
         isBuffering = heard.timeControlStatus == .waitingToPlayAtSpecifiedRate
         if let item = heard.currentItem, item.status == .failed, failure == nil {
             failure = item.error?.localizedDescription ?? "The take couldn't be played."
@@ -373,9 +387,44 @@ final class TakePlayer {
             MPMediaItemPropertyArtist: isComparing ? "Comparing takes" : current.artist ?? current.label,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: time,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
         if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
+        if let artwork, !isComparing { info[MPMediaItemPropertyArtwork] = artwork }
+        if let queue, !isComparing {
+            info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = Int(queue.position)
+            info[MPNowPlayingInfoPropertyPlaybackQueueCount] = queue.order.count
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    /// Fetches the song's artwork for the lock screen. The song shows
+    /// without it until it arrives; a song with none shows none.
+    private func loadArtwork(_ url: String?) {
+        guard url != artworkUrl else { return }
+        artworkTask?.cancel()
+        artworkUrl = url
+        artwork = nil
+        guard let url, let address = URL(string: url) else { return }
+        artworkTask = Task { [weak self] in
+            // Through the same cache as the library's pictures, so it is
+            // usually already there. A picture chosen on the phone is a file.
+            let picture = address.isFileURL
+                ? await ForgeImages.thumbnail(of: address, maxPixels: 1024, cached: true)
+                : await ForgeImages.thumbnail(from: address, maxPixels: 1024)
+            guard let picture, !Task.isCancelled else { return }
+            guard let self, self.artworkUrl == url else { return }
+            self.artwork = Self.lockScreenArtwork(UIImage(cgImage: picture))
+            self.updateNowPlaying()
+        }
+    }
+
+    /// Made outside the main actor: MediaPlayer asks for the picture on a
+    /// background queue, and a closure made on the main actor would trap
+    /// there.
+    nonisolated private static func lockScreenArtwork(_ image: UIImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
 
     private func setUpRemoteCommands() {
