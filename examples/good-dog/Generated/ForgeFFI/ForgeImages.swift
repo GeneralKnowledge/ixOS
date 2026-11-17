@@ -24,7 +24,7 @@ import UniformTypeIdentifiers
 /// ```
 ///
 /// In SwiftUI, `ForgeRemoteImage` draws a picture from the web this way,
-/// in place of `AsyncImage`.
+/// in place of `AsyncImage`. Downloads go through `ForgeWebData`.
 public enum ForgeImages {
     /// Pixels for `points` at a display scale (at least 1).
     public static func pixels(_ points: CGFloat, scale: CGFloat) -> Int {
@@ -62,27 +62,56 @@ public enum ForgeImages {
     /// most `maxPixels` on its longer side, decoded off the main actor. Nil
     /// if it can't be fetched or isn't an image.
     ///
-    /// Downloads are kept on disk (in Caches, up to 200 MB, which iOS may
-    /// clear) whenever the server allows it, and are used from there
-    /// afterwards, offline too: a picture at one address is taken never to
-    /// change. Thumbnails are kept in memory like
-    /// `thumbnail(of:maxPixels:cached:)`'s, and requests for a picture that
-    /// is already downloading wait for that download instead of starting
-    /// another, which suits list rows that scroll in and out.
-    public static func thumbnail(from url: URL, maxPixels: Int) async -> CGImage? {
+    /// The download goes through `ForgeWebData.shared`: HTTP cache headers
+    /// decide when the copy on disk is still good, the copy is shown when
+    /// there is no connection, responses over 20 MB are refused before they
+    /// are decoded, and rows asking for one picture share its download.
+    /// Thumbnails stay in memory for up to five minutes; after that the next
+    /// request asks `ForgeWebData` again (usually answered from disk) and
+    /// decodes again only if the picture changed. With `reload`, the copies
+    /// in memory and on disk are skipped and the server asked again.
+    public static func thumbnail(from url: URL, maxPixels: Int, reload: Bool = false) async -> CGImage? {
         let key = "\(url.absoluteString)#\(maxPixels)" as NSString
-        if let hit = cache.object(forKey: key) { return hit.image }
-        guard let data = await downloads.data(for: url), !Task.isCancelled else { return nil }
-        guard let image = await thumbnail(of: data, maxPixels: maxPixels) else { return nil }
-        cache.setObject(Decoded(image), forKey: key)
-        return image
+        let held = webCache.object(forKey: key)
+        if !reload, let held, isFresh(held, url) { return held.image }
+        switch await ForgeWebData.shared.data(from: url, reload: reload) {
+        case .success(let data):
+            let digest = digestOf(data)
+            if let held, held.digest == digest {
+                held.storedAt = Date()
+                return held.image
+            }
+            guard !Task.isCancelled, let image = await thumbnail(of: data, maxPixels: maxPixels) else {
+                return nil
+            }
+            webCache.setObject(WebEntry(image, digest: digest), forKey: key)
+            return image
+        case .failure(.offline):
+            // No network and nothing on disk: what is in memory is still
+            // the best picture there is.
+            return held?.image
+        case .failure:
+            return nil
+        }
     }
 
-    /// The thumbnail `thumbnail(from:maxPixels:)` already holds in memory for
-    /// this address and size, without waiting; nil if there is none yet. A
-    /// view starts with it so a row scrolled back into sight doesn't blink.
+    /// The thumbnail `thumbnail(from:maxPixels:)` holds in memory for this
+    /// address and size, without waiting; nil if there is none. A view
+    /// starts with it so a row scrolled back into sight doesn't blink.
     public static func cachedThumbnail(from url: URL, maxPixels: Int) -> CGImage? {
-        cache.object(forKey: "\(url.absoluteString)#\(maxPixels)" as NSString)?.image
+        guard let held = webCache.object(forKey: "\(url.absoluteString)#\(maxPixels)" as NSString),
+            !wasForgotten(held, url)
+        else { return nil }
+        return held.image
+    }
+
+    /// Forgets the picture at `url`: its copy on disk now, and the
+    /// thumbnails in memory at their next request.
+    public static func forget(_ url: URL) {
+        ForgeWebData.shared.forget(url)
+        forgetLock.lock()
+        forgottenAt[url.absoluteString] = Date()
+        forgetLock.unlock()
     }
 
     /// Writes image `data` (a photo from the picker, say) to `url` as a JPEG
@@ -130,40 +159,36 @@ public enum ForgeImages {
 
     nonisolated(unsafe) private static let cache = NSCache<NSString, Decoded>()
 
-    private static let downloads = WebDownloads()
-
-    /// One session for pictures from the web, with its own disk cache, so
-    /// they never crowd out the app's other responses in the shared cache.
-    private static let session: URLSession = {
-        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
-            .first?.appendingPathComponent("ForgeImages", isDirectory: true)
-        let configuration = URLSessionConfiguration.default
-        configuration.urlCache = URLCache(
-            memoryCapacity: 0, diskCapacity: 200 * 1024 * 1024, directory: directory)
-        configuration.requestCachePolicy = .returnCacheDataElseLoad
-        return URLSession(configuration: configuration)
-    }()
-
-    /// Downloads in progress, so two rows showing one picture share a
-    /// download. A download runs to the end even when everyone waiting for
-    /// it has gone, so the picture is on disk next time.
-    private actor WebDownloads {
-        private var running: [URL: Task<Data?, Never>] = [:]
-
-        func data(for url: URL) async -> Data? {
-            if let task = running[url] { return await task.value }
-            let task = Task<Data?, Never> {
-                guard let (data, response) = try? await ForgeImages.session.data(from: url),
-                    let status = (response as? HTTPURLResponse)?.statusCode,
-                    (200..<300).contains(status)
-                else { return nil }
-                return data
-            }
-            running[url] = task
-            let data = await task.value
-            running[url] = nil
-            return data
+    /// A thumbnail of a web picture, with what it was made from.
+    private final class WebEntry: @unchecked Sendable {
+        let image: CGImage
+        let digest: Int
+        var storedAt = Date()
+        init(_ image: CGImage, digest: Int) {
+            self.image = image
+            self.digest = digest
         }
+    }
+
+    nonisolated(unsafe) private static let webCache = NSCache<NSString, WebEntry>()
+    private static let forgetLock = NSLock()
+    nonisolated(unsafe) private static var forgottenAt: [String: Date] = [:]
+
+    /// Young enough to show without asking `ForgeWebData`, and not forgotten.
+    private static func isFresh(_ entry: WebEntry, _ url: URL) -> Bool {
+        Date().timeIntervalSince(entry.storedAt) < 300 && !wasForgotten(entry, url)
+    }
+
+    private static func wasForgotten(_ entry: WebEntry, _ url: URL) -> Bool {
+        forgetLock.lock()
+        defer { forgetLock.unlock() }
+        return forgottenAt[url.absoluteString].map { $0 > entry.storedAt } ?? false
+    }
+
+    private static func digestOf(_ data: Data) -> Int {
+        var hasher = Hasher()
+        data.withUnsafeBytes { hasher.combine(bytes: $0) }
+        return hasher.finalize()
     }
 
     private static func makeThumbnail(_ source: CGImageSource, maxPixels: Int) -> CGImage? {
@@ -180,9 +205,10 @@ public enum ForgeImages {
 #if canImport(SwiftUI)
 import SwiftUI
 
-/// A picture from the web, downloaded once, kept on disk and decoded at the
-/// size it is shown (`ForgeImages.thumbnail(from:maxPixels:)`). Use it in
-/// place of `AsyncImage`, which decodes at full size and keeps nothing.
+/// A picture from the web, decoded at the size it is shown and kept on disk
+/// as its HTTP cache headers allow (`ForgeImages.thumbnail(from:maxPixels:)`).
+/// Use it in place of `AsyncImage`, which decodes at full size and keeps
+/// nothing for offline use.
 ///
 /// ```swift
 /// ForgeRemoteImage(url: coverURL, maxPixels: ForgeImages.pixels(66, scale: displayScale)) { image in
@@ -194,28 +220,36 @@ import SwiftUI
 ///
 /// `placeholder` is shown while the picture loads (`failed` false) and when
 /// there is none to show (`failed` true: no address, not reachable, not an
-/// image). The picture is `Image(decorative:)`: label the view yourself, or
+/// image, too large). A picture already in memory shows at once and is then
+/// checked, so one that changed on the server replaces it. Change
+/// `refreshID` (on pull to refresh, say) to ask the server again past every
+/// cache. The picture is `Image(decorative:)`: label the view yourself, or
 /// hide it from VoiceOver if it only decorates.
 public struct ForgeRemoteImage<Content: View, Placeholder: View>: View {
     private let url: URL?
     private let maxPixels: Int
+    private let refreshID: Int
     private let content: (Image) -> Content
     private let placeholder: (_ failed: Bool) -> Placeholder
     @State private var image: Image?
     @State private var failed = false
+    @State private var appliedRefresh: Int
 
     public init(
         url: URL?,
         maxPixels: Int,
+        refreshID: Int = 0,
         @ViewBuilder content: @escaping (Image) -> Content,
         @ViewBuilder placeholder: @escaping (_ failed: Bool) -> Placeholder
     ) {
         self.url = url
         self.maxPixels = maxPixels
+        self.refreshID = refreshID
         self.content = content
         self.placeholder = placeholder
         let held = url.flatMap { ForgeImages.cachedThumbnail(from: $0, maxPixels: maxPixels) }
         _image = State(initialValue: held.map { Image(decorative: $0, scale: 1) })
+        _appliedRefresh = State(initialValue: refreshID)
     }
 
     public var body: some View {
@@ -226,23 +260,26 @@ public struct ForgeRemoteImage<Content: View, Placeholder: View>: View {
                 placeholder(failed)
             }
         }
-        .task(id: "\(url?.absoluteString ?? "")#\(maxPixels)") {
+        .task(id: "\(url?.absoluteString ?? "")#\(maxPixels)#\(refreshID)") {
             guard let url else {
                 image = nil
                 failed = true
                 return
             }
-            if let held = ForgeImages.cachedThumbnail(from: url, maxPixels: maxPixels) {
-                image = Image(decorative: held, scale: 1)
-                return
-            }
-            image = nil
+            let reload = refreshID != appliedRefresh
+            appliedRefresh = refreshID
+            let held = ForgeImages.cachedThumbnail(from: url, maxPixels: maxPixels)
+            image = held.map { Image(decorative: $0, scale: 1) }
             failed = false
-            let loaded = await ForgeImages.thumbnail(from: url, maxPixels: maxPixels)
+            let loaded = await ForgeImages.thumbnail(from: url, maxPixels: maxPixels, reload: reload)
             guard !Task.isCancelled else { return }
             if let loaded {
-                withAnimation(.easeIn(duration: 0.2)) { image = Image(decorative: loaded, scale: 1) }
-            } else {
+                if held == nil {
+                    withAnimation(.easeIn(duration: 0.2)) { image = Image(decorative: loaded, scale: 1) }
+                } else if loaded !== held {
+                    image = Image(decorative: loaded, scale: 1)
+                }
+            } else if held == nil {
                 failed = true
             }
         }
