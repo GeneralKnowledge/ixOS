@@ -62,4 +62,38 @@ final class ListenModelTests: XCTestCase {
         await model.loadLibrary()
         XCTAssertEqual(model.phase, .needsServer)
     }
+
+    func testFavouritesAndPlaylists() async throws {
+        let host = makeTemporaryAppHost()
+        await host.start()
+        let model = ListenModel(core: try XCTUnwrap(host.core))
+        XCTAssertTrue(model.collection.playlists.isEmpty)
+
+        await model.toggleFavourite("album:after hours/after hours")
+        XCTAssertTrue(model.isFavourite("album:after hours/after hours"))
+        await model.toggleFavourite("album:after hours/after hours")
+        XCTAssertFalse(model.isFavourite("album:after hours/after hours"))
+
+        let made = try XCTUnwrap(await model.createPlaylist("  Late drive "))
+        XCTAssertEqual(made.playlist.name, "Late drive")
+        XCTAssertEqual(model.collection.playlists.map(\.name), ["Late drive"])
+        XCTAssertNil(await model.renamePlaylist(made.playlist.id, to: "   "), "an empty name is refused")
+        XCTAssertNotNil(model.alert)
+        model.alert = nil
+        let renamed = try XCTUnwrap(await model.renamePlaylist(made.playlist.id, to: "Night drive"))
+        XCTAssertEqual(renamed.playlist.name, "Night drive")
+        await model.deletePlaylist(made.playlist.id)
+        XCTAssertTrue(model.collection.playlists.isEmpty)
+        XCTAssertNil(model.playlist(made.playlist.id))
+    }
+
+    func testPlaylistSummary() {
+        let list = Playlist(
+            id: 1, name: "Mix", trackCount: 12, missingCount: 2, durationSeconds: 2880,
+            artworkUrls: [], createdMs: 0, modifiedMs: 0
+        )
+        XCTAssertEqual(TakeFormat.playlistSummary(list), "12 songs, 48 minutes · 2 not in your library")
+        XCTAssertTrue(countsAsPlayed(listened: 30, length: 200))
+        XCTAssertFalse(countsAsPlayed(listened: 10, length: 200))
+    }
 }

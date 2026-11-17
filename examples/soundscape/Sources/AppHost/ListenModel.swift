@@ -29,7 +29,11 @@ public final class ListenModel {
     /// The take server's address, as Rust saved it.
     public private(set) var server: String?
     /// The library as kept on the phone; refreshed from the take server.
-    public private(set) var library: Library
+    public private(set) var library: Library {
+        didSet { collection = core.collection() }
+    }
+    /// Favourites, playlists and recently played, against the library now.
+    public private(set) var collection: MusicCollection
     public private(set) var phase: Phase = .needsServer
     /// Why the last refresh failed while the kept library still shows.
     public var refreshProblem: String?
@@ -43,6 +47,7 @@ public final class ListenModel {
         self.core = core
         server = core.listenServer()
         library = core.library()
+        collection = core.collection()
         phase = server == nil ? .needsServer : library.tracks.isEmpty ? .loading : .ready
     }
 
@@ -173,6 +178,82 @@ public final class ListenModel {
         }
     }
 
+    // MARK: Your collection
+
+    public func isFavourite(_ id: String) -> Bool { collection.favouriteIds.contains(id) }
+
+    /// A song, album or artist (by library id) becomes a favourite, or stops being one.
+    public func toggleFavourite(_ id: String) async {
+        do {
+            collection = try await core.setFavourite(id: id, on: !isFavourite(id))
+            feedback.play(.success)
+        } catch {
+            report(error)
+        }
+    }
+
+    public func playlist(_ id: UInt64) -> PlaylistDetail? { try? core.playlist(id: id) }
+
+    /// A new playlist, empty or with `tracks`.
+    @discardableResult
+    public func createPlaylist(_ name: String, with tracks: [String] = []) async -> PlaylistDetail? {
+        await changePlaylists { try await self.core.createPlaylist(name: name, trackIds: tracks) }
+    }
+
+    public func renamePlaylist(_ id: UInt64, to name: String) async -> PlaylistDetail? {
+        await changePlaylists { try await self.core.renamePlaylist(id: id, name: name) }
+    }
+
+    /// Adds songs (by track id) at the end of a playlist.
+    @discardableResult
+    public func add(_ tracks: [String], toPlaylist id: UInt64) async -> PlaylistDetail? {
+        await changePlaylists { try await self.core.addToPlaylist(id: id, trackIds: tracks) }
+    }
+
+    /// Keeps the entries at `places`, in that order (what's left out goes).
+    public func arrangePlaylist(_ id: UInt64, places: [UInt32]) async -> PlaylistDetail? {
+        await changePlaylists { try await self.core.arrangePlaylist(id: id, places: places) }
+    }
+
+    public func deletePlaylist(_ id: UInt64) async {
+        do {
+            collection = try await core.deletePlaylist(id: id)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Notes a song that played long enough to count (`TakePlayer.onPlayed`).
+    public func recordPlay(trackId: String, recordingId: String) async {
+        do {
+            try await core.recordPlay(trackId: trackId, recordingId: recordingId)
+            collection = core.collection()
+        } catch {
+            // History is a convenience: a play that couldn't be noted isn't worth an alert.
+            log.warn("play not noted: \(error)")
+        }
+    }
+
+    public func clearHistory() async {
+        do {
+            collection = try await core.clearHistory()
+        } catch {
+            report(error)
+        }
+    }
+
+    private func changePlaylists(_ change: () async throws -> PlaylistDetail) async -> PlaylistDetail? {
+        do {
+            let detail = try await change()
+            collection = core.collection()
+            feedback.play(.success)
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
     // MARK: Songs and takes
 
     /// One song's takes, or `nil` with the reason in `failure`.
@@ -253,6 +334,10 @@ extension LibraryTrack: Identifiable {}
 extension LibraryAlbum: Identifiable {}
 extension LibraryArtist: Identifiable {}
 extension Recording: Identifiable {}
+extension Playlist: Identifiable {}
+extension PlaylistEntry: Identifiable {
+    public var id: UInt32 { place }
+}
 
 extension Take: Identifiable {}
 
@@ -317,6 +402,17 @@ public enum TakeFormat {
         if let key = g.key { parts.append(key) }
         if let model = g.model, model != "turbo" { parts.append(model) }
         return parts.joined(separator: " · ")
+    }
+
+    /// "12 songs, 48 minutes", "2 songs not in your library" added when some are gone.
+    public static func playlistSummary(_ list: Playlist) -> String {
+        var text = "\(list.trackCount) \(list.trackCount == 1 ? "song" : "songs")"
+        let minutes = Int((list.durationSeconds / 60).rounded())
+        if minutes > 0 { text += ", \(minutes) \(minutes == 1 ? "minute" : "minutes")" }
+        if list.missingCount > 0 {
+            text += " · \(list.missingCount) not in your library"
+        }
+        return text
     }
 
     /// "2 albums · 12 songs".

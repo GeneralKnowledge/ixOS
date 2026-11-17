@@ -38,6 +38,7 @@ struct LibraryHome: View {
                 }
             }
             if query.isEmpty {
+                YourMusicSection(model: model, player: player, showDetails: { details = $0 })
                 Section {
                     Picker("Show", selection: $shelf) {
                         ForEach(Shelf.allCases) { Text($0.rawValue).tag($0) }
@@ -142,7 +143,7 @@ extension LibrarySearch {
 
 // MARK: Rows
 
-private struct PlayShuffleButtons: View {
+struct PlayShuffleButtons: View {
     let disabled: Bool
     let play: (_ shuffle: Bool) -> Void
 
@@ -179,6 +180,8 @@ struct TrackRow: View {
     let showDetails: () -> Void
     let play: () -> Void
 
+    @State private var addingToPlaylist = false
+
     private var isCurrent: Bool { player.current?.id == track.preferred?.id && !player.isComparing }
 
     var body: some View {
@@ -199,6 +202,12 @@ struct TrackRow: View {
                                 .font(.body)
                                 .foregroundStyle(isCurrent ? Color.accentColor : .primary)
                                 .lineLimit(1)
+                            if model.isFavourite(track.id) {
+                                Image(systemName: "heart.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.pink)
+                                    .accessibilityLabel("Favourite")
+                            }
                             if isCurrent && player.isPlaying {
                                 Image(systemName: "speaker.wave.2.fill")
                                     .font(.caption)
@@ -239,8 +248,19 @@ struct TrackRow: View {
                 player.add(model.queue([track]), next: false)
             }
             .accessibilityIdentifier("library.addToQueue")
+            Button("Add to Playlist…", systemImage: "text.badge.plus") { addingToPlaylist = true }
+                .accessibilityIdentifier("library.addToPlaylist")
+            let favourite = model.isFavourite(track.id)
+            Button(favourite ? "Remove from Favourites" : "Add to Favourites",
+                   systemImage: favourite ? "heart.slash" : "heart") {
+                Task { await model.toggleFavourite(track.id) }
+            }
+            .accessibilityIdentifier("library.favouriteMenu")
             Button("Details", systemImage: "info.circle", action: showDetails)
                 .accessibilityIdentifier("library.detailsMenu")
+        }
+        .sheet(isPresented: $addingToPlaylist) {
+            AddToPlaylistSheet(model: model, trackIds: [track.id])
         }
         .swipeActions(edge: .leading) {
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
@@ -355,6 +375,9 @@ struct ArtistView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                FavouriteButton(model: model, id: current.id, identifier: "artist.favourite")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button("Artwork", systemImage: "photo") { editingArtwork = true }
                     .accessibilityIdentifier("artist.artwork")
             }
@@ -375,6 +398,7 @@ struct AlbumView: View {
 
     @State private var editingArtwork = false
     @State private var details: String?
+    @State private var addingToPlaylist = false
 
     private var current: LibraryAlbum { model.library.albums.first { $0.id == album.id } ?? album }
     private var artist: LibraryArtist? { model.library.artists.first { $0.id == current.artistId } }
@@ -425,10 +449,22 @@ struct AlbumView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Artwork", systemImage: "photo") { editingArtwork = true }
-                    .accessibilityIdentifier("album.artwork")
+                FavouriteButton(model: model, id: current.id, identifier: "album.favourite")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Menu("More", systemImage: "ellipsis.circle") {
+                    Button("Add to Playlist…", systemImage: "text.badge.plus") { addingToPlaylist = true }
+                        .accessibilityIdentifier("album.addToPlaylist")
+                    Button("Artwork", systemImage: "photo") { editingArtwork = true }
+                        .accessibilityIdentifier("album.artwork")
+                }
+                .accessibilityIdentifier("album.more")
             }
         }
+        .sheet(isPresented: $addingToPlaylist) {
+            AddToPlaylistSheet(model: model, trackIds: model.tracks(of: current).map(\.id))
+        }
+        .forgeFeedback(model.feedback)
         .sheet(isPresented: $editingArtwork) {
             ArtworkSheet(model: model, title: current.title, url: current.artworkUrl,
                          target: .album(id: current.id), circle: false)
@@ -457,6 +493,7 @@ struct TrackView: View {
 
     @State private var detail: TrackDetail?
     @State private var editing = false
+    @State private var addingToPlaylist = false
 
     var body: some View {
         Group {
@@ -477,10 +514,16 @@ struct TrackView: View {
         .toolbar {
             if detail != nil {
                 ToolbarItem(placement: .primaryAction) {
+                    FavouriteButton(model: model, id: id, identifier: "track.favourite")
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button("Edit") { editing = true }
                         .accessibilityIdentifier("track.edit")
                 }
             }
+        }
+        .sheet(isPresented: $addingToPlaylist) {
+            AddToPlaylistSheet(model: model, trackIds: [id])
         }
         .sheet(isPresented: $editing) {
             if let detail {
@@ -547,6 +590,12 @@ struct TrackView: View {
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                Button {
+                    addingToPlaylist = true
+                } label: {
+                    Label("Add to Playlist", systemImage: "text.badge.plus")
+                }
+                .accessibilityIdentifier("track.addToPlaylist")
             }
             Section {
                 ForEach(detail.recordings) { recording in

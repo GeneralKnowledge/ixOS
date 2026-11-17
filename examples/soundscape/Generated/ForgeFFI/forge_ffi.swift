@@ -2138,6 +2138,11 @@ public func FfiConverterTypeSecureStore_lower(_ value: SecureStore) -> UInt64 {
 public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     
     /**
+     * Adds songs at the end of a playlist.
+     */
+    func addToPlaylist(id: UInt64, trackIds: [String]) async throws  -> PlaylistDetail
+    
+    /**
      * Adds an empty track, named "Track N" when `name` is `None`.
      */
     func addTrack(id: UInt64, name: String?) async throws  -> ProjectDetail
@@ -2146,6 +2151,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * An album's tracks in order.
      */
     func albumTracks(albumId: String)  -> [LibraryTrack]
+    
+    /**
+     * Keeps the playlist's entries at `places` (from `PlaylistEntry`), in
+     * that order: what's left out is removed. Entries the library no
+     * longer has are kept at the end, so they come back with their song.
+     */
+    func arrangePlaylist(id: UInt64, places: [UInt32]) async throws  -> PlaylistDetail
     
     /**
      * An artist's albums, newest first.
@@ -2185,6 +2197,8 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      */
     func clearClip(id: UInt64, trackId: UInt64) async throws  -> ProjectDetail
     
+    func clearHistory() async throws  -> MusicCollection
+    
     /**
      * A WAV file of one pass of the project's metronome at `sample_rate`
      * (see [`dsp::clicks`]): the app loops it under playback and plays its
@@ -2194,10 +2208,23 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func clickTrack(id: UInt64, sampleRate: UInt32) async throws  -> String
     
     /**
+     * Favourites, playlists and recently played, as the library has them
+     * now. Never waits for a command.
+     */
+    func collection()  -> MusicCollection
+    
+    /**
+     * A new playlist, empty or with `track_ids`.
+     */
+    func createPlaylist(name: String, trackIds: [String]) async throws  -> PlaylistDetail
+    
+    /**
      * A new project with one empty track. Tempo from 40 to 240 beats per
      * minute, 1 to 16 bars of four beats.
      */
     func createProject(title: String, tempoBpm: Double, bars: UInt32) async throws  -> ProjectDetail
+    
+    func deletePlaylist(id: UInt64) async throws  -> MusicCollection
     
     /**
      * Deletes a project and the recordings only it used.
@@ -2215,6 +2242,8 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * committed command, phase changes, and drops. Nil after shutdown.
      */
     func events()  -> RuntimeEvents?
+    
+    func isFavourite(id: String)  -> Bool
     
     /**
      * What the runtime found at open (unfinished background work).
@@ -2277,6 +2306,8 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      */
     func phase()  -> AppPhase
     
+    func playlist(id: UInt64) throws  -> PlaylistDetail
+    
     /**
      * A project with its tracks, their recordings and their mix in
      * AVAudioEngine's units. Never waits for a command.
@@ -2301,6 +2332,11 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func queueTracks(trackIds: [String])  -> [QueueTrack]
     
     /**
+     * Notes that a song was played (see `counts_as_played`).
+     */
+    func recordPlay(trackId: String, recordingId: String) async throws 
+    
+    /**
      * Asks the take server for its catalogue and keeps it. `fresh` makes
      * the server look for new takes now. An older server without a
      * catalogue is asked song by song. On-screen work.
@@ -2308,6 +2344,8 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func refreshLibrary(fresh: Bool, cancellation: Cancellation?) async throws  -> Library
     
     func removeTrack(id: UInt64, trackId: UInt64) async throws  -> ProjectDetail
+    
+    func renamePlaylist(id: UInt64, name: String) async throws  -> PlaylistDetail
     
     func renameProject(id: UInt64, title: String) async throws 
     
@@ -2335,6 +2373,11 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * earlier recording.
      */
     func setClip(id: UInt64, trackId: UInt64, sourcePath: String) async throws  -> ProjectDetail
+    
+    /**
+     * Makes a song, album or artist (by library id) a favourite, or not.
+     */
+    func setFavourite(id: String, on: Bool) async throws  -> MusicCollection
     
     /**
      * Saves the take server's address after tidying it (a bare
@@ -2475,6 +2518,25 @@ public static func startFresh(dataDirectory: String, cachesDirectory: String)thr
 
     
     /**
+     * Adds songs at the end of a playlist.
+     */
+open func addToPlaylist(id: UInt64, trackIds: [String])async throws  -> PlaylistDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_add_to_playlist(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterSequenceString.lower(trackIds)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePlaylistDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Adds an empty track, named "Track N" when `name` is `None`.
      */
 open func addTrack(id: UInt64, name: String?)async throws  -> ProjectDetail  {
@@ -2504,6 +2566,27 @@ open func albumTracks(albumId: String) -> [LibraryTrack]  {
         FfiConverterString.lower(albumId),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Keeps the playlist's entries at `places` (from `PlaylistEntry`), in
+     * that order: what's left out is removed. Entries the library no
+     * longer has are kept at the end, so they come back with their song.
+     */
+open func arrangePlaylist(id: UInt64, places: [UInt32])async throws  -> PlaylistDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_arrange_playlist(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterSequenceUInt32.lower(places)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePlaylistDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -2615,6 +2698,22 @@ open func clearClip(id: UInt64, trackId: UInt64)async throws  -> ProjectDetail  
         )
 }
     
+open func clearHistory()async throws  -> MusicCollection  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_clear_history(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeMusicCollection_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
     /**
      * A WAV file of one pass of the project's metronome at `sample_rate`
      * (see [`dsp::clicks`]): the app loops it under playback and plays its
@@ -2638,6 +2737,38 @@ open func clickTrack(id: UInt64, sampleRate: UInt32)async throws  -> String  {
 }
     
     /**
+     * Favourites, playlists and recently played, as the library has them
+     * now. Never waits for a command.
+     */
+open func collection() -> MusicCollection  {
+    return try!  FfiConverterTypeMusicCollection_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_collection(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A new playlist, empty or with `track_ids`.
+     */
+open func createPlaylist(name: String, trackIds: [String])async throws  -> PlaylistDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_create_playlist(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(name),FfiConverterSequenceString.lower(trackIds)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePlaylistDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * A new project with one empty track. Tempo from 40 to 240 beats per
      * minute, 1 to 16 bars of four beats.
      */
@@ -2653,6 +2784,22 @@ open func createProject(title: String, tempoBpm: Double, bars: UInt32)async thro
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeProjectDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+open func deletePlaylist(id: UInt64)async throws  -> MusicCollection  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_delete_playlist(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeMusicCollection_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -2705,6 +2852,16 @@ open func events() -> RuntimeEvents?  {
         uniffiCallStatus in
     uniffi_soundscape_core_fn_method_soundscapecore_events(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func isFavourite(id: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_is_favourite(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
     )
 })
 }
@@ -2871,6 +3028,16 @@ open func phase() -> AppPhase  {
 })
 }
     
+open func playlist(id: UInt64)throws  -> PlaylistDetail  {
+    return try  FfiConverterTypePlaylistDetail_lift(try rustCallWithError(FfiConverterTypeSoundscapeError_lift) {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_playlist(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+})
+}
+    
     /**
      * A project with its tracks, their recordings and their mix in
      * AVAudioEngine's units. Never waits for a command.
@@ -2927,6 +3094,25 @@ open func queueTracks(trackIds: [String]) -> [QueueTrack]  {
 }
     
     /**
+     * Notes that a song was played (see `counts_as_played`).
+     */
+open func recordPlay(trackId: String, recordingId: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_record_play(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(trackId),FfiConverterString.lower(recordingId)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_void,
+            completeFunc: ffi_soundscape_core_rust_future_complete_void,
+            freeFunc: ffi_soundscape_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Asks the take server for its catalogue and keeps it. `fresh` makes
      * the server look for new takes now. An older server without a
      * catalogue is asked song by song. On-screen work.
@@ -2959,6 +3145,22 @@ open func removeTrack(id: UInt64, trackId: UInt64)async throws  -> ProjectDetail
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeProjectDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+open func renamePlaylist(id: UInt64, name: String)async throws  -> PlaylistDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_rename_playlist(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterString.lower(name)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePlaylistDetail_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -3057,6 +3259,25 @@ open func setClip(id: UInt64, trackId: UInt64, sourcePath: String)async throws  
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeProjectDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Makes a song, album or artist (by library id) a favourite, or not.
+     */
+open func setFavourite(id: String, on: Bool)async throws  -> MusicCollection  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_set_favourite(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterBool.lower(on)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeMusicCollection_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -4653,6 +4874,105 @@ public func FfiConverterTypeMixdown_lower(_ value: Mixdown) -> RustBuffer {
 
 
 /**
+ * Favourites, playlists and what was played, as the library has them now.
+ */
+public struct MusicCollection: Equatable, Hashable {
+    /**
+     * Every favourite id, including ones not in the library now, so a
+     * row can show its heart without asking.
+     */
+    public var favouriteIds: [String]
+    /**
+     * Newest favourite first.
+     */
+    public var favouriteTracks: [LibraryTrack]
+    public var favouriteAlbums: [LibraryAlbum]
+    public var favouriteArtists: [LibraryArtist]
+    /**
+     * Most recently changed first.
+     */
+    public var playlists: [Playlist]
+    /**
+     * Different songs, most recently played first, at most [`RECENT_SONGS`].
+     */
+    public var recentlyPlayed: [RecentPlay]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Every favourite id, including ones not in the library now, so a
+         * row can show its heart without asking.
+         */favouriteIds: [String], 
+        /**
+         * Newest favourite first.
+         */favouriteTracks: [LibraryTrack], favouriteAlbums: [LibraryAlbum], favouriteArtists: [LibraryArtist], 
+        /**
+         * Most recently changed first.
+         */playlists: [Playlist], 
+        /**
+         * Different songs, most recently played first, at most [`RECENT_SONGS`].
+         */recentlyPlayed: [RecentPlay]) {
+        self.favouriteIds = favouriteIds
+        self.favouriteTracks = favouriteTracks
+        self.favouriteAlbums = favouriteAlbums
+        self.favouriteArtists = favouriteArtists
+        self.playlists = playlists
+        self.recentlyPlayed = recentlyPlayed
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MusicCollection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMusicCollection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MusicCollection {
+        return
+            try MusicCollection(
+                favouriteIds: FfiConverterSequenceString.read(from: &buf), 
+                favouriteTracks: FfiConverterSequenceTypeLibraryTrack.read(from: &buf), 
+                favouriteAlbums: FfiConverterSequenceTypeLibraryAlbum.read(from: &buf), 
+                favouriteArtists: FfiConverterSequenceTypeLibraryArtist.read(from: &buf), 
+                playlists: FfiConverterSequenceTypePlaylist.read(from: &buf), 
+                recentlyPlayed: FfiConverterSequenceTypeRecentPlay.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MusicCollection, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.favouriteIds, into: &buf)
+        FfiConverterSequenceTypeLibraryTrack.write(value.favouriteTracks, into: &buf)
+        FfiConverterSequenceTypeLibraryAlbum.write(value.favouriteAlbums, into: &buf)
+        FfiConverterSequenceTypeLibraryArtist.write(value.favouriteArtists, into: &buf)
+        FfiConverterSequenceTypePlaylist.write(value.playlists, into: &buf)
+        FfiConverterSequenceTypeRecentPlay.write(value.recentlyPlayed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMusicCollection_lift(_ buf: RustBuffer) throws -> MusicCollection {
+    return try FfiConverterTypeMusicCollection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMusicCollection_lower(_ value: MusicCollection) -> RustBuffer {
+    return FfiConverterTypeMusicCollection.lower(value)
+}
+
+
+/**
  * One action button on a notification.
  */
 public struct NotificationAction: Equatable, Hashable {
@@ -4960,6 +5280,214 @@ public func FfiConverterTypePlayQueue_lift(_ buf: RustBuffer) throws -> PlayQueu
 #endif
 public func FfiConverterTypePlayQueue_lower(_ value: PlayQueue) -> RustBuffer {
     return FfiConverterTypePlayQueue.lower(value)
+}
+
+
+public struct Playlist: Equatable, Hashable {
+    public var id: UInt64
+    public var name: String
+    /**
+     * Songs in the library now.
+     */
+    public var trackCount: UInt32
+    /**
+     * Songs kept that the library no longer has.
+     */
+    public var missingCount: UInt32
+    public var durationSeconds: Double
+    /**
+     * Up to four different pictures from its songs, for a mosaic.
+     */
+    public var artworkUrls: [String]
+    public var createdMs: Int64
+    public var modifiedMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: UInt64, name: String, 
+        /**
+         * Songs in the library now.
+         */trackCount: UInt32, 
+        /**
+         * Songs kept that the library no longer has.
+         */missingCount: UInt32, durationSeconds: Double, 
+        /**
+         * Up to four different pictures from its songs, for a mosaic.
+         */artworkUrls: [String], createdMs: Int64, modifiedMs: Int64) {
+        self.id = id
+        self.name = name
+        self.trackCount = trackCount
+        self.missingCount = missingCount
+        self.durationSeconds = durationSeconds
+        self.artworkUrls = artworkUrls
+        self.createdMs = createdMs
+        self.modifiedMs = modifiedMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Playlist: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePlaylist: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Playlist {
+        return
+            try Playlist(
+                id: FfiConverterUInt64.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                trackCount: FfiConverterUInt32.read(from: &buf), 
+                missingCount: FfiConverterUInt32.read(from: &buf), 
+                durationSeconds: FfiConverterDouble.read(from: &buf), 
+                artworkUrls: FfiConverterSequenceString.read(from: &buf), 
+                createdMs: FfiConverterInt64.read(from: &buf), 
+                modifiedMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Playlist, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterUInt32.write(value.trackCount, into: &buf)
+        FfiConverterUInt32.write(value.missingCount, into: &buf)
+        FfiConverterDouble.write(value.durationSeconds, into: &buf)
+        FfiConverterSequenceString.write(value.artworkUrls, into: &buf)
+        FfiConverterInt64.write(value.createdMs, into: &buf)
+        FfiConverterInt64.write(value.modifiedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlaylist_lift(_ buf: RustBuffer) throws -> Playlist {
+    return try FfiConverterTypePlaylist.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlaylist_lower(_ value: Playlist) -> RustBuffer {
+    return FfiConverterTypePlaylist.lower(value)
+}
+
+
+public struct PlaylistDetail: Equatable, Hashable {
+    public var playlist: Playlist
+    public var entries: [PlaylistEntry]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(playlist: Playlist, entries: [PlaylistEntry]) {
+        self.playlist = playlist
+        self.entries = entries
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PlaylistDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePlaylistDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlaylistDetail {
+        return
+            try PlaylistDetail(
+                playlist: FfiConverterTypePlaylist.read(from: &buf), 
+                entries: FfiConverterSequenceTypePlaylistEntry.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PlaylistDetail, into buf: inout [UInt8]) {
+        FfiConverterTypePlaylist.write(value.playlist, into: &buf)
+        FfiConverterSequenceTypePlaylistEntry.write(value.entries, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlaylistDetail_lift(_ buf: RustBuffer) throws -> PlaylistDetail {
+    return try FfiConverterTypePlaylistDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlaylistDetail_lower(_ value: PlaylistDetail) -> RustBuffer {
+    return FfiConverterTypePlaylistDetail.lower(value)
+}
+
+
+/**
+ * One song of a playlist with its place in the stored list (to remove or
+ * move it).
+ */
+public struct PlaylistEntry: Equatable, Hashable {
+    public var place: UInt32
+    public var track: LibraryTrack
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(place: UInt32, track: LibraryTrack) {
+        self.place = place
+        self.track = track
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PlaylistEntry: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePlaylistEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlaylistEntry {
+        return
+            try PlaylistEntry(
+                place: FfiConverterUInt32.read(from: &buf), 
+                track: FfiConverterTypeLibraryTrack.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PlaylistEntry, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.place, into: &buf)
+        FfiConverterTypeLibraryTrack.write(value.track, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlaylistEntry_lift(_ buf: RustBuffer) throws -> PlaylistEntry {
+    return try FfiConverterTypePlaylistEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlaylistEntry_lower(_ value: PlaylistEntry) -> RustBuffer {
+    return FfiConverterTypePlaylistEntry.lower(value)
 }
 
 
@@ -5302,6 +5830,60 @@ public func FfiConverterTypeQueueTrack_lift(_ buf: RustBuffer) throws -> QueueTr
 #endif
 public func FfiConverterTypeQueueTrack_lower(_ value: QueueTrack) -> RustBuffer {
     return FfiConverterTypeQueueTrack.lower(value)
+}
+
+
+public struct RecentPlay: Equatable, Hashable {
+    public var track: LibraryTrack
+    public var playedMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(track: LibraryTrack, playedMs: Int64) {
+        self.track = track
+        self.playedMs = playedMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RecentPlay: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRecentPlay: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RecentPlay {
+        return
+            try RecentPlay(
+                track: FfiConverterTypeLibraryTrack.read(from: &buf), 
+                playedMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RecentPlay, into buf: inout [UInt8]) {
+        FfiConverterTypeLibraryTrack.write(value.track, into: &buf)
+        FfiConverterInt64.write(value.playedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecentPlay_lift(_ buf: RustBuffer) throws -> RecentPlay {
+    return try FfiConverterTypeRecentPlay.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecentPlay_lower(_ value: RecentPlay) -> RustBuffer {
+    return FfiConverterTypeRecentPlay.lower(value)
 }
 
 
@@ -8313,6 +8895,56 @@ fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypePlaylist: FfiConverterRustBuffer {
+    typealias SwiftType = [Playlist]
+
+    public static func write(_ value: [Playlist], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePlaylist.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Playlist] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Playlist]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePlaylist.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePlaylistEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [PlaylistEntry]
+
+    public static func write(_ value: [PlaylistEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePlaylistEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PlaylistEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PlaylistEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePlaylistEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeProjectSummary: FfiConverterRustBuffer {
     typealias SwiftType = [ProjectSummary]
 
@@ -8405,6 +9037,31 @@ fileprivate struct FfiConverterSequenceTypeQueueTrack: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeQueueTrack.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeRecentPlay: FfiConverterRustBuffer {
+    typealias SwiftType = [RecentPlay]
+
+    public static func write(_ value: [RecentPlay], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRecentPlay.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RecentPlay] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RecentPlay]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRecentPlay.read(from: &buf))
         }
         return seq
     }
@@ -8698,6 +9355,19 @@ public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
 })
 }
 /**
+ * Whether `listened` seconds of a song `length` seconds long count as a
+ * play: 30 seconds, or half of a shorter song.
+ */
+public func countsAsPlayed(listened: Double, length: Double?) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_counts_as_played(
+        FfiConverterDouble.lower(listened),
+        FfiConverterOptionDouble.lower(length),uniffiCallStatus
+    )
+})
+}
+/**
  * The song list in sections by act. Sections are ordered by their newest
  * song, songs within one newest first (then by title); songs with no act
  * come last. `unpicked_only` keeps the songs that have no pick yet, and
@@ -8965,6 +9635,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_func_forge_log_enabled() != 19347) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_func_counts_as_played() != 36228) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_func_group_songs() != 16503) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9025,10 +9698,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_func_repeat_after() != 38396) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_add_to_playlist() != 3879) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_add_track() != 41719) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_album_tracks() != 41674) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_arrange_playlist() != 18653) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_artist_albums() != 57485) {
@@ -9052,10 +9731,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_clear_clip() != 43470) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_clear_history() != 38025) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_click_track() != 18791) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_collection() != 2516) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_create_playlist() != 26215) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_create_project() != 44462) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_delete_playlist() != 35469) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_delete_project() != 38413) {
@@ -9065,6 +9756,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_events() != 62026) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_is_favourite() != 60223) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_launch_report() != 4480) {
@@ -9097,6 +9791,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_phase() != 23479) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_playlist() != 53541) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_project() != 12515) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9109,10 +9806,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_queue_tracks() != 32543) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_record_play() != 59179) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_refresh_library() != 63331) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_remove_track() != 46950) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_rename_playlist() != 41138) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_rename_project() != 57129) {
@@ -9131,6 +9834,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_clip() != 57804) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_favourite() != 412) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_listen_server() != 52642) {

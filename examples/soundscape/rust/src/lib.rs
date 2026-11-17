@@ -24,6 +24,7 @@
 //!   library (artists, albums, tracks with their recordings, artwork, the
 //!   person's edits) kept on the phone; [`queue`] decides what plays next.
 
+pub mod collection;
 pub mod dsp;
 pub mod library;
 pub mod listen;
@@ -40,6 +41,10 @@ use forge_net::{HttpClient, UreqClient};
 use forge_runtime::now_ms;
 use forge_storage::{files, FileStore};
 
+use collection::CollectionFile;
+pub use collection::{
+    counts_as_played, MusicCollection, Playlist, PlaylistDetail, PlaylistEntry, RecentPlay,
+};
 use library::LibraryFile;
 pub use library::{
     ArtworkTarget, AudioSource, Generation, Library, LibraryAlbum, LibraryArtist, LibrarySearch,
@@ -73,6 +78,8 @@ const SAVE_FILE: &str = "soundscape.json";
 const LISTEN_FILE: &str = "listen.json";
 /// The music library (the server's last catalogue, edits, artwork names).
 const LIBRARY_FILE: &str = "library.json";
+/// Favourites, playlists and history.
+const COLLECTION_FILE: &str = "collection.json";
 /// The largest picture accepted as artwork.
 const MAX_ARTWORK_BYTES: u64 = 20 * 1024 * 1024;
 /// The largest answer the take server may give (a library of a few hundred
@@ -96,6 +103,8 @@ struct State {
     library: Document<LibraryFile>,
     library_published: Arc<Published<LibraryFile>>,
     artwork: FileStore,
+    collection: Document<CollectionFile>,
+    collection_published: Arc<Published<CollectionFile>>,
 }
 
 impl State {
@@ -130,6 +139,17 @@ impl State {
         self.library_published.set(self.library.value().clone());
         Ok(value)
     }
+
+    /// Changes favourites, playlists or history, saves and publishes.
+    fn change_collection<T>(
+        &mut self,
+        edit: impl FnOnce(&mut CollectionFile) -> Result<T, SoundscapeError>,
+    ) -> Result<T, SoundscapeError> {
+        let value = self.collection.change(edit)?;
+        self.collection_published
+            .set(self.collection.value().clone());
+        Ok(value)
+    }
 }
 
 /// The app's core. The Swift app opens one per process and shares it.
@@ -142,6 +162,7 @@ pub struct SoundscapeCore {
     listen: Arc<Published<ListenSettings>>,
     library: Arc<Published<LibraryFile>>,
     artwork: PathBuf,
+    collection: Arc<Published<CollectionFile>>,
     http: Arc<dyn HttpClient>,
 }
 
@@ -605,6 +626,143 @@ impl SoundscapeCore {
         Ok(detail)
     }
 
+    // MARK: Collection
+
+    /// Favourites, playlists and recently played, as the library has them
+    /// now. Never waits for a command.
+    pub fn collection(&self) -> MusicCollection {
+        collection::build_collection(&self.collection.get(), &self.library())
+    }
+
+    pub fn is_favourite(&self, id: String) -> bool {
+        self.collection.get().is_favourite(&id)
+    }
+
+    /// Makes a song, album or artist (by library id) a favourite, or not.
+    pub async fn set_favourite(
+        &self,
+        id: String,
+        on: bool,
+    ) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("collection-favourite", move |state| {
+                state.change_collection(|c| c.set_favourite(&id, on, now_ms()))
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    /// A new playlist, empty or with `track_ids`.
+    pub async fn create_playlist(
+        &self,
+        name: String,
+        track_ids: Vec<String>,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        let id = self
+            .rt
+            .command("playlist-create", move |state| {
+                state.change_collection(|c| c.create_playlist(&name, track_ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
+    pub async fn rename_playlist(
+        &self,
+        id: u64,
+        name: String,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        self.rt
+            .command("playlist-rename", move |state| {
+                state.change_collection(|c| c.rename_playlist(id, &name, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
+    pub async fn delete_playlist(&self, id: u64) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("playlist-delete", move |state| {
+                state.change_collection(|c| c.delete_playlist(id))
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    /// Adds songs at the end of a playlist.
+    pub async fn add_to_playlist(
+        &self,
+        id: u64,
+        track_ids: Vec<String>,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        self.rt
+            .command("playlist-add", move |state| {
+                state.change_collection(|c| c.add_to_playlist(id, track_ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
+    /// Keeps the playlist's entries at `places` (from `PlaylistEntry`), in
+    /// that order: what's left out is removed. Entries the library no
+    /// longer has are kept at the end, so they come back with their song.
+    pub async fn arrange_playlist(
+        &self,
+        id: u64,
+        places: Vec<u32>,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        let library = self.library();
+        self.rt
+            .command("playlist-arrange", move |state| {
+                state.change_collection(|c| {
+                    let stored = c.playlist_mut(id)?;
+                    let mut keep = places;
+                    for (place, track) in stored.track_ids.iter().enumerate() {
+                        let place = place as u32;
+                        if !keep.contains(&place) && !library.tracks.iter().any(|t| &t.id == track)
+                        {
+                            keep.push(place);
+                        }
+                    }
+                    c.arrange_playlist(id, keep, now_ms())
+                })
+            })
+            .await?;
+        self.playlist(id)
+    }
+
+    pub fn playlist(&self, id: u64) -> Result<PlaylistDetail, SoundscapeError> {
+        collection::playlist_detail(&self.collection.get(), &self.library(), id)
+    }
+
+    /// Notes that a song was played (see `counts_as_played`).
+    pub async fn record_play(
+        &self,
+        track_id: String,
+        recording_id: String,
+    ) -> Result<(), SoundscapeError> {
+        self.rt
+            .command("collection-play", move |state| {
+                state.change_collection(|c| {
+                    c.record_play(&track_id, &recording_id, now_ms());
+                    Ok(())
+                })
+            })
+            .await
+    }
+
+    pub async fn clear_history(&self) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("collection-clear-history", move |state| {
+                state.change_collection(|c| {
+                    c.history.clear();
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
     // MARK: Library
 
     /// The library as kept on the phone: artists, albums and tracks, each
@@ -953,6 +1111,19 @@ impl SoundscapeCore {
         artwork.sweep(|name| named.contains(name));
         let artwork_root = artwork.root().to_path_buf();
         let library_published = Arc::new(Published::new(library_doc.value().clone()));
+        // Playlists are the person's own work: an unreadable file is set
+        // aside next to it (kept, not deleted) and the collection starts
+        // again rather than keeping the app from opening.
+        let (collection_doc, kept) = Document::<CollectionFile>::start_fresh(
+            directory.path().join(COLLECTION_FILE),
+            collection::COLLECTION_VERSION,
+            None,
+            now_ms(),
+        )?;
+        if let Some(kept) = kept {
+            forge_runtime::logging::warn!("unreadable collection set aside as {}", kept.display());
+        }
+        let collection_published = Arc::new(Published::new(collection_doc.value().clone()));
         let state = State {
             projects,
             recordings,
@@ -962,6 +1133,8 @@ impl SoundscapeCore {
             library: library_doc,
             library_published: Arc::clone(&library_published),
             artwork,
+            collection: collection_doc,
+            collection_published: Arc::clone(&collection_published),
         };
         Ok(Arc::new(Self {
             rt: Runtime::with_directory("soundscape", directory, state),
@@ -971,6 +1144,7 @@ impl SoundscapeCore {
             listen: listen_published,
             library: library_published,
             artwork: artwork_root,
+            collection: collection_published,
             http,
         }))
     }

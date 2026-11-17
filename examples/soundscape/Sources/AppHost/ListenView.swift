@@ -11,6 +11,10 @@ enum ListenRoute: Hashable {
     case track(String)
     /// A song's takes on the take server, to compare and pick.
     case takes(String)
+    case favourites
+    case playlists
+    case playlist(UInt64)
+    case recent
 }
 
 /// The Listen tab: your music library (artists, albums, songs, each song
@@ -36,6 +40,10 @@ struct ListenView: View {
                     case .album(let album): AlbumView(model: model, player: player, album: album)
                     case .track(let id): TrackView(model: model, player: player, id: id)
                     case .takes(let slug): SongView(model: model, player: player, slug: slug)
+                    case .favourites: FavouritesView(model: model, player: player)
+                    case .playlists: PlaylistsView(model: model, player: player)
+                    case .playlist(let id): PlaylistView(model: model, player: player, id: id)
+                    case .recent: RecentlyPlayedView(model: model, player: player)
                     }
                 }
                 .toolbar {
@@ -56,7 +64,7 @@ struct ListenView: View {
             NowPlayingBar(player: player) { showingNowPlaying = true }
         }
         .sheet(isPresented: $showingNowPlaying) {
-            NowPlayingView(player: player)
+            NowPlayingView(model: model, player: player)
         }
         .onChange(of: player.current == nil) { _, stopped in
             if stopped { showingNowPlaying = false }
@@ -67,6 +75,11 @@ struct ListenView: View {
             set: { model.alert = $0 }
         )) { action in Task { await model.handle(action) } }
         .task(id: model.server) { await model.loadLibrary() }
+        .onAppear {
+            player.onPlayed = { [model] trackId, recordingId in
+                Task { await model.recordPlay(trackId: trackId, recordingId: recordingId) }
+            }
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -657,8 +670,10 @@ struct Artwork: View {
 /// The full player: artwork, the position, previous/play/next, shuffle and
 /// repeat, and Up Next. In a comparison, the A and B switch instead.
 private struct NowPlayingView: View {
+    let model: ListenModel
     let player: TakePlayer
     @Environment(\.dismiss) private var dismiss
+    @State private var addingToPlaylist = false
 
     var body: some View {
         NavigationStack {
@@ -719,6 +734,15 @@ private struct NowPlayingView: View {
                     Button("Close", systemImage: "chevron.down") { dismiss() }
                         .accessibilityIdentifier("nowPlayingSheet.close")
                 }
+                if let trackId = player.current?.trackId, !player.isComparing {
+                    ToolbarItem(placement: .primaryAction) {
+                        FavouriteButton(model: model, id: trackId, identifier: "nowPlayingSheet.favourite")
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Add to Playlist", systemImage: "text.badge.plus") { addingToPlaylist = true }
+                            .accessibilityIdentifier("nowPlayingSheet.addToPlaylist")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Stop", systemImage: "stop.fill") {
                         player.stop()
@@ -727,7 +751,13 @@ private struct NowPlayingView: View {
                     .accessibilityIdentifier("nowPlayingSheet.stop")
                 }
             }
+            .sheet(isPresented: $addingToPlaylist) {
+                if let trackId = player.current?.trackId {
+                    AddToPlaylistSheet(model: model, trackIds: [trackId])
+                }
+            }
         }
+        .forgeFeedback(model.feedback)
         .presentationDragIndicator(.visible)
     }
 
