@@ -17,7 +17,7 @@ This plan does two things:
 
 | | Chat (L1) | Pocket Library (#181) |
 |---|---|---|
-| Rust trait | `LocalModelEngine` (`examples/chat/rust/src/assistant/engine.rs`) | `SummaryModel` (`examples/pocket-library/rust/src/summary.rs`) |
+| Rust trait | `LocalModelEngine` (`examples/relay/rust/src/chat/assistant/engine.rs`) | `SummaryModel` (`examples/pocket-library/rust/src/summary.rs`) |
 | Request | instructions + turns (user/assistant) + temperature + max tokens | instructions + one prompt + temperature + max tokens |
 | Sink | `TokenSink.push(delta) -> bool` | `SummarySink.update(text_so_far) -> bool` |
 | Swift adapter | `FoundationModelsEngine.swift`: transcript entries, default guardrails | `AppleIntelligenceSummarizer.swift`: one prompt, `permissiveContentTransformations` |

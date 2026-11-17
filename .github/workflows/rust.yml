@@ -32,7 +32,8 @@ jobs:
         with:
           workspaces: |
             . -> target
-            examples/chat/rust -> target
+            examples/relay/rust -> target
+            examples/relay/messaging -> target
             examples/checklist/rust -> target
             examples/device-lab/rust -> target
             examples/good-dog/rust -> target
@@ -68,6 +69,13 @@ jobs:
         run: ./scripts/check-app-parity.sh
       - name: App-owned crates (fmt, clippy, tests, binding drift)
         run: ./scripts/check-app-crates.sh
+      # Relay's messaging crates (chat-core, chat-server, chat-cli) have
+      # their own workspace, beside Relay's crate.
+      - name: Relay's messaging workspace (fmt, clippy, tests)
+        run: |
+          cargo fmt --manifest-path examples/relay/messaging/Cargo.toml --all -- --check
+          cargo clippy --manifest-path examples/relay/messaging/Cargo.toml --workspace --all-targets -- -D warnings
+          cargo test --manifest-path examples/relay/messaging/Cargo.toml --workspace
       - name: ForgeKit's contract bindings and version match forge-app
         run: ./scripts/forgekit.sh check
       - name: Kotlin bindings match committed files
@@ -77,7 +85,7 @@ jobs:
       - name: validate Xcode project layout
         run: |
           ./scripts/validate-xcode-project.sh examples/weather/Xcode/Weather.xcodeproj/project.pbxproj
-          ./scripts/validate-xcode-project.sh examples/chat/Xcode/Chat.xcodeproj/project.pbxproj
+          ./scripts/validate-xcode-project.sh examples/relay/Xcode/Relay.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/device-lab/Xcode/DeviceLab.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/good-dog/Xcode/GoodDog.xcodeproj/project.pbxproj

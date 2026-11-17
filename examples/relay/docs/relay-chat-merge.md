@@ -1,8 +1,10 @@
 # Merging Chat into Relay
 
 Status: **agreed** (Reuben, 2026-11-17: all three
-[decisions](#decisions-reuben-2026-11-17) as recommended). No code moves
-until Relay's PR 2 (#268) has landed. Where this differs from
+[decisions](#decisions-reuben-2026-11-17) as recommended). Step 1 (one
+app) is built: Chat's screens are Relay's Chats, Assistant and Settings
+tabs beside Devices, its Rust is `rust/src/chat`, its engine, server and
+terminal client are in `messaging/`, and `examples/chat` is gone. Where this differs from
 [relay-platform-plan.md](relay-platform-plan.md) and
 [relay-m1-m2-brief.md](relay-m1-m2-brief.md), this wins; the
 [doc changes](#docs-that-change) list what is rewritten and when.
@@ -233,7 +235,7 @@ server's future is decided.
 - [relay-m1-m2-brief.md](relay-m1-m2-brief.md): PR 4 and the rule "Relay
   takes nothing from Chat", in step 1, because #268 is still changing the
   brief.
-- [chat-demo.md](../../chat/docs/chat-demo.md): marked as history, pointing
+- [chat-demo.md](chat-demo.md): marked as history, pointing
   here.
 - The roadmap's demo list and `docs/boundaries.toml` (chat crossings) in
   step 1.

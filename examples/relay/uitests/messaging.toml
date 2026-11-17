@@ -1,0 +1,175 @@
+# Chat's screens on a real iPhone, past the basics in journey.toml: a bad
+# server address, leaving and coming back, a reply, a deep link, and that
+# the attachment, voice and assistant controls are wired up. Sending photos,
+# recording and the assistant's answers are proven by the twin tests; here
+# only that the screen reaches them (docs/evidence.md). The system's own
+# pickers aren't driven: a person checks them in the M6 sitting
+# (ACCEPTANCE.md).
+# Throwaway data, inside Device Lab, on the project's server (see
+# journey.toml).
+#   forge ui run examples/relay/uitests/messaging.toml
+
+name = "Chat: bad server, background, reply, deep link, attachments, voice, assistant"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeUITestData", "-launchApp", "relay"] }
+
+# CH-2: a bad address is explained and the form keeps what was typed.
+[[step]]
+type = { id = "signUp.name", text = "UI Test" }
+
+[[step]]
+clear = { id = "signUp.server" }
+
+[[step]]
+type = { id = "signUp.server", text = "not a server" }
+
+[[step]]
+tap = { id = "signUp.create" }
+
+[[step]]
+expect = { label = "Couldn't Create the Account" }
+
+[[step]]
+screenshot = "1-bad-server"
+
+[[step]]
+tap = { label = "OK" }
+
+[[step]]
+expect = { id = "signUp.server", value = "not a server" }
+
+[[step]]
+expect = { id = "signUp.name", value = "UI Test" }
+
+# Back to the project's server.
+[[step]]
+tap = { id = "signUp.useHosted" }
+
+[[step]]
+tap = { id = "signUp.create" }
+
+[[step]]
+tap = { id = "chats.conversation.general" }
+
+[[step]]
+type = { id = "chat.composer", text = "Before the break" }
+
+[[step]]
+tap = { id = "chat.send" }
+
+[[step]]
+expect = { label_contains = "Before the break" }
+
+# CH-4: away for a few seconds, then back: still there, and sending works.
+[[step]]
+background = 4
+
+[[step]]
+expect = { label_contains = "Before the break" }
+
+[[step]]
+type = { id = "chat.composer", text = "After the break" }
+
+[[step]]
+tap = { id = "chat.send" }
+
+[[step]]
+expect = { label_contains = "After the break" }
+
+# CH-6: reply to a message from its menu.
+[[step]]
+long_press = { label_contains = "Before the break" }
+
+[[step]]
+tap = { label = "Reply" }
+
+[[step]]
+expect = { id = "chat.cancelContext" }
+
+[[step]]
+type = { id = "chat.composer", text = "A reply" }
+
+[[step]]
+tap = { id = "chat.send" }
+
+[[step]]
+expect = { label_contains = "A reply" }
+
+[[step]]
+screenshot = "2-reply"
+
+# CH-7: the attach menu offers photos and documents; the Files picker opens.
+[[step]]
+tap = { id = "chat.attach" }
+
+[[step]]
+expect = { id = "chat.attachPhoto" }
+
+[[step]]
+tap = { id = "chat.attachDocument" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "3-files-picker"
+
+[[step]]
+tap = { label = "Cancel" }
+
+# CH-8: with nothing typed, the send button records; the microphone prompt,
+# then the recording bar, discarded.
+[[step]]
+reset_permission = "microphone"
+
+[[step]]
+tap = { id = "chat.record" }
+
+[[step]]
+alert = { button = "Allow" }
+
+[[step]]
+expect = { id = "chat.discardRecording" }
+
+[[step]]
+screenshot = "4-recording"
+
+[[step]]
+tap = { id = "chat.discardRecording" }
+
+[[step]]
+expect = { id = "chat.record" }
+
+# CH-9: a message link opens its conversation.
+[[step]]
+back = {}
+
+[[step]]
+open_url = "forgechat://conversation/random"
+
+[[step]]
+expect = { id = "chat.composer" }
+
+[[step]]
+screenshot = "5-deep-link"
+
+[[step]]
+back = {}
+
+# CH-11: the assistant tab starts a chat with a character.
+[[step]]
+tap = { label = "Assistant" }
+
+[[step]]
+tap = { id = "assistant.new" }
+
+[[step]]
+settle = {}
+
+[[step]]
+screenshot = "6-assistant"

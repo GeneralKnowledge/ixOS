@@ -22,27 +22,6 @@ plan = "Removed when Relay's iroh transfer (#267) replaces the Noise channel; th
 
 [[crossing]]
 kind = "workspace"
-from = "chat-core"
-to = "root"
-reason = "Chat's core crates predate app-owned workspaces, so cargo test --workspace also tests Chat"
-plan = "Step 2 of the boundaries plan: move them into examples/chat/ as Chat's own workspace"
-
-[[crossing]]
-kind = "workspace"
-from = "chat-server"
-to = "root"
-reason = "As chat-core"
-plan = "Step 2 of the boundaries plan: move into examples/chat/"
-
-[[crossing]]
-kind = "workspace"
-from = "chat-cli"
-to = "root"
-reason = "As chat-core"
-plan = "Step 2 of the boundaries plan: move into examples/chat/"
-
-[[crossing]]
-kind = "workspace"
 from = "good-dog-core"
 to = "root"
 reason = "Good Dog's content core predates app-owned workspaces"

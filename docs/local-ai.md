@@ -1,6 +1,6 @@
 # Local AI in Chat: design and milestones
 
-Status: **approved by Reuben, 2026-11-07** (all recommendations in section 6 accepted). L0 finished on 2026-11-07 (results below); Reuben skipped the remaining checks, which are recorded as skipped, not passed. L1 (the Assistant in Chat on Foundation Models) is built; its phone run is in [Chat's ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#l1-on-device-assistant).
+Status: **approved by Reuben, 2026-11-07** (all recommendations in section 6 accepted). L0 finished on 2026-11-07 (results below); Reuben skipped the remaining checks, which are recorded as skipped, not passed. L1 (the Assistant in Chat on Foundation Models) is built; its phone run is in [Chat's ACCEPTANCE.md](../examples/relay/ACCEPTANCE.md#l1-on-device-assistant).
 
 Next: [forge-ai-plan.md](forge-ai-plan.md) proposes moving the engine interface into a shared Forge AI module and adding AI over Relay (2026-11-14, awaiting approval).
 
@@ -14,7 +14,7 @@ The architectural rule, from Reuben's proposal, and kept: **no inference in Rust
 
 | Area | Today | What it means for a local assistant |
 |---|---|---|
-| App crate | `examples/chat/rust` (`ChatCore`, UniFFI namespace `forge_ffi`), on `chat-core` | The assistant lives in this crate, next to the server chat, not in `chat-core` (which is the server protocol). |
+| App crate | `examples/relay/rust` (`ChatCore`, UniFFI namespace `forge_ffi`), on `chat-core` | The assistant lives in this crate, next to the server chat, not in `chat-core` (which is the server protocol). |
 | Account gate | `ContentView` shows `SignUpView` until there is an account; `ChatCore` keeps a `Session` per account | **The assistant must not need an account or a server.** It needs its own state outside `Session`, and the UI must reach it while signed out. |
 | Conversations | Server rooms, per-room SSE pumps, client-chosen message ids, `since` cursors | An assistant conversation is local only. It must not go through `ChatRepo`/`HttpRepo` or the outbox. |
 | Storage | M1: JSON snapshot. **M2 (PR #51, draft):** `forge-storage::Database` (rusqlite bundled, migrations, FTS5) and `forge-chat.db` per account | Assistant history goes in its own SQLite file (`assistant.db`), not per account, so it survives sign-out. Depends on M2 merging. |
@@ -62,7 +62,7 @@ The architectural rule, from Reuben's proposal, and kept: **no inference in Rust
 ```
 SwiftUI (Assistant tab, model library, controls, monitor)
         │  UniFFI: AssistantCore commands + per-generation token stream
-Rust: examples/chat/rust::assistant      ← conversation, prompt, history, settings,
+Rust: examples/relay/rust::assistant      ← conversation, prompt, history, settings,
         │                                   policy, timings, storage (assistant.db)
         │  foreign trait LocalModelEngine (forge-ai, later framework)
 Swift adapters:  FoundationModelsEngine   CoreMLLLMEngine   (later: LlamaCppEngine)
@@ -107,7 +107,7 @@ pub trait LocalModelEngine: Send + Sync {
 
 Engines are installed at launch like native services (`LocalModels.install([FoundationModelsEngine(), CoreMLLLMEngine()])`). Rust picks by `engine_id/model_id`. A fake engine (scripted text, delays, failures) lets every Rust behaviour be tested with `cargo test` on Linux.
 
-**Where it lives.** First in the Chat app crate (`examples/chat/rust/src/assistant`), because the capability rule is "build only what the next demo needs". The trait and records move into a framework crate (`forge-ai`, a macro like `native_services!` so the items join the app's UniFFI namespace) and the Swift adapters into `crates/forge-ai/swift` once the design survived the device runs (milestone L5).
+**Where it lives.** First in the Chat app crate (`examples/relay/rust/src/chat/assistant`), because the capability rule is "build only what the next demo needs". The trait and records move into a framework crate (`forge-ai`, a macro like `native_services!` so the items join the app's UniFFI namespace) and the Swift adapters into `crates/forge-ai/swift` once the design survived the device runs (milestone L5).
 
 ### Streaming to SwiftUI
 
@@ -146,7 +146,7 @@ Part of every device runbook from L2 on: download a model with network, force-qu
 
 ## 3. Milestones
 
-Chat's sequence today: M0 and M1 done, M2 is draft PR #51, M3 (attachments) is being built on the M2 branch, then M4 voice, M5 notifications/deep links/background, M6 device acceptance. The local AI work is a track **L0–L5**. L0 touches no Chat code, so it can start now. L1 onwards depends on M2 merging (SQLite) and should start after M3 merges, so two threads never edit `examples/chat/rust/src/lib.rs` and `ChatModel.swift` at once. Proposed order: **M3 → L1–L4 → M4 → M5 → L5 → M6**, with M6's acceptance run covering the assistant too.
+Chat's sequence today: M0 and M1 done, M2 is draft PR #51, M3 (attachments) is being built on the M2 branch, then M4 voice, M5 notifications/deep links/background, M6 device acceptance. The local AI work is a track **L0–L5**. L0 touches no Chat code, so it can start now. L1 onwards depends on M2 merging (SQLite) and should start after M3 merges, so two threads never edit `examples/relay/rust/src/chat/mod.rs` and `ChatModel.swift` at once. Proposed order: **M3 → L1–L4 → M4 → M5 → L5 → M6**, with M6's acceptance run covering the assistant too.
 
 | Milestone | What | Done when (on Cati, recorded by Reuben) |
 |---|---|---|
@@ -182,7 +182,7 @@ The check app and its runbook: `scripts/make-ai-check-app.sh`, [local-ai-check.m
 | Offline after download | **skipped by Reuben** (2026-11-07: "it works") |
 | Swift → Rust push cost | **1.6 µs per push** in debug, **0.6 µs** in release (10,000 pushes): negligible against ~28 ms per token |
 
-Each milestone is one PR with a device runbook in `examples/chat/ACCEPTANCE.md`, the same as Chat's others.
+Each milestone is one PR with a device runbook in `examples/relay/ACCEPTANCE.md`, the same as Chat's others.
 
 ### L1 as built
 
@@ -198,7 +198,7 @@ The Assistant in Chat, as the L1 row describes, with these choices and differenc
 - **Chat stays on iOS 17.** Foundation Models is gated with `#available(iOS 26, *)`, so L1 needs no minimum change; decision 3 (iOS 18) lands with CoreML-LLM in L2.
 - **Not yet:** keeping model state between turns (an L2 concern for Qwen3.5, whose time to first text grows with the history), search over assistant chats, and backgrounding mid-answer (L3).
 
-Tests: 19 Rust tests with a fake engine (`examples/chat/rust/src/assistant/tests.rs`, plus `the_assistant_works_signed_out_and_survives_sign_out`) and Swift model tests with a scripted Swift engine (`AssistantModelTests`, macOS CI).
+Tests: 19 Rust tests with a fake engine (`examples/relay/rust/src/chat/assistant/tests.rs`, plus `the_assistant_works_signed_out_and_survives_sign_out`) and Swift model tests with a scripted Swift engine (`AssistantModelTests`, macOS CI).
 
 ### Capability ledger rows this adds
 

@@ -70,7 +70,7 @@ Each app stays in its own folder and is updated there; Device Lab uses it as
 it is:
 
 - **Rust:** `rust/Cargo.toml` depends on each app's own crate, which names its
-  library after the app (`weather_core`, `chat_app`, ...), and `rust/src/lib.rs`
+  library after the app (`weather_core`, `relay_core`, ...), and `rust/src/lib.rs`
   links it with `use <library> as _;`.
 - **Swift:** `Package.swift` depends on each app's own package
   (`.package(path: "../chat")`) and its app product (`ChatApp`). Each app names

@@ -57,7 +57,7 @@ Templates do not commit bindings: `forge init` generates them into the new app, 
 # 1. Regenerate both languages
 ./scripts/generate-bindings.sh examples/pocket-library/Generated      # Swift
 ./scripts/generate-bindings.sh examples/weather/Generated
-./scripts/generate-bindings.sh examples/chat/Generated
+./scripts/generate-bindings.sh examples/relay/Generated
 ./scripts/generate-bindings.sh examples/pocket-library-android/Generated kotlin
 #    (or: make bindings bindings-kotlin)
 
@@ -121,7 +121,7 @@ There is no generic event bus. An event says that something changed, not what: t
 
 ## Long-lived event streams (Chat)
 
-Chat's `ChatCore` (`examples/chat/rust/src/lib.rs`) is the reference for a stream that outlives any single command. Its contract, which the Swift host relies on (it started as `ForgeChatApp`, shared with the Android example removed on 2026-11-15, so some names below are that API's):
+Chat's `ChatCore` (`examples/relay/rust/src/chat/mod.rs`) is the reference for a stream that outlives any single command. Its contract, which the Swift host relies on (it started as `ForgeChatApp`, shared with the Android example removed on 2026-11-15, so some names below are that API's):
 
 - **Two separate things.** `events()` returns a `ChatEventSubscription` (pull-based like the runtime's `events()`: `async next()`, `cancel()`, bounded queue of `CHAT_QUEUE_CAPACITY` = 256, then `EventsDropped { count }`). `subscribe(conversation_id)` / `unsubscribe(conversation_id)` open and close a room, and `watch` / `unwatch` keep it live in the background (for `Notify`); the room's server connection runs while it is either. Ending an event stream never ends a connection, or the other way round.
 - **Room connections are explicit commands, not tied to a future's lifetime**, because Swift does not cancel Rust futures (above) and Kotlin does. Both return at once. When the last of `unsubscribe` / `unwatch` returns, `StreamDisconnected { will_retry: false }` is queued and nothing more from that room's connection ever is. The Rust thread behind it ends promptly: ending the stream closes that room's connection, so it does not wait for a server heartbeat. `live_streams()` reports it, and the Rust tests assert it reaches 0.
@@ -129,7 +129,7 @@ Chat's `ChatCore` (`examples/chat/rust/src/lib.rs`) is the reference for a strea
 - **Async commands are not cancellable from the host.** Leaving a room must not cancel a send already on the wire; dropping the future only ignores the answer, the store and the event stream still get the outcome.
 - **Every event, every error is typed.** `ChatError` adds `Storage`/`Internal` to the core's variants; fields are `reason`/`detail` (never `message`, which Kotlin's `Throwable` owns).
 
-The design and the reasons are in [chat-demo.md](../examples/chat/docs/chat-demo.md).
+The design and the reasons are in [chat-demo.md](../examples/relay/docs/chat-demo.md).
 
 ## Lifecycle and ownership
 

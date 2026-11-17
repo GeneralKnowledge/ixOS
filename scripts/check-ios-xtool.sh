@@ -114,7 +114,6 @@ affected() {
     [[ -z "$file" ]] && continue
     case "$file" in
       *.md | docs/* | LICENSE* | examples/*-android/* | templates/android-app/* | .github/*) ;;
-      examples/chat-core/* | examples/chat-server/*) pick[chat]=1 ;;
       examples/good-dog-core/*) pick[good-dog]=1 ;;
       forgekit/*) pick[forgeui-showcase]=1; pick[checklist]=1; pick[template]=1 ;;
       crates/forge-cli/* | templates/*) pick[template]=1; pick[minimal]=1 ;;

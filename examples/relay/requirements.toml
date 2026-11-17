@@ -10,3 +10,80 @@ id = "RL-1"
 statement = "A device shows a pairing code; another pairs with it and sends a note to its address (IPv6 in brackets), which arrives as received, and both remember the pairing."
 twin = ["RelayModelTests.testPairAndSendANote", "RelayModelTests.testFormatting"]
 device = ["uitests/smoke.toml"]
+
+# Messaging (CH-*): Chat's requirements, from before Chat merged into
+# Relay (docs/relay-chat-merge.md). `twin`: XCTests that drive the real
+# view model against the real Rust core and a real chat server; MessagingTests
+# and AudioTests need ImageIO or AVFoundation, so they run on a Mac only.
+# `device`: UI scenarios for `forge ui run`, verdicts only from an iPhone.
+
+[[requirement]]
+id = "CH-1"
+statement = "A new person creates an account with a name and a server, and lands on the chat list."
+twin = ["ChatModelTests.testFirstLaunchAsksForAnAccount", "ChatModelTests.testSignUpThenSendAndReceive"]
+device = ["uitests/journey.toml"]
+
+[[requirement]]
+id = "CH-2"
+statement = "A bad server address is explained, and the form keeps what was typed."
+twin = ["ChatModelTests.testBadServerURLIsExplainedNotThrownAway"]
+device = ["uitests/messaging.toml"]
+
+[[requirement]]
+id = "CH-3"
+statement = "Messages sent and received appear live, marked as mine or theirs by the account, not the name."
+twin = ["ChatModelTests.testSignUpThenSendAndReceive"]
+device = ["uitests/journey.toml"]
+
+[[requirement]]
+id = "CH-4"
+statement = "Going to the background closes the connections; coming back reconnects and catches up."
+twin = ["ChatModelTests.testBackgroundClosesConnectionsAndResumeRefreshes"]
+device = ["uitests/messaging.toml"]
+
+[[requirement]]
+id = "CH-5"
+statement = "Unread counts, previews, read receipts, mute and new conversations follow the server and the other person."
+twin = ["MessagingTests.testReadReceiptsPreviewsAndUnreadBetweenTwoPeople", "MessagingTests.testSwipesMuteAndNewConversations"]
+device = ["uitests/journey.toml"]
+
+[[requirement]]
+id = "CH-6"
+statement = "Replies, reactions, edits, deletes, drafts and search work between two people."
+twin = ["MessagingTests.testRepliesReactionsEditsDeletesDraftsAndSearch"]
+device = ["uitests/messaging.toml"]
+
+[[requirement]]
+id = "CH-7"
+statement = "Photos and documents are sent, shrunk and fetched between two people, with thumbnails."
+twin = ["MessagingTests.testPhotosAndDocumentsBetweenTwoPeople"]
+device = ["uitests/messaging.toml"]
+
+[[requirement]]
+id = "CH-8"
+statement = "Voice messages are recorded, sent and played back between two people."
+twin = ["MessagingTests.testVoiceMessagesBetweenTwoPeople", "AudioTests.testThePlayerPlaysOneFileAtATime"]
+device = ["uitests/messaging.toml"]
+
+[[requirement]]
+id = "CH-9"
+statement = "A message notification opens its conversation at that message; other links are ignored."
+twin = ["ChatLinksTests.testANotificationLinkRoutesToItsMessage", "ChatLinksTests.testOtherLinksAreIgnored"]
+device = ["uitests/messaging.toml"]
+
+[[requirement]]
+id = "CH-10"
+statement = "Signing out removes the account from this iPhone and returns to sign-up."
+twin = ["ChatModelTests.testSignOutReturnsToSignUp"]
+device = ["uitests/journey.toml"]
+
+[[requirement]]
+id = "CH-11"
+statement = "The on-device assistant works signed out, streams its answer and stops when asked."
+twin = ["AssistantModelTests.testTheAssistantWorksSignedOutAndStreamsAnAnswer", "AssistantModelTests.testStopKeepsTheText"]
+device = ["uitests/messaging.toml"]
+
+[[requirement]]
+id = "CH-12"
+statement = "When Chat's data can't be opened (another core holds it), it says why, and Try Again opens it once the data is free."
+twin = ["ChatModelTests.testALoadFailureShowsWhyAndTryAgainOpens"]
