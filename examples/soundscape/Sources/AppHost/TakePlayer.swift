@@ -91,6 +91,12 @@ final class TakePlayer {
     @ObservationIgnored private var artwork: MPMediaItemArtwork?
     @ObservationIgnored private var artworkUrl: String?
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    /// Watches the system: interruptions, unplugged headphones, and each
+    /// player stopping or starting by itself.
+    @ObservationIgnored private var systemObservers: [NSObjectProtocol] = []
+    @ObservationIgnored private var statusObservers: [NSKeyValueObservation] = []
+    /// Playing when an interruption began, so it may carry on after.
+    @ObservationIgnored private var interruptedWhilePlaying = false
 
     init() {
         for player in [playerA, playerB] {
@@ -102,6 +108,7 @@ final class TakePlayer {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
+        watchSystem()
     }
 
     // MARK: Loading
@@ -333,12 +340,81 @@ final class TakePlayer {
             log.warn("stream failed: \(failure ?? "")")
             pause()
         }
-        // Paused by the system (a call, headphones unplugged).
-        if isPlaying, heard.timeControlStatus == .paused, heard.currentItem?.status == .readyToPlay,
-           time < duration - 0.5 {
-            isPlaying = false
-            updateNowPlaying()
+        checkStoppedBySystem()
+    }
+
+    // MARK: The system
+
+    /// Another app's sound, a call, Siri or unplugged headphones can stop
+    /// the players without asking. Each way it can happen is watched, so
+    /// the buttons, the mini-player and the lock screen show Play as soon
+    /// as the sound stops.
+    private func watchSystem() {
+        let center = NotificationCenter.default
+        systemObservers.append(center.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let info = note.userInfo
+            let type = (info?[AVAudioSessionInterruptionTypeKey] as? UInt)
+                .flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+            let options = AVAudioSession.InterruptionOptions(
+                rawValue: info?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            )
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                switch type {
+                case .began:
+                    self.interruptedWhilePlaying = self.isPlaying
+                    self.stoppedBySystem()
+                case .ended:
+                    // A call or Siri hands the sound back; another app that
+                    // started its own music doesn't.
+                    if self.interruptedWhilePlaying, options.contains(.shouldResume) { self.resume() }
+                    self.interruptedWhilePlaying = false
+                default:
+                    break
+                }
+            }
+        })
+        systemObservers.append(center.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            guard reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue else { return }
+            // Headphones unplugged: iOS pauses, and so do we, both sides.
+            MainActor.assumeIsolated { self?.stoppedBySystem() }
+        })
+        for player in [playerA, playerB] {
+            statusObservers.append(player.observe(\.timeControlStatus) { [weak self] _, _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { self?.checkStoppedBySystem() }
+                }
+            })
         }
+    }
+
+    /// The player you hear stopped, and not at the end of the song (that
+    /// is `ended`): the system paused it.
+    private func checkStoppedBySystem() {
+        guard isPlaying else { return }
+        let heard = active == .b && isComparing ? playerB : playerA
+        guard heard.timeControlStatus == .paused, let item = heard.currentItem,
+              item.status == .readyToPlay else { return }
+        let at = heard.currentTime().seconds
+        let length = item.duration.seconds
+        if length.isFinite, length > 0, at >= length - 0.5 { return }
+        stoppedBySystem()
+    }
+
+    private func stoppedBySystem() {
+        guard isPlaying else { return }
+        // In a comparison the other side keeps in step only if it stops too.
+        playerA.pause()
+        playerB.pause()
+        isPlaying = false
+        let seconds = (active == .b && isComparing ? playerB : playerA).currentTime().seconds
+        if seconds.isFinite { time = seconds }
+        updateNowPlaying()
     }
 
     private func observeEnds() {
