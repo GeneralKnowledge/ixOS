@@ -60,6 +60,9 @@ pub enum Item {
 
 #[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
 pub enum TransferStatus {
+    /// Queued for a trusted device that hasn't been reached yet: it goes
+    /// when the device is seen again, while Relay is open.
+    Waiting,
     /// Bytes so far, out of the item's size.
     InProgress {
         done: u64,

@@ -4,6 +4,10 @@ Status: ideas from Reuben, 2026-11-17, recorded so they aren't lost. These
 are not commitments, and none of them is built until he says so. The
 current milestone is [Relay M1: Reliable Trusted-Device Delivery](relay-reliable-delivery.md).
 
+A larger idea from the same day, Relay as open social infrastructure
+(Spaces, portable Nostr identity, independent hosting), is recorded in
+[relay-social.md](relay-social.md), parked in the same way.
+
 The vision is a personal network operating system: devices, people,
 services and eventually agents that find one another, exchange
 information and do useful work together. All of it builds on M1's

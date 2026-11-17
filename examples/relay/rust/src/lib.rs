@@ -31,9 +31,11 @@ mod code;
 mod code_send;
 mod code_session;
 mod device;
+pub mod device_chat;
 pub mod link;
 mod model;
 mod node;
+mod outbox;
 mod record;
 mod trust;
 pub mod wire;
@@ -106,6 +108,9 @@ impl State {
     }
 }
 
+/// Called with a trusted device's endpoint id when it can be reached now.
+pub(crate) type ChatWaker = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// The open invitation: its secret and when it expires.
 type Pending = Option<([u8; 32], i64)>;
 
@@ -145,6 +150,13 @@ pub struct RelayCore {
     nearby: Mutex<HashMap<String, Vec<String>>>,
     /// The stop switch of each send to a trusted device, by history id.
     device_stops: Mutex<HashMap<u64, Arc<AtomicBool>>>,
+    /// What waits for trusted devices, and when to try them (`outbox`).
+    outbox: outbox::Outbox,
+    /// Each trusted device's conversation log (`device_chat`).
+    peer_logs: device_chat::PeerLogs,
+    /// Wakes a device conversation's outbox when the device is reached:
+    /// set by the chat core that holds those conversations.
+    chat_waker: Mutex<Option<ChatWaker>>,
     me: Weak<RelayCore>,
 }
 
@@ -189,6 +201,7 @@ impl RelayCore {
         // Sends kept their own store before one store served both.
         let _ = std::fs::remove_dir_all(code_dir.join("send-store"));
         let key_dir = directory.path().to_path_buf();
+        let peer_logs = device_chat::PeerLogs::new(directory.path().join("devices"));
         let store_dir = code_dir.join("store");
         let state = State {
             record,
@@ -216,6 +229,9 @@ impl RelayCore {
             trust_offer: Arc::new(Mutex::new(None)),
             nearby: Mutex::new(HashMap::new()),
             device_stops: Mutex::new(HashMap::new()),
+            outbox: outbox::Outbox::default(),
+            peer_logs,
+            chat_waker: Mutex::new(None),
             me: me.clone(),
         }))
     }
@@ -483,6 +499,8 @@ impl RelayCore {
 
     /// Removes a history entry and, for a received file, the file.
     pub async fn remove_transfer(&self, id: u64) -> Result<(), RelayError> {
+        // Taken off the outbox first, if it is waiting: it is never sent.
+        self.cancel_delivery(id).await;
         let received = self.received();
         self.rt
             .command("remove-transfer", move |state| {
@@ -792,10 +810,20 @@ impl RelayCore {
     /// on screen.
     pub async fn device_service(&self) -> Result<DeviceService, RelayError> {
         let node = self.node().await?;
+        self.deliver_waiting();
         Ok(DeviceService {
             endpoint_id: node.id().to_string(),
             port: node.port()?,
         })
+    }
+
+    /// Tries every trusted device something waits for, now: Relay came
+    /// back to the foreground. (Seeing a device, or it connecting here,
+    /// tries it too; so does a timer while Relay is open.)
+    pub fn deliver_waiting(&self) {
+        for to in self.record.get().waiting_for() {
+            self.try_now(&to);
+        }
     }
 
     /// Trusted and revoked devices, by name. Forgotten ones aren't listed.
@@ -819,11 +847,19 @@ impl RelayCore {
     }
 
     /// The trusted devices the app sees nearby now, replacing the last list.
+    /// A device that appears, or moves, is tried at once if something
+    /// waits for it.
     pub fn devices_nearby(&self, devices: Vec<NearbyDevice>) {
-        *lock(&self.nearby) = devices
+        let now: HashMap<String, Vec<String>> = devices
             .into_iter()
             .map(|d| (d.endpoint_id, d.addresses))
             .collect();
+        let before = std::mem::replace(&mut *lock(&self.nearby), now.clone());
+        for (id, addresses) in &now {
+            if before.get(id) != Some(addresses) {
+                self.try_now(id);
+            }
+        }
     }
 
     pub fn pairing_policy(&self) -> PairingPolicy {
@@ -892,33 +928,40 @@ impl RelayCore {
     /// transfers still work, as with any device.
     pub async fn revoke_device(&self, endpoint_id: String) -> Result<(), RelayError> {
         lock(&self.nearby).remove(&endpoint_id);
+        let endpoint = endpoint_id.clone();
         self.rt
             .command("revoke-device", move |state| {
                 state.change(|r| {
-                    if r.devices.revoke(&endpoint_id) {
+                    if r.devices.revoke(&endpoint) {
                         Ok(())
                     } else {
-                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                        Err(RelayError::UnknownPeer { id: endpoint })
                     }
                 })
             })
-            .await
+            .await?;
+        // What waited for it ends: No longer trusted.
+        self.wake(&endpoint_id);
+        Ok(())
     }
 
     /// Takes the device off the list. Pair Automatically may trust it
     /// again after a code transfer; a revoked device stays revoked.
     pub async fn forget_device(&self, endpoint_id: String) -> Result<(), RelayError> {
+        let endpoint = endpoint_id.clone();
         self.rt
             .command("forget-device", move |state| {
                 state.change(|r| {
-                    if r.devices.forget(&endpoint_id) {
+                    if r.devices.forget(&endpoint) {
                         Ok(())
                     } else {
-                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                        Err(RelayError::UnknownPeer { id: endpoint })
                     }
                 })
             })
-            .await
+            .await?;
+        self.wake(&endpoint_id);
+        Ok(())
     }
 
     /// Whether a trusted device may send files and notes here.
@@ -936,20 +979,27 @@ impl RelayCore {
             .await
     }
 
-    /// Sends a note to a trusted device, with no code.
+    /// Sends a note to a trusted device, with no code. It waits in the
+    /// outbox until the device is reached: the transfer comes back Done,
+    /// or Waiting when the device wasn't reached. A refusal is an error.
     pub async fn send_note_to_device(
         &self,
         endpoint_id: String,
         text: String,
     ) -> Result<Transfer, RelayError> {
         let text = model::clean_note(&text)?;
+        self.trusted(&endpoint_id)?;
         let item = SavedItem::Note { text: text.clone() };
-        self.send_to_trusted(endpoint_id, item, device::Outgoing::Note(text))
+        let payload = outbox::Payload::Note { text };
+        self.queue(outbox::new_id(), endpoint_id, item, payload)
             .await
     }
 
     /// Sends files and folders to a trusted device as one transfer, with
-    /// no code. Several items arrive in one folder named "N items".
+    /// no code. Several items arrive in one folder named "N items". They
+    /// are copied into Relay's store first, so they can wait in the outbox
+    /// (and the originals can go); as for a note, the transfer comes back
+    /// Done, or Waiting.
     pub async fn send_to_device(
         &self,
         endpoint_id: String,
@@ -979,15 +1029,43 @@ impl RelayCore {
             size,
             file,
         };
-        self.send_to_trusted(endpoint_id, item, device::Outgoing::Files { paths, name })
+        self.trusted(&endpoint_id)?;
+        let id = outbox::new_id();
+        let node = self.node().await?;
+        let offer = code::TOKIO
+            .spawn(async move {
+                let (offer, _tags) = code_send::prepare(&paths, name, &node, true).await?;
+                let content = if offer.collection {
+                    iroh_blobs::HashAndFormat::hash_seq(offer.hash)
+                } else {
+                    iroh_blobs::HashAndFormat::raw(offer.hash)
+                };
+                node.store
+                    .tags()
+                    .set(outbox::tag_name(&wire::hex(&id)), content)
+                    .await
+                    .map_err(node::file_error)?;
+                Ok::<_, RelayError>(offer)
+            })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)))?;
+        self.queue(id, endpoint_id, item, outbox::Payload::files(&offer))
             .await
     }
 
-    /// Stops a send to a trusted device that is still going.
+    /// Stops a send to a trusted device that is still going, or takes it
+    /// off the outbox if it is waiting.
     pub fn cancel_transfer(&self, id: u64) {
         if let Some(stop) = lock(&self.device_stops).get(&id) {
             stop.store(true, Ordering::SeqCst);
+            return;
         }
+        let me = self.me.clone();
+        code::TOKIO.spawn(async move {
+            if let Some(core) = me.upgrade() {
+                core.cancel_delivery(id).await;
+            }
+        });
     }
 }
 
@@ -1206,73 +1284,14 @@ impl RelayCore {
         }
     }
 
-    /// Sends one item to a trusted device over `relay/device/1` and keeps
-    /// it in the history.
-    async fn send_to_trusted(
-        &self,
-        endpoint_id: String,
-        item: SavedItem,
-        outgoing: device::Outgoing,
-    ) -> Result<Transfer, RelayError> {
-        let saved = self.record.get().devices.get(&endpoint_id).cloned();
-        let Some(saved) = saved.filter(|d| d.trust == SavedTrust::Trusted) else {
-            return Err(RelayError::UnknownPeer { id: endpoint_id });
-        };
-        let addresses = lock(&self.nearby)
-            .get(&endpoint_id)
-            .cloned()
-            .filter(|a| !a.is_empty())
-            .unwrap_or(saved.addresses);
-        let to = device::endpoint_addr(&endpoint_id, &addresses)?;
-        let peer_id = endpoint_id.clone();
-        let id = self
-            .rt
-            .command("begin-send", move |state| {
-                state.change(|r| Ok(r.begin(&peer_id, true, item, now_ms())))
-            })
-            .await?;
-        let stop = Arc::new(AtomicBool::new(false));
-        lock(&self.device_stops).insert(id, Arc::clone(&stop));
-        let node = Arc::clone(&self.node);
-        let my_name = self.identity().name;
-        let weak = self.me.clone();
-        let result = code::TOKIO
-            .spawn(async move {
-                let node = node.get().await?;
-                let report = |done: u64| {
-                    if let Some(core) = weak.upgrade() {
-                        lock(&core.progress).insert(id, done);
-                    }
-                };
-                device::send(&node, to, my_name, outgoing, report, stop).await
-            })
-            .await
-            .unwrap_or_else(|e| Err(code::connection(e)));
-        lock(&self.device_stops).remove(&id);
-        lock(&self.progress).remove(&id);
-        let status = match &result {
-            Ok(_) => SavedStatus::Done,
-            Err(err) => SavedStatus::Failed {
-                reason: err.saved_reason(),
-            },
-        };
-        let reached = result.is_ok().then_some(addresses);
-        self.rt
-            .command("finish-send", move |state| {
-                state.change(|r| {
-                    r.finish(id, status, None);
-                    if let Some(addresses) = reached {
-                        r.devices.seen_at(&endpoint_id, &addresses);
-                    }
-                    Ok(())
-                })
-            })
-            .await?;
-        result?;
-        self.transfers()
-            .into_iter()
-            .find(|t| t.id == id)
-            .ok_or(RelayError::NotFound { id })
+    /// Errs unless `endpoint_id` is a trusted device.
+    fn trusted(&self, endpoint_id: &str) -> Result<(), RelayError> {
+        match self.record.get().devices.get(endpoint_id) {
+            Some(d) if d.trust == SavedTrust::Trusted => Ok(()),
+            _ => Err(RelayError::UnknownPeer {
+                id: endpoint_id.to_string(),
+            }),
+        }
     }
 }
 
@@ -1296,13 +1315,50 @@ impl CoreDevices {
 }
 
 impl device::DeviceInbound for CoreDevices {
+    fn message(&self, from: &str, message: device_chat::PeerMessage) -> Result<(), RelayError> {
+        let core = self.core.upgrade().ok_or(RelayError::Stopped {
+            kind: forge_app::ErrorKind::ShutDown,
+        })?;
+        if message.id.is_empty() || message.id.chars().count() > device_chat::MAX_ID_CHARS {
+            return Err(RelayError::Connection {
+                reason: "a message id that isn't usable".into(),
+            });
+        }
+        let body = model::clean_note(&message.body)?;
+        let author = core
+            .record
+            .get()
+            .devices
+            .get(from)
+            .map(|d| d.name.clone())
+            .unwrap_or_default();
+        core.peer_logs.get(from)?.add(chat_core::Message {
+            id: message.id,
+            author,
+            author_id: from.to_string(),
+            body,
+            reply_to: message.reply_to,
+            ..chat_core::Message::default()
+        })?;
+        Ok(())
+    }
+
     fn rights(&self, from: &str) -> Option<device::Rights> {
         let core = self.core.upgrade()?;
         let record = core.record.get();
         let saved = record.devices.get(from)?;
-        trust::may_connect(Some(saved.trust)).then_some(device::Rights {
+        let rights = trust::may_connect(Some(saved.trust)).then_some(device::Rights {
             receives_from: saved.receives_from,
-        })
+        })?;
+        // It is here: anything waiting for it goes now.
+        core.try_now(from);
+        Some(rights)
+    }
+
+    fn received_before(&self, from: &str, id: &[u8; 16]) -> bool {
+        self.core
+            .upgrade()
+            .is_some_and(|c| c.record.get().received_before(from, id))
     }
 
     fn my_name(&self) -> String {
@@ -1319,12 +1375,16 @@ impl device::DeviceInbound for CoreDevices {
             .unwrap_or_default()
     }
 
-    fn note(&self, from: &str, text: String) -> Result<(), RelayError> {
+    fn note(&self, from: &str, delivery: [u8; 16], text: String) -> Result<(), RelayError> {
         let text = model::clean_note(&text)?;
         let from = from.to_string();
         self.command("device-note", move |r| {
+            if r.received_before(&from, &delivery) {
+                return Ok(());
+            }
             let id = r.begin(&from, false, SavedItem::Note { text }, now_ms());
             r.finish(id, SavedStatus::Done, None);
+            r.remember_received(&from, &delivery, now_ms());
             Ok(())
         })
     }
@@ -1351,7 +1411,7 @@ impl device::DeviceInbound for CoreDevices {
         }
     }
 
-    fn finish_file(&self, id: u64, result: Result<String, String>) {
+    fn finish_file(&self, id: u64, from: &str, delivery: [u8; 16], result: Result<String, String>) {
         if let Some(core) = self.core.upgrade() {
             lock(&core.progress).remove(&id);
         }
@@ -1359,7 +1419,11 @@ impl device::DeviceInbound for CoreDevices {
             Ok(path) => (SavedStatus::Done, Some(path)),
             Err(reason) => (SavedStatus::Failed { reason }, None),
         };
+        let from = from.to_string();
         if let Err(err) = self.command("device-file-done", move |r| {
+            if status == SavedStatus::Done {
+                r.remember_received(&from, &delivery, now_ms());
+            }
             r.finish(id, status, file);
             Ok(())
         }) {
