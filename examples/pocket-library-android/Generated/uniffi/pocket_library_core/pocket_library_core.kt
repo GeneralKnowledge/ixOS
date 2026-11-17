@@ -890,6 +890,10 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_pocket_library_core_checksum_func_epub_words_per_page(
     ): Int
+    external fun uniffi_pocket_library_core_checksum_func_forge_log(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_func_forge_log_enabled(
+    ): Int
     external fun uniffi_pocket_library_core_checksum_func_library_error_kind(
     ): Int
     external fun uniffi_pocket_library_core_checksum_func_write_sample_epub(
@@ -1215,6 +1219,10 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_pocket_library_core_fn_func_epub_words_per_page(uniffi_out_err: UniffiRustCallStatus, 
     ): Int
+    external fun uniffi_pocket_library_core_fn_func_forge_log(`level`: RustBuffer.ByValue,`category`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_func_forge_log_enabled(`level`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
     external fun uniffi_pocket_library_core_fn_func_library_error_kind(`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBufferErrorKind.ByValue
     external fun uniffi_pocket_library_core_fn_func_write_sample_epub(`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1356,6 +1364,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_func_epub_words_per_page() and 0xFFFF) != 51851) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_func_forge_log() and 0xFFFF) != 10611) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_func_forge_log_enabled() and 0xFFFF) != 47247) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_func_library_error_kind() and 0xFFFF) != 3528) {
@@ -9183,6 +9197,46 @@ public object FfiConverterTypeBookSource : FfiConverterRustBuffer<BookSource>{
 
 
 
+/**
+ * A log level for [`forge_log`].
+ */
+
+enum class ForgeLogLevel {
+    
+    TRACE,
+    DEBUG,
+    INFO,
+    WARN,
+    ERROR;
+
+    
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeForgeLogLevel: FfiConverterRustBuffer<ForgeLogLevel> {
+    override fun read(buf: ByteBuffer) = try {
+        ForgeLogLevel.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ForgeLogLevel) = 4UL
+
+    override fun write(value: ForgeLogLevel, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
 
 
 /**
@@ -12021,6 +12075,37 @@ public object FfiConverterSequenceTypeReaderSpan: FfiConverterRustBuffer<List<Re
     UniffiLib.uniffi_pocket_library_core_fn_func_epub_words_per_page(
     
         _status)
+}
+    )
+    }
+    
+
+        /**
+         * Writes one record from host code into Forge's log, with
+         * `category` as its target. Never log secrets.
+         */ fun `forgeLog`(`level`: ForgeLogLevel, `category`: kotlin.String, `message`: kotlin.String)
+        = 
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_forge_log(
+    
+        
+        FfiConverterTypeForgeLogLevel.lower(`level`),
+        FfiConverterString.lower(`category`),
+        FfiConverterString.lower(`message`),_status)
+}
+    
+    
+
+        /**
+         * Whether a record at `level` would be kept, so the host can skip
+         * building a message nobody will see.
+         */ fun `forgeLogEnabled`(`level`: ForgeLogLevel): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_forge_log_enabled(
+    
+        
+        FfiConverterTypeForgeLogLevel.lower(`level`),_status)
 }
     )
     }
