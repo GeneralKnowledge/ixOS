@@ -33,6 +33,16 @@ struct ToolsView: View {
             }
             Section {
                 NavigationLink {
+                    LogsView()
+                } label: {
+                    Label("Logs", systemImage: "text.alignleft")
+                }
+                .accessibilityIdentifier("tools.logs")
+            } footer: {
+                Text("What Device Lab and its apps logged recently, to read or share without a cable.")
+            }
+            Section {
+                NavigationLink {
                     CrashTestView(model: model)
                 } label: {
                     Label("Crash Test", systemImage: "exclamationmark.triangle")

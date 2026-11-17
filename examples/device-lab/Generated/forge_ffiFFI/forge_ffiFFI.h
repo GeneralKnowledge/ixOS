@@ -1145,6 +1145,16 @@ void uniffi_forge_ffi_fn_func_crash_test_rust_panic(RustCallStatus *_Nonnull out
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_LOGS_AS_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_LOGS_AS_TEXT
+RustBuffer uniffi_forge_ffi_fn_func_logs_as_text(RustBuffer lines, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_RECENT_LOGS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_RECENT_LOGS
+RustBuffer uniffi_forge_ffi_fn_func_recent_logs(uint32_t limit, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
 void uniffi_forge_ffi_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
@@ -1509,6 +1519,18 @@ uint16_t uniffi_forge_ffi_checksum_func_ai_lab_experiments(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CRASH_TEST_RUST_PANIC
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CRASH_TEST_RUST_PANIC
 uint16_t uniffi_forge_ffi_checksum_func_crash_test_rust_panic(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_LOGS_AS_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_LOGS_AS_TEXT
+uint16_t uniffi_forge_ffi_checksum_func_logs_as_text(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_RECENT_LOGS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_RECENT_LOGS
+uint16_t uniffi_forge_ffi_checksum_func_recent_logs(void
     
 );
 #endif

@@ -15,6 +15,7 @@
 
 pub mod ai_lab;
 pub mod crash_test;
+pub mod logs;
 pub mod stats;
 pub mod transfer_test;
 
