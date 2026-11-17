@@ -176,6 +176,8 @@ fn the_checklist_goes_out_and_comes_back_as_a_spreadsheet() {
     assert_eq!(summary.added, 2, "{summary:?}");
     assert_eq!(summary.skipped.len(), 1, "{summary:?}");
     assert!(summary.skipped[0].contains("needs a title"), "{summary:?}");
+    // Lines of the file, counting the header: the blank title is line 4.
+    assert!(summary.skipped[0].starts_with("Line 4:"), "{summary:?}");
     let items = core.items();
     assert_eq!(items.len(), 4);
     assert_eq!(
@@ -186,6 +188,18 @@ fn the_checklist_goes_out_and_comes_back_as_a_spreadsheet() {
         (items[3].title.as_str(), items[3].done),
         ("Book the ferry", false)
     );
+
+    // The same file again adds nothing new, and says so.
+    let again = block_on(core.import_csv(edited.to_string_lossy().into_owned())).unwrap();
+    assert_eq!(again.added, 0, "{again:?}");
+    assert_eq!(
+        again.skipped,
+        vec![
+            "Line 4: an item needs a title".to_string(),
+            "2 items were already on the list".to_string()
+        ]
+    );
+    assert_eq!(core.items().len(), 4);
 
     let junk = dir.path().join("junk.csv");
     std::fs::write(&junk, "").unwrap();

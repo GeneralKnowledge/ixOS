@@ -297,25 +297,55 @@ impl ChecklistCore {
                     .iter()
                     .map(|p| format!("Line {}: {}", p.line, p.reason))
                     .collect();
+                let mut already = 0u32;
                 let added = state.change(|list| {
                     let mut added = 0u32;
-                    for (index, row) in read.rows.iter().enumerate() {
+                    // Importing the same file twice adds nothing new.
+                    let mut known: std::collections::HashSet<String> =
+                        list.items().iter().map(|i| same_title(&i.title)).collect();
+                    for (row, line) in read.rows.iter().zip(&read.row_lines) {
+                        if known.contains(&same_title(&row.item)) {
+                            already += 1;
+                            continue;
+                        }
                         match list.add(&row.item) {
                             Ok(id) => {
                                 added += 1;
+                                known.insert(same_title(&row.item));
                                 if is_yes(&row.done) {
                                     list.toggle(id)?;
                                 }
                             }
-                            Err(err) => skipped.push(format!("Row {}: {err}", index + 1)),
+                            Err(err) => skipped.push(format!("Line {line}: {err}")),
                         }
                     }
                     Ok(added)
                 })?;
+                skipped.sort_by_key(|text| line_of(text));
+                if already > 0 {
+                    skipped.push(if already == 1 {
+                        "1 item was already on the list".into()
+                    } else {
+                        format!("{already} items were already on the list")
+                    });
+                }
                 Ok(CsvImportSummary { added, skipped })
             })
             .await
     }
+}
+
+/// A title as compared for duplicates: trimmed, ignoring case.
+fn same_title(title: &str) -> String {
+    title.trim().to_lowercase()
+}
+
+/// The line number a "Line N: ..." note starts with, for sorting.
+fn line_of(text: &str) -> u64 {
+    text.strip_prefix("Line ")
+        .and_then(|rest| rest.split(':').next())
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(u64::MAX)
 }
 
 fn is_yes(text: &str) -> bool {

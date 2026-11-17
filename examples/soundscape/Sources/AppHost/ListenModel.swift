@@ -33,6 +33,8 @@ public final class ListenModel {
     public var alert: ForgeAlert<Action>?
     /// Increases after each pick or rating; views use it as a haptic trigger.
     public private(set) var markCount = 0
+    /// True while songs are being looked up to play.
+    public private(set) var isQueueing = false
 
     public let core: SoundscapeCore
 
@@ -119,6 +121,33 @@ public final class ListenModel {
             if !Self.isStop(error) { log.warn("song failed: \(error)") }
             return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
         }
+    }
+
+    // MARK: Playing songs
+
+    /// The songs `slugs`, in that order, each with the take it plays (its
+    /// pick, else its best rated, else its newest; Rust decides). `nil`
+    /// after showing why it failed.
+    public func tracks(_ slugs: [String]) async -> [QueueTrack]? {
+        guard !slugs.isEmpty else { return [] }
+        isQueueing = true
+        defer { isQueueing = false }
+        let cancellation = Cancellation()
+        do {
+            return try await withTaskCancellationHandler {
+                try await core.listenTracks(slugs: slugs, cancellation: cancellation)
+            } onCancel: {
+                cancellation.cancel()
+            }
+        } catch {
+            if !Self.isStop(error) { report(error) }
+            return nil
+        }
+    }
+
+    /// A song's take as a queue track.
+    public static func track(_ take: Take, of song: SongDetail) -> QueueTrack {
+        QueueTrack(slug: song.slug, songTitle: song.title, act: song.act, take: take)
     }
 
     // MARK: Picks and ratings
@@ -208,6 +237,10 @@ extension SongSummary: Identifiable {
 }
 
 extension Take: Identifiable {}
+
+extension QueueEntry: Identifiable {
+    public var id: UInt32 { position }
+}
 
 extension SongGroup: Identifiable {
     public var id: String { act ?? "" }

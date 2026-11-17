@@ -58,6 +58,17 @@ public final class SketchbookModel {
         return data
     }
 
+    /// Forgets the drawing bytes of every path but `detail`'s layers. Each
+    /// stroke saves a new file, so without this the cache would keep every
+    /// version of every layer drawn since launch.
+    public func keepDrawings(of detail: SketchDetail?) {
+        let paths = Set(detail?.layers.compactMap(\.drawingPath) ?? [])
+        drawings = drawings.filter { paths.contains($0.key) }
+    }
+
+    /// How many drawings are held in memory (for tests).
+    var cachedDrawings: Int { drawings.count }
+
     // MARK: Sketches
 
     /// A new sketch with one empty layer; `nil` (and an alert) if it failed.

@@ -1181,10 +1181,12 @@ impl Library {
                     .collect();
                 let mut added = 0u32;
                 let mut inputs = Vec::new();
-                for (index, row) in read.rows.into_iter().enumerate() {
+                // Lines of the file, like the problems above (a row's
+                // place among the readable rows meant nothing to a person).
+                for (row, line) in read.rows.into_iter().zip(read.row_lines) {
                     match row.into_input().and_then(validate) {
                         Ok(input) => inputs.push(input),
-                        Err(e) => skipped.push(format!("Row {}: {e}", index + 1)),
+                        Err(e) => skipped.push(format!("Line {line}: {e}")),
                     }
                 }
                 if !inputs.is_empty() {

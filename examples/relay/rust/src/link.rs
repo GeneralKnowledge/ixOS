@@ -352,9 +352,9 @@ pub fn answer(
                 };
                 let reply = Msg::Received {
                     ok: result.is_ok(),
-                    reason: result.as_ref().err().map(|e| e.to_string()),
+                    reason: result.as_ref().err().map(|e| e.saved_reason()),
                 };
-                host.finished(id, result.map_err(|e| e.to_string()));
+                host.finished(id, result.map_err(|e| e.saved_reason()));
                 conn.send(&reply)?;
             }
             _ => return Err(protocol("unexpected message")),

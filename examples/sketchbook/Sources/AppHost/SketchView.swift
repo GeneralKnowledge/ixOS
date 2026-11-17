@@ -40,6 +40,9 @@ struct SketchView: View {
         .navigationTitle(detail?.summary.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        // Inside Device Lab's sheet, a stroke started right at the top of
+        // the canvas dragged the sheet closed. Back to the grid first.
+        .interactiveDismissDisabled()
         .sheet(isPresented: $showingLayers) {
             LayersPanel(model: model, sketchID: sketchID, detail: $detail, selected: $selected)
                 .presentationDetents([.medium, .large])
@@ -155,6 +158,7 @@ struct SketchView: View {
     /// (otherwise the top one).
     private func show(_ changed: SketchDetail?) {
         detail = changed
+        model.keepDrawings(of: changed)
         guard let layers = changed?.layers else { return }
         if !layers.contains(where: { $0.id == selected }) {
             selected = layers.last?.id

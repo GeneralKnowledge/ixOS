@@ -2,6 +2,8 @@
 
 Status: **approved by Reuben** (2026-11-14: start A0 and A1 with the recommended answers to the open questions). A0 and A1 are built; see the milestones.
 
+From 2026-11-17 the AI Lab follows the [eSIM and AI Lab focus plan](research/esim-ai-lab-plan.md): Apple's model first, then a GTX 1060 laptop over the tailnet. The Relay steps here (A2's `RelayModel`, A4) are deferred.
+
 Reuben (2026-11-14): "We might have to split out the AI into its own thing to fully develop it", "a cool experiment could have the AI communicate via relay", "it could combine AI power over more powerful AIs. We could use OpenAI style input / output for compatibility."
 
 This plan does two things:

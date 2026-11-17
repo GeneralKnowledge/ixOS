@@ -11,6 +11,7 @@ struct ListenView: View {
     @State private var player = TakePlayer()
     @State private var editingServer = false
     @State private var search = ""
+    @State private var showingNowPlaying = false
     @AppStorage("listen.unpickedOnly") private var unpickedOnly = false
 
     init(core: SoundscapeCore) {
@@ -44,7 +45,17 @@ struct ListenView: View {
                 .sheet(isPresented: $editingServer) {
                     ServerSheet(model: model)
                 }
-                .safeAreaInset(edge: .bottom) { NowPlayingBar(player: player) }
+        }
+        // On the stack, not its first screen, so the bar stays in front on
+        // a song's screen too.
+        .safeAreaInset(edge: .bottom) {
+            NowPlayingBar(player: player) { showingNowPlaying = true }
+        }
+        .sheet(isPresented: $showingNowPlaying) {
+            NowPlayingView(player: player)
+        }
+        .onChange(of: player.current == nil) { _, stopped in
+            if stopped { showingNowPlaying = false }
         }
         // On the stack, so an alert from a song's screen shows above it.
         .forgeAlert(Binding(
@@ -80,11 +91,36 @@ struct ListenView: View {
 
     private var songList: some View {
         List {
+            if !groups.isEmpty {
+                Section {
+                    HStack(spacing: 12) {
+                        bigButton("Play", systemImage: "play.fill", identifier: "listen.playAll") {
+                            play(groups.flatMap(\.songs), shuffle: false)
+                        }
+                        bigButton("Shuffle", systemImage: "shuffle", identifier: "listen.shuffleAll") {
+                            play(groups.flatMap(\.songs), shuffle: true)
+                        }
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+                }
+            }
             ForEach(groups) { group in
                 Section {
-                    ForEach(group.songs) { song in songRow(song) }
+                    ForEach(group.songs) { song in songRow(song, in: group) }
                 } header: {
-                    Text(group.act ?? "Other")
+                    HStack {
+                        Text(group.act ?? "Other")
+                        Spacer()
+                        Button {
+                            play(group.songs, shuffle: false)
+                        } label: {
+                            Image(systemName: "play.circle")
+                        }
+                        .disabled(model.isQueueing)
+                        .accessibilityLabel("Play \(group.act ?? "Other")")
+                        .accessibilityIdentifier("listen.playAct")
+                    }
                 }
             }
         }
@@ -107,7 +143,38 @@ struct ListenView: View {
         .refreshable { await model.loadSongs(fresh: true) }
     }
 
-    private func songRow(_ song: SongSummary) -> some View {
+    private func bigButton(
+        _ title: String, systemImage: String, identifier: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .disabled(model.isQueueing)
+        .accessibilityIdentifier(identifier)
+    }
+
+    /// Plays `songs` in order (from `start`) or shuffled, each song's pick
+    /// or best take.
+    private func play(_ songs: [SongSummary], from start: SongSummary? = nil, shuffle: Bool) {
+        let slugs = songs.map(\.slug)
+        Task {
+            guard let tracks = await model.tracks(slugs), !tracks.isEmpty else { return }
+            let index = start.flatMap { s in tracks.firstIndex { $0.slug == s.slug } } ?? 0
+            player.play(tracks, from: index, shuffle: shuffle)
+        }
+    }
+
+    private func queue(_ song: SongSummary, next: Bool) {
+        Task {
+            guard let tracks = await model.tracks([song.slug]) else { return }
+            player.add(tracks, next: next)
+        }
+    }
+
+    private func songRow(_ song: SongSummary, in group: SongGroup) -> some View {
         NavigationLink(value: song.slug) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -128,6 +195,32 @@ struct ListenView: View {
             .accessibilityElement(children: .combine)
         }
         .accessibilityIdentifier("listen.song")
+        .contextMenu {
+            Button("Play", systemImage: "play") { play(group.songs, from: song, shuffle: false) }
+                .accessibilityIdentifier("listen.songPlay")
+            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                queue(song, next: true)
+            }
+            .accessibilityIdentifier("listen.songPlayNext")
+            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                queue(song, next: false)
+            }
+            .accessibilityIdentifier("listen.songAddToQueue")
+        }
+        .swipeActions(edge: .leading) {
+            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                queue(song, next: true)
+            }
+            .tint(.indigo)
+            .accessibilityIdentifier("listen.songSwipePlayNext")
+        }
+        .swipeActions(edge: .trailing) {
+            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                queue(song, next: false)
+            }
+            .tint(.orange)
+            .accessibilityIdentifier("listen.songSwipeAddToQueue")
+        }
     }
 
     private var groups: [SongGroup] {
@@ -285,7 +378,7 @@ private struct SongView: View {
                             if player.current?.take.id == take.id && !player.isComparing {
                                 player.toggle()
                             } else {
-                                player.play(take, of: song.title)
+                                player.play(take, of: song)
                             }
                         },
                         rate: { stars in Task { if let s = await model.rate(take, in: song, stars: stars) { self.song = s } } }
@@ -314,6 +407,14 @@ private struct SongView: View {
                             noting = take
                         }
                         .accessibilityIdentifier("take.noteMenu")
+                        Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                            player.add([ListenModel.track(take, of: song)], next: true)
+                        }
+                        .accessibilityIdentifier("take.playNext")
+                        Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                            player.add([ListenModel.track(take, of: song)], next: false)
+                        }
+                        .accessibilityIdentifier("take.addToQueue")
                     }
                 }
             }
@@ -530,6 +631,8 @@ private struct ComparePanel: View {
 /// Play/pause, the position and a slider to move it.
 private struct Scrubber: View {
     let player: TakePlayer
+    /// Back 10, play/pause and forward 10 between the times.
+    var showsButtons = true
     @State private var dragging: Double?
 
     var body: some View {
@@ -548,17 +651,7 @@ private struct Scrubber: View {
             HStack {
                 Text(TakeFormat.time(dragging ?? player.time))
                 Spacer()
-                Button { player.skip(-10) } label: { Image(systemName: "gobackward.10") }
-                    .accessibilityLabel("Back 10 seconds")
-                    .accessibilityIdentifier("player.back")
-                Button { player.toggle() } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title2)
-                }
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-                .accessibilityIdentifier("player.playPause")
-                Button { player.skip(10) } label: { Image(systemName: "goforward.10") }
-                    .accessibilityLabel("Forward 10 seconds")
-                    .accessibilityIdentifier("player.forward")
+                if showsButtons { buttons }
                 Spacer()
                 Text(TakeFormat.time(player.duration))
             }
@@ -566,46 +659,267 @@ private struct Scrubber: View {
             .buttonStyle(.borderless)
         }
     }
+
+    @ViewBuilder private var buttons: some View {
+        Button { player.skip(-10) } label: { Image(systemName: "gobackward.10") }
+            .accessibilityLabel("Back 10 seconds")
+            .accessibilityIdentifier("player.back")
+        Button { player.toggle() } label: {
+            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title2)
+        }
+        .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+        .accessibilityIdentifier("player.playPause")
+        Button { player.skip(10) } label: { Image(systemName: "goforward.10") }
+            .accessibilityLabel("Forward 10 seconds")
+            .accessibilityIdentifier("player.forward")
+    }
 }
 
-/// What's playing, under every Listen screen.
+/// What's playing, under every Listen screen; tap it for Now Playing.
 private struct NowPlayingBar: View {
     let player: TakePlayer
+    let open: () -> Void
 
     var body: some View {
         if let current = player.current {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(player.isComparing ? "Comparing · \(player.active == .a ? "A" : "B")" : current.take.label)
-                            .font(.subheadline.bold())
-                            .lineLimit(1)
-                        Text(current.song).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            VStack(spacing: 0) {
+                ProgressView(value: min(player.time, max(player.duration, 1)), total: max(player.duration, 1))
+                    .progressViewStyle(.linear)
+                    .tint(.accentColor)
+                    .accessibilityHidden(true)
+                HStack(spacing: 12) {
+                    Button(action: open) {
+                        HStack(spacing: 10) {
+                            Artwork(title: current.song, size: 40)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(player.isComparing ? "Comparing · \(player.active == .a ? "A" : "B")" : current.song)
+                                    .font(.subheadline.bold())
+                                    .lineLimit(1)
+                                Text(player.isComparing ? current.song : current.take.label)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
                     }
-                    Spacer()
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Now Playing: \(current.song), \(current.take.label)")
+                    .accessibilityHint("Opens the player")
+                    .accessibilityIdentifier("nowPlaying.open")
                     if player.isBuffering { ProgressView() }
                     Button { player.toggle() } label: {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title2)
                     }
                     .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
                     .accessibilityIdentifier("nowPlaying.playPause")
-                    Button { player.stop() } label: {
-                        Image(systemName: "xmark").font(.body.bold())
+                    if player.isComparing {
+                        Button { player.stop() } label: {
+                            Image(systemName: "xmark").font(.body.bold())
+                        }
+                        .accessibilityLabel("Stop")
+                        .accessibilityIdentifier("nowPlaying.stop")
+                    } else {
+                        Button { player.next() } label: {
+                            Image(systemName: "forward.fill").font(.title3)
+                        }
+                        .disabled(!player.hasNext)
+                        .accessibilityLabel("Next")
+                        .accessibilityIdentifier("nowPlaying.next")
                     }
-                    .accessibilityLabel("Stop")
-                    .accessibilityIdentifier("nowPlaying.stop")
                 }
                 .buttonStyle(.borderless)
-                if !player.isComparing {
-                    Scrubber(player: player)
-                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
                 if let failure = player.failure {
-                    Text(failure).font(.caption).foregroundStyle(.red)
+                    Text(failure)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal)
+                        .padding(.bottom, 6)
                 }
             }
-            .padding(.horizontal)
-            .padding(.vertical, 10)
             .background(.bar)
+        }
+    }
+}
+
+/// Stand-in artwork until songs have their own: the song's initial on a
+/// colour taken from its title, so each song keeps its colour.
+private struct Artwork: View {
+    let title: String
+    let size: CGFloat
+
+    var body: some View {
+        let hue = Double(title.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF } % 360) / 360
+        RoundedRectangle(cornerRadius: size * 0.12)
+            .fill(LinearGradient(
+                colors: [Color(hue: hue, saturation: 0.55, brightness: 0.85),
+                         Color(hue: hue, saturation: 0.75, brightness: 0.45)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            ))
+            .overlay {
+                Text(title.first.map { String($0).uppercased() } ?? "♪")
+                    .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The full player: artwork, the position, previous/play/next, shuffle and
+/// repeat, and Up Next. In a comparison, the A and B switch instead.
+private struct NowPlayingView: View {
+    let player: TakePlayer
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let current = player.current {
+                    Section {
+                        VStack(spacing: 16) {
+                            Artwork(title: current.song, size: 260)
+                                .shadow(radius: 12, y: 6)
+                                .padding(.top, 8)
+                            VStack(spacing: 4) {
+                                Text(current.song).font(.title2.bold()).multilineTextAlignment(.center)
+                                Text([current.act, current.take.label].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .accessibilityElement(children: .combine)
+                            Scrubber(player: player, showsButtons: false)
+                            if player.isComparing { abSwitch } else { transport }
+                            if let failure = player.failure {
+                                Text(failure).font(.caption).foregroundStyle(.red)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                    }
+                    if !player.upcoming.isEmpty {
+                        Section("Up Next") {
+                            ForEach(player.upcoming) { entry in
+                                Button {
+                                    player.jump(to: entry.position)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Artwork(title: entry.track.songTitle, size: 40)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(entry.track.songTitle).font(.body).foregroundStyle(.primary)
+                                            Text(entry.track.take.label).font(.caption).foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                                .accessibilityIdentifier("upNext.song")
+                                .swipeActions {
+                                    Button("Remove", systemImage: "minus.circle", role: .destructive) {
+                                        player.remove(at: entry.position)
+                                    }
+                                    .accessibilityIdentifier("upNext.remove")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Now Playing")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close", systemImage: "chevron.down") { dismiss() }
+                        .accessibilityIdentifier("nowPlayingSheet.close")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Stop", systemImage: "stop.fill") {
+                        player.stop()
+                        dismiss()
+                    }
+                    .accessibilityIdentifier("nowPlayingSheet.stop")
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
+    }
+
+    private var transport: some View {
+        HStack {
+            Button { player.toggleShuffle() } label: {
+                Image(systemName: "shuffle")
+                    .foregroundStyle(player.shuffle ? Color.accentColor : Color.secondary)
+            }
+            .accessibilityLabel("Shuffle")
+            .accessibilityValue(player.shuffle ? "On" : "Off")
+            .accessibilityIdentifier("nowPlayingSheet.shuffle")
+            Spacer()
+            Button { player.previous() } label: {
+                Image(systemName: "backward.fill").font(.title)
+            }
+            .accessibilityLabel("Previous")
+            .accessibilityIdentifier("nowPlayingSheet.previous")
+            Spacer()
+            Button { player.toggle() } label: {
+                Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 64))
+            }
+            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+            .accessibilityIdentifier("nowPlayingSheet.playPause")
+            Spacer()
+            Button { player.next() } label: {
+                Image(systemName: "forward.fill").font(.title)
+            }
+            .disabled(!player.hasNext)
+            .accessibilityLabel("Next")
+            .accessibilityIdentifier("nowPlayingSheet.next")
+            Spacer()
+            Button { player.cycleRepeat() } label: {
+                Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
+                    .foregroundStyle(player.repeatMode == .off ? Color.secondary : Color.accentColor)
+            }
+            .accessibilityLabel("Repeat")
+            .accessibilityValue(Self.repeatName(player.repeatMode))
+            .accessibilityIdentifier("nowPlayingSheet.repeat")
+        }
+        .font(.title3)
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 8)
+    }
+
+    private var abSwitch: some View {
+        HStack(spacing: 24) {
+            ForEach([TakePlayer.Side.a, .b], id: \.self) { side in
+                Button { player.hear(side) } label: {
+                    Text(side == .a ? "A" : "B")
+                        .font(.largeTitle.bold())
+                        .frame(width: 72, height: 72)
+                        .background(
+                            player.active == side ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12),
+                            in: Circle()
+                        )
+                }
+                .accessibilityLabel(side == .a ? "Hear A" : "Hear B")
+                .accessibilityAddTraits(player.active == side ? .isSelected : [])
+                .accessibilityIdentifier(side == .a ? "nowPlayingSheet.a" : "nowPlayingSheet.b")
+            }
+            Button { player.toggle() } label: {
+                Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 64))
+            }
+            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+            .accessibilityIdentifier("nowPlayingSheet.playPause")
+        }
+        .buttonStyle(.borderless)
+    }
+
+    static func repeatName(_ mode: RepeatMode) -> String {
+        switch mode {
+        case .off: return "Off"
+        case .all: return "All"
+        case .one: return "One"
         }
     }
 }

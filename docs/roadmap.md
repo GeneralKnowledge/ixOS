@@ -73,9 +73,19 @@ Expected from the first picks: full-text search (Commonplace, then Pocket Librar
      2. Pocket Library builds and validates its own search across books and notes.
      3. The two are compared, and only what they genuinely share moves into forge-storage.
   2. FieldKit's elevation and pace charts and Good Dog's progress over time, then Weather's hourly chart.
-  3. FieldKit's photo notes, after Chat's photo picker.
+  3. FieldKit's photo notes, after Chat's photo picker. **The photo picker is the next framework extraction in the queue** (noted 2026-11-16): once FieldKit's picker passes on the iPhone, the part it shares with Chat's moves into the framework, and Soundscape's song artwork is the first feature built on the extracted picker rather than its own copy.
 
   The shared part moves into the framework after both features have been validated on an iPhone.
+
+**Everyday capabilities** (agreed 2026-11-16, Reuben; [audit and plan](research/everyday-capabilities.md)). Five small completions of what apps repeat, each proven by an app feature, after this docs pass (phase 0) and one at a time. None starts as a framework project:
+
+| Phase | Work | Proven by | Starts with |
+|---|---|---|---|
+| 1 | Unreadable saved data has a way forward: Start Fresh for corrupt data, never for newer data | Sketchbook, then Pocket Library | A design note: the typed open failure reaching `ForgeRoot` |
+| 2 | A refused permission never leaves a dead screen | FieldKit, Sketchbook, Relay | The SwiftUI denied state |
+| 3 | Offline files kept but not backed up; background transfers in a real feature | Soundscape offline downloads | Where the songs live |
+| 4 | One way to add a native service, usable outside ixOS | Soundscape and Weather first | An investigation, then a yes or no |
+| 5 | A shared Now Playing helper | Soundscape, Pocket Library | Comparing the two playback interfaces |
 
 **Expand an existing app before adding a new one** (decided 2026-11-16, Reuben). A missing application category does not by itself justify a new app. First ask whether an existing app has a real reason to grow into it; if one does, that growth proves the capability.
 
@@ -180,7 +190,7 @@ An agent takes a real task on an existing app, changes it, checks it on the iPho
 
 ### iPhone acceptance of the integrated framework — Partly done
 
-The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](https://github.com/GeneralKnowledge/ixOS/blob/b5276a2a20cb5aa110d3cafa56bdc2596371a34c/docs/archive/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. Pocket Library has run on an iPhone (UI test m0, 11/11, 2026-11-07) and now runs inside Device Lab, installed over the air ([status](status.md)). A fresh app from the current starter and the services check app have not been recorded on an iPhone; the services check's capabilities are the largest part of the "built, not yet run on an iPhone" list.
+The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](https://github.com/GeneralKnowledge/ixOS/blob/b5276a2a20cb5aa110d3cafa56bdc2596371a34c/docs/archive/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. Pocket Library has run on an iPhone (UI test m0, 11/11, 2026-11-07) and now runs inside Device Lab, installed by cable (over-the-air installs are parked, [over-the-air.md](over-the-air.md)) ([status](status.md)). A fresh app from the current starter and the services check app have not been recorded on an iPhone; the services check's capabilities are the largest part of the "built, not yet run on an iPhone" list.
 
 ### Native iOS UI — Done, device check open
 
@@ -244,7 +254,7 @@ Good first project for someone with a Mac.
 
 ### Native iOS services (M3) — In progress
 
-`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Next: the tiers in [native-capability-roadmap.md](native-capability-roadmap.md), starting with the web view, documents, the native reader, photos and camera, and background tasks. Android implementations of the same interfaces wait until Android work resumes ([above](#android--work-in-progress)).
+`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Built since: the web view, the native reader, the photos picker, background tasks, background transfers and the URLSession `http` service ([status](status.md)); camera capture is not built. The core services now also ship in ForgeKit as `ForgeNative` (`forge-native`), used by the starter and Good Dog; the other apps still copy them through `native_services!`, and moving everything to one route is phase 4 of the everyday capabilities plan below. Android implementations of the same interfaces wait until Android work resumes ([above](#android--work-in-progress)).
 
 ### Store distribution (App Store, Google Play) — Open
 

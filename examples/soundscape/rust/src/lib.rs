@@ -20,12 +20,14 @@
 //! - **Listen** ([`listen`]) plays, compares and picks song takes kept on
 //!   another computer's take server. Rust keeps the address, asks the
 //!   server (URLSession on iOS) and works out matched loudness; AVPlayer
-//!   streams the audio.
+//!   streams the audio. [`queue`] decides what plays next: in order or
+//!   shuffled, with repeat.
 
 pub mod dsp;
 pub mod listen;
 mod model;
 pub mod project;
+pub mod queue;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -46,6 +48,7 @@ pub use model::{
     MIN_GAIN_DB, MIN_TEMPO,
 };
 use project::{Loaded, Project, Projects, SavedClip};
+pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
 
 uniffi::setup_scaffolding!();
 
@@ -529,6 +532,43 @@ impl SoundscapeCore {
         self.rt
             .run("listen-song", work, move |cancel| {
                 listen::fetch_song(http.as_ref(), &server, &slug, cancel)
+            })
+            .await
+    }
+
+    /// The songs `slugs`, in that order, each with its preferred take, to
+    /// play one after another. Songs the server no longer has, or that
+    /// have no takes, are left out. On-screen work.
+    pub async fn listen_tracks(
+        &self,
+        slugs: Vec<String>,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<QueueTrack>, SoundscapeError> {
+        let server = self.server()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("listen-tracks", work, move |cancel| {
+                let mut tracks = Vec::with_capacity(slugs.len());
+                for slug in &slugs {
+                    let song = match listen::fetch_song(http.as_ref(), &server, slug, cancel) {
+                        Ok(song) => song,
+                        // gone from the server since the list was loaded
+                        Err(SoundscapeError::Server { .. }) => continue,
+                        Err(other) => return Err(other),
+                    };
+                    let (slug, song_title, act) =
+                        (song.slug.clone(), song.title.clone(), song.act.clone());
+                    if let Some(take) = queue::preferred_take(song) {
+                        tracks.push(QueueTrack {
+                            slug,
+                            song_title,
+                            act,
+                            take,
+                        });
+                    }
+                }
+                Ok(tracks)
             })
             .await
     }

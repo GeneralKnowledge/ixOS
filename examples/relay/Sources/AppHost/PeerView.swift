@@ -93,24 +93,28 @@ struct PeerView: View {
     }
 
     /// The picked file is copied into Relay's caches first: the picker's
-    /// access ends, and Rust reads the file until the transfer ends.
+    /// access ends, and Rust reads the file until the transfer ends. The
+    /// copy runs off the main thread (a large video takes seconds) and is
+    /// deleted once the send has ended, sent or not.
     private func sendFile(_ picked: URL) {
-        let copy: URL
-        do {
-            copy = try Self.outboxCopy(of: picked)
-        } catch {
-            model.report(error)
-            return
-        }
         sending = true
         Task {
-            let addresses = await network.addresses(for: peer.deviceId)
-            await model.send(file: copy, to: peer, addresses: addresses)
+            let copied = await Task.detached(priority: .userInitiated) {
+                Result { try Self.outboxCopy(of: picked) }
+            }.value
+            switch copied {
+            case .success(let copy):
+                let addresses = await network.addresses(for: peer.deviceId)
+                await model.send(file: copy, to: peer, addresses: addresses)
+                try? FileManager.default.removeItem(at: copy.deletingLastPathComponent())
+            case .failure(let error):
+                model.report(error)
+            }
             sending = false
         }
     }
 
-    private static func outboxCopy(of picked: URL) throws -> URL {
+    private nonisolated static func outboxCopy(of picked: URL) throws -> URL {
         let access = picked.startAccessingSecurityScopedResource()
         defer { if access { picked.stopAccessingSecurityScopedResource() } }
         let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
