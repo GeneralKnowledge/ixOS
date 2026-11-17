@@ -1,0 +1,10 @@
+# a11y-check configuration for ixOS (scripts/a11y-report.sh, report only).
+# Why these rules are off, and how a rule becomes a gate:
+# docs/accessibility-report.md.
+
+disabled_rules:
+  # Fires on every system alert and confirmation dialog. Whether VoiceOver
+  # focus returns after a SwiftUI alert or sheet is a phone question.
+  - sheet-focus-return
+  # Most findings sampled were ordinary styled text, not headings.
+  - heading-trait-missing

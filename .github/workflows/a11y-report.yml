@@ -1,0 +1,60 @@
+name: Accessibility report
+
+# A report of likely accessibility problems in every app's Swift sources,
+# the starter templates and ForgeKit, from a11y-check (a SwiftSyntax source
+# checker, pinned in scripts/a11y-report.sh). REPORT ONLY: findings never
+# fail this workflow, and nothing gates on it. The summary is on the run's
+# page and the JSON is kept as an artifact. How a rule may later become a
+# gate: docs/accessibility-report.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/**/*.swift"
+      - "forgekit/**/*.swift"
+      - "templates/**/*.swift"
+      - ".a11ycheck.yml"
+      - "scripts/a11y-report.sh"
+      - ".github/workflows/a11y-report.yml"
+  pull_request:
+    paths:
+      - "examples/**/*.swift"
+      - "forgekit/**/*.swift"
+      - "templates/**/*.swift"
+      - ".a11ycheck.yml"
+      - "scripts/a11y-report.sh"
+      - ".github/workflows/a11y-report.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Accessibility report (report only)
+    runs-on: ubuntu-latest
+    # Report only, including when the tool itself can't be built.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The pinned tool takes about 7 minutes to build, so keep the binary.
+      # The key follows the script, which holds the pinned version.
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/forge/a11y-check
+          key: a11y-check-${{ hashFiles('scripts/a11y-report.sh') }}
+      - name: Report
+        env:
+          FORGE_SWIFT_DOCKER: swift:6.2
+        run: ./scripts/a11y-report.sh "$RUNNER_TEMP/a11y-report"
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: a11y-report
+          path: ${{ runner.temp }}/a11y-report
+          if-no-files-found: ignore

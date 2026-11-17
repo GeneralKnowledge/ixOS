@@ -27,6 +27,7 @@ What developers use to build, test and inspect an app: the `forge` command, temp
 | [forge-device.md](forge-device.md) | Your iPhone from Linux: details, live logs, crash reports |
 | [forge-ui-testing.md](forge-ui-testing.md) | UI tests that tap and type on a real iPhone (`forge ui`) |
 | [visual-regression.md](visual-regression.md) | Noticing when a change made a screen look worse |
+| [accessibility-report.md](accessibility-report.md) | Likely accessibility problems in the Swift sources, found on Linux before the phone (report only) |
 | [evidence.md](evidence.md) | Recording what a run proved |
 | [device-validation.md](device-validation.md) | The per-app phone check: compiles, installs, launches, main interactions |
 | [native-services-device-check.md](native-services-device-check.md), [local-ai-check.md](local-ai-check.md) | Runbooks for the generated check apps |
