@@ -243,6 +243,240 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD1
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod1)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD2
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod2)(uint64_t, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod3)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
+typedef void (*UniffiCallbackInterfacePermissionProviderMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD1
+typedef void (*UniffiCallbackInterfacePermissionProviderMethod1)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD0
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD1
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod1)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD2
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD0
+typedef void (*UniffiCallbackInterfaceAiModelMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD1
+typedef void (*UniffiCallbackInterfaceAiModelMethod1)(uint64_t, RustBuffer, uint64_t, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AUDIO_FILES_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AUDIO_FILES_METHOD0
+typedef void (*UniffiCallbackInterfaceAudioFilesMethod0)(uint64_t, RustBuffer, double* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD0
+typedef void (*UniffiCallbackInterfaceBackgroundSchedulerMethod0)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD1
+typedef void (*UniffiCallbackInterfaceBackgroundSchedulerMethod1)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD2
+typedef void (*UniffiCallbackInterfaceBackgroundSchedulerMethod2)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION_METHOD0
+typedef void (*UniffiCallbackInterfaceBackgroundTaskCompletionMethod0)(uint64_t, int8_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD0
+typedef void (*UniffiCallbackInterfaceBiometricAuthenticatorMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD1
+typedef void (*UniffiCallbackInterfaceBiometricAuthenticatorMethod1)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod1)(uint64_t, RustBuffer, uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod2)(uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
+typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceLocalNotifierMethod0 _Nonnull schedule;
+    UniffiCallbackInterfaceLocalNotifierMethod1 _Nonnull cancel;
+    UniffiCallbackInterfaceLocalNotifierMethod2 _Nonnull pending;
+    UniffiCallbackInterfaceLocalNotifierMethod3 _Nonnull setCategories;
+} UniffiVTableCallbackInterfaceLocalNotifier;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PERMISSION_PROVIDER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PERMISSION_PROVIDER
+typedef struct UniffiVTableCallbackInterfacePermissionProvider {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfacePermissionProviderMethod0 _Nonnull status;
+    UniffiCallbackInterfacePermissionProviderMethod1 _Nonnull request;
+} UniffiVTableCallbackInterfacePermissionProvider;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SECURE_STORE
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SECURE_STORE
+typedef struct UniffiVTableCallbackInterfaceSecureStore {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceSecureStoreMethod0 _Nonnull get;
+    UniffiCallbackInterfaceSecureStoreMethod1 _Nonnull set;
+    UniffiCallbackInterfaceSecureStoreMethod2 _Nonnull delete;
+} UniffiVTableCallbackInterfaceSecureStore;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AI_MODEL
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AI_MODEL
+typedef struct UniffiVTableCallbackInterfaceAiModel {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceAiModelMethod0 _Nonnull describe;
+    UniffiCallbackInterfaceAiModelMethod1 _Nonnull generate;
+} UniffiVTableCallbackInterfaceAiModel;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AUDIO_FILES
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AUDIO_FILES
+typedef struct UniffiVTableCallbackInterfaceAudioFiles {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceAudioFilesMethod0 _Nonnull duration;
+} UniffiVTableCallbackInterfaceAudioFiles;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER
+typedef struct UniffiVTableCallbackInterfaceBackgroundScheduler {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceBackgroundSchedulerMethod0 _Nonnull submit;
+    UniffiCallbackInterfaceBackgroundSchedulerMethod1 _Nonnull cancel;
+    UniffiCallbackInterfaceBackgroundSchedulerMethod2 _Nonnull permitted;
+} UniffiVTableCallbackInterfaceBackgroundScheduler;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION
+typedef struct UniffiVTableCallbackInterfaceBackgroundTaskCompletion {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceBackgroundTaskCompletionMethod0 _Nonnull finished;
+} UniffiVTableCallbackInterfaceBackgroundTaskCompletion;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR
+typedef struct UniffiVTableCallbackInterfaceBiometricAuthenticator {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceBiometricAuthenticatorMethod0 _Nonnull availability;
+    UniffiCallbackInterfaceBiometricAuthenticatorMethod1 _Nonnull authenticate;
+} UniffiVTableCallbackInterfaceBiometricAuthenticator;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+typedef struct UniffiVTableCallbackInterfaceHttpTransport {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceHttpTransportMethod0 _Nonnull send;
+    UniffiCallbackInterfaceHttpTransportMethod1 _Nonnull openStream;
+    UniffiCallbackInterfaceHttpTransportMethod2 _Nonnull cancel;
+} UniffiVTableCallbackInterfaceHttpTransport;
+
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_RELAYCORE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_RELAYCORE
 uint64_t uniffi_relay_core_fn_clone_relaycore(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -413,6 +647,661 @@ void uniffi_relay_core_fn_method_relaycore_stop_listening(uint64_t ptr, RustCall
 RustBuffer uniffi_relay_core_fn_method_relaycore_transfers(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_CHATCORE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_CHATCORE
+uint64_t uniffi_relay_core_fn_clone_chatcore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_CHATCORE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_CHATCORE
+void uniffi_relay_core_fn_free_chatcore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CONSTRUCTOR_CHATCORE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CONSTRUCTOR_CHATCORE_NEW
+uint64_t uniffi_relay_core_fn_constructor_chatcore_new(RustBuffer storage_directory, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CONSTRUCTOR_CHATCORE_WITH_MEMORY_CREDENTIALS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CONSTRUCTOR_CHATCORE_WITH_MEMORY_CREDENTIALS
+uint64_t uniffi_relay_core_fn_constructor_chatcore_with_memory_credentials(RustBuffer storage_directory, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_ACCOUNT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_ACCOUNT
+RustBuffer uniffi_relay_core_fn_method_chatcore_account(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_APP_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_APP_LOCK
+int8_t uniffi_relay_core_fn_method_chatcore_app_lock(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_ASSISTANT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_ASSISTANT
+uint64_t uniffi_relay_core_fn_method_chatcore_assistant(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_ATTACHMENT_FILE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_ATTACHMENT_FILE
+RustBuffer uniffi_relay_core_fn_method_chatcore_attachment_file(uint64_t ptr, RustBuffer attachment_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_BACKGROUND_TIME_EXPIRED
+void uniffi_relay_core_fn_method_chatcore_background_time_expired(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_BACKGROUND_WORK_PENDING
+int8_t uniffi_relay_core_fn_method_chatcore_background_work_pending(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CACHED_CONVERSATIONS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CACHED_CONVERSATIONS
+RustBuffer uniffi_relay_core_fn_method_chatcore_cached_conversations(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CACHED_MESSAGES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CACHED_MESSAGES
+RustBuffer uniffi_relay_core_fn_method_chatcore_cached_messages(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CHAT_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CHAT_EVENTS
+uint64_t uniffi_relay_core_fn_method_chatcore_chat_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CHECK_ACCOUNT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CHECK_ACCOUNT
+uint64_t uniffi_relay_core_fn_method_chatcore_check_account(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CREATE_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_CREATE_CONVERSATION
+uint64_t uniffi_relay_core_fn_method_chatcore_create_conversation(uint64_t ptr, RustBuffer title
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_DELETE_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_DELETE_MESSAGE
+uint64_t uniffi_relay_core_fn_method_chatcore_delete_message(uint64_t ptr, RustBuffer message_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_DRAFT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_DRAFT
+RustBuffer uniffi_relay_core_fn_method_chatcore_draft(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_EDIT_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_EDIT_MESSAGE
+uint64_t uniffi_relay_core_fn_method_chatcore_edit_message(uint64_t ptr, RustBuffer message_id, RustBuffer body
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_EVENTS
+RustBuffer uniffi_relay_core_fn_method_chatcore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_FETCH_ATTACHMENT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_FETCH_ATTACHMENT
+uint64_t uniffi_relay_core_fn_method_chatcore_fetch_attachment(uint64_t ptr, RustBuffer attachment_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_LAUNCH_REPORT
+RustBuffer uniffi_relay_core_fn_method_chatcore_launch_report(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_LIST_CONVERSATIONS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_LIST_CONVERSATIONS
+uint64_t uniffi_relay_core_fn_method_chatcore_list_conversations(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_LIVE_STREAMS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_LIVE_STREAMS
+uint32_t uniffi_relay_core_fn_method_chatcore_live_streams(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_MARK_READ
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_MARK_READ
+uint64_t uniffi_relay_core_fn_method_chatcore_mark_read(uint64_t ptr, RustBuffer conversation_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_OUTBOX_COUNT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_OUTBOX_COUNT
+uint32_t uniffi_relay_core_fn_method_chatcore_outbox_count(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_PHASE
+RustBuffer uniffi_relay_core_fn_method_chatcore_phase(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_RETRY_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_RETRY_MESSAGE
+uint64_t uniffi_relay_core_fn_method_chatcore_retry_message(uint64_t ptr, RustBuffer message_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_REVISION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_REVISION
+uint64_t uniffi_relay_core_fn_method_chatcore_revision(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SEARCH
+uint64_t uniffi_relay_core_fn_method_chatcore_search(uint64_t ptr, RustBuffer query, RustBuffer conversation_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SEND_FILES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SEND_FILES
+uint64_t uniffi_relay_core_fn_method_chatcore_send_files(uint64_t ptr, RustBuffer conversation_id, RustBuffer body, RustBuffer reply_to, RustBuffer files
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SEND_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SEND_MESSAGE
+uint64_t uniffi_relay_core_fn_method_chatcore_send_message(uint64_t ptr, RustBuffer conversation_id, RustBuffer body
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SEND_REPLY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SEND_REPLY
+uint64_t uniffi_relay_core_fn_method_chatcore_send_reply(uint64_t ptr, RustBuffer conversation_id, RustBuffer body, RustBuffer reply_to
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_APP_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_APP_LOCK
+void uniffi_relay_core_fn_method_chatcore_set_app_lock(uint64_t ptr, int8_t enabled, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_DRAFT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_DRAFT
+void uniffi_relay_core_fn_method_chatcore_set_draft(uint64_t ptr, RustBuffer conversation_id, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_MARKED_UNREAD
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_MARKED_UNREAD
+void uniffi_relay_core_fn_method_chatcore_set_marked_unread(uint64_t ptr, RustBuffer conversation_id, int8_t marked, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_MUTED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_MUTED
+void uniffi_relay_core_fn_method_chatcore_set_muted(uint64_t ptr, RustBuffer conversation_id, int8_t muted, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_PHASE
+void uniffi_relay_core_fn_method_chatcore_set_phase(uint64_t ptr, RustBuffer phase, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_REACTION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SET_REACTION
+uint64_t uniffi_relay_core_fn_method_chatcore_set_reaction(uint64_t ptr, RustBuffer message_id, RustBuffer emoji, int8_t on
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SHUTDOWN
+void uniffi_relay_core_fn_method_chatcore_shutdown(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SIGN_OUT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SIGN_OUT
+void uniffi_relay_core_fn_method_chatcore_sign_out(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SIGN_UP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SIGN_UP
+uint64_t uniffi_relay_core_fn_method_chatcore_sign_up(uint64_t ptr, RustBuffer server_url, RustBuffer display_name
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_STORE_PROBLEM
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_STORE_PROBLEM
+RustBuffer uniffi_relay_core_fn_method_chatcore_store_problem(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SUBSCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SUBSCRIBE
+void uniffi_relay_core_fn_method_chatcore_subscribe(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SYNC_MESSAGES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_SYNC_MESSAGES
+uint64_t uniffi_relay_core_fn_method_chatcore_sync_messages(uint64_t ptr, RustBuffer conversation_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_UNSUBSCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_UNSUBSCRIBE
+void uniffi_relay_core_fn_method_chatcore_unsubscribe(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_UNWATCH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_UNWATCH
+void uniffi_relay_core_fn_method_chatcore_unwatch(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_WATCH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_WATCH
+void uniffi_relay_core_fn_method_chatcore_watch(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_CHATEVENTS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_CHATEVENTS
+uint64_t uniffi_relay_core_fn_clone_chatevents(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_CHATEVENTS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_CHATEVENTS
+void uniffi_relay_core_fn_free_chatevents(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATEVENTS_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATEVENTS_CANCEL
+void uniffi_relay_core_fn_method_chatevents_cancel(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATEVENTS_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATEVENTS_NEXT
+uint64_t uniffi_relay_core_fn_method_chatevents_next(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_ASSISTANTCORE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_ASSISTANTCORE
+uint64_t uniffi_relay_core_fn_clone_assistantcore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_ASSISTANTCORE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_ASSISTANTCORE
+void uniffi_relay_core_fn_free_assistantcore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_CHARACTERS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_CHARACTERS
+RustBuffer uniffi_relay_core_fn_method_assistantcore_characters(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_CONVERSATIONS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_CONVERSATIONS
+RustBuffer uniffi_relay_core_fn_method_assistantcore_conversations(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_CURRENT_GENERATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_CURRENT_GENERATION
+RustBuffer uniffi_relay_core_fn_method_assistantcore_current_generation(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_DELETE_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_DELETE_CONVERSATION
+void uniffi_relay_core_fn_method_assistantcore_delete_conversation(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_ENGINE_INFO
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_ENGINE_INFO
+RustBuffer uniffi_relay_core_fn_method_assistantcore_engine_info(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_MESSAGES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_MESSAGES
+RustBuffer uniffi_relay_core_fn_method_assistantcore_messages(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_SEND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_SEND
+uint64_t uniffi_relay_core_fn_method_assistantcore_send(uint64_t ptr, RustBuffer conversation_id, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_SET_ENGINE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_SET_ENGINE
+void uniffi_relay_core_fn_method_assistantcore_set_engine(uint64_t ptr, uint64_t engine, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_SHUTDOWN
+void uniffi_relay_core_fn_method_assistantcore_shutdown(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_START_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTCORE_START_CONVERSATION
+RustBuffer uniffi_relay_core_fn_method_assistantcore_start_conversation(uint64_t ptr, RustBuffer character_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_ASSISTANTGENERATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_ASSISTANTGENERATION
+uint64_t uniffi_relay_core_fn_clone_assistantgeneration(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_ASSISTANTGENERATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_ASSISTANTGENERATION
+void uniffi_relay_core_fn_free_assistantgeneration(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_CANCEL
+void uniffi_relay_core_fn_method_assistantgeneration_cancel(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_CATCH_UP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_CATCH_UP
+RustBuffer uniffi_relay_core_fn_method_assistantgeneration_catch_up(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_CONVERSATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_CONVERSATION_ID
+RustBuffer uniffi_relay_core_fn_method_assistantgeneration_conversation_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_IS_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_IS_FINISHED
+int8_t uniffi_relay_core_fn_method_assistantgeneration_is_finished(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_MESSAGE_ID
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_MESSAGE_ID
+RustBuffer uniffi_relay_core_fn_method_assistantgeneration_message_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_ASSISTANTGENERATION_NEXT
+uint64_t uniffi_relay_core_fn_method_assistantgeneration_next(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_LOCALNOTIFIER
+uint64_t uniffi_relay_core_fn_clone_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_LOCALNOTIFIER
+void uniffi_relay_core_fn_free_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_LOCALNOTIFIER
+void uniffi_relay_core_fn_init_callback_vtable_localnotifier(const UniffiVTableCallbackInterfaceLocalNotifier* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_LOCALNOTIFIER_SCHEDULE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_LOCALNOTIFIER_SCHEDULE
+uint64_t uniffi_relay_core_fn_method_localnotifier_schedule(uint64_t ptr, RustBuffer notification
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_LOCALNOTIFIER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_LOCALNOTIFIER_CANCEL
+void uniffi_relay_core_fn_method_localnotifier_cancel(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_LOCALNOTIFIER_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_LOCALNOTIFIER_PENDING
+uint64_t uniffi_relay_core_fn_method_localnotifier_pending(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+void uniffi_relay_core_fn_method_localnotifier_set_categories(uint64_t ptr, RustBuffer categories, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_PERMISSIONPROVIDER
+uint64_t uniffi_relay_core_fn_clone_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_PERMISSIONPROVIDER
+void uniffi_relay_core_fn_free_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_PERMISSIONPROVIDER
+void uniffi_relay_core_fn_init_callback_vtable_permissionprovider(const UniffiVTableCallbackInterfacePermissionProvider* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_PERMISSIONPROVIDER_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_PERMISSIONPROVIDER_STATUS
+uint64_t uniffi_relay_core_fn_method_permissionprovider_status(uint64_t ptr, RustBuffer permission
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_PERMISSIONPROVIDER_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_PERMISSIONPROVIDER_REQUEST
+uint64_t uniffi_relay_core_fn_method_permissionprovider_request(uint64_t ptr, RustBuffer permission
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_SECURESTORE
+uint64_t uniffi_relay_core_fn_clone_securestore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_SECURESTORE
+void uniffi_relay_core_fn_free_securestore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_SECURESTORE
+void uniffi_relay_core_fn_init_callback_vtable_securestore(const UniffiVTableCallbackInterfaceSecureStore* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_SECURESTORE_GET
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_SECURESTORE_GET
+RustBuffer uniffi_relay_core_fn_method_securestore_get(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_SECURESTORE_SET
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_SECURESTORE_SET
+void uniffi_relay_core_fn_method_securestore_set(uint64_t ptr, RustBuffer key, RustBuffer value, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_SECURESTORE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_SECURESTORE_DELETE
+void uniffi_relay_core_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_AIMODEL
+uint64_t uniffi_relay_core_fn_clone_aimodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_AIMODEL
+void uniffi_relay_core_fn_free_aimodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_AIMODEL
+void uniffi_relay_core_fn_init_callback_vtable_aimodel(const UniffiVTableCallbackInterfaceAiModel* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_AIMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_AIMODEL_DESCRIBE
+RustBuffer uniffi_relay_core_fn_method_aimodel_describe(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_AIMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_AIMODEL_GENERATE
+uint64_t uniffi_relay_core_fn_method_aimodel_generate(uint64_t ptr, RustBuffer request, uint64_t sink
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_TEXTSINK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_TEXTSINK
+uint64_t uniffi_relay_core_fn_clone_textsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_TEXTSINK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_TEXTSINK
+void uniffi_relay_core_fn_free_textsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_TEXTSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_TEXTSINK_IS_STOPPED
+int8_t uniffi_relay_core_fn_method_textsink_is_stopped(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_TEXTSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_TEXTSINK_PUSH
+int8_t uniffi_relay_core_fn_method_textsink_push(uint64_t ptr, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_AUDIOFILES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_AUDIOFILES
+uint64_t uniffi_relay_core_fn_clone_audiofiles(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_AUDIOFILES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_AUDIOFILES
+void uniffi_relay_core_fn_free_audiofiles(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_AUDIOFILES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_AUDIOFILES
+void uniffi_relay_core_fn_init_callback_vtable_audiofiles(const UniffiVTableCallbackInterfaceAudioFiles* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_AUDIOFILES_DURATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_AUDIOFILES_DURATION
+double uniffi_relay_core_fn_method_audiofiles_duration(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_BACKGROUNDSCHEDULER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_BACKGROUNDSCHEDULER
+uint64_t uniffi_relay_core_fn_clone_backgroundscheduler(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_BACKGROUNDSCHEDULER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_BACKGROUNDSCHEDULER
+void uniffi_relay_core_fn_free_backgroundscheduler(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_BACKGROUNDSCHEDULER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_BACKGROUNDSCHEDULER
+void uniffi_relay_core_fn_init_callback_vtable_backgroundscheduler(const UniffiVTableCallbackInterfaceBackgroundScheduler* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+void uniffi_relay_core_fn_method_backgroundscheduler_submit(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDSCHEDULER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDSCHEDULER_CANCEL
+void uniffi_relay_core_fn_method_backgroundscheduler_cancel(uint64_t ptr, RustBuffer identifier, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+RustBuffer uniffi_relay_core_fn_method_backgroundscheduler_permitted(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_BACKGROUNDTASKCOMPLETION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_BACKGROUNDTASKCOMPLETION
+uint64_t uniffi_relay_core_fn_clone_backgroundtaskcompletion(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_BACKGROUNDTASKCOMPLETION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_BACKGROUNDTASKCOMPLETION
+void uniffi_relay_core_fn_free_backgroundtaskcompletion(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_BACKGROUNDTASKCOMPLETION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_BACKGROUNDTASKCOMPLETION
+void uniffi_relay_core_fn_init_callback_vtable_backgroundtaskcompletion(const UniffiVTableCallbackInterfaceBackgroundTaskCompletion* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+void uniffi_relay_core_fn_method_backgroundtaskcompletion_finished(uint64_t ptr, int8_t success, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_BACKGROUNDTASKRUN
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_BACKGROUNDTASKRUN
+uint64_t uniffi_relay_core_fn_clone_backgroundtaskrun(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_BACKGROUNDTASKRUN
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_BACKGROUNDTASKRUN
+void uniffi_relay_core_fn_free_backgroundtaskrun(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDTASKRUN_EXPIRE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BACKGROUNDTASKRUN_EXPIRE
+void uniffi_relay_core_fn_method_backgroundtaskrun_expire(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_BIOMETRICAUTHENTICATOR
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_BIOMETRICAUTHENTICATOR
+uint64_t uniffi_relay_core_fn_clone_biometricauthenticator(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_BIOMETRICAUTHENTICATOR
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_BIOMETRICAUTHENTICATOR
+void uniffi_relay_core_fn_free_biometricauthenticator(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_BIOMETRICAUTHENTICATOR
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_BIOMETRICAUTHENTICATOR
+void uniffi_relay_core_fn_init_callback_vtable_biometricauthenticator(const UniffiVTableCallbackInterfaceBiometricAuthenticator* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BIOMETRICAUTHENTICATOR_AVAILABILITY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BIOMETRICAUTHENTICATOR_AVAILABILITY
+RustBuffer uniffi_relay_core_fn_method_biometricauthenticator_availability(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
+uint64_t uniffi_relay_core_fn_method_biometricauthenticator_authenticate(uint64_t ptr, RustBuffer reason
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_HTTPSTREAMBODY
+uint64_t uniffi_relay_core_fn_clone_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_HTTPSTREAMBODY
+void uniffi_relay_core_fn_free_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+void uniffi_relay_core_fn_method_httpstreambody_fail(uint64_t ptr, RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+void uniffi_relay_core_fn_method_httpstreambody_finish(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+void uniffi_relay_core_fn_method_httpstreambody_receive(uint64_t ptr, RustBuffer data, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_HTTPTRANSPORT
+uint64_t uniffi_relay_core_fn_clone_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FREE_HTTPTRANSPORT
+void uniffi_relay_core_fn_free_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+void uniffi_relay_core_fn_init_callback_vtable_httptransport(const UniffiVTableCallbackInterfaceHttpTransport* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPTRANSPORT_SEND
+RustBuffer uniffi_relay_core_fn_method_httptransport_send(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+RustBuffer uniffi_relay_core_fn_method_httptransport_open_stream(uint64_t ptr, RustBuffer request, uint64_t body, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_HTTPTRANSPORT_CANCEL
+void uniffi_relay_core_fn_method_httptransport_cancel(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_FORGE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_FORGE_LOG
 void uniffi_relay_core_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
@@ -428,9 +1317,98 @@ int8_t uniffi_relay_core_fn_func_forge_log_enabled(RustBuffer level, RustCallSta
 uint8_t uniffi_relay_core_fn_func_word_code_number(RustBuffer code, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_APP_LOCK_METHOD
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_APP_LOCK_METHOD
+RustBuffer uniffi_relay_core_fn_func_app_lock_method(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_MESSAGE_LINK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_MESSAGE_LINK
+RustBuffer uniffi_relay_core_fn_func_chat_message_link(RustBuffer conversation_id, RustBuffer message_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_DELIVERY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_DELIVERY
+RustBuffer uniffi_relay_core_fn_func_chat_delivery(RustBuffer message, RustBuffer conversation, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_ERROR_KIND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_ERROR_KIND
+RustBuffer uniffi_relay_core_fn_func_chat_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_STORAGE_ENGINE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_STORAGE_ENGINE
+RustBuffer uniffi_relay_core_fn_func_storage_engine(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_RELAY_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_RELAY_ERROR_KIND
 RustBuffer uniffi_relay_core_fn_func_relay_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+void uniffi_relay_core_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
+void uniffi_relay_core_fn_func_install_native_services(RustBuffer directories, uint64_t secure_store, uint64_t notifier, uint64_t permissions, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_NATIVE_SERVICES_INSTALLED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_NATIVE_SERVICES_INSTALLED
+int8_t uniffi_relay_core_fn_func_native_services_installed(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_NATIVE_SERVICES_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_NATIVE_SERVICES_VERSION
+uint32_t uniffi_relay_core_fn_func_native_services_version(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_PARSE_DEEP_LINK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_PARSE_DEEP_LINK
+RustBuffer uniffi_relay_core_fn_func_parse_deep_link(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_AI
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_AI
+void uniffi_relay_core_fn_func_install_native_ai(uint64_t model, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_AUDIO
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_AUDIO
+void uniffi_relay_core_fn_func_install_native_audio(uint64_t files, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_BACKGROUND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_BACKGROUND
+void uniffi_relay_core_fn_func_install_native_background(uint64_t scheduler, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_NATIVE_BACKGROUND_HANDLES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_NATIVE_BACKGROUND_HANDLES
+int8_t uniffi_relay_core_fn_func_native_background_handles(RustBuffer identifier, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_RUN_NATIVE_BACKGROUND_TASK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_RUN_NATIVE_BACKGROUND_TASK
+uint64_t uniffi_relay_core_fn_func_run_native_background_task(RustBuffer identifier, uint64_t completion, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_BIOMETRICS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_BIOMETRICS
+void uniffi_relay_core_fn_func_install_native_biometrics(uint64_t authenticator, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
+void uniffi_relay_core_fn_func_install_native_http(uint64_t transport, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_RELAY_CORE_RUSTBUFFER_ALLOC
@@ -711,9 +1689,111 @@ uint16_t uniffi_relay_core_checksum_func_word_code_number(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_APP_LOCK_METHOD
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_APP_LOCK_METHOD
+uint16_t uniffi_relay_core_checksum_func_app_lock_method(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_MESSAGE_LINK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_MESSAGE_LINK
+uint16_t uniffi_relay_core_checksum_func_chat_message_link(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_DELIVERY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_DELIVERY
+uint16_t uniffi_relay_core_checksum_func_chat_delivery(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_ERROR_KIND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_ERROR_KIND
+uint16_t uniffi_relay_core_checksum_func_chat_error_kind(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_STORAGE_ENGINE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_STORAGE_ENGINE
+uint16_t uniffi_relay_core_checksum_func_storage_engine(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_RELAY_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_RELAY_ERROR_KIND
 uint16_t uniffi_relay_core_checksum_func_relay_error_kind(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+uint16_t uniffi_relay_core_checksum_func_deliver_notification_response(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
+uint16_t uniffi_relay_core_checksum_func_install_native_services(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_INSTALLED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_INSTALLED
+uint16_t uniffi_relay_core_checksum_func_native_services_installed(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_VERSION
+uint16_t uniffi_relay_core_checksum_func_native_services_version(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
+uint16_t uniffi_relay_core_checksum_func_parse_deep_link(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_AI
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_AI
+uint16_t uniffi_relay_core_checksum_func_install_native_ai(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_AUDIO
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_AUDIO
+uint16_t uniffi_relay_core_checksum_func_install_native_audio(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_BACKGROUND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_BACKGROUND
+uint16_t uniffi_relay_core_checksum_func_install_native_background(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_NATIVE_BACKGROUND_HANDLES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_NATIVE_BACKGROUND_HANDLES
+uint16_t uniffi_relay_core_checksum_func_native_background_handles(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_RUN_NATIVE_BACKGROUND_TASK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_RUN_NATIVE_BACKGROUND_TASK
+uint16_t uniffi_relay_core_checksum_func_run_native_background_task(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_BIOMETRICS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_BIOMETRICS
+uint16_t uniffi_relay_core_checksum_func_install_native_biometrics(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+uint16_t uniffi_relay_core_checksum_func_install_native_http(void
     
 );
 #endif
@@ -903,9 +1983,549 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_transfers(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_ACCOUNT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_ACCOUNT
+uint16_t uniffi_relay_core_checksum_method_chatcore_account(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_APP_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_APP_LOCK
+uint16_t uniffi_relay_core_checksum_method_chatcore_app_lock(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_ASSISTANT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_ASSISTANT
+uint16_t uniffi_relay_core_checksum_method_chatcore_assistant(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_ATTACHMENT_FILE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_ATTACHMENT_FILE
+uint16_t uniffi_relay_core_checksum_method_chatcore_attachment_file(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_BACKGROUND_TIME_EXPIRED
+uint16_t uniffi_relay_core_checksum_method_chatcore_background_time_expired(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_BACKGROUND_WORK_PENDING
+uint16_t uniffi_relay_core_checksum_method_chatcore_background_work_pending(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CACHED_CONVERSATIONS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CACHED_CONVERSATIONS
+uint16_t uniffi_relay_core_checksum_method_chatcore_cached_conversations(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CACHED_MESSAGES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CACHED_MESSAGES
+uint16_t uniffi_relay_core_checksum_method_chatcore_cached_messages(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CHAT_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CHAT_EVENTS
+uint16_t uniffi_relay_core_checksum_method_chatcore_chat_events(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CHECK_ACCOUNT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CHECK_ACCOUNT
+uint16_t uniffi_relay_core_checksum_method_chatcore_check_account(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CREATE_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_CREATE_CONVERSATION
+uint16_t uniffi_relay_core_checksum_method_chatcore_create_conversation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_DELETE_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_DELETE_MESSAGE
+uint16_t uniffi_relay_core_checksum_method_chatcore_delete_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_DRAFT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_DRAFT
+uint16_t uniffi_relay_core_checksum_method_chatcore_draft(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_EDIT_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_EDIT_MESSAGE
+uint16_t uniffi_relay_core_checksum_method_chatcore_edit_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_EVENTS
+uint16_t uniffi_relay_core_checksum_method_chatcore_events(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_FETCH_ATTACHMENT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_FETCH_ATTACHMENT
+uint16_t uniffi_relay_core_checksum_method_chatcore_fetch_attachment(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_LAUNCH_REPORT
+uint16_t uniffi_relay_core_checksum_method_chatcore_launch_report(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_LIST_CONVERSATIONS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_LIST_CONVERSATIONS
+uint16_t uniffi_relay_core_checksum_method_chatcore_list_conversations(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_LIVE_STREAMS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_LIVE_STREAMS
+uint16_t uniffi_relay_core_checksum_method_chatcore_live_streams(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_MARK_READ
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_MARK_READ
+uint16_t uniffi_relay_core_checksum_method_chatcore_mark_read(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_OUTBOX_COUNT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_OUTBOX_COUNT
+uint16_t uniffi_relay_core_checksum_method_chatcore_outbox_count(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_PHASE
+uint16_t uniffi_relay_core_checksum_method_chatcore_phase(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_RETRY_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_RETRY_MESSAGE
+uint16_t uniffi_relay_core_checksum_method_chatcore_retry_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_REVISION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_REVISION
+uint16_t uniffi_relay_core_checksum_method_chatcore_revision(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SEARCH
+uint16_t uniffi_relay_core_checksum_method_chatcore_search(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SEND_FILES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SEND_FILES
+uint16_t uniffi_relay_core_checksum_method_chatcore_send_files(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SEND_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SEND_MESSAGE
+uint16_t uniffi_relay_core_checksum_method_chatcore_send_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SEND_REPLY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SEND_REPLY
+uint16_t uniffi_relay_core_checksum_method_chatcore_send_reply(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_APP_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_APP_LOCK
+uint16_t uniffi_relay_core_checksum_method_chatcore_set_app_lock(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_DRAFT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_DRAFT
+uint16_t uniffi_relay_core_checksum_method_chatcore_set_draft(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_MARKED_UNREAD
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_MARKED_UNREAD
+uint16_t uniffi_relay_core_checksum_method_chatcore_set_marked_unread(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_MUTED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_MUTED
+uint16_t uniffi_relay_core_checksum_method_chatcore_set_muted(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_PHASE
+uint16_t uniffi_relay_core_checksum_method_chatcore_set_phase(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_REACTION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SET_REACTION
+uint16_t uniffi_relay_core_checksum_method_chatcore_set_reaction(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SHUTDOWN
+uint16_t uniffi_relay_core_checksum_method_chatcore_shutdown(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SIGN_OUT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SIGN_OUT
+uint16_t uniffi_relay_core_checksum_method_chatcore_sign_out(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SIGN_UP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SIGN_UP
+uint16_t uniffi_relay_core_checksum_method_chatcore_sign_up(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_STORE_PROBLEM
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_STORE_PROBLEM
+uint16_t uniffi_relay_core_checksum_method_chatcore_store_problem(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SUBSCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SUBSCRIBE
+uint16_t uniffi_relay_core_checksum_method_chatcore_subscribe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SYNC_MESSAGES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_SYNC_MESSAGES
+uint16_t uniffi_relay_core_checksum_method_chatcore_sync_messages(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_UNSUBSCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_UNSUBSCRIBE
+uint16_t uniffi_relay_core_checksum_method_chatcore_unsubscribe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_UNWATCH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_UNWATCH
+uint16_t uniffi_relay_core_checksum_method_chatcore_unwatch(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_WATCH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_WATCH
+uint16_t uniffi_relay_core_checksum_method_chatcore_watch(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATEVENTS_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATEVENTS_CANCEL
+uint16_t uniffi_relay_core_checksum_method_chatevents_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATEVENTS_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATEVENTS_NEXT
+uint16_t uniffi_relay_core_checksum_method_chatevents_next(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_CHARACTERS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_CHARACTERS
+uint16_t uniffi_relay_core_checksum_method_assistantcore_characters(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_CONVERSATIONS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_CONVERSATIONS
+uint16_t uniffi_relay_core_checksum_method_assistantcore_conversations(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_CURRENT_GENERATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_CURRENT_GENERATION
+uint16_t uniffi_relay_core_checksum_method_assistantcore_current_generation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_DELETE_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_DELETE_CONVERSATION
+uint16_t uniffi_relay_core_checksum_method_assistantcore_delete_conversation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_ENGINE_INFO
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_ENGINE_INFO
+uint16_t uniffi_relay_core_checksum_method_assistantcore_engine_info(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_MESSAGES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_MESSAGES
+uint16_t uniffi_relay_core_checksum_method_assistantcore_messages(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_SEND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_SEND
+uint16_t uniffi_relay_core_checksum_method_assistantcore_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_SET_ENGINE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_SET_ENGINE
+uint16_t uniffi_relay_core_checksum_method_assistantcore_set_engine(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_SHUTDOWN
+uint16_t uniffi_relay_core_checksum_method_assistantcore_shutdown(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_START_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTCORE_START_CONVERSATION
+uint16_t uniffi_relay_core_checksum_method_assistantcore_start_conversation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_CANCEL
+uint16_t uniffi_relay_core_checksum_method_assistantgeneration_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_CATCH_UP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_CATCH_UP
+uint16_t uniffi_relay_core_checksum_method_assistantgeneration_catch_up(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_CONVERSATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_CONVERSATION_ID
+uint16_t uniffi_relay_core_checksum_method_assistantgeneration_conversation_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_IS_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_IS_FINISHED
+uint16_t uniffi_relay_core_checksum_method_assistantgeneration_is_finished(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_MESSAGE_ID
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_MESSAGE_ID
+uint16_t uniffi_relay_core_checksum_method_assistantgeneration_message_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_ASSISTANTGENERATION_NEXT
+uint16_t uniffi_relay_core_checksum_method_assistantgeneration_next(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
+uint16_t uniffi_relay_core_checksum_method_localnotifier_schedule(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_CANCEL
+uint16_t uniffi_relay_core_checksum_method_localnotifier_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
+uint16_t uniffi_relay_core_checksum_method_localnotifier_pending(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+uint16_t uniffi_relay_core_checksum_method_localnotifier_set_categories(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
+uint16_t uniffi_relay_core_checksum_method_permissionprovider_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_REQUEST
+uint16_t uniffi_relay_core_checksum_method_permissionprovider_request(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_SECURESTORE_GET
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_SECURESTORE_GET
+uint16_t uniffi_relay_core_checksum_method_securestore_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_SECURESTORE_SET
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_SECURESTORE_SET
+uint16_t uniffi_relay_core_checksum_method_securestore_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
+uint16_t uniffi_relay_core_checksum_method_securestore_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_AIMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_AIMODEL_DESCRIBE
+uint16_t uniffi_relay_core_checksum_method_aimodel_describe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_AIMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_AIMODEL_GENERATE
+uint16_t uniffi_relay_core_checksum_method_aimodel_generate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_TEXTSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_TEXTSINK_IS_STOPPED
+uint16_t uniffi_relay_core_checksum_method_textsink_is_stopped(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_TEXTSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_TEXTSINK_PUSH
+uint16_t uniffi_relay_core_checksum_method_textsink_push(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_AUDIOFILES_DURATION
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_AUDIOFILES_DURATION
+uint16_t uniffi_relay_core_checksum_method_audiofiles_duration(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+uint16_t uniffi_relay_core_checksum_method_backgroundscheduler_submit(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_CANCEL
+uint16_t uniffi_relay_core_checksum_method_backgroundscheduler_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+uint16_t uniffi_relay_core_checksum_method_backgroundscheduler_permitted(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+uint16_t uniffi_relay_core_checksum_method_backgroundtaskcompletion_finished(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDTASKRUN_EXPIRE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BACKGROUNDTASKRUN_EXPIRE
+uint16_t uniffi_relay_core_checksum_method_backgroundtaskrun_expire(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AVAILABILITY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AVAILABILITY
+uint16_t uniffi_relay_core_checksum_method_biometricauthenticator_availability(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
+uint16_t uniffi_relay_core_checksum_method_biometricauthenticator_authenticate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+uint16_t uniffi_relay_core_checksum_method_httpstreambody_fail(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+uint16_t uniffi_relay_core_checksum_method_httpstreambody_finish(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+uint16_t uniffi_relay_core_checksum_method_httpstreambody_receive(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+uint16_t uniffi_relay_core_checksum_method_httptransport_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+uint16_t uniffi_relay_core_checksum_method_httptransport_open_stream(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+uint16_t uniffi_relay_core_checksum_method_httptransport_cancel(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_CONSTRUCTOR_RELAYCORE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_CONSTRUCTOR_RELAYCORE_NEW
 uint16_t uniffi_relay_core_checksum_constructor_relaycore_new(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_CONSTRUCTOR_CHATCORE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_CONSTRUCTOR_CHATCORE_NEW
+uint16_t uniffi_relay_core_checksum_constructor_chatcore_new(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_CONSTRUCTOR_CHATCORE_WITH_MEMORY_CREDENTIALS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_CONSTRUCTOR_CHATCORE_WITH_MEMORY_CREDENTIALS
+uint16_t uniffi_relay_core_checksum_constructor_chatcore_with_memory_credentials(void
     
 );
 #endif

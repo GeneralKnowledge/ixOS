@@ -32,7 +32,8 @@ public struct ContentView: View {
         .onAppear {
             guard !launched else { return }
             launched = true
-            openApp = EmbeddedApp(rawValue: launchApp)
+            // Chat merged into Relay: an "Open at Launch" of Chat opens Relay.
+            openApp = EmbeddedApp(rawValue: launchApp == "chat" ? "relay" : launchApp)
         }
         // `-ForgeAppearance dark|light` (LaunchAppearance.swift), applied
         // here rather than with forgeLaunchAppearance() in the App: Weather

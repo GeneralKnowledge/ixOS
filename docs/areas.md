@@ -7,7 +7,7 @@ ixOS holds four things that are related but are not one product. Each part of th
 | **Framework** (Forge) | What apps run on: the Rust runtime and foundation crates, ForgeKit, ForgeUI, ForgeAppKit, native services | Every app, inside and outside this repository |
 | **Tools** (Forge Tools) | What developers use to build, test and inspect an app: the `forge` CLI, device and UI-test crates, templates, Device Lab | A person (or agent) developing an app |
 | **Infrastructure** | What runs this repository: CI, releases, build machines, toolchain pins, hosting | The maintainers |
-| **Apps** | Products built with Forge: Pocket Library, Chat, Good Dog, Commonplace, FieldKit, Weather, Relay and the others | People who use the apps |
+| **Apps** | Products built with Forge: Pocket Library, Good Dog, Commonplace, FieldKit, Weather, Relay and the others | People who use the apps |
 
 These are ownership boundaries, not separate repositories. Code moves only when a boundary has proved useful, and Forge Tools becomes its own repository only once it has a release cycle of its own.
 
@@ -36,7 +36,7 @@ Known crossings are listed in [boundaries.toml](boundaries.toml), each with a re
 
 - **Device Lab hosts every app** (`keep`). It is the test bed on the phone, so its crate links each app's crate.
 - **Relay uses forge-devproto** (`fix`). Relay's encrypted channel is the dev-connection protocol crate. Relay's iroh transfer (#267) replaces that channel, and the crossing goes when Relay no longer needs forge-devproto; the channel does not move into forge-net (roadmap, wave 4).
-- **Chat's and Good Dog's core crates sit in the root workspace** (`fix`). They move into their apps' own folders and workspaces.
+- **Good Dog's core crate sits in the root workspace** (`fix`). It moves into Good Dog's own folder and workspace. (Chat's crates moved into Relay's `messaging/` workspace when Chat merged into Relay.)
 
 The `forge` CLI also has app paths built in: some commands default `--project` to `examples/pocket-library`, and `forge check` runs named apps. A path is not a dependency, so the check doesn't see it. It is removed in the same round of fixes.
 
@@ -71,13 +71,13 @@ forge-lab, the agent tooling, is a separate repository built on these tools.
 | `scripts/forgekit.sh`, `test-forgekit-release.sh`, `forge-release.toml` | Framework releases |
 | `scripts/setup-build-host.sh`, `install-xtool.sh`, `validate-toolchain.sh`, `validate-android-toolchain.sh`, `ci-macos.sh` | Build machines |
 | `toolchain/`, `rust-toolchain.toml`, `environment.json`, `deny.toml` | Toolchain pins and policy |
-| `examples/chat-server/deploy` | Chat's server hosting |
+| `examples/relay/messaging/chat-server/deploy` | Chat's server hosting |
 
 The build queue, signing and `forge publish ios` are infrastructure jobs that live inside the CLI.
 
 ### Apps
 
-Everything else under `examples/`: Pocket Library (and its Android version), Chat (with `chat-core`, `chat-server`, `chat-cli`), Good Dog (with `good-dog-core`), Commonplace, FieldKit, Weather, Checklist, Relay (with `verification/relay`), Sketchbook and Soundscape. `scripts/pocket-library-screenshots.sh` and `weather-screenshots.sh` belong to their apps.
+Everything else under `examples/`: Pocket Library (and its Android version), Good Dog (with `good-dog-core`), Commonplace, FieldKit, Weather, Checklist, Relay (with `verification/relay`, and its messaging: `chat-core`, `chat-server`, `chat-cli`), Sketchbook and Soundscape. `scripts/pocket-library-screenshots.sh` and `weather-screenshots.sh` belong to their apps.
 
 ## Each area's responsibilities
 

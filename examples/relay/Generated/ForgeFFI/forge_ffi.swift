@@ -461,7 +461,13 @@ fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
 
 
 // Public interface members begin here.
-
+// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
+private let IDX_CALLBACK_FREE: Int32 = 0
+// Callback return codes
+private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
+private let UNIFFI_CALLBACK_ERROR: Int32 = 1
+private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -628,6 +634,4345 @@ fileprivate struct FfiConverterString: FfiConverter {
         writeBytes(&buf, value.utf8)
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+    typealias SwiftType = Data
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        let len: Int32 = try readInt(&buf)
+        return Data(try readBytes(&buf, count: Int(len)))
+    }
+
+    public static func write(_ value: Data, into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        writeBytes(&buf, value)
+    }
+}
+
+
+
+
+/**
+ * A model on the device, implemented by the host (iOS:
+ * `ForgeAppleModel`). Rust calls `generate` from a thread of
+ * its own, one request at a time.
+ */
+public protocol AiModel: AnyObject, Sendable {
+    
+    /**
+     * Which model this is and whether it can answer now. Cheap.
+     */
+    func describe()  -> AiModelInfo
+    
+    /**
+     * Writes the answer to `request` into `sink`, piece by
+     * piece, and returns when it is complete, or as soon as
+     * `sink.push` returns false.
+     */
+    func generate(request: AiRequest, sink: TextSink) async throws 
+    
+}
+/**
+ * A model on the device, implemented by the host (iOS:
+ * `ForgeAppleModel`). Rust calls `generate` from a thread of
+ * its own, one request at a time.
+ */
+open class AiModelImpl: AiModel, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_aimodel(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_aimodel(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Which model this is and whether it can answer now. Cheap.
+     */
+open func describe() -> AiModelInfo  {
+    return try!  FfiConverterTypeAiModelInfo_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_aimodel_describe(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Writes the answer to `request` into `sink`, piece by
+     * piece, and returns when it is complete, or as soon as
+     * `sink.push` returns false.
+     */
+open func generate(request: AiRequest, sink: TextSink)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_aimodel_generate(
+                        self.uniffiCloneHandle(),FfiConverterTypeAiRequest_lower(request),FfiConverterTypeTextSink_lower(sink)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAiModelError_lift
+        )
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAiModel {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAiModel = UniffiVTableCallbackInterfaceAiModel(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAiModel.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AiModel: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAiModel.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AiModel: handle missing in uniffiClone")
+            }
+        },
+        describe: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> AiModelInfo in
+                guard let uniffiObj = try? FfiConverterTypeAiModel.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.describe(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeAiModelInfo_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        generate: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            sink: UInt64,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteVoid,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeAiModel.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try await uniffiObj.generate(
+                     request: try FfiConverterTypeAiRequest_lift(request),
+                     sink: try FfiConverterTypeTextSink_lift(sink)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: ()) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsyncWithError(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                lowerError: FfiConverterTypeAiModelError_lower,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAiModel> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAiModel>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAiModel() {
+    uniffi_relay_core_fn_init_callback_vtable_aimodel(UniffiCallbackInterfaceAiModel.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiModel: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AiModel>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AiModel
+
+    public static func lift(_ handle: UInt64) throws -> AiModel {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AiModelImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AiModel) -> UInt64 {
+         if let rustImpl = value as? AiModelImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiModel {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AiModel, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModel_lift(_ handle: UInt64) throws -> AiModel {
+    return try FfiConverterTypeAiModel.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModel_lower(_ value: AiModel) -> UInt64 {
+    return FfiConverterTypeAiModel.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The assistant. `ChatCore::assistant()` hands out the app's one instance.
+ */
+public protocol AssistantCoreProtocol: AnyObject, Sendable {
+    
+    /**
+     * The characters a new conversation can use: the plain assistant
+     * first, then the built-in test characters.
+     */
+    func characters()  -> [AssistantCharacter]
+    
+    /**
+     * Every conversation, most recent first.
+     */
+    func conversations() throws  -> [AssistantConversation]
+    
+    /**
+     * The answer being written now, if any, so a screen that opens
+     * mid-answer can follow it (`catch_up`, then `next`).
+     */
+    func currentGeneration()  -> AssistantGeneration?
+    
+    /**
+     * Deletes a conversation and its messages from this iPhone, stopping
+     * its answer if one is being written.
+     */
+    func deleteConversation(conversationId: String) throws 
+    
+    /**
+     * The installed engine and whether it can run now, or `None` before
+     * `set_engine`.
+     */
+    func engineInfo()  -> AiModelInfo?
+    
+    /**
+     * A conversation's messages, oldest first. An answer being written is
+     * there as `Streaming` with the text saved so far (none until it ends);
+     * `current_generation` has the live text.
+     */
+    func messages(conversationId: String) throws  -> [AssistantMessage]
+    
+    /**
+     * Sends `text` and starts the answer. Saves the message and an empty
+     * answer (`Streaming`) before it returns; read the answer from the
+     * returned generation. Fails with `Busy` while another answer is being
+     * written, and with `Unavailable` (saving nothing) when the engine
+     * cannot run now.
+     */
+    func send(conversationId: String, text: String) throws  -> AssistantGeneration
+    
+    /**
+     * Installs the model engine (the app does this at launch). Replaces
+     * any previous one; an answer being written finishes on the old one.
+     */
+    func setEngine(engine: AiModel) 
+    
+    /**
+     * Stops any answer and refuses further sends. Called by
+     * `ChatCore::shutdown`. Idempotent.
+     */
+    func shutdown() 
+    
+    /**
+     * Starts a conversation with `character_id`. A character with an
+     * opening line has already said it.
+     */
+    func startConversation(characterId: String) throws  -> AssistantConversation
+    
+}
+/**
+ * The assistant. `ChatCore::assistant()` hands out the app's one instance.
+ */
+open class AssistantCore: AssistantCoreProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_assistantcore(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_assistantcore(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The characters a new conversation can use: the plain assistant
+     * first, then the built-in test characters.
+     */
+open func characters() -> [AssistantCharacter]  {
+    return try!  FfiConverterSequenceTypeAssistantCharacter.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_characters(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Every conversation, most recent first.
+     */
+open func conversations()throws  -> [AssistantConversation]  {
+    return try  FfiConverterSequenceTypeAssistantConversation.lift(try rustCallWithError(FfiConverterTypeAssistantError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_conversations(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The answer being written now, if any, so a screen that opens
+     * mid-answer can follow it (`catch_up`, then `next`).
+     */
+open func currentGeneration() -> AssistantGeneration?  {
+    return try!  FfiConverterOptionTypeAssistantGeneration.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_current_generation(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Deletes a conversation and its messages from this iPhone, stopping
+     * its answer if one is being written.
+     */
+open func deleteConversation(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeAssistantError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_delete_conversation(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The installed engine and whether it can run now, or `None` before
+     * `set_engine`.
+     */
+open func engineInfo() -> AiModelInfo?  {
+    return try!  FfiConverterOptionTypeAiModelInfo.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_engine_info(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A conversation's messages, oldest first. An answer being written is
+     * there as `Streaming` with the text saved so far (none until it ends);
+     * `current_generation` has the live text.
+     */
+open func messages(conversationId: String)throws  -> [AssistantMessage]  {
+    return try  FfiConverterSequenceTypeAssistantMessage.lift(try rustCallWithError(FfiConverterTypeAssistantError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_messages(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Sends `text` and starts the answer. Saves the message and an empty
+     * answer (`Streaming`) before it returns; read the answer from the
+     * returned generation. Fails with `Busy` while another answer is being
+     * written, and with `Unavailable` (saving nothing) when the engine
+     * cannot run now.
+     */
+open func send(conversationId: String, text: String)throws  -> AssistantGeneration  {
+    return try  FfiConverterTypeAssistantGeneration_lift(try rustCallWithError(FfiConverterTypeAssistantError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_send(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Installs the model engine (the app does this at launch). Replaces
+     * any previous one; an answer being written finishes on the old one.
+     */
+open func setEngine(engine: AiModel)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_set_engine(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAiModel_lower(engine),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Stops any answer and refuses further sends. Called by
+     * `ChatCore::shutdown`. Idempotent.
+     */
+open func shutdown()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_shutdown(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Starts a conversation with `character_id`. A character with an
+     * opening line has already said it.
+     */
+open func startConversation(characterId: String)throws  -> AssistantConversation  {
+    return try  FfiConverterTypeAssistantConversation_lift(try rustCallWithError(FfiConverterTypeAssistantError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantcore_start_conversation(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(characterId),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantCore: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = AssistantCore
+
+    public static func lift(_ handle: UInt64) throws -> AssistantCore {
+        return AssistantCore(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: AssistantCore) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantCore {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AssistantCore, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantCore_lift(_ handle: UInt64) throws -> AssistantCore {
+    return try FfiConverterTypeAssistantCore.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantCore_lower(_ value: AssistantCore) -> UInt64 {
+    return FfiConverterTypeAssistantCore.lower(value)
+}
+
+
+
+
+
+
+/**
+ * An answer being written. Read it with `next()` in a loop; stop it with
+ * `cancel()`. Ending the loop early does not stop the answer: it is still
+ * written and saved, and `AssistantCore::current_generation` finds it again.
+ */
+public protocol AssistantGenerationProtocol: AnyObject, Sendable {
+    
+    /**
+     * Stops the answer (the Stop button). The engine is told at its next
+     * piece and must stop computing; the text so far is kept and the
+     * answer is saved as stopped. Idempotent.
+     */
+    func cancel() 
+    
+    /**
+     * The whole answer so far, for a screen that opens while it is
+     * written; the next `Text` update continues after it.
+     */
+    func catchUp()  -> String
+    
+    /**
+     * The conversation the answer belongs to.
+     */
+    func conversationId()  -> String
+    
+    /**
+     * Whether the answer has ended.
+     */
+    func isFinished()  -> Bool
+    
+    /**
+     * The answer's message id (its bubble, already in `messages`).
+     */
+    func messageId()  -> String
+    
+    /**
+     * The next update, or `None` after `Finished`. Text arrives at most
+     * about 20 times a second.
+     */
+    func next() async  -> AssistantUpdate?
+    
+}
+/**
+ * An answer being written. Read it with `next()` in a loop; stop it with
+ * `cancel()`. Ending the loop early does not stop the answer: it is still
+ * written and saved, and `AssistantCore::current_generation` finds it again.
+ */
+open class AssistantGeneration: AssistantGenerationProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_assistantgeneration(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_assistantgeneration(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Stops the answer (the Stop button). The engine is told at its next
+     * piece and must stop computing; the text so far is kept and the
+     * answer is saved as stopped. Idempotent.
+     */
+open func cancel()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantgeneration_cancel(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The whole answer so far, for a screen that opens while it is
+     * written; the next `Text` update continues after it.
+     */
+open func catchUp() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantgeneration_catch_up(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The conversation the answer belongs to.
+     */
+open func conversationId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantgeneration_conversation_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Whether the answer has ended.
+     */
+open func isFinished() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantgeneration_is_finished(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The answer's message id (its bubble, already in `messages`).
+     */
+open func messageId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_assistantgeneration_message_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The next update, or `None` after `Finished`. Text arrives at most
+     * about 20 times a second.
+     */
+open func next()async  -> AssistantUpdate?  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_assistantgeneration_next(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeAssistantUpdate.lift,
+            errorHandler: nil
+            
+        )
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantGeneration: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = AssistantGeneration
+
+    public static func lift(_ handle: UInt64) throws -> AssistantGeneration {
+        return AssistantGeneration(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: AssistantGeneration) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantGeneration {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AssistantGeneration, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantGeneration_lift(_ handle: UInt64) throws -> AssistantGeneration {
+    return try FfiConverterTypeAssistantGeneration.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantGeneration_lower(_ value: AssistantGeneration) -> UInt64 {
+    return FfiConverterTypeAssistantGeneration.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Implemented by the host (iOS: AVFoundation).
+ */
+public protocol AudioFiles: AnyObject, Sendable {
+    
+    /**
+     * The length in seconds of the audio file at `path`.
+     */
+    func duration(path: String) throws  -> Double
+    
+}
+/**
+ * Implemented by the host (iOS: AVFoundation).
+ */
+open class AudioFilesImpl: AudioFiles, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_audiofiles(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_audiofiles(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The length in seconds of the audio file at `path`.
+     */
+open func duration(path: String)throws  -> Double  {
+    return try  FfiConverterDouble.lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_audiofiles_duration(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAudioFiles {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAudioFiles = UniffiVTableCallbackInterfaceAudioFiles(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAudioFiles.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AudioFiles: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAudioFiles.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AudioFiles: handle missing in uniffiClone")
+            }
+        },
+        duration: { (
+            uniffiHandle: UInt64,
+            path: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<Double>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Double in
+                guard let uniffiObj = try? FfiConverterTypeAudioFiles.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.duration(
+                     path: try FfiConverterString.lift(path)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterDouble.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAudioFiles> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAudioFiles>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAudioFiles() {
+    uniffi_relay_core_fn_init_callback_vtable_audiofiles(UniffiCallbackInterfaceAudioFiles.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudioFiles: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AudioFiles>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AudioFiles
+
+    public static func lift(_ handle: UInt64) throws -> AudioFiles {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AudioFilesImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AudioFiles) -> UInt64 {
+         if let rustImpl = value as? AudioFilesImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudioFiles {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AudioFiles, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioFiles_lift(_ handle: UInt64) throws -> AudioFiles {
+    return try FfiConverterTypeAudioFiles.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioFiles_lower(_ value: AudioFiles) -> UInt64 {
+    return FfiConverterTypeAudioFiles.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Implemented by the host (iOS: `BGTaskScheduler`).
+ */
+public protocol BackgroundScheduler: AnyObject, Sendable {
+    
+    /**
+     * Submits `request`, replacing an earlier one with the same
+     * identifier.
+     */
+    func submit(request: BackgroundTaskRequest) throws 
+    
+    /**
+     * Withdraws the request with `identifier`, if any.
+     */
+    func cancel(identifier: String) 
+    
+    /**
+     * The identifiers the host registered at launch (iOS: the
+     * app's `BGTaskSchedulerPermittedIdentifiers`).
+     */
+    func permitted()  -> [String]
+    
+}
+/**
+ * Implemented by the host (iOS: `BGTaskScheduler`).
+ */
+open class BackgroundSchedulerImpl: BackgroundScheduler, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_backgroundscheduler(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_backgroundscheduler(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Submits `request`, replacing an earlier one with the same
+     * identifier.
+     */
+open func submit(request: BackgroundTaskRequest)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_backgroundscheduler_submit(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeBackgroundTaskRequest_lower(request),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Withdraws the request with `identifier`, if any.
+     */
+open func cancel(identifier: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_backgroundscheduler_cancel(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(identifier),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The identifiers the host registered at launch (iOS: the
+     * app's `BGTaskSchedulerPermittedIdentifiers`).
+     */
+open func permitted() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_backgroundscheduler_permitted(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceBackgroundScheduler {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceBackgroundScheduler = UniffiVTableCallbackInterfaceBackgroundScheduler(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeBackgroundScheduler.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface BackgroundScheduler: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeBackgroundScheduler.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface BackgroundScheduler: handle missing in uniffiClone")
+            }
+        },
+        submit: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeBackgroundScheduler.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.submit(
+                     request: try FfiConverterTypeBackgroundTaskRequest_lift(request)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        },
+        cancel: { (
+            uniffiHandle: UInt64,
+            identifier: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeBackgroundScheduler.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.cancel(
+                     identifier: try FfiConverterString.lift(identifier)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        permitted: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> [String] in
+                guard let uniffiObj = try? FfiConverterTypeBackgroundScheduler.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.permitted(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterSequenceString.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceBackgroundScheduler> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceBackgroundScheduler>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitBackgroundScheduler() {
+    uniffi_relay_core_fn_init_callback_vtable_backgroundscheduler(UniffiCallbackInterfaceBackgroundScheduler.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundScheduler: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<BackgroundScheduler>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = BackgroundScheduler
+
+    public static func lift(_ handle: UInt64) throws -> BackgroundScheduler {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return BackgroundSchedulerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: BackgroundScheduler) -> UInt64 {
+         if let rustImpl = value as? BackgroundSchedulerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundScheduler {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BackgroundScheduler, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundScheduler_lift(_ handle: UInt64) throws -> BackgroundScheduler {
+    return try FfiConverterTypeBackgroundScheduler.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundScheduler_lower(_ value: BackgroundScheduler) -> UInt64 {
+    return FfiConverterTypeBackgroundScheduler.lower(value)
+}
+
+
+
+
+
+
+/**
+ * How the host learns that a run has finished. iOS:
+ * `BGTask.setTaskCompleted(success:)`.
+ */
+public protocol BackgroundTaskCompletion: AnyObject, Sendable {
+    
+    func finished(success: Bool) 
+    
+}
+/**
+ * How the host learns that a run has finished. iOS:
+ * `BGTask.setTaskCompleted(success:)`.
+ */
+open class BackgroundTaskCompletionImpl: BackgroundTaskCompletion, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_backgroundtaskcompletion(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_backgroundtaskcompletion(handle, $0) }
+    }
+
+    
+
+    
+open func finished(success: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_backgroundtaskcompletion_finished(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(success),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceBackgroundTaskCompletion {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceBackgroundTaskCompletion = UniffiVTableCallbackInterfaceBackgroundTaskCompletion(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeBackgroundTaskCompletion.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface BackgroundTaskCompletion: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeBackgroundTaskCompletion.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface BackgroundTaskCompletion: handle missing in uniffiClone")
+            }
+        },
+        finished: { (
+            uniffiHandle: UInt64,
+            success: Int8,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeBackgroundTaskCompletion.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.finished(
+                     success: try FfiConverterBool.lift(success)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceBackgroundTaskCompletion> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceBackgroundTaskCompletion>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitBackgroundTaskCompletion() {
+    uniffi_relay_core_fn_init_callback_vtable_backgroundtaskcompletion(UniffiCallbackInterfaceBackgroundTaskCompletion.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundTaskCompletion: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<BackgroundTaskCompletion>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = BackgroundTaskCompletion
+
+    public static func lift(_ handle: UInt64) throws -> BackgroundTaskCompletion {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return BackgroundTaskCompletionImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: BackgroundTaskCompletion) -> UInt64 {
+         if let rustImpl = value as? BackgroundTaskCompletionImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundTaskCompletion {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BackgroundTaskCompletion, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskCompletion_lift(_ handle: UInt64) throws -> BackgroundTaskCompletion {
+    return try FfiConverterTypeBackgroundTaskCompletion.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskCompletion_lower(_ value: BackgroundTaskCompletion) -> UInt64 {
+    return FfiConverterTypeBackgroundTaskCompletion.lower(value)
+}
+
+
+
+
+
+
+/**
+ * One window iOS granted. The handler does its work, checks
+ * `is_cancelled` (or waits on `cancelled`) as it goes, and calls
+ * `finish` exactly once; later calls are ignored. A run dropped
+ * without `finish` reports failure.
+ */
+public protocol BackgroundTaskRunProtocol: AnyObject, Sendable {
+    
+    /**
+     * Called by the host when the window runs out. The handler
+     * should stop soon after and `finish(false)`; if it has not
+     * finished when iOS insists, iOS ends the run anyway.
+     */
+    func expire() 
+    
+}
+/**
+ * One window iOS granted. The handler does its work, checks
+ * `is_cancelled` (or waits on `cancelled`) as it goes, and calls
+ * `finish` exactly once; later calls are ignored. A run dropped
+ * without `finish` reports failure.
+ */
+open class BackgroundTaskRun: BackgroundTaskRunProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_backgroundtaskrun(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_backgroundtaskrun(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Called by the host when the window runs out. The handler
+     * should stop soon after and `finish(false)`; if it has not
+     * finished when iOS insists, iOS ends the run anyway.
+     */
+open func expire()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_backgroundtaskrun_expire(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundTaskRun: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = BackgroundTaskRun
+
+    public static func lift(_ handle: UInt64) throws -> BackgroundTaskRun {
+        return BackgroundTaskRun(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: BackgroundTaskRun) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundTaskRun {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BackgroundTaskRun, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskRun_lift(_ handle: UInt64) throws -> BackgroundTaskRun {
+    return try FfiConverterTypeBackgroundTaskRun.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskRun_lower(_ value: BackgroundTaskRun) -> UInt64 {
+    return FfiConverterTypeBackgroundTaskRun.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Implemented by the host (iOS: `LAContext`).
+ */
+public protocol BiometricAuthenticator: AnyObject, Sendable {
+    
+    func availability()  -> BiometricAvailability
+    
+    /**
+     * Asks for Face ID or Touch ID, falling back to the
+     * passcode. `reason` is shown under Touch ID (Face ID shows
+     * the usage text from forge.toml).
+     */
+    func authenticate(reason: String) async  -> AuthenticationResult
+    
+}
+/**
+ * Implemented by the host (iOS: `LAContext`).
+ */
+open class BiometricAuthenticatorImpl: BiometricAuthenticator, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_biometricauthenticator(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_biometricauthenticator(handle, $0) }
+    }
+
+    
+
+    
+open func availability() -> BiometricAvailability  {
+    return try!  FfiConverterTypeBiometricAvailability_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_biometricauthenticator_availability(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Asks for Face ID or Touch ID, falling back to the
+     * passcode. `reason` is shown under Touch ID (Face ID shows
+     * the usage text from forge.toml).
+     */
+open func authenticate(reason: String)async  -> AuthenticationResult  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_biometricauthenticator_authenticate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(reason)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeAuthenticationResult_lift,
+            errorHandler: nil
+            
+        )
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceBiometricAuthenticator {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceBiometricAuthenticator = UniffiVTableCallbackInterfaceBiometricAuthenticator(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeBiometricAuthenticator.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface BiometricAuthenticator: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeBiometricAuthenticator.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface BiometricAuthenticator: handle missing in uniffiClone")
+            }
+        },
+        availability: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> BiometricAvailability in
+                guard let uniffiObj = try? FfiConverterTypeBiometricAuthenticator.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.availability(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeBiometricAvailability_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        authenticate: { (
+            uniffiHandle: UInt64,
+            reason: RustBuffer,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> AuthenticationResult in
+                guard let uniffiObj = try? FfiConverterTypeBiometricAuthenticator.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return await uniffiObj.authenticate(
+                     reason: try FfiConverterString.lift(reason)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: AuthenticationResult) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterTypeAuthenticationResult_lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceBiometricAuthenticator> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceBiometricAuthenticator>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitBiometricAuthenticator() {
+    uniffi_relay_core_fn_init_callback_vtable_biometricauthenticator(UniffiCallbackInterfaceBiometricAuthenticator.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBiometricAuthenticator: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<BiometricAuthenticator>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = BiometricAuthenticator
+
+    public static func lift(_ handle: UInt64) throws -> BiometricAuthenticator {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return BiometricAuthenticatorImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: BiometricAuthenticator) -> UInt64 {
+         if let rustImpl = value as? BiometricAuthenticatorImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BiometricAuthenticator {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BiometricAuthenticator, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometricAuthenticator_lift(_ handle: UInt64) throws -> BiometricAuthenticator {
+    return try FfiConverterTypeBiometricAuthenticator.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometricAuthenticator_lower(_ value: BiometricAuthenticator) -> UInt64 {
+    return FfiConverterTypeBiometricAuthenticator.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The app instance. Create one at launch and share it. Thread-safe.
+ */
+public protocol ChatCoreProtocol: AnyObject, Sendable {
+    
+    /**
+     * The signed-in account, if any. Known at once at launch: the app works
+     * offline from its store without asking the server.
+     */
+    func account()  -> ChatAccount?
+    
+    /**
+     * Whether Chat asks for Face ID, Touch ID or the passcode when it
+     * opens and after a minute in the background. This device only.
+     */
+    func appLock()  -> Bool
+    
+    /**
+     * The on-device assistant. Works without an account, and keeps its
+     * conversations when the account signs out.
+     */
+    func assistant()  -> AssistantCore
+    
+    /**
+     * The local file of an attachment, if it is on this iPhone already
+     * (sent from here, or fetched before). Its name is the attachment id,
+     * without an extension.
+     */
+    func attachmentFile(attachmentId: String)  -> String?
+    
+    /**
+     * The host's background time ran out: finishing work stops.
+     */
+    func backgroundTimeExpired() 
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+    func backgroundWorkPending()  -> Bool
+    
+    /**
+     * Conversations as stored, for a first render before the network.
+     */
+    func cachedConversations()  -> [ChatConversation]
+    
+    /**
+     * A room's messages as stored, oldest first.
+     */
+    func cachedMessages(conversationId: String)  -> [ChatMessage]
+    
+    /**
+     * A new event stream. Each consumer takes its own and sees every event
+     * from now on.
+     */
+    func chatEvents() throws  -> ChatEvents
+    
+    /**
+     * Asks the server who the stored token belongs to. Fails with
+     * `Unauthorized` (and emits `AccountRejected`) when the server no
+     * longer knows it, and with `Network` when it cannot be reached (the
+     * app keeps working from its store).
+     */
+    func checkAccount() async throws  -> ChatAccount
+    
+    /**
+     * Creates a conversation on the server. It is added to the list
+     * (`ConversationUpdated`) and returned, ready to open.
+     */
+    func createConversation(title: String) async throws  -> ChatConversation
+    
+    /**
+     * Deletes one of our messages for everyone; it becomes a "deleted"
+     * placeholder (`MessageUpdated`). A message that was never sent is
+     * just removed (`MessageRemoved`) and `None` is returned.
+     */
+    func deleteMessage(messageId: String) async throws  -> ChatMessage?
+    
+    /**
+     * The saved draft for a conversation, if any.
+     */
+    func draft(conversationId: String)  -> String?
+    
+    /**
+     * Replaces the text of one of our sent messages, for everyone
+     * (`MessageUpdated`, here and on other devices).
+     */
+    func editMessage(messageId: String, body: String) async throws  -> ChatMessage
+    
+    /**
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
+     */
+    func events()  -> RuntimeEvents?
+    
+    /**
+     * The local file of an attachment, downloading it first if needed (and
+     * checking it against its id). Runs off the caller's thread.
+     */
+    func fetchAttachment(attachmentId: String) async throws  -> String
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+    func launchReport()  -> LaunchReport
+    
+    /**
+     * Lists conversations from the server, prefetching new messages for
+     * rooms that are not open (they count as unread).
+     */
+    func listConversations() async throws  -> [ChatConversation]
+    
+    /**
+     * Room connection threads still running: 0 shortly after every room
+     * is closed, or in the background.
+     */
+    func liveStreams()  -> UInt32
+    
+    /**
+     * Marks everything in the room read, here at once and then on the
+     * server (other devices and other people see it). Clears "marked
+     * unread". An open room is kept read without this.
+     */
+    func markRead(conversationId: String) async throws 
+    
+    /**
+     * How many of our messages are waiting to be sent.
+     */
+    func outboxCount()  -> UInt32
+    
+    /**
+     * The phase last reported.
+     */
+    func phase()  -> AppPhase
+    
+    /**
+     * Sends a `Failed` (or still queued) message again now, with the same id.
+     */
+    func retryMessage(messageId: String) async throws  -> ChatMessage
+    
+    /**
+     * The last committed revision.
+     */
+    func revision()  -> UInt64
+    
+    /**
+     * Searches the messages on this device: every word of `query` must
+     * start a word in the message (case and accents ignored). In one
+     * conversation, or in all with `None`. Newest first, at most 100.
+     */
+    func search(query: String, conversationId: String?) async throws  -> [ChatMessage]
+    
+    /**
+     * `send_reply` with photos or documents (at most 10, each up to 25 MB).
+     * Rust copies each file into the app's attachment store before this
+     * returns its first event, so the originals may be temporary. The body
+     * may be empty. Offline, the files wait in the outbox with the message.
+     */
+    func sendFiles(conversationId: String, body: String, replyTo: String?, files: [ChatOutgoingFile]) async throws  -> ChatMessage
+    
+    /**
+     * Sends a message. It is announced as `Sending` at once, then becomes
+     * `Sent` (`MessageStatusChanged`). If the server cannot be reached it
+     * stays `Sending` in the outbox and goes out by itself later, even
+     * after a relaunch; only a refusal by the server makes it `Failed`.
+     * Resolves with the message as it then is, or the error that failed it.
+     * Clears the conversation's draft.
+     */
+    func sendMessage(conversationId: String, body: String) async throws  -> ChatMessage
+    
+    /**
+     * `send_message` as an answer to `reply_to`, a message in the same
+     * conversation.
+     */
+    func sendReply(conversationId: String, body: String, replyTo: String?) async throws  -> ChatMessage
+    
+    /**
+     * Turns the app lock on or off. Turning it on is refused when this
+     * iPhone has neither biometrics nor a passcode, since the lock could
+     * never open.
+     */
+    func setAppLock(enabled: Bool) throws 
+    
+    /**
+     * Saves the composer's unsent text (empty clears it). Kept on this
+     * device across launches; cheap enough to call as the user types.
+     */
+    func setDraft(conversationId: String, text: String) throws 
+    
+    /**
+     * Shows the room as unread until it is opened or marked read (`true`),
+     * or stops doing so. This device only.
+     */
+    func setMarkedUnread(conversationId: String, marked: Bool) throws 
+    
+    /**
+     * Mutes the room (no notifications) or unmutes it. This device only.
+     */
+    func setMuted(conversationId: String, muted: Bool) throws 
+    
+    /**
+     * The host reports the application lifecycle phase.
+     */
+    func setPhase(phase: AppPhase) 
+    
+    /**
+     * Adds (`on`) or removes our `emoji` reaction (`MessageUpdated`).
+     */
+    func setReaction(messageId: String, emoji: String, on: Bool) async throws  -> ChatMessage
+    
+    /**
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
+     */
+    func shutdown() 
+    
+    /**
+     * Forgets the account: removes it from the Keychain and its chats from
+     * the device. The account itself stays on the server. Emits
+     * `AccountChanged`. Idempotent.
+     */
+    func signOut() throws 
+    
+    /**
+     * Creates an account named `display_name` on the chat server at
+     * `server_url`, stores it in the Keychain and switches to it. A
+     * previous account on this device is signed out first (its chats are
+     * removed from the device). Emits `AccountChanged`.
+     */
+    func signUp(serverUrl: String, displayName: String) async throws  -> ChatAccount
+    
+    /**
+     * The last persistence problem, if any. Never fails a command.
+     */
+    func storeProblem()  -> String?
+    
+    /**
+     * Opens the room: it goes live (in the foreground) and is kept read.
+     * Returns at once; `StreamConnected`/`StreamDisconnected` follow.
+     */
+    func subscribe(conversationId: String) throws 
+    
+    /**
+     * Fetches the room's messages newer than what is stored, merges them
+     * and returns the room's full stored list, oldest first.
+     */
+    func syncMessages(conversationId: String) async throws  -> [ChatMessage]
+    
+    /**
+     * Closes the room. Its stream ends unless the room is watched.
+     */
+    func unsubscribe(conversationId: String) throws 
+    
+    func unwatch(conversationId: String) throws 
+    
+    /**
+     * Keeps the room live without opening it, so new messages from others
+     * count as unread and raise `Notify`.
+     */
+    func watch(conversationId: String) throws 
+    
+}
+/**
+ * The app instance. Create one at launch and share it. Thread-safe.
+ */
+open class ChatCore: ChatCoreProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_chatcore(self.handle, $0) }
+    }
+    /**
+     * Opens the app with its account in the iOS Keychain. Needs
+     * `ForgeServices.install()` first; without it this fails with
+     * `UnsupportedOnHost`. `storage_directory` (created if missing) holds
+     * each account's chats.
+     */
+public convenience init(storageDirectory: String)throws  {
+    let handle =
+        try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_constructor_chatcore_new(
+        FfiConverterString.lower(storageDirectory),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_chatcore(handle, $0) }
+    }
+
+    
+    /**
+     * Like `new`, but the account is only kept in memory, so it is gone at
+     * the next launch. For tests and `swift run` on a Mac, where there is
+     * no app Keychain; never for the app.
+     */
+public static func withMemoryCredentials(storageDirectory: String)throws  -> ChatCore  {
+    return try  FfiConverterTypeChatCore_lift(try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_constructor_chatcore_with_memory_credentials(
+        FfiConverterString.lower(storageDirectory),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+    /**
+     * The signed-in account, if any. Known at once at launch: the app works
+     * offline from its store without asking the server.
+     */
+open func account() -> ChatAccount?  {
+    return try!  FfiConverterOptionTypeChatAccount.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_account(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Whether Chat asks for Face ID, Touch ID or the passcode when it
+     * opens and after a minute in the background. This device only.
+     */
+open func appLock() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_app_lock(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The on-device assistant. Works without an account, and keeps its
+     * conversations when the account signs out.
+     */
+open func assistant() -> AssistantCore  {
+    return try!  FfiConverterTypeAssistantCore_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_assistant(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The local file of an attachment, if it is on this iPhone already
+     * (sent from here, or fetched before). Its name is the attachment id,
+     * without an extension.
+     */
+open func attachmentFile(attachmentId: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_attachment_file(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(attachmentId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The host's background time ran out: finishing work stops.
+     */
+open func backgroundTimeExpired()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_background_time_expired(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+open func backgroundWorkPending() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_background_work_pending(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Conversations as stored, for a first render before the network.
+     */
+open func cachedConversations() -> [ChatConversation]  {
+    return try!  FfiConverterSequenceTypeChatConversation.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_cached_conversations(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A room's messages as stored, oldest first.
+     */
+open func cachedMessages(conversationId: String) -> [ChatMessage]  {
+    return try!  FfiConverterSequenceTypeChatMessage.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_cached_messages(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A new event stream. Each consumer takes its own and sees every event
+     * from now on.
+     */
+open func chatEvents()throws  -> ChatEvents  {
+    return try  FfiConverterTypeChatEvents_lift(try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_chat_events(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Asks the server who the stored token belongs to. Fails with
+     * `Unauthorized` (and emits `AccountRejected`) when the server no
+     * longer knows it, and with `Network` when it cannot be reached (the
+     * app keeps working from its store).
+     */
+open func checkAccount()async throws  -> ChatAccount  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_check_account(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatAccount_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Creates a conversation on the server. It is added to the list
+     * (`ConversationUpdated`) and returned, ready to open.
+     */
+open func createConversation(title: String)async throws  -> ChatConversation  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_create_conversation(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(title)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatConversation_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Deletes one of our messages for everyone; it becomes a "deleted"
+     * placeholder (`MessageUpdated`). A message that was never sent is
+     * just removed (`MessageRemoved`) and `None` is returned.
+     */
+open func deleteMessage(messageId: String)async throws  -> ChatMessage?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_delete_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * The saved draft for a conversation, if any.
+     */
+open func draft(conversationId: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_draft(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Replaces the text of one of our sent messages, for everyone
+     * (`MessageUpdated`, here and on other devices).
+     */
+open func editMessage(messageId: String, body: String)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_edit_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId),FfiConverterString.lower(body)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
+     */
+open func events() -> RuntimeEvents?  {
+    return try!  FfiConverterOptionTypeRuntimeEvents.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_events(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The local file of an attachment, downloading it first if needed (and
+     * checking it against its id). Runs off the caller's thread.
+     */
+open func fetchAttachment(attachmentId: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_fetch_attachment(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(attachmentId)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+open func launchReport() -> LaunchReport  {
+    return try!  FfiConverterTypeLaunchReport_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_launch_report(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Lists conversations from the server, prefetching new messages for
+     * rooms that are not open (they count as unread).
+     */
+open func listConversations()async throws  -> [ChatConversation]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_list_conversations(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeChatConversation.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Room connection threads still running: 0 shortly after every room
+     * is closed, or in the background.
+     */
+open func liveStreams() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_live_streams(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Marks everything in the room read, here at once and then on the
+     * server (other devices and other people see it). Clears "marked
+     * unread". An open room is kept read without this.
+     */
+open func markRead(conversationId: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_mark_read(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * How many of our messages are waiting to be sent.
+     */
+open func outboxCount() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_outbox_count(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The phase last reported.
+     */
+open func phase() -> AppPhase  {
+    return try!  FfiConverterTypeAppPhase_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_phase(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Sends a `Failed` (or still queued) message again now, with the same id.
+     */
+open func retryMessage(messageId: String)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_retry_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * The last committed revision.
+     */
+open func revision() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_revision(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Searches the messages on this device: every word of `query` must
+     * start a word in the message (case and accents ignored). In one
+     * conversation, or in all with `None`. Newest first, at most 100.
+     */
+open func search(query: String, conversationId: String?)async throws  -> [ChatMessage]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_search(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionString.lower(conversationId)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * `send_reply` with photos or documents (at most 10, each up to 25 MB).
+     * Rust copies each file into the app's attachment store before this
+     * returns its first event, so the originals may be temporary. The body
+     * may be empty. Offline, the files wait in the outbox with the message.
+     */
+open func sendFiles(conversationId: String, body: String, replyTo: String?, files: [ChatOutgoingFile])async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_send_files(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body),FfiConverterOptionString.lower(replyTo),FfiConverterSequenceTypeChatOutgoingFile.lower(files)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Sends a message. It is announced as `Sending` at once, then becomes
+     * `Sent` (`MessageStatusChanged`). If the server cannot be reached it
+     * stays `Sending` in the outbox and goes out by itself later, even
+     * after a relaunch; only a refusal by the server makes it `Failed`.
+     * Resolves with the message as it then is, or the error that failed it.
+     * Clears the conversation's draft.
+     */
+open func sendMessage(conversationId: String, body: String)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_send_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * `send_message` as an answer to `reply_to`, a message in the same
+     * conversation.
+     */
+open func sendReply(conversationId: String, body: String, replyTo: String?)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_send_reply(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body),FfiConverterOptionString.lower(replyTo)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Turns the app lock on or off. Turning it on is refused when this
+     * iPhone has neither biometrics nor a passcode, since the lock could
+     * never open.
+     */
+open func setAppLock(enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_set_app_lock(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(enabled),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Saves the composer's unsent text (empty clears it). Kept on this
+     * device across launches; cheap enough to call as the user types.
+     */
+open func setDraft(conversationId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_set_draft(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Shows the room as unread until it is opened or marked read (`true`),
+     * or stops doing so. This device only.
+     */
+open func setMarkedUnread(conversationId: String, marked: Bool)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_set_marked_unread(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),
+        FfiConverterBool.lower(marked),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Mutes the room (no notifications) or unmutes it. This device only.
+     */
+open func setMuted(conversationId: String, muted: Bool)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_set_muted(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),
+        FfiConverterBool.lower(muted),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The host reports the application lifecycle phase.
+     */
+open func setPhase(phase: AppPhase)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_set_phase(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Adds (`on`) or removes our `emoji` reaction (`MessageUpdated`).
+     */
+open func setReaction(messageId: String, emoji: String, on: Bool)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_set_reaction(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId),FfiConverterString.lower(emoji),FfiConverterBool.lower(on)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
+     */
+open func shutdown()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_shutdown(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Forgets the account: removes it from the Keychain and its chats from
+     * the device. The account itself stays on the server. Emits
+     * `AccountChanged`. Idempotent.
+     */
+open func signOut()throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_sign_out(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Creates an account named `display_name` on the chat server at
+     * `server_url`, stores it in the Keychain and switches to it. A
+     * previous account on this device is signed out first (its chats are
+     * removed from the device). Emits `AccountChanged`.
+     */
+open func signUp(serverUrl: String, displayName: String)async throws  -> ChatAccount  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_sign_up(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(serverUrl),FfiConverterString.lower(displayName)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatAccount_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * The last persistence problem, if any. Never fails a command.
+     */
+open func storeProblem() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_store_problem(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Opens the room: it goes live (in the foreground) and is kept read.
+     * Returns at once; `StreamConnected`/`StreamDisconnected` follow.
+     */
+open func subscribe(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_subscribe(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Fetches the room's messages newer than what is stored, merges them
+     * and returns the room's full stored list, oldest first.
+     */
+open func syncMessages(conversationId: String)async throws  -> [ChatMessage]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_sync_messages(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Closes the room. Its stream ends unless the room is watched.
+     */
+open func unsubscribe(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_unsubscribe(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+open func unwatch(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_unwatch(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Keeps the room live without opening it, so new messages from others
+     * count as unread and raise `Notify`.
+     */
+open func watch(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatcore_watch(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatCore: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = ChatCore
+
+    public static func lift(_ handle: UInt64) throws -> ChatCore {
+        return ChatCore(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: ChatCore) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatCore {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: ChatCore, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatCore_lift(_ handle: UInt64) throws -> ChatCore {
+    return try FfiConverterTypeChatCore.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatCore_lower(_ value: ChatCore) -> UInt64 {
+    return FfiConverterTypeChatCore.lower(value)
+}
+
+
+
+
+
+
+/**
+ * One consumer's events. Await `next()` in a loop; `None` means it ended.
+ */
+public protocol ChatEventsProtocol: AnyObject, Sendable {
+    
+    /**
+     * Ends this stream; a pending `next()` returns `None`.
+     */
+    func cancel() 
+    
+    /**
+     * The next event, or `None` once this stream has ended.
+     */
+    func next() async  -> ChatEvent?
+    
+}
+/**
+ * One consumer's events. Await `next()` in a loop; `None` means it ended.
+ */
+open class ChatEvents: ChatEventsProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_chatevents(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_chatevents(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Ends this stream; a pending `next()` returns `None`.
+     */
+open func cancel()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_chatevents_cancel(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The next event, or `None` once this stream has ended.
+     */
+open func next()async  -> ChatEvent?  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatevents_next(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeChatEvent.lift,
+            errorHandler: nil
+            
+        )
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatEvents: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = ChatEvents
+
+    public static func lift(_ handle: UInt64) throws -> ChatEvents {
+        return ChatEvents(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: ChatEvents) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatEvents {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: ChatEvents, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatEvents_lift(_ handle: UInt64) throws -> ChatEvents {
+    return try FfiConverterTypeChatEvents.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatEvents_lower(_ value: ChatEvents) -> UInt64 {
+    return FfiConverterTypeChatEvents.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+public protocol HttpStreamBodyProtocol: AnyObject, Sendable {
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */
+    func fail(error: HttpTransportError) 
+    
+    /**
+     * The server closed the body normally.
+     */
+    func finish() 
+    
+    /**
+     * The next bytes of the body.
+     */
+    func receive(data: Data) 
+    
+}
+/**
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+open class HttpStreamBody: HttpStreamBodyProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_httpstreambody(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_httpstreambody(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */
+open func fail(error: HttpTransportError)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_httpstreambody_fail(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpTransportError_lower(error),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The server closed the body normally.
+     */
+open func finish()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_httpstreambody_finish(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The next bytes of the body.
+     */
+open func receive(data: Data)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_httpstreambody_receive(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(data),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpStreamBody: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = HttpStreamBody
+
+    public static func lift(_ handle: UInt64) throws -> HttpStreamBody {
+        return HttpStreamBody(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: HttpStreamBody) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpStreamBody {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: HttpStreamBody, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamBody_lift(_ handle: UInt64) throws -> HttpStreamBody {
+    return try FfiConverterTypeHttpStreamBody.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamBody_lower(_ value: HttpStreamBody) -> UInt64 {
+    return FfiConverterTypeHttpStreamBody.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
+ */
+public protocol HttpTransport: AnyObject, Sendable {
+    
+    func send(request: HttpRequest) throws  -> HttpResponse
+    
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+    func openStream(request: HttpRequest, body: HttpStreamBody) throws  -> HttpStreamHead
+    
+    func cancel(id: UInt64) 
+    
+}
+/**
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
+ */
+open class HttpTransportImpl: HttpTransport, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_httptransport(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_httptransport(handle, $0) }
+    }
+
+    
+
+    
+open func send(request: HttpRequest)throws  -> HttpResponse  {
+    return try  FfiConverterTypeHttpResponse_lift(try rustCallWithError(FfiConverterTypeHttpTransportError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_httptransport_send(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpRequest_lower(request),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+open func openStream(request: HttpRequest, body: HttpStreamBody)throws  -> HttpStreamHead  {
+    return try  FfiConverterTypeHttpStreamHead_lift(try rustCallWithError(FfiConverterTypeHttpTransportError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_httptransport_open_stream(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpRequest_lower(request),
+        FfiConverterTypeHttpStreamBody_lower(body),uniffiCallStatus
+    )
+})
+}
+    
+open func cancel(id: UInt64)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_httptransport_cancel(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceHttpTransport {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceHttpTransport = UniffiVTableCallbackInterfaceHttpTransport(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeHttpTransport.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface HttpTransport: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeHttpTransport.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface HttpTransport: handle missing in uniffiClone")
+            }
+        },
+        send: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> HttpResponse in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.send(
+                     request: try FfiConverterTypeHttpRequest_lift(request)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHttpResponse_lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHttpTransportError_lower
+            )
+        },
+        openStream: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            body: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> HttpStreamHead in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.openStream(
+                     request: try FfiConverterTypeHttpRequest_lift(request),
+                     body: try FfiConverterTypeHttpStreamBody_lift(body)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHttpStreamHead_lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHttpTransportError_lower
+            )
+        },
+        cancel: { (
+            uniffiHandle: UInt64,
+            id: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.cancel(
+                     id: try FfiConverterUInt64.lift(id)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceHttpTransport> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceHttpTransport>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitHttpTransport() {
+    uniffi_relay_core_fn_init_callback_vtable_httptransport(UniffiCallbackInterfaceHttpTransport.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpTransport: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<HttpTransport>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = HttpTransport
+
+    public static func lift(_ handle: UInt64) throws -> HttpTransport {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return HttpTransportImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: HttpTransport) -> UInt64 {
+         if let rustImpl = value as? HttpTransportImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpTransport {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: HttpTransport, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransport_lift(_ handle: UInt64) throws -> HttpTransport {
+    return try FfiConverterTypeHttpTransport.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransport_lower(_ value: HttpTransport) -> UInt64 {
+    return FfiConverterTypeHttpTransport.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Local notifications (no push server involved).
+ */
+public protocol LocalNotifier: AnyObject, Sendable {
+    
+    /**
+     * Schedules (or replaces) a notification. Fails with
+     * `PermissionDenied` when notifications are off for the app.
+     */
+    func schedule(notification: LocalNotification) async throws 
+    
+    /**
+     * Cancels a pending notification and removes it from the
+     * notification list if it was delivered.
+     */
+    func cancel(id: String) 
+    
+    /**
+     * Ids of the notifications that are scheduled and not yet
+     * delivered.
+     */
+    func pending() async  -> [String]
+    
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+    func setCategories(categories: [NotificationCategory]) 
+    
+}
+/**
+ * Local notifications (no push server involved).
+ */
+open class LocalNotifierImpl: LocalNotifier, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_localnotifier(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_localnotifier(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Schedules (or replaces) a notification. Fails with
+     * `PermissionDenied` when notifications are off for the app.
+     */
+open func schedule(notification: LocalNotification)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_localnotifier_schedule(
+                        self.uniffiCloneHandle(),FfiConverterTypeLocalNotification_lower(notification)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeNativeServiceError_lift
+        )
+}
+    
+    /**
+     * Cancels a pending notification and removes it from the
+     * notification list if it was delivered.
+     */
+open func cancel(id: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_localnotifier_cancel(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Ids of the notifications that are scheduled and not yet
+     * delivered.
+     */
+open func pending()async  -> [String]  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_localnotifier_pending(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceString.lift,
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+open func setCategories(categories: [NotificationCategory])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_localnotifier_set_categories(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeNotificationCategory.lower(categories),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceLocalNotifier {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceLocalNotifier = UniffiVTableCallbackInterfaceLocalNotifier(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeLocalNotifier.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface LocalNotifier: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeLocalNotifier.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface LocalNotifier: handle missing in uniffiClone")
+            }
+        },
+        schedule: { (
+            uniffiHandle: UInt64,
+            notification: RustBuffer,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteVoid,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try await uniffiObj.schedule(
+                     notification: try FfiConverterTypeLocalNotification_lift(notification)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: ()) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsyncWithError(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                lowerError: FfiConverterTypeNativeServiceError_lower,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        cancel: { (
+            uniffiHandle: UInt64,
+            id: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.cancel(
+                     id: try FfiConverterString.lift(id)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        pending: { (
+            uniffiHandle: UInt64,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> [String] in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return await uniffiObj.pending(
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: [String]) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterSequenceString.lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        setCategories: { (
+            uniffiHandle: UInt64,
+            categories: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.setCategories(
+                     categories: try FfiConverterSequenceTypeNotificationCategory.lift(categories)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceLocalNotifier> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceLocalNotifier>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitLocalNotifier() {
+    uniffi_relay_core_fn_init_callback_vtable_localnotifier(UniffiCallbackInterfaceLocalNotifier.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocalNotifier: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<LocalNotifier>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = LocalNotifier
+
+    public static func lift(_ handle: UInt64) throws -> LocalNotifier {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return LocalNotifierImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: LocalNotifier) -> UInt64 {
+         if let rustImpl = value as? LocalNotifierImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocalNotifier {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: LocalNotifier, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalNotifier_lift(_ handle: UInt64) throws -> LocalNotifier {
+    return try FfiConverterTypeLocalNotifier.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalNotifier_lower(_ value: LocalNotifier) -> UInt64 {
+    return FfiConverterTypeLocalNotifier.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Permission status and requests, one interface for every
+ * permission.
+ */
+public protocol PermissionProvider: AnyObject, Sendable {
+    
+    func status(permission: NativePermission) async  -> PermissionStatus
+    
+    /**
+     * Shows the system prompt if the user has not been asked
+     * yet; otherwise returns the current status. Call it in
+     * response to something the user did.
+     */
+    func request(permission: NativePermission) async  -> PermissionStatus
+    
+}
+/**
+ * Permission status and requests, one interface for every
+ * permission.
+ */
+open class PermissionProviderImpl: PermissionProvider, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_permissionprovider(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_permissionprovider(handle, $0) }
+    }
+
+    
+
+    
+open func status(permission: NativePermission)async  -> PermissionStatus  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_permissionprovider_status(
+                        self.uniffiCloneHandle(),FfiConverterTypeNativePermission_lower(permission)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePermissionStatus_lift,
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * Shows the system prompt if the user has not been asked
+     * yet; otherwise returns the current status. Call it in
+     * response to something the user did.
+     */
+open func request(permission: NativePermission)async  -> PermissionStatus  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_permissionprovider_request(
+                        self.uniffiCloneHandle(),FfiConverterTypeNativePermission_lower(permission)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePermissionStatus_lift,
+            errorHandler: nil
+            
+        )
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfacePermissionProvider {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfacePermissionProvider = UniffiVTableCallbackInterfacePermissionProvider(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypePermissionProvider.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface PermissionProvider: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypePermissionProvider.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface PermissionProvider: handle missing in uniffiClone")
+            }
+        },
+        status: { (
+            uniffiHandle: UInt64,
+            permission: RustBuffer,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> PermissionStatus in
+                guard let uniffiObj = try? FfiConverterTypePermissionProvider.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return await uniffiObj.status(
+                     permission: try FfiConverterTypeNativePermission_lift(permission)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: PermissionStatus) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterTypePermissionStatus_lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        request: { (
+            uniffiHandle: UInt64,
+            permission: RustBuffer,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> PermissionStatus in
+                guard let uniffiObj = try? FfiConverterTypePermissionProvider.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return await uniffiObj.request(
+                     permission: try FfiConverterTypeNativePermission_lift(permission)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: PermissionStatus) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterTypePermissionStatus_lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfacePermissionProvider> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfacePermissionProvider>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitPermissionProvider() {
+    uniffi_relay_core_fn_init_callback_vtable_permissionprovider(UniffiCallbackInterfacePermissionProvider.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePermissionProvider: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<PermissionProvider>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = PermissionProvider
+
+    public static func lift(_ handle: UInt64) throws -> PermissionProvider {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return PermissionProviderImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: PermissionProvider) -> UInt64 {
+         if let rustImpl = value as? PermissionProviderImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PermissionProvider {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: PermissionProvider, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePermissionProvider_lift(_ handle: UInt64) throws -> PermissionProvider {
+    return try FfiConverterTypePermissionProvider.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePermissionProvider_lower(_ value: PermissionProvider) -> UInt64 {
+    return FfiConverterTypePermissionProvider.lower(value)
+}
+
+
 
 
 
@@ -1404,6 +5749,1894 @@ public func FfiConverterTypeRelayCore_lower(_ value: RelayCore) -> UInt64 {
 
 
 
+
+
+/**
+ * Secrets (tokens, keys, passwords), stored by the platform's
+ * secure store: the iOS Keychain, readable after the first
+ * unlock and never synced or restored to another device.
+ * Survives app updates; on iOS it can survive deleting the app.
+ */
+public protocol SecureStore: AnyObject, Sendable {
+    
+    /**
+     * The value stored under `key`, or `None`.
+     */
+    func get(key: String) throws  -> Data?
+    
+    /**
+     * Stores `value` under `key`, replacing any old value.
+     */
+    func set(key: String, value: Data) throws 
+    
+    /**
+     * Removes `key`. Removing a missing key is not an error.
+     */
+    func delete(key: String) throws 
+    
+}
+/**
+ * Secrets (tokens, keys, passwords), stored by the platform's
+ * secure store: the iOS Keychain, readable after the first
+ * unlock and never synced or restored to another device.
+ * Survives app updates; on iOS it can survive deleting the app.
+ */
+open class SecureStoreImpl: SecureStore, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_securestore(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_securestore(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The value stored under `key`, or `None`.
+     */
+open func get(key: String)throws  -> Data?  {
+    return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_securestore_get(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Stores `value` under `key`, replacing any old value.
+     */
+open func set(key: String, value: Data)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_securestore_set(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(key),
+        FfiConverterData.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Removes `key`. Removing a missing key is not an error.
+     */
+open func delete(key: String)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_securestore_delete(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceSecureStore {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceSecureStore = UniffiVTableCallbackInterfaceSecureStore(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeSecureStore.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface SecureStore: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeSecureStore.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface SecureStore: handle missing in uniffiClone")
+            }
+        },
+        get: { (
+            uniffiHandle: UInt64,
+            key: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Data? in
+                guard let uniffiObj = try? FfiConverterTypeSecureStore.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.get(
+                     key: try FfiConverterString.lift(key)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterOptionData.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        },
+        set: { (
+            uniffiHandle: UInt64,
+            key: RustBuffer,
+            value: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeSecureStore.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.set(
+                     key: try FfiConverterString.lift(key),
+                     value: try FfiConverterData.lift(value)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        },
+        delete: { (
+            uniffiHandle: UInt64,
+            key: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeSecureStore.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.delete(
+                     key: try FfiConverterString.lift(key)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceSecureStore> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceSecureStore>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitSecureStore() {
+    uniffi_relay_core_fn_init_callback_vtable_securestore(UniffiCallbackInterfaceSecureStore.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSecureStore: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<SecureStore>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = SecureStore
+
+    public static func lift(_ handle: UInt64) throws -> SecureStore {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return SecureStoreImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: SecureStore) -> UInt64 {
+         if let rustImpl = value as? SecureStoreImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SecureStore {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: SecureStore, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSecureStore_lift(_ handle: UInt64) throws -> SecureStore {
+    return try FfiConverterTypeSecureStore.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSecureStore_lower(_ value: SecureStore) -> UInt64 {
+    return FfiConverterTypeSecureStore.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Where the model writes its answer. Rust decides what each
+ * piece does (show it, keep it, stop the model).
+ */
+public protocol TextSinkProtocol: AnyObject, Sendable {
+    
+    /**
+     * Whether the answer was stopped, for a model that can
+     * check between steps without pushing.
+     */
+    func isStopped()  -> Bool
+    
+    /**
+     * Adds the next piece of the answer (only the new text).
+     * Returns false once the answer was stopped: the model must
+     * stop computing. Cheap; push every piece as it comes.
+     */
+    func push(text: String)  -> Bool
+    
+}
+/**
+ * Where the model writes its answer. Rust decides what each
+ * piece does (show it, keep it, stop the model).
+ */
+open class TextSink: TextSinkProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_relay_core_fn_clone_textsink(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_relay_core_fn_free_textsink(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Whether the answer was stopped, for a model that can
+     * check between steps without pushing.
+     */
+open func isStopped() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_textsink_is_stopped(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Adds the next piece of the answer (only the new text).
+     * Returns false once the answer was stopped: the model must
+     * stop computing. Cheap; push every piece as it comes.
+     */
+open func push(text: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_textsink_push(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextSink: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = TextSink
+
+    public static func lift(_ handle: UInt64) throws -> TextSink {
+        return TextSink(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: TextSink) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextSink {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: TextSink, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextSink_lift(_ handle: UInt64) throws -> TextSink {
+    return try FfiConverterTypeTextSink.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextSink_lower(_ value: TextSink) -> UInt64 {
+    return FfiConverterTypeTextSink.lower(value)
+}
+
+
+
+
+public struct AiMessage: Equatable, Hashable {
+    public var role: AiRole
+    public var content: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(role: AiRole, content: String) {
+        self.role = role
+        self.content = content
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AiMessage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiMessage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiMessage {
+        return
+            try AiMessage(
+                role: FfiConverterTypeAiRole.read(from: &buf), 
+                content: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiMessage, into buf: inout [UInt8]) {
+        FfiConverterTypeAiRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.content, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiMessage_lift(_ buf: RustBuffer) throws -> AiMessage {
+    return try FfiConverterTypeAiMessage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiMessage_lower(_ value: AiMessage) -> RustBuffer {
+    return FfiConverterTypeAiMessage.lower(value)
+}
+
+
+/**
+ * What a model is and whether it can answer now.
+ */
+public struct AiModelInfo: Equatable, Hashable {
+    /**
+     * Stable id, recorded with each answer
+     * ("apple-foundation-models").
+     */
+    public var id: String
+    /**
+     * The name the app shows ("Apple Intelligence").
+     */
+    public var name: String
+    public var available: Bool
+    /**
+     * Why not, in words the user can act on.
+     */
+    public var unavailableReason: String?
+    /**
+     * Tokens one request can read and write together.
+     */
+    public var contextTokens: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Stable id, recorded with each answer
+         * ("apple-foundation-models").
+         */id: String, 
+        /**
+         * The name the app shows ("Apple Intelligence").
+         */name: String, available: Bool, 
+        /**
+         * Why not, in words the user can act on.
+         */unavailableReason: String?, 
+        /**
+         * Tokens one request can read and write together.
+         */contextTokens: UInt32) {
+        self.id = id
+        self.name = name
+        self.available = available
+        self.unavailableReason = unavailableReason
+        self.contextTokens = contextTokens
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AiModelInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiModelInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiModelInfo {
+        return
+            try AiModelInfo(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                available: FfiConverterBool.read(from: &buf), 
+                unavailableReason: FfiConverterOptionString.read(from: &buf), 
+                contextTokens: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiModelInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.available, into: &buf)
+        FfiConverterOptionString.write(value.unavailableReason, into: &buf)
+        FfiConverterUInt32.write(value.contextTokens, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModelInfo_lift(_ buf: RustBuffer) throws -> AiModelInfo {
+    return try FfiConverterTypeAiModelInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModelInfo_lower(_ value: AiModelInfo) -> RustBuffer {
+    return FfiConverterTypeAiModelInfo.lower(value)
+}
+
+
+/**
+ * One request: OpenAI's chat completions, text only. System
+ * messages come first; the last message is the one to answer.
+ */
+public struct AiRequest: Equatable, Hashable {
+    public var model: String?
+    public var messages: [AiMessage]
+    /**
+     * The longest answer, in tokens.
+     */
+    public var maxTokens: UInt32
+    /**
+     * Sampling temperature, 0 to 1.5.
+     */
+    public var temperature: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(model: String?, messages: [AiMessage], 
+        /**
+         * The longest answer, in tokens.
+         */maxTokens: UInt32, 
+        /**
+         * Sampling temperature, 0 to 1.5.
+         */temperature: Double) {
+        self.model = model
+        self.messages = messages
+        self.maxTokens = maxTokens
+        self.temperature = temperature
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AiRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiRequest {
+        return
+            try AiRequest(
+                model: FfiConverterOptionString.read(from: &buf), 
+                messages: FfiConverterSequenceTypeAiMessage.read(from: &buf), 
+                maxTokens: FfiConverterUInt32.read(from: &buf), 
+                temperature: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiRequest, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.model, into: &buf)
+        FfiConverterSequenceTypeAiMessage.write(value.messages, into: &buf)
+        FfiConverterUInt32.write(value.maxTokens, into: &buf)
+        FfiConverterDouble.write(value.temperature, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiRequest_lift(_ buf: RustBuffer) throws -> AiRequest {
+    return try FfiConverterTypeAiRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiRequest_lower(_ value: AiRequest) -> RustBuffer {
+    return FfiConverterTypeAiRequest.lower(value)
+}
+
+
+/**
+ * Where the app may keep files. Absolute paths, given by the host
+ * at launch. On iOS the container path changes between installs,
+ * so store paths relative to one of these, never absolute ones.
+ */
+public struct AppDirectories: Equatable, Hashable {
+    /**
+     * User-visible documents (shown in the Files app when the app
+     * opts in). Backed up.
+     */
+    public var documents: String
+    /**
+     * The app's own data. Backed up, never shown to the user.
+     */
+    public var applicationSupport: String
+    /**
+     * Re-creatable data. The system may delete it when space is low.
+     */
+    public var caches: String
+    /**
+     * Scratch space, cleared by the system between launches.
+     */
+    public var temporary: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * User-visible documents (shown in the Files app when the app
+         * opts in). Backed up.
+         */documents: String, 
+        /**
+         * The app's own data. Backed up, never shown to the user.
+         */applicationSupport: String, 
+        /**
+         * Re-creatable data. The system may delete it when space is low.
+         */caches: String, 
+        /**
+         * Scratch space, cleared by the system between launches.
+         */temporary: String) {
+        self.documents = documents
+        self.applicationSupport = applicationSupport
+        self.caches = caches
+        self.temporary = temporary
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AppDirectories: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAppDirectories: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppDirectories {
+        return
+            try AppDirectories(
+                documents: FfiConverterString.read(from: &buf), 
+                applicationSupport: FfiConverterString.read(from: &buf), 
+                caches: FfiConverterString.read(from: &buf), 
+                temporary: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AppDirectories, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.documents, into: &buf)
+        FfiConverterString.write(value.applicationSupport, into: &buf)
+        FfiConverterString.write(value.caches, into: &buf)
+        FfiConverterString.write(value.temporary, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppDirectories_lift(_ buf: RustBuffer) throws -> AppDirectories {
+    return try FfiConverterTypeAppDirectories.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppDirectories_lower(_ value: AppDirectories) -> RustBuffer {
+    return FfiConverterTypeAppDirectories.lower(value)
+}
+
+
+/**
+ * A character, as the app shows it.
+ */
+public struct AssistantCharacter: Equatable, Hashable {
+    /**
+     * Stable id, stored with each conversation.
+     */
+    public var id: String
+    public var name: String
+    /**
+     * The avatar.
+     */
+    public var emoji: String
+    /**
+     * One line for the picker.
+     */
+    public var description: String
+    /**
+     * The first message of a new conversation, if the character opens it.
+     */
+    public var openingLine: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Stable id, stored with each conversation.
+         */id: String, name: String, 
+        /**
+         * The avatar.
+         */emoji: String, 
+        /**
+         * One line for the picker.
+         */description: String, 
+        /**
+         * The first message of a new conversation, if the character opens it.
+         */openingLine: String?) {
+        self.id = id
+        self.name = name
+        self.emoji = emoji
+        self.description = description
+        self.openingLine = openingLine
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AssistantCharacter: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantCharacter: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantCharacter {
+        return
+            try AssistantCharacter(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                emoji: FfiConverterString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                openingLine: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AssistantCharacter, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.emoji, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterOptionString.write(value.openingLine, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantCharacter_lift(_ buf: RustBuffer) throws -> AssistantCharacter {
+    return try FfiConverterTypeAssistantCharacter.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantCharacter_lower(_ value: AssistantCharacter) -> RustBuffer {
+    return FfiConverterTypeAssistantCharacter.lower(value)
+}
+
+
+public struct AssistantConversation: Equatable, Hashable {
+    public var id: String
+    public var character: AssistantCharacter
+    /**
+     * Unix ms.
+     */
+    public var createdAt: Int64
+    /**
+     * Unix ms of the newest message.
+     */
+    public var updatedAt: Int64
+    /**
+     * For the list's preview line.
+     */
+    public var lastMessage: AssistantMessage?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, character: AssistantCharacter, 
+        /**
+         * Unix ms.
+         */createdAt: Int64, 
+        /**
+         * Unix ms of the newest message.
+         */updatedAt: Int64, 
+        /**
+         * For the list's preview line.
+         */lastMessage: AssistantMessage?) {
+        self.id = id
+        self.character = character
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.lastMessage = lastMessage
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AssistantConversation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantConversation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantConversation {
+        return
+            try AssistantConversation(
+                id: FfiConverterString.read(from: &buf), 
+                character: FfiConverterTypeAssistantCharacter.read(from: &buf), 
+                createdAt: FfiConverterInt64.read(from: &buf), 
+                updatedAt: FfiConverterInt64.read(from: &buf), 
+                lastMessage: FfiConverterOptionTypeAssistantMessage.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AssistantConversation, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterTypeAssistantCharacter.write(value.character, into: &buf)
+        FfiConverterInt64.write(value.createdAt, into: &buf)
+        FfiConverterInt64.write(value.updatedAt, into: &buf)
+        FfiConverterOptionTypeAssistantMessage.write(value.lastMessage, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantConversation_lift(_ buf: RustBuffer) throws -> AssistantConversation {
+    return try FfiConverterTypeAssistantConversation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantConversation_lower(_ value: AssistantConversation) -> RustBuffer {
+    return FfiConverterTypeAssistantConversation.lower(value)
+}
+
+
+public struct AssistantMessage: Equatable, Hashable {
+    public var id: String
+    public var conversationId: String
+    public var role: AssistantRole
+    public var text: String
+    public var state: AssistantMessageState
+    /**
+     * Why it was refused or failed.
+     */
+    public var error: String?
+    /**
+     * Unix ms.
+     */
+    public var createdAt: Int64
+    /**
+     * Answers only, once they have ended.
+     */
+    public var stats: AssistantStats?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, conversationId: String, role: AssistantRole, text: String, state: AssistantMessageState, 
+        /**
+         * Why it was refused or failed.
+         */error: String?, 
+        /**
+         * Unix ms.
+         */createdAt: Int64, 
+        /**
+         * Answers only, once they have ended.
+         */stats: AssistantStats?) {
+        self.id = id
+        self.conversationId = conversationId
+        self.role = role
+        self.text = text
+        self.state = state
+        self.error = error
+        self.createdAt = createdAt
+        self.stats = stats
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AssistantMessage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantMessage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantMessage {
+        return
+            try AssistantMessage(
+                id: FfiConverterString.read(from: &buf), 
+                conversationId: FfiConverterString.read(from: &buf), 
+                role: FfiConverterTypeAssistantRole.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                state: FfiConverterTypeAssistantMessageState.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf), 
+                createdAt: FfiConverterInt64.read(from: &buf), 
+                stats: FfiConverterOptionTypeAssistantStats.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AssistantMessage, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.conversationId, into: &buf)
+        FfiConverterTypeAssistantRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterTypeAssistantMessageState.write(value.state, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+        FfiConverterInt64.write(value.createdAt, into: &buf)
+        FfiConverterOptionTypeAssistantStats.write(value.stats, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantMessage_lift(_ buf: RustBuffer) throws -> AssistantMessage {
+    return try FfiConverterTypeAssistantMessage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantMessage_lower(_ value: AssistantMessage) -> RustBuffer {
+    return FfiConverterTypeAssistantMessage.lower(value)
+}
+
+
+/**
+ * How an answer was made, for the line under it and the log.
+ */
+public struct AssistantStats: Equatable, Hashable {
+    public var engineId: String
+    /**
+     * From sending to the first text.
+     */
+    public var firstTextMs: UInt64?
+    /**
+     * From sending to the end.
+     */
+    public var durationMs: UInt64
+    /**
+     * Pieces the engine pushed (about one per token for most engines;
+     * Foundation Models pushes larger pieces).
+     */
+    public var pieces: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(engineId: String, 
+        /**
+         * From sending to the first text.
+         */firstTextMs: UInt64?, 
+        /**
+         * From sending to the end.
+         */durationMs: UInt64, 
+        /**
+         * Pieces the engine pushed (about one per token for most engines;
+         * Foundation Models pushes larger pieces).
+         */pieces: UInt32) {
+        self.engineId = engineId
+        self.firstTextMs = firstTextMs
+        self.durationMs = durationMs
+        self.pieces = pieces
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AssistantStats: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantStats: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantStats {
+        return
+            try AssistantStats(
+                engineId: FfiConverterString.read(from: &buf), 
+                firstTextMs: FfiConverterOptionUInt64.read(from: &buf), 
+                durationMs: FfiConverterUInt64.read(from: &buf), 
+                pieces: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AssistantStats, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.engineId, into: &buf)
+        FfiConverterOptionUInt64.write(value.firstTextMs, into: &buf)
+        FfiConverterUInt64.write(value.durationMs, into: &buf)
+        FfiConverterUInt32.write(value.pieces, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantStats_lift(_ buf: RustBuffer) throws -> AssistantStats {
+    return try FfiConverterTypeAssistantStats.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantStats_lower(_ value: AssistantStats) -> RustBuffer {
+    return FfiConverterTypeAssistantStats.lower(value)
+}
+
+
+/**
+ * One request to iOS.
+ */
+public struct BackgroundTaskRequest: Equatable, Hashable {
+    public var identifier: String
+    public var kind: BackgroundTaskKind
+    /**
+     * Not before this many seconds from now. iOS treats it as
+     * the earliest time, never a promise.
+     */
+    public var earliestBeginSeconds: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(identifier: String, kind: BackgroundTaskKind, 
+        /**
+         * Not before this many seconds from now. iOS treats it as
+         * the earliest time, never a promise.
+         */earliestBeginSeconds: Double) {
+        self.identifier = identifier
+        self.kind = kind
+        self.earliestBeginSeconds = earliestBeginSeconds
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BackgroundTaskRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundTaskRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundTaskRequest {
+        return
+            try BackgroundTaskRequest(
+                identifier: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeBackgroundTaskKind.read(from: &buf), 
+                earliestBeginSeconds: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BackgroundTaskRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.identifier, into: &buf)
+        FfiConverterTypeBackgroundTaskKind.write(value.kind, into: &buf)
+        FfiConverterDouble.write(value.earliestBeginSeconds, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskRequest_lift(_ buf: RustBuffer) throws -> BackgroundTaskRequest {
+    return try FfiConverterTypeBackgroundTaskRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskRequest_lower(_ value: BackgroundTaskRequest) -> RustBuffer {
+    return FfiConverterTypeBackgroundTaskRequest.lower(value)
+}
+
+
+/**
+ * What the device can do now.
+ */
+public struct BiometricAvailability: Equatable, Hashable {
+    public var kind: BiometryKind
+    /**
+     * A face or finger is enrolled and allowed for this app.
+     */
+    public var biometricsUsable: Bool
+    /**
+     * A device passcode is set (the fallback, and the minimum
+     * for an app lock).
+     */
+    public var passcodeSet: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(kind: BiometryKind, 
+        /**
+         * A face or finger is enrolled and allowed for this app.
+         */biometricsUsable: Bool, 
+        /**
+         * A device passcode is set (the fallback, and the minimum
+         * for an app lock).
+         */passcodeSet: Bool) {
+        self.kind = kind
+        self.biometricsUsable = biometricsUsable
+        self.passcodeSet = passcodeSet
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BiometricAvailability: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBiometricAvailability: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BiometricAvailability {
+        return
+            try BiometricAvailability(
+                kind: FfiConverterTypeBiometryKind.read(from: &buf), 
+                biometricsUsable: FfiConverterBool.read(from: &buf), 
+                passcodeSet: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BiometricAvailability, into buf: inout [UInt8]) {
+        FfiConverterTypeBiometryKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.biometricsUsable, into: &buf)
+        FfiConverterBool.write(value.passcodeSet, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometricAvailability_lift(_ buf: RustBuffer) throws -> BiometricAvailability {
+    return try FfiConverterTypeBiometricAvailability.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometricAvailability_lower(_ value: BiometricAvailability) -> RustBuffer {
+    return FfiConverterTypeBiometricAvailability.lower(value)
+}
+
+
+/**
+ * The signed-in account, without its token (the token never leaves Rust
+ * and the Keychain).
+ */
+public struct ChatAccount: Equatable, Hashable {
+    public var userId: String
+    public var displayName: String
+    /**
+     * The chat server this account lives on.
+     */
+    public var serverUrl: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(userId: String, displayName: String, 
+        /**
+         * The chat server this account lives on.
+         */serverUrl: String) {
+        self.userId = userId
+        self.displayName = displayName
+        self.serverUrl = serverUrl
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatAccount: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatAccount: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatAccount {
+        return
+            try ChatAccount(
+                userId: FfiConverterString.read(from: &buf), 
+                displayName: FfiConverterString.read(from: &buf), 
+                serverUrl: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatAccount, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.userId, into: &buf)
+        FfiConverterString.write(value.displayName, into: &buf)
+        FfiConverterString.write(value.serverUrl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAccount_lift(_ buf: RustBuffer) throws -> ChatAccount {
+    return try FfiConverterTypeChatAccount.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAccount_lower(_ value: ChatAccount) -> RustBuffer {
+    return FfiConverterTypeChatAccount.lower(value)
+}
+
+
+/**
+ * A file a message carries.
+ */
+public struct ChatAttachment: Equatable, Hashable {
+    /**
+     * The SHA-256 of its bytes (lowercase hex): how to fetch it.
+     */
+    public var id: String
+    /**
+     * The file name as the sender had it, e.g. `IMG_0042.jpg`.
+     */
+    public var name: String
+    /**
+     * Its media type, e.g. `image/jpeg` or `application/pdf`.
+     */
+    public var mime: String
+    public var size: UInt64
+    /**
+     * A picture the app can show inline.
+     */
+    public var isImage: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The SHA-256 of its bytes (lowercase hex): how to fetch it.
+         */id: String, 
+        /**
+         * The file name as the sender had it, e.g. `IMG_0042.jpg`.
+         */name: String, 
+        /**
+         * Its media type, e.g. `image/jpeg` or `application/pdf`.
+         */mime: String, size: UInt64, 
+        /**
+         * A picture the app can show inline.
+         */isImage: Bool) {
+        self.id = id
+        self.name = name
+        self.mime = mime
+        self.size = size
+        self.isImage = isImage
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatAttachment: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatAttachment: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatAttachment {
+        return
+            try ChatAttachment(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                mime: FfiConverterString.read(from: &buf), 
+                size: FfiConverterUInt64.read(from: &buf), 
+                isImage: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatAttachment, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.mime, into: &buf)
+        FfiConverterUInt64.write(value.size, into: &buf)
+        FfiConverterBool.write(value.isImage, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAttachment_lift(_ buf: RustBuffer) throws -> ChatAttachment {
+    return try FfiConverterTypeChatAttachment.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAttachment_lower(_ value: ChatAttachment) -> RustBuffer {
+    return FfiConverterTypeChatAttachment.lower(value)
+}
+
+
+/**
+ * One conversation as the list shows it.
+ */
+public struct ChatConversation: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    /**
+     * Newest message the server knows of, Unix ms. `None` for an empty room.
+     */
+    public var lastMessageAt: Int64?
+    /**
+     * Messages from others this account has not read (by the server's read
+     * cursor). 0 while the room is open.
+     */
+    public var unreadCount: UInt32
+    /**
+     * Show the unread dot: unread messages, or the user marked it unread.
+     */
+    public var showsUnread: Bool
+    /**
+     * The newest message, for the preview line (ours too, while sending).
+     */
+    public var lastMessage: ChatMessage?
+    /**
+     * How far anyone else has read, Unix ms. One of our sent messages with
+     * `sent_at` up to it has been read; `ChatMessage::is_read` says so.
+     */
+    public var othersReadUpTo: Int64?
+    /**
+     * No notifications for this room (this device only).
+     */
+    public var muted: Bool
+    /**
+     * The user swiped it to unread (this device only).
+     */
+    public var markedUnread: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, 
+        /**
+         * Newest message the server knows of, Unix ms. `None` for an empty room.
+         */lastMessageAt: Int64?, 
+        /**
+         * Messages from others this account has not read (by the server's read
+         * cursor). 0 while the room is open.
+         */unreadCount: UInt32, 
+        /**
+         * Show the unread dot: unread messages, or the user marked it unread.
+         */showsUnread: Bool, 
+        /**
+         * The newest message, for the preview line (ours too, while sending).
+         */lastMessage: ChatMessage?, 
+        /**
+         * How far anyone else has read, Unix ms. One of our sent messages with
+         * `sent_at` up to it has been read; `ChatMessage::is_read` says so.
+         */othersReadUpTo: Int64?, 
+        /**
+         * No notifications for this room (this device only).
+         */muted: Bool, 
+        /**
+         * The user swiped it to unread (this device only).
+         */markedUnread: Bool) {
+        self.id = id
+        self.title = title
+        self.lastMessageAt = lastMessageAt
+        self.unreadCount = unreadCount
+        self.showsUnread = showsUnread
+        self.lastMessage = lastMessage
+        self.othersReadUpTo = othersReadUpTo
+        self.muted = muted
+        self.markedUnread = markedUnread
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatConversation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatConversation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatConversation {
+        return
+            try ChatConversation(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                lastMessageAt: FfiConverterOptionInt64.read(from: &buf), 
+                unreadCount: FfiConverterUInt32.read(from: &buf), 
+                showsUnread: FfiConverterBool.read(from: &buf), 
+                lastMessage: FfiConverterOptionTypeChatMessage.read(from: &buf), 
+                othersReadUpTo: FfiConverterOptionInt64.read(from: &buf), 
+                muted: FfiConverterBool.read(from: &buf), 
+                markedUnread: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatConversation, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionInt64.write(value.lastMessageAt, into: &buf)
+        FfiConverterUInt32.write(value.unreadCount, into: &buf)
+        FfiConverterBool.write(value.showsUnread, into: &buf)
+        FfiConverterOptionTypeChatMessage.write(value.lastMessage, into: &buf)
+        FfiConverterOptionInt64.write(value.othersReadUpTo, into: &buf)
+        FfiConverterBool.write(value.muted, into: &buf)
+        FfiConverterBool.write(value.markedUnread, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatConversation_lift(_ buf: RustBuffer) throws -> ChatConversation {
+    return try FfiConverterTypeChatConversation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatConversation_lower(_ value: ChatConversation) -> RustBuffer {
+    return FfiConverterTypeChatConversation.lower(value)
+}
+
+
+public struct ChatMessage: Equatable, Hashable {
+    /**
+     * Chosen by the sending device; stable across retries.
+     */
+    public var id: String
+    public var conversationId: String
+    /**
+     * The author's display name.
+     */
+    public var author: String
+    /**
+     * The author's account id; empty for messages from clients without an
+     * account.
+     */
+    public var authorId: String
+    /**
+     * Whether the signed-in account wrote it. Decided in Rust (by account
+     * id), so the host never compares names.
+     */
+    public var isMine: Bool
+    public var body: String
+    /**
+     * Unix ms: device time while sending or failed, server time once sent.
+     */
+    public var sentAt: Int64
+    public var status: ChatMessageStatus
+    /**
+     * The message this one answers (same conversation), by id. The host
+     * finds it among the room's messages to quote it.
+     */
+    public var replyTo: String?
+    /**
+     * Its author changed the text after sending.
+     */
+    public var edited: Bool
+    /**
+     * Deleted for everyone: show a placeholder; `body` is empty.
+     */
+    public var deleted: Bool
+    /**
+     * Reactions, most popular first (then by emoji).
+     */
+    public var reactions: [ChatReaction]
+    /**
+     * Photos and documents it carries, in order (M3). Fetch the bytes with
+     * `ChatCore::fetch_attachment`.
+     */
+    public var attachments: [ChatAttachment]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Chosen by the sending device; stable across retries.
+         */id: String, conversationId: String, 
+        /**
+         * The author's display name.
+         */author: String, 
+        /**
+         * The author's account id; empty for messages from clients without an
+         * account.
+         */authorId: String, 
+        /**
+         * Whether the signed-in account wrote it. Decided in Rust (by account
+         * id), so the host never compares names.
+         */isMine: Bool, body: String, 
+        /**
+         * Unix ms: device time while sending or failed, server time once sent.
+         */sentAt: Int64, status: ChatMessageStatus, 
+        /**
+         * The message this one answers (same conversation), by id. The host
+         * finds it among the room's messages to quote it.
+         */replyTo: String?, 
+        /**
+         * Its author changed the text after sending.
+         */edited: Bool, 
+        /**
+         * Deleted for everyone: show a placeholder; `body` is empty.
+         */deleted: Bool, 
+        /**
+         * Reactions, most popular first (then by emoji).
+         */reactions: [ChatReaction], 
+        /**
+         * Photos and documents it carries, in order (M3). Fetch the bytes with
+         * `ChatCore::fetch_attachment`.
+         */attachments: [ChatAttachment]) {
+        self.id = id
+        self.conversationId = conversationId
+        self.author = author
+        self.authorId = authorId
+        self.isMine = isMine
+        self.body = body
+        self.sentAt = sentAt
+        self.status = status
+        self.replyTo = replyTo
+        self.edited = edited
+        self.deleted = deleted
+        self.reactions = reactions
+        self.attachments = attachments
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatMessage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatMessage {
+        return
+            try ChatMessage(
+                id: FfiConverterString.read(from: &buf), 
+                conversationId: FfiConverterString.read(from: &buf), 
+                author: FfiConverterString.read(from: &buf), 
+                authorId: FfiConverterString.read(from: &buf), 
+                isMine: FfiConverterBool.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                sentAt: FfiConverterInt64.read(from: &buf), 
+                status: FfiConverterTypeChatMessageStatus.read(from: &buf), 
+                replyTo: FfiConverterOptionString.read(from: &buf), 
+                edited: FfiConverterBool.read(from: &buf), 
+                deleted: FfiConverterBool.read(from: &buf), 
+                reactions: FfiConverterSequenceTypeChatReaction.read(from: &buf), 
+                attachments: FfiConverterSequenceTypeChatAttachment.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatMessage, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.conversationId, into: &buf)
+        FfiConverterString.write(value.author, into: &buf)
+        FfiConverterString.write(value.authorId, into: &buf)
+        FfiConverterBool.write(value.isMine, into: &buf)
+        FfiConverterString.write(value.body, into: &buf)
+        FfiConverterInt64.write(value.sentAt, into: &buf)
+        FfiConverterTypeChatMessageStatus.write(value.status, into: &buf)
+        FfiConverterOptionString.write(value.replyTo, into: &buf)
+        FfiConverterBool.write(value.edited, into: &buf)
+        FfiConverterBool.write(value.deleted, into: &buf)
+        FfiConverterSequenceTypeChatReaction.write(value.reactions, into: &buf)
+        FfiConverterSequenceTypeChatAttachment.write(value.attachments, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessage_lift(_ buf: RustBuffer) throws -> ChatMessage {
+    return try FfiConverterTypeChatMessage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessage_lower(_ value: ChatMessage) -> RustBuffer {
+    return FfiConverterTypeChatMessage.lower(value)
+}
+
+
+/**
+ * A file the user picked to send.
+ */
+public struct ChatOutgoingFile: Equatable, Hashable {
+    /**
+     * Where it is now (Rust copies it at once; it may be deleted after
+     * `send_files` returns).
+     */
+    public var path: String
+    /**
+     * The name to show; empty takes the file name.
+     */
+    public var name: String
+    /**
+     * Its media type; empty means `application/octet-stream`.
+     */
+    public var mime: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Where it is now (Rust copies it at once; it may be deleted after
+         * `send_files` returns).
+         */path: String, 
+        /**
+         * The name to show; empty takes the file name.
+         */name: String, 
+        /**
+         * Its media type; empty means `application/octet-stream`.
+         */mime: String) {
+        self.path = path
+        self.name = name
+        self.mime = mime
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatOutgoingFile: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatOutgoingFile: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatOutgoingFile {
+        return
+            try ChatOutgoingFile(
+                path: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                mime: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatOutgoingFile, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.mime, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatOutgoingFile_lift(_ buf: RustBuffer) throws -> ChatOutgoingFile {
+    return try FfiConverterTypeChatOutgoingFile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatOutgoingFile_lower(_ value: ChatOutgoingFile) -> RustBuffer {
+    return FfiConverterTypeChatOutgoingFile.lower(value)
+}
+
+
+/**
+ * One emoji on a message and who put it there.
+ */
+public struct ChatReaction: Equatable, Hashable {
+    public var emoji: String
+    public var count: UInt32
+    /**
+     * The signed-in account is one of them (tapping removes it).
+     */
+    public var mine: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(emoji: String, count: UInt32, 
+        /**
+         * The signed-in account is one of them (tapping removes it).
+         */mine: Bool) {
+        self.emoji = emoji
+        self.count = count
+        self.mine = mine
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatReaction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatReaction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatReaction {
+        return
+            try ChatReaction(
+                emoji: FfiConverterString.read(from: &buf), 
+                count: FfiConverterUInt32.read(from: &buf), 
+                mine: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatReaction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.emoji, into: &buf)
+        FfiConverterUInt32.write(value.count, into: &buf)
+        FfiConverterBool.write(value.mine, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatReaction_lift(_ buf: RustBuffer) throws -> ChatReaction {
+    return try FfiConverterTypeChatReaction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatReaction_lower(_ value: ChatReaction) -> RustBuffer {
+    return FfiConverterTypeChatReaction.lower(value)
+}
+
+
 /**
  * A finished receive.
  */
@@ -1557,6 +7790,393 @@ public func FfiConverterTypeCodeSize_lower(_ value: CodeSize) -> RustBuffer {
 
 
 /**
+ * A URL the app was opened with (custom scheme, universal link
+ * or notification tap), split into parts.
+ */
+public struct DeepLink: Equatable, Hashable {
+    /**
+     * The URL as received.
+     */
+    public var url: String
+    /**
+     * Lowercased, e.g. `myapp` or `https`.
+     */
+    public var scheme: String
+    /**
+     * Lowercased host, if the URL has one.
+     */
+    public var host: String?
+    /**
+     * Decoded path segments, empty ones dropped.
+     */
+    public var path: [String]
+    public var query: [QueryItem]
+    public var fragment: String?
+    /**
+     * What to route on. For `http(s)` links the path; for custom
+     * schemes the host followed by the path, so
+     * `myapp://note/42` and `https://example.com/note/42` both
+     * give `["note", "42"]`.
+     */
+    public var route: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The URL as received.
+         */url: String, 
+        /**
+         * Lowercased, e.g. `myapp` or `https`.
+         */scheme: String, 
+        /**
+         * Lowercased host, if the URL has one.
+         */host: String?, 
+        /**
+         * Decoded path segments, empty ones dropped.
+         */path: [String], query: [QueryItem], fragment: String?, 
+        /**
+         * What to route on. For `http(s)` links the path; for custom
+         * schemes the host followed by the path, so
+         * `myapp://note/42` and `https://example.com/note/42` both
+         * give `["note", "42"]`.
+         */route: [String]) {
+        self.url = url
+        self.scheme = scheme
+        self.host = host
+        self.path = path
+        self.query = query
+        self.fragment = fragment
+        self.route = route
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DeepLink: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDeepLink: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DeepLink {
+        return
+            try DeepLink(
+                url: FfiConverterString.read(from: &buf), 
+                scheme: FfiConverterString.read(from: &buf), 
+                host: FfiConverterOptionString.read(from: &buf), 
+                path: FfiConverterSequenceString.read(from: &buf), 
+                query: FfiConverterSequenceTypeQueryItem.read(from: &buf), 
+                fragment: FfiConverterOptionString.read(from: &buf), 
+                route: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DeepLink, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterString.write(value.scheme, into: &buf)
+        FfiConverterOptionString.write(value.host, into: &buf)
+        FfiConverterSequenceString.write(value.path, into: &buf)
+        FfiConverterSequenceTypeQueryItem.write(value.query, into: &buf)
+        FfiConverterOptionString.write(value.fragment, into: &buf)
+        FfiConverterSequenceString.write(value.route, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeepLink_lift(_ buf: RustBuffer) throws -> DeepLink {
+    return try FfiConverterTypeDeepLink.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeepLink_lower(_ value: DeepLink) -> RustBuffer {
+    return FfiConverterTypeDeepLink.lower(value)
+}
+
+
+public struct HttpHeader: Equatable, Hashable {
+    public var name: String
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpHeader: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpHeader: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpHeader {
+        return
+            try HttpHeader(
+                name: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpHeader, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpHeader_lift(_ buf: RustBuffer) throws -> HttpHeader {
+    return try FfiConverterTypeHttpHeader.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpHeader_lower(_ value: HttpHeader) -> RustBuffer {
+    return FfiConverterTypeHttpHeader.lower(value)
+}
+
+
+/**
+ * One request for the host to send. `id` names it for
+ * `HttpTransport::cancel`.
+ */
+public struct HttpRequest: Equatable, Hashable {
+    public var id: UInt64
+    /**
+     * `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+     */
+    public var method: String
+    public var url: String
+    public var headers: [HttpHeader]
+    public var body: Data
+    /**
+     * Send this file as the body instead (an upload); `body` is
+     * then empty.
+     */
+    public var bodyFile: String?
+    public var timeoutMs: UInt64
+    /**
+     * Stop and fail with `Transport` once the response body
+     * grows past this.
+     */
+    public var maxBodyBytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: UInt64, 
+        /**
+         * `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+         */method: String, url: String, headers: [HttpHeader], body: Data, 
+        /**
+         * Send this file as the body instead (an upload); `body` is
+         * then empty.
+         */bodyFile: String?, timeoutMs: UInt64, 
+        /**
+         * Stop and fail with `Transport` once the response body
+         * grows past this.
+         */maxBodyBytes: UInt64) {
+        self.id = id
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.body = body
+        self.bodyFile = bodyFile
+        self.timeoutMs = timeoutMs
+        self.maxBodyBytes = maxBodyBytes
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpRequest {
+        return
+            try HttpRequest(
+                id: FfiConverterUInt64.read(from: &buf), 
+                method: FfiConverterString.read(from: &buf), 
+                url: FfiConverterString.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf), 
+                body: FfiConverterData.read(from: &buf), 
+                bodyFile: FfiConverterOptionString.read(from: &buf), 
+                timeoutMs: FfiConverterUInt64.read(from: &buf), 
+                maxBodyBytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpRequest, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.method, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+        FfiConverterData.write(value.body, into: &buf)
+        FfiConverterOptionString.write(value.bodyFile, into: &buf)
+        FfiConverterUInt64.write(value.timeoutMs, into: &buf)
+        FfiConverterUInt64.write(value.maxBodyBytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpRequest_lift(_ buf: RustBuffer) throws -> HttpRequest {
+    return try FfiConverterTypeHttpRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpRequest_lower(_ value: HttpRequest) -> RustBuffer {
+    return FfiConverterTypeHttpRequest.lower(value)
+}
+
+
+public struct HttpResponse: Equatable, Hashable {
+    public var status: UInt16
+    public var headers: [HttpHeader]
+    public var body: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(status: UInt16, headers: [HttpHeader], body: Data) {
+        self.status = status
+        self.headers = headers
+        self.body = body
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpResponse: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpResponse {
+        return
+            try HttpResponse(
+                status: FfiConverterUInt16.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf), 
+                body: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpResponse, into buf: inout [UInt8]) {
+        FfiConverterUInt16.write(value.status, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+        FfiConverterData.write(value.body, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpResponse_lift(_ buf: RustBuffer) throws -> HttpResponse {
+    return try FfiConverterTypeHttpResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpResponse_lower(_ value: HttpResponse) -> RustBuffer {
+    return FfiConverterTypeHttpResponse.lower(value)
+}
+
+
+/**
+ * The status and headers of a streamed response.
+ */
+public struct HttpStreamHead: Equatable, Hashable {
+    public var status: UInt16
+    public var headers: [HttpHeader]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(status: UInt16, headers: [HttpHeader]) {
+        self.status = status
+        self.headers = headers
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpStreamHead: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpStreamHead: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpStreamHead {
+        return
+            try HttpStreamHead(
+                status: FfiConverterUInt16.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpStreamHead, into buf: inout [UInt8]) {
+        FfiConverterUInt16.write(value.status, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamHead_lift(_ buf: RustBuffer) throws -> HttpStreamHead {
+    return try FfiConverterTypeHttpStreamHead.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamHead_lower(_ value: HttpStreamHead) -> RustBuffer {
+    return FfiConverterTypeHttpStreamHead.lower(value)
+}
+
+
+/**
  * This device, as other devices see it.
  */
 public struct Identity: Equatable, Hashable {
@@ -1678,6 +8298,110 @@ public func FfiConverterTypeInvitation_lower(_ value: Invitation) -> RustBuffer 
 
 
 /**
+ * A local notification. Scheduling one with an `id` that is
+ * already pending replaces it.
+ */
+public struct LocalNotification: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var body: String
+    public var subtitle: String?
+    /**
+     * Groups related notifications (iOS `threadIdentifier`).
+     */
+    public var threadId: String?
+    /**
+     * Opened when the user taps the notification, through the
+     * same path as any other deep link.
+     */
+    public var deepLink: String?
+    public var trigger: NotificationTrigger
+    /**
+     * The category whose action buttons the notification shows
+     * (`set_notification_categories`). None: no buttons.
+     */
+    public var category: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, body: String, subtitle: String?, 
+        /**
+         * Groups related notifications (iOS `threadIdentifier`).
+         */threadId: String?, 
+        /**
+         * Opened when the user taps the notification, through the
+         * same path as any other deep link.
+         */deepLink: String?, trigger: NotificationTrigger, 
+        /**
+         * The category whose action buttons the notification shows
+         * (`set_notification_categories`). None: no buttons.
+         */category: String? = nil) {
+        self.id = id
+        self.title = title
+        self.body = body
+        self.subtitle = subtitle
+        self.threadId = threadId
+        self.deepLink = deepLink
+        self.trigger = trigger
+        self.category = category
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LocalNotification: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocalNotification: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocalNotification {
+        return
+            try LocalNotification(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterOptionString.read(from: &buf), 
+                threadId: FfiConverterOptionString.read(from: &buf), 
+                deepLink: FfiConverterOptionString.read(from: &buf), 
+                trigger: FfiConverterTypeNotificationTrigger.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LocalNotification, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.body, into: &buf)
+        FfiConverterOptionString.write(value.subtitle, into: &buf)
+        FfiConverterOptionString.write(value.threadId, into: &buf)
+        FfiConverterOptionString.write(value.deepLink, into: &buf)
+        FfiConverterTypeNotificationTrigger.write(value.trigger, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalNotification_lift(_ buf: RustBuffer) throws -> LocalNotification {
+    return try FfiConverterTypeLocalNotification.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalNotification_lower(_ value: LocalNotification) -> RustBuffer {
+    return FfiConverterTypeLocalNotification.lower(value)
+}
+
+
+/**
  * Another sender the app sees advertising nearby.
  */
 public struct NearbySender: Equatable, Hashable {
@@ -1731,6 +8455,230 @@ public func FfiConverterTypeNearbySender_lift(_ buf: RustBuffer) throws -> Nearb
 #endif
 public func FfiConverterTypeNearbySender_lower(_ value: NearbySender) -> RustBuffer {
     return FfiConverterTypeNearbySender.lower(value)
+}
+
+
+/**
+ * One action button on a notification.
+ */
+public struct NotificationAction: Equatable, Hashable {
+    /**
+     * Comes back in `NotificationResponse::action_id`.
+     */
+    public var id: String
+    public var title: String
+    public var kind: NotificationActionKind
+    /**
+     * iOS asks the person to unlock the phone first.
+     */
+    public var requiresUnlock: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Comes back in `NotificationResponse::action_id`.
+         */id: String, title: String, kind: NotificationActionKind, 
+        /**
+         * iOS asks the person to unlock the phone first.
+         */requiresUnlock: Bool) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.requiresUnlock = requiresUnlock
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationAction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationAction {
+        return
+            try NotificationAction(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeNotificationActionKind.read(from: &buf), 
+                requiresUnlock: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationAction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterTypeNotificationActionKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.requiresUnlock, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lift(_ buf: RustBuffer) throws -> NotificationAction {
+    return try FfiConverterTypeNotificationAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lower(_ value: NotificationAction) -> RustBuffer {
+    return FfiConverterTypeNotificationAction.lower(value)
+}
+
+
+/**
+ * A set of action buttons notifications can name.
+ */
+public struct NotificationCategory: Equatable, Hashable {
+    public var id: String
+    public var actions: [NotificationAction]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, actions: [NotificationAction]) {
+        self.id = id
+        self.actions = actions
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationCategory: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationCategory: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationCategory {
+        return
+            try NotificationCategory(
+                id: FfiConverterString.read(from: &buf), 
+                actions: FfiConverterSequenceTypeNotificationAction.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationCategory, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterSequenceTypeNotificationAction.write(value.actions, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lift(_ buf: RustBuffer) throws -> NotificationCategory {
+    return try FfiConverterTypeNotificationCategory.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lower(_ value: NotificationCategory) -> RustBuffer {
+    return FfiConverterTypeNotificationCategory.lower(value)
+}
+
+
+/**
+ * What the person did with a notification: tapped it
+ * (`action_id` is [`NOTIFICATION_OPENED`]), dismissed it
+ * ([`NOTIFICATION_DISMISSED`], only for categories) or chose an
+ * action.
+ */
+public struct NotificationResponse: Equatable, Hashable {
+    public var notificationId: String
+    public var actionId: String
+    /**
+     * What they typed, for a `TextInput` action.
+     */
+    public var text: String?
+    public var category: String?
+    /**
+     * The notification's `thread_id` (its group: a chat room, a
+     * list).
+     */
+    public var threadId: String?
+    public var deepLink: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(notificationId: String, actionId: String, 
+        /**
+         * What they typed, for a `TextInput` action.
+         */text: String?, category: String?, 
+        /**
+         * The notification's `thread_id` (its group: a chat room, a
+         * list).
+         */threadId: String?, deepLink: String?) {
+        self.notificationId = notificationId
+        self.actionId = actionId
+        self.text = text
+        self.category = category
+        self.threadId = threadId
+        self.deepLink = deepLink
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationResponse: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationResponse {
+        return
+            try NotificationResponse(
+                notificationId: FfiConverterString.read(from: &buf), 
+                actionId: FfiConverterString.read(from: &buf), 
+                text: FfiConverterOptionString.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf), 
+                threadId: FfiConverterOptionString.read(from: &buf), 
+                deepLink: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationResponse, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.notificationId, into: &buf)
+        FfiConverterString.write(value.actionId, into: &buf)
+        FfiConverterOptionString.write(value.text, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
+        FfiConverterOptionString.write(value.threadId, into: &buf)
+        FfiConverterOptionString.write(value.deepLink, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lift(_ buf: RustBuffer) throws -> NotificationResponse {
+    return try FfiConverterTypeNotificationResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResponse) -> RustBuffer {
+    return FfiConverterTypeNotificationResponse.lower(value)
 }
 
 
@@ -1802,6 +8750,63 @@ public func FfiConverterTypePeer_lift(_ buf: RustBuffer) throws -> Peer {
 #endif
 public func FfiConverterTypePeer_lower(_ value: Peer) -> RustBuffer {
     return FfiConverterTypePeer.lower(value)
+}
+
+
+/**
+ * One `name=value` pair of a URL query, decoded.
+ */
+public struct QueryItem: Equatable, Hashable {
+    public var name: String
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension QueryItem: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeQueryItem: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> QueryItem {
+        return
+            try QueryItem(
+                name: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: QueryItem, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQueryItem_lift(_ buf: RustBuffer) throws -> QueryItem {
+    return try FfiConverterTypeQueryItem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
+    return FfiConverterTypeQueryItem.lower(value)
 }
 
 
@@ -1880,6 +8885,1479 @@ public func FfiConverterTypeTransfer_lift(_ buf: RustBuffer) throws -> Transfer 
 public func FfiConverterTypeTransfer_lower(_ value: Transfer) -> RustBuffer {
     return FfiConverterTypeTransfer.lower(value)
 }
+
+
+/**
+ * Why the model gave no answer.
+ */
+public 
+enum AiModelError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * Apple Intelligence off or still downloading, an iPhone
+     * that doesn't support it.
+     */
+    case Unavailable(reason: String
+    )
+    /**
+     * The model's safety rules declined the request.
+     */
+    case Refused(reason: String
+    )
+    /**
+     * The request doesn't fit the model's context window.
+     */
+    case ContextTooLong(reason: String
+    )
+    /**
+     * Throttled for now (Apple's model limits apps in the
+     * background).
+     */
+    case Busy(reason: String
+    )
+    /**
+     * Stopped through the sink.
+     */
+    case Stopped
+    case Engine(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension AiModelError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiModelError: FfiConverterRustBuffer {
+    typealias SwiftType = AiModelError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiModelError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Unavailable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Refused(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .ContextTooLong(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .Busy(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .Stopped
+        case 6: return .Engine(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AiModelError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Unavailable(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Refused(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .ContextTooLong(reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Busy(reason):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Stopped:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .Engine(reason):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModelError_lift(_ buf: RustBuffer) throws -> AiModelError {
+    return try FfiConverterTypeAiModelError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModelError_lower(_ value: AiModelError) -> RustBuffer {
+    return FfiConverterTypeAiModelError.lower(value)
+}
+
+
+/**
+ * Who wrote a message.
+ */
+
+public enum AiRole: Equatable, Hashable {
+    
+    case system
+    case user
+    case assistant
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AiRole: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiRole: FfiConverterRustBuffer {
+    typealias SwiftType = AiRole
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiRole {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .system
+        
+        case 2: return .user
+        
+        case 3: return .assistant
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AiRole, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .system:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .user:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .assistant:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiRole_lift(_ buf: RustBuffer) throws -> AiRole {
+    return try FfiConverterTypeAiRole.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiRole_lower(_ value: AiRole) -> RustBuffer {
+    return FfiConverterTypeAiRole.lower(value)
+}
+
+
+
+public 
+enum AssistantError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * The app has not installed a model engine (`set_engine`).
+     */
+    case NoEngine
+    /**
+     * The engine cannot run now; `reason` says what the user can do.
+     */
+    case Unavailable(reason: String
+    )
+    /**
+     * An answer is being written; stop it or wait.
+     */
+    case Busy
+    case NotFound(what: String
+    )
+    case InvalidInput(reason: String
+    )
+    case Storage(reason: String
+    )
+    case ShutDown
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension AssistantError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantError: FfiConverterRustBuffer {
+    typealias SwiftType = AssistantError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .NoEngine
+        case 2: return .Unavailable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Busy
+        case 4: return .NotFound(
+            what: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .InvalidInput(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .Storage(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 7: return .ShutDown
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AssistantError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case .NoEngine:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .Unavailable(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Busy:
+            writeInt(&buf, Int32(3))
+        
+        
+        case let .NotFound(what):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(what, into: &buf)
+            
+        
+        case let .InvalidInput(reason):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Storage(reason):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(7))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantError_lift(_ buf: RustBuffer) throws -> AssistantError {
+    return try FfiConverterTypeAssistantError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantError_lower(_ value: AssistantError) -> RustBuffer {
+    return FfiConverterTypeAssistantError.lower(value)
+}
+
+
+/**
+ * Where an answer stands. User messages are always `Done`.
+ */
+
+public enum AssistantMessageState: Equatable, Hashable {
+    
+    case done
+    /**
+     * Being written now.
+     */
+    case streaming
+    /**
+     * The user pressed Stop; the text so far is kept.
+     */
+    case stopped
+    /**
+     * The app ended while it was being written.
+     */
+    case interrupted
+    /**
+     * The model's safety rules declined; `error` says why.
+     */
+    case refused
+    /**
+     * The engine failed; `error` says why.
+     */
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AssistantMessageState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantMessageState: FfiConverterRustBuffer {
+    typealias SwiftType = AssistantMessageState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantMessageState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .done
+        
+        case 2: return .streaming
+        
+        case 3: return .stopped
+        
+        case 4: return .interrupted
+        
+        case 5: return .refused
+        
+        case 6: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AssistantMessageState, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .done:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .streaming:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .stopped:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .interrupted:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .refused:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantMessageState_lift(_ buf: RustBuffer) throws -> AssistantMessageState {
+    return try FfiConverterTypeAssistantMessageState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantMessageState_lower(_ value: AssistantMessageState) -> RustBuffer {
+    return FfiConverterTypeAssistantMessageState.lower(value)
+}
+
+
+
+/**
+ * Who wrote a message.
+ */
+
+public enum AssistantRole: Equatable, Hashable {
+    
+    case user
+    case assistant
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AssistantRole: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantRole: FfiConverterRustBuffer {
+    typealias SwiftType = AssistantRole
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantRole {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .user
+        
+        case 2: return .assistant
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AssistantRole, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .user:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .assistant:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantRole_lift(_ buf: RustBuffer) throws -> AssistantRole {
+    return try FfiConverterTypeAssistantRole.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantRole_lower(_ value: AssistantRole) -> RustBuffer {
+    return FfiConverterTypeAssistantRole.lower(value)
+}
+
+
+
+/**
+ * What the screen receives while an answer is written.
+ */
+
+public enum AssistantUpdate: Equatable, Hashable {
+    
+    /**
+     * More of the answer: append `text`.
+     */
+    case text(text: String
+    )
+    /**
+     * The answer ended (finished, stopped, refused or failed) and is
+     * saved. Replace the bubble with `message`. Always the last update.
+     */
+    case finished(message: AssistantMessage
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AssistantUpdate: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAssistantUpdate: FfiConverterRustBuffer {
+    typealias SwiftType = AssistantUpdate
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AssistantUpdate {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .text(text: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .finished(message: try FfiConverterTypeAssistantMessage.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AssistantUpdate, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .text(text):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(text, into: &buf)
+            
+        
+        case let .finished(message):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeAssistantMessage.write(message, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantUpdate_lift(_ buf: RustBuffer) throws -> AssistantUpdate {
+    return try FfiConverterTypeAssistantUpdate.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAssistantUpdate_lower(_ value: AssistantUpdate) -> RustBuffer {
+    return FfiConverterTypeAssistantUpdate.lower(value)
+}
+
+
+
+/**
+ * How an authentication ended.
+ */
+
+public enum AuthenticationResult: Equatable, Hashable {
+    
+    case authenticated
+    /**
+     * The person (or the system, or another app) cancelled.
+     */
+    case cancelled
+    /**
+     * Too many failed attempts: biometrics are locked until the
+     * passcode is entered.
+     */
+    case lockedOut
+    /**
+     * No biometrics or passcode, or the app's permission was
+     * refused.
+     */
+    case unavailable
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AuthenticationResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAuthenticationResult: FfiConverterRustBuffer {
+    typealias SwiftType = AuthenticationResult
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AuthenticationResult {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .authenticated
+        
+        case 2: return .cancelled
+        
+        case 3: return .lockedOut
+        
+        case 4: return .unavailable
+        
+        case 5: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AuthenticationResult, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .authenticated:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .cancelled:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .lockedOut:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .unavailable:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAuthenticationResult_lift(_ buf: RustBuffer) throws -> AuthenticationResult {
+    return try FfiConverterTypeAuthenticationResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAuthenticationResult_lower(_ value: AuthenticationResult) -> RustBuffer {
+    return FfiConverterTypeAuthenticationResult.lower(value)
+}
+
+
+
+/**
+ * The kind of window to ask iOS for.
+ */
+
+public enum BackgroundTaskKind: Equatable, Hashable {
+    
+    /**
+     * A short refresh (about 30 seconds): fetch new content.
+     */
+    case refresh
+    /**
+     * A longer window (minutes), usually overnight: upkeep,
+     * indexing, uploads. iOS can wait for power or a network.
+     */
+    case processing(requiresExternalPower: Bool, requiresNetwork: Bool
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension BackgroundTaskKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundTaskKind: FfiConverterRustBuffer {
+    typealias SwiftType = BackgroundTaskKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundTaskKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .refresh
+        
+        case 2: return .processing(requiresExternalPower: try FfiConverterBool.read(from: &buf), requiresNetwork: try FfiConverterBool.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: BackgroundTaskKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .refresh:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .processing(requiresExternalPower,requiresNetwork):
+            writeInt(&buf, Int32(2))
+            FfiConverterBool.write(requiresExternalPower, into: &buf)
+            FfiConverterBool.write(requiresNetwork, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskKind_lift(_ buf: RustBuffer) throws -> BackgroundTaskKind {
+    return try FfiConverterTypeBackgroundTaskKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskKind_lower(_ value: BackgroundTaskKind) -> RustBuffer {
+    return FfiConverterTypeBackgroundTaskKind.lower(value)
+}
+
+
+
+/**
+ * The biometric sensor the device has.
+ */
+
+public enum BiometryKind: Equatable, Hashable {
+    
+    case none
+    case touchId
+    case faceId
+    case opticId
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension BiometryKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBiometryKind: FfiConverterRustBuffer {
+    typealias SwiftType = BiometryKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BiometryKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .none
+        
+        case 2: return .touchId
+        
+        case 3: return .faceId
+        
+        case 4: return .opticId
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: BiometryKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .none:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .touchId:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .faceId:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .opticId:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometryKind_lift(_ buf: RustBuffer) throws -> BiometryKind {
+    return try FfiConverterTypeBiometryKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometryKind_lower(_ value: BiometryKind) -> RustBuffer {
+    return FfiConverterTypeBiometryKind.lower(value)
+}
+
+
+
+/**
+ * Where one of our messages is, as its bubble shows it.
+ */
+
+public enum ChatDelivery: Equatable, Hashable {
+    
+    case sending
+    case sent
+    /**
+     * Someone else in the room has read it (their read cursor passed it).
+     */
+    case read
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatDelivery: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatDelivery: FfiConverterRustBuffer {
+    typealias SwiftType = ChatDelivery
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatDelivery {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .sending
+        
+        case 2: return .sent
+        
+        case 3: return .read
+        
+        case 4: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatDelivery, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .sending:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .sent:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .read:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatDelivery_lift(_ buf: RustBuffer) throws -> ChatDelivery {
+    return try FfiConverterTypeChatDelivery.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatDelivery_lower(_ value: ChatDelivery) -> RustBuffer {
+    return FfiConverterTypeChatDelivery.lower(value)
+}
+
+
+
+/**
+ * Every error a command returns. `reason`/`detail` are diagnostics, not UI
+ * copy. (No field is called `message`: it clashes with Kotlin's
+ * `Throwable.message`.)
+ */
+public 
+enum ChatError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case Network(reason: String
+    )
+    case Certificate(reason: String
+    )
+    case Http(status: UInt16, reason: String
+    )
+    case BadResponse(reason: String
+    )
+    case Cancelled
+    case NotFound(conversationId: String
+    )
+    case UnsupportedOnHost(detail: String
+    )
+    case InvalidInput(reason: String
+    )
+    /**
+     * No account yet: call `sign_up` first.
+     */
+    case NotSignedIn
+    /**
+     * The server rejected the account token (HTTP 401).
+     */
+    case Unauthorized(reason: String
+    )
+    /**
+     * The Keychain or the chat store could not be used.
+     */
+    case Storage(reason: String
+    )
+    /**
+     * Another core already has this data folder open.
+     */
+    case InUse(reason: String
+    )
+    case ShutDown
+    case Internal(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension ChatError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
+    typealias SwiftType = ChatError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Network(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Certificate(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Http(
+            status: try FfiConverterUInt16.read(from: &buf), 
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .BadResponse(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .Cancelled
+        case 6: return .NotFound(
+            conversationId: try FfiConverterString.read(from: &buf)
+            )
+        case 7: return .UnsupportedOnHost(
+            detail: try FfiConverterString.read(from: &buf)
+            )
+        case 8: return .InvalidInput(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 9: return .NotSignedIn
+        case 10: return .Unauthorized(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 11: return .Storage(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 12: return .InUse(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 13: return .ShutDown
+        case 14: return .Internal(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Network(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Certificate(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Http(status,reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt16.write(status, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .BadResponse(reason):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .NotFound(conversationId):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(conversationId, into: &buf)
+            
+        
+        case let .UnsupportedOnHost(detail):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(detail, into: &buf)
+            
+        
+        case let .InvalidInput(reason):
+            writeInt(&buf, Int32(8))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .NotSignedIn:
+            writeInt(&buf, Int32(9))
+        
+        
+        case let .Unauthorized(reason):
+            writeInt(&buf, Int32(10))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Storage(reason):
+            writeInt(&buf, Int32(11))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .InUse(reason):
+            writeInt(&buf, Int32(12))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(13))
+        
+        
+        case let .Internal(reason):
+            writeInt(&buf, Int32(14))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatError_lift(_ buf: RustBuffer) throws -> ChatError {
+    return try FfiConverterTypeChatError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatError_lower(_ value: ChatError) -> RustBuffer {
+    return FfiConverterTypeChatError.lower(value)
+}
+
+
+/**
+ * Everything the host renders from. All events of a `ChatCore` go to every
+ * `ChatEvents` stream; the host filters by `conversation_id`.
+ */
+
+public enum ChatEvent: Equatable, Hashable {
+    
+    /**
+     * Signed in, signed out, or a different account.
+     */
+    case accountChanged(account: ChatAccount?
+    )
+    /**
+     * The server no longer accepts this device's account (its data was
+     * reset, or the URL points at another server). The account stays
+     * until the user signs up again or signs out.
+     */
+    case accountRejected(reason: String
+    )
+    case conversationUpdated(conversation: ChatConversation
+    )
+    /**
+     * A message the host has not seen yet, or a new version of one (hosts
+     * upsert by id).
+     */
+    case messageReceived(message: ChatMessage
+    )
+    /**
+     * An existing message was edited, deleted for everyone or reacted to
+     * (by anyone). Replace it by id; it is never unread news.
+     */
+    case messageUpdated(message: ChatMessage
+    )
+    /**
+     * A message that was never sent was deleted on this device: drop it.
+     */
+    case messageRemoved(conversationId: String, id: String
+    )
+    /**
+     * Someone else's new message in a room that is not open: show a local
+     * notification.
+     */
+    case notify(message: ChatMessage
+    )
+    case messageStatusChanged(conversationId: String, id: String, status: ChatMessageStatus
+    )
+    case streamConnected(conversationId: String
+    )
+    /**
+     * `will_retry`: Rust is reconnecting (or the app is in the background
+     * and reconnects on resume). Without it the room's stream is over.
+     */
+    case streamDisconnected(conversationId: String, reason: String, willRetry: Bool
+    )
+    /**
+     * The host reported a new phase. `resumed` is true on the way back from
+     * the background: refresh the conversation list then.
+     */
+    case phaseChanged(phase: AppPhase, resumed: Bool
+    )
+    /**
+     * This consumer fell behind and missed `count` events; re-read the
+     * cached conversations and messages.
+     */
+    case eventsDropped(count: UInt64
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatEvent: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
+    typealias SwiftType = ChatEvent
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatEvent {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .accountChanged(account: try FfiConverterOptionTypeChatAccount.read(from: &buf)
+        )
+        
+        case 2: return .accountRejected(reason: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .conversationUpdated(conversation: try FfiConverterTypeChatConversation.read(from: &buf)
+        )
+        
+        case 4: return .messageReceived(message: try FfiConverterTypeChatMessage.read(from: &buf)
+        )
+        
+        case 5: return .messageUpdated(message: try FfiConverterTypeChatMessage.read(from: &buf)
+        )
+        
+        case 6: return .messageRemoved(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 7: return .notify(message: try FfiConverterTypeChatMessage.read(from: &buf)
+        )
+        
+        case 8: return .messageStatusChanged(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
+        )
+        
+        case 9: return .streamConnected(conversationId: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 10: return .streamDisconnected(conversationId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf), willRetry: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 11: return .phaseChanged(phase: try FfiConverterTypeAppPhase.read(from: &buf), resumed: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 12: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatEvent, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .accountChanged(account):
+            writeInt(&buf, Int32(1))
+            FfiConverterOptionTypeChatAccount.write(account, into: &buf)
+            
+        
+        case let .accountRejected(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .conversationUpdated(conversation):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeChatConversation.write(conversation, into: &buf)
+            
+        
+        case let .messageReceived(message):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeChatMessage.write(message, into: &buf)
+            
+        
+        case let .messageUpdated(message):
+            writeInt(&buf, Int32(5))
+            FfiConverterTypeChatMessage.write(message, into: &buf)
+            
+        
+        case let .messageRemoved(conversationId,id):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(conversationId, into: &buf)
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .notify(message):
+            writeInt(&buf, Int32(7))
+            FfiConverterTypeChatMessage.write(message, into: &buf)
+            
+        
+        case let .messageStatusChanged(conversationId,id,status):
+            writeInt(&buf, Int32(8))
+            FfiConverterString.write(conversationId, into: &buf)
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterTypeChatMessageStatus.write(status, into: &buf)
+            
+        
+        case let .streamConnected(conversationId):
+            writeInt(&buf, Int32(9))
+            FfiConverterString.write(conversationId, into: &buf)
+            
+        
+        case let .streamDisconnected(conversationId,reason,willRetry):
+            writeInt(&buf, Int32(10))
+            FfiConverterString.write(conversationId, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
+            FfiConverterBool.write(willRetry, into: &buf)
+            
+        
+        case let .phaseChanged(phase,resumed):
+            writeInt(&buf, Int32(11))
+            FfiConverterTypeAppPhase.write(phase, into: &buf)
+            FfiConverterBool.write(resumed, into: &buf)
+            
+        
+        case let .eventsDropped(count):
+            writeInt(&buf, Int32(12))
+            FfiConverterUInt64.write(count, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatEvent_lift(_ buf: RustBuffer) throws -> ChatEvent {
+    return try FfiConverterTypeChatEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatEvent_lower(_ value: ChatEvent) -> RustBuffer {
+    return FfiConverterTypeChatEvent.lower(value)
+}
+
+
+
+
+public enum ChatMessageStatus: Equatable, Hashable {
+    
+    /**
+     * Written on this device; the server has not confirmed it yet.
+     */
+    case sending
+    /**
+     * The server has it.
+     */
+    case sent
+    /**
+     * The last attempt failed; `retry_message` tries again.
+     */
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatMessageStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatMessageStatus: FfiConverterRustBuffer {
+    typealias SwiftType = ChatMessageStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatMessageStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .sending
+        
+        case 2: return .sent
+        
+        case 3: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatMessageStatus, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .sending:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .sent:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessageStatus_lift(_ buf: RustBuffer) throws -> ChatMessageStatus {
+    return try FfiConverterTypeChatMessageStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessageStatus_lower(_ value: ChatMessageStatus) -> RustBuffer {
+    return FfiConverterTypeChatMessageStatus.lower(value)
+}
+
 
 
 /**
@@ -2181,6 +10659,136 @@ public func FfiConverterTypeForgeLogLevel_lower(_ value: ForgeLogLevel) -> RustB
 
 
 /**
+ * Why a request got no response. A non-2xx status is a
+ * response, not an error.
+ */
+public 
+enum HttpTransportError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * No route, DNS failure, connection refused, no network.
+     */
+    case Offline(reason: String
+    )
+    /**
+     * The server's certificate was rejected.
+     */
+    case Certificate(reason: String
+    )
+    case Timeout
+    case Cancelled
+    case InvalidRequest(reason: String
+    )
+    /**
+     * Anything else (TLS protocol errors, a body too large).
+     */
+    case Transport(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension HttpTransportError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpTransportError: FfiConverterRustBuffer {
+    typealias SwiftType = HttpTransportError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpTransportError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Offline(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Certificate(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Timeout
+        case 4: return .Cancelled
+        case 5: return .InvalidRequest(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .Transport(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HttpTransportError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Offline(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Certificate(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Timeout:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(4))
+        
+        
+        case let .InvalidRequest(reason):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Transport(reason):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransportError_lift(_ buf: RustBuffer) throws -> HttpTransportError {
+    return try FfiConverterTypeHttpTransportError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransportError_lower(_ value: HttpTransportError) -> RustBuffer {
+    return FfiConverterTypeHttpTransportError.lower(value)
+}
+
+
+/**
  * What went across.
  */
 
@@ -2257,6 +10865,556 @@ public func FfiConverterTypeItem_lift(_ buf: RustBuffer) throws -> Item {
 #endif
 public func FfiConverterTypeItem_lower(_ value: Item) -> RustBuffer {
     return FfiConverterTypeItem.lower(value)
+}
+
+
+
+/**
+ * A permission the app can ask the user for. More cases (camera,
+ * photos, microphone) are added as their adapters are; see
+ * docs/native-services.md. A permission whose service the app
+ * did not select reports `Unsupported`.
+ */
+
+public enum NativePermission: Equatable, Hashable {
+    
+    /**
+     * Alerts, sounds and badges from local notifications.
+     */
+    case notifications
+    /**
+     * Location while the app is in use (`location` service).
+     */
+    case location
+    /**
+     * Motion & Fitness: the barometer, pedometer and activity
+     * (`motion` service). The other motion sensors need none.
+     */
+    case motion
+    /**
+     * Bluetooth (`bluetooth` service).
+     */
+    case bluetooth
+    /**
+     * Recording audio (`audio` service, since interface v3).
+     * Needs `microphone` under `[ios.permissions]` in forge.toml.
+     */
+    case microphone
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativePermission: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
+    typealias SwiftType = NativePermission
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativePermission {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .notifications
+        
+        case 2: return .location
+        
+        case 3: return .motion
+        
+        case 4: return .bluetooth
+        
+        case 5: return .microphone
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativePermission, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .notifications:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .location:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .motion:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .bluetooth:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .microphone:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePermission_lift(_ buf: RustBuffer) throws -> NativePermission {
+    return try FfiConverterTypeNativePermission.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePermission_lower(_ value: NativePermission) -> RustBuffer {
+    return FfiConverterTypeNativePermission.lower(value)
+}
+
+
+
+/**
+ * Errors from the native services. `reason` fields are
+ * diagnostics, not UI copy.
+ */
+public 
+enum NativeServiceError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * The host has not called `install_native_services` (on iOS,
+     * `ForgeServices.install()`), or this platform has no
+     * implementation yet.
+     */
+    case NotInstalled(service: String
+    )
+    /**
+     * The arguments were rejected before reaching the platform.
+     */
+    case InvalidInput(reason: String
+    )
+    /**
+     * The user has not allowed this (for example notifications
+     * are turned off for the app).
+     */
+    case PermissionDenied(reason: String
+    )
+    /**
+     * The service cannot work in this process (for example no
+     * notification centre under `swift test`).
+     */
+    case Unavailable(reason: String
+    )
+    /**
+     * The platform reported an error. On iOS `code` is the
+     * `OSStatus` or `NSError` code.
+     */
+    case Platform(code: Int64, reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension NativeServiceError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeServiceError: FfiConverterRustBuffer {
+    typealias SwiftType = NativeServiceError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeServiceError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .NotInstalled(
+            service: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .InvalidInput(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .PermissionDenied(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .Unavailable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .Platform(
+            code: try FfiConverterInt64.read(from: &buf), 
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeServiceError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .NotInstalled(service):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(service, into: &buf)
+            
+        
+        case let .InvalidInput(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .PermissionDenied(reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Unavailable(reason):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Platform(code,reason):
+            writeInt(&buf, Int32(5))
+            FfiConverterInt64.write(code, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeServiceError_lift(_ buf: RustBuffer) throws -> NativeServiceError {
+    return try FfiConverterTypeNativeServiceError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeServiceError_lower(_ value: NativeServiceError) -> RustBuffer {
+    return FfiConverterTypeNativeServiceError.lower(value)
+}
+
+
+/**
+ * What an action button does.
+ */
+
+public enum NotificationActionKind: Equatable, Hashable {
+    
+    /**
+     * A button handled without opening the app (Mark as Read,
+     * Snooze); `destructive` shows it in red.
+     */
+    case button(destructive: Bool
+    )
+    /**
+     * A button that opens the app (View, Open).
+     */
+    case opensApp
+    /**
+     * A text field, for a quick reply.
+     */
+    case textInput(sendTitle: String, placeholder: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NotificationActionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationActionKind: FfiConverterRustBuffer {
+    typealias SwiftType = NotificationActionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationActionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .button(destructive: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .opensApp
+        
+        case 3: return .textInput(sendTitle: try FfiConverterString.read(from: &buf), placeholder: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NotificationActionKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .button(destructive):
+            writeInt(&buf, Int32(1))
+            FfiConverterBool.write(destructive, into: &buf)
+            
+        
+        case .opensApp:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .textInput(sendTitle,placeholder):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(sendTitle, into: &buf)
+            FfiConverterString.write(placeholder, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lift(_ buf: RustBuffer) throws -> NotificationActionKind {
+    return try FfiConverterTypeNotificationActionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lower(_ value: NotificationActionKind) -> RustBuffer {
+    return FfiConverterTypeNotificationActionKind.lower(value)
+}
+
+
+
+/**
+ * When a local notification fires.
+ */
+
+public enum NotificationTrigger: Equatable, Hashable {
+    
+    /**
+     * Straight away (shown as a banner even while the app is open).
+     */
+    case now
+    /**
+     * After `seconds`. Repeating needs at least 60 seconds on iOS.
+     */
+    case after(seconds: UInt32, repeats: Bool
+    )
+    /**
+     * At a moment in time (Unix milliseconds), in the device's
+     * time zone at that moment. Must be in the future.
+     */
+    case at(unixMs: Int64
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NotificationTrigger: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationTrigger: FfiConverterRustBuffer {
+    typealias SwiftType = NotificationTrigger
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationTrigger {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .now
+        
+        case 2: return .after(seconds: try FfiConverterUInt32.read(from: &buf), repeats: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 3: return .at(unixMs: try FfiConverterInt64.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NotificationTrigger, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .now:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .after(seconds,repeats):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt32.write(seconds, into: &buf)
+            FfiConverterBool.write(repeats, into: &buf)
+            
+        
+        case let .at(unixMs):
+            writeInt(&buf, Int32(3))
+            FfiConverterInt64.write(unixMs, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationTrigger_lift(_ buf: RustBuffer) throws -> NotificationTrigger {
+    return try FfiConverterTypeNotificationTrigger.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationTrigger_lower(_ value: NotificationTrigger) -> RustBuffer {
+    return FfiConverterTypeNotificationTrigger.lower(value)
+}
+
+
+
+/**
+ * The same states on every platform.
+ */
+
+public enum PermissionStatus: Equatable, Hashable {
+    
+    /**
+     * Never asked. A request shows the system prompt.
+     */
+    case notDetermined
+    case granted
+    /**
+     * iOS provisional notifications: delivered quietly, without
+     * asking first.
+     */
+    case provisional
+    /**
+     * The user said no. Only the Settings app can change it.
+     */
+    case denied
+    /**
+     * Blocked by parental controls or device management.
+     */
+    case restricted
+    /**
+     * This platform or process has no such permission.
+     */
+    case unsupported
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PermissionStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePermissionStatus: FfiConverterRustBuffer {
+    typealias SwiftType = PermissionStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PermissionStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .notDetermined
+        
+        case 2: return .granted
+        
+        case 3: return .provisional
+        
+        case 4: return .denied
+        
+        case 5: return .restricted
+        
+        case 6: return .unsupported
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PermissionStatus, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .notDetermined:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .granted:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .provisional:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .denied:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .restricted:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .unsupported:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePermissionStatus_lift(_ buf: RustBuffer) throws -> PermissionStatus {
+    return try FfiConverterTypePermissionStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) -> RustBuffer {
+    return FfiConverterTypePermissionStatus.lower(value)
 }
 
 
@@ -2511,6 +11669,96 @@ public func FfiConverterTypeRelayError_lower(_ value: RelayError) -> RustBuffer 
 }
 
 
+/**
+ * Something the user can share through the system share sheet.
+ * The host presents it (on iOS `ForgeShareLink`).
+ */
+
+public enum ShareItem: Equatable, Hashable {
+    
+    case text(text: String
+    )
+    case url(url: String
+    )
+    /**
+     * A file the app wrote, by absolute path.
+     */
+    case file(path: String, title: String?
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ShareItem: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeShareItem: FfiConverterRustBuffer {
+    typealias SwiftType = ShareItem
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ShareItem {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .text(text: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .url(url: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .file(path: try FfiConverterString.read(from: &buf), title: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ShareItem, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .text(text):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(text, into: &buf)
+            
+        
+        case let .url(url):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(url, into: &buf)
+            
+        
+        case let .file(path,title):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(path, into: &buf)
+            FfiConverterOptionString.write(title, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeShareItem_lift(_ buf: RustBuffer) throws -> ShareItem {
+    return try FfiConverterTypeShareItem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeShareItem_lower(_ value: ShareItem) -> RustBuffer {
+    return FfiConverterTypeShareItem.lower(value)
+}
+
+
+
 
 public enum TransferStatus: Equatable, Hashable {
     
@@ -2619,6 +11867,54 @@ fileprivate struct FfiConverterOptionUInt16: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
+    typealias SwiftType = UInt64?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt64.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt64.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
+    typealias SwiftType = Int64?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterInt64.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterInt64.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
@@ -2635,6 +11931,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
+    typealias SwiftType = Data?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterData.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterData.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -2691,6 +12011,174 @@ fileprivate struct FfiConverterOptionTypeRuntimeEvents: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeAssistantGeneration: FfiConverterRustBuffer {
+    typealias SwiftType = AssistantGeneration?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAssistantGeneration.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAssistantGeneration.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAiModelInfo: FfiConverterRustBuffer {
+    typealias SwiftType = AiModelInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAiModelInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAiModelInfo.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAssistantMessage: FfiConverterRustBuffer {
+    typealias SwiftType = AssistantMessage?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAssistantMessage.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAssistantMessage.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAssistantStats: FfiConverterRustBuffer {
+    typealias SwiftType = AssistantStats?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAssistantStats.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAssistantStats.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeChatAccount: FfiConverterRustBuffer {
+    typealias SwiftType = ChatAccount?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChatAccount.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChatAccount.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeChatConversation: FfiConverterRustBuffer {
+    typealias SwiftType = ChatConversation?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChatConversation.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChatConversation.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeChatMessage: FfiConverterRustBuffer {
+    typealias SwiftType = ChatMessage?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChatMessage.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChatMessage.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeCodeSize: FfiConverterRustBuffer {
     typealias SwiftType = CodeSize?
 
@@ -2707,6 +12195,54 @@ fileprivate struct FfiConverterOptionTypeCodeSize: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeCodeSize.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAssistantUpdate: FfiConverterRustBuffer {
+    typealias SwiftType = AssistantUpdate?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAssistantUpdate.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAssistantUpdate.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeChatEvent: FfiConverterRustBuffer {
+    typealias SwiftType = ChatEvent?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChatEvent.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChatEvent.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -2740,6 +12276,256 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeAiMessage: FfiConverterRustBuffer {
+    typealias SwiftType = [AiMessage]
+
+    public static func write(_ value: [AiMessage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAiMessage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AiMessage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AiMessage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAiMessage.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAssistantCharacter: FfiConverterRustBuffer {
+    typealias SwiftType = [AssistantCharacter]
+
+    public static func write(_ value: [AssistantCharacter], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAssistantCharacter.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AssistantCharacter] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AssistantCharacter]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAssistantCharacter.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAssistantConversation: FfiConverterRustBuffer {
+    typealias SwiftType = [AssistantConversation]
+
+    public static func write(_ value: [AssistantConversation], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAssistantConversation.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AssistantConversation] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AssistantConversation]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAssistantConversation.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAssistantMessage: FfiConverterRustBuffer {
+    typealias SwiftType = [AssistantMessage]
+
+    public static func write(_ value: [AssistantMessage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAssistantMessage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AssistantMessage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AssistantMessage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAssistantMessage.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatAttachment: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatAttachment]
+
+    public static func write(_ value: [ChatAttachment], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatAttachment.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatAttachment] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatAttachment]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatAttachment.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatConversation: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatConversation]
+
+    public static func write(_ value: [ChatConversation], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatConversation.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatConversation] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatConversation]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatConversation.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatMessage: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatMessage]
+
+    public static func write(_ value: [ChatMessage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatMessage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatMessage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatMessage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatMessage.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatOutgoingFile: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatOutgoingFile]
+
+    public static func write(_ value: [ChatOutgoingFile], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatOutgoingFile.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatOutgoingFile] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatOutgoingFile]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatOutgoingFile.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatReaction: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatReaction]
+
+    public static func write(_ value: [ChatReaction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatReaction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatReaction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatReaction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatReaction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHttpHeader: FfiConverterRustBuffer {
+    typealias SwiftType = [HttpHeader]
+
+    public static func write(_ value: [HttpHeader], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHttpHeader.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HttpHeader] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HttpHeader]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHttpHeader.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeNearbySender: FfiConverterRustBuffer {
     typealias SwiftType = [NearbySender]
 
@@ -2765,6 +12551,56 @@ fileprivate struct FfiConverterSequenceTypeNearbySender: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationAction]
+
+    public static func write(_ value: [NotificationAction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationAction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationAction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationAction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationAction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationCategory]
+
+    public static func write(_ value: [NotificationCategory], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationCategory.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationCategory] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationCategory]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypePeer: FfiConverterRustBuffer {
     typealias SwiftType = [Peer]
 
@@ -2782,6 +12618,31 @@ fileprivate struct FfiConverterSequenceTypePeer: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypePeer.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
+    typealias SwiftType = [QueryItem]
+
+    public static func write(_ value: [QueryItem], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeQueryItem.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [QueryItem] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [QueryItem]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeQueryItem.read(from: &buf))
         }
         return seq
     }
@@ -2859,6 +12720,96 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
         print("uniffiFutureContinuationCallback invalid handle")
     }
 }
+private func uniffiTraitInterfaceCallAsync<T>(
+    makeCall: @escaping () async throws -> T,
+    handleSuccess: @escaping (T) -> (),
+    handleError: @escaping (Int8, RustBuffer) -> (),
+    droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+) {
+    let task = Task {
+        // Note: it's important we call either `handleSuccess` or `handleError` exactly once.  Each
+        // call consumes an Arc reference, which means there should be no possibility of a double
+        // call.  The following code is structured so that will will never call both `handleSuccess`
+        // and `handleError`, even in the face of weird errors.
+        //
+        // On platforms that need extra machinery to make C-ABI calls, like JNA or ctypes, it's
+        // possible that we fail to make either call.  However, it doesn't seem like this is
+        // possible on Swift since swift can just make the C call directly.
+        var callResult: T
+        do {
+            callResult = try await makeCall()
+        } catch {
+            handleError(CALL_UNEXPECTED_ERROR, FfiConverterString.lower(String(describing: error)))
+            return
+        }
+        handleSuccess(callResult)
+    }
+    let handle = UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.insert(obj: task)
+    droppedCallback.pointee = UniffiForeignFutureDroppedCallbackStruct(
+        handle: handle,
+        free: uniffiForeignFutureDroppedCallback
+    )
+}
+
+private func uniffiTraitInterfaceCallAsyncWithError<T, E>(
+    makeCall: @escaping () async throws -> T,
+    handleSuccess: @escaping (T) -> (),
+    handleError: @escaping (Int8, RustBuffer) -> (),
+    lowerError: @escaping (E) -> RustBuffer,
+    droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+) {
+    let task = Task {
+        // See the note in uniffiTraitInterfaceCallAsync for details on `handleSuccess` and
+        // `handleError`.
+        var callResult: T
+        do {
+            callResult = try await makeCall()
+        } catch let error as E {
+            handleError(CALL_ERROR, lowerError(error))
+            return
+        } catch {
+            handleError(CALL_UNEXPECTED_ERROR, FfiConverterString.lower(String(describing: error)))
+            return
+        }
+        handleSuccess(callResult)
+    }
+    let handle = UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.insert(obj: task)
+    droppedCallback.pointee = UniffiForeignFutureDroppedCallbackStruct(
+        handle: handle,
+        free: uniffiForeignFutureDroppedCallback
+    )
+}
+
+// Borrow the callback handle map implementation to store foreign future handles
+// TODO: consolidate the handle-map code (https://github.com/mozilla/uniffi-rs/pull/1823)
+fileprivate let UNIFFI_FOREIGN_FUTURE_HANDLE_MAP = UniffiHandleMap<UniffiForeignFutureTask>()
+
+// Protocol for tasks that handle foreign futures.
+//
+// Defining a protocol allows all tasks to be stored in the same handle map.  This can't be done
+// with the task object itself, since has generic parameters.
+fileprivate protocol UniffiForeignFutureTask {
+    func cancel()
+}
+
+extension Task: UniffiForeignFutureTask {}
+
+private func uniffiForeignFutureDroppedCallback(handle: UInt64) {
+    do {
+        let task = try UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.remove(handle: handle)
+        // Set the cancellation flag on the task.  If it's still running, the code can check the
+        // cancellation flag or call `Task.checkCancellation()`.  If the task has completed, this is
+        // a no-op.
+        task.cancel()
+    } catch {
+        print("uniffiForeignFutureDroppedCallback: handle missing from handlemap")
+    }
+}
+
+// For testing
+public func uniffiForeignFutureHandleCountRelayCore() -> Int {
+    UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
+}
 /**
  * Writes one record from host code into Forge's log, with
  * `category` as its target. Never log secrets.
@@ -2897,6 +12848,66 @@ public func wordCodeNumber(code: String)throws  -> UInt8  {
 })
 }
 /**
+ * How the app lock would unlock on this iPhone ("Face ID", "Touch ID",
+ * "Passcode"), or nil when it can't lock at all.
+ */
+public func appLockMethod() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_app_lock_method(uniffiCallStatus
+    )
+})
+}
+/**
+ * The deep link on a message's notification
+ * (`forgechat://conversation/<room>?message=<id>`).
+ */
+public func chatMessageLink(conversationId: String, messageId: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_chat_message_link(
+        FfiConverterString.lower(conversationId),
+        FfiConverterString.lower(messageId),uniffiCallStatus
+    )
+})
+}
+/**
+ * The delivery state of `message` in `conversation`: `Read` once another
+ * account's read cursor has passed one of our sent messages. Only
+ * meaningful for our own messages.
+ */
+public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) -> ChatDelivery  {
+    return try!  FfiConverterTypeChatDelivery_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_chat_delivery(
+        FfiConverterTypeChatMessage_lower(message),
+        FfiConverterOptionTypeChatConversation.lower(conversation),uniffiCallStatus
+    )
+})
+}
+/**
+ * [`ChatError::kind`] for the host (ForgeKit's `ForgeKindedError`).
+ */
+public func chatErrorKind(error: ChatError) -> ErrorKind  {
+    return try!  FfiConverterTypeErrorKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_chat_error_kind(
+        FfiConverterTypeChatError_lower(error),uniffiCallStatus
+    )
+})
+}
+/**
+ * The storage engine compiled into the app, e.g. "SQLite 3.50.2"
+ * (shown in Settings).
+ */
+public func storageEngine() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_storage_engine(uniffiCallStatus
+    )
+})
+}
+/**
  * The framework kind of a Relay error.
  */
 public func relayErrorKind(error: RelayError) -> ErrorKind  {
@@ -2906,6 +12917,136 @@ public func relayErrorKind(error: RelayError) -> ErrorKind  {
         FfiConverterTypeRelayError_lower(error),uniffiCallStatus
     )
 })
+}
+/**
+ * Called by the host when the person responds to a
+ * notification. Kept until the app sets a handler with
+ * [`on_notification_response`].
+ */
+public func deliverNotificationResponse(response: NotificationResponse)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_deliver_notification_response(
+        FfiConverterTypeNotificationResponse_lower(response),uniffiCallStatus
+    )
+}
+}
+/**
+ * Called once by the host at launch (on iOS by
+ * `ForgeServices.install()`). Installing again replaces the
+ * previous services.
+ */
+public func installNativeServices(directories: AppDirectories, secureStore: SecureStore, notifier: LocalNotifier, permissions: PermissionProvider)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_install_native_services(
+        FfiConverterTypeAppDirectories_lower(directories),
+        FfiConverterTypeSecureStore_lower(secureStore),
+        FfiConverterTypeLocalNotifier_lower(notifier),
+        FfiConverterTypePermissionProvider_lower(permissions),uniffiCallStatus
+    )
+}
+}
+/**
+ * True once the host has installed the services. For
+ * diagnostics and tests.
+ */
+public func nativeServicesInstalled() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_native_services_installed(uniffiCallStatus
+    )
+})
+}
+/**
+ * The services interface version these bindings were built
+ * with. The host's adapters check it at install time.
+ */
+public func nativeServicesVersion() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_native_services_version(uniffiCallStatus
+    )
+})
+}
+/**
+ * Splits a URL the app was opened with into its parts.
+ */
+public func parseDeepLink(url: String)throws  -> DeepLink  {
+    return try  FfiConverterTypeDeepLink_lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_parse_deep_link(
+        FfiConverterString.lower(url),uniffiCallStatus
+    )
+})
+}
+/**
+ * Called by the host at launch (`ForgeServices.install()`):
+ * makes `model` the device's model.
+ */
+public func installNativeAi(model: AiModel)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_install_native_ai(
+        FfiConverterTypeAiModel_lower(model),uniffiCallStatus
+    )
+}
+}
+public func installNativeAudio(files: AudioFiles)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_install_native_audio(
+        FfiConverterTypeAudioFiles_lower(files),uniffiCallStatus
+    )
+}
+}
+public func installNativeBackground(scheduler: BackgroundScheduler)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_install_native_background(
+        FfiConverterTypeBackgroundScheduler_lower(scheduler),uniffiCallStatus
+    )
+}
+}
+/**
+ * Whether this library's Rust has a handler for `identifier`
+ * right now. The host asks when several apps' libraries share
+ * one process (Device Lab), to hand a task to the one that
+ * handles it.
+ */
+public func nativeBackgroundHandles(identifier: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_native_background_handles(
+        FfiConverterString.lower(identifier),uniffiCallStatus
+    )
+})
+}
+/**
+ * Called by the host when iOS starts a task. Runs the handler
+ * registered for `identifier`, or finishes at once (failure) if
+ * there is none.
+ */
+public func runNativeBackgroundTask(identifier: String, completion: BackgroundTaskCompletion) -> BackgroundTaskRun  {
+    return try!  FfiConverterTypeBackgroundTaskRun_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_run_native_background_task(
+        FfiConverterString.lower(identifier),
+        FfiConverterTypeBackgroundTaskCompletion_lower(completion),uniffiCallStatus
+    )
+})
+}
+public func installNativeBiometrics(authenticator: BiometricAuthenticator)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_install_native_biometrics(
+        FfiConverterTypeBiometricAuthenticator_lower(authenticator),uniffiCallStatus
+    )
+}
+}
+/**
+ * Called by the host at launch (`ForgeServices.install()`).
+ */
+public func installNativeHttp(transport: HttpTransport)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_install_native_http(
+        FfiConverterTypeHttpTransport_lower(transport),uniffiCallStatus
+    )
+}
 }
 
 private enum InitializationResult {
@@ -2932,7 +13073,58 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_func_word_code_number() != 39208) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_func_app_lock_method() != 35032) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_chat_message_link() != 46272) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_chat_delivery() != 64205) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_chat_error_kind() != 39415) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_storage_engine() != 50209) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_func_relay_error_kind() != 51284) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_deliver_notification_response() != 11021) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_install_native_services() != 49673) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_native_services_installed() != 22324) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_native_services_version() != 41558) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_parse_deep_link() != 36829) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_install_native_ai() != 50334) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_install_native_audio() != 42538) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_install_native_background() != 41228) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_native_background_handles() != 14217) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_run_native_background_task() != 60392) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_install_native_biometrics() != 26795) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_install_native_http() != 64770) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_background_time_expired() != 12393) {
@@ -3028,10 +13220,289 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_transfers() != 41260) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_chatcore_account() != 28427) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_app_lock() != 19149) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_assistant() != 43466) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_attachment_file() != 40445) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_background_time_expired() != 36868) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_background_work_pending() != 58068) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_cached_conversations() != 60001) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_cached_messages() != 41377) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_chat_events() != 11265) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_check_account() != 64903) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_create_conversation() != 30780) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_delete_message() != 48640) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_draft() != 27343) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_edit_message() != 37686) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_events() != 23303) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_fetch_attachment() != 4397) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_launch_report() != 49427) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_list_conversations() != 17462) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_live_streams() != 58133) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_mark_read() != 48057) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_outbox_count() != 19726) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_phase() != 24977) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_retry_message() != 59507) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_revision() != 50230) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_search() != 23136) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_send_files() != 61278) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_send_message() != 30987) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_send_reply() != 8386) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_set_app_lock() != 59716) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_set_draft() != 8875) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_set_marked_unread() != 30485) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_set_muted() != 46842) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_set_phase() != 32821) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_set_reaction() != 27270) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_shutdown() != 400) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_sign_out() != 14241) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_sign_up() != 22510) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_store_problem() != 28807) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_subscribe() != 6056) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_sync_messages() != 36844) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_unsubscribe() != 62466) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_unwatch() != 45890) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_watch() != 15302) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatevents_cancel() != 34196) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatevents_next() != 34619) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_characters() != 58712) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_conversations() != 59906) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_current_generation() != 55430) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_delete_conversation() != 20697) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_engine_info() != 45453) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_messages() != 45485) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_send() != 60459) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_set_engine() != 36439) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_shutdown() != 19291) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantcore_start_conversation() != 43936) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantgeneration_cancel() != 64730) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantgeneration_catch_up() != 56310) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantgeneration_conversation_id() != 24898) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantgeneration_is_finished() != 9410) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantgeneration_message_id() != 12203) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_assistantgeneration_next() != 18050) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_localnotifier_schedule() != 28491) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_localnotifier_cancel() != 47903) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_localnotifier_pending() != 54485) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_localnotifier_set_categories() != 62466) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_permissionprovider_status() != 21843) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_permissionprovider_request() != 10634) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_securestore_get() != 30159) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_securestore_set() != 30083) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_securestore_delete() != 33934) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_aimodel_describe() != 47826) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_aimodel_generate() != 10487) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_textsink_is_stopped() != 3926) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_textsink_push() != 62417) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_audiofiles_duration() != 17314) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_backgroundscheduler_submit() != 56690) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_backgroundscheduler_cancel() != 45587) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_backgroundscheduler_permitted() != 51981) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_backgroundtaskcompletion_finished() != 63049) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_backgroundtaskrun_expire() != 51648) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_biometricauthenticator_availability() != 49387) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_biometricauthenticator_authenticate() != 42990) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_httpstreambody_fail() != 35168) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_httpstreambody_finish() != 17228) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_httpstreambody_receive() != 40643) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_httptransport_send() != 41165) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_httptransport_open_stream() != 52247) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_httptransport_cancel() != 38169) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_constructor_relaycore_new() != 45345) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_constructor_chatcore_new() != 13538) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_constructor_chatcore_with_memory_credentials() != 56082) {
+        return InitializationResult.apiChecksumMismatch
+    }
 
+    uniffiCallbackInitAiModel()
+    uniffiCallbackInitAudioFiles()
+    uniffiCallbackInitBackgroundScheduler()
+    uniffiCallbackInitBackgroundTaskCompletion()
+    uniffiCallbackInitBiometricAuthenticator()
+    uniffiCallbackInitHttpTransport()
+    uniffiCallbackInitLocalNotifier()
+    uniffiCallbackInitPermissionProvider()
+    uniffiCallbackInitSecureStore()
     uniffiEnsureForgeAppInitialized()
     return InitializationResult.ok
 }()

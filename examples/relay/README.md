@@ -7,7 +7,11 @@ and grows into a personal network; the roadmap is
 work is [docs/relay-m1-m2-brief.md](docs/relay-m1-m2-brief.md).
 
 Today it sends notes and files between nearby devices, after pairing once by
-QR code, and sends a file or a folder to anyone on the same Wi-Fi with a word code. It
+QR code, and sends files, photos or a folder to anyone on the same Wi-Fi with a word code.
+Chat merged into it on 2026-11-17 ([relay-chat-merge.md](docs/relay-chat-merge.md)):
+the Chats, Assistant and Settings tabs are Chat's messaging through a chat
+server you run, with an on-device assistant ([messaging.md](docs/messaging.md));
+Devices is Relay's own screen. It
 runs inside Device Lab (Apps, then Relay) and on its own. The second device
 can be a Linux machine running the `relay` command, so one iPhone is enough.
 

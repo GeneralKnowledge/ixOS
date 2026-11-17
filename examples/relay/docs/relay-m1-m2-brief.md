@@ -122,14 +122,17 @@ batched, built before the phone is needed). No test-only PRs.
 
 - A conversation per trusted device over `relay/device/1`: text, with
   files and folders attached through the transfer from PR 1.
-- An outbox in Relay's own store: a message waits until the other device
-  is seen, is sent once, and shows sent, delivered and read. Retries and
-  reconnects never duplicate it (each message has an id the receiver
-  remembers).
+- On chat-core, Relay's messaging engine since Chat merged into Relay
+  ([relay-chat-merge.md](relay-chat-merge.md#step-3-messages-between-trusted-devices-on-chat-core)):
+  a `PeerRepo` over `relay/device/1` beside the chat server's `HttpRepo`,
+  so chat-core's outbox does the work. A message waits until the other
+  device is seen, is sent once, and shows sent, delivered and read.
+  Retries and reconnects never duplicate it (each message has an id the
+  receiver remembers). A short spike comes first; if chat-core fights
+  peer-to-peer, the fallback is Relay's own small outbox.
 - History that survives relaunches, on both sides.
 - `relay send <device> --text` and a conversation list in the CLI.
-- Relay's own small engine, built for this: nothing from Chat (see
-  [rules](#rules-for-this-work)).
+- Device conversations appear in the Chats tab beside the chat server's.
 - **Accepted when** a message sent while the laptop is off arrives once
   when it is back, both sides show delivered and read, and the
   conversation survives relaunches. Phone check on home Wi-Fi.
@@ -215,9 +218,9 @@ A key says who a device is, never where it is.
 
 - Modules in `examples/relay/rust`, no new crates. The connection fabric,
   identity and capability boundaries are built as features need them.
-- Relay takes nothing from Chat. Messages (PR 4) use Relay's own small
-  outbox; if a messaging library is shared later, it moves into the
-  framework first.
+- Chat is part of Relay (merged 2026-11-17): its engine (`messaging/chat-core`)
+  is Relay's own code, so messages (PR 4) use it. Nothing of it moves into
+  the framework on the strength of this one product.
 - Rust owns the state; Swift shows it and does Bonjour, the Keychain and the
   file picker.
 - No 1 GB phone tests: a small file and one large-enough file (about 200

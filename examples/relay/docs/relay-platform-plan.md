@@ -73,10 +73,10 @@ So that plans are never counted as features:
    word-code transfers don't appear in the history. Relay keeps one
    networking stack in the end: the migration is in the
    [brief](relay-m1-m2-brief.md#one-transfer-path).
-3. **Chat is not Relay messaging yet.** Chat has its own engine and server;
-   Relay's messages don't exist yet. The merge
-   ([relay-chat-merge.md](relay-chat-merge.md)) makes Chat's engine
-   Relay's.
+3. **Messaging is Chat's, not yet between devices.** Chat merged into
+   Relay on 2026-11-17 ([relay-chat-merge.md](relay-chat-merge.md), step
+   1): the Chats tab talks to a chat server; messages between trusted
+   devices on chat-core come in step 3.
 4. **Pair secrets sit in Relay's JSON file,** not the Keychain (friction
    A17).
 
