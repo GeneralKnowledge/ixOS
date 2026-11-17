@@ -30,6 +30,9 @@ uniffi = "=0.32.2"
 libc = "0.2"
 
 [dev-dependencies]
+# Only for testing `app_error_conversions!`'s NetError arm, which names
+# ::forge_net in the app crate that uses it.
+forge-net = { workspace = true }
 serde_json = { workspace = true }
 tempfile = "3.14"
 

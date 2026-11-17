@@ -12,13 +12,17 @@
 /// | [`OpenError`](crate::OpenError) | `InUse` when another core holds the data directory, else `Storage { reason }` |
 /// | [`DocumentError`](crate::DocumentError) | `Corrupt { reason }`, `NewerData` or `Storage { reason }` |
 /// | `forge_storage::StorageError` | `Corrupt { reason }`, `NewerData` or `Storage { reason }` |
+/// | `forge_net::NetError` | `InvalidInput { reason }`, `Offline { reason }`, `Certificate { reason }`, `Timeout`, `Cancelled` or `Network { reason }` |
 ///
 /// With no list it writes the conversions for `Stopped`, `OpenError` and
 /// `DocumentError`, the three every [`Document`](crate::Document) app needs.
 /// An app whose error has other shapes (Pocket Library's `NewerLibrary`,
 /// Commonplace's `Cancelled`) writes its own `From` instead, and
 /// `FileStoreError` stays the app's because what a file failure means is the
-/// app's to say.
+/// app's to say. `NetError` needs the app to depend on `forge-net` itself
+/// (forge-app doesn't); an app that words a network failure differently
+/// (Weather's missing TLS set-up is `Internal`, Soundscape's server is
+/// `Unreachable`) keeps its own `From`.
 ///
 /// ```ignore
 /// #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -39,6 +43,7 @@
 ///
 /// forge_app::app_error_conversions!(NotesError);
 /// // or, for a SQLite app: (NotesError: Stopped, OpenError, StorageError)
+/// // and, for one that fetches: (NotesError: Stopped, NetError)
 /// ```
 #[macro_export]
 macro_rules! app_error_conversions {
@@ -100,9 +105,25 @@ macro_rules! __app_error_from {
             }
         }
     };
+    ($error:ty, NetError) => {
+        impl ::std::convert::From<::forge_net::NetError> for $error {
+            fn from(err: ::forge_net::NetError) -> Self {
+                match err {
+                    ::forge_net::NetError::InvalidRequest { reason } => Self::InvalidInput { reason },
+                    ::forge_net::NetError::Offline { reason } => Self::Offline { reason },
+                    ::forge_net::NetError::Certificate { reason } => Self::Certificate { reason },
+                    ::forge_net::NetError::Timeout => Self::Timeout,
+                    ::forge_net::NetError::Cancelled => Self::Cancelled,
+                    other => Self::Network {
+                        reason: ::std::string::ToString::to_string(&other),
+                    },
+                }
+            }
+        }
+    };
     ($error:ty, $other:ident) => {
         ::std::compile_error!(concat!(
-            "app_error_conversions! knows Stopped, OpenError, DocumentError and StorageError, not ",
+            "app_error_conversions! knows Stopped, OpenError, DocumentError, StorageError and NetError, not ",
             stringify!($other)
         ));
     };
@@ -221,5 +242,52 @@ mod tests {
         let _ = DocError::Stopped {
             kind: ErrorKind::Cancelled,
         };
+    }
+
+    #[test]
+    fn network_errors_keep_their_category() {
+        use forge_net::NetError;
+
+        #[derive(Debug, PartialEq)]
+        enum FetchError {
+            InvalidInput { reason: String },
+            Offline { reason: String },
+            Certificate { reason: String },
+            Timeout,
+            Cancelled,
+            Network { reason: String },
+        }
+        crate::app_error_conversions!(FetchError: NetError);
+
+        let reason = || "r".to_string();
+        let cases = [
+            (
+                NetError::InvalidRequest { reason: reason() },
+                FetchError::InvalidInput { reason: reason() },
+            ),
+            (
+                NetError::Offline { reason: reason() },
+                FetchError::Offline { reason: reason() },
+            ),
+            (
+                NetError::Certificate { reason: reason() },
+                FetchError::Certificate { reason: reason() },
+            ),
+            (NetError::Timeout, FetchError::Timeout),
+            (NetError::Cancelled, FetchError::Cancelled),
+        ];
+        for (from, to) in cases {
+            assert_eq!(FetchError::from(from), to);
+        }
+        for other in [
+            NetError::Unavailable,
+            NetError::Transport { reason: reason() },
+            NetError::TlsNotInitialised { reason: reason() },
+        ] {
+            assert!(matches!(
+                FetchError::from(other),
+                FetchError::Network { .. }
+            ));
+        }
     }
 }
