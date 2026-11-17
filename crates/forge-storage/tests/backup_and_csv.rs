@@ -61,6 +61,8 @@ fn csv_import_is_forgiving_and_reports_bad_rows_by_line() {
         }
     );
     assert_eq!(read.rows[1].page_count, None);
+    // Each row's line in the file, past the blank line and the bad row.
+    assert_eq!(read.row_lines, vec![2, 5]);
     assert_eq!(read.problems.len(), 1);
     assert_eq!(read.problems[0].line, 4);
     assert!(

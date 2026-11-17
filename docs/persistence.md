@@ -85,13 +85,13 @@ struct BookRow { #[serde(rename = "Title")] title: String, /* ... */ }
 
 let bytes = forge_storage::csv_file::to_csv(&rows)?;           // header row from the field names
 let read = forge_storage::csv_file::import_csv::<BookRow>(path)?;
-// read.rows: the rows that parsed; read.problems: line number and reason for the rest
+// read.rows: the rows that parsed, read.row_lines: their lines; read.problems: line number and reason for the rest
 ```
 
 - Write a row struct for the spreadsheet, separate from the stored record, with the column names a person would expect (`#[serde(rename)]`) and `#[serde(default)]` on optional columns.
 - Import matches columns to fields by name, ignoring case, spaces, `_` and `-`, so a file re-saved by Numbers or Excel still reads. Blank rows are skipped. A row that doesn't parse becomes a problem with its line number; it never fails the whole import.
 - Export starts with a UTF-8 byte-order mark so Excel shows accented letters correctly.
-- Validate and save in one go after reading, and tell the person how many rows were added and which were skipped. Pocket Library's `import_books_csv` is the example.
+- Validate and save in one go after reading, and tell the person how many rows were added and which were skipped, by their line in the file (`row_lines`). Pocket Library's `import_books_csv` is the example.
 
 ### Backup archives (`backup` feature)
 
