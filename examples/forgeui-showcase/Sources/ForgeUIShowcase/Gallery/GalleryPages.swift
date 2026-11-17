@@ -62,7 +62,9 @@ private struct ColorsPage: View {
         @Environment(\\.forgeTheme) var theme
         Text("Due today").foregroundStyle(theme.colors.tone(.warning).text)
 
-        // An app's own accent, checked for contrast:
+        // An app's own accent, from ForgeUI's checked set:
+        .forgeTheme(ForgeTheme(accent: .teal))
+        // or any colour, checked for contrast:
         let brand = ForgeTheme(palette: .standard.withAccent(light: ..., dark: ...))
         assert(brand.contrastIssues().isEmpty)
         """) {
@@ -80,12 +82,31 @@ private struct ColorsPage: View {
                 swatchRow("Text, tertiary", theme.colors.textTertiary)
                 swatchRow("Separator", theme.colors.separator)
                 Divider()
+                Text("With Increase Contrast on (Settings, Accessibility), secondary text and tone text move toward primary text, reaching 7:1. Every theme gets it without extra work.")
+                    .forgeText(.note)
+                Divider()
                 ForEach(ForgeTone.allCases) { tone in
                     HStack(spacing: theme.spacing.s) {
                         swatch(theme.colors.tone(tone).solid)
                         swatch(theme.colors.tone(tone).soft)
                         Text(tone.rawValue.capitalized)
                             .foregroundStyle(theme.colors.tone(tone).text)
+                            .font(.body.weight(.semibold))
+                        Spacer()
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                Divider()
+                Text("App Accents").forgeText(.sectionTitle)
+                Text("Each app picks one, already checked for contrast: ForgeTheme(accent: .teal).")
+                    .forgeText(.note)
+                ForEach(ForgeAccent.allCases) { accent in
+                    let tone = ForgeTheme(accent: accent).colors.accent
+                    HStack(spacing: theme.spacing.s) {
+                        swatch(tone.solid)
+                        swatch(tone.soft)
+                        Text(accent.name)
+                            .foregroundStyle(tone.text)
                             .font(.body.weight(.semibold))
                         Spacer()
                     }
@@ -154,22 +175,38 @@ private struct TypographyPage: View {
     @Environment(\.forgeTheme) private var theme
 
     var body: some View {
-        let styles: [(String, Font)] = [
-            ("largeTitle", .largeTitle), ("title", .title), ("title2", .title2), ("title3", .title3),
-            ("headline", .headline), ("body", .body), ("callout", .callout), ("subheadline", .subheadline),
-            ("footnote", .footnote), ("caption", .caption),
-        ]
         ComponentPage(title: "Type", code: """
-        // ForgeUI has no type ramp of its own: components use the
-        // system text styles, so Dynamic Type and Bold Text just work.
-        Text("Title").font(.headline)
+        // Text roles: what the text is, on top of a system text style,
+        // so Dynamic Type, Bold Text and Increase Contrast just work.
+        Text(book.title).forgeText(.rowTitle)
+        Text(book.author).forgeText(.metadata)
+        Text("12.4").forgeText(.figure)
         """) {
-            VStack(alignment: .leading, spacing: theme.spacing.s) {
-                ForEach(styles, id: \.0) { style in
-                    Text(style.0).font(style.1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: theme.spacing.m) {
+                ForEach(ForgeTextRole.allCases) { role in
+                    VStack(alignment: .leading, spacing: theme.spacing.xxs) {
+                        Text(sample(role)).forgeText(role)
+                        Text(".\(role.rawValue): \(role.style.rawValue), \(role.weight.rawValue)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(theme.colors.textTertiary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
                 }
             }
+        }
+    }
+
+    private func sample(_ role: ForgeTextRole) -> String {
+        switch role {
+        case .screenTitle: "The Left Hand of Darkness"
+        case .sectionTitle: "Reading Now"
+        case .rowTitle: "Morning walk, Hampstead Heath"
+        case .body: "Rest is part of learning. A day off never undoes your week."
+        case .metadata: "Ursula K. Le Guin · 1969 · 304 pages"
+        case .note: "Shown on the lock screen while a transfer runs."
+        case .figure: "12.4 km"
+        case .figureCaption: "1 h 52 min"
         }
     }
 }

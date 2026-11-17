@@ -33,7 +33,7 @@ public struct ContentView: View {
                 )
             }
         }
-        .forgeTheme(.standard)
+        .forgeTheme(ForgeTheme(accent: .green))
         .task { await model.open() }
         // A commit, missed events or a return from the background.
         .onChange(of: model.host.changes) { _, _ in

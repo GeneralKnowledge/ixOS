@@ -48,13 +48,23 @@ extension ForgeRGBA {
     #endif
 }
 
-/// A colour that is `light` in light mode and `dark` in dark mode.
-func forgeDynamicColor(light: ForgeRGBA, dark: ForgeRGBA) -> Color {
+/// A colour that is `light` in light mode and `dark` in dark mode, and the
+/// `increased` pair's colour when Increase Contrast is on.
+func forgeDynamicColor(
+    light: ForgeRGBA, dark: ForgeRGBA,
+    increasedLight: ForgeRGBA? = nil, increasedDark: ForgeRGBA? = nil
+) -> Color {
     #if canImport(UIKit)
     let lightColor = light.platformColor
     let darkColor = dark.platformColor
+    let highLight = (increasedLight ?? light).platformColor
+    let highDark = (increasedDark ?? dark).platformColor
     return Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark ? darkColor : lightColor
+        let high = traits.accessibilityContrast == .high
+        if traits.userInterfaceStyle == .dark {
+            return high ? highDark : darkColor
+        }
+        return high ? highLight : lightColor
     })
     #elseif canImport(AppKit)
     let lightColor = light.platformColor
@@ -79,9 +89,19 @@ public struct ForgeToneStyle {
 /// Read them with `@Environment(\.forgeTheme) var theme` and `theme.colors`.
 public struct ForgeThemeColors {
     let palette: ForgePalette
+    /// The same palette for Increase Contrast, worked out once.
+    let increased: ForgePalette
+
+    init(palette: ForgePalette) {
+        self.palette = palette
+        increased = palette.increasedContrast
+    }
 
     private func color(_ role: KeyPath<ForgeColors, ForgeRGBA>) -> Color {
-        forgeDynamicColor(light: palette.light[keyPath: role], dark: palette.dark[keyPath: role])
+        forgeDynamicColor(
+            light: palette.light[keyPath: role], dark: palette.dark[keyPath: role],
+            increasedLight: increased.light[keyPath: role], increasedDark: increased.dark[keyPath: role]
+        )
     }
 
     public var background: Color { color(\.background) }
@@ -94,14 +114,28 @@ public struct ForgeThemeColors {
     public var separator: Color { color(\.separator) }
     public var accent: ForgeToneStyle { tone(.accent) }
 
+    /// A text colour by emphasis (`ForgeTextRole.emphasis`).
+    public func text(_ emphasis: ForgeTextEmphasis) -> Color {
+        switch emphasis {
+        case .primary: textPrimary
+        case .secondary: textSecondary
+        case .tertiary: textTertiary
+        }
+    }
+
     public func tone(_ tone: ForgeTone) -> ForgeToneStyle {
         let light = palette.light.tone(tone)
         let dark = palette.dark.tone(tone)
+        let highLight = increased.light.tone(tone)
+        let highDark = increased.dark.tone(tone)
         return ForgeToneStyle(
             solid: forgeDynamicColor(light: light.solid, dark: dark.solid),
             onSolid: forgeDynamicColor(light: light.onSolid, dark: dark.onSolid),
             soft: forgeDynamicColor(light: light.soft, dark: dark.soft),
-            text: forgeDynamicColor(light: light.text, dark: dark.text)
+            text: forgeDynamicColor(
+                light: light.text, dark: dark.text,
+                increasedLight: highLight.text, increasedDark: highDark.text
+            )
         )
     }
 }

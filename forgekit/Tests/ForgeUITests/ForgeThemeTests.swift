@@ -64,4 +64,49 @@ final class ForgeThemeTests: XCTestCase {
         XCTAssertEqual(ForgeFieldMessage.help("Shown on the list").tone, .neutral)
         XCTAssertFalse(ForgeFieldMessage.warning("Long").isError)
     }
+
+    func testEveryAccentIsReadableInEveryAppearance() {
+        for accent in ForgeAccent.allCases {
+            let issues = ForgeTheme(accent: accent).contrastIssues()
+            XCTAssertTrue(issues.isEmpty, "\(accent): " + issues.map(\.description).joined(separator: "\n"))
+        }
+        XCTAssertEqual(ForgeTheme(accent: .blue), ForgeTheme.standard, "blue is the standard accent")
+    }
+
+    func testIncreasedContrastReachesAAAForQuieterText() {
+        let palettes = [ForgePalette.standard] + ForgeAccent.allCases.map { ForgePalette.standard.withAccent($0) }
+        for palette in palettes {
+            for colors in [palette.increasedContrast.light, palette.increasedContrast.dark] {
+                for (name, bg) in colors.backgrounds {
+                    XCTAssertGreaterThanOrEqual(ForgeContrast.ratio(colors.textSecondary, on: bg), 7, "textSecondary on \(name)")
+                    XCTAssertGreaterThanOrEqual(ForgeContrast.ratio(colors.textTertiary, on: bg), 7, "textTertiary on \(name)")
+                }
+            }
+        }
+        // It only ever raises contrast, and keeps the backgrounds and solids.
+        let normal = ForgePalette.standard.light
+        let high = ForgePalette.standard.increasedContrast.light
+        XCTAssertGreaterThan(
+            ForgeContrast.ratio(high.textSecondary, on: high.background),
+            ForgeContrast.ratio(normal.textSecondary, on: normal.background))
+        XCTAssertEqual(high.background, normal.background)
+        XCTAssertEqual(high.accent.solid, normal.accent.solid)
+    }
+
+    func testMixingMovesPartWay() {
+        let mid = ForgeRGBA(hex: 0x000000).mixed(with: ForgeRGBA(hex: 0xFFFFFF), amount: 0.5)
+        XCTAssertEqual(mid.red, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(ForgeRGBA(hex: 0x336699).mixed(with: ForgeRGBA(hex: 0xFFFFFF), amount: 0), ForgeRGBA(hex: 0x336699))
+    }
+
+    func testTextRolesSitOnSystemStyles() {
+        XCTAssertEqual(ForgeTextRole.rowTitle.style, .headline)
+        XCTAssertEqual(ForgeTextRole.metadata.emphasis, .secondary)
+        XCTAssertEqual(ForgeTextRole.note.emphasis, .secondary)
+        XCTAssertTrue(ForgeTextRole.figure.monospacedDigits)
+        XCTAssertFalse(ForgeTextRole.body.monospacedDigits)
+        // Every role is distinct, so a role says something a style doesn't.
+        let looks = ForgeTextRole.allCases.map { "\($0.style)-\($0.weight)-\($0.emphasis)-\($0.monospacedDigits)" }
+        XCTAssertEqual(Set(looks).count, looks.count)
+    }
 }

@@ -48,9 +48,9 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
 
     var summary: String {
         switch self {
-        case .colors: "Roles, tones, contrast check"
+        case .colors: "Roles, tones, app accents, contrast"
         case .layout: "The spacing scale and corner radii"
-        case .typography: "System text styles with Dynamic Type"
+        case .typography: "Text roles on system styles, with Dynamic Type"
         case .buttons: "Primary, secondary, tertiary, destructive"
         case .iconButtons: "Round, icon-only actions"
         case .textFields: "Bordered fields outside a form"
