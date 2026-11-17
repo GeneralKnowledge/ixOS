@@ -16,7 +16,8 @@ let package = Package(
         .target(
             name: "ForgeServicesHelpers",
             path: "helpers",
-            sources: ["ForgeWebData.swift", "ForgeImages.swift"],
+            // UIKit, WebKit and AVFoundation helpers aren't tested here.
+            exclude: ["ForgeAudioSession.swift", "ForgeDocuments.swift", "ForgeWeb.swift"],
             // The apps build Generated/ in Swift 5 mode; test the same way.
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

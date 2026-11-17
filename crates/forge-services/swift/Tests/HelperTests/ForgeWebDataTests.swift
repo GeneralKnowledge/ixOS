@@ -30,6 +30,15 @@ final class ForgeWebDataTests: XCTestCase {
         return ForgeWebData(configuration: configuration, cacheDirectory: directory, maxBytes: maxBytes)
     }
 
+    /// Linux Foundation's URLCache doesn't keep responses from a stub
+    /// URLProtocol, so tests that need a copy on disk run on macOS (the App
+    /// model workflow on main) and on the phone, not on Linux.
+    private func requireDiskCache() throws {
+        #if canImport(FoundationNetworking)
+            throw XCTSkip("needs Apple's URLCache; runs on macOS")
+        #endif
+    }
+
     private func address(_ path: String) -> URL { URL(string: "https://stub.test/\(path)")! }
     private func body(_ text: String) -> Data { Data(text.utf8) }
 
@@ -116,7 +125,8 @@ final class ForgeWebDataTests: XCTestCase {
 
     // MARK: - Freshness and offline
 
-    func testFreshCopyIsUsedWithoutAskingTheServer() async {
+    func testFreshCopyIsUsedWithoutAskingTheServer() async throws {
+        try requireDiskCache()
         StubServer.set("fresh", .init(headers: ["Cache-Control": "max-age=3600"], body: body("v1")))
         let web = makeWeb()
         _ = await web.data(from: address("fresh"))
@@ -136,7 +146,8 @@ final class ForgeWebDataTests: XCTestCase {
         XCTAssertEqual(second, .success(body("new")))
     }
 
-    func testReloadAsksTheServerPastAFreshCopy() async {
+    func testReloadAsksTheServerPastAFreshCopy() async throws {
+        try requireDiskCache()
         StubServer.set("reload", .init(headers: ["Cache-Control": "max-age=3600"], body: body("v1")))
         let web = makeWeb()
         _ = await web.data(from: address("reload"))
@@ -146,7 +157,8 @@ final class ForgeWebDataTests: XCTestCase {
         XCTAssertEqual(StubServer.hits("reload"), 2)
     }
 
-    func testForgetRemovesTheDiskCopy() async {
+    func testForgetRemovesTheDiskCopy() async throws {
+        try requireDiskCache()
         StubServer.set("forget", .init(headers: ["Cache-Control": "max-age=3600"], body: body("v1")))
         let web = makeWeb()
         _ = await web.data(from: address("forget"))
@@ -156,7 +168,8 @@ final class ForgeWebDataTests: XCTestCase {
         XCTAssertEqual(after, .success(body("v2")))
     }
 
-    func testOfflineUsesTheStaleDiskCopy() async {
+    func testOfflineUsesTheStaleDiskCopy() async throws {
+        try requireDiskCache()
         StubServer.set("offline-hit", .init(headers: ["Cache-Control": "max-age=0"], body: body("saved")))
         let web = makeWeb()
         _ = await web.data(from: address("offline-hit"))
@@ -191,7 +204,7 @@ final class ForgeImagesDataTests: XCTestCase {
 
 /// Answers requests to https://stub.test/<path> with the reply set for that
 /// path, counting requests and stops.
-final class StubServer: URLProtocol {
+final class StubServer: URLProtocol, @unchecked Sendable {
     struct Reply {
         var status = 200
         var headers: [String: String] = [:]
