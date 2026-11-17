@@ -21,6 +21,10 @@ enum PhoneChecks {
     8. This iPhone: the sensors still update.
     9. Workshop button: Switch App goes straight to another app, and moving the button no longer flashes the menu.
 
+    ## Shared haptics (#309)
+    - Relay: receive a file from a trusted device: you feel a tap when it arrives.
+    - Relay Chats: while in one chat, get a message in another chat: you feel a light tap.
+
     ## Device Lab tools
     10. Tools, Logs: records show, the filter and search work, and Share sends them as text.
     11. Tools, Servers: the chat server and the take server show their addresses, Up with a time when running, Down with a reason when stopped.
