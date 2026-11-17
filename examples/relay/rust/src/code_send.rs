@@ -410,7 +410,7 @@ async fn send(
 ) -> Result<(), RelayError> {
     let started = Instant::now();
     // Held for the whole send, so what it offers stays in the store.
-    let (offer, _tags) = prepare(paths, name.clone(), node).await?;
+    let (offer, _tags) = prepare(paths, name.clone(), node, false).await?;
     log::info!(
         "code send: hashed {} bytes in {:.1}s",
         offer.size,
@@ -541,8 +541,9 @@ async fn send(
     Ok(())
 }
 
-/// Hashes what `paths` hold into the store, where it lies (nothing is
-/// copied): one file as one blob; anything else as a collection of files
+/// Hashes what `paths` hold into the store: where it lies, or copied in
+/// when `copy` (an item that waits in the outbox, whose source may go
+/// before it is sent). One file as one blob; anything else as a collection of files
 /// with their paths inside the transfer (a lone folder's files relative to
 /// it; several items each under its own name). Returns the offer and the
 /// tags that keep it.
@@ -550,13 +551,14 @@ pub(crate) async fn prepare(
     paths: &[PathBuf],
     name: String,
     node: &Node,
+    copy: bool,
 ) -> Result<(Offer, Vec<TempTag>), RelayError> {
     let [path] = paths else {
-        return prepare_files(items_in(paths).map_err(file_error)?, name, node).await;
+        return prepare_files(items_in(paths).map_err(file_error)?, name, node, copy).await;
     };
     let meta = std::fs::metadata(path).map_err(file_error)?;
     if meta.is_file() {
-        let tag = import(node, path.to_path_buf()).await?;
+        let tag = import(node, path.to_path_buf(), copy).await?;
         let hash = tag.hash();
         let offer = Offer {
             hash,
@@ -567,18 +569,22 @@ pub(crate) async fn prepare(
         };
         return Ok((offer, vec![tag]));
     }
-    prepare_files(files_in(path).map_err(file_error)?, name, node).await
+    prepare_files(files_in(path).map_err(file_error)?, name, node, copy).await
 }
 
-/// A file's blob, hashed where it lies.
-async fn import(node: &Node, file: PathBuf) -> Result<TempTag, RelayError> {
+/// A file's blob, hashed where it lies, or copied in when `copy`.
+async fn import(node: &Node, file: PathBuf, copy: bool) -> Result<TempTag, RelayError> {
     node.store
         .blobs()
         .add_path_with_opts(AddPathOptions {
             path: std::path::absolute(file).map_err(file_error)?,
             format: BlobFormat::Raw,
-            // Hash the file where it is instead of copying it.
-            mode: ImportMode::TryReference,
+            // A code send hashes the file where it is; the outbox copies.
+            mode: if copy {
+                ImportMode::Copy
+            } else {
+                ImportMode::TryReference
+            },
         })
         .temp_tag()
         .await
@@ -590,8 +596,9 @@ async fn prepare_files(
     files: Vec<(String, PathBuf, u64)>,
     name: String,
     node: &Node,
+    copy: bool,
 ) -> Result<(Offer, Vec<TempTag>), RelayError> {
-    let import = |file: PathBuf| import(node, file);
+    let import = |file: PathBuf| import(node, file, copy);
     if files.is_empty() {
         return Err(RelayError::File {
             reason: "there are no files to send".into(),

@@ -382,7 +382,12 @@ fn listen(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
             peers = now.len();
         }
         for t in core.transfers().into_iter().rev() {
-            if t.id > seen && !matches!(t.status, TransferStatus::InProgress { .. }) {
+            if t.id > seen
+                && !matches!(
+                    t.status,
+                    TransferStatus::InProgress { .. } | TransferStatus::Waiting
+                )
+            {
                 println!("{}", describe(&t));
                 seen = t.id;
             }
@@ -482,14 +487,18 @@ fn send_to_device(core: &RelayCore, args: &[String]) -> Result<String, String> {
     let note = take_flag(&mut args, "--note")?;
     let (who, paths) = args.split_first().ok_or(USAGE)?;
     let device = find_device(core, who).ok_or(USAGE)?;
+    // Not found: it is queued, and goes when it is reached (where it was
+    // last seen, or when it connects here) while `relay listen` runs.
     let addresses = match to {
         Some(address) => vec![address],
-        None => find_device_addresses(&device.endpoint_id)?,
+        None => find_device_addresses(&device.endpoint_id).unwrap_or_default(),
     };
-    core.devices_nearby(vec![relay_core::NearbyDevice {
-        endpoint_id: device.endpoint_id.clone(),
-        addresses,
-    }]);
+    if !addresses.is_empty() {
+        core.devices_nearby(vec![relay_core::NearbyDevice {
+            endpoint_id: device.endpoint_id.clone(),
+            addresses,
+        }]);
+    }
     let transfer = match (note, paths) {
         (Some(text), []) => block_on(core.send_note_to_device(device.endpoint_id, text)),
         (None, paths) if !paths.is_empty() => {
@@ -904,6 +913,9 @@ fn describe(t: &relay_core::Transfer) -> String {
     };
     let status = match &t.status {
         TransferStatus::Done => "done".to_string(),
+        TransferStatus::Waiting => {
+            "waiting: it goes when the device is reached, while relay listen runs".to_string()
+        }
         TransferStatus::InProgress { done } => format!("{done} bytes so far"),
         TransferStatus::Failed { reason } => format!("failed: {reason}"),
     };

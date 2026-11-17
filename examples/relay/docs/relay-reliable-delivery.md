@@ -40,8 +40,21 @@ lifecycles. No concern reaches into another's storage.
   pairing policy in Settings (#314); revocation on a phone still to run.
 - Stage 2: one saved copy per received item, and the store lets go of
   its copy (this PR's tests: `a_file_received_again_is_kept_once_and_the_store_lets_go`,
-  and the resume test now runs with clean-ups on). The iPhone storage
-  check is still to run.
+  and the resume test now runs with clean-ups on) (#319). The iPhone
+  storage check is still to run.
+- Stage 3: the outbox (`rust/src/outbox.rs`, tests in
+  `rust/tests/outbox.rs`). Notes and files for a trusted device are saved
+  in `deliveries` with a 128-bit id before anything is dialled, files
+  copied into the blob store under `relay/delivery/<id>`; one worker per
+  device sends them oldest first when the device is seen, connects here,
+  Relay comes to the foreground, or forge-net's backoff (1 s to 5 min)
+  fires; the receiver remembers ids for 45 days, so a retry whose answer
+  was lost is answered without saving twice. The history shows Waiting,
+  Sending, Sent and Failed, and a waiting item can be cancelled. Notes use
+  the queue for now; stage 4 moves messages to chat-core's outbox on the
+  same scheduler. Deferred: connection arbitration and fairness batches
+  (they matter once a conversation sends many messages, stage 4), and the
+  1 GB free-space check. The phone check is still to run.
 
 ## Acceptance criteria
 

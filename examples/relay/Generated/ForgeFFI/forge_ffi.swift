@@ -5010,7 +5010,8 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func cancelInvitation() 
     
     /**
-     * Stops a send to a trusted device that is still going.
+     * Stops a send to a trusted device that is still going, or takes it
+     * off the outbox if it is waiting.
      */
     func cancelTransfer(id: UInt64) 
     
@@ -5042,6 +5043,13 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func createInvitation(hosts: [String]) throws  -> Invitation
     
     /**
+     * Tries every trusted device something waits for, now: Relay came
+     * back to the foreground. (Seeing a device, or it connecting here,
+     * tries it too; so does a timer while Relay is open.)
+     */
+    func deliverWaiting() 
+    
+    /**
      * Starts this device on iroh, if it isn't yet, so trusted devices can
      * reach it. The app advertises the result with Bonjour while Relay is
      * on screen.
@@ -5055,6 +5063,8 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     
     /**
      * The trusted devices the app sees nearby now, replacing the last list.
+     * A device that appears, or moves, is tried at once if something
+     * waits for it.
      */
     func devicesNearby(devices: [NearbyDevice]) 
     
@@ -5170,7 +5180,9 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func sendNote(deviceId: String, text: String, addresses: [String], cancellation: Cancellation?) async throws  -> Transfer
     
     /**
-     * Sends a note to a trusted device, with no code.
+     * Sends a note to a trusted device, with no code. It waits in the
+     * outbox until the device is reached: the transfer comes back Done,
+     * or Waiting when the device wasn't reached. A refusal is an error.
      */
     func sendNoteToDevice(endpointId: String, text: String) async throws  -> Transfer
     
@@ -5183,7 +5195,10 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     
     /**
      * Sends files and folders to a trusted device as one transfer, with
-     * no code. Several items arrive in one folder named "N items".
+     * no code. Several items arrive in one folder named "N items". They
+     * are copied into Relay's store first, so they can wait in the outbox
+     * (and the originals can go); as for a note, the transfer comes back
+     * Done, or Waiting.
      */
     func sendToDevice(endpointId: String, paths: [String]) async throws  -> Transfer
     
@@ -5379,7 +5394,8 @@ open func cancelInvitation()  {try! rustCall() {
 }
     
     /**
-     * Stops a send to a trusted device that is still going.
+     * Stops a send to a trusted device that is still going, or takes it
+     * off the outbox if it is waiting.
      */
 open func cancelTransfer(id: UInt64)  {try! rustCall() {
         uniffiCallStatus in
@@ -5447,6 +5463,19 @@ open func createInvitation(hosts: [String])throws  -> Invitation  {
 }
     
     /**
+     * Tries every trusted device something waits for, now: Relay came
+     * back to the foreground. (Seeing a device, or it connecting here,
+     * tries it too; so does a timer while Relay is open.)
+     */
+open func deliverWaiting()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_deliver_waiting(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Starts this device on iroh, if it isn't yet, so trusted devices can
      * reach it. The app advertises the result with Bonjour while Relay is
      * on screen.
@@ -5481,6 +5510,8 @@ open func devices() -> [Device]  {
     
     /**
      * The trusted devices the app sees nearby now, replacing the last list.
+     * A device that appears, or moves, is tried at once if something
+     * waits for it.
      */
 open func devicesNearby(devices: [NearbyDevice])  {try! rustCall() {
         uniffiCallStatus in
@@ -5798,7 +5829,9 @@ open func sendNote(deviceId: String, text: String, addresses: [String], cancella
 }
     
     /**
-     * Sends a note to a trusted device, with no code.
+     * Sends a note to a trusted device, with no code. It waits in the
+     * outbox until the device is reached: the transfer comes back Done,
+     * or Waiting when the device wasn't reached. A refusal is an error.
      */
 open func sendNoteToDevice(endpointId: String, text: String)async throws  -> Transfer  {
     return
@@ -5832,7 +5865,10 @@ open func sendPathsWithCode(paths: [String])throws   {try rustCallWithError(FfiC
     
     /**
      * Sends files and folders to a trusted device as one transfer, with
-     * no code. Several items arrive in one folder named "N items".
+     * no code. Several items arrive in one folder named "N items". They
+     * are copied into Relay's store first, so they can wait in the outbox
+     * (and the originals can go); as for a note, the transfer comes back
+     * Done, or Waiting.
      */
 open func sendToDevice(endpointId: String, paths: [String])async throws  -> Transfer  {
     return
@@ -12459,6 +12495,11 @@ public func FfiConverterTypeShareItem_lower(_ value: ShareItem) -> RustBuffer {
 public enum TransferStatus: Equatable, Hashable {
     
     /**
+     * Queued for a trusted device that hasn't been reached yet: it goes
+     * when the device is seen again, while Relay is open.
+     */
+    case waiting
+    /**
      * Bytes so far, out of the item's size.
      */
     case inProgress(done: UInt64
@@ -12487,12 +12528,14 @@ public struct FfiConverterTypeTransferStatus: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .inProgress(done: try FfiConverterUInt64.read(from: &buf)
+        case 1: return .waiting
+        
+        case 2: return .inProgress(done: try FfiConverterUInt64.read(from: &buf)
         )
         
-        case 2: return .done
+        case 3: return .done
         
-        case 3: return .failed(reason: try FfiConverterString.read(from: &buf)
+        case 4: return .failed(reason: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -12503,17 +12546,21 @@ public struct FfiConverterTypeTransferStatus: FfiConverterRustBuffer {
         switch value {
         
         
-        case let .inProgress(done):
+        case .waiting:
             writeInt(&buf, Int32(1))
+        
+        
+        case let .inProgress(done):
+            writeInt(&buf, Int32(2))
             FfiConverterUInt64.write(done, into: &buf)
             
         
         case .done:
-            writeInt(&buf, Int32(2))
+            writeInt(&buf, Int32(3))
         
         
         case let .failed(reason):
-            writeInt(&buf, Int32(3))
+            writeInt(&buf, Int32(4))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -13912,7 +13959,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_cancel_invitation() != 53288) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_cancel_transfer() != 59140) {
+    if (uniffi_relay_core_checksum_method_relaycore_cancel_transfer() != 49543) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_code_receive_size() != 28847) {
@@ -13927,13 +13974,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_create_invitation() != 11711) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_deliver_waiting() != 17342) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_device_service() != 50466) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_devices() != 30140) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_devices_nearby() != 51857) {
+    if (uniffi_relay_core_checksum_method_relaycore_devices_nearby() != 37105) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_dismiss_trust_offer() != 41948) {
@@ -13993,13 +14043,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_send_note() != 59564) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_send_note_to_device() != 1185) {
+    if (uniffi_relay_core_checksum_method_relaycore_send_note_to_device() != 51989) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_send_paths_with_code() != 4107) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_send_to_device() != 1929) {
+    if (uniffi_relay_core_checksum_method_relaycore_send_to_device() != 8684) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_send_with_code() != 8349) {
