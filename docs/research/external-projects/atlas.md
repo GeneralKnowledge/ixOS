@@ -27,7 +27,7 @@ Relay is the natural beneficiary, but networking could also serve cross-device C
 | Iroh | P2P connections, NAT traversal, relay fallback, content transfer | **Prior:** adopted in Relay (#197, #198, #267) | |
 | LocalSend | Discovery, pairing, device selection, transfer UX | **Prior:** UX reference (#288); rejected as protocol | |
 | libp2p | Modular peer discovery and transport protocols | **Prior:** not chosen for Relay (more moving parts, weaker iOS story). Revisit only as a comparison | P2 |
-| Lightning P2P | iroh-based transfer: verified chunks, retry and resume, browser receiving | **Technique**, *unverified*. Its iOS support is advertised but not available, so an architectural reference, compared against Relay's outbox (#299) | P0 |
+| Lightning P2P | iroh-based transfer: verified chunks, retry and resume, browser receiving | **Assessed 2026-11-17: Borrow.** Its blob-store retention showed that Relay keeps every received file twice ([assessment](assessments/networking/lightning-p2p.md)); no iOS app | P0 |
 
 ## 2. Local-first data and synchronisation
 
@@ -82,7 +82,7 @@ Relevant to Pocket Library, Commonplace, Sketchbook and Relay.
 | Project | Potential contribution | Classification | Priority |
 |---|---|---|---|
 | OpenScanner | A complete native SwiftUI scanning app (Core Data, CloudKit) | **Reference**, *unverified* | |
-| Offscan | Offline scanning, OCR, non-destructive editing, PDF export, on Apple frameworks | **Technique**, *unverified*: study the pipeline and architecture, not a new scanner app | P0 |
+| Offscan | Offline scanning, OCR, non-destructive editing, PDF export, on Apple frameworks | **Assessed 2026-11-17: Borrow and Study.** Recipes, debounced OCR, search rebuilt from content; no scanner app, no SwiftData ([assessment](assessments/media/offscan.md)) | P0 |
 | Brightroom | Composable image editing on Core Image and Metal | **Candidate**, *unverified* (Sketchbook, Relay previews) | P1 |
 | Kingfisher | Image loading, caching and processing | **Poor fit:** the Nuke decision covers it; ForgeImages is extended instead (#298). Not a reason to reopen that decision | |
 

@@ -52,5 +52,5 @@ Each is its own docs PR with one assessment, run one at a time:
 |---|---|---|---|
 | 1 | CVS Health SwiftUI accessibility techniques (a11y-check) | Can its rules become a mandatory check next to `forge check swift`, on Linux? | [Adopt as a CI tool, report-only first](assessments/accessibility/a11y-check.md) |
 | 2 | FluidAudio | Can a shared local speech capability build with xtool and run on the iPhone? | [Watch: Apple's speech recognition first](assessments/ai/fluidaudio.md) |
-| 3 | Lightning P2P | What does it do that Relay's [delivery outbox](../../../examples/relay/docs/relay-delivery-outbox.md) (#299) doesn't, for resume, retry and chunk verification? | Not started |
-| 4 | Offscan | How is its scan, OCR, edit and PDF pipeline built on Apple frameworks alone? | Not started |
+| 3 | Lightning P2P | What does it do that Relay's [delivery outbox](../../../examples/relay/docs/relay-delivery-outbox.md) (#299) doesn't, for resume, retry and chunk verification? | [Borrow; Relay keeps received files twice](assessments/networking/lightning-p2p.md) |
+| 4 | Offscan | How is its scan, OCR, edit and PDF pipeline built on Apple frameworks alone? | [Borrow and Study](assessments/media/offscan.md) |

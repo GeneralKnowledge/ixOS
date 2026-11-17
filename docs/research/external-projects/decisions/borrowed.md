@@ -12,3 +12,5 @@ Status: 2026-11-17. Part of the [External Projects Atlas](../README.md). Ideas, 
 | LocalSend | Send/Receive front door; nearby targets; help sheet | Relay's transfer journey | [localsend.md](../../experience/references/localsend.md) (#288) |
 | Ice Cubes | Text roles, haptic vocabulary, one banner with Undo | ForgeUI text roles (#292), ForgeBanner (#294) | [ice-cubes.md](../../experience/references/ice-cubes.md) (#291) |
 | NetNewsWire | Next unread, Mark All with Undo, feed discovery | Commonplace, ForgeReader | [netnewswire.md](../../experience/references/netnewswire.md) (#293) |
+| Lightning P2P | Blob-store garbage collection with named tags; per-peer request cap; relay-wait memory; journal before publishing a received file | Proposed for Relay's outbox (brief PR 4) and resolver (brief PR 6) | [assessment](../assessments/networking/lightning-p2p.md) |
+| Offscan | Non-destructive edit recipes; one debounced OCR per page with stale results dropped; search rebuilt from content; two image cache budgets | Proposed; for roadmap item 18 and photo-editing apps | [assessment](../assessments/media/offscan.md) |

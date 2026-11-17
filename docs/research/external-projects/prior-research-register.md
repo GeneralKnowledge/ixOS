@@ -38,6 +38,7 @@ State is one of the four in the [README](README.md#four-different-states) (known
 | [Drift](https://github.com/vsamarth/drift) (MIT) | [relay-transfer-peers.md](../experience/references/relay-transfer-peers.md) (#297, `f840ce5`) | Rust on iroh 0.97, Flutter, no iOS app yet | Researched | **Study:** reference; iOS feasibility unknown |
 | [Daak](https://github.com/darshitpp/daak) (Apache-2.0) | [relay-transfer-peers.md](../experience/references/relay-transfer-peers.md) (#297, `de23b51`) | Rust core over UniFFI like ixOS; backoff reset on presence. Self-described "fully vibecoded", two stars: trust none of its protocol | Researched | **Study:** experimental reference |
 | [RelayPonyCore](https://github.com/norsehorse-dev/RelayPonyCore) (Apache-2.0) | [relay-transfer-peers.md](../experience/references/relay-transfer-peers.md) (#297, `72d4f8f`) | Open core of a shipping iPhone app: age over Bonjour and Network.framework; the app itself is closed | Researched | **Study:** UX and implementation reference |
+| [Lightning P2P](https://github.com/Kerim-Sabic/lightning-p2p) (Apache-2.0) | [assessment](assessments/networking/lightning-p2p.md) (2026-11-17, `ce2ee63`) | Same iroh stack; bearer tickets; no iOS app. Its retention code led to measuring that Relay keeps received files twice | Researched | **Borrow** (retention, request cap, relay wait, receive journal) |
 | [libp2p](https://github.com/libp2p/rust-libp2p) | [relay-transfer-plan.md](../../../examples/relay/docs/relay-transfer-plan.md) | Does what iroh does with more moving parts and a weaker iOS story | Researched | **Reject** as Relay's transport |
 | [Syncthing](https://github.com/syncthing/syncthing) (MPL-2.0) | [relay-transfer-plan.md](../../../examples/relay/docs/relay-transfer-plan.md) | Continuous folder sync is a different product; a later "keep this folder in sync" mode could borrow its ideas | Researched | **Watch** for a sync mode |
 | croc, magic-wormhole, Floe, wush, derphole, WebRTC, BitTorrent/IPFS | [relay-transfer-plan.md](../../../examples/relay/docs/relay-transfer-plan.md) | croc: borrow the flow. magic-wormhole: borrow SPAKE2 word codes, not the protocol (internet rendezvous, EUPL crate). Floe: browser receiver idea for stage 3. wush/derphole: ride Tailscale's DERP. Torrent/IPFS: built for one-to-many | Researched | **Borrow** (croc, magic-wormhole designs); **Watch** (Floe browser receiver); **Reject** as base (the rest) |
@@ -58,6 +59,12 @@ From [ixOS Experience Research](../experience/README.md) (#285 and its deep audi
 | [Stance](https://github.com/BindsHQ/stance) (Apache-2.0) | [references.md](../experience/references.md#design-systems) | Architectural reference for cross-platform tokens, when Android resumes |
 | [Mira](https://github.com/Dtheme/Mira) (MIT) | [references.md](../experience/references.md#design-systems) | Design-system reference for agent-assisted design specs |
 | [Awesome iOS Design MD](https://github.com/Meliwat/awesome-ios-design-md) (MIT) | [references.md](../experience/references.md#tools-for-keeping-quality-from-slipping) | Format reference for ixOS's own design spec |
+
+## Apps studied for techniques
+
+| Project | Where it was looked at | Disposition |
+|---|---|---|
+| [Offscan](https://github.com/bartoszpiech/offscan) (MIT) | [assessment](assessments/media/offscan.md) (2026-11-17, `7b8d682`) | **Borrow and Study:** pipeline and recipe design for roadmap item 18; not a dependency (SwiftData state, five days old) |
 
 ## Tooling
 
