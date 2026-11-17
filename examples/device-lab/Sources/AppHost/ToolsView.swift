@@ -33,6 +33,16 @@ struct ToolsView: View {
             }
             Section {
                 NavigationLink {
+                    ServersView()
+                } label: {
+                    Label("Servers", systemImage: "server.rack")
+                }
+                .accessibilityIdentifier("tools.servers")
+            } footer: {
+                Text("Whether the chat server and the take server answer from this phone.")
+            }
+            Section {
+                NavigationLink {
                     LogsView()
                 } label: {
                     Label("Logs", systemImage: "text.alignleft")
