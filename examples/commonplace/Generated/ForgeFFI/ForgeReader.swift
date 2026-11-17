@@ -274,13 +274,10 @@ public struct ForgeReaderImage: View {
     public var body: some View {
         Group {
             if let webURL {
-                AsyncImage(url: webURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFit().frame(maxWidth: .infinity)
-                    case .failure:
-                        EmptyView()
-                    default:
+                ForgeRemoteImage(url: webURL, maxPixels: 1600) { image in
+                    image.resizable().scaledToFit().frame(maxWidth: .infinity)
+                } placeholder: { failed in
+                    if !failed {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 120)
                     }
                 }
