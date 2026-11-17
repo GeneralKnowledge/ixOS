@@ -64,7 +64,8 @@ public final class ChatModel {
     /// How far opening the Rust core has got.
     public enum Phase: Equatable {
         case loading
-        /// No account on this device yet: show sign-up.
+        /// No account on this device yet, and no Relay devices to talk to:
+        /// show sign-up.
         case signedOut
         case ready
         case failed(String)
@@ -161,10 +162,33 @@ public final class ChatModel {
             // Before the tabs appear, so a locked app never shows them.
             appLock = core.appLock()
             showAccount(core.account())
+            attachRelay()
         } catch {
             phase = .failed(Self.describe(error))
         }
     }
+
+    /// Relay's core, whose trusted devices are conversations too.
+    private var relay: RelayCore?
+
+    /// Lists a conversation with each device Relay trusts, with or without
+    /// a chat server account. Call once Relay's core is open; does nothing
+    /// the second time.
+    public func useRelay(_ relay: RelayCore) {
+        guard self.relay !== relay else { return }
+        self.relay = relay
+        attachRelay()
+    }
+
+    private func attachRelay() {
+        guard let core, let relay else { return }
+        core.useRelay(relay: relay)
+        if phase == .signedOut { phase = .ready }
+        if phase == .ready { Task { await refresh() } }
+    }
+
+    /// Whether Relay's devices are conversations here.
+    public var hasDevices: Bool { relay != nil }
 
     /// Creates an account on the server and signs this device in with it.
     /// Throws so the sign-up form can stay open with the input intact.
@@ -604,8 +628,8 @@ public final class ChatModel {
         hasListed = false
         conversations = core?.cachedConversations() ?? []
         updateWaitingCount()
-        phase = newAccount == nil ? .signedOut : .ready
-        if newAccount != nil {
+        phase = newAccount == nil && relay == nil ? .signedOut : .ready
+        if phase == .ready {
             Task { await refresh() }
         }
     }

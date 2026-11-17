@@ -63,6 +63,7 @@ thiserror = "2.0"
 # versions as the M0 spike (examples/relay/spike), whose sender it talks to.
 iroh = { version = "1", default-features = false, features = ["tls-ring"] }
 iroh-blobs = "=0.104.1"
+blake3 = "1"
 # Streams of download progress (iroh-blobs' own async helpers).
 n0-future = "0.3"
 # Held at 0.2.189: libc 0.2.190 made the routing and IPv6 interface types

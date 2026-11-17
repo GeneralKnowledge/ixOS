@@ -42,6 +42,10 @@ public struct RelayRoot: View {
             // Opens messaging's Rust core off the main thread; does nothing
             // when already open.
             .task { await chat.open() }
+            // Trusted devices are conversations in Chats once Relay is open.
+            .task(id: host.core != nil) {
+                if let core = host.core { chat.useRelay(core) }
+            }
             // A tapped message notification opens its room (rust/src/chat/alerts.rs).
             .onForgeDeepLink { link in
                 guard let route = ChatLinks.route(link) else { return }

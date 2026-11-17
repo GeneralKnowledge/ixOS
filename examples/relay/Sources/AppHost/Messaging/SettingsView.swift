@@ -8,6 +8,7 @@ struct SettingsView: View {
     /// Relay's core, for the pairing policy; `nil` while it opens.
     var relay: RelayCore? = nil
     @State private var confirmingSignOut = false
+    @State private var joining = false
 
     private var muted: [ChatConversation] { model.sortedConversations.filter(\.muted) }
 
@@ -20,6 +21,16 @@ struct SettingsView: View {
                     LabeledContent("Account ID", value: account.userId)
                         .textSelection(.enabled)
                     LabeledContent("Storage", value: storageEngine())
+                }
+            }
+            if model.account == nil {
+                Section {
+                    Button("Join a Chat Server") { joining = true }
+                        .accessibilityIdentifier("settings.joinServer")
+                } header: {
+                    Text("Chat Server")
+                } footer: {
+                    Text("Your trusted devices are in Chats already. A chat server adds conversations with other people.")
                 }
             }
             if let problem = model.accountProblem {
@@ -71,16 +82,24 @@ struct SettingsView: View {
                         : "Chat asks when it opens and after a minute in the background, and hides its content in the app switcher."
                 )
             }
-            Section {
-                Button("Sign Out", role: .destructive) { confirmingSignOut = true }
-                    .accessibilityIdentifier("settings.signOut")
-            } footer: {
-                Text(
-                    "Removes the account and its chats from this iPhone. Chat has no sign-in, so you can't use this account again: you'd sign up as someone new. Your sent messages stay on the server."
-                )
+            if model.account != nil {
+                Section {
+                    Button("Sign Out", role: .destructive) { confirmingSignOut = true }
+                        .accessibilityIdentifier("settings.signOut")
+                } footer: {
+                    Text(
+                        "Removes the account and its chats from this iPhone. Chat has no sign-in, so you can't use this account again: you'd sign up as someone new. Your sent messages stay on the server."
+                    )
+                }
             }
         }
         .navigationTitle("Settings")
+        .sheet(isPresented: $joining) {
+            SignUpView(model: model)
+        }
+        .onChange(of: model.account != nil) { _, signedIn in
+            if signedIn { joining = false }
+        }
         .confirmationDialog(
             "Sign out of Chat?", isPresented: $confirmingSignOut, titleVisibility: .visible
         ) {

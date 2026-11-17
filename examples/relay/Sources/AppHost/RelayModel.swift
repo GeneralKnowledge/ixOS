@@ -102,6 +102,12 @@ public final class RelayModel {
         transfers.contains { if case .inProgress = $0.status { true } else { false } }
     }
 
+    /// Whether anything waits in the outbox for a trusted device, so the
+    /// screen notices when it goes.
+    public var isWaiting: Bool {
+        transfers.contains { $0.status == .waiting }
+    }
+
     /// The haptic for what arrived between two reads of the history: success
     /// when a received file or note finished (one tap however many did),
     /// failure when one stopped part way. Sends are left to the action that
@@ -113,14 +119,14 @@ public final class RelayModel {
             // New since the last read, or still on its way then.
             let wasRunning: Bool
             switch before[transfer.id] {
-            case .none, .some(.inProgress): wasRunning = true
+            case .none, .some(.inProgress), .some(.waiting): wasRunning = true
             case .some(.done), .some(.failed): wasRunning = false
             }
             guard wasRunning else { continue }
             switch transfer.status {
             case .done: kind = kind ?? .success
             case .failed: kind = .failure
-            case .inProgress: break
+            case .inProgress, .waiting: break
             }
         }
         return kind
@@ -368,21 +374,23 @@ public final class RelayModel {
         await perform { try await $0.setPairingPolicy(policy: policy) }
     }
 
-    /// Sends a note to a trusted device, no code. `false` (and an alert)
-    /// if it failed.
+    /// Sends a note to a trusted device, no code. It waits in the outbox
+    /// while the device is away. `false` (and an alert) if it was refused.
     @discardableResult
     public func send(note: String, toDevice device: Device) async -> Bool {
         await sendingToDevice { try await $0.sendNoteToDevice(endpointId: device.endpointId, text: note) }
     }
 
     /// Sends files and folders (in one folder when several) to a trusted
-    /// device. They must stay until the send ends.
+    /// device. Relay copies them in first, so they can wait in the outbox
+    /// and the picked copies can go when this returns.
     @discardableResult
     public func send(paths: [String], toDevice device: Device) async -> Bool {
         await sendingToDevice { try await $0.sendToDevice(endpointId: device.endpointId, paths: paths) }
     }
 
-    /// Stops a send to a trusted device that is on its way.
+    /// Stops a send to a trusted device that is on its way, or takes it
+    /// off the outbox while it waits.
     public func cancel(_ transfer: Transfer) {
         core.cancelTransfer(id: transfer.id)
     }
@@ -390,9 +398,10 @@ public final class RelayModel {
     private func sendingToDevice(_ send: (RelayCore) async throws -> Transfer) async -> Bool {
         reload()
         do {
-            _ = try await send(core)
+            let sent = try await send(core)
             reload()
-            feedback.play(.success)
+            // A waiting item is queued, not sent: no success tap yet.
+            if sent.status == .done { feedback.play(.success) }
             return true
         } catch {
             reload()
@@ -674,9 +683,11 @@ public enum RelayFormat {
         }
     }
 
-    /// "Sending 40%", "Sent", "Received", "Failed: …".
+    /// "Waiting for MacBook", "Sending 40%", "Sent", "Received", "Failed: …".
     public static func status(_ transfer: Transfer) -> String {
         switch transfer.status {
+        case .waiting:
+            return "Waiting for \(transfer.peerName)"
         case .inProgress(let done):
             let verb = transfer.direction == .sent ? "Sending" : "Receiving"
             if case .file(_, let size, _) = transfer.item, size > 0 {

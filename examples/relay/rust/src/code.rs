@@ -391,6 +391,7 @@ async fn run(
         });
         // Fetch, unless the sender closes the code connection first (it
         // was stopped): then stop too, keeping what arrived for a resume.
+        hold(node, content).await?;
         let downloaded = tokio::select! {
             r = fetch(node, content, sender, progress) => r,
             _ = conn.closed() => Err(RelayError::Declined {
@@ -398,14 +399,14 @@ async fn run(
             }),
         };
         let seconds = started.elapsed().as_secs_f64();
-        let out = unique_path(inbox, &name);
         let saved = match downloaded {
-            Ok(()) => save(node, hash, collection, inbox, &out).await,
+            Ok(()) => place(node, hash, collection, inbox, &name).await,
             Err(e) => Err(e),
         };
         let _ = stop_ticks.send(());
         let mut send = ticker.await.map_err(connection)?;
-        saved?;
+        let out = saved?;
+        release(node, hash).await;
         put(&mut send, b"done").await?;
         // Names last, once the transfer is safe: each side learns what the
         // other calls itself, for "Trust this device?". An older sender
@@ -511,6 +512,127 @@ pub(crate) async fn fetch(
     Ok(())
 }
 
+/// Tags a receive's content before fetching it, so the store keeps what
+/// arrives (for a resume, even after a relaunch) until `release`. One named
+/// tag per receive, on its root: a folder's files are kept through it.
+pub(crate) async fn hold(node: &Node, content: HashAndFormat) -> Result<(), RelayError> {
+    let name = format!("{RECEIVE_TAG}{}/{}", content.hash, forge_runtime::now_ms());
+    node.store
+        .tags()
+        .set(name, content)
+        .await
+        .map_err(file_error)
+}
+
+/// Lets go of a receive's content once it is saved: the store's copy goes
+/// at its next clean-up.
+pub(crate) async fn release(node: &Node, hash: Hash) {
+    let prefix = format!("{RECEIVE_TAG}{hash}/");
+    if let Err(err) = node.store.tags().delete_prefix(prefix).await {
+        log::warn!("relay couldn't let go of a received item: {err}");
+    }
+}
+
+const RECEIVE_TAG: &str = "relay/receive/";
+
+/// Drops receive tags older than `RECEIVE_KEPT_MS` (a transfer that never
+/// came back), when the store opens.
+pub(crate) async fn let_go_of_old_receives(store: &iroh_blobs::store::fs::FsStore) {
+    let oldest = forge_runtime::now_ms() - crate::node::RECEIVE_KEPT_MS;
+    let Ok(mut tags) = store.tags().list_prefix(RECEIVE_TAG).await else {
+        return;
+    };
+    let mut old = Vec::new();
+    while let Some(Ok(tag)) = tags.next().await {
+        let name = String::from_utf8_lossy(tag.name.as_ref()).into_owned();
+        let at = name.rsplit('/').next().and_then(|t| t.parse::<i64>().ok());
+        if at.is_none_or(|at| at < oldest) {
+            old.push(name);
+        }
+    }
+    for name in old {
+        let _ = store.tags().delete(name).await;
+    }
+}
+
+/// Saves what arrived as `name` in `inbox` and returns where. A file or
+/// folder already there with the same name and the same content (a retry,
+/// or the same thing sent again) is reused, not copied a second time;
+/// different content with the same name gets the next free name, `name (2)`
+/// and so on.
+pub(crate) async fn place(
+    node: &Node,
+    hash: Hash,
+    collection: bool,
+    inbox: &Path,
+    name: &str,
+) -> Result<PathBuf, RelayError> {
+    std::fs::create_dir_all(inbox).map_err(file_error)?;
+    let files = if collection {
+        let list = Collection::load(hash, &*node.store)
+            .await
+            .map_err(file_error)?;
+        list.iter()
+            .map(|(inside, file)| (inside.clone(), *file))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    for candidate in names(inbox, name) {
+        if !candidate.exists() {
+            save(node, hash, collection, inbox, &candidate).await?;
+            return Ok(candidate);
+        }
+        let same = {
+            let (candidate, files) = (candidate.clone(), files.clone());
+            tokio::task::spawn_blocking(move || {
+                if collection {
+                    candidate.is_dir()
+                        && files.iter().all(|(inside, file)| {
+                            inside_folder(&candidate, inside)
+                                .is_some_and(|path| same_content(&path, *file))
+                        })
+                } else {
+                    same_content(&candidate, hash)
+                }
+            })
+            .await
+            .unwrap_or(false)
+        };
+        if same {
+            log::info!("relay: received again, already saved");
+            return Ok(candidate);
+        }
+    }
+    unreachable!("names() never ends")
+}
+
+/// `inbox/name`, then `name (2)`, `name (3)` and so on.
+fn names<'a>(inbox: &'a Path, name: &'a str) -> impl Iterator<Item = PathBuf> + 'a {
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+        _ => (name.to_string(), String::new()),
+    };
+    std::iter::once(inbox.join(name))
+        .chain((2..).map(move |i| inbox.join(format!("{stem} ({i}){ext}"))))
+}
+
+/// Whether the file at `path` is exactly the blob `hash` (BLAKE3, read in
+/// pieces).
+fn same_content(path: &Path, hash: Hash) -> bool {
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    if !path.is_file() {
+        return false;
+    }
+    let mut hasher = blake3::Hasher::new();
+    if hasher.update_reader(file).is_err() {
+        return false;
+    }
+    hasher.finalize().as_bytes() == hash.as_bytes()
+}
+
 /// Copies what arrived out of the store: a file to `out`, a folder's files
 /// under the folder `out`, each kept inside it whatever its path says.
 pub(crate) async fn save(
@@ -561,22 +683,6 @@ fn inside_folder(folder: &Path, inside: &str) -> Option<PathBuf> {
     any.then_some(path)
 }
 
-/// `inbox/name`, or `inbox/name (2)` and so on if that is taken.
-pub(crate) fn unique_path(inbox: &Path, name: &str) -> PathBuf {
-    let first = inbox.join(name);
-    if !first.exists() {
-        return first;
-    }
-    let (stem, ext) = match name.rsplit_once('.') {
-        Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
-        _ => (name.to_string(), String::new()),
-    };
-    (2..)
-        .map(|i| inbox.join(format!("{stem} ({i}){ext}")))
-        .find(|p| !p.exists())
-        .expect("a free name")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -615,11 +721,24 @@ mod tests {
     fn a_taken_name_gets_a_number() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.txt"), b"x").unwrap();
+        let a: Vec<_> = names(dir.path(), "a.txt").take(3).collect();
         assert_eq!(
-            unique_path(dir.path(), "a.txt"),
-            dir.path().join("a (2).txt")
+            a,
+            [
+                dir.path().join("a.txt"),
+                dir.path().join("a (2).txt"),
+                dir.path().join("a (3).txt")
+            ]
         );
-        assert_eq!(unique_path(dir.path(), "b"), dir.path().join("b"));
+        assert_eq!(
+            names(dir.path(), "b").nth(1),
+            Some(dir.path().join("b (2)"))
+        );
+        // A file is its BLAKE3 hash, read in pieces.
+        let file = dir.path().join("a.txt");
+        assert!(same_content(&file, Hash::new(b"x")));
+        assert!(!same_content(&file, Hash::new(b"y")));
+        assert!(!same_content(&dir.path().join("gone"), Hash::new(b"x")));
     }
 
     #[test]

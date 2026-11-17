@@ -65,6 +65,13 @@ pub(crate) enum DeviceMsg {
     Done,
     /// The receiver won't take it, and why, in words for the sender.
     Refused { reason: String },
+    /// A message in the two devices' conversation (`device_chat`), by the
+    /// id chat-core gave it, kept through retries.
+    Message {
+        id: String,
+        body: String,
+        reply_to: Option<String>,
+    },
 }
 
 impl DeviceMsg {
@@ -120,13 +127,24 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn my_name(&self) -> String;
     /// Where received files go.
     fn folder(&self) -> PathBuf;
-    /// A note arrived; returns when it is saved.
-    fn note(&self, from: &str, text: String) -> Result<(), RelayError>;
+    /// Whether the item `id` from `from` is here already: a retry whose
+    /// answer was lost, answered Done without saving it again.
+    fn received_before(&self, from: &str, id: &[u8; 16]) -> bool;
+    /// A note arrived; returns when it is saved, with its id remembered.
+    fn note(&self, from: &str, id: [u8; 16], text: String) -> Result<(), RelayError>;
+    /// A conversation message arrived; returns when it is in the log (a
+    /// message whose id is there already is not added again).
+    fn message(
+        &self,
+        from: &str,
+        message: crate::device_chat::PeerMessage,
+    ) -> Result<(), RelayError>;
     /// A file is coming; returns the history entry's id.
     fn begin_file(&self, from: &str, name: &str, size: u64) -> Result<u64, RelayError>;
     fn progress(&self, id: u64, done: u64);
-    /// It ended: saved at the path, or failed with the reason.
-    fn finish_file(&self, id: u64, result: Result<String, String>);
+    /// It ended: saved at the path (and the item's id `delivery` from
+    /// `from` remembered), or failed with the reason.
+    fn finish_file(&self, id: u64, from: &str, delivery: [u8; 16], result: Result<String, String>);
 }
 
 /// Trusts nobody: for nodes in tests that only use word codes.
@@ -144,14 +162,20 @@ impl DeviceInbound for NoDevices {
     fn folder(&self) -> PathBuf {
         PathBuf::from("/nonexistent")
     }
-    fn note(&self, _: &str, _: String) -> Result<(), RelayError> {
+    fn received_before(&self, _: &str, _: &[u8; 16]) -> bool {
+        false
+    }
+    fn note(&self, _: &str, _: [u8; 16], _: String) -> Result<(), RelayError> {
+        Err(RelayError::Refused)
+    }
+    fn message(&self, _: &str, _: crate::device_chat::PeerMessage) -> Result<(), RelayError> {
         Err(RelayError::Refused)
     }
     fn begin_file(&self, _: &str, _: &str, _: u64) -> Result<u64, RelayError> {
         Err(RelayError::Refused)
     }
     fn progress(&self, _: u64, _: u64) {}
-    fn finish_file(&self, _: u64, _: Result<String, String>) {}
+    fn finish_file(&self, _: u64, _: &str, _: [u8; 16], _: Result<String, String>) {}
 }
 
 /// What a trusted device may do here.
@@ -236,11 +260,32 @@ impl DeviceHandler {
             say(&mut send, &DeviceMsg::Refused { reason }).await?;
             return Ok(());
         }
+        let already = match &item {
+            DeviceMsg::Note { id, .. } | DeviceMsg::File { id, .. } => {
+                self.host.received_before(them, id)
+            }
+            _ => false,
+        };
         let reply = match item {
-            DeviceMsg::Note { text, .. } => {
+            _ if already => DeviceMsg::Done,
+            DeviceMsg::Note { id, text } => {
                 let host = Arc::clone(&self.host);
                 let from = them.to_string();
-                match tokio::task::spawn_blocking(move || host.note(&from, text))
+                match tokio::task::spawn_blocking(move || host.note(&from, id, text))
+                    .await
+                    .map_err(connection)?
+                {
+                    Ok(()) => DeviceMsg::Done,
+                    Err(err) => DeviceMsg::Refused {
+                        reason: err.saved_reason(),
+                    },
+                }
+            }
+            DeviceMsg::Message { id, body, reply_to } => {
+                let host = Arc::clone(&self.host);
+                let from = them.to_string();
+                let message = crate::device_chat::PeerMessage { id, body, reply_to };
+                match tokio::task::spawn_blocking(move || host.message(&from, message))
                     .await
                     .map_err(connection)?
                 {
@@ -251,14 +296,16 @@ impl DeviceHandler {
                 }
             }
             DeviceMsg::File {
+                id,
                 hash,
                 collection,
                 name,
                 size,
-                ..
             } => {
-                self.receive_file(node, conn, &mut send, them, hash, collection, &name, size)
-                    .await?
+                self.receive_file(
+                    node, conn, &mut send, them, id, hash, collection, &name, size,
+                )
+                .await?
             }
             _ => return Err(connection("expected a note or a file")),
         };
@@ -276,6 +323,7 @@ impl DeviceHandler {
         conn: &Connection,
         send: &mut SendStream,
         them: &str,
+        delivery: [u8; 16],
         hash: [u8; 32],
         collection: bool,
         name: &str,
@@ -300,6 +348,7 @@ impl DeviceHandler {
         };
         let progress = Arc::new(CodeProgress::default());
         progress.total.store(size, Ordering::SeqCst);
+        crate::code::hold(node, content).await?;
         let fetching = crate::code::fetch(node, content, conn.remote_id(), &progress);
         tokio::pin!(fetching);
         let fetched = loop {
@@ -317,11 +366,11 @@ impl DeviceHandler {
         let folder = self.host.folder();
         let saved = match fetched {
             Ok(()) => {
-                std::fs::create_dir_all(&folder).map_err(crate::node::file_error)?;
-                let out = crate::code::unique_path(&folder, &name);
-                crate::code::save(node, hash, collection, &folder, &out)
-                    .await
-                    .map(|()| out)
+                let out = crate::code::place(node, hash, collection, &folder, &name).await;
+                if out.is_ok() {
+                    crate::code::release(node, hash).await;
+                }
+                out
             }
             Err(e) => Err(e),
         };
@@ -335,7 +384,8 @@ impl DeviceHandler {
             ),
         };
         let host = Arc::clone(&self.host);
-        tokio::task::spawn_blocking(move || host.finish_file(id, result))
+        let from = them.to_string();
+        tokio::task::spawn_blocking(move || host.finish_file(id, &from, delivery, result))
             .await
             .map_err(connection)?;
         Ok(reply)
@@ -345,20 +395,21 @@ impl DeviceHandler {
 /// What a send to a trusted device carries.
 pub(crate) enum Outgoing {
     Note(String),
-    /// Files and folders, offered as one item.
-    Files {
-        paths: Vec<PathBuf>,
-        name: String,
-    },
+    /// A conversation message; it carries its own id.
+    Message(crate::device_chat::PeerMessage),
+    /// Files and folders as one item, already in the blob store (the
+    /// outbox keeps them there).
+    Stored(crate::code_send::Offer),
 }
 
-/// Sends one item to a trusted device at `to`. `report` hears how many
-/// bytes of a file the receiver has; `stop` ends the send. Returns the
-/// receiver's name as it says it.
+/// Sends one item, `id`, to a trusted device at `to`. `report` hears how
+/// many bytes of a file the receiver has; `stop` ends the send. Returns
+/// the receiver's name as it says it.
 pub(crate) async fn send(
     node: &Node,
     to: EndpointAddr,
     my_name: String,
+    id: [u8; 16],
     item: Outgoing,
     report: impl Fn(u64),
     stop: Arc<AtomicBool>,
@@ -372,7 +423,7 @@ pub(crate) async fn send(
         .map_err(|e| RelayError::Unreachable {
             reason: e.to_string(),
         })?;
-    let result = exchange(node, &conn, them, my_name, item, report, &stop).await;
+    let result = exchange(node, &conn, them, my_name, id, item, report, &stop).await;
     let result = match result {
         // The listener closed the connection without a word: it doesn't
         // trust this device.
@@ -385,11 +436,13 @@ pub(crate) async fn send(
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn exchange(
     node: &Node,
     conn: &Connection,
     them: EndpointId,
     my_name: String,
+    id: [u8; 16],
     item: Outgoing,
     report: impl Fn(u64),
     stop: &AtomicBool,
@@ -408,17 +461,21 @@ async fn exchange(
         DeviceMsg::Refused { reason } => return Err(RelayError::Declined { reason }),
         _ => return Err(connection("no hello")),
     };
-    let id = forge_devproto::new_secret()[..16]
-        .try_into()
-        .expect("16 bytes");
     let ending = match item {
         Outgoing::Note(text) => {
             say(&mut send, &DeviceMsg::Note { id, text }).await?;
             hear(&mut recv, STEP).await?
         }
-        Outgoing::Files { paths, name } => {
-            // Held until the receiver is done, so the blobs stay put.
-            let (offer, _tags) = crate::code_send::prepare(&paths, name, node).await?;
+        Outgoing::Message(m) => {
+            let msg = DeviceMsg::Message {
+                id: m.id,
+                body: m.body,
+                reply_to: m.reply_to,
+            };
+            say(&mut send, &msg).await?;
+            hear(&mut recv, STEP).await?
+        }
+        Outgoing::Stored(offer) => {
             lock(&node.device_allowed)
                 .entry(them)
                 .or_default()
@@ -540,6 +597,14 @@ mod tests {
                     reason: "no".into(),
                 },
                 include_str!("../fixtures/device-1/refused.hex"),
+            ),
+            (
+                DeviceMsg::Message {
+                    id: "m1".into(),
+                    body: "hi".into(),
+                    reply_to: None,
+                },
+                include_str!("../fixtures/device-1/message.hex"),
             ),
         ]
     }

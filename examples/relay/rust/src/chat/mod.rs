@@ -68,6 +68,18 @@ pub struct ChatCore {
     /// The notifier for message notifications; none in tests that don't
     /// ask for one, and in `swift test` (no app bundle).
     services: Option<native::NativeServices>,
+    /// Conversations with trusted devices (`crate::device_chat`), one
+    /// client each, beside the server account's.
+    devices: Mutex<DeviceChats>,
+}
+
+/// The trusted devices' conversations: Relay's core, and a chat-core
+/// client per device, opened on first use. Each has its own client so a
+/// device that is away holds up only its own outbox.
+#[derive(Default)]
+struct DeviceChats {
+    relay: Option<Weak<crate::RelayCore>>,
+    clients: std::collections::HashMap<String, ChatClient>,
 }
 
 /// The signed-in account and its chat engine.
@@ -199,6 +211,23 @@ impl ChatCore {
         self.sign_out_locked(&mut self.lock(), true)
     }
 
+    /// Adds a conversation with each device Relay trusts to the list,
+    /// beside the server's, working with or without an account. Messages
+    /// to a device that is away wait in its outbox and go when Relay
+    /// reaches it.
+    pub fn use_relay(self: Arc<Self>, relay: Arc<crate::RelayCore>) {
+        let me = Arc::downgrade(&self);
+        relay.set_chat_waker(Some(Arc::new(move |endpoint_id: &str| {
+            if let Some(core) = me.upgrade() {
+                let client = core.devices_lock().clients.get(endpoint_id).cloned();
+                if let Some(client) = client {
+                    client.flush_outbox();
+                }
+            }
+        })));
+        self.devices_lock().relay = Some(Arc::downgrade(&relay));
+    }
+
     /// The on-device assistant. Works without an account, and keeps its
     /// conversations when the account signs out.
     pub fn assistant(&self) -> Arc<AssistantCore> {
@@ -213,18 +242,34 @@ impl ChatCore {
 
     /// Lists conversations from the server, prefetching new messages for
     /// rooms that are not open (they count as unread).
+    /// With Relay (`use_relay`), each trusted device's conversation is
+    /// listed too, and the list works signed out.
     pub async fn list_conversations(&self) -> Result<Vec<ChatConversation>, ChatError> {
-        let (client, user_id) = self.client_and_user()?;
+        let server = match self.client_and_user() {
+            Ok(found) => Some(found),
+            Err(ChatError::NotSignedIn) if self.has_relay() => None,
+            Err(err) => return Err(err),
+        };
+        let devices = self.device_clients();
         let alerts = self.alerts();
         let result = background("chat-list", move || {
-            let list = client.list_conversations().map_err(ChatError::from)?;
-            if let Some(alerts) = &alerts {
-                watch_all(&client, alerts);
+            let mut out = Vec::new();
+            if let Some((client, user_id)) = server {
+                let list = client.list_conversations().map_err(ChatError::from)?;
+                if let Some(alerts) = &alerts {
+                    watch_all(&client, alerts);
+                }
+                out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)));
             }
-            Ok(list
-                .into_iter()
-                .map(|c| types::conversation(c, &user_id))
-                .collect())
+            for (client, user_id) in devices {
+                match client.list_conversations() {
+                    Ok(list) => {
+                        out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)))
+                    }
+                    Err(e) => forge_runtime::logging::warn!("a device conversation: {e}"),
+                }
+            }
+            Ok(out)
         })
         .await;
         result.map_err(|e| self.rejected(e))
@@ -253,7 +298,7 @@ impl ChatCore {
     /// server (other devices and other people see it). Clears "marked
     /// unread". An open room is kept read without this.
     pub async fn mark_read(&self, conversation_id: String) -> Result<(), ChatError> {
-        let client = self.client()?;
+        let client = self.route(&conversation_id)?.0;
         let result = background("chat-read", move || {
             client.mark_read(&conversation_id).map_err(ChatError::from)
         })
@@ -268,7 +313,8 @@ impl ChatCore {
         conversation_id: String,
         marked: bool,
     ) -> Result<(), ChatError> {
-        self.client()?
+        self.route(&conversation_id)?
+            .0
             .set_marked_unread(&conversation_id, marked)
             .map_err(Into::into)
     }
@@ -304,7 +350,8 @@ impl ChatCore {
 
     /// Mutes the room (no notifications) or unmutes it. This device only.
     pub fn set_muted(&self, conversation_id: String, muted: bool) -> Result<(), ChatError> {
-        self.client()?
+        self.route(&conversation_id)?
+            .0
             .set_muted(&conversation_id, muted)
             .map_err(Into::into)
     }
@@ -315,7 +362,7 @@ impl ChatCore {
         &self,
         conversation_id: String,
     ) -> Result<Vec<ChatMessage>, ChatError> {
-        let (client, user_id) = self.client_and_user()?;
+        let (client, user_id) = self.route(&conversation_id)?;
         let result = background("chat-sync", move || {
             client
                 .sync_messages(&conversation_id)
@@ -352,7 +399,7 @@ impl ChatCore {
         body: String,
         reply_to: Option<String>,
     ) -> Result<ChatMessage, ChatError> {
-        let (client, user_id) = self.client_and_user()?;
+        let (client, user_id) = self.route(&conversation_id)?;
         let result = background("chat-send", move || {
             client
                 .send_reply(&conversation_id, &body, reply_to.as_deref())
@@ -374,7 +421,7 @@ impl ChatCore {
         reply_to: Option<String>,
         files: Vec<ChatOutgoingFile>,
     ) -> Result<ChatMessage, ChatError> {
-        let (client, user_id) = self.client_and_user()?;
+        let (client, user_id) = self.route(&conversation_id)?;
         let result = background("chat-send-files", move || {
             let files: Vec<chat_core::OutgoingFile> = files.into_iter().map(Into::into).collect();
             client
@@ -417,7 +464,7 @@ impl ChatCore {
         message_id: String,
         body: String,
     ) -> Result<ChatMessage, ChatError> {
-        let (client, user_id) = self.client_and_user()?;
+        let (client, user_id) = self.route_message(&message_id)?;
         let result = background("chat-edit", move || {
             client
                 .edit_message(&message_id, &body)
@@ -435,7 +482,7 @@ impl ChatCore {
         &self,
         message_id: String,
     ) -> Result<Option<ChatMessage>, ChatError> {
-        let (client, user_id) = self.client_and_user()?;
+        let (client, user_id) = self.route_message(&message_id)?;
         let result = background("chat-delete", move || {
             client
                 .delete_message(&message_id)
@@ -453,7 +500,7 @@ impl ChatCore {
         emoji: String,
         on: bool,
     ) -> Result<ChatMessage, ChatError> {
-        let (client, user_id) = self.client_and_user()?;
+        let (client, user_id) = self.route_message(&message_id)?;
         let result = background("chat-react", move || {
             client
                 .set_reaction(&message_id, &emoji, on)
@@ -467,14 +514,15 @@ impl ChatCore {
     /// Saves the composer's unsent text (empty clears it). Kept on this
     /// device across launches; cheap enough to call as the user types.
     pub fn set_draft(&self, conversation_id: String, text: String) -> Result<(), ChatError> {
-        self.client()?
+        self.route(&conversation_id)?
+            .0
             .set_draft(&conversation_id, &text)
             .map_err(Into::into)
     }
 
     /// The saved draft for a conversation, if any.
     pub fn draft(&self, conversation_id: String) -> Option<String> {
-        self.client().ok()?.draft(&conversation_id)
+        self.route(&conversation_id).ok()?.0.draft(&conversation_id)
     }
 
     /// Searches the messages on this device: every word of `query` must
@@ -485,30 +533,39 @@ impl ChatCore {
         query: String,
         conversation_id: Option<String>,
     ) -> Result<Vec<ChatMessage>, ChatError> {
-        let (client, user_id) = self.client_and_user()?;
+        let clients = match &conversation_id {
+            Some(id) => vec![self.route(id)?],
+            None => self.all_clients()?,
+        };
         background("chat-search", move || {
-            client
-                .search(&query, conversation_id.as_deref())
-                .map(|list| {
-                    list.into_iter()
-                        .map(|m| types::message(m, &user_id))
-                        .collect()
-                })
-                .map_err(ChatError::from)
+            let mut found = Vec::new();
+            for (client, user_id) in clients {
+                let list = client
+                    .search(&query, conversation_id.as_deref())
+                    .map_err(ChatError::from)?;
+                found.extend(list.into_iter().map(|m| types::message(m, &user_id)));
+            }
+            found.sort_by_key(|m: &ChatMessage| std::cmp::Reverse(m.sent_at));
+            found.truncate(100);
+            Ok(found)
         })
         .await
     }
 
     /// How many of our messages are waiting to be sent.
     pub fn outbox_count(&self) -> u32 {
-        self.client()
-            .map(|c| u32::try_from(c.outbox().len()).unwrap_or(u32::MAX))
-            .unwrap_or(0)
+        let waiting: usize = self
+            .all_clients()
+            .unwrap_or_default()
+            .iter()
+            .map(|(c, _)| c.outbox().len())
+            .sum();
+        u32::try_from(waiting).unwrap_or(u32::MAX)
     }
 
     /// Sends a `Failed` (or still queued) message again now, with the same id.
     pub async fn retry_message(&self, message_id: String) -> Result<ChatMessage, ChatError> {
-        let (client, user_id) = self.client_and_user()?;
+        let (client, user_id) = self.route_message(&message_id)?;
         let result = background("chat-retry", move || {
             client
                 .retry_message(&message_id)
@@ -522,14 +579,15 @@ impl ChatCore {
     /// Opens the room: it goes live (in the foreground) and is kept read.
     /// Returns at once; `StreamConnected`/`StreamDisconnected` follow.
     pub fn subscribe(&self, conversation_id: String) -> Result<(), ChatError> {
-        self.client()?
+        self.route(&conversation_id)?
+            .0
             .subscribe(&conversation_id)
             .map_err(Into::into)
     }
 
     /// Closes the room. Its stream ends unless the room is watched.
     pub fn unsubscribe(&self, conversation_id: String) -> Result<(), ChatError> {
-        match self.client() {
+        match self.route(&conversation_id).map(|(c, _)| c) {
             Ok(client) => client.unsubscribe(&conversation_id).map_err(Into::into),
             Err(ChatError::NotSignedIn) => Ok(()),
             Err(err) => Err(err),
@@ -539,11 +597,14 @@ impl ChatCore {
     /// Keeps the room live without opening it, so new messages from others
     /// count as unread and raise `Notify`.
     pub fn watch(&self, conversation_id: String) -> Result<(), ChatError> {
-        self.client()?.watch(&conversation_id).map_err(Into::into)
+        self.route(&conversation_id)?
+            .0
+            .watch(&conversation_id)
+            .map_err(Into::into)
     }
 
     pub fn unwatch(&self, conversation_id: String) -> Result<(), ChatError> {
-        match self.client() {
+        match self.route(&conversation_id).map(|(c, _)| c) {
             Ok(client) => client.unwatch(&conversation_id).map_err(Into::into),
             Err(ChatError::NotSignedIn) => Ok(()),
             Err(err) => Err(err),
@@ -552,19 +613,20 @@ impl ChatCore {
 
     /// Conversations as stored, for a first render before the network.
     pub fn cached_conversations(&self) -> Vec<ChatConversation> {
-        self.client_and_user()
-            .map(|(c, user_id)| {
+        self.all_clients()
+            .unwrap_or_default()
+            .into_iter()
+            .flat_map(|(c, user_id)| {
                 c.cached_conversations()
                     .into_iter()
-                    .map(|c| types::conversation(c, &user_id))
-                    .collect()
+                    .map(move |c| types::conversation(c, &user_id))
             })
-            .unwrap_or_default()
+            .collect()
     }
 
     /// A room's messages as stored, oldest first.
     pub fn cached_messages(&self, conversation_id: String) -> Vec<ChatMessage> {
-        self.client_and_user()
+        self.route(&conversation_id)
             .map(|(c, user_id)| {
                 c.cached_messages(&conversation_id)
                     .into_iter()
@@ -577,9 +639,13 @@ impl ChatCore {
     /// Room connection threads still running: 0 shortly after every room
     /// is closed, or in the background.
     pub fn live_streams(&self) -> u32 {
-        self.client()
-            .map(|c| u32::try_from(c.live_pumps()).unwrap_or(u32::MAX))
-            .unwrap_or(0)
+        let live: usize = self
+            .all_clients()
+            .unwrap_or_default()
+            .iter()
+            .map(|(c, _)| c.live_pumps())
+            .sum();
+        u32::try_from(live).unwrap_or(u32::MAX)
     }
 
     /// The last persistence problem, if any. Never fails a command.
@@ -801,6 +867,7 @@ impl ChatCore {
             rt: Runtime::with_directory("chat", directory, ()),
             _on_shutdown: Mutex::new(None),
             services,
+            devices: Mutex::new(DeviceChats::default()),
         };
         if let Some(stored) = core.credentials.load()? {
             let session = core.open_session(&stored)?;
@@ -849,11 +916,11 @@ impl ChatCore {
         if change.to == Phase::Terminated {
             return;
         }
-        if let Ok(client) = self.client() {
+        for (client, _) in self.all_clients().unwrap_or_default() {
             if change.to == Phase::Background {
                 client.pause_streams();
             } else if change.to.is_foreground() {
-                // Fails only after shutdown, which `client()` rules out.
+                // Fails only after shutdown, which `all_clients()` rules out.
                 let _ = client.resume_streams();
             }
         }
@@ -876,6 +943,9 @@ impl ChatCore {
         if let Some(session) = self.lock().as_ref() {
             session.client.shutdown();
         }
+        for client in self.devices_lock().clients.values() {
+            client.shutdown();
+        }
         self.events.publish(ChatEvent::PhaseChanged {
             phase: AppPhase::Terminated,
             resumed: false,
@@ -897,6 +967,144 @@ impl ChatCore {
 
     fn alerts(&self) -> Option<Arc<alerts::Alerts>> {
         self.lock().as_ref().and_then(|s| s.alerts.clone())
+    }
+
+    fn devices_lock(&self) -> MutexGuard<'_, DeviceChats> {
+        self.devices.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn relay(&self) -> Option<Arc<crate::RelayCore>> {
+        self.devices_lock().relay.as_ref().and_then(Weak::upgrade)
+    }
+
+    fn has_relay(&self) -> bool {
+        self.relay().is_some()
+    }
+
+    /// The client of the conversation: a trusted device's, or the server
+    /// account's.
+    fn route(&self, conversation_id: &str) -> Result<(ChatClient, String), ChatError> {
+        match crate::device_chat::conversation_device(conversation_id) {
+            Some(endpoint_id) => self.device_client(endpoint_id),
+            None => self.client_and_user(),
+        }
+    }
+
+    /// The client that holds the message `message_id`.
+    fn route_message(&self, message_id: &str) -> Result<(ChatClient, String), ChatError> {
+        for (client, user_id) in self.device_clients() {
+            let holds = client.cached_conversations().iter().any(|c| {
+                client
+                    .cached_messages(&c.id)
+                    .iter()
+                    .any(|m| m.id == message_id)
+            });
+            if holds {
+                return Ok((client, user_id));
+            }
+        }
+        self.client_and_user()
+    }
+
+    /// The server account's client, if signed in, and every trusted
+    /// device's.
+    fn all_clients(&self) -> Result<Vec<(ChatClient, String)>, ChatError> {
+        let mut all = match self.client_and_user() {
+            Ok(found) => vec![found],
+            Err(ChatError::NotSignedIn) => Vec::new(),
+            Err(err) => return Err(err),
+        };
+        all.extend(self.device_clients());
+        Ok(all)
+    }
+
+    /// The clients of the devices Relay trusts now, opening any that
+    /// aren't open; a device no longer trusted has its client closed.
+    fn device_clients(&self) -> Vec<(ChatClient, String)> {
+        let Some(relay) = self.relay() else {
+            return Vec::new();
+        };
+        let trusted: Vec<String> = relay
+            .devices()
+            .into_iter()
+            .filter(|d| d.trusted)
+            .map(|d| d.endpoint_id)
+            .collect();
+        self.devices_lock().clients.retain(|id, client| {
+            let keep = trusted.contains(id);
+            if !keep {
+                client.shutdown();
+            }
+            keep
+        });
+        trusted
+            .iter()
+            .filter_map(|id| match self.device_client(id) {
+                Ok(found) => Some(found),
+                Err(e) => {
+                    forge_runtime::logging::warn!("a device conversation didn't open: {e}");
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// The client of `endpoint_id`'s conversation, opened on first use.
+    fn device_client(&self, endpoint_id: &str) -> Result<(ChatClient, String), ChatError> {
+        self.ensure_running()?;
+        let relay = self.relay().ok_or(ChatError::NotSignedIn)?;
+        let identity = relay.identity();
+        let user_id = format!("relay:{}", identity.device_id);
+        if let Some(client) = self.devices_lock().clients.get(endpoint_id) {
+            return Ok((client.clone(), user_id));
+        }
+        let trusted = relay
+            .devices()
+            .iter()
+            .any(|d| d.trusted && d.endpoint_id == endpoint_id);
+        let conversation_id = crate::device_chat::device_conversation(endpoint_id);
+        if !trusted {
+            return Err(ChatError::NotFound { conversation_id });
+        }
+        let repo = relay
+            .peer_repo(endpoint_id)
+            .map_err(|e| ChatError::Storage {
+                reason: e.to_string(),
+            })?;
+        let directory = self.storage_directory.join("devices").join(endpoint_id);
+        std::fs::create_dir_all(&directory).map_err(|err| ChatError::Storage {
+            reason: format!("create {}: {err}", directory.display()),
+        })?;
+        let config = ChatConfig {
+            user: identity.name,
+            user_id: user_id.clone(),
+            ..ChatConfig::default()
+        };
+        let hub = self.events.clone();
+        let events_user = user_id.clone();
+        let client = ChatClient::open(
+            Arc::new(repo),
+            ChatStore::in_directory(directory),
+            config,
+            move |event: chat_core::ChatEvent| hub.publish(types::event(event, &events_user)),
+        )?;
+        if self.rt.lifecycle().phase() == Phase::Background {
+            client.pause_streams();
+        }
+        // Live while Relay is open, so what arrives counts as unread.
+        if let Err(e) = client.watch(&conversation_id) {
+            forge_runtime::logging::warn!("a device conversation isn't live: {e}");
+        }
+        let mut devices = self.devices_lock();
+        if let Some(opened) = devices.clients.get(endpoint_id) {
+            // Opened by another command meanwhile: keep that one.
+            client.shutdown();
+            return Ok((opened.clone(), user_id));
+        }
+        devices
+            .clients
+            .insert(endpoint_id.to_string(), client.clone());
+        Ok((client, user_id))
     }
 
     fn client(&self) -> Result<ChatClient, ChatError> {

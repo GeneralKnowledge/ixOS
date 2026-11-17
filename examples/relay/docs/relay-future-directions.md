@@ -4,6 +4,14 @@ Status: ideas from Reuben, 2026-11-17, recorded so they aren't lost. These
 are not commitments, and none of them is built until he says so. The
 current milestone is [Relay M1: Reliable Trusted-Device Delivery](relay-reliable-delivery.md).
 
+Every direction here is a hypothesis, not a commitment: Relay has no
+fixed final product category
+([open-ended design principles](relay-open-ended-design-principles.md)).
+
+A larger idea from the same day, Relay as open social infrastructure
+(Spaces, portable Nostr identity, independent hosting), is recorded in
+[relay-social.md](relay-social.md), parked in the same way.
+
 The vision is a personal network operating system: devices, people,
 services and eventually agents that find one another, exchange
 information and do useful work together. All of it builds on M1's
@@ -61,3 +69,14 @@ M1 prepares for this by keeping trust, delivery and conversation separate
 ([relay-reliable-delivery.md](relay-reliable-delivery.md#three-separate-concerns)).
 Today's "may send here" grant (`receives_from`) is the first per-device
 permission. Capabilities would grow from it.
+
+## Later ideas (parked)
+
+Recorded the same evening, after this page. None is started; the
+direction after M2 is chosen once M1 and M2 are done (Reuben, 21:48).
+
+- [Relay as a personal computing network](relay-computing.md): resources,
+  capabilities and remote execution, with a proposed new M3 to M9.
+- [Relay Foundational Computing Study](relay-foundations-study.md): a
+  research programme (R0 to R7) on the abstractions underneath, and above
+  it the wider question of what the next computing environment should be.

@@ -200,9 +200,11 @@ struct DevicesView: View {
             .onChange(of: anySheet) { if !anySheet { model.refreshTrustOffer() } }
             .quickLookPreview($preview)
             .forgeFeedback(model.feedback)
-            // Progress of what is on its way, twice a second.
-            .task(id: model.isTransferring) {
-                while model.isTransferring, (try? await Task.sleep(for: .milliseconds(500))) != nil {
+            // Progress of what is on its way, twice a second; what waits in
+            // the outbox, every two seconds, to see it go.
+            .task(id: model.isTransferring || model.isWaiting) {
+                while model.isTransferring || model.isWaiting,
+                      (try? await Task.sleep(for: .milliseconds(model.isTransferring ? 500 : 2000))) != nil {
                     model.reload()
                 }
             }
@@ -348,6 +350,12 @@ struct TransferRow: View {
                 Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
                     .accessibilityIdentifier("history.copy")
             }
+            if transfer.direction == .sent, isPending {
+                Button("Cancel Sending", systemImage: "xmark.circle", role: .destructive) {
+                    model.cancel(transfer)
+                }
+                .accessibilityIdentifier("history.cancel")
+            }
             Button("Remove from History", systemImage: "trash", role: .destructive) {
                 Task { await model.remove(transfer) }
             }
@@ -359,6 +367,14 @@ struct TransferRow: View {
         switch transfer.item {
         case .note: transfer.direction == .sent ? "text.bubble" : "text.bubble.fill"
         case .file: transfer.direction == .sent ? "arrow.up.doc" : "arrow.down.doc"
+        }
+    }
+
+    /// Waiting in the outbox, or on its way.
+    private var isPending: Bool {
+        switch transfer.status {
+        case .waiting, .inProgress: true
+        case .done, .failed: false
         }
     }
 
