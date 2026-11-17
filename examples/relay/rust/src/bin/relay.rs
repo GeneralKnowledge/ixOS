@@ -7,6 +7,9 @@
 //! relay pair <code>                  pair with a phone showing its code
 //! relay peers                        paired devices
 //! relay send <peer> [--to host:port] (--note TEXT | FILE)
+//! relay send PATH...                 send files and folders with a word code
+//!                                    to anyone on this network
+//! relay receive <code>               receive what someone sends with a code
 //! relay history                      what went across, newest first
 //! relay name [NEW]                   this machine's name in Relay
 //! relay serve-ai --upstream URL [--model M] [--port N]
@@ -23,18 +26,29 @@
 //! localhost.
 //!
 //! Data lives in `$RELAY_DATA`, else `$XDG_DATA_HOME/forge-relay`, else
-//! `~/.local/share/forge-relay`. Received files are in its `inbox/`.
+//! `~/.local/share/forge-relay`. Received files are in its `inbox/`, and
+//! what came with a word code in `codes/received/`.
+//!
+//! Word codes are found the way the app finds them: the sender advertises
+//! `_forgerelay._udp` with mDNS (TXT `n` = the code's number, `id` = its
+//! endpoint id), and the receiver looks for the number it was told.
 
+use std::collections::{HashMap, HashSet};
 use std::net::UdpSocket;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use forge_services::ai::{ChatMessage, ChatRequest, Collect, LanguageModel};
-use relay_core::{CodeSend, Direction, Item, RelayCore, TransferStatus};
+use relay_core::{
+    word_code_number, CodeSend, Direction, Item, NearbySender, RelayCore, TransferStatus,
+    CODE_SERVICE_TYPE,
+};
 
 const USAGE: &str = "usage: relay listen [--port N] | pair <code> | peers | \
-send <peer> [--to host:port] (--note TEXT | FILE) | history | name [NEW] | \
+send <peer> [--to host:port] (--note TEXT | FILE) | send PATH... | receive <code> | \
+history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
 ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
 receive-code <code> <host:port> <endpoint-id> | send-code FILE|FOLDER";
@@ -82,10 +96,20 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
-        "send" => send(&core, rest),
+        // `send <peer> ...` to a paired device; otherwise the arguments are
+        // files and folders to send with a word code.
+        "send" => match rest.first() {
+            Some(first) if find_peer(&core, first).is_some() => send(&core, rest),
+            Some(_) => send_code(&core, rest),
+            None => Err(USAGE.into()),
+        },
+        "receive" => match rest {
+            [code] => receive_code(&core, code),
+            _ => Err(USAGE.into()),
+        },
         "serve-ai" => serve_ai(&core, rest),
         "ask" => ask(&core, rest),
-        // The receiver the app uses for word codes, against `relay-spike send`.
+        // Receiving from a given address, without mDNS.
         "receive-code" => {
             let [code, address, id] = rest else {
                 return Err(USAGE.into());
@@ -104,50 +128,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             );
             Ok(())
         }
-        // The sender the app uses for word codes. No Bonjour here: the
-        // receiver gives the printed address (`relay-spike receive <code>
-        // --addr .. --id ..`, or `relay receive-code`).
-        "send-code" => {
-            let file = rest.first().ok_or(USAGE)?;
-            core.send_with_code(file.clone())
-                .map_err(|e| e.to_string())?;
-            let mut last = CodeSend::Idle;
-            loop {
-                let now = core.code_send_status();
-                if now != last {
-                    match &now {
-                        CodeSend::Waiting {
-                            code,
-                            port,
-                            endpoint_id,
-                            note,
-                            ..
-                        } => {
-                            if let Some(note) = note {
-                                println!("{note}");
-                            }
-                            println!("Code: {code}  (port {port}, id {endpoint_id})");
-                        }
-                        CodeSend::Sending { .. } => println!("Sending..."),
-                        CodeSend::Sent {
-                            size,
-                            seconds,
-                            megabytes_per_second,
-                            ..
-                        } => {
-                            println!(
-                                "Sent {size} bytes in {seconds:.1}s at {megabytes_per_second:.1} MB/s."
-                            );
-                            return Ok(());
-                        }
-                        CodeSend::Failed { reason } => return Err(reason.clone()),
-                        CodeSend::Idle | CodeSend::Preparing { .. } => {}
-                    }
-                    last = now;
-                }
-                std::thread::sleep(Duration::from_millis(200));
-            }
-        }
+        // Older names for `send PATH...`.
+        "send-code" if !rest.is_empty() => send_code(&core, rest),
         "history" => {
             for t in core.transfers() {
                 println!("{}", describe(&t));
@@ -236,10 +218,7 @@ fn print_qr(code: &str) {
 
 fn send(core: &RelayCore, args: &[String]) -> Result<(), String> {
     let (who, mut rest) = args.split_first().ok_or(USAGE)?;
-    let peer = core
-        .peers()
-        .into_iter()
-        .find(|p| &p.device_id == who || p.name.eq_ignore_ascii_case(who))
+    let peer = find_peer(core, who)
         .ok_or_else(|| format!("not paired with {who}; `relay peers` lists them"))?;
     let mut addresses = Vec::new();
     if let [flag, address, more @ ..] = rest {
@@ -258,6 +237,237 @@ fn send(core: &RelayCore, args: &[String]) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     println!("{}", describe(&transfer));
     Ok(())
+}
+
+fn find_peer(core: &RelayCore, who: &str) -> Option<relay_core::Peer> {
+    core.peers()
+        .into_iter()
+        .find(|p| p.device_id == who || p.name.eq_ignore_ascii_case(who))
+}
+
+/// Sends `paths` with a word code: advertises the code with mDNS while it
+/// is open, tells the core which numbers other senders nearby use, and
+/// prints what happens until the receiver has everything.
+fn send_code(core: &Arc<RelayCore>, paths: &[String]) -> Result<(), String> {
+    core.send_paths_with_code(paths.to_vec())
+        .map_err(|e| e.to_string())?;
+    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
+    let done = Arc::new(AtomicBool::new(false));
+    let watcher = watch_senders(Arc::clone(core), Arc::clone(&done));
+    let mut advertised: Option<String> = None;
+    let mut last = CodeSend::Idle;
+    let result = loop {
+        let now = core.code_send_status();
+        if now != last {
+            match &now {
+                CodeSend::Preparing { name, .. } => println!("Getting {name} ready..."),
+                CodeSend::Waiting {
+                    code,
+                    number,
+                    port,
+                    endpoint_id,
+                    name,
+                    size,
+                    note,
+                } => {
+                    if let Some(note) = note {
+                        println!("{note}");
+                    }
+                    if let Some(old) = advertised.take() {
+                        let _ = mdns.unregister(&old);
+                    }
+                    match advertise(&mdns, *number, *port, endpoint_id) {
+                        Ok(full) => advertised = Some(full),
+                        Err(err) => eprintln!("relay: couldn't advertise the code: {err}"),
+                    }
+                    println!("{name}, {size} bytes. On the other device: relay receive {code}");
+                    println!("Code: {code}");
+                }
+                CodeSend::Sending { .. } => println!("Sending..."),
+                CodeSend::Sent {
+                    size,
+                    seconds,
+                    megabytes_per_second,
+                    ..
+                } => {
+                    println!(
+                        "Sent {size} bytes in {seconds:.1}s at {megabytes_per_second:.1} MB/s."
+                    );
+                    break Ok(());
+                }
+                CodeSend::Failed { reason } => break Err(reason.clone()),
+                CodeSend::Idle => {}
+            }
+            last = now;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    };
+    if let Some(old) = advertised.take() {
+        let _ = mdns.unregister(&old);
+    }
+    let _ = mdns.shutdown();
+    done.store(true, Ordering::SeqCst);
+    let _ = watcher.join();
+    result
+}
+
+/// Advertises code number `number` at `port` for `endpoint_id`; returns the
+/// service's full name, to withdraw it.
+fn advertise(
+    mdns: &mdns_sd::ServiceDaemon,
+    number: u8,
+    port: u16,
+    endpoint_id: &str,
+) -> Result<String, String> {
+    let short = &endpoint_id[..8.min(endpoint_id.len())];
+    let txt = [
+        ("v", "1".to_string()),
+        ("n", number.to_string()),
+        ("id", endpoint_id.to_string()),
+    ];
+    let info = mdns_sd::ServiceInfo::new(
+        &service_type(),
+        &format!("relay-{short}-{number}"),
+        &format!("relay-{short}.local."),
+        "",
+        port,
+        &txt[..],
+    )
+    .map_err(|e| e.to_string())?
+    .enable_addr_auto();
+    let full = info.get_fullname().to_string();
+    mdns.register(info).map_err(|e| e.to_string())?;
+    Ok(full)
+}
+
+/// mDNS wants the domain on the service type.
+fn service_type() -> String {
+    format!("{CODE_SERVICE_TYPE}.local.")
+}
+
+/// A sender nearby: its code number, endpoint id and "ip:port"s.
+fn read_sender(info: &mdns_sd::ServiceInfo) -> Option<(u8, String, Vec<String>)> {
+    let number: u8 = info.get_property_val_str("n")?.parse().ok()?;
+    let id = info.get_property_val_str("id")?.to_string();
+    let port = info.get_port();
+    let addresses = info
+        .get_addresses()
+        .iter()
+        .map(|ip| std::net::SocketAddr::new(*ip, port).to_string())
+        .collect();
+    Some((number, id, addresses))
+}
+
+/// Keeps telling the core which code numbers other senders nearby use,
+/// until `done`.
+fn watch_senders(core: Arc<RelayCore>, done: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let Ok(mdns) = mdns_sd::ServiceDaemon::new() else {
+            return;
+        };
+        let Ok(events) = mdns.browse(&service_type()) else {
+            return;
+        };
+        let mut seen: HashMap<String, NearbySender> = HashMap::new();
+        while !done.load(Ordering::SeqCst) {
+            let Ok(event) = events.recv_timeout(Duration::from_millis(300)) else {
+                continue;
+            };
+            let changed = match event {
+                mdns_sd::ServiceEvent::ServiceResolved(info) => match read_sender(&info) {
+                    Some((number, endpoint_id, _)) => {
+                        let full = info.get_fullname().to_string();
+                        seen.insert(
+                            full,
+                            NearbySender {
+                                number,
+                                endpoint_id,
+                            },
+                        )
+                        .is_none()
+                    }
+                    None => false,
+                },
+                mdns_sd::ServiceEvent::ServiceRemoved(_, full) => seen.remove(&full).is_some(),
+                _ => false,
+            };
+            if changed {
+                core.code_send_nearby(seen.values().cloned().collect());
+            }
+        }
+        let _ = mdns.shutdown();
+    })
+}
+
+/// Finds the sender advertising `code`'s number on this network and
+/// receives from it. Two senders with that number is an error, never a
+/// guess.
+fn receive_code(core: &Arc<RelayCore>, code: &str) -> Result<(), String> {
+    let number = word_code_number(code.to_string()).map_err(|e| e.to_string())?;
+    let (id, addresses) = find_sender(number)?;
+    let done = Arc::new(AtomicBool::new(false));
+    let progress = {
+        let core = Arc::clone(core);
+        let done = Arc::clone(&done);
+        std::thread::spawn(move || {
+            let mut last = Instant::now();
+            while !done.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(200));
+                if last.elapsed() < Duration::from_secs(2) {
+                    continue;
+                }
+                last = Instant::now();
+                if let Some(size) = core.code_receive_size() {
+                    let percent = size.done * 100 / size.total.max(1);
+                    println!("{percent}% ({} of {} bytes)", size.done, size.total);
+                }
+            }
+        })
+    };
+    let got = block_on(core.receive_with_code(code.to_string(), addresses, id));
+    done.store(true, Ordering::SeqCst);
+    let _ = progress.join();
+    let got = got.map_err(|e| e.to_string())?;
+    println!(
+        "Received {} ({} bytes, {} already here) in {:.1}s at {:.1} MB/s: {}",
+        got.name, got.size, got.resumed_from, got.seconds, got.megabytes_per_second, got.path
+    );
+    Ok(())
+}
+
+/// The endpoint id and addresses of the one sender advertising `number`.
+fn find_sender(number: u8) -> Result<(String, Vec<String>), String> {
+    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
+    let events = mdns.browse(&service_type()).map_err(|e| e.to_string())?;
+    let mut deadline = Instant::now() + Duration::from_secs(10);
+    let mut found: HashMap<String, HashSet<String>> = HashMap::new();
+    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+        let Ok(event) = events.recv_timeout(left) else {
+            break;
+        };
+        if let mdns_sd::ServiceEvent::ServiceResolved(info) = event {
+            if let Some((n, id, addresses)) = read_sender(&info) {
+                if n == number {
+                    if found.is_empty() {
+                        // Keep listening a little for a second sender.
+                        deadline = Instant::now() + Duration::from_millis(1500);
+                    }
+                    found.entry(id).or_default().extend(addresses);
+                }
+            }
+        }
+    }
+    let _ = mdns.shutdown();
+    let mut found = found.into_iter();
+    match (found.next(), found.next()) {
+        (None, _) => Err(format!(
+            "no sender with code number {number} on this network"
+        )),
+        (Some((id, addresses)), None) => Ok((id, addresses.into_iter().collect())),
+        (Some(_), Some(_)) => Err(format!(
+            "two senders nearby are using number {number}; ask the sender for a new code"
+        )),
+    }
 }
 
 /// The value after `flag`, taken out of `args`.

@@ -834,7 +834,8 @@ first. **Since then (2026-11-17,
 sheet is up. Run on the code before the fixes it names the starter and
 Commonplace; on main it named FieldKit's trip list (now held back while
 Start Trip is up) and Checklist's rename sheet (listed as lag for the
-friction audit's Checklist work).
+friction audit's Checklist work, then fixed: the Rename sheet shows a
+failed rename itself, and the list's alert waits while it is up).
 
 ## A40. Reconstructed: Relay froze on big files
 

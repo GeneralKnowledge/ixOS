@@ -62,8 +62,15 @@ struct ChecklistScreen: View {
             .navigationTitle("Checklist")
             .searchable(text: $query, prompt: "Search items")
             .toolbar { toolbar }
+            // The sheet shows a failed rename itself: an alert from this
+            // screen can't present over it (friction log A39).
             .sheet(item: $editing) { editing in
-                RenameSheet(item: editing.item) { title in await model.rename(editing.item, to: title) }
+                RenameSheet(item: editing.item) { title in
+                    if await model.rename(editing.item, to: title) { return nil }
+                    let reason = model.errorMessage
+                    model.errorMessage = nil
+                    return reason ?? String(localized: "The item couldn't be renamed.")
+                }
             }
             .sheet(item: $export) { file in
                 ShareSheet(file: file)
@@ -97,9 +104,11 @@ struct ChecklistScreen: View {
             } message: {
                 Text(importMessage)
             }
+            // Held back while the Rename sheet is up; it shows once the
+            // sheet closes.
             .alert(
                 "Couldn't do that",
-                isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
+                isPresented: Binding(get: { editing == nil && model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
             ) {
                 Button("OK", role: .cancel) {}
                     .accessibilityIdentifier("checklist.errorOK")
@@ -257,11 +266,13 @@ private struct SearchKey: Equatable {
 
 private struct RenameSheet: View {
     let item: Item
-    let save: (String) async -> Bool
+    /// Saves the title; nil when saved, otherwise why it wasn't.
+    let save: (String) async -> String?
     @State private var title: String
+    @State private var failure: String?
     @Environment(\.dismiss) private var dismiss
 
-    init(item: Item, save: @escaping (String) async -> Bool) {
+    init(item: Item, save: @escaping (String) async -> String?) {
         self.item = item
         self.save = save
         _title = State(initialValue: item.title)
@@ -284,10 +295,25 @@ private struct RenameSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        Task { if await save(title) { dismiss() } }
+                        Task {
+                            if let reason = await save(title) {
+                                failure = reason
+                            } else {
+                                dismiss()
+                            }
+                        }
                     }
                     .accessibilityIdentifier("rename.save")
                 }
+            }
+            .alert(
+                "Couldn't Rename",
+                isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+                    .accessibilityIdentifier("rename.errorOK")
+            } message: {
+                Text(failure ?? "")
             }
         }
         .presentationDetents([.medium])

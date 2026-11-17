@@ -54,6 +54,13 @@ camera = "Relay scans another device's pairing code."
 # Everything here works with a free Apple account: no paid-only entitlements.
 team_type = "free"
 
+[ios.info]
+# Files received with a code go to Documents/Relay; these two keys show
+# Documents in the Files app (On My iPhone), so files Relay receives are
+# there.
+UIFileSharingEnabled = true
+LSSupportsOpeningDocumentsInPlace = true
+
 [ios.info.NSAppTransportSecurity]
 # Listen streams takes from a take server on the laptop over plain http
 # (a Tailscale 100.x address); ATS exceptions cannot name an IP address.

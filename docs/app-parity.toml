@@ -51,12 +51,6 @@ wave = 4
 reason = "CH-12 (data held by a second core) is proved by its twin test only; the phone can't open a second core from the UI"
 
 [[lag]]
-app = "checklist"
-rule = "alerts-over-sheets"
-wave = 5
-reason = "A failed rename reports on the list under the Rename sheet (friction audit item 16); fixed in the friction audit's Checklist work"
-
-[[lag]]
 app = "relay"
 rule = "feedback"
 wave = 5

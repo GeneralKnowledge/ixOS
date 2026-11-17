@@ -117,6 +117,9 @@ pub struct RelayCore {
     /// Receiving with a word code (`code`): where files and folders go, how
     /// far it has got, and the stop switch.
     code_dir: PathBuf,
+    /// Where code receives land: `codes/received` unless the app chose a
+    /// folder the Files app shows ([`RelayCore::receive_into`]).
+    received_in: Mutex<PathBuf>,
     code_progress: Arc<CodeProgress>,
     code_stop: Mutex<Arc<AtomicBool>>,
     /// Sending with a word code (`code_send`).
@@ -182,6 +185,7 @@ impl RelayCore {
             listening: Mutex::new(None),
             answers_with: Mutex::new(None),
             node,
+            received_in: Mutex::new(code_dir.join("received")),
             code_dir,
             code_progress: Arc::new(CodeProgress::default()),
             code_stop: Mutex::new(Arc::new(AtomicBool::new(false))),
@@ -190,12 +194,25 @@ impl RelayCore {
         }))
     }
 
+    /// Saves what later code receives bring into `folder` (made if missing)
+    /// instead of Relay's own `codes/received`. The app passes a folder in
+    /// its Documents so received files show in the Files app; what was
+    /// received before stays where it is, and stays in the history.
+    pub fn receive_into(&self, folder: String) -> Result<(), RelayError> {
+        let folder = std::path::absolute(&folder).map_err(node::file_error)?;
+        std::fs::create_dir_all(&folder).map_err(node::file_error)?;
+        *lock(&self.received_in) = folder;
+        Ok(())
+    }
+
     /// Receives the file or folder a sender offers with a word code such as
     /// `37-grasp-gag-drum` (Relay M1; the sender is another Relay or
-    /// `relay-spike send`). `addresses` and `endpoint_id` come from the
+    /// `relay send`). `addresses` and `endpoint_id` come from the
     /// sender's Bonjour advertisement (`CODE_SERVICE_TYPE`, TXT `n` = the
     /// code's number, `id` = the endpoint id). Every chunk is verified, and
-    /// it is saved in Relay's `codes/received` folder; a dropped receive
+    /// it is saved in the folder [`RelayCore::receive_into`] chose (the app
+    /// passes Documents/Relay), or Relay's own `codes/received` if none was
+    /// chosen; several items arrive as one folder. A dropped receive
     /// resumes with the sender's next code, also after a relaunch. Once the
     /// sender has named what it sends, the receive goes into the history.
     /// One at a time.
@@ -219,12 +236,13 @@ impl RelayCore {
                 return Err(err);
             }
         };
+        let into = lock(&self.received_in).clone();
         let result = code::receive(
             &code,
             &addresses,
             &endpoint_id,
             node,
-            &self.code_dir.join("received"),
+            &into,
             Arc::clone(&self.code_progress),
             stop,
         )
@@ -290,10 +308,22 @@ impl RelayCore {
     /// Relay, or `relay-spike receive <code>` for a file. When it ends it
     /// goes into the history. One at a time.
     pub fn send_with_code(&self, path: String) -> Result<(), RelayError> {
-        let path = PathBuf::from(path);
-        if !path.is_file() && !path.is_dir() {
+        self.send_paths_with_code(vec![path])
+    }
+
+    /// Starts sending several files and folders as one transfer with a new
+    /// word code, like `send_with_code`. The receiver gets them in one
+    /// folder named "N items"; two items with the same name are refused.
+    pub fn send_paths_with_code(&self, paths: Vec<String>) -> Result<(), RelayError> {
+        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        if paths.is_empty() {
             return Err(RelayError::File {
-                reason: "there is no file or folder there".into(),
+                reason: "nothing to send".into(),
+            });
+        }
+        if let Some(missing) = paths.iter().find(|p| !p.is_file() && !p.is_dir()) {
+            return Err(RelayError::File {
+                reason: format!("there is no file or folder at {}", missing.display()),
             });
         }
         if self.code_send.running() {
@@ -302,7 +332,7 @@ impl RelayCore {
             });
         }
         let weak = self.me.clone();
-        let sent = path.clone();
+        let sent = paths.clone();
         let on_end: code_send::OnEnd = Box::new(move |end: &CodeSend| {
             let status = match end {
                 CodeSend::Sent { .. } => SavedStatus::Done,
@@ -314,22 +344,16 @@ impl RelayCore {
             // Off Relay's iroh runtime: saving waits for the command thread.
             std::thread::spawn(move || {
                 let Some(core) = weak.upgrade() else { return };
-                let name = sent
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "file".into());
-                let size = if sent.is_dir() {
-                    code_send::files_in(&sent)
-                        .map(|f| f.iter().map(|(_, _, n)| n).sum())
-                        .unwrap_or(0)
-                } else {
-                    std::fs::metadata(&sent).map(|m| m.len()).unwrap_or(0)
+                let name = code_send::send_name(&sent);
+                let size = code_send::items_in(&sent)
+                    .map(|f| f.iter().map(|(_, _, n)| n).sum())
+                    .unwrap_or(0);
+                // The history links one item; several have no one path.
+                let file = match sent.as_slice() {
+                    [one] => Some(one.to_string_lossy().into_owned()),
+                    _ => None,
                 };
-                let item = SavedItem::File {
-                    name,
-                    size,
-                    file: Some(sent.to_string_lossy().into_owned()),
-                };
+                let item = SavedItem::File { name, size, file };
                 let saved = forge_runtime::block_on(core.rt.command("code-send", move |state| {
                     state.change(|r| Ok(r.code_transfer(true, item, status, now_ms())))
                 }));
@@ -339,7 +363,7 @@ impl RelayCore {
             });
         });
         code_send::start(
-            path,
+            paths,
             Arc::clone(&self.node),
             Arc::clone(&self.code_send),
             on_end,
@@ -423,7 +447,7 @@ impl RelayCore {
 
     /// Removes a history entry and, for a received file, the file.
     pub async fn remove_transfer(&self, id: u64) -> Result<(), RelayError> {
-        let received = CodeReceived(self.code_dir.join("received"));
+        let received = self.received();
         self.rt
             .command("remove-transfer", move |state| {
                 let gone = state.change(|r| {
@@ -659,15 +683,17 @@ pub struct CodeSize {
     pub done: u64,
 }
 
-/// Where code receives land (`codes/received`).
-struct CodeReceived(PathBuf);
+/// The folders code receives land in (`codes/received`, and the folder the
+/// app chose).
+struct CodeReceived(Vec<PathBuf>);
 
 impl CodeReceived {
     /// The received file or folder a history entry names, when it is one
     /// (a code receive saves its full path; the old inbox saves a name).
     fn code_received(&self, name: &str) -> Option<PathBuf> {
         let path = std::path::Path::new(name);
-        (path.is_absolute() && path.starts_with(&self.0)).then(|| path.to_path_buf())
+        (path.is_absolute() && self.0.iter().any(|root| path.starts_with(root)))
+            .then(|| path.to_path_buf())
     }
 }
 
@@ -878,7 +904,15 @@ impl RelayCore {
     }
 
     fn code_received(&self, name: &str) -> Option<PathBuf> {
-        CodeReceived(self.code_dir.join("received")).code_received(name)
+        self.received().code_received(name)
+    }
+
+    /// The folders code receives landed in: the default and the chosen one.
+    fn received(&self) -> CodeReceived {
+        CodeReceived(vec![
+            self.code_dir.join("received"),
+            lock(&self.received_in).clone(),
+        ])
     }
 }
 

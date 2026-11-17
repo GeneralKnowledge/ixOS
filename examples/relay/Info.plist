@@ -9,6 +9,8 @@
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_forgerelay._tcp</string>
@@ -22,6 +24,8 @@
 	<array>
 		<integer>1</integer>
 	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

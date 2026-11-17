@@ -3,16 +3,18 @@
 import ForgeUI
 import SwiftUI
 
-/// Receive a file with a word code from a sender on this Wi-Fi (Relay M1).
-/// The sender, for now, is `relay-spike send <file>` on a computer; it
-/// prints a code such as `37-grasp-gag-drum`. Bonjour finds it by the
-/// code's number, Rust does the rest.
+/// Receive with a word code: files, photos or a folder from a sender on this
+/// Wi-Fi (Relay M1). The sender is another Relay, or `relay send` on a
+/// computer, showing a code such as `37-grasp-gag-drum`. Bonjour finds it
+/// by the code's number, Rust does the rest. What arrives is in the Files
+/// app, and in the history.
 struct ReceiveCodeSheet: View {
     @Bindable var model: RelayModel
     let network: RelayNetwork
     @Binding var preview: URL?
 
     @State private var code = ""
+    @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @FocusState private var typing: Bool
 
@@ -33,7 +35,7 @@ struct ReceiveCodeSheet: View {
                 } header: {
                     Text("Code")
                 } footer: {
-                    Text("The number and three words the sender shows. Both devices need to be on the same Wi-Fi.")
+                    Text("The number and three words the sender shows. Both devices need to be on the same Wi-Fi. What you receive is in the Files app, under On My iPhone.")
                 }
                 Section {
                     status
@@ -42,7 +44,7 @@ struct ReceiveCodeSheet: View {
                     MemoryReadout()
                 }
             }
-            .navigationTitle("Receive with a Code")
+            .navigationTitle("Receive")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -90,14 +92,18 @@ struct ReceiveCodeSheet: View {
             .accessibilityIdentifier("receiveCode.status")
         case .receiving(let size, let since):
             VStack(alignment: .leading, spacing: 6) {
-                Label {
-                    if let size {
+                if let size, size.total > 0 {
+                    ProgressView(value: Double(min(size.done, size.total)), total: Double(size.total)) {
                         Text("Receiving \(RelayFormat.size(size.total))")
-                    } else {
-                        Text("Checking the code…")
+                    } currentValueLabel: {
+                        Text("\(RelayFormat.size(size.done)) of \(RelayFormat.size(size.total))")
                     }
-                } icon: {
-                    ProgressView()
+                } else {
+                    Label {
+                        Text("Checking the code…")
+                    } icon: {
+                        ProgressView()
+                    }
                 }
                 if let size, size.already > 0 {
                     Text("Resuming: \(RelayFormat.size(size.already)) already here.")
@@ -119,10 +125,17 @@ struct ReceiveCodeSheet: View {
                 Text(Self.summary(receipt))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("Open", systemImage: "doc.text.magnifyingglass") {
-                    preview = URL(fileURLWithPath: receipt.path)
+                if ReceivedItem.isFolder(receipt.path) {
+                    Button("Show in Files", systemImage: "folder") {
+                        if let url = ReceivedItem.filesURL(receipt.path) { openURL(url) }
+                    }
+                    .accessibilityIdentifier("receiveCode.open")
+                } else {
+                    Button("Open", systemImage: "doc.text.magnifyingglass") {
+                        preview = URL(fileURLWithPath: receipt.path)
+                    }
+                    .accessibilityIdentifier("receiveCode.open")
                 }
-                .accessibilityIdentifier("receiveCode.open")
             }
             .accessibilityIdentifier("receiveCode.status")
         case .failed(let reason):

@@ -33,7 +33,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `toned-text` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | chat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| checklist | Yes | Yes | Yes | Yes | Yes | No (wave 5) | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
 | fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
@@ -55,7 +55,6 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | good-dog | `device-checks` | missing | GD requirements without a scenario yet; written with GD2b's phone run | 4 |
 | sketchbook | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
 | soundscape | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
-| checklist | `alerts-over-sheets` | missing | A failed rename reports on the list under the Rename sheet (friction audit item 16); fixed in the friction audit's Checklist work | 5 |
 | relay | `feedback` | missing | Relay's saveCount moves to ForgeFeedback in its redesign pilot, after #268 merges | 5 |
 | soundscape | `feedback` | missing | Soundscape's saveCount moves to ForgeFeedback after its library PR (#269) merges | 5 |
 
