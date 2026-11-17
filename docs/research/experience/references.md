@@ -11,6 +11,7 @@ These matter more than component libraries: they have solved hard UX problems in
 | ixOS app | Reference | Stack | What to investigate | Deep audit |
 |---|---|---|---|---|
 | Relay | [LocalSend](https://github.com/localsend/localsend) | Flutter (Dart), Apache-2.0 | Send and Receive as the top-level choice; nearby discovery without pairing; how the receiver accepts or declines; per-file progress; trust (fingerprints, favourites); failure wording; what happens when the app is backgrounded | **1st**: [done](references/localsend.md) |
+| Relay | [iroh-drop](https://github.com/chad/iroh-drop), [RelayPonyCore](https://github.com/norsehorse-dev/RelayPonyCore), [Drift](https://github.com/vsamarth/drift), [Daak](https://github.com/darshitpp/daak) | Rust on iroh, Swift, Flutter, React Native; MIT or Apache-2.0 | Consent before bytes land; catching up after being apart; retry on presence; honest broadcast wording; wire fixtures | **4th**: [done](references/relay-transfer-peers.md) |
 | Overall design language | [Ice Cubes](https://github.com/Dimillian/IceCubesApp) | SwiftUI, AGPL-3.0 | Navigation in a large SwiftUI app; contextual actions on dense rows; customisation without clutter; loading and pagination of feeds; complex information in a list; its per-feature package split | **2nd**: [done](references/ice-cubes.md) |
 | Commonplace (and Pocket Library's reader) | [NetNewsWire](https://github.com/Ranchero-Software/NetNewsWire) | UIKit/AppKit, MIT | Next unread; list density; Mark All as Read with undo; feed discovery; organisation (folders, smart feeds); sync state. Commonplace was already benchmarked on behaviour (#148); this pass is about the experience | **3rd**: [done](references/netnewswire.md) |
 | Chat | [Signal for iOS](https://github.com/signalapp/Signal-iOS) | UIKit, AGPL-3.0 | First run with nothing technical; composing, attachments and voice notes; message states and delivery marks; permission prompts in context; long-press actions and reactions; recovering from a failed send | Later |
@@ -33,6 +34,21 @@ Study for API shape, documentation and accessibility practice. ixOS needs its ow
 | [OUDS Design System Toolbox](https://github.com/Orange-OpenSource/ouds-ios-design-system-toolbox) (MIT) | OUDS's separate showcase app, with code examples per component | Study next to the [ForgeUI showcase](../../../examples/forgeui-showcase/README.md): how examples and documentation sit together |
 | [Stance](https://github.com/BindsHQ/stance) (Apache-2.0) | Tokens shared across web, iOS and Android while keeping native components | An architectural reference, not a mature benchmark: its native iOS package is still in development. Relevant when Android resumes; for now a check that ForgeUI's tokens (plain Foundation values) could be exported the same way |
 | [Mira](https://github.com/Dtheme/Mira) (MIT) | A SwiftUI design-system playground: styles, visual tokens, interactive demos and implementation guidance | Relevant to agent-assisted work: study in phase 2 with the design-spec idea below |
+
+## Libraries
+
+Swift packages proposed on 2026-11-17, checked against ixOS's rules: Rust owns state, the apps build with xtool on Linux and the phone is the test device, and a dependency is added only for a real second use. Licences and activity as GitHub reported them that day.
+
+| Library | What it does | Verdict for ixOS |
+|---|---|---|
+| [Nuke](https://github.com/kean/Nuke) (MIT) | Image loading, caching and prefetching | **Spike.** Pocket Library hand-rolls its cover loader (`CoverImage.swift`), and Commonplace article images and Soundscape artwork are the second and third users. Needs an xtool build check before anything else |
+| [swift-navigation](https://github.com/pointfreeco/swift-navigation) (MIT) | State-driven navigation and presentation | **Idea already borrowed.** ForgeAppKit's destinations (`.forgeSheet`, `.forgeNavigationDestination`, [forgeappkit.md](../../forgeappkit.md)) are its pattern without the dependency or its macros |
+| [Pulse](https://github.com/kean/Pulse) (MIT) | Log and URLSession network inspector with a SwiftUI viewer | **Idea only.** Most networking is in Rust and logging goes through `forge_runtime::logging`, so Pulse would see little. Its viewer is a model for a Device Lab diagnostics screen |
+| [GRDB.swift](https://github.com/groue/GRDB.swift) (MIT) | SQLite toolkit with observation and migrations | **No.** Persistence belongs to the Rust core (`forge-storage`, rusqlite); a Swift database would split state across the boundary |
+| [SwiftUI Introspect](https://github.com/siteline/swiftui-introspect) (MIT) | Reach the UIKit view under a SwiftUI one | **Escape hatch, per app.** Never in ForgeUI, which styles real SwiftUI controls |
+| [ScanCodes](https://github.com/danielsaidi/ScanCodes) (MIT) | QR and barcode generation and scanning | **No.** Relay already makes QR codes with Core Image; VisionKit scans |
+| [OpenSwiftUI](https://github.com/OpenSwiftUIProject/OpenSwiftUI) (MIT) | Open-source reimplementation of SwiftUI | **Reading only**, for how SwiftUI behaves |
+| SnapshotTesting, AccessibilitySnapshot | See below | Simulator only; their ideas are listed under quality tools |
 
 ## Tools for keeping quality from slipping
 
