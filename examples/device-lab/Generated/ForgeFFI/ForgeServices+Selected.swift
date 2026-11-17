@@ -2,6 +2,7 @@
 // app's Rust crate selects in forge_services::native_services!(...). Do not edit.
 
 public let forgeSelectedServices: [(name: String, install: @Sendable () throws -> Void)] = [
+    ("Ai", ForgeServices.installAi),
     ("Bluetooth", ForgeServices.installBluetooth),
     ("Connectivity", ForgeServices.installConnectivity),
     ("DeviceStatus", ForgeServices.installDeviceStatus),

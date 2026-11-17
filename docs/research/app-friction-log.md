@@ -725,6 +725,73 @@ streams the audio. What took work:
   `NSAllowsArbitraryLoads` (#263), and the starter now carries that setting
   commented out ([app-config.md](../app-config.md#plain-http-app-transport-security)).
 
+## A36. AI Lab in Device Lab (structured output on Linux)
+
+AI Lab (PR #277) runs experiments with Apple's on-device model inside Device
+Lab. What got in the way:
+
+- **`@Generable` looked like it needed Xcode, and doesn't.** Foundation
+  Models' typed answers use the `@Generable` and `@Guide` macros, and
+  Apple's compiler plugin for them ships only inside Xcode, built for
+  macOS. The laptop build check (2026-11-17, xtool 1.24.0, Swift 6.2.3)
+  showed xtool's Darwin SDK covers this: its `OpenAppleMacrosServer`, an
+  open reimplementation of Apple's macro plugins built for Linux, expands
+  both, and the build's objects hold the generated `PartiallyGenerated`
+  type and the `Generable` conformance. The plan (and `ForgeAppleModel`'s
+  comment) had assumed otherwise, so this cost a stand-in built before the
+  check ran: `StructuredShape` (Device Lab,
+  `Sources/AppHost/StructuredShape.swift`) describes the shape as a plain
+  value that becomes a `DynamicGenerationSchema` at run time, decoded into a
+  `Decodable` struct. It stays as the second experiment, for answers whose
+  shape is only known at run time and as the comparison on the phone. Still
+  open: whether the open expansion behaves like Apple's on a device (the
+  phone check). (annoyance)
+- **A copy of `ForgeAppleModel` per app.** Each hosted app that selects
+  `native_services!(ai)` (Chat, Pocket Library, now Device Lab) gets its own
+  `AiModel` protocol and its own copy of the adapter in its own Swift
+  module, so Device Lab carries three. It works because no file imports two
+  of them; it is the "native services once per process" problem (showcase
+  log F15) again. ForgeNative fixed it for the core services; `ai` should
+  follow when it moves. (annoyance)
+- **Rust error messages don't reach Swift.** UniFFI's generated
+  `errorDescription` is `String(reflecting: self)` (`AiLabError.Busy`), not
+  the Rust `Display` text, so the app repeats each message in a Swift
+  `switch`. Every app with errors does this. (annoyance)
+- **Regenerating bindings without swift-format** writes unformatted Swift.
+  Device Lab's `forge_ffi.swift` had been generated on the laptop with
+  swift-format, so regenerating it in the cloud for one new type turned into
+  an 8,800-line diff that hides the real change. Chat's committed copy is
+  unformatted, so the repository already holds both. Bindings should come
+  out the same wherever they are generated: format always or never.
+  (annoyance)
+
+**Measure.** Rust for the screen (run, Stop, timings, history): about 700
+lines with tests; Swift: model, view, two structured runs and the shape
+helper. Start to first run on the phone: not yet run.
+
+## A37. Reconstructed: friction met since A35 but not logged
+
+Collected on 2026-11-17 from the project's notes, because these cost time
+in other threads and never reached this log.
+
+- **Swift compiles only on the laptop.** Cloud sessions build and test Rust
+  but can't compile SwiftUI (no Darwin SDK), so every Swift change waits
+  for the laptop: a Remote Control session the person has to approve in the
+  thread itself (an approval relayed from the project chat is refused),
+  which sleeps overnight, and one heavy build at a time through the queue.
+  Several PRs merged with Swift not yet compiled (#196, #257). (limit)
+- **The phone drops off USB.** Installs and log reads fail when the iPhone
+  disappears from usbmuxd mid-build; `forge` now restarts usbmuxd by itself,
+  but a bad cable or port still interrupts phone sittings (2026-11-14,
+  2026-11-16). (annoyance)
+- **Over-the-air installs don't replace the app on a free team.** iOS
+  downloads the build and then silently keeps the old one; a new expiry
+  date in `forge device apps` misled an earlier conclusion. Installs are by
+  cable until a paid team ([over-the-air.md](../over-the-air.md)). (limit)
+- **Cloud disk can't hold every example's targets.** `check-app-crates.sh`
+  runs out of space in a cloud session; it runs on the laptop instead.
+  (annoyance)
+
 ## A38. Reconstructed: AVAudioEngine traps in Soundscape's Studio
 
 Collected on 2026-11-17, like A37 (#277), from fixes that never reached
