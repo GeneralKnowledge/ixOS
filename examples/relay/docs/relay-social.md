@@ -1,13 +1,49 @@
 # Relay Social: open social infrastructure (idea)
 
 Status: an idea from Reuben, 2026-11-17 ("another mud at the wall idea"),
-recorded so it isn't lost. **Nothing here is built until he says so.** It
-is a proposed long-term direction for Relay and a new workstream (S0 to S8),
-not a replacement for Relay's roadmap. The current milestone,
+recorded so it isn't lost, then reviewed by him the same evening (kept,
+with the clarifications below). **Nothing here is built until he says so.**
+It is a proposed long-term direction for Relay and a workstream of social
+work packages (S0 to S8), not a replacement for Relay's roadmap. The current milestone,
 [M1 Reliable Trusted-Device Delivery](relay-reliable-delivery.md), and then
 M2 Personal Device Network come first. The architectural parent stays
 [relay-platform-plan.md](relay-platform-plan.md). Other parked ideas are in
 [relay-future-directions.md](relay-future-directions.md).
+
+## How this fits Relay's milestones
+
+S0 to S8 are **work packages that consume Relay's capabilities**, not a
+second milestone system. S0 can begin as documentation when Reuben
+authorises it; S1 onwards are each gated by the Relay platform foundation
+they use, and Social never reimplements one:
+
+| Social package | Waits for |
+|---|---|
+| S1 Portable person identity | M4 People and Rooms (person identity, several devices per person) |
+| S2 Public social objects | S1, and M2's internet reach |
+| S3 Spaces and membership | M4 (rooms and membership) |
+| S4 Moderation and governance | S3, and M5 permissions |
+| S5 Private Spaces | M4 rooms on Marmot/MLS; messaging stays chat-core |
+| S6 The client | S2 and S3 |
+| S7 Independent hosting and migration | S3, S5, and the portability cases below |
+| S8 Federation and developers | M5 Capabilities and Extensions, M8 Open Network Ecosystem |
+
+Person identity, room membership, messaging and capability permissions
+belong to the Relay platform; Social uses them.
+
+## Relay and Relay Social
+
+**Relay is the infrastructure. Relay Social is the first-party social
+application.** The Relay app is centred on Chats, Send and Devices: a
+personal network. Social brings a different interaction model (Pulse,
+Explore, Spaces, Inbox, Identity). They share infrastructure, identity,
+permissions and services, and could share an SDK and account experience,
+but their interfaces are not merged into one app by default:
+
+- **Relay:** personal connectivity and device management.
+- **Relay Social:** people, communities and publishing.
+- **Third-party applications:** other experiences on the same
+  infrastructure.
 
 ## Product statement
 
@@ -40,7 +76,17 @@ it appears and can be turned off.
 
 **A Space** is a persistent social context: discussions, announcements,
 members and roles, files, events, audio and video rooms, tools, and its own
-moderation and retention rules. Its owner decides where it runs; members
+moderation and retention rules. Three different things, with different
+permission models:
+
+| Part | What | Example (a music community) |
+|---|---|---|
+| **Space** | Identity, membership, governance and context | The community, its members, roles and rules |
+| **Space content** | Posts, discussions, files and events, authored by people | Discussions, an events calendar |
+| **Space applications** | Services running inside the Space under explicit permissions (Relay capabilities, M5) | A shared playlist, a listening room |
+
+Membership doesn't grant an application anything: an application gets only
+the capabilities it is granted in that Space. Its owner decides where it runs; members
 decide whether they trust that operator. Space types (public community,
 private group, personal, project, creator, temporary event) are templates,
 not separate products.
@@ -125,6 +171,13 @@ can't express instead of pretending it is equivalent.
 Rooms on Nostr (Marmot, NIP-29, NIP-11) are already approved in the
 platform plan, so this extends an existing choice rather than adding one.
 
+The table is a start. S0's compatibility profile says, for each protocol
+feature, what Relay implements, what it only understands, what it keeps but
+can't show, what it can publish, and what happens when an external client
+behaves differently, so Relay never looks compatible while silently losing
+information. This matters most for NIP-29 (a draft) and for the gaps
+between Nostr and ActivityPub.
+
 **Not to build:** a new public event protocol, new encryption, a new
 federation protocol, a replacement for iroh, a second messaging engine, or a
 proprietary identity that locks people in.
@@ -140,6 +193,20 @@ associations; each device keeps its own key, so devices are revoked
 individually and the identity survives a lost device. Person identity and
 recovery come before profiles depend on them (deferred today until people
 and groups need it, M4).
+
+## Portability, precisely
+
+"Portable" covers six different problems, and nothing promises seamless
+migration until each case is tested:
+
+| Kind | What it means | Hard part |
+|---|---|---|
+| Identity portability | The person's key and profile work with another client or provider | Recovery, device associations |
+| Membership record portability | Who belongs to a Space, with which role, moves with it | Signed membership history across operators |
+| Content exportability | Authored content can be exported and republished | Others' content follows its authors' rights |
+| Media availability | Files stay reachable after a move | Media lives with providers; availability is reported, not assumed |
+| Private encryption-state migration | An encrypted Space keeps working after a move | MLS group state, device membership and key rotation need an explicit procedure: not copying a database |
+| Governance continuity | Rules, moderators and decisions carry over | NIP-29 governance is relay-enforced; a fork isn't a migration |
 
 ## Safety and moderation
 
@@ -216,5 +283,16 @@ agents, universal sync.
 3. Make independence demonstrable: the first meaningful release works
    across two independently operated instances.
 
-**Next step, when Reuben says so:** S0, the architecture baseline (ADRs,
-domain model, compatibility profile, acceptance tests), as a docs PR.
+**Next step, when Reuben says so:** S0, a small docs PR. This file stays the
+overview and doesn't grow into an implementation specification; S0 adds:
+
+| Document | Purpose |
+|---|---|
+| `relay-social-domain.md` | Person, Space, Relationship, Object, Activity, and permissions |
+| `relay-social-compatibility.md` | Protocol support and interoperability rules (above) |
+| `relay-social-security.md` | Threat model, moderation, identity, private Spaces |
+| `relay-social-adr.md` | Decisions, and the dependencies on Relay's milestones |
+
+No S1 or implementation PR before that, and none of it ahead of M1:
+reliable delivery is what makes a social network on Relay useful rather
+than only decentralised in theory.
