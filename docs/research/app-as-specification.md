@@ -21,6 +21,28 @@ The outside pitch describes a tool that reads an app's accessibility tree, disco
 
 Two constraints shape the plan. UI automation is cable only (Reuben's call on 2026-11-15, after WebDriverAgent died 30 seconds after unplugging). And the free team's three sideload slots are full, which matters less than it looks: a reference installed from the App Store or shipped with iOS takes no slot, and the recreation lives in Device Lab like every other ixOS app.
 
+## The method: an expedition
+
+Reuben's framing (2026-11-17): the question is not only "can we rebuild it?" but "what can you learn about a piece of software by exploring everything it lets you observe?" Calculator is the first specimen; the tools are the expedition's equipment.
+
+**Five activities**, and the phase each happens in:
+
+| Activity | What it means | Phase |
+|---|---|---|
+| Survey the terrain | Screenshots and trees: what screens and controls are there, before deciding what they mean | R0 |
+| Collect evidence | Labels, roles, values, element relationships, the result of each interaction | R0, R1 |
+| Build a map | Connect screens, controls and sequences; separate what is known from what is inferred and what is unexplored | R1 (by hand), R3 (the explorer, if revived) |
+| Reconstruct the artefact | Rebuild from the evidence alone, and find out which assumptions were wrong | R2 |
+| Verify the findings | Replay the same interactions, compare, and go back to the original whenever something doesn't make sense | R2, R3 |
+
+**Five representations** the app gives of itself, each showing something different and none the whole story: visual (screenshots), structural (the accessibility tree: roles, labels, relationships), behavioural (what taps and sequences do), navigational (which screens lead where) and temporal (what changes after repeated presses, a relaunch, or time). R0 to R2 collect the first four for Calculator and the temporal ones that are cheap (repeated equals, history after a relaunch).
+
+**Every finding is tagged** in the spec, the results and the [log](../blog/calculator/log.md):
+
+- **Observed:** captured directly, with where it came from (a tree file, a screenshot, a recorded result).
+- **Inferred:** believed from the evidence, with the evidence named. An inferred rule becomes Observed only when a sequence that tests it has been recorded.
+- **Unknown:** not worked out yet. Unknowns are listed, not guessed: a guess in the rebuild is marked as one.
+
 ## Two levels of comparison
 
 A recreation can differ from its reference in two ways, and the plan keeps them apart because they need different tools.
@@ -69,7 +91,7 @@ With the phone on the cable, in the next sitting already planned for Device Lab:
 2. Write the sequence table: about 40 key sequences covering ordinary sums and the edge cases, one per line (`sequences.toml`).
 3. A small script runs each sequence on the reference through `forge ui run --any-app` (tapping keys by label) and reads the display with `forge --json ui tree`, writing `reference-results.toml`. It uses only commands ixOS already has, so a person can run it without an agent.
 
-**Exit:** the table recorded twice on the phone gives identical results, which shows the reference is deterministic enough to compare against.
+**Exit:** the table recorded twice on the phone gives identical results, which shows the reference is deterministic enough to compare against, and every rule in the spec is tagged Observed, Inferred or Unknown.
 
 ### R2: rebuild and compare values
 
