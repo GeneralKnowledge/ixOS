@@ -3,6 +3,7 @@
 @preconcurrency import ForgeKit
 import AVFoundation
 import MediaPlayer
+import UIKit
 import Observation
 
 private let log = ForgeLog("Listen")
@@ -86,6 +87,16 @@ final class TakePlayer {
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var remoteReady = false
+    /// The lock screen's picture for `current`, and the address it came from.
+    @ObservationIgnored private var artwork: MPMediaItemArtwork?
+    @ObservationIgnored private var artworkUrl: String?
+    @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    /// Watches the system: interruptions, unplugged headphones, and each
+    /// player stopping or starting by itself.
+    @ObservationIgnored private var systemObservers: [NSObjectProtocol] = []
+    @ObservationIgnored private var statusObservers: [NSKeyValueObservation] = []
+    /// Playing when an interruption began, so it may carry on after.
+    @ObservationIgnored private var interruptedWhilePlaying = false
 
     init() {
         for player in [playerA, playerB] {
@@ -97,6 +108,7 @@ final class TakePlayer {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
+        watchSystem()
     }
 
     // MARK: Loading
@@ -145,6 +157,9 @@ final class TakePlayer {
         isPlaying = false
         time = 0
         duration = 0
+        artworkTask?.cancel()
+        artwork = nil
+        artworkUrl = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         ForgeAudioSession.deactivate()
     }
@@ -162,6 +177,7 @@ final class TakePlayer {
         applyVolumes()
         observeEnds()
         setUpRemoteCommands()
+        loadArtwork(a.artworkUrl)
     }
 
     private static func item(_ audioUrl: String) -> AVPlayerItem? {
@@ -312,19 +328,93 @@ final class TakePlayer {
         let heard = active == .b && isComparing ? playerB : playerA
         let seconds = heard.currentTime().seconds
         if seconds.isFinite { time = seconds }
-        if let d = heard.currentItem?.duration.seconds, d.isFinite, d > 0 { duration = d }
+        if let d = heard.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration {
+            // The length is known only once the stream has started, after
+            // the lock screen was first told about the song.
+            duration = d
+            updateNowPlaying()
+        }
         isBuffering = heard.timeControlStatus == .waitingToPlayAtSpecifiedRate
         if let item = heard.currentItem, item.status == .failed, failure == nil {
             failure = item.error?.localizedDescription ?? "The take couldn't be played."
             log.warn("stream failed: \(failure ?? "")")
             pause()
         }
-        // Paused by the system (a call, headphones unplugged).
-        if isPlaying, heard.timeControlStatus == .paused, heard.currentItem?.status == .readyToPlay,
-           time < duration - 0.5 {
-            isPlaying = false
-            updateNowPlaying()
+        checkStoppedBySystem()
+    }
+
+    // MARK: The system
+
+    /// Another app's sound, a call, Siri or unplugged headphones can stop
+    /// the players without asking. Each way it can happen is watched, so
+    /// the buttons, the mini-player and the lock screen show Play as soon
+    /// as the sound stops.
+    private func watchSystem() {
+        let center = NotificationCenter.default
+        systemObservers.append(center.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let info = note.userInfo
+            let type = (info?[AVAudioSessionInterruptionTypeKey] as? UInt)
+                .flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+            let options = AVAudioSession.InterruptionOptions(
+                rawValue: info?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            )
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                switch type {
+                case .began:
+                    self.interruptedWhilePlaying = self.isPlaying
+                    self.stoppedBySystem()
+                case .ended:
+                    // A call or Siri hands the sound back; another app that
+                    // started its own music doesn't.
+                    if self.interruptedWhilePlaying, options.contains(.shouldResume) { self.resume() }
+                    self.interruptedWhilePlaying = false
+                default:
+                    break
+                }
+            }
+        })
+        systemObservers.append(center.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            guard reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue else { return }
+            // Headphones unplugged: iOS pauses, and so do we, both sides.
+            MainActor.assumeIsolated { self?.stoppedBySystem() }
+        })
+        for player in [playerA, playerB] {
+            statusObservers.append(player.observe(\.timeControlStatus) { [weak self] _, _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { self?.checkStoppedBySystem() }
+                }
+            })
         }
+    }
+
+    /// The player you hear stopped, and not at the end of the song (that
+    /// is `ended`): the system paused it.
+    private func checkStoppedBySystem() {
+        guard isPlaying else { return }
+        let heard = active == .b && isComparing ? playerB : playerA
+        guard heard.timeControlStatus == .paused, let item = heard.currentItem,
+              item.status == .readyToPlay else { return }
+        let at = heard.currentTime().seconds
+        let length = item.duration.seconds
+        if length.isFinite, length > 0, at >= length - 0.5 { return }
+        stoppedBySystem()
+    }
+
+    private func stoppedBySystem() {
+        guard isPlaying else { return }
+        // In a comparison the other side keeps in step only if it stops too.
+        playerA.pause()
+        playerB.pause()
+        isPlaying = false
+        let seconds = (active == .b && isComparing ? playerB : playerA).currentTime().seconds
+        if seconds.isFinite { time = seconds }
+        updateNowPlaying()
     }
 
     private func observeEnds() {
@@ -373,9 +463,44 @@ final class TakePlayer {
             MPMediaItemPropertyArtist: isComparing ? "Comparing takes" : current.artist ?? current.label,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: time,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
         if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
+        if let artwork, !isComparing { info[MPMediaItemPropertyArtwork] = artwork }
+        if let queue, !isComparing {
+            info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = Int(queue.position)
+            info[MPNowPlayingInfoPropertyPlaybackQueueCount] = queue.order.count
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    /// Fetches the song's artwork for the lock screen. The song shows
+    /// without it until it arrives; a song with none shows none.
+    private func loadArtwork(_ url: String?) {
+        guard url != artworkUrl else { return }
+        artworkTask?.cancel()
+        artworkUrl = url
+        artwork = nil
+        guard let url, let address = URL(string: url) else { return }
+        artworkTask = Task { [weak self] in
+            // Through the same cache as the library's pictures, so it is
+            // usually already there. A picture chosen on the phone is a file.
+            let picture = address.isFileURL
+                ? await ForgeImages.thumbnail(of: address, maxPixels: 1024, cached: true)
+                : await ForgeImages.thumbnail(from: address, maxPixels: 1024)
+            guard let picture, !Task.isCancelled else { return }
+            guard let self, self.artworkUrl == url else { return }
+            self.artwork = Self.lockScreenArtwork(UIImage(cgImage: picture))
+            self.updateNowPlaying()
+        }
+    }
+
+    /// Made outside the main actor: MediaPlayer asks for the picture on a
+    /// background queue, and a closure made on the main actor would trap
+    /// there.
+    nonisolated private static func lockScreenArtwork(_ image: UIImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
 
     private func setUpRemoteCommands() {
