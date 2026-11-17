@@ -196,12 +196,19 @@ Linux, through chat-core's outbox, covering the four changes above. If
 chat-core fights it, fall back to the 2026-11-16 plan (Relay's own small
 outbox) and keep only the screens shared; say so before building further.
 Then device conversations in Chats, `relay send <device> --text` in the CLI.
+Files to trusted devices that are away use the same scheduler: see
+[relay-delivery-outbox.md](relay-delivery-outbox.md) (proposed 2026-11-17),
+which answers when items are retried, how duplicates are prevented, and what
+deletion, retention and ordering mean.
 Accepted as the brief says: a message sent while the laptop is off arrives
 once when it is back, delivered and read on both sides, after relaunches.
 
 ### Step 4. The front door (with brief PR 5)
 
 Chats, Send, Devices as above, applying the LocalSend audit's P1 and P2.
+The whole send and receive experience it builds is specified in
+[relay-transfer-journey.md](relay-transfer-journey.md) (proposed
+2026-11-17).
 Device presence and status from PR 5 land here. This is the same work as
 the UI Improvement programme's Relay redesign pilot (its PR 4): one PR, not
 two.
