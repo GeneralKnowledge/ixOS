@@ -42,6 +42,10 @@ Not another AirDrop clone, messaging app, remote desktop, VPN, cloud
 storage service or AI agent framework: it can offer capabilities in all of
 these areas without becoming any one of them. The name stays Relay.
 
+> **Proposed, 2026-11-17:** merge Chat into Relay, so Relay's messages run
+> on chat-core instead of a new engine. Not agreed yet; until it is, this
+> plan stands. See [relay-chat-merge.md](relay-chat-merge.md).
+
 ## Where each part stands
 
 | State | What |
