@@ -1,6 +1,6 @@
 # Relay's delivery outbox
 
-Status: **proposed** (2026-11-17), for Reuben's review. A technical decision
+Status: **proposed** (2026-11-17). Reuben's review the same day added connection arbitration, fairness, the background limit in the acceptance criteria, and where received files go. A technical decision
 that the [transfer journey](relay-transfer-journey.md) depends on: how
 messages and files reach a trusted device that is away, without the person
 retrying and without duplicates. It is built in brief PR 4 (Chat merge
@@ -47,13 +47,48 @@ device on the same presence event, and backoff would be counted twice.
 - **Single flight:** one worker per recipient. A trigger while it runs sets
   "run again" and is otherwise ignored, so ten presence flaps cause one
   extra pass, not ten connections.
-- **One connection per recipient** carries everything due: messages first
-  (small, and a big file must never hold them up), then files.
+- **One connection per pair of devices** carries everything due, in both
+  directions ([arbitration](#connection-arbitration)), with messages ahead
+  of files but never starving them ([fairness](#fairness)).
 - **Both directions on connect.** When two trusted devices connect, each side
   flushes what it has for the other. That is the "catch up after being apart"
   of #297: because every item is queued durably until acknowledged, catching
   up is each side emptying its queue, with no separate sync log.
-- Runs only while Relay runs. Background reach comes with brief PRs 6 and 7.
+- **Runs only while Relay runs.** The outbox does not deliver in the
+  background on iOS: when Relay is suspended, nothing is sent or received
+  until it comes back (or until background reach, brief PRs 6 and 7). Its
+  acceptance criteria say so (below).
+
+### Connection arbitration
+
+Two trusted devices can notice each other at the same moment and both dial.
+The rule, so they never end up with competing sessions:
+
+1. **Reuse first.** Before dialling, a worker uses any live `relay/device/1`
+   connection to that device, whichever side opened it. An incoming
+   connection from a recipient wakes its worker, which uses it instead of
+   dialling.
+2. **When two connections cross,** both sides keep the one opened by the
+   device whose endpoint id is lower (compared as bytes), and close the other
+   with a "duplicate" code once it is established. Both sides apply the same
+   rule to the same two ids, so they always pick the same connection without
+   talking about it.
+3. **Nothing is lost on the closed one.** An item in flight on it is not
+   acknowledged, so it is sent again on the kept connection by its id, and
+   the recipient's id check makes that a no-op if it had already arrived.
+
+### Fairness
+
+- **Files move on their own streams.** A file is fetched by the recipient on
+  its own QUIC stream, concurrently with the message stream on the same
+  connection, so a large file never holds up a message and a busy
+  conversation never stops a file's bytes.
+- **Offers are interleaved.** On the message stream the worker sends at most
+  50 messages (or 256 KB) in a batch, then the next file offer that is due,
+  then the next batch. A conversation that never stops can delay a file's
+  start by one batch, not forever.
+- **Order is unchanged:** batches are taken oldest first and a conversation's
+  messages never overtake each other, whichever batch they fall in.
 
 ## Messages
 
@@ -88,7 +123,28 @@ Any state before Delivered → Cancelled (either side) or Failed (cause)
 - **Transferring:** iroh-blobs fetches what the recipient doesn't have yet,
   so every pass resumes from the verified bytes already there.
 - **Verifying:** BLAKE3 over the collection; then the files are moved into
-  `Documents/Relay` and the recipient acknowledges.
+  `Documents/Relay` ([where they go](#where-received-files-go)) and the
+  recipient acknowledges.
+
+### Where received files go
+
+The same rules for every transfer, code or trusted, outbox or not:
+
+- **Nothing half-received is visible.** Bytes stay in the blob store until
+  the whole transfer is verified; only then does anything appear in
+  `Documents/Relay` (Files, On My iPhone, Relay).
+- **One file** arrives under its own name; **a folder** under its folder
+  name, with its inside as sent; **several items** in one folder named for
+  them and their sender: "3 items from MacBook".
+- **A name already taken is never overwritten:** the new arrival becomes
+  "Trip (2)", "Trip (3)" and so on (`unique_path` in `code.rs` today).
+- **Repeating the same transfer:** if the same sender sends the same content
+  (the same root hash) and the earlier copy is still there unchanged, it is
+  not saved twice; the row says "Already in Relay: Trip" and opens it. If the
+  earlier copy was moved, renamed or changed, the new one is saved as above.
+- **Photos and videos** stay in `Documents/Relay` like everything else;
+  **Save to Photos** adds a copy to the photo library (automatically when the
+  setting is on), and never removes the file.
 
 ## Reuben's six questions
 
@@ -176,6 +232,19 @@ fake clock, as the chat server tests do today. One test per behaviour:
 | Ask before receiving, unanswered | Item waits as Offered; sender shows Waiting for MacBook to accept |
 | Queue refused when it would leave under 1 GB free | Refused with the space needed |
 | Golden fixtures | Each `relay/device/1` message decodes from committed bytes (#297 proposal 5) |
+| Both sides dial at the same moment, many times | One connection survives, the same on both sides; every item arrives once |
+| 10,000 messages queued with a file | The file's offer goes out after the first batch; its bytes flow while messages continue; each conversation stays in order |
+| Same content sent twice from the same device | Saved once; the second row says Already in Relay. After renaming the first, the second is saved as "(2)" |
+| A name already taken in `Documents/Relay` | Saved as "(2)", nothing overwritten |
+| Transfer cut before verification | Nothing appears in `Documents/Relay` |
+
+### Acceptance
+
+The outbox is accepted when the tests above pass and, on the phone check,
+a message and a file sent to the laptop while it is off arrive once when it
+is back, **with Relay open on both devices**. It does not claim delivery
+while Relay is suspended or closed on either side: that is background reach
+(brief PRs 6 and 7), and the phone check must not be read as proving it.
 
 The Lean model of delivery in the [platform plan](relay-platform-plan.md)
 (each message stored once, its final state reported once) is extended to

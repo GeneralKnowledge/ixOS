@@ -124,7 +124,7 @@ trusted devices that ask first. It answers the receiver's seven questions:
 | Is this a device I know? | "Trusted" with the trust symbol, or "Not a trusted device: connected with a code". For an untrusted device the name is shown as what it calls itself ("calls itself 'Reuben's iPhone'"), never styled as trusted |
 | What exactly is it? | The item count and the first names ("Trip: 3 photos, 1 video"; a folder by its name and item count), with the full list a tap away |
 | How much? | Total size, and the free space left after it ("24 MB · 51 GB free after") |
-| Where will it go? | "Files › On My iPhone › Relay › Trip", with photos and videos also offered to Photos (below) |
+| Where will it go? | "Files › On My iPhone › Relay › Trip", with photos and videos also offered to Photos (below). Naming and repeated transfers: [where received files go](relay-delivery-outbox.md#where-received-files-go) |
 | What does Decline do? | "Nothing is saved. They'll see that you declined." |
 | Can I trust this device later? | Not on the card: trusting is offered after the transfer succeeds, so consent to one transfer never doubles as trust |
 
