@@ -49,6 +49,7 @@ The `forge` CLI also has app paths built in: some commands default `--project` t
 | `crates/forge-runtime`, `forge-app`, `forge-storage`, `forge-net`, `forge-services` (with `swift/`), `forge-native`, `forge-reader` (with `swift/`) | Rust runtime and foundations |
 | `forgekit/` | ForgeApp, ForgeKit, ForgeNative, ForgeUI, ForgeAppKit; released as GeneralKnowledge/ForgeKit |
 | `examples/forgeui-showcase` | ForgeUI's own gallery |
+| `packages/OpenGenerable` | Structured generation for Swift on Linux; no dependencies, so it can become its own repository ([README](../packages/OpenGenerable/README.md)) |
 
 ### Tools
 

@@ -27,4 +27,5 @@ Read in this order.
 | [foundation-review.md](foundation-review.md) | Open findings in the foundation crates and the `gap_*` tests that pin them |
 | [research/everyday-capabilities.md](research/everyday-capabilities.md) | Everyday app capabilities: what Forge covers, the gaps apps hit, and a phased plan proven by app features |
 | [local-ai.md](local-ai.md), [forge-ai-plan.md](forge-ai-plan.md) | On-device AI: the stages so far and the proposed shared AI module |
+| [OpenGenerable](../packages/OpenGenerable/README.md) | Guided, structured generation on Linux in the shape of Apple's `DynamicGenerationSchema`, and its milestones |
 | [adr/](adr/) | Architecture decisions |

@@ -1,0 +1,38 @@
+name: OpenGenerable
+
+# OpenGenerable, structured generation for Swift on Linux
+# (packages/OpenGenerable). It has no dependencies and needs no model, so the
+# whole package builds and tests on Linux. Runs when the package changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/OpenGenerable/**"
+      - ".github/workflows/opengenerable.yml"
+  pull_request:
+    paths:
+      - "packages/OpenGenerable/**"
+      - ".github/workflows/opengenerable.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: OpenGenerable (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain
+        run: swift --version
+      - name: Build with warnings as errors
+        working-directory: packages/OpenGenerable
+        run: swift build -Xswiftc -warnings-as-errors
+      - name: Test
+        working-directory: packages/OpenGenerable
+        run: swift test

@@ -724,3 +724,17 @@ streams the audio. What took work:
   refused too (NSURLError -1022 on the phone); Soundscape sets
   `NSAllowsArbitraryLoads` (#263), and the starter now carries that setting
   commented out ([app-config.md](../app-config.md#plain-http-app-transport-security)).
+
+## A38. A Swift package tested in the cloud (OpenGenerable M1)
+
+OpenGenerable's schema core is plain Swift with no dependencies, so it
+should be the easiest thing to check on Linux. What took work:
+
+- **No Swift in the cloud session.** The container has Rust but no Swift,
+  `download.swift.org` is refused by the network policy, and Ubuntu 24.04
+  has no `swiftlang` package. The official `swift:6.2-noble` Docker image
+  from Docker Hub worked (`dockerd` has to be started by hand first). Worth
+  a line in the setup script, or in the docs for cloud sessions, so the
+  next Swift-only change doesn't rediscover it.
+- **No Swift formatter in the repository.** Rust has `cargo fmt`; Swift
+  code is formatted by hand. Accept for now.
