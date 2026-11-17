@@ -43,10 +43,10 @@ Each app is examined in six dimensions, which cover the five areas of the brief 
 | 1b. Reference deep audits | What mature apps do, and why: LocalSend, Ice Cubes, NetNewsWire first | One PR each, `references/<app>.md` |
 | 2. Design direction | An ixOS visual language, interaction principles and a small set of foundations | A design-direction doc PR |
 | 3. Forge Experience System | The shared foundations and components (ForgeUI and ForgeAppKit), plus quality checks | Implementation PRs |
-| 4. App redesigns | Each app improved on its own terms, most important workflows first. The order comes from the reference audits and Reuben's priorities, not from the audit's order | One PR per app |
+| 4. Product UX implementation | Each app's main journey redesigned end to end, not only its components: what the first screen offers, how the main task flows, what happens when it fails or is repeated. Each journey states a measurable success criterion. **Relay's complete transfer journey is first** (Reuben, 2026-11-17); the order after it comes from the reference audits and Reuben's priorities, not from the audit's order | One PR per app |
 | 5. Experience validation | Whole workflows on the iPhone: usability, consistency, accessibility, responsiveness | Phone sittings, ledger records |
 
-Research PRs stay separate from implementation PRs, so nothing is changed for looks before the problem is understood.
+Research PRs stay separate from implementation PRs, so nothing is changed for looks before the problem is understood. Phase 3 serves phase 4 and is not a substitute for it: a banner makes one interaction better, a redesigned journey makes the product better.
 
 ## Principles
 
