@@ -1,0 +1,43 @@
+# CP-6 on a real iPhone: Add Feed lists suggested feeds; opening it
+# subscribes to nothing, and tapping one suggestion's Add subscribes to that
+# one only. Needs the internet (it fetches xkcd's feed). Starts on an empty,
+# throwaway library.
+#   forge ui run examples/commonplace/uitests/suggested-feeds.toml
+
+name = "CP-6: subscribe to a suggested feed"
+app = "org.forgemobile.agentlab"
+# Fetching the feed over the internet can take a while.
+timeout = 30
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+tap = { id = "feeds.addFirst" }
+
+[[step]]
+expect = { id = "addFeed.suggestion.bbc-news" }
+
+[[step]]
+screenshot = "1-suggestions"
+
+[[step]]
+scroll = { id = "addFeed.suggestion.xkcd" }
+
+[[step]]
+tap = { id = "addFeed.suggestion.xkcd" }
+
+[[step]]
+expect = { id = "addFeed.suggestion.xkcd.subscribed" }
+
+[[step]]
+screenshot = "2-subscribed"
+
+[[step]]
+tap = { id = "addFeed.cancel" }
+
+[[step]]
+expect = { id = "feeds.feed.1" }

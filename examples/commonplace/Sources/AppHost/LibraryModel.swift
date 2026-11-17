@@ -138,6 +138,24 @@ public final class LibraryModel {
         }
     }
 
+    /// Popular feeds to start from, by category, each marked when it is
+    /// already subscribed. Only offered: one is added when the person taps it.
+    public func suggestedFeeds() -> [SuggestedCategory] {
+        _ = version
+        return core.suggestedFeeds()
+    }
+
+    /// Subscribes to a suggestion. Being subscribed already counts as done
+    /// (its row only needed its check mark). Throws other failures, so the
+    /// Add Feed sheet can say why where the person is.
+    public func add(suggestion: SuggestedFeed) async throws {
+        do {
+            _ = try await add(url: suggestion.url)
+        } catch AppError.AlreadySubscribed {
+            reload()
+        }
+    }
+
     public func remove(_ feed: Feed) async {
         await perform { try await $0.removeFeed(feedId: feed.id) }
     }

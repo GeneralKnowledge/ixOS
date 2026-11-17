@@ -792,6 +792,13 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func shutdown() 
     
     /**
+     * Popular feeds to start from, by category, each marked when the
+     * person already subscribes to it. Offered only: nothing is subscribed
+     * until the person picks one, which goes through `add_feed`.
+     */
+    func suggestedFeeds()  -> [SuggestedCategory]
+    
+    /**
      * The articles a timeline shows, newest first (oldest first with that
      * setting; read ones left out of All Articles and feeds with
      * "hide read").
@@ -1241,6 +1248,20 @@ open func shutdown()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Popular feeds to start from, by category, each marked when the
+     * person already subscribes to it. Offered only: nothing is subscribed
+     * until the person picks one, which goes through `add_feed`.
+     */
+open func suggestedFeeds() -> [SuggestedCategory]  {
+    return try!  FfiConverterSequenceTypeSuggestedCategory.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_appcore_suggested_feeds(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -5172,6 +5193,156 @@ public func FfiConverterTypeRefreshReport_lower(_ value: RefreshReport) -> RustB
 
 
 /**
+ * One category of suggestions, such as News or Science.
+ */
+public struct SuggestedCategory: Equatable, Hashable {
+    public var name: String
+    public var feeds: [SuggestedFeed]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, feeds: [SuggestedFeed]) {
+        self.name = name
+        self.feeds = feeds
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SuggestedCategory: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSuggestedCategory: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SuggestedCategory {
+        return
+            try SuggestedCategory(
+                name: FfiConverterString.read(from: &buf), 
+                feeds: FfiConverterSequenceTypeSuggestedFeed.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SuggestedCategory, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterSequenceTypeSuggestedFeed.write(value.feeds, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSuggestedCategory_lift(_ buf: RustBuffer) throws -> SuggestedCategory {
+    return try FfiConverterTypeSuggestedCategory.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSuggestedCategory_lower(_ value: SuggestedCategory) -> RustBuffer {
+    return FfiConverterTypeSuggestedCategory.lower(value)
+}
+
+
+/**
+ * A feed the person can subscribe to with one tap.
+ */
+public struct SuggestedFeed: Equatable, Hashable {
+    /**
+     * A stable slug, for the row's accessibility identifier.
+     */
+    public var id: String
+    public var title: String
+    /**
+     * The feed's address, passed to `add_feed` as it is.
+     */
+    public var url: String
+    /**
+     * One short line on what it is.
+     */
+    public var about: String
+    /**
+     * The person already subscribes to this address (written any way).
+     */
+    public var subscribed: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * A stable slug, for the row's accessibility identifier.
+         */id: String, title: String, 
+        /**
+         * The feed's address, passed to `add_feed` as it is.
+         */url: String, 
+        /**
+         * One short line on what it is.
+         */about: String, 
+        /**
+         * The person already subscribes to this address (written any way).
+         */subscribed: Bool) {
+        self.id = id
+        self.title = title
+        self.url = url
+        self.about = about
+        self.subscribed = subscribed
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SuggestedFeed: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSuggestedFeed: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SuggestedFeed {
+        return
+            try SuggestedFeed(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                url: FfiConverterString.read(from: &buf), 
+                about: FfiConverterString.read(from: &buf), 
+                subscribed: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SuggestedFeed, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterString.write(value.about, into: &buf)
+        FfiConverterBool.write(value.subscribed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSuggestedFeed_lift(_ buf: RustBuffer) throws -> SuggestedFeed {
+    return try FfiConverterTypeSuggestedFeed.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSuggestedFeed_lower(_ value: SuggestedFeed) -> RustBuffer {
+    return FfiConverterTypeSuggestedFeed.lower(value)
+}
+
+
+/**
  * How many articles a timeline holds.
  */
 public struct TimelineCounts: Equatable, Hashable {
@@ -6950,6 +7121,56 @@ fileprivate struct FfiConverterSequenceTypeReaderSpan: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSuggestedCategory: FfiConverterRustBuffer {
+    typealias SwiftType = [SuggestedCategory]
+
+    public static func write(_ value: [SuggestedCategory], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSuggestedCategory.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SuggestedCategory] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SuggestedCategory]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSuggestedCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSuggestedFeed: FfiConverterRustBuffer {
+    typealias SwiftType = [SuggestedFeed]
+
+    public static func write(_ value: [SuggestedFeed], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSuggestedFeed.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SuggestedFeed] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SuggestedFeed]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSuggestedFeed.read(from: &buf))
+        }
+        return seq
+    }
+}
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
 
@@ -7351,6 +7572,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_shutdown() != 58551) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_suggested_feeds() != 30789) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_timeline() != 41218) {
