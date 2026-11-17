@@ -2,7 +2,7 @@
 
 Status: 2026-11-17. Part of [ixOS Experience Research](README.md). Which mature apps and projects we study, for which ixOS app, and what we want to learn from each. Nothing here is a dependency.
 
-The rule for every entry: **reverse-engineer the decisions, don't copy the appearance.** Why is an action prominent, why is something hidden, how does the app say it is unsure, what happens after a mistake. Several references are AGPL (Signal, Ice Cubes): read them for behaviour and structure, and copy no code.
+The rule for every entry: **reverse-engineer the decisions, don't copy the appearance.** Why is an action prominent, why is something hidden, how does the app say it is unsure, what happens after a mistake. Several references are AGPL (Signal, Ice Cubes): read them for behaviour and structure, and copy no code. LocalSend is Flutter, so it is a workflow reference, not a SwiftUI one.
 
 ## Real applications
 
@@ -10,7 +10,7 @@ These matter more than component libraries: they have solved hard UX problems in
 
 | ixOS app | Reference | Stack | What to investigate | Deep audit |
 |---|---|---|---|---|
-| Relay | [LocalSend](https://github.com/localsend/localsend) | Flutter, cross-platform | Send and Receive as the top-level choice; nearby discovery without pairing; how the receiver accepts or declines; per-file progress; trust (fingerprints, favourites); failure wording; what happens when the app is backgrounded | **1st** (phase 1b) |
+| Relay | [LocalSend](https://github.com/localsend/localsend) | Flutter (Dart), Apache-2.0 | Send and Receive as the top-level choice; nearby discovery without pairing; how the receiver accepts or declines; per-file progress; trust (fingerprints, favourites); failure wording; what happens when the app is backgrounded | **1st** (phase 1b) |
 | Overall design language | [Ice Cubes](https://github.com/Dimillian/IceCubesApp) | SwiftUI, AGPL-3.0 | Navigation in a large SwiftUI app; contextual actions on dense rows; customisation without clutter; loading and pagination of feeds; complex information in a list; its per-feature package split | **2nd** |
 | Commonplace (and Pocket Library's reader) | [NetNewsWire](https://github.com/Ranchero-Software/NetNewsWire) | UIKit/AppKit, MIT | Next unread; list density; Mark All as Read with undo; feed discovery; organisation (folders, smart feeds); sync state. Commonplace was already benchmarked on behaviour (#148); this pass is about the experience | **3rd** |
 | Chat | [Signal for iOS](https://github.com/signalapp/Signal-iOS) | UIKit, AGPL-3.0 | First run with nothing technical; composing, attachments and voice notes; message states and delivery marks; permission prompts in context; long-press actions and reactions; recovering from a failed send | Later |
@@ -24,14 +24,15 @@ Note on Pocket Library: NetNewsWire is a feed reader, so its closest ixOS match 
 
 ## Design systems
 
-Study for API shape, documentation and accessibility practice. ixOS needs its own identity, so none is adopted wholesale.
+Study for API shape, documentation and accessibility practice. ixOS needs its own identity, so none is adopted wholesale. Licences as GitHub reports them on 2026-11-17.
 
 | Project | What it offers ixOS | Status |
 |---|---|---|
-| DaVinci | Tokens, themes, dark mode, accessibility in a modular SwiftUI design system | Already studied for ForgeUI 0.1 ([forgeui-proposal.md](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/research/forgeui-proposal.md)): palette values resolved from the colour scheme and the contrast validator came from it. Revisit only for motion and typography roles |
-| Orange Unified Design System (ODS iOS) | A serious component library with a showcase: component API naming, per-component accessibility notes, documentation structure | To study in phase 2, for how it documents each component's accessibility |
-| Stance | Design tokens shared across SwiftUI, web and Android while keeping native components | Relevant when Android resumes; for now, a check that ForgeUI's tokens (plain Foundation values) could be exported the same way |
-| Mira | Styles, tokens, reference demos and guidance aimed at AI-assisted UI work | To study in phase 2 with the design-spec idea below |
+| [DaVinci](https://github.com/frankgumeta/DaVinci) (MIT) | Tokens, themes, dark mode and accessibility in a modular SwiftUI design system | Already studied for ForgeUI 0.1 ([forgeui-proposal.md](https://github.com/GeneralKnowledge/ixOS/blob/8fdd497cc51dfd0a8220f7dc013c3a25515f6c51/docs/research/forgeui-proposal.md)): palette values resolved from the colour scheme and the contrast validator came from it. Revisit only for motion and type roles |
+| [Orange Unified Design System for iOS](https://github.com/Orange-OpenSource/ouds-ios) (MIT) | A serious SwiftUI component library: component API naming, per-component accessibility notes, documentation structure ([DocC documentation](https://github.com/Orange-OpenSource/ouds-ios-documentation)) | Study in phase 2 for how each component documents its accessibility and its tokens |
+| [OUDS Design System Toolbox](https://github.com/Orange-OpenSource/ouds-ios-design-system-toolbox) (MIT) | OUDS's separate showcase app, with code examples per component | Study next to the [ForgeUI showcase](../../../examples/forgeui-showcase/README.md): how examples and documentation sit together |
+| [Stance](https://github.com/BindsHQ/stance) (Apache-2.0) | Tokens shared across web, iOS and Android while keeping native components | An architectural reference, not a mature benchmark: its native iOS package is still in development. Relevant when Android resumes; for now a check that ForgeUI's tokens (plain Foundation values) could be exported the same way |
+| [Mira](https://github.com/Dtheme/Mira) (MIT) | A SwiftUI design-system playground: styles, visual tokens, interactive demos and implementation guidance | Relevant to agent-assisted work: study in phase 2 with the design-spec idea below |
 
 ## Tools for keeping quality from slipping
 
@@ -40,7 +41,7 @@ Study for API shape, documentation and accessibility practice. ixOS needs its ow
 | [SnapshotTesting](https://github.com/pointfreeco/swift-snapshot-testing) | Screenshot regression tests for views and screens | Needs XCTest on an iOS simulator, so macOS only; ixOS is Linux first and CI gates on Linux. ixOS already has phone baselines with a tolerant pixel diff ([visual-regression.md](../../visual-regression.md)) | Borrow its ideas (named variants, one baseline per configuration), already partly done. Adopt only if macOS CI becomes routine |
 | [AccessibilitySnapshot](https://github.com/cashapp/AccessibilitySnapshot) | Regression tests for the accessibility hierarchy: what VoiceOver reads, in what order | Also simulator-based. But `forge ui run` already saves the accessibility tree (`name.tree.json`) next to every screenshot | Compare the saved trees like the pixels: a lost label, a changed order or a missing identifier fails the run. Small work in forge-uitest, but `forge ui` is frozen to bug fixes (AGENTS.md rule 11), so this needs your go-ahead |
 | Apple's accessibility audit | Contrast, element descriptions, Dynamic Type issues, from the device | The [ax spike](../ax-audit.md) reads the screen and presses controls; the audit itself isn't working yet | Finish the audit call (one known probe bug) as part of phase 3's checks |
-| Awesome iOS Design MD (a collection of about 200 documented app design systems) | Precise design specifications to hand to an agent instead of "make it modern" | Fits the plan: phase 2 writes ixOS's own design spec in the same shape | Read a handful in phase 2 to choose the spec's format |
+| [Awesome iOS Design MD](https://github.com/Meliwat/awesome-ios-design-md) (MIT; about 200 documented app design systems as DESIGN.md files) | Precise design specifications to hand to an agent instead of "make it modern" | Fits the plan: phase 2 writes ixOS's own design spec in the same shape | Read a handful in phase 2 to choose the spec's format |
 
 ## Deep audit template
 
@@ -56,4 +57,4 @@ Each deep audit (one PR per reference) records, for every significant issue:
 
 Plus a short "what the reference gets wrong" section, so we don't import its mistakes.
 
-Screenshots of reference apps are taken from the app on the phone or from the project's own published images, kept in `docs/research/experience/references/images/`, and used only for comparison.
+Reference screenshots go in the repo only when we are entitled to reproduce them (our own apps, or a reference's images under a licence that allows it, with attribution). Otherwise a deep audit links to the source and describes the observation in words; annotated links are usually enough.

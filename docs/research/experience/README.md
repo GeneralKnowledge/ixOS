@@ -8,6 +8,8 @@ ixOS has spent its effort on what the apps can do: the Rust core, persistence, n
 
 The goal: ixOS doesn't just have apps that work. It has apps people enjoy using.
 
+The larger aim is an ixOS product-design philosophy: not one appearance, but a recognisable standard for how an ixOS app welcomes someone, explains itself, handles mistakes, communicates success and makes its most important task easy. A new app made with `forge init` should start with a good experience, not only a working Rust core and some screens.
+
 ## The three questions
 
 Every app is judged against these, in this order:
@@ -19,6 +21,8 @@ Every app is judged against these, in this order:
 Modern-looking is not the same as good. A beautiful screen can still be frustrating, an animation doesn't fix poor navigation, and a design system doesn't make a product intuitive by itself.
 
 ## The six dimensions
+
+Every finding records its evidence: source verified, visually verified (screenshot or phone) or user validated (the workflow performed). Statements about how an app feels stay judgements until user validated.
 
 Each app is examined in six dimensions, which cover the five areas of the brief (visual identity, interaction, states and feedback, accessibility and ergonomics, product coherence):
 
@@ -39,7 +43,7 @@ Each app is examined in six dimensions, which cover the five areas of the brief 
 | 1b. Reference deep audits | What mature apps do, and why: LocalSend, Ice Cubes, NetNewsWire first | One PR each, `references/<app>.md` |
 | 2. Design direction | An ixOS visual language, interaction principles and a small set of foundations | A design-direction doc PR |
 | 3. Forge Experience System | The shared foundations and components (ForgeUI and ForgeAppKit), plus quality checks | Implementation PRs |
-| 4. App redesigns | Each app improved on its own terms, most-used workflows first | One PR per app |
+| 4. App redesigns | Each app improved on its own terms, most important workflows first. The order comes from the reference audits and Reuben's priorities, not from the audit's order | One PR per app |
 | 5. Experience validation | Whole workflows on the iPhone: usability, consistency, accessibility, responsiveness | Phone sittings, ledger records |
 
 Research PRs stay separate from implementation PRs, so nothing is changed for looks before the problem is understood.
@@ -49,6 +53,7 @@ Research PRs stay separate from implementation PRs, so nothing is changed for lo
 - **Don't copy appearance; reverse-engineer decisions.** Why is an action prominent, why is something hidden, how does the app say it is unsure, what happens after a mistake.
 - **Shared infrastructure gives good defaults; it doesn't dictate each app's design.** Each app keeps its own personality inside one recognisable ecosystem.
 - **Native first.** Wrap Apple's frameworks and follow iOS conventions; never replace them ([architecture.md](../../architecture.md)).
+- **Guidelines, not compliance rules.** Interaction principles are starting points with stated exceptions: feedback in proportion to the action, sample data only where it isn't personal, settings placed by each app's information architecture.
 - **Extract on the second use.** A shared component exists because two apps needed it, not because a catalogue should have it. No giant component library.
 - **Borrow ideas, not dependencies.** The ForgeUI proposal already set this for design systems; it holds for the reference apps too.
 
