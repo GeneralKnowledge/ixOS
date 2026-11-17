@@ -3265,6 +3265,7 @@ dependencies = [
  "axum",
  "chat-core",
  "chat-server",
+ "ciborium",
  "forge-app",
  "forge-devproto",
  "forge-net",

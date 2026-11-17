@@ -182,6 +182,11 @@ pub struct CodeReceipt {
     pub resumed_from: u64,
     pub seconds: f64,
     pub megabytes_per_second: f64,
+    /// The sender's endpoint id: who proved the code. Never trust by name.
+    pub sender_id: String,
+    /// What the sender calls itself (empty if it didn't say): a label, not
+    /// proof of anything.
+    pub sender_name: String,
 }
 
 pub(crate) fn connection(reason: impl std::fmt::Display) -> RelayError {
@@ -238,12 +243,14 @@ impl From<RelayError> for Failed {
 /// the sender's "host:port"s from Bonjour and `endpoint_id` its id (both
 /// from its advertisement). It lands in `inbox`; blobs stay in the node's
 /// store, so a later try resumes.
+#[allow(clippy::too_many_arguments)]
 pub async fn receive(
     code: &str,
     addresses: &[String],
     endpoint_id: &str,
     node: Arc<Node>,
     inbox: &Path,
+    my_name: String,
     progress: Arc<CodeProgress>,
     stop: Arc<AtomicBool>,
 ) -> Result<CodeReceipt, Failed> {
@@ -274,7 +281,7 @@ pub async fn receive(
         let offered = Arc::clone(&offered);
         async move {
             tokio::select! {
-                r = run(code, target, &node, &inbox, &progress, &offered) => r,
+                r = run(code, target, &node, &inbox, &my_name, &progress, &offered) => r,
                 _ = async {
                     while !stop.load(Ordering::SeqCst) {
                         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -296,6 +303,7 @@ async fn run(
     target: EndpointAddr,
     node: &Node,
     inbox: &Path,
+    my_name: &str,
     progress: &CodeProgress,
     offered: &std::sync::Mutex<Option<Offered>>,
 ) -> Result<CodeReceipt, RelayError> {
@@ -399,6 +407,11 @@ async fn run(
         let mut send = ticker.await.map_err(connection)?;
         saved?;
         put(&mut send, b"done").await?;
+        // Names last, once the transfer is safe: each side learns what the
+        // other calls itself, for "Trust this device?". An older sender
+        // just closes.
+        let _ = put(&mut send, &named(my_name)).await;
+        let sender_name = their_name(&mut recv).await;
         let _ = send.finish();
         let _ = tokio::time::timeout(Duration::from_secs(3), conn.closed()).await;
         let fetched = size.saturating_sub(already);
@@ -413,9 +426,27 @@ async fn run(
             } else {
                 0.0
             },
+            sender_id: sender.to_string(),
+            sender_name,
         })
     }
     .await
+}
+
+/// The message that tells the other side of a code transfer this device's
+/// name.
+pub(crate) fn named(name: &str) -> Vec<u8> {
+    [b"me:".as_slice(), name.as_bytes()].concat()
+}
+
+/// The other side's name, if it says it within a moment; empty otherwise.
+pub(crate) async fn their_name(recv: &mut RecvStream) -> String {
+    match get_within(recv, Duration::from_secs(2)).await {
+        Ok(m) if m.starts_with(b"me:") => {
+            crate::device::clean_offered_name(&String::from_utf8_lossy(&m[3..]), "")
+        }
+        _ => String::new(),
+    }
 }
 
 /// Reads an offer: the root hash, the size, whether it is a folder, and
@@ -437,18 +468,16 @@ fn parse_offer(offer: &[u8]) -> Result<(Hash, u64, bool, String), RelayError> {
         },
         _ => (false, &offer[40..]),
     };
-    let name = Path::new(&String::from_utf8_lossy(name).to_string())
-        .file_name()
-        .and_then(|n| n.to_str())
-        .filter(|n| !n.is_empty())
-        .unwrap_or(if collection { "folder" } else { "file" })
-        .to_string();
+    let name = crate::device::clean_offered_name(
+        &String::from_utf8_lossy(name),
+        if collection { "folder" } else { "file" },
+    );
     Ok((hash, size, collection, name))
 }
 
 /// Fetches `content` from the sender, verifying every chunk, and keeps
 /// `progress.done` current.
-async fn fetch(
+pub(crate) async fn fetch(
     node: &Node,
     content: HashAndFormat,
     sender: EndpointId,
@@ -484,7 +513,7 @@ async fn fetch(
 
 /// Copies what arrived out of the store: a file to `out`, a folder's files
 /// under the folder `out`, each kept inside it whatever its path says.
-async fn save(
+pub(crate) async fn save(
     node: &Node,
     hash: Hash,
     collection: bool,
@@ -533,7 +562,7 @@ fn inside_folder(folder: &Path, inside: &str) -> Option<PathBuf> {
 }
 
 /// `inbox/name`, or `inbox/name (2)` and so on if that is taken.
-fn unique_path(inbox: &Path, name: &str) -> PathBuf {
+pub(crate) fn unique_path(inbox: &Path, name: &str) -> PathBuf {
     let first = inbox.join(name);
     if !first.exists() {
         return first;

@@ -30,10 +30,12 @@ pub mod chat;
 mod code;
 mod code_send;
 mod code_session;
+mod device;
 pub mod link;
 mod model;
 mod node;
 mod record;
+mod trust;
 pub mod wire;
 
 use std::collections::HashMap;
@@ -53,6 +55,8 @@ pub use code::{CodeReceipt, CODE_SERVICE_TYPE};
 use code_send::CodeSendShared;
 pub use code_send::{CodeSend, NearbySender};
 use node::NodeCell;
+pub use trust::PairingPolicy;
+use trust::{AfterCode, SavedTrust};
 
 pub use link::AskReport;
 use link::{Inbound, Link, Me, Outgoing, Them};
@@ -132,6 +136,13 @@ pub struct RelayCore {
     code_stop: Mutex<Arc<AtomicBool>>,
     /// Sending with a word code (`code_send`).
     code_send: Arc<CodeSendShared>,
+    /// The device a code transfer was just made with, waiting for the
+    /// person to say whether to trust it (Ask to Pair).
+    trust_offer: Mutex<Option<TrustOffer>>,
+    /// Trusted devices the app sees nearby, with their addresses.
+    nearby: Mutex<HashMap<String, Vec<String>>>,
+    /// The stop switch of each send to a trusted device, by history id.
+    device_stops: Mutex<HashMap<u64, Arc<AtomicBool>>>,
     me: Weak<RelayCore>,
 }
 
@@ -175,10 +186,8 @@ impl RelayCore {
             .unwrap_or_else(|_| directory.path().join("codes"));
         // Sends kept their own store before one store served both.
         let _ = std::fs::remove_dir_all(code_dir.join("send-store"));
-        let node = Arc::new(NodeCell::new(
-            directory.path().to_path_buf(),
-            code_dir.join("store"),
-        ));
+        let key_dir = directory.path().to_path_buf();
+        let store_dir = code_dir.join("store");
         let state = State {
             record,
             inbox,
@@ -192,12 +201,19 @@ impl RelayCore {
             progress: Mutex::new(HashMap::new()),
             listening: Mutex::new(None),
             answers_with: Mutex::new(None),
-            node,
+            node: Arc::new(NodeCell::new(
+                key_dir,
+                store_dir,
+                Arc::new(CoreDevices { core: me.clone() }),
+            )),
             received_in: Mutex::new(code_dir.join("received")),
             code_dir,
             code_progress: Arc::new(CodeProgress::default()),
             code_stop: Mutex::new(Arc::new(AtomicBool::new(false))),
             code_send: Arc::new(CodeSendShared::default()),
+            trust_offer: Mutex::new(None),
+            nearby: Mutex::new(HashMap::new()),
+            device_stops: Mutex::new(HashMap::new()),
             me: me.clone(),
         }))
     }
@@ -251,10 +267,15 @@ impl RelayCore {
             &endpoint_id,
             node,
             &into,
+            self.identity().name,
             Arc::clone(&self.code_progress),
             stop,
         )
         .await;
+        if let Ok(receipt) = &result {
+            self.after_code(receipt.sender_id.clone(), receipt.sender_name.clone())
+                .await;
+        }
         let entry = match &result {
             Ok(r) => Some((
                 r.name.clone(),
@@ -339,6 +360,7 @@ impl RelayCore {
                 reason: "already sending".into(),
             });
         }
+        *lock(&self.code_send.my_name) = self.identity().name;
         let weak = self.me.clone();
         let sent = paths.clone();
         let on_end: code_send::OnEnd = Box::new(move |end: &CodeSend| {
@@ -367,6 +389,10 @@ impl RelayCore {
                 }));
                 if let Err(err) = saved {
                     forge_runtime::logging::warn!("relay couldn't save a code send: {err}");
+                }
+                let receiver = lock(&core.code_send.receiver).take();
+                if let Some((id, name)) = receiver {
+                    forge_runtime::block_on(core.after_code(id, name));
                 }
             });
         });
@@ -712,6 +738,257 @@ pub fn word_code_number(code: String) -> Result<u8, RelayError> {
     code::WordCode::parse(&code).map(|c| c.number)
 }
 
+/// A device trusted here (or revoked: then it is listed only so the person
+/// can trust it again).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct Device {
+    /// Its iroh endpoint id: what trust is keyed by.
+    pub endpoint_id: String,
+    /// The name it had when trusted.
+    pub name: String,
+    /// False when revoked.
+    pub trusted: bool,
+    pub since_ms: i64,
+    /// Whether it may send files and notes here.
+    pub receives_from: bool,
+    /// Whether the app sees it on this network now.
+    pub nearby: bool,
+}
+
+/// A device a code transfer was just made with, which the person may
+/// trust (the Ask to Pair policy).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct TrustOffer {
+    pub endpoint_id: String,
+    /// What it calls itself: not proof of anything.
+    pub name: String,
+}
+
+/// A trusted device the app found nearby with Bonjour.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct NearbyDevice {
+    pub endpoint_id: String,
+    /// "host:port", from the advertisement.
+    pub addresses: Vec<String>,
+}
+
+/// What the app advertises so trusted devices can reach this one: the
+/// Bonjour service [`CODE_SERVICE_TYPE`] with TXT `d=1` and `id`, on `port`.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct DeviceService {
+    pub endpoint_id: String,
+    pub port: u16,
+}
+
+/// Trusted devices (brief PR 3): trust after a code transfer, the pairing
+/// policy, revoking and forgetting, and notes and files over
+/// `relay/device/1` with no code.
+#[uniffi::export]
+impl RelayCore {
+    /// Starts this device on iroh, if it isn't yet, so trusted devices can
+    /// reach it. The app advertises the result with Bonjour while Relay is
+    /// on screen.
+    pub async fn device_service(&self) -> Result<DeviceService, RelayError> {
+        let node = self.node().await?;
+        Ok(DeviceService {
+            endpoint_id: node.id().to_string(),
+            port: node.port()?,
+        })
+    }
+
+    /// Trusted and revoked devices, by name. Forgotten ones aren't listed.
+    pub fn devices(&self) -> Vec<Device> {
+        let nearby = lock(&self.nearby).clone();
+        let record = self.record.get();
+        let mut list: Vec<Device> = record
+            .devices
+            .listed()
+            .map(|d| Device {
+                endpoint_id: d.endpoint_id.clone(),
+                name: d.name.clone(),
+                trusted: d.trust == SavedTrust::Trusted,
+                since_ms: d.since_ms,
+                receives_from: d.receives_from,
+                nearby: d.trust == SavedTrust::Trusted && nearby.contains_key(&d.endpoint_id),
+            })
+            .collect();
+        list.sort_by_key(|d| (!d.trusted, d.name.to_lowercase()));
+        list
+    }
+
+    /// The trusted devices the app sees nearby now, replacing the last list.
+    pub fn devices_nearby(&self, devices: Vec<NearbyDevice>) {
+        *lock(&self.nearby) = devices
+            .into_iter()
+            .map(|d| (d.endpoint_id, d.addresses))
+            .collect();
+    }
+
+    pub fn pairing_policy(&self) -> PairingPolicy {
+        self.record.get().devices.policy
+    }
+
+    pub async fn set_pairing_policy(&self, policy: PairingPolicy) -> Result<(), RelayError> {
+        self.rt
+            .command("pairing-policy", move |state| {
+                state.change(|r| {
+                    r.devices.policy = policy;
+                    Ok(())
+                })
+            })
+            .await
+    }
+
+    /// The device the last code transfer was with, when the pairing policy
+    /// asks whether to trust it. Ask on both sides; each decides for itself.
+    pub fn trust_offer(&self) -> Option<TrustOffer> {
+        lock(&self.trust_offer).clone()
+    }
+
+    /// The person said Not Now.
+    pub fn dismiss_trust_offer(&self) {
+        lock(&self.trust_offer).take();
+    }
+
+    /// The person trusts the device: from the trust offer, or a revoked
+    /// device trusted again from the list. The only way a revoked device
+    /// becomes trusted again.
+    pub async fn trust_device(&self, endpoint_id: String) -> Result<(), RelayError> {
+        let offered = {
+            let mut offer = lock(&self.trust_offer);
+            match offer.as_ref() {
+                Some(o) if o.endpoint_id == endpoint_id => offer.take(),
+                _ => None,
+            }
+        };
+        let name = match offered {
+            Some(o) => o.name,
+            None => match self.record.get().devices.get(&endpoint_id) {
+                Some(d) => d.name.clone(),
+                None => {
+                    return Err(RelayError::UnknownPeer { id: endpoint_id });
+                }
+            },
+        };
+        let name = if name.trim().is_empty() {
+            "Unnamed device".to_string()
+        } else {
+            name
+        };
+        self.rt
+            .command("trust-device", move |state| {
+                state.change(|r| {
+                    r.devices.trust(&endpoint_id, &name, now_ms());
+                    Ok(())
+                })
+            })
+            .await
+    }
+
+    /// Ends trust in the device: its trusted connections are refused, and
+    /// no policy or code makes it trusted again by itself. One-off code
+    /// transfers still work, as with any device.
+    pub async fn revoke_device(&self, endpoint_id: String) -> Result<(), RelayError> {
+        lock(&self.nearby).remove(&endpoint_id);
+        self.rt
+            .command("revoke-device", move |state| {
+                state.change(|r| {
+                    if r.devices.revoke(&endpoint_id) {
+                        Ok(())
+                    } else {
+                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                    }
+                })
+            })
+            .await
+    }
+
+    /// Takes the device off the list. Pair Automatically may trust it
+    /// again after a code transfer; a revoked device stays revoked.
+    pub async fn forget_device(&self, endpoint_id: String) -> Result<(), RelayError> {
+        self.rt
+            .command("forget-device", move |state| {
+                state.change(|r| {
+                    if r.devices.forget(&endpoint_id) {
+                        Ok(())
+                    } else {
+                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                    }
+                })
+            })
+            .await
+    }
+
+    /// Whether a trusted device may send files and notes here.
+    pub async fn set_receives_from(&self, endpoint_id: String, on: bool) -> Result<(), RelayError> {
+        self.rt
+            .command("receives-from", move |state| {
+                state.change(|r| {
+                    if r.devices.set_receives_from(&endpoint_id, on) {
+                        Ok(())
+                    } else {
+                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                    }
+                })
+            })
+            .await
+    }
+
+    /// Sends a note to a trusted device, with no code.
+    pub async fn send_note_to_device(
+        &self,
+        endpoint_id: String,
+        text: String,
+    ) -> Result<Transfer, RelayError> {
+        let text = model::clean_note(&text)?;
+        let item = SavedItem::Note { text: text.clone() };
+        self.send_to_trusted(endpoint_id, item, device::Outgoing::Note(text))
+            .await
+    }
+
+    /// Sends files and folders to a trusted device as one transfer, with
+    /// no code. Several items arrive in one folder named "N items".
+    pub async fn send_to_device(
+        &self,
+        endpoint_id: String,
+        paths: Vec<String>,
+    ) -> Result<Transfer, RelayError> {
+        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        if paths.is_empty() {
+            return Err(RelayError::File {
+                reason: "nothing to send".into(),
+            });
+        }
+        if let Some(missing) = paths.iter().find(|p| !p.is_file() && !p.is_dir()) {
+            return Err(RelayError::File {
+                reason: format!("there is no file or folder at {}", missing.display()),
+            });
+        }
+        let name = code_send::send_name(&paths);
+        let size = code_send::items_in(&paths)
+            .map(|f| f.iter().map(|(_, _, n)| n).sum())
+            .unwrap_or(0);
+        let file = match paths.as_slice() {
+            [one] => Some(one.to_string_lossy().into_owned()),
+            _ => None,
+        };
+        let item = SavedItem::File {
+            name: name.clone(),
+            size,
+            file,
+        };
+        self.send_to_trusted(endpoint_id, item, device::Outgoing::Files { paths, name })
+            .await
+    }
+
+    /// Stops a send to a trusted device that is still going.
+    pub fn cancel_transfer(&self, id: u64) {
+        if let Some(stop) = lock(&self.device_stops).get(&id) {
+            stop.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
 /// What `send` carries, owned for the work thread.
 enum Payload {
     Note(String),
@@ -898,6 +1175,193 @@ impl RelayCore {
             .into_iter()
             .find(|t| t.id == id)
             .ok_or(RelayError::NotFound { id })
+    }
+}
+
+impl RelayCore {
+    /// Applies the pairing policy after a code transfer with `endpoint_id`,
+    /// which called itself `name`.
+    async fn after_code(&self, endpoint_id: String, name: String) {
+        if endpoint_id.is_empty() {
+            return;
+        }
+        let (id, called) = (endpoint_id.clone(), name.clone());
+        let decided = self
+            .rt
+            .command("after-code", move |state| {
+                state.change(|r| Ok(r.devices.after_code(&id, &called, now_ms())))
+            })
+            .await;
+        match decided {
+            Ok(AfterCode::Offer) => {
+                *lock(&self.trust_offer) = Some(TrustOffer { endpoint_id, name });
+            }
+            Ok(_) => {}
+            Err(err) => {
+                forge_runtime::logging::warn!("relay couldn't apply the pairing policy: {err}")
+            }
+        }
+    }
+
+    /// Sends one item to a trusted device over `relay/device/1` and keeps
+    /// it in the history.
+    async fn send_to_trusted(
+        &self,
+        endpoint_id: String,
+        item: SavedItem,
+        outgoing: device::Outgoing,
+    ) -> Result<Transfer, RelayError> {
+        let saved = self.record.get().devices.get(&endpoint_id).cloned();
+        let Some(saved) = saved.filter(|d| d.trust == SavedTrust::Trusted) else {
+            return Err(RelayError::UnknownPeer { id: endpoint_id });
+        };
+        let addresses = lock(&self.nearby)
+            .get(&endpoint_id)
+            .cloned()
+            .filter(|a| !a.is_empty())
+            .unwrap_or(saved.addresses);
+        let to = device::endpoint_addr(&endpoint_id, &addresses)?;
+        let peer_id = endpoint_id.clone();
+        let id = self
+            .rt
+            .command("begin-send", move |state| {
+                state.change(|r| Ok(r.begin(&peer_id, true, item, now_ms())))
+            })
+            .await?;
+        let stop = Arc::new(AtomicBool::new(false));
+        lock(&self.device_stops).insert(id, Arc::clone(&stop));
+        let node = Arc::clone(&self.node);
+        let my_name = self.identity().name;
+        let weak = self.me.clone();
+        let result = code::TOKIO
+            .spawn(async move {
+                let node = node.get().await?;
+                let report = |done: u64| {
+                    if let Some(core) = weak.upgrade() {
+                        lock(&core.progress).insert(id, done);
+                    }
+                };
+                device::send(&node, to, my_name, outgoing, report, stop).await
+            })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)));
+        lock(&self.device_stops).remove(&id);
+        lock(&self.progress).remove(&id);
+        let status = match &result {
+            Ok(_) => SavedStatus::Done,
+            Err(err) => SavedStatus::Failed {
+                reason: err.saved_reason(),
+            },
+        };
+        let reached = result.is_ok().then_some(addresses);
+        self.rt
+            .command("finish-send", move |state| {
+                state.change(|r| {
+                    r.finish(id, status, None);
+                    if let Some(addresses) = reached {
+                        r.devices.seen_at(&endpoint_id, &addresses);
+                    }
+                    Ok(())
+                })
+            })
+            .await?;
+        result?;
+        self.transfers()
+            .into_iter()
+            .find(|t| t.id == id)
+            .ok_or(RelayError::NotFound { id })
+    }
+}
+
+/// The listening side of `relay/device/1`, answered from the core. Called
+/// on blocking threads, so commands are waited for directly.
+struct CoreDevices {
+    core: Weak<RelayCore>,
+}
+
+impl CoreDevices {
+    fn command<T: Send + 'static>(
+        &self,
+        name: &'static str,
+        edit: impl FnOnce(&mut Record) -> Result<T, RelayError> + Send + 'static,
+    ) -> Result<T, RelayError> {
+        let core = self.core.upgrade().ok_or(RelayError::Stopped {
+            kind: forge_app::ErrorKind::ShutDown,
+        })?;
+        forge_runtime::block_on(core.rt.command(name, move |state| state.change(edit)))
+    }
+}
+
+impl device::DeviceInbound for CoreDevices {
+    fn rights(&self, from: &str) -> Option<device::Rights> {
+        let core = self.core.upgrade()?;
+        let record = core.record.get();
+        let saved = record.devices.get(from)?;
+        trust::may_connect(Some(saved.trust)).then_some(device::Rights {
+            receives_from: saved.receives_from,
+        })
+    }
+
+    fn my_name(&self) -> String {
+        self.core
+            .upgrade()
+            .map(|c| c.identity().name)
+            .unwrap_or_default()
+    }
+
+    fn folder(&self) -> PathBuf {
+        self.core
+            .upgrade()
+            .map(|c| lock(&c.received_in).clone())
+            .unwrap_or_default()
+    }
+
+    fn note(&self, from: &str, text: String) -> Result<(), RelayError> {
+        let text = model::clean_note(&text)?;
+        let from = from.to_string();
+        self.command("device-note", move |r| {
+            let id = r.begin(&from, false, SavedItem::Note { text }, now_ms());
+            r.finish(id, SavedStatus::Done, None);
+            Ok(())
+        })
+    }
+
+    fn begin_file(&self, from: &str, name: &str, size: u64) -> Result<u64, RelayError> {
+        let (from, name) = (from.to_string(), name.to_string());
+        self.command("device-file", move |r| {
+            Ok(r.begin(
+                &from,
+                false,
+                SavedItem::File {
+                    name,
+                    size,
+                    file: None,
+                },
+                now_ms(),
+            ))
+        })
+    }
+
+    fn progress(&self, id: u64, done: u64) {
+        if let Some(core) = self.core.upgrade() {
+            lock(&core.progress).insert(id, done);
+        }
+    }
+
+    fn finish_file(&self, id: u64, result: Result<String, String>) {
+        if let Some(core) = self.core.upgrade() {
+            lock(&core.progress).remove(&id);
+        }
+        let (status, file) = match result {
+            Ok(path) => (SavedStatus::Done, Some(path)),
+            Err(reason) => (SavedStatus::Failed { reason }, None),
+        };
+        if let Err(err) = self.command("device-file-done", move |r| {
+            r.finish(id, status, file);
+            Ok(())
+        }) {
+            forge_runtime::logging::warn!("relay couldn't save a transfer: {err}");
+        }
     }
 }
 

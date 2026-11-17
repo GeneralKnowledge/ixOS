@@ -55,6 +55,8 @@ chat-core = { path = "../messaging/chat-core", features = ["ureq"] }
 async-trait = "0.1"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+# relay/device/1 messages (src/device.rs), as forge-devproto encodes its own.
+ciborium = "0.2"
 thiserror = "2.0"
 # Receiving with a word code (src/code.rs, Relay M1): iroh with relays off,
 # iroh-blobs for verified, resumable files, SPAKE2 for the code. The same
