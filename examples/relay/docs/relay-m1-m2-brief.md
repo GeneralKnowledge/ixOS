@@ -122,6 +122,9 @@ batched, built before the phone is needed). No test-only PRs.
 
 - A conversation per trusted device over `relay/device/1`: text, with
   files and folders attached through the transfer from PR 1.
+- Messages and files to a device that is away wait in one delivery outbox
+  and go when it is seen ([relay-delivery-outbox.md](relay-delivery-outbox.md),
+  proposed 2026-11-17).
 - On chat-core, Relay's messaging engine since Chat merged into Relay
   ([relay-chat-merge.md](relay-chat-merge.md#step-3-messages-between-trusted-devices-on-chat-core)):
   a `PeerRepo` over `relay/device/1` beside the chat server's `HttpRepo`,
