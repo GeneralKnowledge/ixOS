@@ -7,7 +7,7 @@ Linux-first, Rust-first framework for building native mobile apps with **Rust** 
 
 > **Platform focus: iOS.** Android is **work in progress** and paused while the project concentrates on iOS. The Android code, examples and template stay in the repository and keep building in CI, but they get no new features, Android has not been validated on a physical phone, and new capabilities land on iOS only. See [the roadmap](docs/roadmap.md#android--work-in-progress).
 
-This repository (`ixOS` on GitHub) ships **Checklist**, the smallest app on the ixOS runtime, a networked **Weather** example (iOS), a **Chat** demo (iOS, with a frozen Android twin; live event stream, room subscriptions, offline retry; see [examples/chat/docs/chat-demo.md](examples/chat/docs/chat-demo.md)), **Pocket Library**, a multi-screen reading tracker made with `forge init` that owns its Rust crate ([examples/pocket-library](examples/pocket-library/README.md)), a developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
+This repository (`ixOS` on GitHub) ships **Checklist**, the smallest app on the ixOS runtime, a networked **Weather** example (iOS), a **Chat** demo (iOS, with a frozen Android twin; live event stream, room subscriptions, offline retry; see [examples/relay/docs/chat-demo.md](examples/relay/docs/chat-demo.md)), **Pocket Library**, a multi-screen reading tracker made with `forge init` that owns its Rust crate ([examples/pocket-library](examples/pocket-library/README.md)), a developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
 
 The Rust-to-Swift boundary is asynchronous: each app's Rust core runs on the ixOS runtime (`forge-app`), whose commands are `async` calls that save before they return, whose queries never wait, and whose events tell the SwiftUI host (ForgeKit's `ForgeHost`) when to re-read, with explicit cancellation and typed errors. See [docs/architecture.md](docs/architecture.md) and [docs/ffi-policy.md](docs/ffi-policy.md).
 
@@ -16,7 +16,7 @@ The Rust-to-Swift boundary is asynchronous: each app's Rust core runs on the ixO
   <img src="docs/images/chat-ios-room.png" width="270" alt="Chat example on an iPhone: the General room, with messages sent from the phone and posted from curl">
 </p>
 
-The [Chat example](examples/chat/docs/chat-demo.md) on an iPhone, built and installed from Linux with xtool, talking to the local chat server (the grey bubbles were posted from another client).
+The [Chat example](examples/relay/docs/chat-demo.md) on an iPhone, built and installed from Linux with xtool, talking to the local chat server (the grey bubbles were posted from another client).
 
 ## Why Forge?
 
@@ -47,7 +47,7 @@ The docs have one entry page per area, [framework](docs/framework.md), [tools](d
 
 `--minimal` starts from a one-screen app to learn from, and [docs/first-app.md](docs/first-app.md) adds a feature to it in about 20 minutes. Leave it out for the full starter, a multi-screen notes app that shows events, networking, the app lifecycle and native services. [docs/getting-started.md](docs/getting-started.md) walks through all of this from a bare Linux machine to the app on your iPhone, including the one-time iPhone steps (Trust, Developer Mode, Apple sign-in).
 
-To try the bundled examples instead: `forge run ios --project examples/chat` (start `make chat-server ARGS="--bind 0.0.0.0:8787"` first). The Android example (`examples/pocket-library-android`) is work in progress.
+To try the bundled examples instead: `forge run ios --project examples/relay` (start `make chat-server ARGS="--bind 0.0.0.0:8787"` first). The Android example (`examples/pocket-library-android`) is work in progress.
 
 [docs/builds.md](docs/builds.md) lists what each build produces: xtool or Xcode, device or simulator, debug or release, and what is not supported yet. A Mac with Xcode works too ([docs/ios-xcode.md](docs/ios-xcode.md)) but is never required.
 
@@ -70,8 +70,8 @@ crates/forge-services  # Native services for apps: Keychain, files, notification
 crates/forge-cli       # `forge` CLI
 examples/checklist        # The first app on the runtime and ForgeKit
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
-examples/chat             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see examples/chat/docs/chat-demo.md)
-examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
+examples/relay             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see examples/relay/docs/chat-demo.md)
+examples/relay/messaging/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
 examples/pocket-library   # Reading tracker from forge init: own Rust crate, catalogue search, EPUB import
 templates/app-rust        # Starter Rust crate every new iOS app gets as rust/, on forge-app (see docs/app-crate.md)
 templates/android-rust    # Android's starter crate (work in progress, the shape from before forge-app)
@@ -143,7 +143,7 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 - Development builds only: debug APKs on Android, xtool or Xcode development builds on iOS. No App Store or Google Play distribution yet ([docs/builds.md](docs/builds.md)). The plan for the first App Store release, and which of its steps need a Mac, is [docs/first-app-store-release.md](docs/first-app-store-release.md).
 - Apps need a Forge checkout on the same machine: the runtime crates are not published to crates.io yet.
 - Android is work in progress: it has not been validated on a physical phone, gets no new features, and has none of the `forge-services` native services. CI still builds the APK and runs the JVM tests when Android or shared Rust code changes.
-- Networking is demonstrated by the iOS Weather example ([examples/weather](examples/weather/README.md)) and the Chat example ([examples/chat](examples/chat/README.md)). HTTPS certificates are checked with each platform's trust store; on Android the host calls `ForgeAndroid.init(applicationContext)` once at startup ([docs/android-setup.md](docs/android-setup.md#https-certificate-verification)).
+- Networking is demonstrated by the iOS Weather example ([examples/weather](examples/weather/README.md)) and the Chat example ([examples/relay](examples/relay/docs/messaging.md)). HTTPS certificates are checked with each platform's trust store; on Android the host calls `ForgeAndroid.init(applicationContext)` once at startup ([docs/android-setup.md](docs/android-setup.md#https-certificate-verification)).
 
 - `rust-toolchain.toml` pins Rust; rustup picks it up automatically.
 - `environment.json` bootstraps hosted coding-agent VMs (Ubuntu 24.04): its `install` command installs Swift, xtool, usbmuxd and the iOS Rust target, then runs `cargo fetch`. It is not machine-specific and is not needed for local development. See [docs/linux-setup.md](docs/linux-setup.md#hosted-agent-vms-environmentjson).

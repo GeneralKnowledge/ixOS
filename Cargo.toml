@@ -12,9 +12,6 @@ members = [
     "crates/forge-devproto",
     "crates/forge-uitest",
     "crates/forge-crash",
-    "examples/chat-core",
-    "examples/chat-server",
-    "examples/chat-cli",
     "examples/good-dog-core",
     "crates/forge-cli",
     "crates/uniffi-bindgen",
@@ -33,7 +30,6 @@ forge-app = { path = "crates/forge-app" }
 forge-services = { path = "crates/forge-services" }
 forge-reader = { path = "crates/forge-reader" }
 forge-native = { path = "crates/forge-native" }
-chat-core = { path = "examples/chat-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

@@ -179,6 +179,11 @@ struct ProjectView: View {
                     Text("Get ready: one bar…").forgeForeground(.warning)
                 } else if recording != nil {
                     Text("Recording one pass. Stop keeps it.").foregroundStyle(.red)
+                } else if let reason = engine.stoppedBecause {
+                    Text("Stopped. \(reason)")
+                        .font(.footnote)
+                        .forgeForeground(.warning)
+                        .accessibilityIdentifier("project.stoppedBecause")
                 } else if let summary = detail?.summary, let detail {
                     Text(SoundFormat.timing(tempo: summary.tempoBpm, bars: summary.bars))
                     Text(SoundFormat.duration(ms: Int64(detail.loopSeconds * 1000)) + " loop")

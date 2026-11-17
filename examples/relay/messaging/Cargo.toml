@@ -1,0 +1,21 @@
+# Relay's messaging: the chat engine (chat-core), the chat server you run on
+# a computer of yours (chat-server) and its terminal client (chat-cli). They
+# came from the Chat app when it merged into Relay
+# (../docs/relay-chat-merge.md); Relay's own crate (../rust) uses chat-core.
+# Their own workspace, as Relay's crate has its own.
+[workspace]
+resolver = "2"
+members = ["chat-core", "chat-server", "chat-cli"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.89"
+
+[workspace.dependencies]
+forge-net = { path = "../../../crates/forge-net" }
+forge-storage = { path = "../../../crates/forge-storage" }
+chat-core = { path = "chat-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"

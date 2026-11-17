@@ -1,5 +1,3 @@
-import ChatApp
-import ChatFFI
 import ChecklistApp
 import CommonplaceApp
 import CommonplaceFFI
@@ -14,6 +12,7 @@ import GoodDogFFI
 import PocketLibraryApp
 import PocketLibraryFFI
 import RelayApp
+import RelayFFI
 import SketchbookApp
 import SoundscapeApp
 import SoundscapeFFI
@@ -85,7 +84,7 @@ struct AppsView: View {
 
 /// The apps the showcase runs, in the order the list shows them.
 enum EmbeddedApp: String, CaseIterable, Identifiable {
-    case weather, checklist, library, goodDog, commonplace, chat, fieldKit, sketchbook, soundscape, relay, forgeUI
+    case weather, checklist, library, goodDog, commonplace, fieldKit, sketchbook, soundscape, relay, forgeUI
 
     /// The UserDefaults key of the app to open at launch.
     static let launchKey = "launchApp"
@@ -99,7 +98,6 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .library: "Pocket Library"
         case .goodDog: "Good Dog"
         case .commonplace: "Commonplace"
-        case .chat: "Chat"
         case .fieldKit: "FieldKit"
         case .sketchbook: "Sketchbook"
         case .soundscape: "Soundscape"
@@ -115,11 +113,10 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .library: "A reading tracker with search, EPUB import and read-aloud."
         case .goodDog: "A daily plan of training and care for your dog."
         case .commonplace: "A feed reader that keeps articles to read offline."
-        case .chat: "Messaging through the Forge chat server, with an on-device assistant."
         case .fieldKit: "A field notebook: record a GPS track and take notes along the way."
         case .sketchbook: "Draw with your finger in layers, with undo, and export to PNG or PDF."
         case .soundscape: "Record loops, layer them and mix down to a WAV file; listen to, compare and pick song takes from your computer."
-        case .relay: "Pair by QR code, then send notes and files straight to a nearby device, encrypted."
+        case .relay: "Messages through your chat server with an on-device assistant, and files, photos and folders straight to a nearby device."
         case .forgeUI: "Every ForgeUI component, with example screens."
         }
     }
@@ -131,7 +128,6 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .library: "books.vertical"
         case .goodDog: "pawprint"
         case .commonplace: "newspaper"
-        case .chat: "bubble.left.and.bubble.right"
         case .fieldKit: "map"
         case .sketchbook: "scribble.variable"
         case .soundscape: "waveform"
@@ -148,11 +144,10 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .library: PocketLibraryApp.ContentView(model: EmbeddedApps.library)
         case .goodDog: GoodDogApp.ContentView(host: EmbeddedApps.goodDog)
         case .commonplace: CommonplaceApp.ContentView(host: EmbeddedApps.commonplace)
-        case .chat: ChatApp.ContentView(model: EmbeddedApps.chat)
         case .fieldKit: FieldKitApp.ContentView(host: EmbeddedApps.fieldKit)
         case .sketchbook: SketchbookApp.ContentView(host: EmbeddedApps.sketchbook)
         case .soundscape: SoundscapeApp.ContentView(host: EmbeddedApps.soundscape)
-        case .relay: RelayApp.ContentView(host: EmbeddedApps.relay)
+        case .relay: RelayApp.RelayRoot(host: EmbeddedApps.relay, chat: EmbeddedApps.chat)
         case .forgeUI: ShowcaseRoot()
         }
     }
@@ -212,16 +207,16 @@ public enum EmbeddedApps {
     static let sketchbook = SketchbookApp.makeAppHost()
     static let soundscape = SoundscapeApp.makeAppHost()
     static let relay = RelayApp.makeAppHost()
-    /// One Chat core for the process, so its room connections and message
+    /// One messaging core for the process (Relay's Chats), so its room connections and message
     /// notifications don't multiply each time the app opens.
-    static let chat = ChatApp.ContentView.makeModel()
+    static let chat = RelayApp.RelayRoot.makeChatModel()
 
     /// Hands `url` to the hosted app whose URL scheme it uses. Each app's
     /// bindings have their own `ForgeDeepLinks`, so a link reaches an app
     /// only through its own. Returns false for links that are Device Lab's.
     static func openDeepLink(_ url: URL) -> Bool {
         switch url.scheme {
-        case "forgechat": ChatFFI.ForgeDeepLinks.shared.open(url)
+        case "forgechat": RelayFFI.ForgeDeepLinks.shared.open(url)
         default: false
         }
     }
@@ -238,7 +233,9 @@ public enum EmbeddedApps {
         // adapters are ForgeKit's ForgeNative module.
         ForgeNative.ForgeServices.install(keychainService: "\(bundle).gooddog")
         CommonplaceFFI.ForgeServices.install(keychainService: "\(bundle).commonplace")
-        ChatFFI.ForgeServices.install(keychainService: "\(bundle).chat")
+        // Relay's messaging keeps the Keychain service Chat had, so the
+        // account made before Chat merged into Relay is still there.
+        RelayFFI.ForgeServices.install(keychainService: "\(bundle).chat")
         FieldKitFFI.ForgeServices.install(keychainService: "\(bundle).fieldkit")
         WeatherFFI.ForgeServices.install(keychainService: "\(bundle).weather")
         // Soundscape's Listen tab asks its take server through URLSession.

@@ -79,7 +79,7 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
                 script(root, "validate-xcode-project.sh")
                     .arg(root.join("examples/weather/Xcode/Weather.xcodeproj/project.pbxproj")),
                 script(root, "validate-xcode-project.sh")
-                    .arg(root.join("examples/chat/Xcode/Chat.xcodeproj/project.pbxproj")),
+                    .arg(root.join("examples/relay/Xcode/Relay.xcodeproj/project.pbxproj")),
                 script(root, "validate-xcode-project.sh").arg(
                     root.join(
                         "examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj",
@@ -143,7 +143,7 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
             name: "Swift host tests (XCTest)",
             cmds: vec![
                 script(root, "test-swift-host.sh").arg(root.join("examples/weather")),
-                script(root, "test-swift-host.sh").arg(root.join("examples/chat")),
+                script(root, "test-swift-host.sh").arg(root.join("examples/relay")),
                 script(root, "test-swift-host.sh").arg(root.join("examples/pocket-library")),
             ],
             skip: swift_skip,
@@ -266,7 +266,7 @@ mod tests {
             "cargo fmt --all -- --check",
             "check-template-sync.sh",
             "Weather.xcodeproj/project.pbxproj",
-            "Chat.xcodeproj/project.pbxproj",
+            "Relay.xcodeproj/project.pbxproj",
             "PocketLibrary.xcodeproj/project.pbxproj",
             "FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj",
             "cargo clippy --workspace --all-targets -- -D warnings",
@@ -277,7 +277,7 @@ mod tests {
             "examples/pocket-library-android/rust/Cargo.toml",
             "pocket-library-android/gradlew :app:testDebugUnitTest --no-daemon",
             "examples/weather",
-            "examples/chat",
+            "examples/relay",
             "examples/pocket-library",
         ];
         assert_eq!(lines.len(), expected.len(), "{lines:#?}");

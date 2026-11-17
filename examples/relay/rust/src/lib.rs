@@ -26,6 +26,7 @@
 //! - The `relay` command (`--features cli`) is the same code on Linux, so
 //!   one iPhone and a laptop are enough to try it.
 
+pub mod chat;
 mod code;
 mod code_send;
 mod code_session;
@@ -67,6 +68,13 @@ uniffi::setup_scaffolding!();
 // `forge_log` for the host: Swift's `ForgeLog("Category")` writes to the same
 // log as Rust.
 forge_runtime::log_export!();
+
+// Native services the host implements (Keychain, directories, notifications,
+// permissions, deep links, audio, Face ID, URLSession, the on-device model,
+// background refresh), as `crate::native`. The app installs them with
+// `ForgeServices.install()`; see docs/native-services.md. Messaging
+// (`chat`) uses them.
+forge_services::native_services!(audio, biometrics, http, ai, background);
 
 const SAVE_FILE: &str = "relay.json";
 /// How long a pairing code stays valid.

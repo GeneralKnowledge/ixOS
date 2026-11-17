@@ -32,7 +32,6 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 | App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `toned-text` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| chat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
@@ -40,7 +39,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | n/a | n/a | Yes | Yes | Yes |
 | good-dog | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No (wave 5) | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
+| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No (wave 5) | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
 | soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No (wave 5) | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
 | weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
@@ -49,14 +48,14 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 | App | Rule | Status | Why | Wave |
 |---|---|---|---|---|
-| chat | `device-checks` | missing | CH-12 (data held by a second core) is proved by its twin test only; the phone can't open a second core from the UI | 4 |
 | checklist | `device-checks` | missing | CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt | 4 |
 | commonplace | `device-checks` | missing | CP-5 (error words) needs the fixture server offline; written with slice 2 | 4 |
 | good-dog | `device-checks` | missing | GD requirements without a scenario yet; written with GD2b's phone run | 4 |
+| relay | `device-checks` | missing | CH-12 (Chat's, now Relay's messaging: data held by a second core) is proved by its twin test only; the phone can't open a second core from the UI | 4 |
 | sketchbook | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
 | soundscape | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
-| relay | `feedback` | missing | Relay's saveCount moves to ForgeFeedback in its redesign pilot, after #268 merges | 5 |
-| soundscape | `feedback` | missing | Soundscape's saveCount moves to ForgeFeedback after its library PR (#269) merges | 5 |
+| relay | `feedback` | missing | Relay's saveCount moves to ForgeFeedback in its redesign pilot | 5 |
+| soundscape | `feedback` | missing | Soundscape's saveCount moves to ForgeFeedback in a follow-up now that its library (#269) has merged | 5 |
 
 ## Not applicable
 

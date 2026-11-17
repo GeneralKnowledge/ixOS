@@ -19,7 +19,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-ALL=(weather chat pocket-library device-lab template services-check)
+ALL=(weather relay pocket-library device-lab template services-check)
 # Any other example app with an Xcode project is found, not listed: a new
 # app must never silently get no Swift CI (Good Dog pain point 11).
 for manifest in examples/*/forge.toml; do
@@ -55,7 +55,7 @@ affected() {
     case "$file" in
       *.md | docs/* | LICENSE* | examples/*-android/* | templates/android-app/* \
         | .github/workflows/android.yml | .github/workflows/screenshots.yml) ;;
-      examples/chat-core/* | examples/chat-server/* | examples/chat/*) pick[chat]=1 ;;
+      examples/relay/*) pick[relay]=1 ;;
       examples/weather/*) pick[weather]=1 ;;
       examples/pocket-library/*) pick[pocket-library]=1 ;;
       examples/good-dog/* | examples/good-dog-core/*) pick[good-dog]=1 ;;
@@ -118,7 +118,7 @@ for app in "${APPS[@]}"; do
       ./scripts/test-swift-host.sh "examples/$app"
       endgroup
       ;;
-    chat | pocket-library | good-dog | device-lab)
+    relay | pocket-library | good-dog | device-lab)
       project="$(find "examples/$app/Xcode" -maxdepth 1 -name '*.xcodeproj' | head -1)"
       group "$app: Swift host tests"
       ./scripts/test-swift-host.sh "examples/$app"

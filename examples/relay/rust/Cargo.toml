@@ -1,5 +1,6 @@
 # Relay's own Rust library: pairing by QR code, the encrypted peer protocol,
-# sending and receiving notes and files, and the UniFFI API (RelayCore) the
+# sending and receiving notes and files, messaging (`src/chat`, Chat's core
+# before it merged into Relay), and the UniFFI API (RelayCore, ChatCore) the
 # SwiftUI app calls. Also the `relay` command, the second device on a Linux
 # machine (built only with `--features cli`). Built the way a hostable app
 # is (docs/research/app-friction-log.md).
@@ -22,7 +23,7 @@ required-features = ["cli"]
 
 [features]
 # The `relay` command for Linux and macOS. Never built for iOS.
-cli = ["dep:qrcode", "dep:forge-net", "dep:mdns-sd"]
+cli = ["dep:qrcode", "dep:mdns-sd"]
 
 [dependencies]
 # The application runtime: one core per process, serial commands, revisions,
@@ -35,14 +36,24 @@ forge-runtime = { path = "../../../crates/forge-runtime" }
 forge-devproto = { path = "../../../crates/forge-devproto" }
 # Relay's record (peers, history) is one JSON document; received files are
 # kept only if their SHA-256 matches what the sender announced.
-forge-storage = { path = "../../../crates/forge-storage", features = ["hash"] }
+# Messaging's assistant keeps its conversations in SQLite (assistant.db).
+forge-storage = { path = "../../../crates/forge-storage", features = ["hash", "sqlite"] }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 # Forge AI: the request shape a device asks another device's language model
 # with, and the model interface the asked device answers through.
-forge-services = { path = "../../../crates/forge-services", features = ["ai"] }
-# The `relay serve-ai` command reaches an OpenAI-compatible server over HTTP.
-forge-net = { path = "../../../crates/forge-net", features = ["ureq"], optional = true }
+# Messaging keeps its account in the Keychain and makes its requests (the
+# live stream too) through URLSession.
+forge-services = { path = "../../../crates/forge-services", features = ["ai", "http"] }
+# Messaging's chat server client, and the `relay serve-ai` command's
+# requests to an OpenAI-compatible server.
+forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
+# Messaging's engine (../messaging/chat-core): conversations, the outbox,
+# the store, the live stream from a chat server.
+chat-core = { path = "../messaging/chat-core", features = ["ureq"] }
+# UniFFI's generated code for async host interfaces names it directly.
+async-trait = "0.1"
+serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 # Receiving with a word code (src/code.rs, Relay M1): iroh with relays off,
@@ -72,8 +83,10 @@ mdns-sd = { version = "0.13", optional = true }
 
 [dev-dependencies]
 tempfile = "3.14"
-forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
-serde_json = "1.0"
+# Messaging's tests run the real chat server in process.
+chat-server = { path = "../messaging/chat-server" }
+axum = "0.8"
+tokio = { version = "1", features = ["net"] }
 
 # Its own workspace, like every app made with `forge init`.
 [workspace]

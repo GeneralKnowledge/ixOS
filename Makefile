@@ -9,11 +9,11 @@ test:
 # ~/.local/share/ixos-chat/server.json). Pass options with ARGS, e.g.
 # make chat-server ARGS="--bind 0.0.0.0:8787" to reach it from a phone.
 chat-server:
-	cargo run -q -p chat-server -- $(ARGS)
+	cargo run -q --manifest-path examples/relay/messaging/Cargo.toml -p chat-server -- $(ARGS)
 
 # Talk to that server from a terminal: make chat-cli ARGS="send general hi".
 chat-cli:
-	cargo run -q -p chat-cli -- $(ARGS)
+	cargo run -q --manifest-path examples/relay/messaging/Cargo.toml -p chat-cli -- $(ARGS)
 
 # Full local CI matrix (fmt, clippy, tests, binding drift, template sync, host tests).
 check:
@@ -25,7 +25,7 @@ test-android-host:
 
 test-swift-host:
 	./scripts/test-swift-host.sh examples/weather
-	./scripts/test-swift-host.sh examples/chat
+	./scripts/test-swift-host.sh examples/relay
 	./scripts/test-swift-host.sh examples/pocket-library
 
 fmt:
@@ -38,7 +38,6 @@ clippy:
 
 bindings:
 	./scripts/generate-bindings.sh examples/weather/Generated
-	./scripts/generate-bindings.sh examples/chat/Generated
 	./scripts/generate-bindings.sh examples/pocket-library/Generated
 
 bindings-kotlin:
@@ -72,7 +71,7 @@ check-fresh-app:
 doctor:
 	./scripts/validate-toolchain.sh
 
-# Package one app's Rust library and bindings: make package-ios APP=examples/chat
+# Package one app's Rust library and bindings: make package-ios APP=examples/relay
 package-ios:
 	./scripts/package-ios-library.sh $(or $(APP),examples/pocket-library)/Generated
 

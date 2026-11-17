@@ -37,7 +37,12 @@ devices = ["iphone"]
 xtool_product = "RelayXtool"
 # icon = "Resources/AppIcon.png"    # 1024x1024 PNG
 orientations = ["portrait"]
-# url_schemes = ["myapp"]           # opens myapp://... links
+# Messaging's notification taps open forgechat://conversation/<id> (from
+# Chat, before it merged into Relay).
+url_schemes = ["forgechat"]
+# Messaging catches up every room and announces what arrived when iOS
+# gives the app time (rust/src/chat, BACKGROUND_REFRESH).
+background_tasks = ["org.forgemobile.chat.refresh"]
 # Relay advertises and finds devices with Bonjour; iOS refuses other types.
 # _udp: senders of word codes (iroh, Relay M1).
 bonjour_services = ["_forgerelay._tcp", "_forgerelay._udp"]
@@ -45,8 +50,10 @@ bonjour_services = ["_forgerelay._tcp", "_forgerelay._udp"]
 # The text iOS shows when the app asks for a permission.
 [ios.permissions]
 # camera = "Scan barcodes to add items."
-local_network = "Relay finds your paired devices on this network and sends them notes and files directly, encrypted."
+local_network = "Relay finds your paired devices on this network and sends them notes and files directly, encrypted, and connects to your chat server."
 camera = "Scan another device's pairing code."
+microphone = "Relay records a voice message while you tap the microphone button."
+face_id = "Relay uses Face ID to unlock when you turn on the app lock in Settings."
 # location_when_in_use = "Show places near you."
 
 [ios.entitlements]

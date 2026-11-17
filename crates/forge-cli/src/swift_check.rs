@@ -151,19 +151,33 @@ pub fn is_portable(source: &str, modules: &Modules) -> bool {
         .all(|m| PORTABLE_MODULES.contains(&m.as_str()) || modules.is_own(m))
 }
 
-/// The `.swift` files directly in `dir` that [`is_portable`], sorted.
-fn portable_files(dir: &Path, modules: &Modules) -> Vec<PathBuf> {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut files: Vec<PathBuf> = entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == "swift"))
-        .filter(|p| fs::read_to_string(p).is_ok_and(|s| is_portable(&s, modules)))
-        .collect();
+/// The `.swift` files in `dir` and its subfolders, as SwiftPM finds a
+/// target's sources, sorted.
+fn swift_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut dirs = vec![dir.to_path_buf()];
+    while let Some(d) = dirs.pop() {
+        let Ok(entries) = fs::read_dir(&d) else {
+            continue;
+        };
+        for p in entries.flatten().map(|e| e.path()) {
+            if p.is_dir() {
+                dirs.push(p);
+            } else if p.extension().is_some_and(|e| e == "swift") {
+                files.push(p);
+            }
+        }
+    }
     files.sort();
     files
+}
+
+/// The `.swift` files under `dir` that [`is_portable`], sorted.
+fn portable_files(dir: &Path, modules: &Modules) -> Vec<PathBuf> {
+    swift_files(dir)
+        .into_iter()
+        .filter(|p| fs::read_to_string(p).is_ok_and(|s| is_portable(&s, modules)))
+        .collect()
 }
 
 /// What goes into the staging package.
@@ -182,16 +196,11 @@ pub fn select(app: &Path, modules: &Modules) -> Selection {
         (app.join("Tests/AppHostTests"), true),
     ] {
         let portable = portable_files(&dir, modules);
-        if let Ok(entries) = fs::read_dir(&dir) {
-            let mut skipped: Vec<PathBuf> = entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|e| e == "swift"))
-                .filter(|p| !portable.contains(p))
-                .collect();
-            skipped.sort();
-            sel.skipped.extend(skipped);
-        }
+        sel.skipped.extend(
+            swift_files(&dir)
+                .into_iter()
+                .filter(|p| !portable.contains(p)),
+        );
         if into_tests {
             sel.tests = portable;
         } else {
@@ -403,13 +412,22 @@ pub fn stage(
             link(&helper, &gen.join("ForgeFFI").join(name)).map_err(io("link", &helper))?;
         }
     }
-    for (files, dir) in [
-        (&sel.sources, st.join("Sources/AppHost")),
-        (&sel.tests, st.join("Tests/AppHostTests")),
+    for (files, sub) in [
+        (&sel.sources, "Sources/AppHost"),
+        (&sel.tests, "Tests/AppHostTests"),
     ] {
         for f in files {
-            let name = f.file_name().unwrap_or_default();
-            link(f, &dir.join(name)).map_err(io("link", f))?;
+            // Keep a file's subfolder, so two files of the same name in
+            // different folders don't collide.
+            let rel = f
+                .strip_prefix(app.join(sub))
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|_| PathBuf::from(f.file_name().unwrap_or_default()));
+            let to = st.join(sub).join(rel);
+            if let Some(parent) = to.parent() {
+                fs::create_dir_all(parent).map_err(io("create", parent))?;
+            }
+            link(f, &to).map_err(io("link", f))?;
         }
     }
     let lib = st.join("lib").join("libforge_ffi.a");
@@ -993,6 +1011,11 @@ mod tests {
         for (path, text) in [
             ("Sources/AppHost/NotesModel.swift", "import Foundation\n"),
             ("Sources/AppHost/ContentView.swift", "import SwiftUI\n"),
+            // SwiftPM compiles subfolders too, so the check does.
+            (
+                "Sources/AppHost/Sync/SyncModel.swift",
+                "import Foundation\n",
+            ),
             (
                 "Tests/AppHostTests/NotesModelTests.swift",
                 "import XCTest\n",
@@ -1017,7 +1040,13 @@ mod tests {
             fs::write(p, text).unwrap();
         }
         let sel = select(app, &Modules::default());
-        assert_eq!(sel.sources, [app.join("Sources/AppHost/NotesModel.swift")]);
+        assert_eq!(
+            sel.sources,
+            [
+                app.join("Sources/AppHost/NotesModel.swift"),
+                app.join("Sources/AppHost/Sync/SyncModel.swift"),
+            ]
+        );
         assert_eq!(
             sel.tests,
             [app.join("Tests/AppHostTests/NotesModelTests.swift")]
@@ -1032,6 +1061,7 @@ mod tests {
         )
         .unwrap();
         assert!(st.join("Sources/AppHost/NotesModel.swift").is_file());
+        assert!(st.join("Sources/AppHost/Sync/SyncModel.swift").is_file());
         assert!(!st.join("Sources/AppHost/ContentView.swift").exists());
         // Only the bindings, not the Apple-only service adapters.
         assert!(st.join("Generated/ForgeFFI/forge_ffi.swift").is_file());

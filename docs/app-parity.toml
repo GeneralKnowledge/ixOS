@@ -45,19 +45,19 @@ wave = 4
 reason = "CP-5 (error words) needs the fixture server offline; written with slice 2"
 
 [[lag]]
-app = "chat"
+app = "relay"
 rule = "device-checks"
 wave = 4
-reason = "CH-12 (data held by a second core) is proved by its twin test only; the phone can't open a second core from the UI"
+reason = "CH-12 (Chat's, now Relay's messaging: data held by a second core) is proved by its twin test only; the phone can't open a second core from the UI"
 
 [[lag]]
 app = "relay"
 rule = "feedback"
 wave = 5
-reason = "Relay's saveCount moves to ForgeFeedback in its redesign pilot, after #268 merges"
+reason = "Relay's saveCount moves to ForgeFeedback in its redesign pilot"
 
 [[lag]]
 app = "soundscape"
 rule = "feedback"
 wave = 5
-reason = "Soundscape's saveCount moves to ForgeFeedback after its library PR (#269) merges"
+reason = "Soundscape's saveCount moves to ForgeFeedback in a follow-up now that its library (#269) has merged"

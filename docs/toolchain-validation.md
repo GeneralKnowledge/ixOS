@@ -150,7 +150,7 @@ Automated coverage stops at the JVM: Rust tests run real TLS handshakes against 
 
 Chat's Android client was removed on 2026-11-15, so this check can't be run until an Android app with a server URL setting exists again. The steps are kept for that app.
 
-1. Build and install Chat: `forge build android --project examples/chat-android --install` (USB debugging on; `adb devices` lists the phone).
+1. Build and install Chat: `forge build android --project examples/relay-android --install` (USB debugging on; `adb devices` lists the phone).
 2. In the app, change the server URL to each of these in turn. None of them is a chat server, so the result to look for is *which* error the app shows:
 
    | Server URL | Expected message | Proves |
