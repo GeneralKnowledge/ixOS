@@ -40,7 +40,13 @@ Reuben asked for lyrics on the songs that have them (55 of 128 on the take serve
 their sidecars, with section tags like `[verse]` and no timings, and takes of one song can differ, so each
 recording carries its own. Now Playing gets a **Lyrics** button for the playing take, and a song's screen shows
 its preferred recording's. `lyric_lines` (Rust, `rust/src/lyrics.rs`) turns tags into headings and blank lines
-into one gap. Lines that follow the music would need timings made by aligning the words to the audio: not now.
+into one gap.
+
+**Following the song.** Reuben's song generator will add timings (2026-11-17). They come as LRC: a `.lrc` file
+next to the take, or `"lrc"` in its sidecar, which the take server sends as `lrc` (JewGrass PR #30), and the
+phone prefers it over the plain lyrics. Line stamps (`[01:23.40] One more night`) light up the line being sung
+and keep it in view; enhanced LRC word stamps (`[00:12.30] <00:12.30>One <00:12.61>more <00:12.90>night`) light
+up each word as it is sung. Tapping a line plays from it. Without timings, the lyrics read as before.
 
 ## Not in this PR
 

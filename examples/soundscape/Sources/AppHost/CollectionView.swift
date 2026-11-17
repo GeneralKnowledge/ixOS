@@ -508,43 +508,42 @@ struct RecentlyPlayedView: View {
 // MARK: Lyrics
 
 /// A song's lyrics to read along: section headings ("Verse", "Chorus") in
-/// small capitals, stanzas apart. They don't follow the music: the takes
-/// carry no timings.
+/// small capitals, stanzas apart. With timed lyrics and the song playing
+/// (`player`), the line being sung is bright and stays in view, and with
+/// word timings each word lights up as it is sung; tap a line to go to it.
 struct LyricsView: View {
     let title: String
     let subtitle: String?
     let lyrics: String
+    /// Playing these lyrics' recording now, to follow along.
+    var player: TakePlayer? = nil
     @Environment(\.dismiss) private var dismiss
 
+    @State private var lines: [LyricLine] = []
+    @State private var currentLine: Int?
+    @State private var currentWord: Int?
+
+    private var timed: Bool { player != nil && lines.contains { $0.atSeconds != nil } }
+
     var body: some View {
-        let lines = lyricLines(lyrics: lyrics)
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                        switch line.kind {
-                        case .section:
-                            Text(line.text.uppercased())
-                                .font(.caption.weight(.semibold))
-                                .tracking(1.2)
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 4)
-                                .accessibilityAddTraits(.isHeader)
-                        case .line:
-                            Text(line.text)
-                                .font(.title3.weight(.semibold))
-                                .fixedSize(horizontal: false, vertical: true)
-                        case .gap:
-                            Spacer().frame(height: 18)
+            ScrollViewReader { scroller in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: timed ? 10 : 6) {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                            row(line, index: index).id(index)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 16)
+                    .padding(.bottom, timed ? 240 : 0)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
-                .textSelection(.enabled)
+                .onChange(of: currentLine) { _, line in
+                    guard let line else { return }
+                    withAnimation(.easeInOut(duration: 0.35)) { scroller.scrollTo(line, anchor: .center) }
+                }
             }
-            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -562,6 +561,61 @@ struct LyricsView: View {
             }
         }
         .presentationDragIndicator(.visible)
+        .onAppear { lines = lyricLines(lyrics: lyrics) }
+        .task(id: lines.count) { await follow() }
+    }
+
+    @ViewBuilder private func row(_ line: LyricLine, index: Int) -> some View {
+        switch line.kind {
+        case .section:
+            Text(line.text.uppercased())
+                .font(.caption.weight(.semibold))
+                .tracking(1.2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+                .accessibilityAddTraits(.isHeader)
+        case .line:
+            let sung = timed && index == currentLine
+            words(line, sung: sung)
+                .font(timed ? .title2.weight(.bold) : .title3.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .scaleEffect(sung ? 1.0 : 0.97, anchor: .leading)
+                .animation(.easeOut(duration: 0.2), value: sung)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if timed, let at = line.atSeconds { player?.seek(to: at) }
+                }
+                .accessibilityAddTraits(timed ? .isButton : [])
+                .accessibilityHint(timed ? "Plays from this line" : "")
+        case .gap:
+            Spacer().frame(height: 18)
+        }
+    }
+
+    /// The line's text: all bright when it's sung without word timings,
+    /// the words sung so far bright with them, dim otherwise (when timed).
+    private func words(_ line: LyricLine, sung: Bool) -> Text {
+        guard timed else { return Text(line.text) }
+        guard sung else { return Text(line.text).foregroundColor(.secondary) }
+        guard !line.words.isEmpty else { return Text(line.text).foregroundColor(.primary) }
+        let upTo = currentWord ?? -1
+        return line.words.enumerated().reduce(Text("")) { text, item in
+            let (i, word) = item
+            return text + Text(word.text).foregroundColor(i <= upTo ? .accentColor : .secondary)
+        }
+    }
+
+    /// Follows the song while the sheet is open: which line and word are sung.
+    private func follow() async {
+        guard let player, lines.contains(where: { $0.atSeconds != nil }) else { return }
+        while !Task.isCancelled {
+            let now = player.exactTime
+            let line = lyricLineAt(lines: lines, seconds: now).map(Int.init)
+            if line != currentLine { currentLine = line }
+            let word = line.flatMap { lyricWordAt(line: lines[$0], seconds: now) }.map(Int.init)
+            if word != currentWord { currentWord = word }
+            try? await Task.sleep(for: .milliseconds(60))
+        }
     }
 }
 #endif

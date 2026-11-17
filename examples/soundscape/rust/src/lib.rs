@@ -55,7 +55,7 @@ pub use listen::{
     group_songs, loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongGroup, SongSummary,
     Take, TakeMark,
 };
-pub use lyrics::{lyric_lines, LyricKind, LyricLine};
+pub use lyrics::{lyric_line_at, lyric_lines, lyric_word_at, LyricKind, LyricLine, LyricWord};
 pub use model::{
     soundscape_error_kind, Clip, Echo, Mixdown, ProjectDetail, ProjectSummary, SoundscapeError,
     Track, TrackMix, TrackSettings, MAX_BARS, MAX_GAIN_DB, MAX_NAME_CHARS, MAX_TEMPO, MAX_TRACKS,

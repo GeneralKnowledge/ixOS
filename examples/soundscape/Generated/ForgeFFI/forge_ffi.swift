@@ -4795,12 +4795,30 @@ public func FfiConverterTypeLoudnessMatch_lower(_ value: LoudnessMatch) -> RustB
 public struct LyricLine: Equatable, Hashable {
     public var kind: LyricKind
     public var text: String
+    /**
+     * When it is sung, in seconds from the start; timed lyrics only.
+     */
+    public var atSeconds: Double?
+    /**
+     * Its words with when each is sung, for enhanced LRC; empty otherwise.
+     * Joined, they are `text`.
+     */
+    public var words: [LyricWord]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(kind: LyricKind, text: String) {
+    public init(kind: LyricKind, text: String, 
+        /**
+         * When it is sung, in seconds from the start; timed lyrics only.
+         */atSeconds: Double?, 
+        /**
+         * Its words with when each is sung, for enhanced LRC; empty otherwise.
+         * Joined, they are `text`.
+         */words: [LyricWord]) {
         self.kind = kind
         self.text = text
+        self.atSeconds = atSeconds
+        self.words = words
     }
 
     
@@ -4820,13 +4838,17 @@ public struct FfiConverterTypeLyricLine: FfiConverterRustBuffer {
         return
             try LyricLine(
                 kind: FfiConverterTypeLyricKind.read(from: &buf), 
-                text: FfiConverterString.read(from: &buf)
+                text: FfiConverterString.read(from: &buf), 
+                atSeconds: FfiConverterOptionDouble.read(from: &buf), 
+                words: FfiConverterSequenceTypeLyricWord.read(from: &buf)
         )
     }
 
     public static func write(_ value: LyricLine, into buf: inout [UInt8]) {
         FfiConverterTypeLyricKind.write(value.kind, into: &buf)
         FfiConverterString.write(value.text, into: &buf)
+        FfiConverterOptionDouble.write(value.atSeconds, into: &buf)
+        FfiConverterSequenceTypeLyricWord.write(value.words, into: &buf)
     }
 }
 
@@ -4843,6 +4865,63 @@ public func FfiConverterTypeLyricLine_lift(_ buf: RustBuffer) throws -> LyricLin
 #endif
 public func FfiConverterTypeLyricLine_lower(_ value: LyricLine) -> RustBuffer {
     return FfiConverterTypeLyricLine.lower(value)
+}
+
+
+/**
+ * One sung word, with the space after it, and when it starts.
+ */
+public struct LyricWord: Equatable, Hashable {
+    public var text: String
+    public var atSeconds: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, atSeconds: Double) {
+        self.text = text
+        self.atSeconds = atSeconds
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LyricWord: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLyricWord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LyricWord {
+        return
+            try LyricWord(
+                text: FfiConverterString.read(from: &buf), 
+                atSeconds: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LyricWord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterDouble.write(value.atSeconds, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLyricWord_lift(_ buf: RustBuffer) throws -> LyricWord {
+    return try FfiConverterTypeLyricWord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLyricWord_lower(_ value: LyricWord) -> RustBuffer {
+    return FfiConverterTypeLyricWord.lower(value)
 }
 
 
@@ -9019,6 +9098,31 @@ fileprivate struct FfiConverterSequenceTypeLyricLine: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeLyricWord: FfiConverterRustBuffer {
+    typealias SwiftType = [LyricWord]
+
+    public static func write(_ value: [LyricWord], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLyricWord.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LyricWord] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LyricWord]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLyricWord.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer {
     typealias SwiftType = [NotificationAction]
 
@@ -9569,6 +9673,20 @@ public func loudnessMatch(aLufs: Double?, bLufs: Double?) -> LoudnessMatch  {
 })
 }
 /**
+ * The line being sung at `seconds`: the last sung line that has started,
+ * as an index into `lines`. `None` before the first line and for lyrics
+ * without timings.
+ */
+public func lyricLineAt(lines: [LyricLine], seconds: Double) -> UInt32?  {
+    return try!  FfiConverterOptionUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_lyric_line_at(
+        FfiConverterSequenceTypeLyricLine.lower(lines),
+        FfiConverterDouble.lower(seconds),uniffiCallStatus
+    )
+})
+}
+/**
  * The lyrics laid out to read: headings, lines and gaps, with no gap at
  * the start or end and never two in a row. Empty when there are no words.
  */
@@ -9577,6 +9695,20 @@ public func lyricLines(lyrics: String) -> [LyricLine]  {
         uniffiCallStatus in
     uniffi_soundscape_core_fn_func_lyric_lines(
         FfiConverterString.lower(lyrics),uniffiCallStatus
+    )
+})
+}
+/**
+ * The word being sung at `seconds` in `line`: the last word that has
+ * started, as an index into its `words`. `None` without word timings or
+ * before its first word.
+ */
+public func lyricWordAt(line: LyricLine, seconds: Double) -> UInt32?  {
+    return try!  FfiConverterOptionUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_lyric_word_at(
+        FfiConverterTypeLyricLine_lower(line),
+        FfiConverterDouble.lower(seconds),uniffiCallStatus
     )
 })
 }
@@ -9830,7 +9962,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_func_loudness_match() != 37068) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_func_lyric_line_at() != 42627) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_func_lyric_lines() != 60095) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_lyric_word_at() != 24909) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_func_soundscape_error_kind() != 52822) {

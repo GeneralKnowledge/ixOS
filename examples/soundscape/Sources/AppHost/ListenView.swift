@@ -706,7 +706,7 @@ private struct NowPlayingView: View {
                                 .buttonBorderShape(.capsule)
                                 .accessibilityIdentifier("nowPlayingSheet.lyrics")
                                 .sheet(isPresented: $showingLyrics) {
-                                    LyricsView(title: current.song, subtitle: current.artist, lyrics: lyrics)
+                                    LyricsView(title: current.song, subtitle: current.artist, lyrics: lyrics, player: player)
                                 }
                             }
                             if let failure = player.failure {

@@ -83,6 +83,12 @@ final class TakePlayer {
     @ObservationIgnored private var counted = false
 
     var isComparing: Bool { b != nil }
+    /// Where the heard take is now, read from the player itself (`time`
+    /// moves four times a second), for lyrics that follow word by word.
+    var exactTime: Double {
+        let seconds = (active == .b && isComparing ? playerB : playerA).currentTime().seconds
+        return seconds.isFinite ? seconds : time
+    }
     var current: Loaded? { active == .b ? b ?? a : a }
     /// The songs after this one, for Up Next.
     var upcoming: [QueueEntry] { queue.map { queueUpcoming(queue: $0) } ?? [] }
