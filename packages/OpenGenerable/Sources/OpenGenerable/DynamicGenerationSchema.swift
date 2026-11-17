@@ -50,7 +50,8 @@ public struct DynamicGenerationSchema: Sendable, Equatable {
         public var name: String
         public var description: String?
         public var schema: DynamicGenerationSchema
-        /// Whether the value may be left out (or be null).
+        /// Whether the key may be left out. A present value must still fit
+        /// `schema`; to allow `null`, write `.anyOf([schema, .null])`.
         public var isOptional: Bool
 
         public init(

@@ -725,7 +725,7 @@ streams the audio. What took work:
   `NSAllowsArbitraryLoads` (#263), and the starter now carries that setting
   commented out ([app-config.md](../app-config.md#plain-http-app-transport-security)).
 
-## A38. A Swift package tested in the cloud (OpenGenerable M1)
+## A43. A Swift package tested in the cloud (OpenGenerable M1)
 
 OpenGenerable's schema core is plain Swift with no dependencies, so it
 should be the easiest thing to check on Linux. What took work:

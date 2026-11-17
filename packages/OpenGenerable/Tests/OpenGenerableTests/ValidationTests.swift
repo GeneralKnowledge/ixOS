@@ -61,21 +61,41 @@ final class ValidationTests: XCTestCase {
             [.init(path: "/tags/1", problem: .wrongType(expected: "string", found: "number"))])
     }
 
-    func testOptionalPropertiesMayBeMissingOrNull() throws {
-        let schema = try Fixtures.schema()
-        var content = try GeneratedContent(json: valid)
-        XCTAssertEqual(schema.violations(in: content), [])
-        guard case .structure(var properties, var keys) = content.kind else { return XCTFail() }
-        properties["motto"] = nil
-        keys.append("motto")
-        properties["motto"] = GeneratedContent(kind: .null)
-        content.kind = .structure(properties: properties, orderedKeys: keys)
-        XCTAssertEqual(schema.violations(in: content), [])
+    func testOptionalMeansTheKeyMayBeLeftOut() throws {
+        let schema = try GenerationSchema(
+            root: .object(
+                name: "R",
+                properties: [
+                    .init(name: "name", schema: .string()),
+                    .init(name: "motto", schema: .string(), isOptional: true),
+                    .init(name: "nickname", schema: .anyOf([.string(), .null]), isOptional: true),
+                ]))
+        XCTAssertEqual(schema.violations(in: ["name": "Ilsa"]), [])
+        XCTAssertEqual(schema.violations(in: ["name": "Ilsa", "motto": "Onward"]), [])
 
-        // A required property that is null counts as missing.
-        properties["name"] = GeneratedContent(kind: .null)
-        content.kind = .structure(properties: properties, orderedKeys: keys)
-        XCTAssertEqual(schema.violations(in: content), [.init(path: "", problem: .missingProperty("name"))])
+        // null is a value, not a missing key: it must fit the schema.
+        XCTAssertEqual(
+            schema.violations(in: ["name": "Ilsa", "motto": nil]),
+            [.init(path: "/motto", problem: .wrongType(expected: "string", found: "null"))])
+        XCTAssertEqual(schema.violations(in: ["name": "Ilsa", "nickname": nil]), [])
+        XCTAssertEqual(
+            schema.violations(in: ["name": nil]),
+            [.init(path: "/name", problem: .wrongType(expected: "string", found: "null"))])
+        XCTAssertEqual(schema.violations(in: [:]), [.init(path: "", problem: .missingProperty("name"))])
+    }
+
+    func testTheExportSaysTheSameAboutOptionalAndNull() throws {
+        let schema = try GenerationSchema(
+            root: .object(
+                name: "R",
+                properties: [
+                    .init(name: "motto", schema: .string(), isOptional: true),
+                    .init(name: "nickname", schema: .anyOf([.string(), .null]), isOptional: true),
+                ]))
+        let exported = schema.jsonSchema()
+        XCTAssertEqual(exported["required"], [])
+        XCTAssertEqual(exported["properties"]?["motto"], ["type": "string"])
+        XCTAssertEqual(exported["properties"]?["nickname"], ["anyOf": [["type": "string"], ["type": "null"]]])
     }
 
     func testAnyOfSchemasAndNull() throws {

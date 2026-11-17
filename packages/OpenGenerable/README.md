@@ -51,7 +51,8 @@ This is a compatibility layer, not a promise of identical behaviour.
 - **Shorthand.** `.string()`, `.integer(range:)`, `.number(range:)`, `.boolean()`, `.null`, `.array(of:count:)`, `.anyOf(_:)`, `.object(...)` and `.reference(to:)` are additions. Apple builds primitives with `DynamicGenerationSchema(type:guides:)`, which needs `Generable` types and `GenerationGuide`; that arrives with M4.
 - **Not yet:** string patterns (regex guides), constant strings, and any guide beyond bounds and lengths. They are M4 work, since each needs a grammar in M2 too.
 - **Numbers** are `Double`, as in Apple's `GeneratedContent`; an integer schema accepts any whole number.
-- **Optional properties** may be left out or be `null`. A required property that is `null` counts as missing, unless its schema allows `null`.
+- **Optional means the key may be left out**, and nothing more. A present value must fit the property's schema, so `null` passes only where the schema allows it: write `.anyOf([schema, .null])` for a nullable value. The validator and the exported JSON Schema (where an optional property is simply not `required`) describe the same contract, which M2 relies on, since it constrains the model from the export.
+- **Inference stays out of this package.** Backends (llama.cpp, Ollama, vLLM) go in separate adapter targets or packages that depend on this one, so the schema core keeps no dependencies.
 
 ## Plan
 

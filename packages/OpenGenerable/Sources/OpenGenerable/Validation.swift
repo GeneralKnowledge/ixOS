@@ -13,7 +13,7 @@ public struct SchemaViolation: Error, Equatable, Sendable, CustomStringConvertib
     public enum Problem: Equatable, Sendable {
         /// The value has the wrong JSON type.
         case wrongType(expected: String, found: String)
-        /// A required property is missing (or null).
+        /// A required property is left out.
         case missingProperty(String)
         /// A property the schema doesn't list.
         case unexpectedProperty(String)
@@ -151,13 +151,15 @@ extension GenerationSchema {
 
         case (.object(let properties), .structure(let values, let keys)):
             for property in properties {
-                let childPath = path + "/" + Self.escapePointer(property.name)
-                guard let value = values[property.name], !value.isNull || Self.allowsNull(property.schema, in: self)
-                else {
+                // Optional means the key may be left out. A key that is
+                // present must fit the property's schema, so `null` passes
+                // only where the schema allows it (`.anyOf([..., .null])`),
+                // exactly as the exported JSON Schema says.
+                guard let value = values[property.name] else {
                     if !property.isOptional { report(.missingProperty(property.name)) }
                     continue
                 }
-                check(value, against: property.schema, path: childPath, into: &found)
+                check(value, against: property.schema, path: path + "/" + Self.escapePointer(property.name), into: &found)
             }
             let listed = Set(properties.map(\.name))
             for key in keys where !listed.contains(key) {
@@ -174,14 +176,6 @@ extension GenerationSchema {
             }
             if !fits { report(.noAlternativeFits) }
         }
-    }
-
-    /// Whether `null` fits `schema` itself (so a null property is a value,
-    /// not a missing one).
-    static func allowsNull(_ schema: DynamicGenerationSchema, in root: GenerationSchema) -> Bool {
-        var found: [SchemaViolation] = []
-        root.check(nil, against: schema, path: "", into: &found)
-        return found.isEmpty
     }
 
     static func escapePointer(_ token: String) -> String {
