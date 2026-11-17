@@ -180,7 +180,7 @@ First experiment, Apple models only, with no external hosting yet. Test text gen
 
 Exit criteria: the iPhone can run repeatable experiments through AI Lab, with reliable cancellation, clear diagnostics and useful timing information.
 
-> **From the code:** structured output is the one item with a known obstacle. Foundation Models' `@Generable` is a Swift macro, and the Forge AI plan recorded that xtool can't build it yet. `DynamicGenerationSchema` describes the shape at run time without a macro and is the route to try first. Whether it builds and works from Linux is unverified.
+> **From the code:** structured output is the one item with a known risk, never tested. Foundation Models' `@Generable` is a Swift macro, and Apple ships its compiler plugin inside Xcode, built for macOS. A Linux compiler can't run that plugin, so the xtool build most likely fails ([local-ai.md](../local-ai.md) lists it as a risk). Plain Swift macros such as `@Observable` ship with the toolchain and already build with xtool. A0 settles it by trying: one `@Generable` struct in the AI Lab and one run of the laptop build check. If that fails, `DynamicGenerationSchema` gives the same guided generation with the shape described at run time, with no macro.
 
 ### Phase A1: GTX 1060 inference connection
 
