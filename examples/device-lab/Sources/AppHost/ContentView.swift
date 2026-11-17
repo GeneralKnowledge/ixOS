@@ -2,9 +2,11 @@
 import SwiftUI
 import ForgeUI
 
-/// The app's root: one navigation stack over the dashboard. It owns the
-/// model, keeps it following Rust while on screen, and tells Rust when the
-/// app goes to the background (everything stops) and comes back.
+/// The app's root: three tabs. Apps (the hosted apps, what the phone uses
+/// Device Lab for) comes first; This iPhone is the sensor dashboard; Tools
+/// holds the experiments and developer checks. It owns the dashboard's model,
+/// keeps it following Rust, and runs the sensors only while This iPhone is
+/// on screen.
 public struct ContentView: View {
     @State private var model = LabModel()
     @Environment(\.scenePhase) private var scenePhase
@@ -17,17 +19,47 @@ public struct ContentView: View {
     /// How the workshop shows hosted apps (WorkshopView.swift), starting
     /// from launch arguments and kept until Device Lab quits.
     @State private var workshop = WorkshopSettings.fromLaunch()
+    /// The tab on screen, kept across launches.
+    @SceneStorage("tab") private var tab = LabTab.apps
 
     public init() {}
 
     public var body: some View {
-        NavigationStack {
-            DashboardView(model: model, openApp: $openApp)
+        TabView(selection: $tab) {
+            NavigationStack {
+                AppsView(open: $openApp)
+            }
+            .tabItem {
+                Label("Apps", systemImage: "square.grid.2x2")
+                    .accessibilityIdentifier("tab.apps")
+            }
+            .tag(LabTab.apps)
+
+            NavigationStack {
+                DashboardView(model: model)
+            }
+            .tabItem {
+                Label("This iPhone", systemImage: "iphone")
+                    .accessibilityIdentifier("tab.iphone")
+            }
+            .tag(LabTab.iphone)
+
+            NavigationStack {
+                ToolsView(model: model)
+            }
+            .tabItem {
+                Label("Tools", systemImage: "wrench.and.screwdriver")
+                    .accessibilityIdentifier("tab.tools")
+            }
+            .tag(LabTab.tools)
         }
         // Full screen, so an app looks and behaves as it does on its own;
-        // the workshop button on its edge comes back here.
+        // the workshop button on its edge comes back here or switches to
+        // another app (changing `openApp` replaces the cover).
         .fullScreenCover(item: $openApp) { app in
-            HostedAppView(app: app, settings: $workshop) { openApp = nil }
+            HostedAppView(app: app, settings: $workshop, switchTo: { openApp = $0 }) {
+                openApp = nil
+            }
         }
         .onAppear {
             guard !launched else { return }
@@ -44,13 +76,21 @@ public struct ContentView: View {
         .task { await model.follow() }
         // Inactive (Control Center pulled down, the app switcher) keeps the
         // sensors running, so toggling Wi-Fi or Bluetooth shows up live.
-        // Another app open on top (the Apps screen) stops them too.
+        // Another tab, or a hosted app open on top, stops them.
         .onChange(of: scenePhase, initial: true) { _, phase in
             model.setInForeground(phase != .background)
-            model.setActive(phase != .background && openApp == nil)
+            updateSensors()
         }
-        .onChange(of: openApp) { _, app in
-            model.setActive(scenePhase != .background && app == nil)
-        }
+        .onChange(of: openApp) { _, _ in updateSensors() }
+        .onChange(of: tab) { _, _ in updateSensors() }
     }
+
+    private func updateSensors() {
+        model.setActive(scenePhase != .background && openApp == nil && tab == .iphone)
+    }
+}
+
+/// Device Lab's tabs.
+enum LabTab: String {
+    case apps, iphone, tools
 }

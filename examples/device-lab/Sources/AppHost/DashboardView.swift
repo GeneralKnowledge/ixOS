@@ -1,13 +1,10 @@
 @preconcurrency import ForgeFFI
 import SwiftUI
 
-/// Everything the phone tells an app about itself, live, in one list.
+/// Everything the phone tells an app about itself, live, in one list: the
+/// This iPhone tab.
 struct DashboardView: View {
     let model: LabModel
-    @Binding var openApp: EmbeddedApp?
-    @State private var transfers = TransferTestModel()
-    @State private var aiLab = AiLabModel(
-        lab: AiLab(model: ForgeAppleModel()), structured: AiLabStructured.run)
 
     private var s: LabSnapshot { model.snapshot }
 
@@ -24,59 +21,22 @@ struct DashboardView: View {
             deviceSection
             Section {
                 NavigationLink {
-                    AiLabView(model: aiLab)
-                } label: {
-                    Label("AI Lab", systemImage: "sparkles")
-                }
-                .accessibilityIdentifier("dashboard.aiLab")
-            } footer: {
-                Text("Experiments with Apple's on-device model: speed, Stop, structured output.")
-            }
-            Section {
-                NavigationLink {
                     LimitsView()
                 } label: {
                     Label("What iOS Keeps from Apps", systemImage: "lock.shield")
                 }
+                .accessibilityIdentifier("dashboard.limits")
             } footer: {
                 Text("Wi-Fi name, device name, carrier, signal strength and more.")
             }
-            Section {
-                NavigationLink {
-                    TransferTestView(model: transfers)
-                } label: {
-                    Label("Background Downloads", systemImage: "arrow.down.circle")
-                }
-                .accessibilityIdentifier("dashboard.transfers")
-            } footer: {
-                Text("Downloads that keep going after you leave the app.")
-            }
-            Section {
-                NavigationLink {
-                    CrashTestView(model: model)
-                } label: {
-                    Label("Crash Test", systemImage: "exclamationmark.triangle")
-                }
-                .accessibilityIdentifier("dashboard.crashTest")
-            } footer: {
-                Text("For developers: crash the app on purpose to check crash reports.")
-            }
         }
         .groupedList()
-        .navigationTitle("Device Lab")
+        .navigationTitle("This iPhone")
         .toolbar {
-            // The other example apps, run inside Device Lab (AppsView).
-            ToolbarItem(placement: .navigation) {
-                NavigationLink {
-                    AppsView(open: $openApp)
-                } label: {
-                    Label("Apps", systemImage: "square.grid.2x2")
-                }
-                .accessibilityIdentifier("dashboard.apps")
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button("Reset", systemImage: "arrow.counterclockwise") { model.reset() }
                     .help("Reset peaks, ranges and distance")
+                    .accessibilityIdentifier("dashboard.reset")
             }
         }
     }

@@ -2,7 +2,13 @@
 
 A live view of everything an iPhone tells an app about itself: network, Bluetooth, battery and temperature, storage and memory, the motion sensors, a compass, the barometer, location, and what the device is. It also lists what iOS keeps from apps, and why.
 
-It exists to prove Forge's optional native services ([docs/native-services.md](../../docs/native-services.md#optional-services)). The device capabilities are the framework's; this app is their consumer.
+It exists to prove Forge's optional native services ([docs/native-services.md](../../docs/native-services.md#optional-services)). The device capabilities are the framework's; this app is their consumer. It is also the one app on the test iPhone that hosts every other example app.
+
+It has three tabs:
+
+- **Apps** (the home screen): the build that is installed, the hosted apps, Interaction Patterns and Open at Launch ([below](#the-other-apps-apps-tab)).
+- **This iPhone**: the live sensor dashboard (the table below, down to What iOS Keeps from Apps). Its sensors run only while this tab is on screen.
+- **Tools**: AI Lab, Background Downloads and Crash Test.
 
 ## What it shows
 
@@ -18,18 +24,22 @@ It exists to prove Forge's optional native services ([docs/native-services.md](.
 | **Location** | Latitude, longitude, accuracy, altitude, speed, course, floor, distance travelled, top speed, Precise Location, a link to Maps | Location permission, while in use |
 | **Device** | Model identifier, iOS version, cores, screen size, uptime | Nothing |
 | **AI Lab** | Ready-made experiments with Apple's on-device model (short answer, following instructions, summarising, structured output twice, through Apple's `@Generable` macro and through `StructuredShape`, a no-macro stand-in that builds on Linux, a long answer to stop part-way) and a prompt of your own. Each run records time to first text, total time, an estimated speed, how many pieces it streamed in, and the app's memory and thermal state before and after ([plan, phase A0](../../docs/research/esim-ai-lab-plan.md)) | iOS 26 with Apple Intelligence on |
+| **Background Downloads** | A download that keeps going after you leave the app, through Forge's background transfers | Nothing |
 | **What iOS Keeps from Apps** | Wi-Fi name (paid team), the phone's own name (Apple approval), carrier, signal strength, the light sensor, MAC addresses, background sensors | |
 | **Crash Test** | For developers: crashes the app on purpose with a Swift force unwrap or a Rust panic, to check `forge device crashes --pull` down to the file and line ([forge-device.md](../../docs/forge-device.md#crash-reports)) | |
 
 Nothing asks for a permission until you tap its button. Everything stops when the app goes to the background, and nothing leaves the phone. All of it works with a free Apple account: the app has no entitlements.
 
-## The other apps (Apps screen)
+## The other apps (Apps tab)
 
-The **Apps** button on the dashboard opens the other example apps, each the
-full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Relay (with Chat's
+The **Apps** tab, the first thing Device Lab shows, opens the other example
+apps, each the full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Relay (with Chat's
 messaging, merged into it), FieldKit and the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
 in one of them (the `-launchApp weather` launch argument does the same).
-One app on the phone holds all of them. (Counter isn't hosted.)
+One app on the phone holds all of them. (Counter isn't hosted.) The top row,
+**This Build**, shows the installed version and build number; every
+`forge run ios` stamps a new build number, so it is how a phone sitting checks
+that the new build arrived.
 
 ### The workshop
 
@@ -40,6 +50,7 @@ trailing edge (**Workshop**) is all Device Lab adds. Its menu:
 | Item | What it does |
 |------|--------------|
 | **Back to Device Lab** | Closes the app (its core keeps running, as in the background). VoiceOver's two-finger scrub does the same once the app has nothing left to dismiss |
+| **Switch App** | Opens another hosted app in this one's place, without going back to the list. The workshop choices below carry over |
 | **Appearance** | Light, dark, or match the iPhone, without changing the phone's setting |
 | **Text Size** | Default, the largest ordinary size, Accessibility 3 or 5, without changing the phone's setting |
 | **Screen Size** | The app in a 375 × 667 point frame, the smallest iPhone iOS 17 runs on (iPhone SE), centred on this phone. An approximation: the safe areas are this phone's |
@@ -117,7 +128,9 @@ examples/device-lab/
                            DeviceLab: what runs when, LabSnapshot for the UI
   rust/src/stats.rs        rolling histories, measured rates, peaks, tilt, distance, change log
   Generated/ForgeFFI/      bindings plus the five optional Swift adapters (copied because lib.rs names them)
-  Sources/AppHost/         SwiftUI: LabModel, DashboardView, MotionView, CompassView, LimitsView
+  Sources/AppHost/         SwiftUI: ContentView (the tabs), AppsView, DashboardView (This iPhone),
+                           ToolsView, WorkshopView, LabModel, MotionView, CompassView, LimitsView
+  Resources/AppIcon.png    the home-screen icon
 ```
 
 **Forge owns** reading the platform: `NWPathMonitor`, `UIDevice` and `ProcessInfo`, Core Motion, Core Location and Core Bluetooth, behind Rust traits, with permissions through the one `NativePermission` interface.
@@ -142,7 +155,7 @@ A free Apple account allows three sideloaded apps at a time, so you may need to 
 
 ## Checking it on an iPhone
 
-Not yet run on a device. When it is, check:
+Device Lab has been on the phone since 14 November 2026, as the app every phone sitting uses. To check the dashboard itself (This iPhone tab, AI Lab and Crash Test in Tools):
 
 1. Network: toggle Airplane Mode and Wi-Fi from Control Center; each change appears in Recent Changes, and Large Downloads says "Would wait for Wi-Fi" on cellular.
 2. Bluetooth: tap Allow, then toggle Bluetooth in Control Center.
