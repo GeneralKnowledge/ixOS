@@ -8,7 +8,11 @@ It has three tabs:
 
 - **Apps** (the home screen): the build that is installed, the hosted apps, Interaction Patterns and Open at Launch ([below](#the-other-apps-apps-tab)).
 - **This iPhone**: the live sensor dashboard (the table below, down to What iOS Keeps from Apps). Its sensors run only while this tab is on screen.
-- **Tools**: AI Lab, Background Downloads and Crash Test.
+- **Tools**: what a phone sitting needs, then experiments and developer checks:
+  - **Checks**: the next sitting's checks, built into the app (`Sources/AppHost/PhoneChecks.swift`). Tick Pass, Fail or Skip, add a note, and share the results as text. Answers are kept per build number. Whoever prepares a sitting replaces that file's text in the PR the build comes from.
+  - **Servers**: whether the chat server (Relay's Chats) and the take server (Soundscape) answer from the phone, at the address each app uses, with the time it took or why not. Tailscale addresses are marked, since Tailscale must be on for the phone too.
+  - **Logs**: the last 512 records from Device Lab and every hosted app, kept in memory by Forge's logging pipeline (`rust/src/logs.rs`), with a level filter, search and Share, so a problem can be sent without the cable.
+  - AI Lab, Background Downloads and Crash Test.
 
 ## What it shows
 
