@@ -307,10 +307,16 @@ public final class RelayModel {
         }
     }
 
-    /// Starts sending the file at `path` with a new code.
+    /// Starts sending the file or folder at `path` with a new code.
     public func send(fileAt path: String) {
+        send(paths: [path])
+    }
+
+    /// Starts sending the files and folders at `paths` with one new code;
+    /// the receiver gets them in one folder when there are several.
+    public func send(paths: [String]) {
         do {
-            try core.sendWithCode(path: path)
+            try core.sendPathsWithCode(paths: paths)
             codeSend = core.codeSendStatus()
         } catch {
             log.warn("code send failed to start: \(error)")

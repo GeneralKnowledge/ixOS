@@ -16,13 +16,21 @@ extension RelayError: ForgeKindedError {
     public var forgeKind: ErrorKind { relayErrorKind(error: self) }
 }
 
-/// The host for Relay's core, with its data in Application Support (or
+/// The host for Relay's core, with its data in Application Support and
+/// files received with a code in Documents/Relay (or
 /// throwaway data when launched with `-ForgeTemporaryData`, as UI tests
 /// are). Make it once, in the `App`, never in a view.
 @MainActor
 public func makeAppHost() -> ForgeHost<RelayCore> {
     let name = deviceName()
-    return ForgeHost(app: "Relay") { try openCore($0, name: name) }
+    // Files received with a code go to Documents/Relay, which the Files app
+    // shows; throwaway data keeps them in its own folder.
+    let documents = ForgeEnvironment.usesTemporaryData()
+        ? nil
+        : FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+    return ForgeHost(app: "Relay") {
+        try openCore($0, name: name, receivedFiles: documents?.appendingPathComponent("Relay", isDirectory: true))
+    }
 }
 
 /// A host on a fresh temporary folder, for tests.
@@ -31,9 +39,13 @@ public func makeTemporaryAppHost() -> ForgeHost<RelayCore> {
     ForgeHost(environment: { try ForgeEnvironment.temporary() }) { try openCore($0, name: "Test Device") }
 }
 
-private func openCore(_ environment: ForgeEnvironment, name: String) throws -> RelayCore {
+private func openCore(_ environment: ForgeEnvironment, name: String, receivedFiles: URL? = nil) throws -> RelayCore {
     // The first open names this device; the person can rename it.
-    try RelayCore(dataDirectory: environment.dataDirectory, deviceName: name)
+    let core = try RelayCore(dataDirectory: environment.dataDirectory, deviceName: name)
+    if let receivedFiles {
+        try core.receiveInto(folder: receivedFiles.path)
+    }
+    return core
 }
 
 @MainActor

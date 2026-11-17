@@ -244,6 +244,58 @@ fn a_folder_with_a_code_lands_in_both_histories() {
     assert!(!got.exists());
 }
 
+/// Several items go as one transfer, and land in the folder the app chose
+/// (its Documents, which the Files app shows).
+#[test]
+fn several_items_land_in_the_chosen_folder() {
+    use relay_core::CodeSend;
+    let dir = tempfile::tempdir().unwrap();
+    let phone = device(&dir, "phone");
+    let laptop = device(&dir, "laptop");
+    let documents = dir.path().join("Documents/Received");
+    phone
+        .receive_into(documents.to_string_lossy().into_owned())
+        .unwrap();
+    let folder = dir.path().join("Trip");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("list.txt"), b"tent").unwrap();
+    let photo = dir.path().join("photo.jpg");
+    std::fs::write(&photo, b"jpeg").unwrap();
+
+    laptop
+        .send_paths_with_code(vec![
+            folder.to_string_lossy().into_owned(),
+            photo.to_string_lossy().into_owned(),
+        ])
+        .unwrap();
+    let CodeSend::Waiting {
+        code,
+        port,
+        endpoint_id,
+        name,
+        ..
+    } = waiting(&laptop)
+    else {
+        unreachable!()
+    };
+    assert_eq!(name, "2 items");
+    let receipt =
+        block_on(phone.receive_with_code(code, vec![format!("127.0.0.1:{port}")], endpoint_id))
+            .unwrap();
+    let got = std::path::Path::new(&receipt.path);
+    assert!(got.starts_with(&documents), "{got:?}");
+    assert_eq!(std::fs::read(got.join("Trip/list.txt")).unwrap(), b"tent");
+    assert_eq!(std::fs::read(got.join("photo.jpg")).unwrap(), b"jpeg");
+
+    let received = &phone.transfers()[0];
+    let Item::File { path, .. } = &received.item else {
+        panic!("not a file entry")
+    };
+    assert_eq!(path.as_deref(), Some(receipt.path.as_str()));
+    block_on(phone.remove_transfer(received.id)).unwrap();
+    assert!(!got.exists());
+}
+
 /// The device's endpoint id stays the same across relaunches: sends from
 /// the same data directory advertise the same id.
 #[test]

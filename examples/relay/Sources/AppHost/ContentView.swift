@@ -109,15 +109,21 @@ struct DevicesView: View {
                             .accessibilityIdentifier("devices.showCode")
                         Button("Scan a Code", systemImage: "qrcode.viewfinder") { scanning = true }
                             .accessibilityIdentifier("devices.scan")
-                        Divider()
-                        Button("Receive with a Code", systemImage: "arrow.down.circle") { receivingCode = true }
-                            .accessibilityIdentifier("devices.receiveCode")
-                        Button("Send with a Code", systemImage: "arrow.up.circle") { sendingCode = true }
-                            .accessibilityIdentifier("devices.sendCode")
                     } label: {
                         Label("Pair a Device", systemImage: "plus")
                     }
                     .accessibilityIdentifier("devices.pair")
+                }
+                // Send and Receive work with anyone on this Wi-Fi, by word
+                // code; paired devices are reached from their own screen.
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button("Receive", systemImage: "arrow.down.circle") { receivingCode = true }
+                        .labelStyle(.titleAndIcon)
+                        .accessibilityIdentifier("relay.receive")
+                    Spacer()
+                    Button("Send", systemImage: "arrow.up.circle") { sendingCode = true }
+                        .labelStyle(.titleAndIcon)
+                        .accessibilityIdentifier("relay.send")
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Rename This Device", systemImage: "pencil") {
@@ -234,11 +240,12 @@ struct TransferRow: View {
     let transfer: Transfer
     let model: RelayModel
     @Binding var preview: URL?
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         Button {
             if case .file(_, _, let path?) = transfer.item {
-                preview = URL(fileURLWithPath: path)
+                ReceivedItem.open(path, preview: &preview, openURL: openURL)
             }
         } label: {
             HStack(alignment: .top, spacing: 12) {
@@ -289,6 +296,29 @@ struct TransferRow: View {
     private var isFailed: Bool {
         if case .failed = transfer.status { return true }
         return false
+    }
+}
+/// Opening a received file or folder: a file in Quick Look, a folder in the
+/// Files app (Quick Look can't show a folder).
+enum ReceivedItem {
+    static func isFolder(_ path: String) -> Bool {
+        var folder: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &folder) && folder.boolValue
+    }
+
+    /// The Files app at `path` (`shareddocuments://`), for something in this
+    /// app's Documents.
+    static func filesURL(_ path: String) -> URL? {
+        let file = URL(fileURLWithPath: path).absoluteString
+        return URL(string: file.replacingOccurrences(of: "file://", with: "shareddocuments://"))
+    }
+
+    static func open(_ path: String, preview: inout URL?, openURL: OpenURLAction) {
+        if isFolder(path), let url = filesURL(path) {
+            openURL(url)
+        } else {
+            preview = URL(fileURLWithPath: path)
+        }
     }
 }
 #endif

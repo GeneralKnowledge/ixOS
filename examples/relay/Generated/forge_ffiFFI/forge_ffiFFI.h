@@ -343,6 +343,11 @@ RustBuffer uniffi_relay_core_fn_method_relaycore_peers(uint64_t ptr, RustCallSta
 RustBuffer uniffi_relay_core_fn_method_relaycore_phase(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_RECEIVE_INTO
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_RECEIVE_INTO
+void uniffi_relay_core_fn_method_relaycore_receive_into(uint64_t ptr, RustBuffer folder, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_RECEIVE_WITH_CODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_RECEIVE_WITH_CODE
 uint64_t uniffi_relay_core_fn_method_relaycore_receive_with_code(uint64_t ptr, RustBuffer code, RustBuffer addresses, RustBuffer endpoint_id
@@ -371,6 +376,11 @@ uint64_t uniffi_relay_core_fn_method_relaycore_send_file(uint64_t ptr, RustBuffe
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_NOTE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_NOTE
 uint64_t uniffi_relay_core_fn_method_relaycore_send_note(uint64_t ptr, RustBuffer device_id, RustBuffer text, RustBuffer addresses, RustBuffer cancellation
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
+void uniffi_relay_core_fn_method_relaycore_send_paths_with_code(uint64_t ptr, RustBuffer paths, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_WITH_CODE
@@ -809,6 +819,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_phase(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_RECEIVE_INTO
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_RECEIVE_INTO
+uint16_t uniffi_relay_core_checksum_method_relaycore_receive_into(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_RECEIVE_WITH_CODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_RECEIVE_WITH_CODE
 uint16_t uniffi_relay_core_checksum_method_relaycore_receive_with_code(void
@@ -842,6 +858,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_send_file(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_NOTE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_NOTE
 uint16_t uniffi_relay_core_checksum_method_relaycore_send_note(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
+uint16_t uniffi_relay_core_checksum_method_relaycore_send_paths_with_code(void
     
 );
 #endif
