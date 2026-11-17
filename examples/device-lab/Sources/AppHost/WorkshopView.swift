@@ -7,13 +7,16 @@ import SwiftUI
 /// turned a downward stroke near the top into "close the app" (experience
 /// audit X9, friction audit D1 and D3).
 ///
-/// The workshop button goes back to Device Lab and changes how the app is
+/// The workshop button goes back to Device Lab, switches to another hosted
+/// app, and changes how the app is
 /// shown (appearance, text size, a smaller screen) without touching the
 /// app's data or the phone's settings. UI tests mask it by its identifier,
 /// `workshop.menu` (`uitests/catalogue.toml`).
 struct HostedAppView: View {
     let app: EmbeddedApp
     @Binding var settings: WorkshopSettings
+    /// Opens another hosted app in this one's place.
+    let switchTo: (EmbeddedApp) -> Void
     let close: () -> Void
     /// The phone's own text size, used when the workshop doesn't override it.
     @Environment(\.dynamicTypeSize) private var phoneTextSize
@@ -41,7 +44,7 @@ struct HostedAppView: View {
                 }
         }
         .overlay(alignment: settings.handle.alignment) {
-            WorkshopMenu(app: app, settings: $settings, close: close)
+            WorkshopMenu(app: app, settings: $settings, switchTo: switchTo, close: close)
                 .padding(.trailing, 4)
                 .padding(.vertical, 12)
         }
@@ -57,6 +60,7 @@ struct HostedAppView: View {
 private struct WorkshopMenu: View {
     let app: EmbeddedApp
     @Binding var settings: WorkshopSettings
+    let switchTo: (EmbeddedApp) -> Void
     let close: () -> Void
 
     var body: some View {
@@ -65,6 +69,21 @@ private struct WorkshopMenu: View {
                 Label("Back to Device Lab", systemImage: "chevron.backward")
             }
             .accessibilityIdentifier("workshop.close")
+
+            // Straight to another app, without the Apps list in between.
+            Menu {
+                ForEach(EmbeddedApp.allCases.filter { $0 != app }) { other in
+                    Button {
+                        switchTo(other)
+                    } label: {
+                        Label(other.name, systemImage: other.systemImage)
+                    }
+                    .accessibilityIdentifier("workshop.switch.\(other.rawValue)")
+                }
+            } label: {
+                Label("Switch App", systemImage: "square.grid.2x2")
+            }
+            .accessibilityIdentifier("workshop.switch")
 
             Section("How \(app.name) Looks") {
                 Picker(selection: $settings.appearance) {
@@ -129,7 +148,7 @@ private struct WorkshopMenu: View {
         }
         .accessibilityIdentifier("workshop.menu")
         .accessibilityLabel("Workshop")
-        .accessibilityHint("Goes back to Device Lab, or changes how \(app.name) is shown.")
+        .accessibilityHint("Goes back to Device Lab, switches to another app, or changes how \(app.name) is shown.")
     }
 }
 

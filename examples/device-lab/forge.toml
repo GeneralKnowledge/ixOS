@@ -21,6 +21,7 @@ ios_simulator = false
 [ios]
 devices = ["iphone"]
 orientations = ["portrait"]
+icon = "Resources/AppIcon.png"    # 1024x1024 PNG, no transparency
 # Pocket Library's "Read the Whole Book" runs on as a continued-processing
 # task named after the host's bundle id (with and without xtool's
 # XTL-<team>. prefix); see examples/pocket-library/forge.toml.

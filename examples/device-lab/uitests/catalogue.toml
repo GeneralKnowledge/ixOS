@@ -139,30 +139,6 @@ settle = {}
 screenshot = "commonplace"
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData", "-launchApp", "chat", "-ForgeAppearance", "light"] }
-
-[[step]]
-expect = { id = "workshop.menu" }
-
-[[step]]
-settle = {}
-
-[[step]]
-screenshot = "chat"
-
-[[step]]
-launch = { args = ["-ForgeTemporaryData", "-launchApp", "chat", "-ForgeAppearance", "dark"] }
-
-[[step]]
-expect = { id = "workshop.menu" }
-
-[[step]]
-settle = {}
-
-[[step]]
-screenshot = "chat"
-
-[[step]]
 launch = { args = ["-ForgeTemporaryData", "-launchApp", "fieldKit", "-ForgeAppearance", "light"] }
 
 [[step]]

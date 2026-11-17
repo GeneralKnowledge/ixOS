@@ -31,6 +31,7 @@ struct AppsView: View {
 
     var body: some View {
         List {
+            BuildSection(info: .current)
             Section {
                 ForEach(EmbeddedApp.allCases) { app in
                     Button {
@@ -75,7 +76,6 @@ struct AppsView: View {
             } footer: {
                 Text("Device Lab opens straight into this app. Its workshop button gets back to Device Lab.")
             }
-            BuildSection(info: .current)
         }
         .groupedList()
         .navigationTitle("Apps")
@@ -115,7 +115,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .commonplace: "A feed reader that keeps articles to read offline."
         case .fieldKit: "A field notebook: record a GPS track and take notes along the way."
         case .sketchbook: "Draw with your finger in layers, with undo, and export to PNG or PDF."
-        case .soundscape: "Record loops, layer them and mix down to a WAV file; listen to, compare and pick song takes from your computer."
+        case .soundscape: "A music player for your songs from your computer: albums, a queue, lock-screen playback, and takes to compare and pick."
         case .relay: "Messages through your chat server with an on-device assistant, and files, photos and folders straight to a nearby device."
         case .forgeUI: "Every ForgeUI component, with example screens."
         }
@@ -153,14 +153,16 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
     }
 }
 
-/// Which build is installed, matching its row on the Install page
-/// (`forge publish ios`), so you can check an update arrived.
+/// Which build is installed, at the top of the home screen, so a phone
+/// sitting can check at a glance that the new build arrived (the build number
+/// changes with every `forge run ios`).
 private struct BuildSection: View {
     let info: ForgeBuildInfo
 
     var body: some View {
-        Section("This Build") {
-            LabeledContent("Version", value: info.versionLine)
+        Section {
+            LabeledContent("This Build", value: info.versionLine)
+                .monospacedDigit()
                 .accessibilityIdentifier("apps.build.version")
             if let source = info.sourceLine {
                 Text(source)

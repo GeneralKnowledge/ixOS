@@ -5,3 +5,4 @@ bundleID: org.forgemobile.devicelab
 # The library product holding the app's @main; xtool names the built app after it.
 product: AppHostXtool
 infoPath: Info.plist
+iconPath: Resources/AppIcon.png
