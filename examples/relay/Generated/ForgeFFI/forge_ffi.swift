@@ -746,10 +746,12 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     /**
      * Receives the file or folder a sender offers with a word code such as
      * `37-grasp-gag-drum` (Relay M1; the sender is another Relay or
-     * `relay-spike send`). `addresses` and `endpoint_id` come from the
+     * `relay send`). `addresses` and `endpoint_id` come from the
      * sender's Bonjour advertisement (`CODE_SERVICE_TYPE`, TXT `n` = the
      * code's number, `id` = the endpoint id). Every chunk is verified, and
-     * it is saved in Relay's `codes/received` folder; a dropped receive
+     * it is saved in the folder [`RelayCore::receive_into`] chose (the app
+     * passes Documents/Relay), or Relay's own `codes/received` if none was
+     * chosen; several items arrive as one folder. A dropped receive
      * resumes with the sender's next code, also after a relaunch. Once the
      * sender has named what it sends, the receive goes into the history.
      * One at a time.
@@ -1146,10 +1148,12 @@ open func receiveInto(folder: String)throws   {try rustCallWithError(FfiConverte
     /**
      * Receives the file or folder a sender offers with a word code such as
      * `37-grasp-gag-drum` (Relay M1; the sender is another Relay or
-     * `relay-spike send`). `addresses` and `endpoint_id` come from the
+     * `relay send`). `addresses` and `endpoint_id` come from the
      * sender's Bonjour advertisement (`CODE_SERVICE_TYPE`, TXT `n` = the
      * code's number, `id` = the endpoint id). Every chunk is verified, and
-     * it is saved in Relay's `codes/received` folder; a dropped receive
+     * it is saved in the folder [`RelayCore::receive_into`] chose (the app
+     * passes Documents/Relay), or Relay's own `codes/received` if none was
+     * chosen; several items arrive as one folder. A dropped receive
      * resumes with the sender's next code, also after a relaunch. Once the
      * sender has named what it sends, the receive goes into the history.
      * One at a time.
@@ -2985,7 +2989,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_receive_into() != 33604) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_receive_with_code() != 43026) {
+    if (uniffi_relay_core_checksum_method_relaycore_receive_with_code() != 3953) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_remove_transfer() != 50342) {
