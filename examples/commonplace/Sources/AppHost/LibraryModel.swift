@@ -232,12 +232,9 @@ public final class LibraryModel {
     /// connectivity service.
     public func refreshWhenBackOnline() async {
         while !Task.isCancelled {
-            let cancellation = Cancellation()
             do {
-                let back = try await withTaskCancellationHandler {
+                let back = try await withRustCancellation { cancellation in
                     try await core.waitUntilBackOnline(cancellation: cancellation)
-                } onCancel: {
-                    cancellation.cancel()
                 }
                 guard back else { return }
             } catch {
