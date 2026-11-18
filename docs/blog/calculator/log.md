@@ -153,6 +153,17 @@ What the calculator said (Observed, pass a only; determinism still to be shown b
 - 1234567 shows as 1,234,567.
 - **Unknown** (not reached): the digit limit, huge and tiny numbers, all five Delete sums.
 
+**16:32. Reuben: "Why are we rerunning everything?"** Fair: we weren't going to. The 31 answers stood; the second full pass, meant to prove the calculator answers the same way twice, was dropped as testing for its own sake. The script gained `--start-at` to finish a pass where it stopped.
+
+**16:33 to 16:36. The last 8 sums** (215 s, 121 steps, all passed; Forge also opened and closed History, screenshot taken):
+
+- **No 9-digit limit:** 18 digits typed are all kept, shown as 123,456,789,123,456,789.
+- **Scientific notation, nine significant digits:** 999,999,999 × 999,999,999 = **9.99999998e17**. 1 ÷ 999,999,999 ÷ 999,999,999 = **1.000000002e-18** (the expression line shows the intermediate as 0.000000001000000001).
+- **Delete** (pressed by Forge with no one watching, at `full`): 123 ⌫ gives 12; 5 ⌫ gives 0; after a result, ⌫ clears it to 0 rather than editing it; **7 + ⌫ 5 = gives 75**: Delete removed the operator, so the 5 joined the 7; 4 . 5 ⌫ ⌫ 6 = gives 46, deleting back through the point.
+- Calculator back to `operate`.
+
+**R1 recording done: 39 of 39 sums** ([reference-results.toml](../../research/expeditions/calculator/evidence/reference-results.toml)). Three attempts failed before that, each for a reason worth knowing: Forge couldn't find a system app; the test never brought Calculator to the front; the clear key changes its id. Plus one auto-lock.
+
 ## Next
 
-R1, collect and map: the sequence table (ordinary sums, repeated equals, percent, sign change, huge numbers, rounding, a relaunch mid-sequence), recorded twice in portrait. Taps need Calculator at `operate` level rather than `observe`, which is Reuben's call.
+R1's map (`map.md`) and the findings from these answers, then R2: the calculator engine in Rust, with `reference-results.toml` as its unit test on Linux.

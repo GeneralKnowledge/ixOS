@@ -25,7 +25,23 @@ Tags: **O** Observed, **I** Inferred, **U** Unknown. Representation: visual, str
 | 19 | U | behavioural | Whether the main display rounds and separates thousands the same way as History | R1 |
 | 20 | O | visual | A ">" tab on the left edge in every screenshot, never in the tree in four readings | main.png, r0-landscape.png |
 | 21 | U | navigational | What the ">" tab does | |
-| 22 | O | equipment | `forge ui tree --app com.apple.calculator` fails: "not installed on the phone". Forge can't bring a system app to the front; a person opens it. Reading what's in front with `--any-app` works | laptop |
+| 22 | O | equipment | `forge ui tree --app com.apple.calculator` failed: "not installed on the phone". **Fixed 2026-11-18** (#318): Forge looks system apps up too, and opened Calculator itself on the phone | laptop |
 | 23 | O | equipment | Forge reads an app it didn't build only with `--any-app` and a line in the person's policy file; the laptop session would not add either without Reuben's words | field notes 00:44 |
 | 24 | O | equipment | Tree reads 1.8 to 8.5 s, screenshots 1.1 s; the phone dropped off USB once | field notes |
 | 25 | O | structural | Forge's accessibility audit: nothing on the keypad; 12 warnings with History open (9 duplicate ids, Sheet Grabber and Edit without ids, Sheet Grabber 74 × 26 pt) | laptop history-tree.json |
+| 26 | O | behavioural | 0.1 + 0.2 = 0.3, not 0.30000000000000004 | reference-results.toml |
+| 27 | I | behavioural | Arithmetic is decimal, or rounded before display; plain `f64` printed as is would differ | from 26 |
+| 28 | O | behavioural | Results show up to 11 decimal places, last digit rounded (2÷3 = 0.66666666667) | reference-results.toml |
+| 29 | O | behavioural | Large and small results switch to scientific notation with nine significant digits (9.99999998e17, 1.000000002e-18) | reference-results.toml |
+| 30 | O | behavioural | Typing has no 9-digit limit: 18 digits are kept, with thousands separators | reference-results.toml |
+| 31 | O | behavioural | Operator precedence is respected (2+3×4 = 14) | reference-results.toml |
+| 32 | O | behavioural | Repeated equals repeats the last operation and operand (2+3=== gives 11, expression "8+3") | reference-results.toml |
+| 33 | O | behavioural | A second operator replaces the first; an operator first starts from 0; = alone gives 0 | reference-results.toml |
+| 34 | O | behavioural | Percent is displayed, not evaluated ("50%"); in a sum it is relative to the left operand (200+10% = 220; 50×10% = 5) | reference-results.toml |
+| 35 | O | visual | A negative typed number shows in brackets, "(-5)"; ± on 0 stays 0 | reference-results.toml |
+| 36 | O | behavioural | 5÷0 shows "Undefined"; 0÷0 shows "Indeterminate"; neither string has U+200E | reference-results.toml |
+| 37 | O | behavioural | Delete removes the last digit, the point, or the pending operator (7 + ⌫ 5 = gives 75); after a result it clears to 0 | reference-results.toml |
+| 38 | O | equipment | `forge ui run` doesn't bring the app to the front; a run that started with another app in front stopped at its first tap, correctly. Fixed in the script with `activate` before each sum | field notes 16:16 |
+| 39 | O | equipment | At a failure with another app in front, Forge saved that app's screen, which the docs say it doesn't | field notes 16:16 |
+| 40 | O | equipment | Delete can only be pressed unattended at `full`: at `operate` the commit gate stops at its label | field notes 09:46 |
+| 41 | U | behavioural | Whether Calculator answers the same way twice (no second pass recorded; recheck any sum the rebuild disagrees with) | |

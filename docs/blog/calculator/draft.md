@@ -2,7 +2,7 @@
 
 *Or: how rebuilding a calculator became an exercise in digital archaeology, accessibility-tree archaeology, and questioning my life choices.*
 
-<!-- Kept in step with what actually happened: see log.md next to this file. "1. Survey the terrain" happened on 2026-11-18 and is written from the field notes; everything after it is still the plan. -->
+<!-- Kept in step with what actually happened: see log.md next to this file. "1. Survey the terrain" and "2. Collect evidence" happened on 2026-11-18 and are written from the field notes; everything after them is still the plan. -->
 
 I thought rebuilding a calculator would be easy.
 
@@ -84,12 +84,11 @@ I am no longer looking at a calculator. I am interrogating a calculator like it 
 
 A calculator has buttons for numbers and operators. It also has states, input sequences, formatting rules, edge cases, and behaviours that are easy to overlook when you're casually using it.
 
-So we collect: labels, roles, values, how elements relate, and above all what each interaction does. That last part becomes a table of key sequences, each with the number it leaves on the display.
+So we wrote down 39 questions. Not answers: questions. Each is a sequence of keys and the one thing it asks.
 
 Some are obvious:
 
 * Press 7, then +, then 5.
-* Clear the display.
 * Enter a decimal.
 * Perform a division.
 * Enter a long sequence of numbers.
@@ -98,13 +97,34 @@ Others are less obvious.
 
 What happens when you press equals repeatedly? What happens when you divide by zero? What happens when you enter an absurdly large number? What happens when you press buttons in an order that a sensible person would never consider?
 
-These are important questions.
-
 The original developers have presumably spent a great deal of time deciding what should happen in these situations. We get to discover those decisions the hard way.
 
-Then we record the whole table twice. If the calculator gives different answers to the same questions, that's a problem for us and an interesting evening for somebody at Apple.
+This time I wasn't pressing anything. Forge was. A small script turns the 39 questions into one long test, Forge presses every key by its name, and after each sum it reads the answer out of the accessibility tree.
 
-- **Inferred:** a calculator is deterministic. Same keys, same display. The double recording is how this gets promoted to Observed, or embarrassingly demoted.
+It took four attempts.
+
+The first never pressed a key: Forge refused to believe Calculator existed, because it only knew about apps somebody had installed, and nobody installs Calculator. That one needed a fix in Forge itself, the first change to the platform this expedition caused. The second never pressed a key either: I'd picked up the phone to read the progress messages, the Claude app was in front, and Forge, quite correctly, refused to tap an app it hadn't been asked to touch. The third got through eight sums and then discovered that the "All Clear" key is called "Clear" while there's something to clear. The fourth got through 31 sums before the phone's auto-lock sent it to the home screen.
+
+At which point I asked why we were about to rerun everything. We weren't, in the end. We recorded the last eight and stopped.
+
+Then there was Delete. Forge has a safety rule: it won't press anything labelled "delete" without a person saying yes, because in most apps that's your data. On a calculator, Delete is backspace. To let it run with nobody watching, I had to give Forge full rein over Calculator, and only Calculator, and take it back afterwards. Even the safety rules are evidence: to a policy written for real apps, a calculator's backspace looks exactly like deleting your files.
+
+And the answers? Here is a selection from the notebook, all **Observed**:
+
+- **0.1 + 0.2 = 0.3.** Not 0.30000000000000004, which is what most programming languages will tell you. Whatever Calculator does inside, it isn't naive floating point. (**Inferred**, and the first trap for our rebuild.)
+- **2 + 3 × 4 = 14.** It does multiplication first. Plenty of physical calculators would say 20.
+- **2 + 3 = = =** gives 11. Equals repeats the last step.
+- **50 %** is shown as "50%", not 0.5. And 200 + 10 % is 220: the percent is of the 200.
+- Change sign puts the number in brackets: **(-5)**.
+- **5 ÷ 0 says "Undefined". 0 ÷ 0 says "Indeterminate".** Somebody at Apple cared enough to tell the two apart.
+- Type 18 digits and it keeps all 18. 999,999,999 × 999,999,999 is **9.99999998e17**.
+- **7 + ⌫ 5 = gives 75.** Delete didn't just remove a digit. It removed the plus, and the 5 joined the 7.
+
+Thirty-nine sums. Not one of them is hard. At least six would break a recreation written by someone who thought they knew how a calculator works. That someone was me.
+
+- **Unknown:** whether it gives the same answers twice. We only asked once. A calculator surely does, and we decided that proving it was testing for its own sake.
+
+We are effectively writing a field guide to a calculator.
 
 ## 3. Build a map
 
