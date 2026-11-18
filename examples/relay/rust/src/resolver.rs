@@ -133,11 +133,23 @@ fn kind_v4(ip: Ipv4Addr) -> RouteKind {
     if a == 100 && (64..128).contains(&b) {
         // 100.64.0.0/10, which Tailscale uses.
         RouteKind::Private
-    } else if ip.is_private() || ip.is_link_local() || ip.is_loopback() {
+    } else if ip.is_private() || ip.is_link_local() || ip.is_loopback() || never_on_the_internet(ip)
+    {
         RouteKind::Local
     } else {
         RouteKind::Internet
     }
+}
+
+/// Blocks set aside for documentation (192.0.2.0/24, 198.51.100.0/24,
+/// 203.0.113.0/24), benchmarking (198.18.0.0/15) and future use
+/// (240.0.0.0/4), which no internet route reaches. Some test and lab
+/// networks give machines such addresses.
+fn never_on_the_internet(ip: Ipv4Addr) -> bool {
+    let [a, b, c, _] = ip.octets();
+    matches!((a, b, c), (192, 0, 2) | (198, 51, 100) | (203, 0, 113))
+        || (a == 198 && (b & 0xfe) == 18)
+        || a >= 240
 }
 
 fn kind_v6(ip: Ipv6Addr) -> RouteKind {
@@ -145,8 +157,13 @@ fn kind_v6(ip: Ipv6Addr) -> RouteKind {
     if s[0] == 0xfd7a && s[1] == 0x115c && s[2] == 0xa1e0 {
         // fd7a:115c:a1e0::/48, Tailscale's IPv6 range.
         RouteKind::Private
-    } else if ip.is_loopback() || (s[0] & 0xffc0) == 0xfe80 || (s[0] & 0xfe00) == 0xfc00 {
-        // Link-local and other unique local addresses.
+    } else if ip.is_loopback()
+        || (s[0] & 0xffc0) == 0xfe80
+        || (s[0] & 0xfe00) == 0xfc00
+        || (s[0] == 0x2001 && s[1] == 0x0db8)
+    {
+        // Link-local, other unique local addresses, and 2001:db8::/32,
+        // set aside for documentation.
         RouteKind::Local
     } else {
         RouteKind::Internet
@@ -427,6 +444,10 @@ mod tests {
 
     #[test]
     fn kinds_of_addresses() {
+        assert_eq!(kind_of(&sa("192.0.2.2:4000")), RouteKind::Local);
+        assert_eq!(kind_of(&sa("198.19.0.1:4000")), RouteKind::Local);
+        assert_eq!(kind_of(&sa("[2001:db8::1]:4000")), RouteKind::Local);
+        assert_eq!(kind_of(&sa("198.20.0.1:4000")), RouteKind::Internet);
         assert_eq!(kind_of(&sa("192.168.1.169:4000")), RouteKind::Local);
         assert_eq!(kind_of(&sa("10.0.0.2:4000")), RouteKind::Local);
         assert_eq!(kind_of(&sa("172.20.1.1:4000")), RouteKind::Local);
