@@ -182,6 +182,8 @@ struct TrackRow: View {
     let player: TakePlayer
     let track: LibraryTrack
     var number: UInt32? = nil
+    /// In a playlist: Remove from Playlist on its menu and swipe.
+    var remove: (() -> Void)? = nil
     let showDetails: () -> Void
     let play: () -> Void
 
@@ -265,6 +267,10 @@ struct TrackRow: View {
             DownloadMenuItem(model: model, tracks: [track], identifier: "library.downloadMenu")
             Button("Details", systemImage: "info.circle", action: showDetails)
                 .accessibilityIdentifier("library.detailsMenu")
+            if let remove {
+                Button("Remove from Playlist", systemImage: "minus.circle", role: .destructive, action: remove)
+                    .accessibilityIdentifier("playlist.removeMenu")
+            }
         }
         .sheet(isPresented: $addingToPlaylist) {
             AddToPlaylistSheet(model: model, trackIds: [track.id])
@@ -277,6 +283,12 @@ struct TrackRow: View {
             .accessibilityIdentifier("library.swipePlayNext")
         }
         .swipeActions(edge: .trailing) {
+            // A row's own swipes replace the list's swipe to delete, so a
+            // playlist offers Remove here.
+            if let remove {
+                Button("Remove", systemImage: "minus.circle", role: .destructive, action: remove)
+                    .accessibilityIdentifier("playlist.swipeRemove")
+            }
             Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
                 player.add(model.queue([track]), next: false)
             }

@@ -255,6 +255,8 @@ struct PlaylistView: View {
     @State private var detail: PlaylistDetail?
     @State private var renaming = false
     @State private var details: String?
+    @State private var confirmingDelete = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -285,6 +287,11 @@ struct PlaylistView: View {
                             DownloadMenuItem(model: model, tracks: detail.entries.map(\.track),
                                              identifier: "playlist.download")
                         }
+                        Divider()
+                        Button("Delete Playlist", systemImage: "trash", role: .destructive) {
+                            confirmingDelete = true
+                        }
+                        .accessibilityIdentifier("playlist.delete")
                     }
                     .accessibilityIdentifier("playlist.more")
                 }
@@ -297,6 +304,18 @@ struct PlaylistView: View {
             PlaylistNameSheet(title: "Rename Playlist", name: detail?.playlist.name ?? "") { name in
                 await model.renamePlaylist(id, to: name) != nil
             }
+        }
+        .confirmationDialog("Delete \(detail?.playlist.name ?? "this playlist")?", isPresented: $confirmingDelete,
+                            titleVisibility: .visible) {
+            Button("Delete Playlist", role: .destructive) {
+                Task {
+                    await model.deletePlaylist(id)
+                    dismiss()
+                }
+            }
+            .accessibilityIdentifier("playlist.confirmDelete")
+        } message: {
+            Text("The songs stay in your library.")
         }
     }
 
@@ -323,6 +342,7 @@ struct PlaylistView: View {
             Section {
                 ForEach(Array(detail.entries.enumerated()), id: \.element.id) { index, entry in
                     TrackRow(model: model, player: player, track: entry.track,
+                             remove: { removeEntry(at: index, of: detail) },
                              showDetails: { details = entry.track.id }) {
                         player.play(model.queue(tracks), from: index)
                     }
@@ -347,6 +367,13 @@ struct PlaylistView: View {
                 )
             }
         }
+    }
+
+    private func removeEntry(at index: Int, of detail: PlaylistDetail) {
+        var places = detail.entries.map(\.place)
+        guard places.indices.contains(index) else { return }
+        places.remove(at: index)
+        arrange(places)
     }
 
     private func arrange(_ places: [UInt32]) {
