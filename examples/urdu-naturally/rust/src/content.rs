@@ -1,0 +1,562 @@
+//! The curriculum: phrases, topics, characters and scenarios, from
+//! `content/*.toml`, compiled into the app. It is the source of linguistic
+//! truth; nothing else (and no AI) adds Urdu to the app. [`Content::get`]
+//! checks every rule an editor of those files could break, and the tests run
+//! the same checks on Linux.
+
+use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
+
+use serde::Deserialize;
+
+const PHRASES_TOML: &str = include_str!("../content/phrases.toml");
+const SCENARIOS_TOML: &str = include_str!("../content/scenarios.toml");
+const WORDS_TOML: &str = include_str!("../content/words.toml");
+
+/// Where a word goes in a cloze line.
+pub const BLANK: &str = "___";
+
+/// Replaced by the learner's name wherever it appears in a phrase.
+pub const NAME_SLOT: &str = "{name}";
+
+#[derive(uniffi::Enum, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum Formality {
+    Informal,
+    Neutral,
+    Polite,
+    Formal,
+    ContextDependent,
+}
+
+/// How far a phrase has been checked. Everything starts as a draft, and
+/// only a person moves it on: the app never certifies its own Urdu.
+#[derive(uniffi::Enum, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentStatus {
+    /// Written (by a person or an AI), not yet checked.
+    Draft,
+    /// Grammar, usage and naturalness checked by a competent Pakistani
+    /// Urdu speaker.
+    Reviewed,
+    /// Confirmed natural in a real conversation of its kind.
+    FieldTested,
+}
+
+/// Whose form a phrase is.
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SpeakerForm {
+    /// The same whoever says it.
+    Any,
+    /// A man's form (the learner's): its female form is a variant.
+    Male,
+}
+
+#[derive(uniffi::Enum, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VariantKind {
+    /// How a woman says it.
+    FemaleSpeaker,
+    /// How it is said to a woman.
+    FemaleAddressee,
+    Polite,
+    Formal,
+    Informal,
+    /// Another way to say the same thing.
+    Alternative,
+    /// The same words, spelt another common way.
+    Spelling,
+    /// A describing word's feminine form (achi).
+    Feminine,
+    /// A describing word's plural form (ache).
+    Plural,
+}
+
+/// A building-block word or a whole phrase.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum EntryKind {
+    #[default]
+    Phrase,
+    Word,
+}
+
+/// The foundation (Building Blocks) or the conversations built on it.
+#[derive(uniffi::Enum, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Level {
+    Foundation,
+    #[default]
+    Conversation,
+}
+
+/// A common spoken combination of a word ("main bhi").
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Combo {
+    pub roman: String,
+    pub english: String,
+}
+
+/// A line with a gap where the word goes, for practising it in use.
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Cloze {
+    /// Roman Urdu with ___ for the gap.
+    pub prompt: String,
+    /// The whole line in English.
+    pub english: String,
+}
+
+fn one() -> u32 {
+    1
+}
+
+fn neutral() -> Formality {
+    Formality::Neutral
+}
+
+fn any_speaker() -> SpeakerForm {
+    SpeakerForm::Any
+}
+
+fn draft() -> ContentStatus {
+    ContentStatus::Draft
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Variant {
+    pub roman: String,
+    pub kind: VariantKind,
+    pub note: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Part {
+    pub roman: String,
+    pub english: String,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PhraseText {
+    pub id: String,
+    pub roman: String,
+    pub english: String,
+    /// Urdu script, for the voice only.
+    pub urdu: String,
+    pub topic: String,
+    /// Other topics it belongs to.
+    #[serde(default)]
+    pub also_in: Vec<String>,
+    #[serde(default = "one")]
+    pub difficulty: u32,
+    #[serde(default = "neutral")]
+    pub formality: Formality,
+    #[serde(default = "any_speaker")]
+    pub speaker: SpeakerForm,
+    pub literal: Option<String>,
+    pub usage: Option<String>,
+    #[serde(default = "draft")]
+    pub status: ContentStatus,
+    /// Its positive or negative twin, taught alongside it.
+    pub opposite: Option<String>,
+    #[serde(default, rename = "variant", alias = "variants")]
+    pub variants: Vec<Variant>,
+    #[serde(default, rename = "part")]
+    pub parts: Vec<Part>,
+    #[serde(default)]
+    pub combos: Vec<Combo>,
+    pub cloze: Option<Cloze>,
+    /// Set from the file it came from.
+    #[serde(skip)]
+    pub kind: EntryKind,
+}
+
+impl PhraseText {
+    pub fn in_topic(&self, topic: &str) -> bool {
+        self.topic == topic || self.also_in.iter().any(|t| t == topic)
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TopicText {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    #[serde(default)]
+    pub level: Level,
+}
+
+#[derive(uniffi::Enum, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Gender {
+    Male,
+    Female,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterText {
+    pub id: String,
+    pub name: String,
+    pub gender: Gender,
+    pub description: String,
+    /// 1.0 is the voice's normal pace.
+    pub speech_rate: f32,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Who {
+    Them,
+    You,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Turn {
+    pub who: Who,
+    pub phrase: String,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ScenarioText {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub character: String,
+    pub difficulty: u32,
+    pub objective: String,
+    pub turns: Vec<Turn>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhrasesFile {
+    topic: Vec<TopicText>,
+    phrase: Vec<PhraseText>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct WordsFile {
+    #[serde(default)]
+    topic: Vec<TopicText>,
+    #[serde(default)]
+    word: Vec<PhraseText>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScenariosFile {
+    character: Vec<CharacterText>,
+    scenario: Vec<ScenarioText>,
+}
+
+/// Everything the app teaches.
+#[derive(Debug)]
+pub struct Content {
+    pub topics: Vec<TopicText>,
+    /// In the order of the file, which is the order they are taught.
+    pub phrases: Vec<PhraseText>,
+    pub characters: Vec<CharacterText>,
+    pub scenarios: Vec<ScenarioText>,
+    index: HashMap<String, usize>,
+    /// Phrases you say in some scenario.
+    spoken: HashSet<String>,
+}
+
+impl Content {
+    /// The content compiled into the app. Panics if a file breaks a rule;
+    /// `cargo test` catches that long before a build does.
+    pub fn get() -> &'static Content {
+        static CONTENT: OnceLock<Content> = OnceLock::new();
+        CONTENT.get_or_init(|| {
+            Content::parse(PHRASES_TOML, WORDS_TOML, SCENARIOS_TOML).expect("content/*.toml")
+        })
+    }
+
+    pub fn parse(phrases: &str, words: &str, scenarios: &str) -> Result<Content, String> {
+        let mut phrases: PhrasesFile =
+            toml::from_str(phrases).map_err(|e| format!("phrases.toml: {e}"))?;
+        let words: WordsFile = toml::from_str(words).map_err(|e| format!("words.toml: {e}"))?;
+        // The foundation's topics come first; its words after the phrases.
+        let mut topics = words.topic;
+        topics.append(&mut phrases.topic);
+        phrases.topic = topics;
+        phrases
+            .phrase
+            .extend(words.word.into_iter().map(|mut word| {
+                word.kind = EntryKind::Word;
+                word
+            }));
+        let scenarios: ScenariosFile =
+            toml::from_str(scenarios).map_err(|e| format!("scenarios.toml: {e}"))?;
+
+        let topics: HashSet<&str> = phrases.topic.iter().map(|t| t.id.as_str()).collect();
+        unique(phrases.topic.iter().map(|t| &t.id), "topic")?;
+        unique(phrases.phrase.iter().map(|p| &p.id), "phrase")?;
+        unique(scenarios.character.iter().map(|c| &c.id), "character")?;
+        unique(scenarios.scenario.iter().map(|s| &s.id), "scenario")?;
+
+        for phrase in &phrases.phrase {
+            check_phrase(phrase, &topics)?;
+        }
+        let index: HashMap<String, usize> = phrases
+            .phrase
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (p.id.clone(), i))
+            .collect();
+        for phrase in &phrases.phrase {
+            if let Some(opposite) = &phrase.opposite {
+                if opposite == &phrase.id || !index.contains_key(opposite) {
+                    return Err(format!(
+                        "{}: opposite {opposite} is not another entry",
+                        phrase.id
+                    ));
+                }
+            }
+        }
+
+        let characters: HashSet<&str> = scenarios.character.iter().map(|c| c.id.as_str()).collect();
+        let mut spoken = HashSet::new();
+        for scenario in &scenarios.scenario {
+            let id = &scenario.id;
+            if !characters.contains(scenario.character.as_str()) {
+                return Err(format!(
+                    "scenario {id}: unknown character {}",
+                    scenario.character
+                ));
+            }
+            if !(1..=5).contains(&scenario.difficulty) {
+                return Err(format!("scenario {id}: difficulty is 1 to 5"));
+            }
+            if !scenario.turns.iter().any(|t| t.who == Who::You) {
+                return Err(format!("scenario {id} gives you nothing to say"));
+            }
+            for turn in &scenario.turns {
+                if !index.contains_key(&turn.phrase) {
+                    return Err(format!("scenario {id}: unknown phrase {}", turn.phrase));
+                }
+                if turn.who == Who::You {
+                    spoken.insert(turn.phrase.clone());
+                }
+            }
+        }
+        for character in &scenarios.character {
+            if !(0.5..=1.5).contains(&character.speech_rate) {
+                return Err(format!("{}: speech_rate is 0.5 to 1.5", character.id));
+            }
+        }
+
+        Ok(Content {
+            topics: phrases.topic,
+            phrases: phrases.phrase,
+            characters: scenarios.character,
+            scenarios: scenarios.scenario,
+            index,
+            spoken,
+        })
+    }
+
+    pub fn phrase(&self, id: &str) -> Option<&PhraseText> {
+        self.index.get(id).map(|&i| &self.phrases[i])
+    }
+
+    pub fn scenario(&self, id: &str) -> Option<&ScenarioText> {
+        self.scenarios.iter().find(|s| s.id == id)
+    }
+
+    pub fn character(&self, id: &str) -> Option<&CharacterText> {
+        self.characters.iter().find(|c| c.id == id)
+    }
+
+    pub fn topic(&self, id: &str) -> Option<&TopicText> {
+        self.topics.iter().find(|t| t.id == id)
+    }
+
+    /// True for a phrase you say in some scenario.
+    pub fn is_spoken(&self, id: &str) -> bool {
+        self.spoken.contains(id)
+    }
+}
+
+fn unique<'a>(ids: impl Iterator<Item = &'a String>, what: &str) -> Result<(), String> {
+    let mut seen = HashSet::new();
+    for id in ids {
+        if !seen.insert(id) {
+            return Err(format!("{what} {id} appears twice"));
+        }
+    }
+    Ok(())
+}
+
+fn check_phrase(phrase: &PhraseText, topics: &HashSet<&str>) -> Result<(), String> {
+    let id = &phrase.id;
+    if id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return Err(format!("{id}: ids are lower-case words joined by -"));
+    }
+    for (name, text) in [
+        ("roman", &phrase.roman),
+        ("english", &phrase.english),
+        ("urdu", &phrase.urdu),
+    ] {
+        if text.trim().is_empty() {
+            return Err(format!("{id}: {name} is empty"));
+        }
+    }
+    for topic in std::iter::once(&phrase.topic).chain(&phrase.also_in) {
+        if !topics.contains(topic.as_str()) {
+            return Err(format!("{id}: unknown topic {topic}"));
+        }
+    }
+    if let Some(cloze) = &phrase.cloze {
+        if cloze.prompt.matches(BLANK).count() != 1 {
+            return Err(format!("{id}: a cloze prompt has exactly one {BLANK}"));
+        }
+    }
+    if !(1..=5).contains(&phrase.difficulty) {
+        return Err(format!("{id}: difficulty is 1 to 5"));
+    }
+    if !is_urdu_script(&phrase.urdu.replace(NAME_SLOT, "")) {
+        return Err(format!("{id}: urdu is not in Urdu script"));
+    }
+    if phrase
+        .roman
+        .chars()
+        .any(|c| matches!(c as u32, 0x0600..=0x06FF))
+    {
+        return Err(format!("{id}: roman has Urdu script in it"));
+    }
+    let has_name = |text: &str| text.contains(NAME_SLOT);
+    if has_name(&phrase.roman) != has_name(&phrase.urdu) {
+        return Err(format!("{id}: {NAME_SLOT} must be in both roman and urdu"));
+    }
+    let female = phrase
+        .variants
+        .iter()
+        .any(|v| v.kind == VariantKind::FemaleSpeaker);
+    if (phrase.speaker == SpeakerForm::Male) != female {
+        return Err(format!(
+            "{id}: a male-form phrase needs a female_speaker variant, and only it"
+        ));
+    }
+    for variant in &phrase.variants {
+        if variant.roman.trim().is_empty() || variant.roman == phrase.roman {
+            return Err(format!("{id}: a variant must differ from the phrase"));
+        }
+    }
+    Ok(())
+}
+
+/// Letters only from the Arabic blocks (Urdu's script), plus spaces and
+/// punctuation, and at least one letter.
+fn is_urdu_script(text: &str) -> bool {
+    let mut letters = 0;
+    for c in text.chars().filter(|c| c.is_alphabetic()) {
+        if !matches!(c as u32, 0x0600..=0x06FF | 0x0750..=0x077F | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF)
+        {
+            return false;
+        }
+        letters += 1;
+    }
+    letters > 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ONE_SCENARIO: &str = r#"
+        [[character]]
+        id = "ali"
+        name = "Ali"
+        gender = "male"
+        description = "d"
+        speech_rate = 1.0
+        [[scenario]]
+        id = "s"
+        title = "S"
+        description = "d"
+        character = "ali"
+        difficulty = 1
+        objective = "o"
+        turns = [{ who = "you", phrase = "x" }]
+    "#;
+
+    impl Content {
+        fn parse_test(phrases: &str, scenarios: &str) -> Result<Content, String> {
+            Content::parse(phrases, "", scenarios)
+        }
+    }
+
+    fn phrases(urdu: &str, speaker: &str) -> String {
+        format!(
+            r#"
+            [[topic]]
+            id = "t"
+            title = "T"
+            description = "d"
+            [[phrase]]
+            id = "x"
+            roman = "Main ja raha hoon."
+            english = "I'm going."
+            urdu = "{urdu}"
+            topic = "t"
+            difficulty = 1
+            formality = "neutral"
+            speaker = "{speaker}"
+            status = "draft"
+            "#
+        )
+    }
+
+    #[test]
+    fn the_shipped_content_follows_every_rule() {
+        let content = Content::parse(PHRASES_TOML, WORDS_TOML, SCENARIOS_TOML).unwrap();
+        assert!(
+            content.phrases.len() >= 50,
+            "0.1 teaches at least 50 phrases"
+        );
+        assert_eq!(content.scenarios.len(), 5);
+        assert_eq!(content.characters.len(), 3);
+        // Nothing has been checked by a native speaker yet, and the app
+        // must not say otherwise.
+        assert!(content
+            .phrases
+            .iter()
+            .all(|p| p.status == ContentStatus::Draft));
+    }
+
+    #[test]
+    fn latin_letters_in_the_urdu_are_refused() {
+        let err =
+            Content::parse_test(&phrases("main ja raha hoon", "any"), ONE_SCENARIO).unwrap_err();
+        assert!(err.contains("Urdu script"), "{err}");
+    }
+
+    #[test]
+    fn a_male_form_needs_its_female_form() {
+        let err =
+            Content::parse_test(&phrases("میں جا رہا ہوں۔", "male"), ONE_SCENARIO).unwrap_err();
+        assert!(err.contains("female_speaker"), "{err}");
+        assert!(Content::parse_test(&phrases("میں جا رہا ہوں۔", "any"), ONE_SCENARIO).is_ok());
+    }
+
+    #[test]
+    fn a_scenario_must_name_known_phrases() {
+        let scenario = ONE_SCENARIO.replace("phrase = \"x\"", "phrase = \"nope\"");
+        let err = Content::parse_test(&phrases("میں جا رہا ہوں۔", "any"), &scenario).unwrap_err();
+        assert!(err.contains("unknown phrase"), "{err}");
+    }
+}

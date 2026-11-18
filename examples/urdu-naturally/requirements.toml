@@ -1,0 +1,30 @@
+# What Urdu, Naturally must do, and what proves it (docs/evidence.md).
+# `twin`: XCTests that drive the real view model against the real Rust core
+# (`forge check swift` runs them on Linux). `device`: UI scenarios for
+# `forge ui run`; their verdicts come only from a run on an iPhone.
+# The curriculum's own rules (every phrase in Urdu script, male forms with
+# their female form, known topics and twins) are Rust tests in
+# rust/src/content.rs.
+
+[[requirement]]
+id = "UN-1"
+statement = "A new learner is sent to the first conversation, and the Building Blocks topics come first in Learn."
+twin = ["UrduModelTests.testABeginnerStartsWithTheFirstConversation"]
+device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "UN-2"
+statement = "Practice is saved per phrase and per skill, and survives closing the app, as does the learner's name."
+twin = ["UrduModelTests.testProgressAndNameSurviveARestart"]
+device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "UN-3"
+statement = "A save that fails is an alert in plain words, never a crash."
+twin = ["UrduModelTests.testAnUnknownPhraseIsAnAlertNotACrash"]
+
+[[requirement]]
+id = "UN-4"
+statement = "A typed answer is checked against the phrase and its accepted spellings: spelling variation is not marked wrong."
+twin = ["UrduModelTests.testTypedAnswersForgiveSpelling"]
+device = ["uitests/typed-answer.toml"]

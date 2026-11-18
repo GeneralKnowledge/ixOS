@@ -46,6 +46,7 @@ let package = Package(
         .package(path: "../fieldkit"),
         .package(path: "../sketchbook"),
         .package(path: "../soundscape"),
+        .package(path: "../urdu-naturally"),
         .package(path: "../relay"),
     ],
     targets: [
@@ -96,6 +97,7 @@ let package = Package(
                 .product(name: "FieldKitApp", package: "fieldkit"),
                 .product(name: "SketchbookApp", package: "sketchbook"),
                 .product(name: "SoundscapeApp", package: "soundscape"),
+                .product(name: "UrduNaturallyApp", package: "urdu-naturally"),
                 .product(name: "RelayApp", package: "relay"),
                 .product(name: "ForgeUI", package: "forgekit"),
                 // The interaction patterns page (PatternsView.swift).

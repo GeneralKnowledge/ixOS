@@ -1,0 +1,124 @@
+# Urdu, Naturally: the people you talk to, and the conversations of 0.1.
+#
+# A scenario's turns name phrases from phrases.toml, so the same phrase met
+# in two conversations is one phrase with one progress record. "them" is the
+# scenario's character; "you" is a line you say out loud.
+
+[[character]]
+id = "ali"
+name = "Ali"
+gender = "male"
+description = "Your friend. Relaxed, funny, says yaar a lot."
+speech_rate = 1.0
+
+[[character]]
+id = "ayesha"
+name = "Ayesha"
+gender = "female"
+description = "Warm and patient, and good at explaining what she means."
+speech_rate = 0.9
+
+[[character]]
+id = "omar"
+name = "Omar"
+gender = "male"
+description = "Talks fast, full of slang, always making plans."
+speech_rate = 1.1
+
+[[scenario]]
+id = "meeting-someone-new"
+title = "Meeting someone new"
+description = "Ayesha is a friend of a friend. Say hello, swap names, and find out where she's from."
+character = "ayesha"
+difficulty = 1
+objective = "Greet someone politely, introduce yourself and say it was nice to meet them."
+turns = [
+  { who = "them", phrase = "assalam-o-alaikum" },
+  { who = "you", phrase = "walaikum-assalam" },
+  { who = "them", phrase = "main-ayesha-hoon" },
+  { who = "them", phrase = "aap-ka-naam-kya-hai" },
+  { who = "you", phrase = "mera-naam-hai" },
+  { who = "them", phrase = "aap-kahan-se-hain" },
+  { who = "you", phrase = "main-uk-se-hoon" },
+  { who = "them", phrase = "main-lahore-se-hoon" },
+  { who = "you", phrase = "aap-se-mil-kar-acha-laga" },
+  { who = "them", phrase = "mujhe-bhi" },
+]
+
+[[scenario]]
+id = "catching-up"
+title = "Catching up with Ali"
+description = "You bump into Ali for the first time in weeks."
+character = "ali"
+difficulty = 1
+objective = "Answer how you are, ask back, and say what's new."
+turns = [
+  { who = "them", phrase = "kya-haal-hai" },
+  { who = "them", phrase = "bohat-din-ho-gaye" },
+  { who = "you", phrase = "main-theek-hoon" },
+  { who = "you", phrase = "tum-sunao" },
+  { who = "them", phrase = "main-bhi-theek-hoon" },
+  { who = "them", phrase = "kya-chal-raha-hai" },
+  { who = "you", phrase = "kuch-khaas-nahi" },
+  { who = "them", phrase = "phir-milte-hain" },
+  { who = "you", phrase = "allah-hafiz" },
+]
+
+[[scenario]]
+id = "what-are-you-up-to"
+title = "What are you up to?"
+description = "Ali wants to know what you've been doing, and has news of his own."
+character = "ali"
+difficulty = 2
+objective = "Talk about what you're doing, ask back, and react to good news."
+turns = [
+  { who = "them", phrase = "aaj-kal-kya-kar-rahe-ho" },
+  { who = "you", phrase = "main-kaam-kar-raha-hoon" },
+  { who = "them", phrase = "kaam-kaisa-chal-raha-hai" },
+  { who = "you", phrase = "theek-chal-raha-hai" },
+  { who = "you", phrase = "aur-tum" },
+  { who = "them", phrase = "nayi-naukri-mil-gayi" },
+  { who = "you", phrase = "sach-mein" },
+  { who = "you", phrase = "mubarak-ho" },
+  { who = "them", phrase = "shukriya" },
+  { who = "you", phrase = "kya-baat-hai" },
+]
+
+[[scenario]]
+id = "making-plans"
+title = "Making plans"
+description = "Omar wants to go out tonight. Agree a time, and promise to turn up."
+character = "omar"
+difficulty = 2
+objective = "Answer an invitation, ask what time, and agree."
+turns = [
+  { who = "them", phrase = "aaj-shaam-kya-kar-rahe-ho" },
+  { who = "you", phrase = "kuch-khaas-nahi" },
+  { who = "you", phrase = "kyun" },
+  { who = "them", phrase = "chalo-bahar-khana-khate-hain" },
+  { who = "you", phrase = "zabardast" },
+  { who = "you", phrase = "kitne-baje" },
+  { who = "them", phrase = "saat-baje-theek-hai" },
+  { who = "you", phrase = "pakka-main-aa-jaunga" },
+  { who = "them", phrase = "late-mat-hona" },
+  { who = "you", phrase = "phir-milte-hain" },
+]
+
+[[scenario]]
+id = "joking-around"
+title = "Joking around"
+description = "Ali has noticed you've made an effort today. Give as good as you get."
+character = "ali"
+difficulty = 3
+objective = "Take a compliment, tease back, and say you were only joking."
+turns = [
+  { who = "them", phrase = "aaj-bare-smart-lag-rahe-ho" },
+  { who = "you", phrase = "main-to-hamesha-smart-lagta-hoon" },
+  { who = "them", phrase = "pagal-ho-kya" },
+  { who = "you", phrase = "sach-keh-raha-hoon" },
+  { who = "them", phrase = "bas-karo" },
+  { who = "you", phrase = "mazaaq-kar-raha-hoon" },
+  { who = "them", phrase = "tum-bhi-na" },
+  { who = "them", phrase = "phir-milte-hain" },
+  { who = "you", phrase = "bohat-maza-aaya" },
+]

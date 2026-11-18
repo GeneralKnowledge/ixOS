@@ -1,0 +1,1564 @@
+# Urdu, Naturally: the Building Blocks. The foundation vocabulary that lets
+# you build your own sentences instead of only repeating memorised ones.
+#
+# Same fields as phrases.toml (read its header), with these defaults:
+# difficulty 1, formality neutral, speaker any, status draft. And:
+#   also_in   other topics the word belongs to (yaar is glue and a reaction)
+#   opposite  the id of its positive (or negative) twin, taught together
+#   combos    its common spoken combinations: learn "main bhi", not "bhi"
+#   cloze     a line with ___ where the word goes, for the third way of
+#             practising: not "what does it mean" or "how do you say it",
+#             but "use it here"
+#   variants  as in phrases.toml; kind = feminine | plural for the forms of
+#             a describing word (acha, achi, ache)
+#
+# Nothing here has been checked by a native speaker yet (status = draft).
+
+[[topic]]
+id = "questions"
+title = "Question words"
+description = "What, why, who, where, when, how: ask and understand questions."
+level = "foundation"
+
+[[topic]]
+id = "people"
+title = "Me, you and everyone"
+description = "Main, tum, aap, mujhe: talking about yourself and other people."
+level = "foundation"
+
+[[topic]]
+id = "negatives"
+title = "Negatives and responses"
+description = "No, not, don't, never: refuse, disagree and say what didn't happen. Each next to its positive."
+level = "foundation"
+
+[[topic]]
+id = "connectors"
+title = "Connectors"
+description = "And, but, because, if, also: join thoughts into sentences."
+level = "foundation"
+
+[[topic]]
+id = "time"
+title = "Time"
+description = "Now, today, kal (yesterday and tomorrow), always, sometimes."
+level = "foundation"
+
+[[topic]]
+id = "place"
+title = "Here and there"
+description = "Here, there, inside, near, together: where things are."
+level = "foundation"
+
+[[topic]]
+id = "describing"
+title = "Describing things"
+description = "Good, bad, big, new, easy, tasty: and how they change for feminine and plural."
+level = "foundation"
+
+[[topic]]
+id = "verbs"
+title = "Everyday verbs"
+description = "Do, go, come, eat, want, understand: each with the forms you'll actually use."
+level = "foundation"
+
+[[topic]]
+id = "reactions"
+title = "Reactions"
+description = "Haan, jee, bilkul, waah, ruko: answering friends naturally."
+level = "foundation"
+
+# ------------------------------------------------------------- questions
+
+[[word]]
+id = "kya"
+roman = "Kya"
+english = "What? / (turns a sentence into a question)"
+urdu = "کیا"
+topic = "questions"
+usage = "At the start of a sentence it just makes it a question: Kya tum aa rahe ho? Are you coming?"
+combos = [
+  { roman = "Yeh kya hai?", english = "What is this?" },
+  { roman = "Kya hua?", english = "What happened?" },
+]
+cloze = { prompt = "Yeh ___ hai?", english = "What is this?" }
+
+[[word]]
+id = "kaun"
+roman = "Kaun"
+english = "Who?"
+urdu = "کون"
+topic = "questions"
+combos = [{ roman = "Woh kaun hai?", english = "Who's that?" }]
+cloze = { prompt = "Woh ___ hai?", english = "Who's that?" }
+
+[[word]]
+id = "kahan"
+roman = "Kahan"
+english = "Where?"
+urdu = "کہاں"
+topic = "questions"
+also_in = ["place"]
+combos = [{ roman = "Tum kahan ho?", english = "Where are you?" }]
+cloze = { prompt = "Tum ___ ho?", english = "Where are you?" }
+
+[[word]]
+id = "kab"
+roman = "Kab"
+english = "When?"
+urdu = "کب"
+topic = "questions"
+combos = [{ roman = "Tum kab aao ge?", english = "When will you come?" }]
+cloze = { prompt = "Tum ___ aao ge?", english = "When will you come?" }
+
+[[word]]
+id = "kaise"
+roman = "Kaise"
+english = "How?"
+urdu = "کیسے"
+topic = "questions"
+combos = [
+  { roman = "Yeh kaise hua?", english = "How did this happen?" },
+  { roman = "Aap kaise hain?", english = "How are you? (polite)" },
+]
+cloze = { prompt = "Yeh ___ hua?", english = "How did this happen?" }
+
+[[word]]
+id = "kitna"
+roman = "Kitna"
+english = "How much?"
+urdu = "کتنا"
+topic = "questions"
+usage = "Changes like a describing word: kitni for feminine things, kitne for how many."
+variants = [
+  { roman = "Kitni", kind = "feminine" },
+  { roman = "Kitne", kind = "plural", note = "How many?" },
+]
+combos = [
+  { roman = "Kitna acha hai!", english = "How nice!" },
+  { roman = "Kitne log?", english = "How many people?" },
+]
+cloze = { prompt = "Yeh ___ ka hai?", english = "How much is this?" }
+
+[[word]]
+id = "kaunsa"
+roman = "Kaunsa"
+english = "Which?"
+urdu = "کون سا"
+topic = "questions"
+variants = [
+  { roman = "Kaunsi", kind = "feminine" },
+  { roman = "Kaunse", kind = "plural" },
+]
+combos = [{ roman = "Kaunsa wala?", english = "Which one?" }]
+cloze = { prompt = "___ wala?", english = "Which one?" }
+
+[[word]]
+id = "kis"
+roman = "Kis"
+english = "Whom / which (before ka, ke, se…)"
+urdu = "کس"
+topic = "questions"
+difficulty = 2
+combos = [
+  { roman = "Kis ke saath?", english = "With whom?" },
+  { roman = "Kis liye?", english = "What for?" },
+]
+cloze = { prompt = "___ ke saath?", english = "With whom?" }
+
+[[word]]
+id = "kiska"
+roman = "Kiska"
+english = "Whose?"
+urdu = "کس کا"
+topic = "questions"
+difficulty = 2
+usage = "Agrees with the thing owned, not the owner: kiska phone, kiski gaari."
+variants = [
+  { roman = "Kiski", kind = "feminine" },
+  { roman = "Kiske", kind = "plural" },
+]
+combos = [{ roman = "Yeh kiska phone hai?", english = "Whose phone is this?" }]
+cloze = { prompt = "Yeh ___ phone hai?", english = "Whose phone is this?" }
+
+# ---------------------------------------------------------------- people
+
+[[word]]
+id = "main"
+roman = "Main"
+english = "I"
+urdu = "میں"
+topic = "people"
+combos = [
+  { roman = "Main bhi", english = "Me too" },
+  { roman = "Main theek hoon", english = "I'm fine" },
+]
+cloze = { prompt = "___ theek hoon.", english = "I'm fine." }
+
+[[word]]
+id = "tum"
+roman = "Tum"
+english = "You (friendly)"
+urdu = "تم"
+topic = "people"
+formality = "informal"
+usage = "For friends and people your age. With elders and strangers, aap."
+combos = [{ roman = "Tum bhi aao.", english = "You come too." }]
+cloze = { prompt = "___ kahan ho?", english = "Where are you? (to a friend)" }
+
+[[word]]
+id = "aap"
+roman = "Aap"
+english = "You (polite)"
+urdu = "آپ"
+topic = "people"
+formality = "polite"
+usage = "For elders, strangers, anyone you respect. The verb changes too: aap kaise hain, tum kaise ho."
+combos = [{ roman = "Aap kaise hain?", english = "How are you?" }]
+cloze = { prompt = "___ kaise hain?", english = "How are you? (polite)" }
+
+[[word]]
+id = "woh"
+roman = "Woh"
+english = "He / she / that"
+urdu = "وہ"
+topic = "people"
+usage = "Urdu doesn't mark he or she here: the verb does (woh ja raha hai, woh ja rahi hai)."
+combos = [{ roman = "Woh kaun hai?", english = "Who's that?" }]
+cloze = { prompt = "___ kaun hai?", english = "Who's that?" }
+
+[[word]]
+id = "yeh"
+roman = "Yeh"
+english = "This / he / she (here)"
+urdu = "یہ"
+topic = "people"
+combos = [{ roman = "Yeh kya hai?", english = "What's this?" }]
+cloze = { prompt = "___ kya hai?", english = "What's this?" }
+
+[[word]]
+id = "hum"
+roman = "Hum"
+english = "We"
+urdu = "ہم"
+topic = "people"
+combos = [{ roman = "Hum chalte hain.", english = "We'll get going." }]
+cloze = { prompt = "___ kal milenge.", english = "We'll meet tomorrow." }
+
+[[word]]
+id = "woh-log"
+roman = "Woh log"
+english = "They"
+urdu = "وہ لوگ"
+topic = "people"
+literal = "Those people."
+combos = [{ roman = "Woh log kab aa rahe hain?", english = "When are they coming?" }]
+
+[[word]]
+id = "mujhe"
+roman = "Mujhe"
+english = "To me / me"
+urdu = "مجھے"
+topic = "people"
+usage = "Urdu often says 'to me' where English says 'I': mujhe bhook lagi hai, I'm hungry (hunger has struck me)."
+combos = [
+  { roman = "Mujhe bhook lagi hai.", english = "I'm hungry." },
+  { roman = "Mujhe bhi.", english = "Me too." },
+  { roman = "Mujhe pata hai.", english = "I know." },
+]
+cloze = { prompt = "___ bhook lagi hai.", english = "I'm hungry." }
+
+[[word]]
+id = "tumhein"
+roman = "Tumhein"
+english = "To you (friendly)"
+urdu = "تمہیں"
+topic = "people"
+formality = "informal"
+combos = [{ roman = "Tumhein kya pasand hai?", english = "What do you like?" }]
+cloze = { prompt = "___ kya pasand hai?", english = "What do you like?" }
+
+[[word]]
+id = "usay"
+roman = "Usay"
+english = "To him / to her"
+urdu = "اسے"
+topic = "people"
+difficulty = 2
+combos = [{ roman = "Usay batao.", english = "Tell him / her." }]
+
+[[word]]
+id = "humein"
+roman = "Humein"
+english = "To us"
+urdu = "ہمیں"
+topic = "people"
+difficulty = 2
+combos = [{ roman = "Humein der ho gayi.", english = "We're late." }]
+
+[[word]]
+id = "mera"
+roman = "Mera"
+english = "My"
+urdu = "میرا"
+topic = "people"
+usage = "Agrees with the thing, not with you: mera phone, meri gaari, mere dost."
+variants = [
+  { roman = "Meri", kind = "feminine" },
+  { roman = "Mere", kind = "plural" },
+]
+combos = [{ roman = "Mera naam … hai", english = "My name is …" }]
+
+[[word]]
+id = "tumhara"
+roman = "Tumhara"
+english = "Your (friendly)"
+urdu = "تمہارا"
+topic = "people"
+formality = "informal"
+variants = [
+  { roman = "Tumhari", kind = "feminine" },
+  { roman = "Tumhare", kind = "plural" },
+]
+combos = [{ roman = "Tumhara kya khayal hai?", english = "What do you think?" }]
+
+[[word]]
+id = "aap-ka"
+roman = "Aap ka"
+english = "Your (polite)"
+urdu = "آپ کا"
+topic = "people"
+formality = "polite"
+variants = [
+  { roman = "Aap ki", kind = "feminine" },
+  { roman = "Aap ke", kind = "plural" },
+]
+combos = [{ roman = "Aap ka naam kya hai?", english = "What's your name?" }]
+
+[[word]]
+id = "hamara"
+roman = "Hamara"
+english = "Our"
+urdu = "ہمارا"
+topic = "people"
+difficulty = 2
+variants = [
+  { roman = "Hamari", kind = "feminine" },
+  { roman = "Hamare", kind = "plural" },
+]
+
+[[word]]
+id = "apna"
+roman = "Apna"
+english = "Your own / my own"
+urdu = "اپنا"
+topic = "people"
+difficulty = 2
+usage = "'Own', pointing back at whoever the sentence is about."
+variants = [
+  { roman = "Apni", kind = "feminine" },
+  { roman = "Apne", kind = "plural" },
+]
+combos = [{ roman = "Apna khayal rakhna.", english = "Take care of yourself." }]
+
+# ------------------------------------------------------------- negatives
+
+[[word]]
+id = "nahi"
+roman = "Nahi"
+english = "No / not"
+urdu = "نہیں"
+topic = "negatives"
+also_in = ["reactions"]
+opposite = "haan"
+usage = "Nahi says something isn't so. To tell someone not to do something, use mat."
+variants = [{ roman = "Nahin", kind = "spelling" }]
+combos = [{ roman = "Nahi, mujhe nahi chahiye.", english = "No, I don't want it." }]
+
+[[word]]
+id = "mat"
+roman = "Mat"
+english = "Don't (telling someone)"
+urdu = "مت"
+topic = "negatives"
+usage = "Nahi vs mat: main nahi ja raha (I'm not going) describes; mat jao (don't go) tells."
+combos = [{ roman = "Mat jao!", english = "Don't go!" }]
+cloze = { prompt = "___ jao!", english = "Don't go!" }
+
+[[word]]
+id = "na"
+roman = "Na"
+english = "Don't / right? / come on"
+urdu = "نا"
+topic = "negatives"
+also_in = ["connectors"]
+difficulty = 2
+usage = "A little word that softens a request, asks you to agree or adds emphasis: aao na (come on, come), acha hai na? (it's good, right?)."
+combos = [
+  { roman = "Aisa mat karo na.", english = "Come on, don't do that." },
+  { roman = "Hai na?", english = "Isn't it? / Right?" },
+]
+
+[[word]]
+id = "kabhi-nahi"
+roman = "Kabhi nahi"
+english = "Never"
+urdu = "کبھی نہیں"
+topic = "negatives"
+combos = [{ roman = "Main kabhi nahi karta.", english = "I never do (that)." }]
+
+[[word]]
+id = "bilkul-nahi"
+roman = "Bilkul nahi!"
+english = "Absolutely not!"
+urdu = "بالکل نہیں!"
+topic = "negatives"
+variants = [
+  { roman = "Bilkul bhi nahi.", kind = "alternative", note = "Not at all." },
+  { roman = "Hargiz nahi!", kind = "alternative", note = "Stronger: no way, never." },
+]
+
+[[word]]
+id = "abhi-nahi"
+roman = "Abhi nahi."
+english = "Not now."
+urdu = "ابھی نہیں۔"
+topic = "negatives"
+
+[[word]]
+id = "abhi-tak-nahi"
+roman = "Abhi tak nahi."
+english = "Not yet."
+urdu = "ابھی تک نہیں۔"
+topic = "negatives"
+
+[[word]]
+id = "shayad-nahi"
+roman = "Shayad nahi."
+english = "Probably not."
+urdu = "شاید نہیں۔"
+topic = "negatives"
+opposite = "haan-shayad"
+
+[[word]]
+id = "kuch-nahi"
+roman = "Kuch nahi hua."
+english = "Nothing happened."
+urdu = "کچھ نہیں ہوا۔"
+topic = "negatives"
+usage = "Kuch nahi is nothing; koi nahi is nobody."
+combos = [{ roman = "Kuch nahi.", english = "Nothing." }]
+
+[[word]]
+id = "koi-nahi"
+roman = "Yahan koi nahi hai."
+english = "There's nobody here."
+urdu = "یہاں کوئی نہیں ہے۔"
+topic = "negatives"
+usage = "Koi nahi is nobody; kuch nahi is nothing."
+
+[[word]]
+id = "kahin-nahi"
+roman = "Main kahin nahi ja raha."
+english = "I'm not going anywhere."
+urdu = "میں کہیں نہیں جا رہا۔"
+topic = "negatives"
+speaker = "male"
+difficulty = 2
+variants = [{ roman = "Main kahin nahi ja rahi.", kind = "female_speaker" }]
+
+[[word]]
+id = "mujhe-pata-hai"
+roman = "Mujhe pata hai."
+english = "I know."
+urdu = "مجھے پتا ہے۔"
+topic = "negatives"
+opposite = "mujhe-nahi-pata"
+
+[[word]]
+id = "mujhe-nahi-lagta"
+roman = "Mujhe nahi lagta."
+english = "I don't think so."
+urdu = "مجھے نہیں لگتا۔"
+topic = "negatives"
+opposite = "mujhe-lagta-hai"
+
+[[word]]
+id = "mujhe-chahiye"
+roman = "Mujhe yeh chahiye."
+english = "I want this."
+urdu = "مجھے یہ چاہیے۔"
+topic = "negatives"
+opposite = "mujhe-nahi-chahiye"
+usage = "Chahiye is for things you want or need. To want to DO something: main chahta hoon."
+
+[[word]]
+id = "mujhe-nahi-chahiye"
+roman = "Nahi, mujhe nahi chahiye."
+english = "No, I don't want it."
+urdu = "نہیں، مجھے نہیں چاہیے۔"
+topic = "negatives"
+opposite = "mujhe-chahiye"
+usage = "Nahi chahiye (I don't want it) and nahi chahta (I don't want to) aren't interchangeable."
+
+[[word]]
+id = "nahi-shukriya"
+roman = "Nahi, shukriya."
+english = "No, thank you."
+urdu = "نہیں، شکریہ۔"
+topic = "negatives"
+formality = "polite"
+usage = "The polite refusal. Expect to be offered again."
+
+[[word]]
+id = "mujhe-pasand-hai"
+roman = "Mujhe pasand hai."
+english = "I like it."
+urdu = "مجھے پسند ہے۔"
+topic = "negatives"
+opposite = "mujhe-pasand-nahi"
+combos = [{ roman = "Mujhe chai pasand hai.", english = "I like tea." }]
+
+[[word]]
+id = "mujhe-pasand-nahi"
+roman = "Mujhe pasand nahi hai."
+english = "I don't like it."
+urdu = "مجھے پسند نہیں ہے۔"
+topic = "negatives"
+opposite = "mujhe-pasand-hai"
+variants = [{ roman = "Mujhe pasand nahi.", kind = "informal" }]
+
+[[word]]
+id = "main-kar-sakta-hoon"
+roman = "Main kar sakta hoon."
+english = "I can (do it)."
+urdu = "میں کر سکتا ہوں۔"
+topic = "negatives"
+speaker = "male"
+difficulty = 2
+opposite = "main-nahi-kar-sakta"
+variants = [{ roman = "Main kar sakti hoon.", kind = "female_speaker" }]
+
+[[word]]
+id = "main-nahi-kar-sakta"
+roman = "Main nahi kar sakta."
+english = "I can't (do it)."
+urdu = "میں نہیں کر سکتا۔"
+topic = "negatives"
+speaker = "male"
+difficulty = 2
+opposite = "main-kar-sakta-hoon"
+usage = "In the negative, hoon is usually dropped."
+variants = [{ roman = "Main nahi kar sakti.", kind = "female_speaker" }]
+
+[[word]]
+id = "main-chahta-hoon"
+roman = "Main chahta hoon…"
+english = "I want to…"
+urdu = "میں چاہتا ہوں…"
+topic = "negatives"
+speaker = "male"
+difficulty = 2
+opposite = "main-nahi-chahta"
+variants = [{ roman = "Main chahti hoon…", kind = "female_speaker" }]
+
+[[word]]
+id = "main-nahi-chahta"
+roman = "Main nahi chahta."
+english = "I don't want to."
+urdu = "میں نہیں چاہتا۔"
+topic = "negatives"
+speaker = "male"
+difficulty = 2
+opposite = "main-chahta-hoon"
+variants = [{ roman = "Main nahi chahti.", kind = "female_speaker" }]
+
+[[word]]
+id = "main-ja-raha-hoon"
+roman = "Main ja raha hoon."
+english = "I'm going."
+urdu = "میں جا رہا ہوں۔"
+topic = "negatives"
+speaker = "male"
+opposite = "main-nahi-ja-raha"
+variants = [{ roman = "Main ja rahi hoon.", kind = "female_speaker" }]
+
+[[word]]
+id = "main-nahi-ja-raha"
+roman = "Main nahi ja raha."
+english = "I'm not going."
+urdu = "میں نہیں جا رہا۔"
+topic = "negatives"
+speaker = "male"
+opposite = "main-ja-raha-hoon"
+variants = [{ roman = "Main nahi ja rahi.", kind = "female_speaker" }]
+
+[[word]]
+id = "maine-kiya"
+roman = "Maine kiya."
+english = "I did it."
+urdu = "میں نے کیا۔"
+topic = "negatives"
+difficulty = 2
+opposite = "maine-nahi-kiya"
+usage = "With maine, the verb doesn't change for who you are."
+
+[[word]]
+id = "maine-nahi-kiya"
+roman = "Maine nahi kiya!"
+english = "I didn't do it!"
+urdu = "میں نے نہیں کیا!"
+topic = "negatives"
+difficulty = 2
+opposite = "maine-kiya"
+
+[[word]]
+id = "zaroori-nahi"
+roman = "Zaroori nahi."
+english = "No need."
+urdu = "ضروری نہیں۔"
+topic = "negatives"
+literal = "Not necessary."
+
+[[word]]
+id = "aisa-nahi-hai"
+roman = "Aisa nahi hai."
+english = "It's not like that."
+urdu = "ایسا نہیں ہے۔"
+topic = "negatives"
+
+[[word]]
+id = "arre-nahi"
+roman = "Arre nahi!"
+english = "Oh, no!"
+urdu = "ارے نہیں!"
+topic = "negatives"
+formality = "informal"
+variants = [{ roman = "Aray nahi!", kind = "spelling" }]
+
+[[word]]
+id = "nahi-yaar"
+roman = "Nahi yaar."
+english = "Nah, mate. / Come on, no."
+urdu = "نہیں یار۔"
+topic = "negatives"
+formality = "informal"
+
+[[word]]
+id = "farq-nahi-parta"
+roman = "Mujhe koi farq nahi parta."
+english = "It makes no difference to me."
+urdu = "مجھے کوئی فرق نہیں پڑتا۔"
+topic = "negatives"
+difficulty = 2
+usage = "Can sound like 'I don't care': say it lightly."
+
+[[word]]
+id = "koi-masla-nahi"
+roman = "Koi masla nahi."
+english = "No problem."
+urdu = "کوئی مسئلہ نہیں۔"
+topic = "negatives"
+
+[[word]]
+id = "aisa-mat-karo"
+roman = "Aisa mat karo na."
+english = "Come on, don't do that."
+urdu = "ایسا مت کرو نا۔"
+topic = "negatives"
+formality = "informal"
+variants = [{ roman = "Aisa mat karo.", kind = "alternative", note = "Without na it's firmer." }]
+
+[[word]]
+id = "choro-koi-baat-nahi"
+roman = "Choro, koi baat nahi."
+english = "Forget it, it's fine."
+urdu = "چھوڑو، کوئی بات نہیں۔"
+topic = "negatives"
+formality = "informal"
+literal = "Leave it, no matter."
+
+# ------------------------------------------------------------ connectors
+
+[[word]]
+id = "aur"
+roman = "Aur"
+english = "And / more"
+urdu = "اور"
+topic = "connectors"
+combos = [
+  { roman = "Aur tum?", english = "And you?" },
+  { roman = "Aur lo.", english = "Have some more." },
+]
+
+[[word]]
+id = "lekin"
+roman = "Lekin"
+english = "But"
+urdu = "لیکن"
+topic = "connectors"
+combos = [{ roman = "Main aa raha hoon, lekin thora late.", english = "I'm coming, but a bit late." }]
+cloze = { prompt = "Main aa raha hoon, ___ thora late.", english = "I'm coming, but a bit late." }
+
+[[word]]
+id = "magar"
+roman = "Magar"
+english = "But / however"
+urdu = "مگر"
+topic = "connectors"
+difficulty = 2
+usage = "Means the same as lekin; a touch more formal."
+
+[[word]]
+id = "ya"
+roman = "Ya"
+english = "Or"
+urdu = "یا"
+topic = "connectors"
+combos = [{ roman = "Chai ya coffee?", english = "Tea or coffee?" }]
+cloze = { prompt = "Chai ___ coffee?", english = "Tea or coffee?" }
+
+[[word]]
+id = "kyunke"
+roman = "Kyunke"
+english = "Because"
+urdu = "کیونکہ"
+topic = "connectors"
+difficulty = 2
+combos = [{ roman = "Kyunke main thak gaya hoon.", english = "Because I'm tired." }]
+
+[[word]]
+id = "agar"
+roman = "Agar"
+english = "If"
+urdu = "اگر"
+topic = "connectors"
+difficulty = 2
+usage = "Agar … toh …: if … then …"
+combos = [{ roman = "Agar time mila toh aaunga.", english = "If I get time, I'll come." }]
+cloze = { prompt = "___ time mila toh aaunga.", english = "If I get time, I'll come." }
+
+[[word]]
+id = "toh"
+roman = "Toh"
+english = "Then / so / (emphasis)"
+urdu = "تو"
+topic = "connectors"
+difficulty = 2
+usage = "Also adds weight to the word before it: main toh theek hoon, well, I'm fine."
+combos = [{ roman = "Toh phir?", english = "So what then?" }]
+
+[[word]]
+id = "phir"
+roman = "Phir"
+english = "Then / again"
+urdu = "پھر"
+topic = "connectors"
+also_in = ["time"]
+combos = [
+  { roman = "Phir milte hain.", english = "See you again." },
+  { roman = "Phir kya hua?", english = "Then what happened?" },
+]
+cloze = { prompt = "___ kya hua?", english = "Then what happened?" }
+
+[[word]]
+id = "bhi"
+roman = "Bhi"
+english = "Also / too"
+urdu = "بھی"
+topic = "connectors"
+usage = "Comes after the word it adds to."
+combos = [
+  { roman = "Main bhi", english = "Me too (I also)" },
+  { roman = "Tum bhi", english = "You too" },
+  { roman = "Woh bhi", english = "Him / her too" },
+  { roman = "Mujhe bhi", english = "Me too (to me also)" },
+]
+cloze = { prompt = "Tum ___ aao.", english = "You come too." }
+
+[[word]]
+id = "sirf"
+roman = "Sirf"
+english = "Only"
+urdu = "صرف"
+topic = "connectors"
+combos = [{ roman = "Sirf aik minute.", english = "Just one minute." }]
+
+[[word]]
+id = "hi"
+roman = "Hi"
+english = "(emphasis) just, very, only"
+urdu = "ہی"
+topic = "connectors"
+difficulty = 3
+usage = "Leans on the word before it: abhi (now) becomes abhi hi (right now), aise hi (just like that)."
+combos = [{ roman = "Bas aise hi.", english = "Just like that, no reason." }]
+
+[[word]]
+id = "shayad"
+roman = "Shayad"
+english = "Maybe"
+urdu = "شاید"
+topic = "connectors"
+combos = [{ roman = "Shayad kal.", english = "Maybe tomorrow." }]
+
+[[word]]
+id = "yani"
+roman = "Yani"
+english = "That is / in other words"
+urdu = "یعنی"
+topic = "connectors"
+difficulty = 2
+
+# ------------------------------------------------------------------ time
+
+[[word]]
+id = "ab"
+roman = "Ab"
+english = "Now"
+urdu = "اب"
+topic = "time"
+combos = [{ roman = "Ab main chalta hoon.", english = "I'll get going now." }]
+
+[[word]]
+id = "abhi"
+roman = "Abhi"
+english = "Right now / just now"
+urdu = "ابھی"
+topic = "time"
+combos = [{ roman = "Abhi aaya!", english = "Coming right now! (said by a man)" }]
+
+[[word]]
+id = "aaj"
+roman = "Aaj"
+english = "Today"
+urdu = "آج"
+topic = "time"
+combos = [{ roman = "Aaj shaam", english = "This evening" }]
+
+[[word]]
+id = "kal"
+roman = "Kal"
+english = "Yesterday / tomorrow"
+urdu = "کل"
+topic = "time"
+usage = "Both! The verb tells you which: kal gaya (went yesterday), kal jaunga (will go tomorrow)."
+combos = [
+  { roman = "Kal milte hain.", english = "See you tomorrow." },
+  { roman = "Kal kya hua?", english = "What happened yesterday?" },
+]
+
+[[word]]
+id = "subah"
+roman = "Subah"
+english = "Morning"
+urdu = "صبح"
+topic = "time"
+
+[[word]]
+id = "dopahar"
+roman = "Dopahar"
+english = "Afternoon"
+urdu = "دوپہر"
+topic = "time"
+
+[[word]]
+id = "shaam"
+roman = "Shaam"
+english = "Evening"
+urdu = "شام"
+topic = "time"
+
+[[word]]
+id = "raat"
+roman = "Raat"
+english = "Night"
+urdu = "رات"
+topic = "time"
+
+[[word]]
+id = "baad"
+roman = "Baad"
+english = "After / later"
+urdu = "بعد"
+topic = "time"
+combos = [
+  { roman = "Baad mein", english = "Later" },
+  { roman = "Bohat dinon baad", english = "After ages" },
+]
+
+[[word]]
+id = "pehle"
+roman = "Pehle"
+english = "Before / earlier / first"
+urdu = "پہلے"
+topic = "time"
+combos = [{ roman = "Pehle chai, phir kaam.", english = "Tea first, then work." }]
+
+[[word]]
+id = "hamesha"
+roman = "Hamesha"
+english = "Always"
+urdu = "ہمیشہ"
+topic = "time"
+
+[[word]]
+id = "kabhi"
+roman = "Kabhi"
+english = "Sometimes / ever"
+urdu = "کبھی"
+topic = "time"
+combos = [
+  { roman = "Kabhi kabhi", english = "Sometimes" },
+  { roman = "Kabhi nahi", english = "Never" },
+]
+
+[[word]]
+id = "aksar"
+roman = "Aksar"
+english = "Often"
+urdu = "اکثر"
+topic = "time"
+difficulty = 2
+
+[[word]]
+id = "roz"
+roman = "Roz"
+english = "Every day"
+urdu = "روز"
+topic = "time"
+
+[[word]]
+id = "jaldi"
+roman = "Jaldi"
+english = "Quickly / soon / early"
+urdu = "جلدی"
+topic = "time"
+combos = [{ roman = "Jaldi karo!", english = "Hurry up!" }]
+
+[[word]]
+id = "der"
+roman = "Der"
+english = "Delay / late"
+urdu = "دیر"
+topic = "time"
+combos = [{ roman = "Der ho gayi.", english = "It's got late. / I'm late." }]
+
+[[word]]
+id = "filhaal"
+roman = "Filhaal"
+english = "For now"
+urdu = "فی الحال"
+topic = "time"
+difficulty = 2
+
+# ----------------------------------------------------------------- place
+
+[[word]]
+id = "yahan"
+roman = "Yahan"
+english = "Here"
+urdu = "یہاں"
+topic = "place"
+combos = [{ roman = "Yahan aao.", english = "Come here." }]
+
+[[word]]
+id = "wahan"
+roman = "Wahan"
+english = "There"
+urdu = "وہاں"
+topic = "place"
+
+[[word]]
+id = "idhar"
+roman = "Idhar"
+english = "Over here / this way"
+urdu = "اِدھر"
+topic = "place"
+combos = [{ roman = "Idhar udhar", english = "Here and there, all over" }]
+
+[[word]]
+id = "udhar"
+roman = "Udhar"
+english = "Over there / that way"
+urdu = "اُدھر"
+topic = "place"
+
+[[word]]
+id = "andar"
+roman = "Andar"
+english = "Inside"
+urdu = "اندر"
+topic = "place"
+combos = [{ roman = "Andar aao.", english = "Come in." }]
+
+[[word]]
+id = "bahar"
+roman = "Bahar"
+english = "Outside / out"
+urdu = "باہر"
+topic = "place"
+combos = [{ roman = "Bahar khana", english = "Eating out" }]
+
+[[word]]
+id = "upar"
+roman = "Upar"
+english = "Up / upstairs"
+urdu = "اوپر"
+topic = "place"
+
+[[word]]
+id = "neeche"
+roman = "Neeche"
+english = "Down / downstairs"
+urdu = "نیچے"
+topic = "place"
+
+[[word]]
+id = "aage"
+roman = "Aage"
+english = "Ahead / in front"
+urdu = "آگے"
+topic = "place"
+
+[[word]]
+id = "peeche"
+roman = "Peeche"
+english = "Behind"
+urdu = "پیچھے"
+topic = "place"
+
+[[word]]
+id = "paas"
+roman = "Paas"
+english = "Near / with (having)"
+urdu = "پاس"
+topic = "place"
+usage = "Mere paas (near me) is also how you say 'I have': mere paas time nahi, I don't have time."
+combos = [{ roman = "Mere paas time nahi hai.", english = "I don't have time." }]
+
+[[word]]
+id = "door"
+roman = "Door"
+english = "Far"
+urdu = "دور"
+topic = "place"
+
+[[word]]
+id = "saath"
+roman = "Saath"
+english = "With / together"
+urdu = "ساتھ"
+topic = "place"
+combos = [{ roman = "Mere saath chalo.", english = "Come with me." }]
+
+[[word]]
+id = "darmiyan"
+roman = "Darmiyan"
+english = "Between"
+urdu = "درمیان"
+topic = "place"
+difficulty = 3
+
+# ------------------------------------------------------------ describing
+
+[[word]]
+id = "acha-good"
+roman = "Acha"
+english = "Good"
+urdu = "اچھا"
+topic = "describing"
+usage = "Agrees with what it describes: acha larka, achi film, ache log."
+variants = [
+  { roman = "Achi", kind = "feminine" },
+  { roman = "Ache", kind = "plural" },
+]
+combos = [{ roman = "Bohat acha!", english = "Very good!" }]
+
+[[word]]
+id = "bura"
+roman = "Bura"
+english = "Bad"
+urdu = "برا"
+topic = "describing"
+variants = [
+  { roman = "Buri", kind = "feminine" },
+  { roman = "Bure", kind = "plural" },
+]
+combos = [{ roman = "Bura mat mano.", english = "Don't take it badly." }]
+
+[[word]]
+id = "bara"
+roman = "Bara"
+english = "Big"
+urdu = "بڑا"
+topic = "describing"
+variants = [
+  { roman = "Bari", kind = "feminine" },
+  { roman = "Bare", kind = "plural" },
+]
+
+[[word]]
+id = "chota"
+roman = "Chota"
+english = "Small"
+urdu = "چھوٹا"
+topic = "describing"
+variants = [
+  { roman = "Choti", kind = "feminine" },
+  { roman = "Chote", kind = "plural" },
+]
+
+[[word]]
+id = "naya"
+roman = "Naya"
+english = "New"
+urdu = "نیا"
+topic = "describing"
+variants = [
+  { roman = "Nayi", kind = "feminine" },
+  { roman = "Naye", kind = "plural" },
+]
+
+[[word]]
+id = "purana"
+roman = "Purana"
+english = "Old (things)"
+urdu = "پرانا"
+topic = "describing"
+variants = [
+  { roman = "Purani", kind = "feminine" },
+  { roman = "Purane", kind = "plural" },
+]
+combos = [{ roman = "Purane dost", english = "Old friends" }]
+
+[[word]]
+id = "sahi"
+roman = "Sahi"
+english = "Right / correct"
+urdu = "صحیح"
+topic = "describing"
+also_in = ["reactions"]
+opposite = "ghalat"
+combos = [{ roman = "Sahi hai!", english = "That's right! / Fair enough!" }]
+
+[[word]]
+id = "ghalat"
+roman = "Ghalat"
+english = "Wrong"
+urdu = "غلط"
+topic = "describing"
+opposite = "sahi"
+
+[[word]]
+id = "asaan"
+roman = "Asaan"
+english = "Easy"
+urdu = "آسان"
+topic = "describing"
+opposite = "mushkil"
+
+[[word]]
+id = "mushkil"
+roman = "Mushkil"
+english = "Difficult"
+urdu = "مشکل"
+topic = "describing"
+opposite = "asaan"
+
+[[word]]
+id = "garam"
+roman = "Garam"
+english = "Hot"
+urdu = "گرم"
+topic = "describing"
+opposite = "thanda"
+
+[[word]]
+id = "thanda"
+roman = "Thanda"
+english = "Cold"
+urdu = "ٹھنڈا"
+topic = "describing"
+opposite = "garam"
+variants = [
+  { roman = "Thandi", kind = "feminine" },
+  { roman = "Thande", kind = "plural" },
+]
+
+[[word]]
+id = "khoobsurat"
+roman = "Khoobsurat"
+english = "Beautiful"
+urdu = "خوبصورت"
+topic = "describing"
+difficulty = 2
+
+[[word]]
+id = "mazedaar"
+roman = "Mazedaar"
+english = "Tasty / fun"
+urdu = "مزیدار"
+topic = "describing"
+
+[[word]]
+id = "ajeeb"
+roman = "Ajeeb"
+english = "Strange"
+urdu = "عجیب"
+topic = "describing"
+
+[[word]]
+id = "zaroori"
+roman = "Zaroori"
+english = "Important / necessary"
+urdu = "ضروری"
+topic = "describing"
+combos = [{ roman = "Zaroori kaam", english = "Something important (to do)" }]
+
+[[word]]
+id = "khaas"
+roman = "Khaas"
+english = "Special"
+urdu = "خاص"
+topic = "describing"
+combos = [{ roman = "Kuch khaas nahi.", english = "Nothing much." }]
+
+[[word]]
+id = "mukhtalif"
+roman = "Mukhtalif"
+english = "Different"
+urdu = "مختلف"
+topic = "describing"
+difficulty = 3
+
+# ----------------------------------------------------------------- verbs
+
+[[word]]
+id = "karna"
+roman = "Karna"
+english = "To do"
+urdu = "کرنا"
+topic = "verbs"
+usage = "Also makes verbs from nouns: kaam karna (to work), pasand karna (to like)."
+combos = [
+  { roman = "Kya kar rahe ho?", english = "What are you doing?" },
+  { roman = "Main kaam karta hoon.", english = "I work. (a man speaking)" },
+]
+
+[[word]]
+id = "hona"
+roman = "Hona"
+english = "To be / to happen"
+urdu = "ہونا"
+topic = "verbs"
+combos = [{ roman = "Kya hua?", english = "What happened?" }]
+
+[[word]]
+id = "jaana"
+roman = "Jaana"
+english = "To go"
+urdu = "جانا"
+topic = "verbs"
+combos = [
+  { roman = "Main ja raha hoon.", english = "I'm going." },
+  { roman = "Mat jao!", english = "Don't go!" },
+]
+
+[[word]]
+id = "aana"
+roman = "Aana"
+english = "To come"
+urdu = "آنا"
+topic = "verbs"
+combos = [
+  { roman = "Main aa raha hoon.", english = "I'm coming." },
+  { roman = "Aao!", english = "Come!" },
+]
+
+[[word]]
+id = "lena"
+roman = "Lena"
+english = "To take"
+urdu = "لینا"
+topic = "verbs"
+combos = [{ roman = "Lo!", english = "Here, take it!" }]
+
+[[word]]
+id = "dena"
+roman = "Dena"
+english = "To give"
+urdu = "دینا"
+topic = "verbs"
+combos = [{ roman = "Mujhe do.", english = "Give it to me." }]
+
+[[word]]
+id = "dekhna"
+roman = "Dekhna"
+english = "To see / look"
+urdu = "دیکھنا"
+topic = "verbs"
+combos = [{ roman = "Dekho!", english = "Look!" }]
+
+[[word]]
+id = "sunna"
+roman = "Sunna"
+english = "To hear / listen"
+urdu = "سننا"
+topic = "verbs"
+combos = [{ roman = "Suno!", english = "Listen!" }]
+
+[[word]]
+id = "bolna"
+roman = "Bolna"
+english = "To speak"
+urdu = "بولنا"
+topic = "verbs"
+combos = [{ roman = "Aahista bolo.", english = "Speak slowly." }]
+
+[[word]]
+id = "kehna"
+roman = "Kehna"
+english = "To say"
+urdu = "کہنا"
+topic = "verbs"
+combos = [{ roman = "Sach keh raha hoon.", english = "I'm telling the truth. (a man speaking)" }]
+
+[[word]]
+id = "batana"
+roman = "Batana"
+english = "To tell"
+urdu = "بتانا"
+topic = "verbs"
+combos = [{ roman = "Batao!", english = "Tell me!" }]
+
+[[word]]
+id = "poochna"
+roman = "Poochna"
+english = "To ask"
+urdu = "پوچھنا"
+topic = "verbs"
+combos = [{ roman = "Aik baat poochoon?", english = "Can I ask you something?" }]
+
+[[word]]
+id = "khana-eat"
+roman = "Khana"
+english = "To eat / food"
+urdu = "کھانا"
+topic = "verbs"
+usage = "The same word is the verb 'to eat' and the noun 'food'."
+combos = [{ roman = "Khana kha liya?", english = "Have you eaten?" }]
+
+[[word]]
+id = "peena"
+roman = "Peena"
+english = "To drink"
+urdu = "پینا"
+topic = "verbs"
+combos = [{ roman = "Chai piyo ge?", english = "Will you have tea?" }]
+
+[[word]]
+id = "sona"
+roman = "Sona"
+english = "To sleep"
+urdu = "سونا"
+topic = "verbs"
+combos = [{ roman = "Main sone ja raha hoon.", english = "I'm going to sleep." }]
+
+[[word]]
+id = "uthna"
+roman = "Uthna"
+english = "To get up"
+urdu = "اٹھنا"
+topic = "verbs"
+combos = [{ roman = "Utho!", english = "Get up!" }]
+
+[[word]]
+id = "baithna"
+roman = "Baithna"
+english = "To sit"
+urdu = "بیٹھنا"
+topic = "verbs"
+combos = [{ roman = "Baitho, baitho.", english = "Sit down, sit down." }]
+
+[[word]]
+id = "rehna"
+roman = "Rehna"
+english = "To live / stay"
+urdu = "رہنا"
+topic = "verbs"
+combos = [{ roman = "Tum kahan rehte ho?", english = "Where do you live?" }]
+
+[[word]]
+id = "milna"
+roman = "Milna"
+english = "To meet / to get"
+urdu = "ملنا"
+topic = "verbs"
+combos = [{ roman = "Phir milte hain.", english = "See you again." }]
+
+[[word]]
+id = "samajhna"
+roman = "Samajhna"
+english = "To understand"
+urdu = "سمجھنا"
+topic = "verbs"
+combos = [{ roman = "Samajh gaye?", english = "Got it?" }]
+
+[[word]]
+id = "sochna"
+roman = "Sochna"
+english = "To think"
+urdu = "سوچنا"
+topic = "verbs"
+combos = [{ roman = "Soch raha hoon.", english = "I'm thinking. (a man speaking)" }]
+
+[[word]]
+id = "chahna"
+roman = "Chahna"
+english = "To want"
+urdu = "چاہنا"
+topic = "verbs"
+difficulty = 2
+combos = [{ roman = "Main chahta hoon…", english = "I want to… (a man speaking)" }]
+
+[[word]]
+id = "pasand-karna"
+roman = "Pasand karna"
+english = "To like"
+urdu = "پسند کرنا"
+topic = "verbs"
+difficulty = 2
+usage = "In conversation, mujhe … pasand hai (I like …) is far more common."
+combos = [{ roman = "Mujhe … pasand hai.", english = "I like …" }]
+
+[[word]]
+id = "lagna"
+roman = "Lagna"
+english = "To seem / to feel"
+urdu = "لگنا"
+topic = "verbs"
+difficulty = 2
+combos = [
+  { roman = "Mujhe lagta hai…", english = "I think…" },
+  { roman = "Acha laga.", english = "It was nice." },
+]
+
+[[word]]
+id = "rakhna"
+roman = "Rakhna"
+english = "To keep / put"
+urdu = "رکھنا"
+topic = "verbs"
+combos = [{ roman = "Apna khayal rakhna.", english = "Take care of yourself." }]
+
+# ------------------------------------------------------------- reactions
+
+[[word]]
+id = "haan"
+roman = "Haan"
+english = "Yes"
+urdu = "ہاں"
+topic = "reactions"
+opposite = "nahi"
+
+[[word]]
+id = "jee"
+roman = "Jee"
+english = "Yes (polite) / I'm listening"
+urdu = "جی"
+topic = "reactions"
+formality = "polite"
+usage = "The respectful yes, and how you answer when an elder calls you. Jee nahi is the polite no."
+combos = [
+  { roman = "Jee haan", english = "Yes (polite)" },
+  { roman = "Jee nahi", english = "No (polite)" },
+]
+
+[[word]]
+id = "theek"
+roman = "Theek"
+english = "Okay / fine"
+urdu = "ٹھیک"
+topic = "reactions"
+combos = [{ roman = "Theek hai.", english = "Okay. / Fine." }]
+
+[[word]]
+id = "bilkul"
+roman = "Bilkul"
+english = "Absolutely"
+urdu = "بالکل"
+topic = "reactions"
+
+[[word]]
+id = "zaroor"
+roman = "Zaroor"
+english = "Certainly / of course"
+urdu = "ضرور"
+topic = "reactions"
+
+[[word]]
+id = "waah"
+roman = "Waah!"
+english = "Wow!"
+urdu = "واہ!"
+topic = "reactions"
+formality = "informal"
+
+[[word]]
+id = "arre"
+roman = "Arre!"
+english = "Hey! / Oh!"
+urdu = "ارے!"
+topic = "reactions"
+formality = "informal"
+variants = [{ roman = "Aray!", kind = "spelling" }]
+
+[[word]]
+id = "dekho"
+roman = "Dekho"
+english = "Look"
+urdu = "دیکھو"
+topic = "reactions"
+usage = "Also 'look, …' before making a point."
+
+[[word]]
+id = "suno"
+roman = "Suno"
+english = "Listen / hey"
+urdu = "سنو"
+topic = "reactions"
+usage = "How you get a friend's attention."
+
+[[word]]
+id = "ruko"
+roman = "Ruko"
+english = "Wait"
+urdu = "رکو"
+topic = "reactions"
+combos = [{ roman = "Aik minute ruko.", english = "Wait a minute." }]
+
+[[word]]
+id = "sach"
+roman = "Sach?"
+english = "Really? / Seriously?"
+urdu = "سچ؟"
+topic = "reactions"
+formality = "informal"
+literal = "Truth?"
+
+[[word]]
+id = "waqai"
+roman = "Waqai?"
+english = "Really?"
+urdu = "واقعی؟"
+topic = "reactions"
+
+[[word]]
+id = "kher"
+roman = "Kher"
+english = "Anyway"
+urdu = "خیر"
+topic = "reactions"
+difficulty = 2
+usage = "Moves on from a topic: kher, chhoro (anyway, never mind)."

@@ -1,0 +1,28 @@
+# UN-4 on a real iPhone, in Device Lab (the app on the phone): at your first
+# turn, type the reply in a different Roman Urdu spelling and find it
+# accepted. Runs on throwaway data, so your own progress is never used.
+#   forge ui run examples/urdu-naturally/uitests/typed-answer.toml
+
+name = "UN-4: a typed answer in another spelling is accepted"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "urdu"] }
+
+[[step]]
+tap = { id = "home.next" }
+
+[[step]]
+type = { id = "conversation.typed", text = "walaikum asalaam" }
+
+[[step]]
+tap = { id = "conversation.reveal" }
+
+[[step]]
+expect = { label = "You typed it right." }
+
+[[step]]
+screenshot = "1-typed-answer"
