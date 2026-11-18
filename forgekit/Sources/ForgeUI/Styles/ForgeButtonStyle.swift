@@ -33,7 +33,7 @@ public struct ForgeButtonStyle: ButtonStyle {
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        ForgeButtonBody(configuration: configuration, kind: kind, expands: expands)
+        ForgeButtonChrome(label: configuration.label, kind: kind, expands: expands, isPressed: configuration.isPressed)
     }
 }
 
@@ -48,10 +48,13 @@ extension ButtonStyle where Self == ForgeButtonStyle {
     }
 }
 
-private struct ForgeButtonBody: View {
-    let configuration: ButtonStyleConfiguration
+/// What a ForgeUI button looks like, for any label: the button style draws
+/// it around a button's label, and a state view's menu around the menu's.
+struct ForgeButtonChrome<Content: View>: View {
+    let label: Content
     let kind: ForgeButtonStyle.Kind
     let expands: Bool
+    let isPressed: Bool
 
     @Environment(\.forgeTheme) private var theme
     @Environment(\.isEnabled) private var isEnabled
@@ -81,7 +84,7 @@ private struct ForgeButtonBody: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: theme.radius.m, style: .continuous)
-        configuration.label
+        label
             .font(compact ? .subheadline.weight(.semibold) : .headline)
             .foregroundStyle(foreground)
             .tint(foreground)
@@ -92,9 +95,9 @@ private struct ForgeButtonBody: View {
             .frame(maxWidth: expands ? .infinity : nil, minHeight: compact ? compactHeight : minHeight)
             .background(fill, in: shape)
             .contentShape(shape)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.4)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+            .opacity(isEnabled ? (isPressed ? 0.7 : 1) : 0.4)
+            .scaleEffect(isPressed && !reduceMotion ? 0.98 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isPressed)
     }
 }
 
