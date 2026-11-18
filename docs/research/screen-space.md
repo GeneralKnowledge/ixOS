@@ -65,6 +65,10 @@ iOS 26 has a slot for exactly this: `.tabViewBottomAccessory`, the bar Music sho
 
   It uses only the scroll, tap and expect steps scenarios already have, so it needs nothing new in the frozen UI-test tooling. A static rule proves `forgeBar` is used; this test proves the last row can be reached.
 
+## Started (2026-11-18)
+
+Reuben asked for the banner fix straight away, so it went into the same PR as this plan, without the spike first. ForgeUI's `forgeBar` (content margins, as above) and `forgeBanner` are built on it, and the banner reserves room above itself for its shadow. The phone look at Commonplace's last article doubles as the spike. If it passes, Soundscape's mini-player, rule `floating-bars` and the UI scenario follow. If the margins don't reach the pushed list, the fallback above applies.
+
 ## Order and size
 
 1. **Spike in the ForgeUI showcase:** one screen, one phone look of about 5 minutes. It decides between content margins and the fallback, and whether to use the iOS 26 accessory.
