@@ -112,7 +112,7 @@ struct FavouritesView: View {
             if !collection.favouriteAlbums.isEmpty {
                 Section("Albums") {
                     ForEach(collection.favouriteAlbums) { album in
-                        NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album) }
+                        NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album, model: model) }
                             .accessibilityIdentifier("favourites.album")
                     }
                 }
@@ -255,6 +255,8 @@ struct PlaylistView: View {
     @State private var detail: PlaylistDetail?
     @State private var renaming = false
     @State private var details: String?
+    @State private var confirmingDelete = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -285,6 +287,11 @@ struct PlaylistView: View {
                             DownloadMenuItem(model: model, tracks: detail.entries.map(\.track),
                                              identifier: "playlist.download")
                         }
+                        Divider()
+                        Button("Delete Playlist", systemImage: "trash", role: .destructive) {
+                            confirmingDelete = true
+                        }
+                        .accessibilityIdentifier("playlist.delete")
                     }
                     .accessibilityIdentifier("playlist.more")
                 }
@@ -297,6 +304,18 @@ struct PlaylistView: View {
             PlaylistNameSheet(title: "Rename Playlist", name: detail?.playlist.name ?? "") { name in
                 await model.renamePlaylist(id, to: name) != nil
             }
+        }
+        .confirmationDialog("Delete \(detail?.playlist.name ?? "this playlist")?", isPresented: $confirmingDelete,
+                            titleVisibility: .visible) {
+            Button("Delete Playlist", role: .destructive) {
+                Task {
+                    await model.deletePlaylist(id)
+                    dismiss()
+                }
+            }
+            .accessibilityIdentifier("playlist.confirmDelete")
+        } message: {
+            Text("The songs stay in your library.")
         }
     }
 
@@ -321,21 +340,23 @@ struct PlaylistView: View {
                 }
             }
             Section {
-                ForEach(Array(detail.entries.enumerated()), id: \.element.id) { index, entry in
+                ForEach(Array(Self.keyed(detail.entries).enumerated()), id: \.element.key) { index, row in
+                    let entry = row.entry
                     TrackRow(model: model, player: player, track: entry.track,
+                             remove: { removeEntry(at: index, of: detail) },
                              showDetails: { details = entry.track.id }) {
                         player.play(model.queue(tracks), from: index)
                     }
                 }
                 .onMove { from, to in
-                    var places = detail.entries.map(\.place)
-                    places.move(fromOffsets: from, toOffset: to)
-                    arrange(places)
+                    var entries = detail.entries
+                    entries.move(fromOffsets: from, toOffset: to)
+                    show(entries, of: detail)
                 }
                 .onDelete { offsets in
-                    var places = detail.entries.map(\.place)
-                    places.remove(atOffsets: offsets)
-                    arrange(places)
+                    var entries = detail.entries
+                    entries.remove(atOffsets: offsets)
+                    show(entries, of: detail)
                 }
             }
         }
@@ -346,6 +367,32 @@ struct PlaylistView: View {
                     description: "Add songs from their menu, an album, or Now Playing."
                 )
             }
+        }
+    }
+
+    private func removeEntry(at index: Int, of detail: PlaylistDetail) {
+        var entries = detail.entries
+        guard entries.indices.contains(index) else { return }
+        entries.remove(at: index)
+        show(entries, of: detail)
+    }
+
+    /// Shows the new order at once, so a moved row lands where it was
+    /// dropped instead of leaving a gap while Rust saves, then saves it.
+    private func show(_ entries: [PlaylistEntry], of detail: PlaylistDetail) {
+        self.detail = PlaylistDetail(playlist: detail.playlist, entries: entries)
+        arrange(entries.map(\.place))
+    }
+
+    /// Rows keyed by song and how many times it came before, not by place:
+    /// places are renumbered after every change, which made SwiftUI treat
+    /// each row as new and blank the moved one for a moment.
+    static func keyed(_ entries: [PlaylistEntry]) -> [(key: String, entry: PlaylistEntry)] {
+        var seen: [String: Int] = [:]
+        return entries.map { entry in
+            let n = seen[entry.track.id, default: 0]
+            seen[entry.track.id] = n + 1
+            return (key: "\(entry.track.id)#\(n)", entry: entry)
         }
     }
 

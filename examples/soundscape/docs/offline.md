@@ -46,8 +46,11 @@ its screen deletes the copy.
 
 ## What the app shows
 
-- A song's menu and screen: **Download** or **Remove Download**. An album's and a playlist's More menu:
-  **Download** for all of its songs.
+- A song's menu and screen: **Download** or **Remove Download**. A playlist's More menu: **Download** for all
+  of its songs.
+- An album: a **Download Album** button under Play and Shuffle (showing "Downloading 3 of 12…" while it
+  comes), **Download** in its More menu, and **Download** when you long-press it in a list (Reuben asked for a
+  whole-album download on 2026-11-18; the menu item alone was too hidden).
 - **Your Music** gets **Downloaded**: what is on the phone and what is still coming, the space it takes, and
   **Remove All Downloads**.
 - The Library toolbar gets **Import Music**.
