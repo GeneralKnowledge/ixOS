@@ -24,7 +24,7 @@ tap = { id = "notes.add" }
 type = { id = "compose.text", text = "Hello from Forge" }
 
 [[step]]
-expect = { id = "compose.confirm", enabled = true }
+expect = { id = "compose.save", enabled = true }
 
 [[step]]
 screenshot = "2-compose"

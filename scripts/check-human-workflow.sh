@@ -144,7 +144,7 @@ if [[ "${FORGE_HUMAN_DEVICE:-}" == 1 ]]; then
   "$FORGE" ui tap --id notes.add
   "$FORGE" ui type --id compose.text "Hello from the terminal"
   "$FORGE" ui key dismiss
-  "$FORGE" ui expect --id compose.confirm --enabled true
+  "$FORGE" ui expect --id compose.save --enabled true
   "$FORGE" ui tap --id compose.cancel
   "$FORGE" device logs --process ShelfXtool --for 10s
   "$FORGE" ui run uitests/smoke.toml --visual record

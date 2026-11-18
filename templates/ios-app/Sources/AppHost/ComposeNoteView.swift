@@ -30,13 +30,24 @@ struct ComposeNoteView: View {
             #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
             #endif
-            // Cancel, and Add that turns into a spinner while saving; a
-            // failure is shown as an alert, and a swipe down can't throw
-            // away what was typed (ForgeUI and ForgeAppKit).
-            .forgeFormToolbar(
-                id: "compose", confirmTitle: "Add", canConfirm: !trimmed.isEmpty,
-                submission: saving, hasChanges: !trimmed.isEmpty,
-                cancel: { dismiss() }, confirm: { Task { await add() } })
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("compose.cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving.isWorking {
+                        ProgressView()
+                            .accessibilityLabel("Saving")
+                    } else {
+                        Button("Add") { Task { await add() } }
+                            .disabled(trimmed.isEmpty)
+                            .accessibilityIdentifier("compose.save")
+                    }
+                }
+            }
+            .interactiveDismissDisabled(!trimmed.isEmpty)
+            .forgeAlert(failure: $saving.failure)
             .onAppear { isFocused = true }
         }
     }
