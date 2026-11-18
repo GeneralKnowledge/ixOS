@@ -6,30 +6,50 @@ import SwiftUI
 
 // MARK: Discover
 
-/// Free music to find and play: Jamendo search (this week's popular until
-/// you type), each track with its licence. Plays through the same player;
-/// Add to Library keeps a track with your music, where it can be put in
-/// playlists and, where its licence allows, downloaded.
+/// Free music to find and play, from Jamendo (tracks, this week's popular
+/// until you type) or the Internet Archive (albums and concerts), each
+/// track with its licence. Plays through the same player; Add to Library
+/// keeps a track with your music, where it can be put in playlists and,
+/// where its source allows, downloaded.
 struct DiscoverView: View {
     let model: ListenModel
     let player: TakePlayer
 
+    enum Source: String, CaseIterable, Identifiable {
+        case jamendo = "Jamendo", archive = "Internet Archive"
+        var id: String { rawValue }
+    }
+
+    @AppStorage("discover.source") private var source: Source = .jamendo
     @State private var search = ""
     @State private var results: [CatalogueTrack] = []
+    @State private var items: [ArchiveItem] = []
     @State private var problem: String?
     @State private var searching = false
     @State private var editingClientId = false
     @State private var attempt = 0
 
     private var query: String { search.trimmingCharacters(in: .whitespaces) }
+    private var needsClientId: Bool { source == .jamendo && model.jamendoClientId == nil }
+    private var empty: Bool { source == .jamendo ? results.isEmpty : items.isEmpty }
 
     var body: some View {
         Group {
-            if model.jamendoClientId == nil {
+            if needsClientId {
                 JamendoClientIdForm(model: model, done: nil)
             } else {
                 list
             }
+        }
+        .safeAreaInset(edge: .top) {
+            Picker("Source", selection: $source) {
+                ForEach(Source.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.bottom, 6)
+            .background(.bar)
+            .accessibilityIdentifier("discover.source")
         }
         .miniPlayerClearance()
         .navigationTitle("Discover")
@@ -60,40 +80,66 @@ struct DiscoverView: View {
 
     private var list: some View {
         List {
-            Section {
-                PlayShuffleButtons(disabled: results.isEmpty) { shuffle in
-                    player.play(model.queue(results), shuffle: shuffle)
-                }
-            }
-            Section {
-                ForEach(Array(results.enumerated()), id: \.element.id) { index, track in
-                    CatalogueRow(model: model, player: player, track: track) {
-                        player.play(model.queue(results), from: index)
-                    }
-                }
-            } header: {
-                if !results.isEmpty {
-                    Text(query.isEmpty ? "Popular This Week" : "Results")
-                }
-            } footer: {
-                if !results.isEmpty {
-                    Text("Music from Jamendo, each track under its artist's Creative Commons licence.")
-                }
+            switch source {
+            case .jamendo: jamendo
+            case .archive: archive
             }
         }
-        .searchable(text: $search, prompt: "Search Jamendo")
+        .searchable(text: $search, prompt: source == .jamendo ? "Search Jamendo" : "Search the Internet Archive")
         .refreshable { attempt += 1 }
-        .task(id: "\(model.jamendoClientId ?? "")|\(query)|\(attempt)") { await find() }
+        .task(id: "\(source.rawValue)|\(model.jamendoClientId ?? "")|\(query)|\(attempt)") { await find() }
         .overlay {
-            if let problem, results.isEmpty {
+            if let problem, empty {
                 ForgeStateView.failed(
-                    "Can't Search Jamendo", message: problem,
+                    "Can't Search \(source.rawValue)", message: problem,
                     retry: ForgeStateAction("Try Again", identifier: "discover.retry") { attempt += 1 }
                 )
-            } else if searching && results.isEmpty {
-                ForgeStateView.loading("Searching Jamendo")
-            } else if !searching && results.isEmpty && !query.isEmpty {
+            } else if searching && empty {
+                ForgeStateView.loading("Searching \(source.rawValue)")
+            } else if !searching && empty && !query.isEmpty {
                 ForgeStateView.noResults(for: query)
+            }
+        }
+    }
+
+    @ViewBuilder private var jamendo: some View {
+        Section {
+            PlayShuffleButtons(disabled: results.isEmpty) { shuffle in
+                player.play(model.queue(results), shuffle: shuffle)
+            }
+        }
+        Section {
+            ForEach(Array(results.enumerated()), id: \.element.id) { index, track in
+                CatalogueRow(model: model, player: player, track: track) {
+                    player.play(model.queue(results), from: index)
+                }
+            }
+        } header: {
+            if !results.isEmpty {
+                Text(query.isEmpty ? "Popular This Week" : "Results")
+            }
+        } footer: {
+            if !results.isEmpty {
+                Text("Music from Jamendo, each track under its artist's Creative Commons licence.")
+            }
+        }
+    }
+
+    @ViewBuilder private var archive: some View {
+        Section {
+            ForEach(items, id: \.identifier) { item in
+                NavigationLink(value: ListenRoute.archiveItem(item)) {
+                    ArchiveItemRow(item: item)
+                }
+                .accessibilityIdentifier("discover.archiveItem")
+            }
+        } header: {
+            if !items.isEmpty {
+                Text(query.isEmpty ? "Net Labels, Popular This Week" : "Albums and Recordings")
+            }
+        } footer: {
+            if !items.isEmpty {
+                Text("From the Internet Archive. Rights vary item by item; each shows its licence.")
             }
         }
     }
@@ -104,16 +150,126 @@ struct DiscoverView: View {
             try? await Task.sleep(for: .milliseconds(400))
             if Task.isCancelled { return }
         }
+        if needsClientId { return }
         searching = true
         defer { searching = false }
-        switch await model.searchJamendo(query) {
-        case .success(let found):
-            results = found
-            problem = nil
-        case .failure(let failure):
-            if failure.stopped { return }
-            problem = failure.message
+        problem = nil
+        switch source {
+        case .jamendo:
+            switch await model.searchJamendo(query) {
+            case .success(let found): results = found
+            case .failure(let failure): if !failure.stopped { problem = failure.message }
+            }
+        case .archive:
+            switch await model.searchArchive(query) {
+            case .success(let found): items = found
+            case .failure(let failure): if !failure.stopped { problem = failure.message }
+            }
         }
+    }
+}
+
+/// An Internet Archive item in a list: its picture, title, who and when,
+/// and its licence.
+struct ArchiveItemRow: View {
+    let item: ArchiveItem
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Artwork(title: item.title, url: item.artworkUrl, size: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title).lineLimit(1)
+                Text([item.creator, item.year].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(item.licence).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// An Internet Archive album or concert: its tracks, to play or add.
+struct ArchiveItemView: View {
+    let model: ListenModel
+    let player: TakePlayer
+    let item: ArchiveItem
+
+    @State private var tracks: [CatalogueTrack]?
+    @State private var problem: String?
+    @State private var attempt = 0
+
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 8) {
+                    Artwork(title: item.title, url: item.artworkUrl, size: 180)
+                        .shadow(radius: 8, y: 4)
+                    Text(item.title).font(.title3.bold()).multilineTextAlignment(.center)
+                    let who = [item.creator, item.year].compactMap { $0 }.joined(separator: " · ")
+                    if !who.isEmpty {
+                        Text(who).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Text(item.licence).font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+            }
+            if let tracks, !tracks.isEmpty {
+                Section {
+                    PlayShuffleButtons(disabled: false) { shuffle in
+                        player.play(model.queue(tracks), shuffle: shuffle)
+                    }
+                    let missing = tracks.filter { !model.inLibrary($0.id) }
+                    Button {
+                        Task { await model.addToLibrary(missing) }
+                    } label: {
+                        Label(missing.isEmpty ? "All in Your Library" : "Add All to Library",
+                              systemImage: missing.isEmpty ? "checkmark.circle" : "plus.circle")
+                    }
+                    .disabled(missing.isEmpty)
+                    .accessibilityIdentifier("archive.addAll")
+                }
+                Section {
+                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                        CatalogueRow(model: model, player: player, track: track) {
+                            player.play(model.queue(tracks), from: index)
+                        }
+                    }
+                } footer: {
+                    if let credit = tracks.first?.rights.attribution {
+                        Text(credit)
+                    }
+                }
+            }
+        }
+        .miniPlayerClearance()
+        .navigationTitle(item.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: attempt) {
+            switch await model.archiveTracks(item) {
+            case .success(let found):
+                tracks = found
+                problem = nil
+            case .failure(let failure):
+                if !failure.stopped { problem = failure.message }
+            }
+        }
+        .overlay {
+            if let problem, tracks == nil {
+                ForgeStateView.failed(
+                    "Can't Open This", message: problem,
+                    retry: ForgeStateAction("Try Again", identifier: "archive.retry") { attempt += 1 }
+                )
+            } else if tracks == nil {
+                ForgeStateView.loading("Asking the Internet Archive")
+            } else if tracks?.isEmpty == true {
+                ForgeStateView.empty(
+                    "Nothing to Play", systemImage: "music.note",
+                    description: "This item has no audio Soundscape can stream."
+                )
+            }
+        }
+        .forgeFeedback(model.feedback)
     }
 }
 
@@ -201,7 +357,7 @@ struct CatalogueRow: View {
             }
             if let page = track.rights.pageUrl.flatMap(URL.init(string:)) {
                 Link(destination: page) {
-                    Label("Open on Jamendo", systemImage: "safari")
+                    Label("Open on \(track.provider)", systemImage: "safari")
                 }
                 .accessibilityIdentifier("discover.open")
             }

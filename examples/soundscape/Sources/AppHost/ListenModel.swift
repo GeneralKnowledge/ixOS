@@ -157,6 +157,33 @@ public final class ListenModel {
         }
     }
 
+    /// Internet Archive items (albums, concerts) for `query`, or this
+    /// week's most downloaded net-label releases when empty.
+    public func searchArchive(_ query: String) async -> Result<[ArchiveItem], ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.searchArchive(query: query, cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("archive search failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// An Internet Archive item's playable tracks, in order.
+    public func archiveTracks(_ item: ArchiveItem) async -> Result<[CatalogueTrack], ListenFailure> {
+        do {
+            let tracks = try await withRustCancellation { cancellation in
+                try await core.archiveItemTracks(identifier: item.identifier, cancellation: cancellation)
+            }
+            return .success(tracks)
+        } catch {
+            if !Self.isStop(error) { log.warn("archive item failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
     /// True when a catalogue track is in the library.
     public func inLibrary(_ id: String) -> Bool {
         library.tracks.contains { $0.id == id }

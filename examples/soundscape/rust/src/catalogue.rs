@@ -130,6 +130,8 @@ fn join(name: &str, version: &str) -> String {
 pub fn provider_of(id: &str) -> Option<&'static str> {
     if id.starts_with(crate::jamendo::PREFIX) {
         Some(crate::jamendo::PROVIDER)
+    } else if id.starts_with(crate::archive::PREFIX) {
+        Some(crate::archive::PROVIDER)
     } else {
         None
     }

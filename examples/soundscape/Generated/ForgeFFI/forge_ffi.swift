@@ -2160,6 +2160,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func albumTracks(albumId: String)  -> [LibraryTrack]
     
     /**
+     * An Internet Archive item's playable tracks, in order, each with the
+     * item's licence. On-screen work.
+     */
+    func archiveItemTracks(identifier: String, cancellation: Cancellation?) async throws  -> [CatalogueTrack]
+    
+    /**
      * Keeps the playlist's entries at `places` (from `PlaylistEntry`), in
      * that order: what's left out is removed. Entries the library no
      * longer has are kept at the end, so they come back with their song.
@@ -2422,6 +2428,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * The last committed revision.
      */
     func revision()  -> UInt64
+    
+    /**
+     * Internet Archive items (albums, concerts, recordings) matching
+     * `query`, most downloaded first; this week's most downloaded
+     * net-label releases when it is empty. On-screen work.
+     */
+    func searchArchive(query: String, cancellation: Cancellation?) async throws  -> [ArchiveItem]
     
     /**
      * Jamendo tracks matching `query`, or this week's most popular when it
@@ -2689,6 +2702,26 @@ open func albumTracks(albumId: String) -> [LibraryTrack]  {
         FfiConverterString.lower(albumId),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * An Internet Archive item's playable tracks, in order, each with the
+     * item's licence. On-screen work.
+     */
+open func archiveItemTracks(identifier: String, cancellation: Cancellation?)async throws  -> [CatalogueTrack]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_archive_item_tracks(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(identifier),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeCatalogueTrack.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -3496,6 +3529,27 @@ open func revision() -> UInt64  {
 }
     
     /**
+     * Internet Archive items (albums, concerts, recordings) matching
+     * `query`, most downloaded first; this week's most downloaded
+     * net-label releases when it is empty. On-screen work.
+     */
+open func searchArchive(query: String, cancellation: Cancellation?)async throws  -> [ArchiveItem]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_search_archive(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeArchiveItem.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Jamendo tracks matching `query`, or this week's most popular when it
      * is empty. On-screen work.
      */
@@ -3946,6 +4000,85 @@ public func FfiConverterTypeAppDirectories_lift(_ buf: RustBuffer) throws -> App
 #endif
 public func FfiConverterTypeAppDirectories_lower(_ value: AppDirectories) -> RustBuffer {
     return FfiConverterTypeAppDirectories.lower(value)
+}
+
+
+/**
+ * One Archive item from a search: an album, concert or recording.
+ */
+public struct ArchiveItem: Equatable, Hashable {
+    public var identifier: String
+    public var title: String
+    public var creator: String?
+    public var year: String?
+    /**
+     * Short licence name, or "Licence not stated".
+     */
+    public var licence: String
+    public var artworkUrl: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(identifier: String, title: String, creator: String?, year: String?, 
+        /**
+         * Short licence name, or "Licence not stated".
+         */licence: String, artworkUrl: String) {
+        self.identifier = identifier
+        self.title = title
+        self.creator = creator
+        self.year = year
+        self.licence = licence
+        self.artworkUrl = artworkUrl
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ArchiveItem: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeArchiveItem: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArchiveItem {
+        return
+            try ArchiveItem(
+                identifier: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                creator: FfiConverterOptionString.read(from: &buf), 
+                year: FfiConverterOptionString.read(from: &buf), 
+                licence: FfiConverterString.read(from: &buf), 
+                artworkUrl: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ArchiveItem, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.identifier, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.creator, into: &buf)
+        FfiConverterOptionString.write(value.year, into: &buf)
+        FfiConverterString.write(value.licence, into: &buf)
+        FfiConverterString.write(value.artworkUrl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArchiveItem_lift(_ buf: RustBuffer) throws -> ArchiveItem {
+    return try FfiConverterTypeArchiveItem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArchiveItem_lower(_ value: ArchiveItem) -> RustBuffer {
+    return FfiConverterTypeArchiveItem.lower(value)
 }
 
 
@@ -10176,6 +10309,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeArchiveItem: FfiConverterRustBuffer {
+    typealias SwiftType = [ArchiveItem]
+
+    public static func write(_ value: [ArchiveItem], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeArchiveItem.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ArchiveItem] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ArchiveItem]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeArchiveItem.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeCatalogueTrack: FfiConverterRustBuffer {
     typealias SwiftType = [CatalogueTrack]
 
@@ -11315,6 +11473,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_album_tracks() != 41674) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_archive_item_tracks() != 9877) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_arrange_playlist() != 18653) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11463,6 +11624,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_revision() != 34234) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_search_archive() != 25802) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_search_jamendo() != 56603) {

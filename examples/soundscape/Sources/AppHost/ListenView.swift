@@ -19,8 +19,10 @@ enum ListenRoute: Hashable {
     case downloads
     /// Songs with several takes and no pick yet.
     case toPick
-    /// Free catalogues to search and play (Jamendo).
+    /// Free catalogues to search and play (Jamendo, Internet Archive).
     case discover
+    /// An Internet Archive album or concert, with its tracks.
+    case archiveItem(ArchiveItem)
 }
 
 /// The Listen tab: your music library (artists, albums, songs, each song
@@ -55,6 +57,7 @@ struct ListenView: View {
                     case .downloads: DownloadsView(model: model, player: player)
                     case .toPick: ToPickView(model: model, player: player)
                     case .discover: DiscoverView(model: model, player: player)
+                    case .archiveItem(let item): ArchiveItemView(model: model, player: player, item: item)
                     }
                 }
                 .toolbar {

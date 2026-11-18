@@ -112,11 +112,30 @@ asking Jamendo. Not done yet: a Jamendo track that has since been taken down is 
 - **Audio URLs** carry a `from=` token. Saved tracks keep the URL they were added with; if those turn out to
   expire, the next step is fetching a fresh URL by id (`/tracks/?id=`) when a saved track plays.
 
+## Internet Archive, as built
+
+- **Discover** has a switch: Jamendo or Internet Archive. The Archive is searched for audio items (albums,
+  concerts, recordings), most downloaded first. Until you type, it shows this week's most downloaded net-label
+  releases. No key is needed.
+- **An item opens to its tracks**: Play, Shuffle, Add All to Library, and each track with play, Play Next, Add
+  to Queue and Add to Library, as in Jamendo's list.
+- **One track per piece of audio, in its best MP3.** An item often holds the same song as FLAC, Ogg and several
+  MP3s. Soundscape keeps one per original, preferring VBR MP3, then MP3, then the smaller MP3s; Ogg and FLAC
+  are left out because AVPlayer streams MP3 reliably. Tracks are ordered by their track number, then by file
+  name. A title missing from the tags comes from the file name, without its leading number.
+- **Ids** are `archive:<identifier>/<file>`, and streams are `archive.org/download/<identifier>/<file>`.
+- **Rights.** Each track carries the item's licence, or "Licence not stated" when the item has none, which is
+  common. Downloading is allowed unless the item is access-restricted (lending items). A dark or missing item
+  gives no tracks.
+- **In `rust/src/archive.rs`**, tested in `rust/tests/archive.rs` against canned answers in the Archive's shapes.
+  The live API hasn't been checked yet: this cloud session can't reach archive.org, so that check is for the
+  laptop.
+
 ## Order of work
 
 1. ~~The track resolver~~ (the library is the lookup; above) and Jamendo: built.
-2. Internet Archive, as a second and independent source: its metadata gives each file's format, size and
-   checksum, which also tests imports and download checks.
+2. Internet Archive, as a second and independent source: built (above). Its file checksums (`sha1`, `md5`)
+   are not used yet; download verification comes with reconciliation.
 3. MusicBrainz, to recognise the same recording from different sources (reconciliation in
    [architecture.md](architecture.md)).
 4. A small fixed test catalogue: short and long tracks, with and without artwork or tags, two recordings of one

@@ -24,6 +24,7 @@
 //!   library (artists, albums, tracks with their recordings, artwork, the
 //!   person's edits) kept on the phone; [`queue`] decides what plays next.
 
+pub mod archive;
 pub mod catalogue;
 pub mod collection;
 pub mod dsp;
@@ -46,6 +47,7 @@ use forge_net::{HttpClient, UreqClient};
 use forge_runtime::now_ms;
 use forge_storage::{files, FileStore};
 
+pub use archive::ArchiveItem;
 pub use catalogue::{CatalogueTrack, Rights};
 use collection::CollectionFile;
 pub use collection::{
@@ -1092,6 +1094,39 @@ impl SoundscapeCore {
         self.rt
             .run("jamendo-search", work, move |cancel| {
                 jamendo::search(http.as_ref(), &client_id, &query, cancel)
+            })
+            .await
+    }
+
+    /// Internet Archive items (albums, concerts, recordings) matching
+    /// `query`, most downloaded first; this week's most downloaded
+    /// net-label releases when it is empty. On-screen work.
+    pub async fn search_archive(
+        &self,
+        query: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<ArchiveItem>, SoundscapeError> {
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("archive-search", work, move |cancel| {
+                archive::search(http.as_ref(), &query, cancel)
+            })
+            .await
+    }
+
+    /// An Internet Archive item's playable tracks, in order, each with the
+    /// item's licence. On-screen work.
+    pub async fn archive_item_tracks(
+        &self,
+        identifier: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("archive-item", work, move |cancel| {
+                archive::item_tracks(http.as_ref(), &identifier, cancel)
             })
             .await
     }
