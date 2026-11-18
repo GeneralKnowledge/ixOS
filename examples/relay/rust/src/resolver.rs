@@ -168,6 +168,21 @@ pub struct RelayServers {
     pub lookup_url: Option<String>,
 }
 
+/// The servers Relay's maintainer runs: an iroh relay and a pkarr lookup
+/// server on one machine, with TLS (Let's Encrypt, through Caddy).
+const OWN_RELAY: &str = "https://relay.avedeus.ovh";
+const OWN_LOOKUP: &str = "https://lookup.avedeus.ovh/pkarr";
+
+/// Relay's own servers, for the "Use Relay's Servers" setting and
+/// `relay servers --own`. Nothing uses them until they are set.
+#[uniffi::export]
+pub fn own_relay_servers() -> RelayServers {
+    RelayServers {
+        relay_url: Some(OWN_RELAY.into()),
+        lookup_url: Some(OWN_LOOKUP.into()),
+    }
+}
+
 impl RelayServers {
     /// The relay, if set and a valid URL.
     pub(crate) fn relay(&self) -> Option<iroh::RelayUrl> {

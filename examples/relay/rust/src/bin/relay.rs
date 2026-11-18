@@ -17,7 +17,7 @@
 //!                                    what happens after a code transfer
 //! relay connections [local | private | any]
 //!                                    which routes reach trusted devices
-//! relay servers [--relay URL] [--lookup URL] [--none]
+//! relay servers [--own] [--relay URL] [--lookup URL] [--none]
 //!                                    Relay's own relay and lookup server
 //! relay send <peer> [--to host:port] (--note TEXT | FILE)
 //! relay send PATH...                 send files and folders with a word code
@@ -75,7 +75,7 @@ send <peer> [--to host:port] (--note TEXT | FILE) | send PATH... | receive <code
 send <device> (--note TEXT | --text TEXT | PATH...) [--to host:port] | \
 messages <device> | status <device> | revoke <device> | forget <device> | \
 trust <device> | policy [codes-only | ask | automatic] | \
-connections [local | private | any] | servers [--relay URL] [--lookup URL] [--none] | \
+connections [local | private | any] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
 ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
@@ -350,6 +350,7 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                     "--relay" => servers.relay_url = args.next().cloned(),
                     "--lookup" => servers.lookup_url = args.next().cloned(),
                     "--none" => servers = relay_core::RelayServers::default(),
+                    "--own" => servers = relay_core::own_relay_servers(),
                     _ => return Err(USAGE.to_string()),
                 }
             }

@@ -14418,6 +14418,17 @@ public func installNativeHttp(transport: HttpTransport)  {try! rustCall() {
     )
 }
 }
+/**
+ * Relay's own servers, for the "Use Relay's Servers" setting and
+ * `relay servers --own`. Nothing uses them until they are set.
+ */
+public func ownRelayServers() -> RelayServers  {
+    return try!  FfiConverterTypeRelayServers_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_own_relay_servers(uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -14495,6 +14506,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_install_native_http() != 64770) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_own_relay_servers() != 41425) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_background_time_expired() != 12393) {
