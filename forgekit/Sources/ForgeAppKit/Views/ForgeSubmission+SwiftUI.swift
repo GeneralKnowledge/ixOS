@@ -5,10 +5,12 @@ import SwiftUI
 extension View {
     /// ForgeUI's form toolbar (Cancel, and a confirm button that turns into
     /// a spinner) driven by a `ForgeSubmission`: busy while it runs, its
-    /// failure shown as an alert. Identifiers `<id>.cancel`, `<id>.confirm`.
+    /// failure shown as an alert. With `hasChanges`, a swipe down can't
+    /// throw away what the person typed. Identifiers `<id>.cancel`, `<id>.confirm`.
     ///
     ///     .forgeFormToolbar(id: "bookForm", confirmTitle: "Add", canConfirm: model.canSave,
-    ///                       submission: model.saving, cancel: { dismiss() }) {
+    ///                       submission: model.saving, hasChanges: model.hasChanges,
+    ///                       cancel: { dismiss() }) {
     ///         Task { if await model.save() { dismiss() } }
     ///     }
     public func forgeFormToolbar(
@@ -16,6 +18,7 @@ extension View {
         confirmTitle: LocalizedStringKey = "Save",
         canConfirm: Bool = true,
         submission: ForgeSubmission,
+        hasChanges: Bool = false,
         cancel: @escaping () -> Void,
         confirm: @escaping () -> Void
     ) -> some View {
@@ -24,6 +27,7 @@ extension View {
             confirmTitle: confirmTitle,
             canConfirm: canConfirm,
             isWorking: submission.isWorking,
+            hasChanges: hasChanges,
             cancel: cancel,
             confirm: confirm
         )

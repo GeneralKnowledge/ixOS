@@ -45,6 +45,20 @@ final class ShowcaseModelTests: XCTestCase {
         XCTAssertEqual(tasks.tasks[0].priority, .high)
     }
 
+    func testFormKnowsWhenItHasChanges() {
+        let form = TaskFormModel()
+        XCTAssertFalse(form.hasChanges, "an untouched new form can be swiped away")
+        form.title = "Call the vet"
+        XCTAssertTrue(form.hasChanges)
+        form.title = ""
+        XCTAssertFalse(form.hasChanges, "back to how it opened")
+
+        let edit = TaskFormModel(editing: ShowcaseTask(title: "Renew passport", notes: "", priority: .normal, isDone: false))
+        XCTAssertFalse(edit.hasChanges)
+        edit.priority = .high
+        XCTAssertTrue(edit.hasChanges)
+    }
+
     func testSearchAndOrder() {
         let tasks = TasksModel()
         XCTAssertEqual(tasks.visibleTasks.last?.isDone, true, "done tasks sort last")

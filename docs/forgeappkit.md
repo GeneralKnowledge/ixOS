@@ -156,11 +156,12 @@ public func save() async -> Bool {
 }
 ```
 
-`run` ignores a second tap while it is working, sets `failure` if the work throws (never for a cancellation) and returns whether it succeeded. In a sheet, the form toolbar takes it whole, spinner and alert included:
+`run` ignores a second tap while it is working, sets `failure` if the work throws (never for a cancellation) and returns whether it succeeded. In a sheet, the form toolbar takes it whole, spinner and alert included; `hasChanges` stops a swipe down from throwing away unsaved input:
 
 ```swift
 .forgeFormToolbar(id: "bookForm", confirmTitle: "Add", canConfirm: model.canSave,
-                  submission: model.saving, cancel: { dismiss() }) {
+                  submission: model.saving, hasChanges: model.hasChanges,
+                  cancel: { dismiss() }) {
     Task { if await model.save() { dismiss() } }
 }
 ```

@@ -249,17 +249,18 @@ The bar measures itself and gives every scroll view below it that much room as a
 
 ### Alerts, dialogs and sheets
 
-Use SwiftUI's `.alert`, `.confirmationDialog` and `.sheet` as they are; the theme tints them. For a form in a sheet, `forgeFormToolbar` adds Cancel and a confirm button that becomes a spinner while saving, and stops the sheet being swiped away meanwhile:
+Use SwiftUI's `.alert`, `.confirmationDialog` and `.sheet` as they are; the theme tints them. For a form in a sheet, `forgeFormToolbar` adds Cancel and a confirm button that becomes a spinner while saving. A swipe down can't close the sheet while it saves, or, with `hasChanges`, while it holds something the person would lose; Cancel still closes it on purpose:
 
 ```swift
 NavigationStack {
     Form { ... }
         .forgeFormToolbar(id: "taskForm", confirmTitle: "Add", canConfirm: model.canSave,
-                          isWorking: model.isSaving, cancel: { dismiss() }, confirm: save)
+                          isWorking: model.isSaving, hasChanges: model.hasChanges,
+                          cancel: { dismiss() }, confirm: save)
 }
 ```
 
-The buttons get the identifiers `taskForm.cancel` and `taskForm.confirm`.
+The buttons get the identifiers `taskForm.cancel` and `taskForm.confirm` (the spinner `taskForm.working`). Leave `hasChanges` out and only saving stops the swipe. Use it instead of writing the Cancel and spinner toolbar yourself.
 
 **Increase Contrast.** With Settings > Accessibility > Display & Text Size > Increase Contrast on, every theme's secondary and tertiary text, tone text and separators move 40% of the way toward primary text (`ForgePalette.increasedContrast`), so quieter text reaches WCAG AAA (7:1). Backgrounds and fills stay, so the app still looks like itself. Nothing to do in the app: the theme's colours switch by themselves.
 

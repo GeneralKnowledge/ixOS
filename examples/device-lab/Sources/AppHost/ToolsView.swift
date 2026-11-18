@@ -6,6 +6,7 @@ import SwiftUI
 struct ToolsView: View {
     let model: LabModel
     @State private var transfers = TransferTestModel()
+    @State private var sensorLab = SensorLabModel.live()
     @State private var aiLab = AiLabModel(
         lab: AiLab(model: ForgeAppleModel()), structured: AiLabStructured.run)
 
@@ -40,6 +41,16 @@ struct ToolsView: View {
                 .accessibilityIdentifier("tools.logs")
             } footer: {
                 Text("What Device Lab and its apps logged recently, to read or share without a cable.")
+            }
+            Section {
+                NavigationLink {
+                    SensorLabView(model: sensorLab)
+                } label: {
+                    Label("Spatial Sensor Lab", systemImage: "move.3d")
+                }
+                .accessibilityIdentifier("tools.sensorLab")
+            } footer: {
+                Text("The phone in 3D as you turn it, and the magnetic field around it: strength, direction and change from a baseline.")
             }
             Section {
                 NavigationLink {
