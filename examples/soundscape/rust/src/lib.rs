@@ -51,7 +51,8 @@ pub use collection::{
 use library::LibraryFile;
 pub use library::{
     ArtworkTarget, AudioSource, Generation, ImportResult, Library, LibraryAlbum, LibraryArtist,
-    LibrarySearch, LibraryTrack, MusicFile, Recording, RecordingKind, TrackDetail, TrackEdit,
+    LibrarySearch, LibraryTrack, MusicFile, Recording, RecordingKind, RecordingOrder, TrackDetail,
+    TrackEdit,
 };
 pub use listen::{
     group_songs, loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongGroup, SongSummary,
@@ -1142,6 +1143,41 @@ impl SoundscapeCore {
             offline::localize(&detail.track.id, recording, &offline, &url);
         }
         Ok(detail)
+    }
+
+    /// Songs waiting for a pick: two or more takes and none picked, most
+    /// recently changed first.
+    pub fn tracks_to_pick(&self) -> Vec<LibraryTrack> {
+        library::to_pick(&self.library())
+    }
+
+    /// A track with its recordings in `order`.
+    pub fn library_track_sorted(
+        &self,
+        id: String,
+        order: RecordingOrder,
+    ) -> Result<TrackDetail, SoundscapeError> {
+        let mut detail = self.library_track(id)?;
+        detail.recordings = library::sort_recordings(detail.recordings, order);
+        Ok(detail)
+    }
+
+    /// Rates, notes or picks one of a track's take-server recordings, on the
+    /// server (JewGrass's picks file stays the record), and returns the
+    /// track as it now is. Finishing work.
+    pub async fn mark_recording(
+        &self,
+        track_id: String,
+        recording_id: String,
+        mark: TakeMark,
+    ) -> Result<TrackDetail, SoundscapeError> {
+        let slug = library::slug_of(&track_id)
+            .ok_or_else(|| SoundscapeError::NotInLibrary {
+                id: track_id.clone(),
+            })?
+            .to_string();
+        self.mark_take(slug, recording_id, mark).await?;
+        self.library_track(track_id)
     }
 
     /// What the queue plays for `track_ids`, in that order: each track's

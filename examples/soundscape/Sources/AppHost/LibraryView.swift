@@ -526,7 +526,18 @@ struct TrackView: View {
     @State private var addingToPlaylist = false
     @State private var showingLyrics = false
     @State private var confirmingRemove = false
+    @State private var noting: Recording?
+    @State private var noteText = ""
+    @AppStorage("track.recordingOrder") private var orderName = "best"
     @Environment(\.dismiss) private var dismiss
+
+    private var order: RecordingOrder {
+        switch orderName {
+        case "newest": .newest
+        case "oldest": .oldest
+        default: .best
+        }
+    }
 
     var body: some View {
         Group {
@@ -542,8 +553,21 @@ struct TrackView: View {
         .miniPlayerClearance()
         .navigationTitle(detail?.track.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { detail = model.track(id) }
-        .onChange(of: model.library) { detail = model.track(id) }
+        .onAppear { detail = model.track(id, order: order) }
+        .onChange(of: model.library) { detail = model.track(id, order: order) }
+        .onChange(of: order) { detail = model.track(id, order: order) }
+        .alert("Note", isPresented: Binding(get: { noting != nil }, set: { if !$0 { noting = nil } })) {
+            TextField("What stands out", text: $noteText)
+                .accessibilityIdentifier("recording.noteText")
+            Button("Save") {
+                if let recording = noting {
+                    Task { if let d = await model.note(recording, of: id, noteText) { detail = d } }
+                }
+            }
+            .accessibilityIdentifier("recording.noteSave")
+            Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier("recording.noteCancel")
+        }
         .forgeFeedback(model.feedback)
         .toolbar {
             if detail != nil {
@@ -672,11 +696,26 @@ struct TrackView: View {
                         },
                         choose: {
                             Task { if let d = await model.choose(recording, of: track) { self.detail = d } }
-                        }
+                        },
+                        rate: rater(recording, of: track),
+                        note: noter(recording)
                     )
                 }
             } header: {
-                Text(detail.recordings.count == 1 ? "Recording" : "Recordings")
+                HStack {
+                    Text(detail.recordings.count == 1 ? "Recording" : "Recordings")
+                    Spacer()
+                    if detail.recordings.count > 1 {
+                        Picker("Order", selection: $orderName) {
+                            Text("Best").tag("best")
+                            Text("Newest").tag("newest")
+                            Text("Oldest").tag("oldest")
+                        }
+                        .pickerStyle(.menu)
+                        .textCase(nil)
+                        .accessibilityIdentifier("track.recordingOrder")
+                    }
+                }
             } footer: {
                 if detail.recordings.count > 1 {
                     Text(track.picked
@@ -687,11 +726,11 @@ struct TrackView: View {
             if let slug = track.slug {
                 Section {
                     NavigationLink(value: ListenRoute.takes(slug)) {
-                        Label("Takes and Compare", systemImage: "rectangle.split.2x1")
+                        Label("Compare Takes", systemImage: "rectangle.split.2x1")
                     }
                     .accessibilityIdentifier("track.takes")
                 } footer: {
-                    Text("Rate, note and compare its takes A/B at matched loudness.")
+                    Text("Hear two takes A/B at matched loudness, blind if you like, and pick one.")
                 }
             }
             if detail.caption != nil || detail.lyrics != nil {
@@ -718,6 +757,22 @@ struct TrackView: View {
 }
 
 extension TrackView {
+    /// Rating, for a take on the take server only.
+    fileprivate func rater(_ recording: Recording, of track: LibraryTrack) -> ((Int) -> Void)? {
+        guard recording.kind == .generated else { return nil }
+        return { n in
+            Task { if let d = await model.rate(recording, of: track.id, stars: n) { detail = d } }
+        }
+    }
+
+    fileprivate func noter(_ recording: Recording) -> (() -> Void)? {
+        guard recording.kind == .generated else { return nil }
+        return {
+            noteText = recording.note
+            noting = recording
+        }
+    }
+
     /// Download, with how far along it is, or Remove Download.
     @ViewBuilder fileprivate func downloadButton(_ track: LibraryTrack) -> some View {
         let state = model.downloadState(track.id)
@@ -746,6 +801,9 @@ private struct RecordingRow: View {
     let playing: Bool
     let play: () -> Void
     let choose: () -> Void
+    /// Rating and notes, for a take on the take server.
+    var rate: ((Int) -> Void)? = nil
+    var note: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -768,13 +826,24 @@ private struct RecordingRow: View {
                 let facts = [
                     TakeFormat.generation(recording),
                     recording.durationSeconds.map(TakeFormat.time),
-                    recording.stars > 0 ? String(repeating: "★", count: Int(recording.stars)) : nil,
+                    rate == nil && recording.stars > 0 ? String(repeating: "★", count: Int(recording.stars)) : nil,
                 ].compactMap { $0 }.filter { !$0.isEmpty }
                 if !facts.isEmpty {
                     Text(facts.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                 }
                 if !recording.note.isEmpty {
                     Text(recording.note).font(.callout).foregroundStyle(.secondary)
+                }
+                if let rate {
+                    HStack(spacing: 12) {
+                        Stars(value: Int(recording.stars), identifier: "recording", rate: rate)
+                        if let note {
+                            Button(recording.note.isEmpty ? "Add Note" : "Edit Note", action: note)
+                                .font(.subheadline)
+                                .buttonStyle(.borderless)
+                                .accessibilityIdentifier("recording.note")
+                        }
+                    }
                 }
                 if !recording.preferred {
                     Button("Use This Recording", action: choose)

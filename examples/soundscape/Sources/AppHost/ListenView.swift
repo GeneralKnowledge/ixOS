@@ -17,6 +17,8 @@ enum ListenRoute: Hashable {
     case recent
     /// What is kept on the phone.
     case downloads
+    /// Songs with several takes and no pick yet.
+    case toPick
 }
 
 /// The Listen tab: your music library (artists, albums, songs, each song
@@ -49,6 +51,7 @@ struct ListenView: View {
                     case .playlist(let id): PlaylistView(model: model, player: player, id: id)
                     case .recent: RecentlyPlayedView(model: model, player: player)
                     case .downloads: DownloadsView(model: model, player: player)
+                    case .toPick: ToPickView(model: model, player: player)
                     }
                 }
                 .toolbar {
@@ -385,8 +388,9 @@ private struct TakeRow: View {
     }
 }
 
-private struct Stars: View {
+struct Stars: View {
     let value: Int
+    var identifier = "take"
     let rate: (Int) -> Void
 
     var body: some View {
@@ -398,7 +402,7 @@ private struct Stars: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("\(n) \(n == 1 ? "star" : "stars")")
-                .accessibilityIdentifier("take.star\(n)")
+                .accessibilityIdentifier("\(identifier).star\(n)")
             }
         }
         .font(.subheadline)
@@ -726,6 +730,15 @@ private struct NowPlayingView: View {
                             .accessibilityElement(children: .combine)
                             Scrubber(player: player, showsButtons: false)
                             if player.isComparing { abSwitch } else { transport }
+                            if !player.isComparing, let trackId = current.trackId,
+                               let recording = model.track(trackId)?.recordings.first(where: { $0.id == current.id }),
+                               recording.kind == .generated {
+                                Stars(value: Int(recording.stars), identifier: "nowPlayingSheet") { n in
+                                    Task { _ = await model.rate(recording, of: trackId, stars: n) }
+                                }
+                                .font(.title3)
+                                .accessibilityLabel("Rate this take")
+                            }
                             if let lyrics = current.lyrics, !lyricLines(lyrics: lyrics).isEmpty {
                                 Button {
                                     showingLyrics = true

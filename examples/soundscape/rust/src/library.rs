@@ -1127,3 +1127,42 @@ pub fn imported_file(
         added_ms: now,
     }
 }
+
+// ------------------------------------------------------------ takes and versions
+
+/// How a track's recordings are listed.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecordingOrder {
+    /// The one that plays first, then most stars, then newest.
+    Best,
+    Newest,
+    Oldest,
+}
+
+/// A track's recordings in `order`.
+pub fn sort_recordings(mut recordings: Vec<Recording>, order: RecordingOrder) -> Vec<Recording> {
+    match order {
+        RecordingOrder::Best => recordings.sort_by(|a, b| {
+            b.preferred
+                .cmp(&a.preferred)
+                .then(b.stars.cmp(&a.stars))
+                .then(b.made_ms.cmp(&a.made_ms))
+        }),
+        RecordingOrder::Newest => recordings.sort_by_key(|r| std::cmp::Reverse(r.made_ms)),
+        RecordingOrder::Oldest => recordings.sort_by_key(|r| r.made_ms),
+    }
+    recordings
+}
+
+/// Songs waiting for a pick: from the take server, with two or more takes
+/// and none picked yet. Most recently changed first.
+pub fn to_pick(library: &Library) -> Vec<LibraryTrack> {
+    let mut tracks: Vec<LibraryTrack> = library
+        .tracks
+        .iter()
+        .filter(|t| t.slug.is_some() && t.recording_count >= 2 && !t.picked)
+        .cloned()
+        .collect();
+    tracks.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms).then(a.id.cmp(&b.id)));
+    tracks
+}

@@ -2275,6 +2275,11 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func libraryTrack(id: String) throws  -> TrackDetail
     
     /**
+     * A track with its recordings in `order`.
+     */
+    func libraryTrackSorted(id: String, order: RecordingOrder) throws  -> TrackDetail
+    
+    /**
      * The take server's address (`http://100.101.102.103:8642`), or `None`
      * before the person has set one.
      */
@@ -2298,6 +2303,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * `sample_rate`, so a recording loops cleanly.
      */
     func loopFrames(id: UInt64, sampleRate: UInt32) throws  -> UInt64
+    
+    /**
+     * Rates, notes or picks one of a track's take-server recordings, on the
+     * server (JewGrass's picks file stays the record), and returns the
+     * track as it now is. Finishing work.
+     */
+    func markRecording(trackId: String, recordingId: String, mark: TakeMark) async throws  -> TrackDetail
     
     /**
      * Picks a take, rates it (0 to 5 stars) or notes something on it, on
@@ -2467,6 +2479,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * title, artist, album and artwork when the library has its song.
      */
     func takeQueueTrack(song: SongDetail, take: Take)  -> QueueTrack
+    
+    /**
+     * Songs waiting for a pick: two or more takes and none picked, most
+     * recently changed first.
+     */
+    func tracksToPick()  -> [LibraryTrack]
     
     /**
      * A track's waveform: the loudest sample in each of `buckets` slices
@@ -2986,6 +3004,20 @@ open func libraryTrack(id: String)throws  -> TrackDetail  {
 }
     
     /**
+     * A track with its recordings in `order`.
+     */
+open func libraryTrackSorted(id: String, order: RecordingOrder)throws  -> TrackDetail  {
+    return try  FfiConverterTypeTrackDetail_lift(try rustCallWithError(FfiConverterTypeSoundscapeError_lift) {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_library_track_sorted(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterTypeRecordingOrder_lower(order),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * The take server's address (`http://100.101.102.103:8642`), or `None`
      * before the person has set one.
      */
@@ -3052,6 +3084,27 @@ open func loopFrames(id: UInt64, sampleRate: UInt32)throws  -> UInt64  {
         FfiConverterUInt32.lower(sampleRate),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Rates, notes or picks one of a track's take-server recordings, on the
+     * server (JewGrass's picks file stays the record), and returns the
+     * track as it now is. Finishing work.
+     */
+open func markRecording(trackId: String, recordingId: String, mark: TakeMark)async throws  -> TrackDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_mark_recording(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(trackId),FfiConverterString.lower(recordingId),FfiConverterTypeTakeMark_lower(mark)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeTrackDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -3576,6 +3629,19 @@ open func takeQueueTrack(song: SongDetail, take: Take) -> QueueTrack  {
             self.uniffiCloneHandle(),
         FfiConverterTypeSongDetail_lower(song),
         FfiConverterTypeTake_lower(take),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Songs waiting for a pick: two or more takes and none picked, most
+     * recently changed first.
+     */
+open func tracksToPick() -> [LibraryTrack]  {
+    return try!  FfiConverterSequenceTypeLibraryTrack.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_tracks_to_pick(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -8725,6 +8791,85 @@ public func FfiConverterTypeRecordingKind_lower(_ value: RecordingKind) -> RustB
 
 
 /**
+ * How a track's recordings are listed.
+ */
+
+public enum RecordingOrder: Equatable, Hashable {
+    
+    /**
+     * The one that plays first, then most stars, then newest.
+     */
+    case best
+    case newest
+    case oldest
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension RecordingOrder: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRecordingOrder: FfiConverterRustBuffer {
+    typealias SwiftType = RecordingOrder
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RecordingOrder {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .best
+        
+        case 2: return .newest
+        
+        case 3: return .oldest
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RecordingOrder, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .best:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .newest:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .oldest:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecordingOrder_lift(_ buf: RustBuffer) throws -> RecordingOrder {
+    return try FfiConverterTypeRecordingOrder.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecordingOrder_lower(_ value: RecordingOrder) -> RustBuffer {
+    return FfiConverterTypeRecordingOrder.lower(value)
+}
+
+
+
+/**
  * What happens when a song ends.
  */
 
@@ -10771,6 +10916,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_library_track() != 2712) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_library_track_sorted() != 9969) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_listen_server() != 8859) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10781,6 +10929,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_loop_frames() != 65425) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_mark_recording() != 48226) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_mark_take() != 58743) {
@@ -10874,6 +11025,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_take_queue_track() != 39737) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_tracks_to_pick() != 21309) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_waveform() != 39390) {

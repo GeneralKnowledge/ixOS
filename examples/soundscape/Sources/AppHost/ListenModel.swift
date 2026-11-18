@@ -165,6 +165,39 @@ public final class ListenModel {
         }
     }
 
+    // MARK: Takes and versions
+
+    /// A track with its recordings in `order`.
+    public func track(_ id: String, order: RecordingOrder) -> TrackDetail? {
+        try? core.libraryTrackSorted(id: id, order: order)
+    }
+
+    /// Songs with several takes and no pick yet.
+    public var toPick: [LibraryTrack] { core.tracksToPick() }
+
+    /// Rates one of a track's recordings on the take server; tapping its
+    /// current rating clears it.
+    public func rate(_ recording: Recording, of trackId: String, stars: Int) async -> TrackDetail? {
+        let value = stars == Int(recording.stars) ? 0 : max(0, min(5, stars))
+        return await markRecording(recording, of: trackId, TakeMark(picked: nil, stars: UInt8(value), note: nil))
+    }
+
+    public func note(_ recording: Recording, of trackId: String, _ text: String) async -> TrackDetail? {
+        await markRecording(recording, of: trackId, TakeMark(picked: nil, stars: nil, note: text))
+    }
+
+    private func markRecording(_ recording: Recording, of trackId: String, _ mark: TakeMark) async -> TrackDetail? {
+        do {
+            let detail = try await core.markRecording(trackId: trackId, recordingId: recording.id, mark: mark)
+            library = core.library()
+            feedback.play(.success)
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
     /// Changes a track's details on the phone; empty fields go back to the
     /// server's.
     public func edit(_ track: LibraryTrack, _ edit: TrackEdit) async -> TrackDetail? {

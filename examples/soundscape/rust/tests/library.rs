@@ -459,3 +459,77 @@ fn each_recording_carries_its_own_lyrics() {
         ]
     );
 }
+
+#[test]
+fn songs_to_pick_have_several_takes_and_no_pick() {
+    let (_dir, core, _) = core_with(catalog_server());
+    block(core.refresh_library(false, None)).unwrap();
+    let ids: Vec<String> = core.tracks_to_pick().into_iter().map(|t| t.id).collect();
+    // One More Night is picked; Everybody Knows and the voice note have one take.
+    assert_eq!(ids, vec![track_id("lb-anchor")]);
+}
+
+#[test]
+fn recordings_list_best_newest_or_oldest_first() {
+    use soundscape_core::RecordingOrder;
+    let (_dir, core, _) = core_with(catalog_server());
+    block(core.refresh_library(false, None)).unwrap();
+    let id = track_id("ah-one-more-night");
+    let labels = |order| -> Vec<String> {
+        core.library_track_sorted(id.clone(), order)
+            .unwrap()
+            .recordings
+            .into_iter()
+            .map(|r| r.label)
+            .collect()
+    };
+    // seed 2 is picked, so it plays and comes first, though seed 1 has more stars
+    assert_eq!(labels(RecordingOrder::Best), vec!["seed 2", "seed 1"]);
+    assert_eq!(labels(RecordingOrder::Newest), vec!["seed 2", "seed 1"]);
+    assert_eq!(labels(RecordingOrder::Oldest), vec!["seed 1", "seed 2"]);
+}
+
+#[test]
+fn rating_a_recording_from_its_track_goes_to_the_server() {
+    use soundscape_core::TakeMark;
+    let http = catalog_server()
+        .route(
+            Method::Post,
+            format!("{SERVER}/api/pick"),
+            Ok(Response::new(200, r#"{"ok": true}"#)),
+        )
+        .route(
+            Method::Get,
+            format!("{SERVER}/api/song?slug=ah-one-more-night"),
+            Ok(Response::new(200, NIGHT_PICKED_1)),
+        );
+    let (_dir, core, http) = core_with(http);
+    block(core.refresh_library(false, None)).unwrap();
+    let mark = TakeMark {
+        picked: None,
+        stars: Some(4),
+        note: Some("chorus lands".into()),
+    };
+    let detail = block(core.mark_recording(
+        track_id("ah-one-more-night"),
+        "r/ah-one-more-night-2".into(),
+        mark.clone(),
+    ))
+    .unwrap();
+    assert_eq!(detail.track.title, "One More Night");
+    let post = http
+        .received()
+        .into_iter()
+        .find(|r| r.method == Method::Post)
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&post.body).unwrap();
+    assert_eq!(body["take"], "r/ah-one-more-night-2");
+    assert_eq!(body["stars"], 4);
+    assert_eq!(body["note"], "chorus lands");
+
+    // An id that isn't a take-server track is refused before anything is sent.
+    assert!(matches!(
+        block(core.mark_recording("file:abc".into(), "x".into(), mark)),
+        Err(SoundscapeError::NotInLibrary { .. })
+    ));
+}
