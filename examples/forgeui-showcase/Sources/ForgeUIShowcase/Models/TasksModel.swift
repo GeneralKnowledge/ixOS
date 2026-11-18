@@ -144,12 +144,13 @@ public final class TaskFormModel: Identifiable {
     private let original: (title: String, notes: String, priority: ShowcaseTask.Priority)
 
     public init(editing task: ShowcaseTask? = nil) {
+        let opened = (title: task?.title ?? "", notes: task?.notes ?? "", priority: task?.priority ?? .normal)
         editing = task?.id
-        title = task?.title ?? ""
-        notes = task?.notes ?? ""
-        priority = task?.priority ?? .normal
+        title = opened.title
+        notes = opened.notes
+        priority = opened.priority
         titleTouched = task != nil
-        original = (title, notes, priority)
+        original = opened
     }
 
     public var isNew: Bool { editing == nil }
