@@ -111,6 +111,11 @@ def toml_string(text):
 
 def record(args):
     sequences = tomllib.loads(SEQUENCES.read_text())["sequence"]
+    if args.start_at:
+        names = [seq["name"] for seq in sequences]
+        if args.start_at not in names:
+            sys.exit(f"no sequence named {args.start_at}")
+        sequences = sequences[names.index(args.start_at):]
     out = pathlib.Path(args.out or f"~/expeditions/calculator/r1-{args.pass_}").expanduser()
     out.mkdir(parents=True, exist_ok=True)
     run_file = out / "run.toml"
@@ -169,6 +174,7 @@ def main():
     parser.add_argument("--compare", nargs=2, metavar=("A", "B"), help="compare two passes")
     parser.add_argument("--forge", default="forge", help="the forge binary (default: forge on PATH)")
     parser.add_argument("--out", help="output folder (default ~/expeditions/calculator/r1-<pass>)")
+    parser.add_argument("--start-at", metavar="NAME", help="skip the sequences before this one (to finish a pass that stopped)")
     parser.add_argument("--no-extras", action="store_true", help="skip opening History at the end")
     args = parser.parse_args()
     if args.compare:
