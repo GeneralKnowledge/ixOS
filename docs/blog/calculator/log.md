@@ -135,6 +135,24 @@ R1's table is written: 34 sequences ([sequences.toml](../../research/expeditions
 - **Observed:** this corrects R0 finding 8. We thought the tree didn't show the C/AC state; it does, through the key's *identifier and label*, which change. R0 only ever saw it in the All Clear state, and our "Inferred" guess filled the gap wrongly. Exactly what the tags are for.
 - Fix: press whichever key's label contains "Clear", twice. Pass a restarted at 16:21.
 
+**16:21 to 16:30. Pass a: 31 of 39 sums recorded** (548 s), then stopped at step 270, mid "digit-limit", when the phone went to the home screen (auto-lock or a touch; Forge refused to tap the home screen and saved nothing). Calculator back to `operate`. 30 screenshots waited for Calculator's own animation to finish, about 5 s per sum.
+
+What the calculator said (Observed, pass a only; determinism still to be shown by pass b):
+
+- Ordinary sums as expected: 7+5 = 12, 9−12 = −3, 6×7 = 42, 8÷2 = 4.
+- 1÷3 = 0.33333333333, 2÷3 = 0.66666666667, 1÷7 = 0.14285714286: eleven decimal places, last digit rounded.
+- **0.1 + 0.2 = 0.3**, not 0.30000000000000004. **Inferred:** decimal arithmetic, or rounding before display. A recreation using plain `f64` and printing it would fail here.
+- ".5" shows 0.5; "3.0" keeps its trailing zero; "1..5" ignores the second point; "007" shows 7.
+- **Repeated equals repeats the last operation:** 2+3=== gives 11 (the expression line reads "8+3"); 2×3== gives 18 ("6×3").
+- **Precedence is respected:** 2+3×4 = 14, 2×3+4 = 10.
+- A second operator replaces the first: 5 + × 2 = 10. An operator first means 0: "+3=" gives 3 ("0+3"). "=" alone gives 0.
+- After a result, + carries on (2+3= +1= gives 6, "5+1"); a digit starts again (2+3= 4 shows 4).
+- **Percent is shown, not evaluated:** 50 % displays "50%", not 0.5. In a sum it's relative: 200+10%= gives 220 (10 % of 200); 50×10%= gives 5.
+- **Change sign uses brackets:** 5 ± shows "(-5)"; again shows 5; ± on 0 stays 0 (no minus zero); 3 ± + 5 = gives 2, expression "(-3)+5".
+- **5÷0 says "Undefined"; 0÷0 says "Indeterminate".** Two different words for two different impossibilities. And those two strings have no U+200E marks.
+- 1234567 shows as 1,234,567.
+- **Unknown** (not reached): the digit limit, huge and tiny numbers, all five Delete sums.
+
 ## Next
 
 R1, collect and map: the sequence table (ordinary sums, repeated equals, percent, sign change, huge numbers, rounding, a relaunch mid-sequence), recorded twice in portrait. Taps need Calculator at `operate` level rather than `observe`, which is Reuben's call.
