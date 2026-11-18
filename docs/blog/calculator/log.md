@@ -116,6 +116,8 @@ He also asked for no new infrastructure before R0: get the phone connected and s
 
 R1's table is written: 34 sequences ([sequences.toml](../../research/expeditions/calculator/evidence/sequences.toml)), each with the question it asks and no expected answer, and a script that turns them into one `forge ui run` file (about 300 steps), runs it, and reads each answer from the tree saved beside each screenshot ([run_sequences.py](../../research/expeditions/calculator/run_sequences.py)). Forge also opens and closes History and turns the phone itself at the end.
 
+**09:46.** Reuben: ignore landscape for now, and run the test autonomously, Delete included. The only way Forge allows that without a person at the terminal is the `full` level for Calculator alone (no commit gate for that one app; secure fields and the hard refusals still apply). The table gains five Delete sequences (39 in all) and loses the rotation.
+
 ## Next
 
 R1, collect and map: the sequence table (ordinary sums, repeated equals, percent, sign change, huge numbers, rounding, a relaunch mid-sequence), recorded twice in portrait. Taps need Calculator at `operate` level rather than `observe`, which is Reuben's call.

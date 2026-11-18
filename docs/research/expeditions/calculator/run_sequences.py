@@ -3,15 +3,16 @@
 
 Run on the laptop with the iPhone on USB, unlocked, and Calculator open in
 front (Forge can't open a system app itself: R0 finding 22). Calculator must
-be at `operate` in ~/.config/forge/device-control.toml.
+be at `full` in ~/.config/forge/device-control.toml, so Forge presses Delete
+without asking (at `operate` the commit gate stops at its "Delete" label).
 
     python3 run_sequences.py --pass a
     python3 run_sequences.py --pass b
     python3 run_sequences.py --compare a b
 
 Each pass writes one `forge ui run` test file from evidence/sequences.toml,
-runs it with --any-app (Forge presses every key, opens and closes History
-and turns the phone), then reads the display from the tree Forge saved
+runs it with --any-app (Forge presses every key and opens and closes
+History; landscape is left out for now), then reads the display from the tree Forge saved
 beside each screenshot and writes `results-<pass>.toml`. Everything goes to
 ~/expeditions/calculator/r1-<pass>/ unless --out says otherwise; the results
 file is what gets committed (it holds no personal data, only the answers to
@@ -59,10 +60,6 @@ def test_file(sequences, extras):
         parts.append(step(tap={"id": "SidebarButton"}))
         parts.append(step(screenshot="zz-1-history"))
         parts.append(step(tap={"id": "CloseButton"}))
-        parts.append("\n# Landscape, turned by Forge\n")
-        parts.append(step(orientation="landscape"))
-        parts.append(step(screenshot="zz-2-landscape"))
-        parts.append(step(orientation="portrait"))
     return "".join(parts)
 
 
@@ -161,7 +158,7 @@ def main():
     parser.add_argument("--compare", nargs=2, metavar=("A", "B"), help="compare two passes")
     parser.add_argument("--forge", default="forge", help="the forge binary (default: forge on PATH)")
     parser.add_argument("--out", help="output folder (default ~/expeditions/calculator/r1-<pass>)")
-    parser.add_argument("--no-extras", action="store_true", help="skip History and landscape")
+    parser.add_argument("--no-extras", action="store_true", help="skip opening History at the end")
     args = parser.parse_args()
     if args.compare:
         sys.exit(compare(args))

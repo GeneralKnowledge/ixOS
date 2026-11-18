@@ -5,9 +5,10 @@
 # (finding 5: in landscape they are not in the tree).
 #
 # Key ids: Zero..Nine, Decimal, Add, Subtract, Multiply, Divide, Equals,
-# Percent, Negate, AllClear. The Delete key is left out on purpose: its label
-# is "Delete", a commit word, so at `operate` Forge asks before tapping it and
-# refuses with nobody at a terminal.
+# Percent, Negate, Delete, AllClear. Delete's label is "Delete", a commit
+# word, so at `operate` Forge asks before tapping it and refuses with nobody
+# at a terminal. To run unattended, Calculator is at `full` in the person's
+# policy file (Reuben, 2026-11-18): no commit gate for this one app.
 #
 # `why` says what each sequence asks. Nothing here says what the answer
 # should be: the reference decides that.
@@ -181,3 +182,28 @@ keys = ["Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", 
 name = "tiny-quotient"
 why = "very small numbers"
 keys = ["One", "Divide", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Equals", "Divide", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Equals"]
+
+[[sequence]]
+name = "delete-digit"
+why = "Delete removes the last digit typed"
+keys = ["One", "Two", "Three", "Delete"]
+
+[[sequence]]
+name = "delete-only-digit"
+why = "deleting the only digit leaves 0 or empty"
+keys = ["Five", "Delete"]
+
+[[sequence]]
+name = "delete-after-result"
+why = "does Delete touch a result"
+keys = ["Two", "Add", "Three", "Equals", "Delete"]
+
+[[sequence]]
+name = "delete-after-operator"
+why = "does Delete remove an operator"
+keys = ["Seven", "Add", "Delete", "Five", "Equals"]
+
+[[sequence]]
+name = "delete-decimal-point"
+why = "deleting back through the point"
+keys = ["Four", "Decimal", "Five", "Delete", "Delete", "Six", "Equals"]
