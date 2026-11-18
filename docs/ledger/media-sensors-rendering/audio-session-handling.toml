@@ -4,6 +4,6 @@ framework = "Yes: forge-services Swift helper, in every app (no permission neede
 rust_api = "n/a"
 ios_native = "Yes: `ForgeAudioSession`"
 in_app = "Partial: Chat M4 voice, Pocket Library read-aloud, Soundscape loop playback and recording (not yet run on a phone)"
-iphone = "Partial: playback heard on an iPhone (Pocket Library read-aloud with a Premium voice, reported by a person, 2026-11-08); recording not yet run"
+iphone = "Partial: playback heard on an iPhone (Pocket Library read-aloud with a Premium voice, reported by a person, 2026-11-08); recording a voice message in Relay's Chats (Device Lab 1.29915393, 2026-11-17, reported by Reuben). Soundscape's recording and interruptions passed the same day, but Soundscape sets its own session, so they don't count here"
 documented = "Partial: native-services.md"
 limits = "Record and spoken playback only; no mixing or ducking options yet"
