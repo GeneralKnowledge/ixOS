@@ -1,7 +1,9 @@
-//! Relay's own servers (Relay M2 PR 7): with a lookup server set, each
-//! device publishes a record of where it can be reached, signed by its key,
-//! and a trusted device it never saw on a network is found by key alone.
-//! The lookup server runs in process (iroh's test pkarr server).
+//! Relay's own servers (Relay M2 PR 7): with a relay and a lookup server
+//! set, each device publishes a record of where it can be reached, signed
+//! by its key, and a trusted device it never saw on a network is found by
+//! key alone. The record names the relay and public addresses only; the
+//! laptop is reached through the relay first. Both servers run in process: a plain-HTTP relay, as on
+//! Hetzner, and iroh's test pkarr server.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -93,8 +95,15 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
     let server = rt
         .block_on(iroh::test_utils::DnsPkarrServer::run())
         .unwrap();
+    let mut relay = iroh_relay::server::RelayConfig::new((std::net::Ipv4Addr::LOCALHOST, 0));
+    relay.tls = None;
+    let mut config = iroh_relay::server::ServerConfig::default();
+    config.relay = Some(relay);
+    let relay_server = rt
+        .block_on(iroh_relay::server::Server::spawn(config))
+        .unwrap();
     let servers = RelayServers {
-        relay_url: None,
+        relay_url: Some(format!("http://{}", relay_server.http_addr().unwrap())),
         lookup_url: Some(server.pkarr_url().to_string()),
     };
     let dir = tempfile::tempdir().unwrap();
@@ -126,6 +135,44 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
     let id: iroh::EndpointId = laptop_id.parse().unwrap();
     rt.block_on(server.on_endpoint(&id, Duration::from_secs(20)))
         .unwrap();
+    // What anyone who knows its id can read: the relay, and no home-network,
+    // Tailscale or loopback address (a machine with a public address, as
+    // some test machines have, may publish that).
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let published = loop {
+        let record = rt
+            .block_on(
+                server
+                    .dns_resolver()
+                    .lookup_endpoint_by_id(&id, "dns.iroh.test"),
+            )
+            .unwrap();
+        let published: Vec<_> = record.into_endpoint_addr().addrs.into_iter().collect();
+        if published.iter().any(|a| a.is_relay()) {
+            break published;
+        }
+        assert!(Instant::now() < deadline, "no relay in {published:?}");
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    for addr in &published {
+        if let iroh::TransportAddr::Ip(addr) = addr {
+            let private = match addr.ip() {
+                std::net::IpAddr::V4(ip) => {
+                    let [a, b, ..] = ip.octets();
+                    ip.is_private()
+                        || ip.is_loopback()
+                        || ip.is_link_local()
+                        || (a == 100 && (64..128).contains(&b))
+                }
+                std::net::IpAddr::V6(ip) => {
+                    ip.is_loopback()
+                        || (ip.segments()[0] & 0xfe00) == 0xfc00
+                        || (ip.segments()[0] & 0xffc0) == 0xfe80
+                }
+            };
+            assert!(!private, "published a private address: {published:?}");
+        }
+    }
 
     // The phone has never seen it on a network (no Bonjour, no address it
     // reached it at), and still finds it.
@@ -133,6 +180,8 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
     eventually("the note", || {
         notes_from(&laptop, "phone") == ["found by key"]
     });
+    // Once connected through the relay, the two may move to a direct path
+    // they found together; any route will do here.
     eventually("the route", || {
         phone
             .devices()

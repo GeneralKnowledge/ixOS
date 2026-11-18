@@ -260,12 +260,12 @@ async fn bind(
             None => b.relay_mode(RelayMode::Disabled),
         };
         if let Some(url) = &lookup {
-            // Our own server: it gets this device's addresses too, so a
-            // trusted device can try a direct route before the relay.
-            b = b
-                .address_lookup(
-                    PkarrPublisher::builder(url.clone()).addr_filter(AddrFilter::unfiltered()),
-                )
+            // Our own server: it gets the relay and any public address,
+            // never home-network or Tailscale ones (`publishable`).
+            b =
+                b.address_lookup(PkarrPublisher::builder(url.clone()).addr_filter(
+                    AddrFilter::new(|a| std::borrow::Cow::Owned(crate::resolver::publishable(a))),
+                ))
                 .address_lookup(PkarrResolver::builder(url.clone()));
         }
         b

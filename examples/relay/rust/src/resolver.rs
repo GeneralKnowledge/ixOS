@@ -80,6 +80,22 @@ impl RouteKind {
     }
 }
 
+/// What a device publishes to the lookup server, which anyone who knows its
+/// endpoint id can read (and ids aren't secret: every connection and
+/// Bonjour record shows one). Only its relay and its public internet
+/// addresses; its home-network and Tailscale addresses go only to trusted
+/// devices, in Hello.
+pub(crate) fn publishable(addrs: &[iroh::TransportAddr]) -> Vec<iroh::TransportAddr> {
+    addrs
+        .iter()
+        .filter(|a| match a {
+            iroh::TransportAddr::Ip(addr) => kind_of(addr) == RouteKind::Internet,
+            other => other.is_relay(),
+        })
+        .cloned()
+        .collect()
+}
+
 /// The kind of route `addr` is on.
 pub(crate) fn kind_of(addr: &SocketAddr) -> RouteKind {
     match addr.ip() {
@@ -329,6 +345,25 @@ mod tests {
 
     fn sa(s: &str) -> SocketAddr {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn only_the_relay_and_public_addresses_are_published() {
+        let relay: iroh::RelayUrl = "http://204.168.213.152:3340".parse().unwrap();
+        let ip = |s: &str| iroh::TransportAddr::Ip(sa(s));
+        let all = vec![
+            ip("192.168.1.169:4000"),
+            ip("100.72.135.124:4000"),
+            ip("[fd7a:115c:a1e0::1]:4000"),
+            ip("[fe80::1]:4000"),
+            ip("127.0.0.1:4000"),
+            ip("81.2.69.160:4000"),
+            iroh::TransportAddr::Relay(relay.clone()),
+        ];
+        assert_eq!(
+            publishable(&all),
+            vec![ip("81.2.69.160:4000"), iroh::TransportAddr::Relay(relay)]
+        );
     }
 
     #[test]

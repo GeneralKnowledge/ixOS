@@ -94,6 +94,8 @@ axum = "0.8"
 tokio = { version = "1", features = ["net"] }
 # A pkarr lookup server in process (tests/servers.rs).
 iroh = { version = "1", default-features = false, features = ["tls-ring", "test-utils"] }
+# A plain-HTTP relay server in process, as on Hetzner (tests/servers.rs).
+iroh-relay = { version = "1", default-features = false, features = ["server"] }
 
 # Its own workspace, like every app made with `forge init`.
 [workspace]
