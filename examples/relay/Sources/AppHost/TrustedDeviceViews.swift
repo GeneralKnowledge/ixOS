@@ -184,6 +184,35 @@ struct RelaySettingsSection: View {
             }
         }
         .onAppear { mode = core.connectionMode() }
+        RelayServersSection(core: core)
+    }
+}
+
+/// Whether Relay uses its own relay and lookup server, so trusted devices
+/// find each other away from any shared network. Off until turned on.
+struct RelayServersSection: View {
+    let core: RelayCore
+    @State private var on = false
+
+    var body: some View {
+        Section {
+            Toggle("Use Relay's Servers", isOn: Binding(get: { on }, set: { chosen in
+                on = chosen
+                Task {
+                    do {
+                        try await core.setServers(servers: chosen ? ownRelayServers() : RelayServers(relayUrl: nil, lookupUrl: nil))
+                    } catch {
+                        on = core.servers() == ownRelayServers()
+                    }
+                }
+            }))
+            .accessibilityIdentifier("settings.relayServers")
+        } footer: {
+            Text(on
+                 ? "Trusted devices can find each other from anywhere, through relay.avedeus.ovh. What they send stays encrypted end to end. Takes effect the next time Relay opens."
+                 : "Relay reaches trusted devices on local and private networks, such as Tailscale, only.")
+        }
+        .onAppear { on = core.servers() == ownRelayServers() }
     }
 }
 

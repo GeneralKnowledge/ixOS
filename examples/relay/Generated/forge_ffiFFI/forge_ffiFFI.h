@@ -1516,6 +1516,12 @@ void uniffi_relay_core_fn_func_install_native_biometrics(uint64_t authenticator,
 void uniffi_relay_core_fn_func_install_native_http(uint64_t transport, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_OWN_RELAY_SERVERS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_OWN_RELAY_SERVERS
+RustBuffer uniffi_relay_core_fn_func_own_relay_servers(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_FFI_RELAY_CORE_RUSTBUFFER_ALLOC
 #define UNIFFI_FFIDEF_FFI_RELAY_CORE_RUSTBUFFER_ALLOC
 RustBuffer ffi_relay_core_rustbuffer_alloc(uint64_t size, RustCallStatus *_Nonnull out_status
@@ -1899,6 +1905,12 @@ uint16_t uniffi_relay_core_checksum_func_install_native_biometrics(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
 uint16_t uniffi_relay_core_checksum_func_install_native_http(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_OWN_RELAY_SERVERS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_OWN_RELAY_SERVERS
+uint16_t uniffi_relay_core_checksum_func_own_relay_servers(void
     
 );
 #endif

@@ -38,7 +38,7 @@ mod node;
 mod outbox;
 mod record;
 mod resolver;
-pub use resolver::{ConnectionMode, RelayServers, RouteKind};
+pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind};
 mod trust;
 pub mod wire;
 
