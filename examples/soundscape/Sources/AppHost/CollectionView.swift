@@ -340,7 +340,8 @@ struct PlaylistView: View {
                 }
             }
             Section {
-                ForEach(Array(detail.entries.enumerated()), id: \.element.id) { index, entry in
+                ForEach(Array(Self.keyed(detail.entries).enumerated()), id: \.element.key) { index, row in
+                    let entry = row.entry
                     TrackRow(model: model, player: player, track: entry.track,
                              remove: { removeEntry(at: index, of: detail) },
                              showDetails: { details = entry.track.id }) {
@@ -348,14 +349,14 @@ struct PlaylistView: View {
                     }
                 }
                 .onMove { from, to in
-                    var places = detail.entries.map(\.place)
-                    places.move(fromOffsets: from, toOffset: to)
-                    arrange(places)
+                    var entries = detail.entries
+                    entries.move(fromOffsets: from, toOffset: to)
+                    show(entries, of: detail)
                 }
                 .onDelete { offsets in
-                    var places = detail.entries.map(\.place)
-                    places.remove(atOffsets: offsets)
-                    arrange(places)
+                    var entries = detail.entries
+                    entries.remove(atOffsets: offsets)
+                    show(entries, of: detail)
                 }
             }
         }
@@ -370,10 +371,29 @@ struct PlaylistView: View {
     }
 
     private func removeEntry(at index: Int, of detail: PlaylistDetail) {
-        var places = detail.entries.map(\.place)
-        guard places.indices.contains(index) else { return }
-        places.remove(at: index)
-        arrange(places)
+        var entries = detail.entries
+        guard entries.indices.contains(index) else { return }
+        entries.remove(at: index)
+        show(entries, of: detail)
+    }
+
+    /// Shows the new order at once, so a moved row lands where it was
+    /// dropped instead of leaving a gap while Rust saves, then saves it.
+    private func show(_ entries: [PlaylistEntry], of detail: PlaylistDetail) {
+        self.detail = PlaylistDetail(playlist: detail.playlist, entries: entries)
+        arrange(entries.map(\.place))
+    }
+
+    /// Rows keyed by song and how many times it came before, not by place:
+    /// places are renumbered after every change, which made SwiftUI treat
+    /// each row as new and blank the moved one for a moment.
+    static func keyed(_ entries: [PlaylistEntry]) -> [(key: String, entry: PlaylistEntry)] {
+        var seen: [String: Int] = [:]
+        return entries.map { entry in
+            let n = seen[entry.track.id, default: 0]
+            seen[entry.track.id] = n + 1
+            return (key: "\(entry.track.id)#\(n)", entry: entry)
+        }
     }
 
     private func arrange(_ places: [UInt32]) {
