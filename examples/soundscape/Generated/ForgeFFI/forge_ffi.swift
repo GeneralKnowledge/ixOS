@@ -2246,6 +2246,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func events()  -> RuntimeEvents?
     
     /**
+     * Recordings MusicBrainz knows that might be this song, best first,
+     * ranked by its title, artist and length. Changes nothing. On-screen
+     * work.
+     */
+    func identifyTrack(trackId: String, cancellation: Cancellation?) async throws  -> [MusicBrainzMatch]
+    
+    /**
      * Copies music files the person picked into Soundscape, with the tags
      * the phone read from them. A file already imported is counted, not
      * added again; one that isn't audio or can't be read is refused and
@@ -2285,6 +2292,14 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * A track with its recordings in `order`.
      */
     func libraryTrackSorted(id: String, order: RecordingOrder) throws  -> TrackDetail
+    
+    /**
+     * Links a song to the MusicBrainz recording the person picked. With
+     * `use_details`, the song also takes its title, artist, album and
+     * track number (as the person's own changes, so Reset brings back the
+     * source's); its cover shows when the song has no picture of its own.
+     */
+    func linkMusicbrainz(trackId: String, found: MusicBrainzMatch, useDetails: Bool) async throws  -> TrackDetail
     
     /**
      * The take server's address (`http://100.101.102.103:8642`), or `None`
@@ -2477,6 +2492,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * recently changed first.
      */
     func tracksToPick()  -> [LibraryTrack]
+    
+    /**
+     * Forgets a song's MusicBrainz link. Details it took stay, as the
+     * person's changes, until they reset them.
+     */
+    func unlinkMusicbrainz(trackId: String) async throws  -> TrackDetail
     
 }
 /**
@@ -2888,6 +2909,27 @@ open func events() -> RuntimeEvents?  {
 }
     
     /**
+     * Recordings MusicBrainz knows that might be this song, best first,
+     * ranked by its title, artist and length. Changes nothing. On-screen
+     * work.
+     */
+open func identifyTrack(trackId: String, cancellation: Cancellation?)async throws  -> [MusicBrainzMatch]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_identify_track(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(trackId),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeMusicBrainzMatch.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Copies music files the person picked into Soundscape, with the tags
      * the phone read from them. A file already imported is counted, not
      * added again; one that isn't audio or can't be read is refused and
@@ -2994,6 +3036,28 @@ open func libraryTrackSorted(id: String, order: RecordingOrder)throws  -> TrackD
         FfiConverterTypeRecordingOrder_lower(order),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Links a song to the MusicBrainz recording the person picked. With
+     * `use_details`, the song also takes its title, artist, album and
+     * track number (as the person's own changes, so Reset brings back the
+     * source's); its cover shows when the song has no picture of its own.
+     */
+open func linkMusicbrainz(trackId: String, found: MusicBrainzMatch, useDetails: Bool)async throws  -> TrackDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_link_musicbrainz(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(trackId),FfiConverterTypeMusicBrainzMatch_lower(found),FfiConverterBool.lower(useDetails)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeTrackDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -3549,6 +3613,26 @@ open func tracksToPick() -> [LibraryTrack]  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Forgets a song's MusicBrainz link. Details it took stay, as the
+     * person's changes, until they reset them.
+     */
+open func unlinkMusicbrainz(trackId: String)async throws  -> TrackDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_unlink_musicbrainz(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(trackId)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeTrackDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
 
@@ -4746,6 +4830,10 @@ public struct LibraryTrack: Equatable, Hashable {
      * or imported).
      */
     public var downloaded: Bool
+    /**
+     * The MusicBrainz recording it was linked to, if any.
+     */
+    public var musicbrainzId: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -4775,7 +4863,10 @@ public struct LibraryTrack: Equatable, Hashable {
         /**
          * True when its preferred recording plays from the phone (downloaded
          * or imported).
-         */downloaded: Bool) {
+         */downloaded: Bool, 
+        /**
+         * The MusicBrainz recording it was linked to, if any.
+         */musicbrainzId: String?) {
         self.id = id
         self.title = title
         self.artistId = artistId
@@ -4793,6 +4884,7 @@ public struct LibraryTrack: Equatable, Hashable {
         self.updatedMs = updatedMs
         self.edited = edited
         self.downloaded = downloaded
+        self.musicbrainzId = musicbrainzId
     }
 
     
@@ -4827,7 +4919,8 @@ public struct FfiConverterTypeLibraryTrack: FfiConverterRustBuffer {
                 slug: FfiConverterOptionString.read(from: &buf), 
                 updatedMs: FfiConverterInt64.read(from: &buf), 
                 edited: FfiConverterBool.read(from: &buf), 
-                downloaded: FfiConverterBool.read(from: &buf)
+                downloaded: FfiConverterBool.read(from: &buf), 
+                musicbrainzId: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -4849,6 +4942,7 @@ public struct FfiConverterTypeLibraryTrack: FfiConverterRustBuffer {
         FfiConverterInt64.write(value.updatedMs, into: &buf)
         FfiConverterBool.write(value.edited, into: &buf)
         FfiConverterBool.write(value.downloaded, into: &buf)
+        FfiConverterOptionString.write(value.musicbrainzId, into: &buf)
     }
 }
 
@@ -5187,6 +5281,165 @@ public func FfiConverterTypeLyricWord_lift(_ buf: RustBuffer) throws -> LyricWor
 #endif
 public func FfiConverterTypeLyricWord_lower(_ value: LyricWord) -> RustBuffer {
     return FfiConverterTypeLyricWord.lower(value)
+}
+
+
+/**
+ * One recording MusicBrainz knows that might be the song.
+ */
+public struct MusicBrainzMatch: Equatable, Hashable {
+    /**
+     * The MusicBrainz recording id (a UUID).
+     */
+    public var recordingId: String
+    public var title: String
+    /**
+     * The artist credit as MusicBrainz writes it ("A & B").
+     */
+    public var artist: String?
+    /**
+     * The release it is best known from: an official album, earliest
+     * first.
+     */
+    public var album: String?
+    public var releaseId: String?
+    public var releaseGroupId: String?
+    /**
+     * The year of that release, or of the recording's first release.
+     */
+    public var year: String?
+    /**
+     * Its track number on that release.
+     */
+    public var number: UInt32?
+    public var durationSeconds: Double?
+    /**
+     * The release group's front cover at the Cover Art Archive, when the
+     * release group is known (some have no cover; it then shows none).
+     */
+    public var artworkUrl: String?
+    /**
+     * How sure Soundscape is that this is the song, 0 to 100.
+     */
+    public var confidence: UInt8
+    /**
+     * Confident enough to be offered first.
+     */
+    public var likely: Bool
+    /**
+     * The recording's page on musicbrainz.org.
+     */
+    public var pageUrl: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The MusicBrainz recording id (a UUID).
+         */recordingId: String, title: String, 
+        /**
+         * The artist credit as MusicBrainz writes it ("A & B").
+         */artist: String?, 
+        /**
+         * The release it is best known from: an official album, earliest
+         * first.
+         */album: String?, releaseId: String?, releaseGroupId: String?, 
+        /**
+         * The year of that release, or of the recording's first release.
+         */year: String?, 
+        /**
+         * Its track number on that release.
+         */number: UInt32?, durationSeconds: Double?, 
+        /**
+         * The release group's front cover at the Cover Art Archive, when the
+         * release group is known (some have no cover; it then shows none).
+         */artworkUrl: String?, 
+        /**
+         * How sure Soundscape is that this is the song, 0 to 100.
+         */confidence: UInt8, 
+        /**
+         * Confident enough to be offered first.
+         */likely: Bool, 
+        /**
+         * The recording's page on musicbrainz.org.
+         */pageUrl: String) {
+        self.recordingId = recordingId
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.releaseId = releaseId
+        self.releaseGroupId = releaseGroupId
+        self.year = year
+        self.number = number
+        self.durationSeconds = durationSeconds
+        self.artworkUrl = artworkUrl
+        self.confidence = confidence
+        self.likely = likely
+        self.pageUrl = pageUrl
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MusicBrainzMatch: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMusicBrainzMatch: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MusicBrainzMatch {
+        return
+            try MusicBrainzMatch(
+                recordingId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artist: FfiConverterOptionString.read(from: &buf), 
+                album: FfiConverterOptionString.read(from: &buf), 
+                releaseId: FfiConverterOptionString.read(from: &buf), 
+                releaseGroupId: FfiConverterOptionString.read(from: &buf), 
+                year: FfiConverterOptionString.read(from: &buf), 
+                number: FfiConverterOptionUInt32.read(from: &buf), 
+                durationSeconds: FfiConverterOptionDouble.read(from: &buf), 
+                artworkUrl: FfiConverterOptionString.read(from: &buf), 
+                confidence: FfiConverterUInt8.read(from: &buf), 
+                likely: FfiConverterBool.read(from: &buf), 
+                pageUrl: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MusicBrainzMatch, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.recordingId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.artist, into: &buf)
+        FfiConverterOptionString.write(value.album, into: &buf)
+        FfiConverterOptionString.write(value.releaseId, into: &buf)
+        FfiConverterOptionString.write(value.releaseGroupId, into: &buf)
+        FfiConverterOptionString.write(value.year, into: &buf)
+        FfiConverterOptionUInt32.write(value.number, into: &buf)
+        FfiConverterOptionDouble.write(value.durationSeconds, into: &buf)
+        FfiConverterOptionString.write(value.artworkUrl, into: &buf)
+        FfiConverterUInt8.write(value.confidence, into: &buf)
+        FfiConverterBool.write(value.likely, into: &buf)
+        FfiConverterString.write(value.pageUrl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMusicBrainzMatch_lift(_ buf: RustBuffer) throws -> MusicBrainzMatch {
+    return try FfiConverterTypeMusicBrainzMatch.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMusicBrainzMatch_lower(_ value: MusicBrainzMatch) -> RustBuffer {
+    return FfiConverterTypeMusicBrainzMatch.lower(value)
 }
 
 
@@ -7079,14 +7332,24 @@ public struct TrackDetail: Equatable, Hashable {
     public var recordings: [Recording]
     public var caption: String?
     public var lyrics: String?
+    /**
+     * Other songs in the library linked to the same MusicBrainz
+     * recording: the same recording from another source.
+     */
+    public var sameRecording: [LibraryTrack]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(track: LibraryTrack, recordings: [Recording], caption: String?, lyrics: String?) {
+    public init(track: LibraryTrack, recordings: [Recording], caption: String?, lyrics: String?, 
+        /**
+         * Other songs in the library linked to the same MusicBrainz
+         * recording: the same recording from another source.
+         */sameRecording: [LibraryTrack]) {
         self.track = track
         self.recordings = recordings
         self.caption = caption
         self.lyrics = lyrics
+        self.sameRecording = sameRecording
     }
 
     
@@ -7108,7 +7371,8 @@ public struct FfiConverterTypeTrackDetail: FfiConverterRustBuffer {
                 track: FfiConverterTypeLibraryTrack.read(from: &buf), 
                 recordings: FfiConverterSequenceTypeRecording.read(from: &buf), 
                 caption: FfiConverterOptionString.read(from: &buf), 
-                lyrics: FfiConverterOptionString.read(from: &buf)
+                lyrics: FfiConverterOptionString.read(from: &buf), 
+                sameRecording: FfiConverterSequenceTypeLibraryTrack.read(from: &buf)
         )
     }
 
@@ -7117,6 +7381,7 @@ public struct FfiConverterTypeTrackDetail: FfiConverterRustBuffer {
         FfiConverterSequenceTypeRecording.write(value.recordings, into: &buf)
         FfiConverterOptionString.write(value.caption, into: &buf)
         FfiConverterOptionString.write(value.lyrics, into: &buf)
+        FfiConverterSequenceTypeLibraryTrack.write(value.sameRecording, into: &buf)
     }
 }
 
@@ -9493,6 +9758,31 @@ fileprivate struct FfiConverterSequenceTypeLyricWord: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeMusicBrainzMatch: FfiConverterRustBuffer {
+    typealias SwiftType = [MusicBrainzMatch]
+
+    public static func write(_ value: [MusicBrainzMatch], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMusicBrainzMatch.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MusicBrainzMatch] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MusicBrainzMatch]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMusicBrainzMatch.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMusicFile: FfiConverterRustBuffer {
     typealias SwiftType = [MusicFile]
 
@@ -10455,6 +10745,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_events() != 62026) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_identify_track() != 18597) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_import_music() != 46973) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10477,6 +10770,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_library_track_sorted() != 9969) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_link_musicbrainz() != 55081) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_listen_server() != 8859) {
@@ -10573,6 +10869,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_tracks_to_pick() != 21309) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_unlink_musicbrainz() != 58832) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_localnotifier_schedule() != 19447) {

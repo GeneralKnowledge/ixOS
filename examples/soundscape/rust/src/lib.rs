@@ -20,6 +20,7 @@ pub mod library;
 pub mod listen;
 pub mod lyrics;
 mod model;
+pub mod musicbrainz;
 pub mod offline;
 pub mod playback;
 pub mod queue;
@@ -51,6 +52,7 @@ pub use listen::{
 };
 pub use lyrics::{lyric_line_at, lyric_lines, lyric_word_at, LyricKind, LyricLine, LyricWord};
 pub use model::{soundscape_error_kind, SoundscapeError, MAX_NAME_CHARS};
+pub use musicbrainz::MusicBrainzMatch;
 pub use offline::{DownloadState, OfflineSummary, OfflineTrack};
 use offline::{OfflineFile, Progress};
 use playback::PlaybackFile;
@@ -671,6 +673,7 @@ impl SoundscapeCore {
                     lib.catalogue.remove(&track_id);
                     lib.edits.remove(&track_id);
                     lib.artwork.remove(&track_id);
+                    lib.musicbrainz.remove(&track_id);
                     Ok(())
                 })
             })
@@ -779,6 +782,114 @@ impl SoundscapeCore {
                 archive::item_tracks(http.as_ref(), &identifier, cancel)
             })
             .await
+    }
+
+    // MARK: MusicBrainz
+
+    /// Recordings MusicBrainz knows that might be this song, best first,
+    /// ranked by its title, artist and length. Changes nothing. On-screen
+    /// work.
+    pub async fn identify_track(
+        &self,
+        track_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<MusicBrainzMatch>, SoundscapeError> {
+        let track = self.library_track(track_id)?.track;
+        let wanted = musicbrainz::Wanted {
+            title: track.title,
+            artist: (track.artist != library::UNKNOWN_ARTIST).then_some(track.artist),
+            duration_seconds: track.duration_seconds,
+        };
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("musicbrainz-identify", work, move |cancel| {
+                musicbrainz::identify(http.as_ref(), &wanted, cancel)
+            })
+            .await
+    }
+
+    /// Links a song to the MusicBrainz recording the person picked. With
+    /// `use_details`, the song also takes its title, artist, album and
+    /// track number (as the person's own changes, so Reset brings back the
+    /// source's); its cover shows when the song has no picture of its own.
+    pub async fn link_musicbrainz(
+        &self,
+        track_id: String,
+        found: MusicBrainzMatch,
+        use_details: bool,
+    ) -> Result<TrackDetail, SoundscapeError> {
+        if !musicbrainz::is_mbid(&found.recording_id)
+            || found
+                .release_id
+                .as_deref()
+                .is_some_and(|r| !musicbrainz::is_mbid(r))
+            || found
+                .release_group_id
+                .as_deref()
+                .is_some_and(|r| !musicbrainz::is_mbid(r))
+        {
+            return Err(SoundscapeError::Server {
+                reason: "that isn't a MusicBrainz recording".into(),
+            });
+        }
+        let key = track_id.clone();
+        self.rt
+            .command("musicbrainz-link", move |state| {
+                if !state.library.value().has_track(&key) {
+                    return Err(SoundscapeError::NotInLibrary { id: key });
+                }
+                let edit = use_details.then(|| TrackEdit {
+                    title: Some(found.title.clone()),
+                    artist: found.artist.clone(),
+                    album: found.album.clone(),
+                    number: found.number,
+                    genre: None,
+                });
+                state.change_library(|lib| {
+                    if let Some(edit) = edit {
+                        let entry = lib.edits.entry(key.clone()).or_default();
+                        let mut merged = entry.clone();
+                        merged.merge(edit)?;
+                        *entry = merged;
+                    }
+                    lib.musicbrainz.insert(
+                        key.clone(),
+                        library::MusicBrainzLink {
+                            recording_id: found.recording_id.clone(),
+                            release_id: found.release_id.clone(),
+                            artwork_url: found
+                                .release_group_id
+                                .as_deref()
+                                .map(musicbrainz::cover_url),
+                        },
+                    );
+                    Ok(())
+                })
+            })
+            .await?;
+        self.library_track(track_id)
+    }
+
+    /// Forgets a song's MusicBrainz link. Details it took stay, as the
+    /// person's changes, until they reset them.
+    pub async fn unlink_musicbrainz(
+        &self,
+        track_id: String,
+    ) -> Result<TrackDetail, SoundscapeError> {
+        let key = track_id.clone();
+        self.rt
+            .command("musicbrainz-unlink", move |state| {
+                if !state.library.value().musicbrainz.contains_key(&key) {
+                    return Ok(());
+                }
+                state.change_library(|lib| {
+                    lib.musicbrainz.remove(&key);
+                    Ok(())
+                })
+            })
+            .await?;
+        self.library_track(track_id)
     }
 
     /// Adds catalogue tracks to the library, keeping their rights as they

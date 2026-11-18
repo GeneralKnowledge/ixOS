@@ -131,13 +131,37 @@ asking Jamendo. Not done yet: a Jamendo track that has since been taken down is 
   The live API hasn't been checked yet: this cloud session can't reach archive.org, so that check is for the
   laptop.
 
+## MusicBrainz, as built
+
+MusicBrainz recognises songs; it serves no audio. On a song's page, **Identify Song** looks the song up by its
+title and artist (`/ws/2/recording`, JSON, no key) and lists what MusicBrainz knows, best first.
+
+- **Ranking.** MusicBrainz's own score counts for less than what Soundscape knows about the song: the same
+  title (or the same title without a bracketed note such as "(final)" or "(2011 Remaster)"), the same artist,
+  and a length within 5 seconds. A length far off counts against, so a live version twice as long is never
+  offered as likely. Matches from 80 out of 100 with an agreeing length are marked **Likely**.
+- **The release.** Each match comes with the release it is best known from: official before anything else, an
+  album before a single or compilation, then the earliest. Its cover is the release group's front cover at the
+  Cover Art Archive.
+- **Nothing changes on a lookup.** The person picks a match, then **Link and Use Its Details** (title, artist,
+  album and track number, saved as the person's own changes so Edit can undo them) or **Link Only**. The cover
+  shows only when the song has no picture of its own.
+- **The same recording elsewhere.** A linked song keeps its MusicBrainz recording id (`library.json`,
+  `musicbrainz`). Songs from different sources linked to the same id list each other under **Also in Your
+  Library**. Merging them into one song with several sources comes with reconciliation
+  ([architecture.md](architecture.md)); linking never merges by itself.
+- **Manners.** Requests say who is asking in their User-Agent, as MusicBrainz requires, and go one at a time,
+  only when the person asks, well under its limit of one a second. A busy answer (503) says so.
+- **In `rust/src/musicbrainz.rs`**, tested in `rust/tests/musicbrainz.rs` against canned answers in
+  MusicBrainz's shapes. The live API hasn't been checked yet: this cloud session can't reach musicbrainz.org.
+
 ## Order of work
 
 1. ~~The track resolver~~ (the library is the lookup; above) and Jamendo: built.
 2. Internet Archive, as a second and independent source: built (above). Its file checksums (`sha1`, `md5`)
    are not used yet; download verification comes with reconciliation.
-3. MusicBrainz, to recognise the same recording from different sources (reconciliation in
-   [architecture.md](architecture.md)).
+3. MusicBrainz, to recognise the same recording from different sources: built (above). Merging linked songs
+   into one comes with reconciliation ([architecture.md](architecture.md)).
 4. A small fixed test catalogue: short and long tracks, with and without artwork or tags, two recordings of one
    work, several formats, and one track that may not be downloaded.
 5. Mixed playlists, and playback across all sources, tested together.

@@ -526,6 +526,7 @@ struct TrackView: View {
     @State private var addingToPlaylist = false
     @State private var showingLyrics = false
     @State private var confirmingRemove = false
+    @State private var identifying = false
     @State private var noting: Recording?
     @State private var noteText = ""
     @AppStorage("track.recordingOrder") private var orderName = "best"
@@ -591,6 +592,11 @@ struct TrackView: View {
         .sheet(isPresented: $editing) {
             if let detail {
                 EditTrackSheet(model: model, track: detail.track) { updated in self.detail = updated }
+            }
+        }
+        .sheet(isPresented: $identifying) {
+            if let detail {
+                IdentifySongSheet(model: model, track: detail.track) { updated in self.detail = updated }
             }
         }
         .confirmationDialog("Remove this song from your library?", isPresented: $confirmingRemove,
@@ -731,6 +737,7 @@ struct TrackView: View {
             if let recording = track.preferred, let rights = recording.rights {
                 LicenceSection(recording: recording, rights: rights)
             }
+            musicBrainzSection(detail)
             if let slug = track.slug {
                 Section {
                     NavigationLink(value: ListenRoute.takes(slug)) {
@@ -765,6 +772,67 @@ struct TrackView: View {
 }
 
 extension TrackView {
+    /// The MusicBrainz recording the song is linked to, or Identify Song;
+    /// and the same recording from other sources in the library.
+    @ViewBuilder fileprivate func musicBrainzSection(_ detail: TrackDetail) -> some View {
+        let track = detail.track
+        Section {
+            if let mbid = track.musicbrainzId {
+                if let url = URL(string: "https://musicbrainz.org/recording/\(mbid)") {
+                    Link(destination: url) {
+                        Label("Open in MusicBrainz", systemImage: "safari")
+                    }
+                    .accessibilityIdentifier("track.musicbrainz")
+                }
+                Button {
+                    identifying = true
+                } label: {
+                    Label("Identify Again", systemImage: "magnifyingglass")
+                }
+                .accessibilityIdentifier("track.identify")
+                Button(role: .destructive) {
+                    Task { if let d = await model.unlink(track) { self.detail = d } }
+                } label: {
+                    Label("Unlink from MusicBrainz", systemImage: "link.badge.minus")
+                }
+                .accessibilityIdentifier("track.unlink")
+            } else {
+                Button {
+                    identifying = true
+                } label: {
+                    Label("Identify Song", systemImage: "magnifyingglass")
+                }
+                .accessibilityIdentifier("track.identify")
+            }
+        } header: {
+            Text("MusicBrainz")
+        } footer: {
+            Text(track.musicbrainzId == nil
+                 ? "Look the song up in MusicBrainz, the open music encyclopedia, to fix its details and cover and to recognise it from other sources."
+                 : "Linked. Other copies of this recording in your library show below.")
+        }
+        if !detail.sameRecording.isEmpty {
+            Section("Also in Your Library") {
+                ForEach(detail.sameRecording, id: \.id) { other in
+                    NavigationLink(value: ListenRoute.track(other.id)) {
+                        LabeledContent(other.title, value: Self.sourceName(other))
+                    }
+                    .accessibilityIdentifier("track.sameRecording")
+                }
+            }
+        }
+    }
+
+    /// Where a song plays from, in words.
+    static func sourceName(_ track: LibraryTrack) -> String {
+        switch track.preferred?.source {
+        case .catalogue(let provider): provider
+        case .localFile: "Your file"
+        case .takeServer: "Take server"
+        case nil: "Unavailable"
+        }
+    }
+
     /// Rating, for a take on the take server only.
     fileprivate func rater(_ recording: Recording, of track: LibraryTrack) -> ((Int) -> Void)? {
         guard recording.kind == .generated else { return nil }
@@ -1085,6 +1153,138 @@ private struct ArtworkSheet: View {
         } catch {
             problem = error.localizedDescription
         }
+    }
+}
+
+/// Looks a song up in MusicBrainz and links it to the recording the
+/// person picks, with or without its details. Nothing changes until a
+/// match is picked.
+struct IdentifySongSheet: View {
+    let model: ListenModel
+    let track: LibraryTrack
+    let done: (TrackDetail) -> Void
+
+    @State private var found: [MusicBrainzMatch]?
+    @State private var problem: String?
+    @State private var attempt = 0
+    @State private var choosing: MusicBrainzMatch?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Looking for", value: track.title)
+                    LabeledContent("By", value: track.artist)
+                    if let seconds = track.durationSeconds {
+                        LabeledContent("Length", value: TakeFormat.time(seconds))
+                    }
+                }
+                if let found, !found.isEmpty {
+                    Section {
+                        ForEach(found, id: \.recordingId) { match in
+                            Button {
+                                choosing = match
+                            } label: {
+                                MatchRow(match: match, linked: match.recordingId == track.musicbrainzId)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("identify.match")
+                        }
+                    } footer: {
+                        Text("From MusicBrainz, the open music encyclopedia. Likely matches have the same title, artist and length.")
+                    }
+                }
+            }
+            .navigationTitle("Identify Song")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("identify.cancel")
+                }
+            }
+            .task(id: attempt) {
+                switch await model.identify(track) {
+                case .success(let matches):
+                    found = matches
+                    problem = nil
+                case .failure(let failure):
+                    if !failure.stopped { problem = failure.message }
+                }
+            }
+            .overlay {
+                if let problem, found == nil {
+                    ForgeStateView.failed(
+                        "Can't Ask MusicBrainz", message: problem,
+                        retry: ForgeStateAction("Try Again", identifier: "identify.retry") { attempt += 1 }
+                    )
+                } else if found == nil {
+                    ForgeStateView.loading("Asking MusicBrainz")
+                } else if found?.isEmpty == true {
+                    ForgeStateView.empty(
+                        "No Match", systemImage: "questionmark.circle",
+                        description: "MusicBrainz knows no recording by this title. Fix the title or artist with Edit, then try again."
+                    )
+                }
+            }
+            .confirmationDialog(
+                choosing.map { "Link to \u{201C}\($0.title)\u{201D}?" } ?? "",
+                isPresented: Binding(get: { choosing != nil }, set: { if !$0 { choosing = nil } }),
+                titleVisibility: .visible
+            ) {
+                if let match = choosing {
+                    Button("Link and Use Its Details") { link(match, useDetails: true) }
+                        .accessibilityIdentifier("identify.linkAndUse")
+                    Button("Link Only") { link(match, useDetails: false) }
+                        .accessibilityIdentifier("identify.linkOnly")
+                }
+            } message: {
+                Text("Its details are its title, artist, album and track number; Edit can change them back. Its cover shows when the song has no picture of its own.")
+            }
+        }
+    }
+
+    private func link(_ match: MusicBrainzMatch, useDetails: Bool) {
+        Task {
+            if let detail = await model.link(track, to: match, useDetails: useDetails) {
+                done(detail)
+                dismiss()
+            }
+        }
+    }
+}
+
+/// One MusicBrainz recording: what it is called, where it is from, and
+/// how likely it is to be the song.
+private struct MatchRow: View {
+    let match: MusicBrainzMatch
+    let linked: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Artwork(title: match.title, url: match.artworkUrl, size: 48)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(match.title).font(.body)
+                if let artist = match.artist {
+                    Text(artist).font(.subheadline).foregroundStyle(.secondary)
+                }
+                let facts = [match.album, match.year, match.durationSeconds.map(TakeFormat.time)]
+                    .compactMap { $0 }
+                if !facts.isEmpty {
+                    Text(facts.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if linked {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint)
+                    .accessibilityLabel("Linked")
+            } else if match.likely {
+                Text("Likely").font(.caption.bold()).foregroundStyle(.tint)
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 #endif

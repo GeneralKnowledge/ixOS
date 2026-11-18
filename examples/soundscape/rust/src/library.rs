@@ -53,6 +53,20 @@ pub struct LibraryFile {
     /// (`jamendo:<id>`), with their rights as they were when added.
     #[serde(default)]
     pub catalogue: BTreeMap<String, CatalogueTrack>,
+    /// Songs the person linked to a MusicBrainz recording, by track id.
+    #[serde(default)]
+    pub musicbrainz: BTreeMap<String, MusicBrainzLink>,
+}
+
+/// A song linked to the recording MusicBrainz knows it as.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct MusicBrainzLink {
+    pub recording_id: String,
+    #[serde(default)]
+    pub release_id: Option<String>,
+    /// The release's cover, used when the song has no picture of its own.
+    #[serde(default)]
+    pub artwork_url: Option<String>,
 }
 
 impl LibraryFile {
@@ -294,6 +308,8 @@ pub struct LibraryTrack {
     /// True when its preferred recording plays from the phone (downloaded
     /// or imported).
     pub downloaded: bool,
+    /// The MusicBrainz recording it was linked to, if any.
+    pub musicbrainz_id: Option<String>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -335,6 +351,9 @@ pub struct TrackDetail {
     pub recordings: Vec<Recording>,
     pub caption: Option<String>,
     pub lyrics: Option<String>,
+    /// Other songs in the library linked to the same MusicBrainz
+    /// recording: the same recording from another source.
+    pub same_recording: Vec<LibraryTrack>,
 }
 
 /// What a picture is for.
@@ -407,34 +426,47 @@ pub fn build_library(file: &LibraryFile, locate: &Locate<'_>) -> Library {
 
 /// One track with its recordings.
 pub fn build_track(file: &LibraryFile, locate: &Locate<'_>, id: &str) -> Option<TrackDetail> {
-    build(file, locate)
-        .tracks
-        .into_iter()
-        .find(|(t, _)| t.id == id)
-        .map(|(track, origin)| match origin {
-            Origin::Server(snap) => {
-                let server = file
-                    .snapshot
-                    .as_ref()
-                    .map(|s| s.server.clone())
-                    .unwrap_or_default();
-                let recordings = recordings(&snap, &server);
-                let caption = most_common(snap.takes.iter().map(|t| t.caption.clone()));
-                let lyrics = most_common(snap.takes.iter().map(|t| t.lyrics.clone()));
-                TrackDetail {
-                    track,
-                    recordings,
-                    caption,
-                    lyrics,
-                }
-            }
-            Origin::Imported | Origin::Catalogue => TrackDetail {
-                recordings: track.preferred.clone().into_iter().collect(),
+    let tracks = build(file, locate).tracks;
+    let same_recording = |track: &LibraryTrack| -> Vec<LibraryTrack> {
+        let Some(mbid) = &track.musicbrainz_id else {
+            return Vec::new();
+        };
+        tracks
+            .iter()
+            .filter(|(t, _)| t.id != track.id && t.musicbrainz_id.as_ref() == Some(mbid))
+            .map(|(t, _)| t.clone())
+            .collect()
+    };
+    let (track, origin) = tracks.iter().find(|(t, _)| t.id == id)?;
+    let same = same_recording(track);
+    let track = track.clone();
+    Some(match origin {
+        Origin::Server(snap) => {
+            let snap = snap.clone();
+            let server = file
+                .snapshot
+                .as_ref()
+                .map(|s| s.server.clone())
+                .unwrap_or_default();
+            let recordings = recordings(&snap, &server);
+            let caption = most_common(snap.takes.iter().map(|t| t.caption.clone()));
+            let lyrics = most_common(snap.takes.iter().map(|t| t.lyrics.clone()));
+            TrackDetail {
                 track,
-                caption: None,
-                lyrics: None,
-            },
-        })
+                recordings,
+                caption,
+                lyrics,
+                same_recording: same,
+            }
+        }
+        Origin::Imported | Origin::Catalogue => TrackDetail {
+            recordings: track.preferred.clone().into_iter().collect(),
+            track,
+            caption: None,
+            lyrics: None,
+            same_recording: same,
+        },
+    })
 }
 
 /// Where a built track came from.
@@ -483,6 +515,8 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
     let mut add = |source: Source, origin: Origin| {
         let id = source.id;
         let edit = file.edits.get(&id).cloned().unwrap_or_default();
+        let link = file.musicbrainz.get(&id);
+        let link_art = link.and_then(|l| l.artwork_url.clone());
         let title = edit.title.clone().unwrap_or(source.title);
         let artist_name = edit.artist.clone().or(source.artist);
         let album_title = edit.album.clone().or(source.album);
@@ -516,6 +550,10 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
                 if let Origin::Imported | Origin::Catalogue = origin {
                     album.artwork_url = source.artwork.clone();
                 }
+            }
+            // Else the cover of the release a song was linked to.
+            if album.artwork_url.is_none() {
+                album.artwork_url = link_art.clone();
             }
         }
         if let (Some(a_id), Some(name)) = (&a_id, &artist_name) {
@@ -551,7 +589,7 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             number,
             genre: edit.genre.clone().or(source.genre),
             duration_seconds: source.preferred.as_ref().and_then(|r| r.duration_seconds),
-            artwork_url: own_art(&id).or(source.artwork).or(album_cover),
+            artwork_url: own_art(&id).or(source.artwork).or(album_cover).or(link_art),
             recording_count: source.recording_count,
             preferred: source.preferred,
             picked: source.picked,
@@ -559,6 +597,7 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             updated_ms: source.updated_ms,
             edited: !edit.is_empty(),
             downloaded: matches!(origin, Origin::Imported),
+            musicbrainz_id: link.map(|l| l.recording_id.clone()),
             id,
         };
         tracks.push((track, origin));

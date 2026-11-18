@@ -312,6 +312,48 @@ public final class ListenModel {
         }
     }
 
+    // MARK: MusicBrainz
+
+    /// Recordings MusicBrainz knows that might be this song, best first.
+    /// Changes nothing. Cancelled with the screen that asked.
+    public func identify(_ track: LibraryTrack) async -> Result<[MusicBrainzMatch], ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.identifyTrack(trackId: track.id, cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("musicbrainz lookup failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// Links a song to the MusicBrainz recording picked, and with
+    /// `useDetails` gives it that recording's title, artist and album.
+    public func link(_ track: LibraryTrack, to found: MusicBrainzMatch, useDetails: Bool) async -> TrackDetail? {
+        do {
+            let detail = try await core.linkMusicbrainz(trackId: track.id, found: found, useDetails: useDetails)
+            library = core.library()
+            feedback.play(.success)
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
+    /// Forgets a song's MusicBrainz link; details it took stay.
+    public func unlink(_ track: LibraryTrack) async -> TrackDetail? {
+        do {
+            let detail = try await core.unlinkMusicbrainz(trackId: track.id)
+            library = core.library()
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
     /// Uses the picture file at `path` for an artist, album or track.
     public func setArtwork(_ target: ArtworkTarget, path: String) async {
         do {

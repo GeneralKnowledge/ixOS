@@ -105,8 +105,8 @@ catalogues comes first, so Soundscape can be tested with full-length tracks. Jam
 ([sources.md](sources.md#jamendo-as-built)); the generation side (takes, picks, `/v1` on the JewGrass server,
 timed lyrics) waits, and the question of where "your own server" lives waits with it.
 
-1. **Jamendo** (done in Rust and Swift; phone check next), then **Internet Archive** and **MusicBrainz** matching,
-   and a fixed test catalogue ([sources.md](sources.md#order-of-work)).
+1. **Jamendo**, **Internet Archive** and **MusicBrainz** matching (all built; phone checks next), then a fixed test
+   catalogue ([sources.md](sources.md#order-of-work)).
 2. **P0, finish what's written.** Recheck #328 and #334 on the phone. The other P0 items are already done.
 3. **Remove Studio** (old PR 6). Done: `project.rs`, `dsp.rs`, the Studio screens and the microphone permission are
    gone, and Soundscape opens straight on the library (one stack, no tab bar: Discover and Your Music are rows at
