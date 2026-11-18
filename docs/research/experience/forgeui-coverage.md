@@ -204,7 +204,7 @@ Modest by design: the milestone is "complete, not bigger". Reuben's order (revie
 
 | # | What | Where | Why | Gate |
 |---|---|---|---|---|
-| 1 | `forgeFormToolbar(hasChanges:)`, and the starter adopts it; the other sheets in C1's table follow, with a `form-toolbar` rule | ForgeUI + ForgeAppKit + starter, then apps | A real shared gap; gives new apps the right pattern | Linux CI, laptop build, short phone check of one form |
+| 1 | `forgeFormToolbar(hasChanges:)` (#326, shown in the showcase's task form); the starter adopts it with the next ForgeKit release, because `forge init` apps use the published ForgeKit; the other sheets in C1's table follow, with a `form-toolbar` rule | ForgeUI + ForgeAppKit + starter, then apps | A real shared gap; gives new apps the right pattern | Linux CI, laptop build, short phone check of one form |
 | 2 | Starter typography on ForgeUI text roles (and a comment prompting an accent choice) | Template | New apps stop inheriting the problem | Template sync |
 | 3 | Parity blind spots: `forge-theme` and `root-loading` rules, wider `toned-text`, ForgeUI rules apply to Checklist; usage counts in the report as information | Check | Apps can't escape the checks by leaving ForgeUI out | Linux CI |
 | 4 | Move Checklist onto ForgeUI | App | Smallest app; a test of adoption | Laptop build |

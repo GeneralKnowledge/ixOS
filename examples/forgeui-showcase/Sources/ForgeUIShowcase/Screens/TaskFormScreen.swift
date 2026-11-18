@@ -4,7 +4,7 @@ import SwiftUI
 
 /// A create/edit form in a sheet: labelled fields with validation messages
 /// from the model, a segmented picker, and Cancel / Save that turns into a
-/// spinner while saving. SwiftUI's own `Form`; ForgeUI adds the field
+/// spinner while saving; a swipe down can't throw away an edit. SwiftUI's own `Form`; ForgeUI adds the field
 /// labels, the messages and the toolbar.
 struct TaskFormScreen: View {
     @Bindable var model: TaskFormModel
@@ -53,6 +53,7 @@ struct TaskFormScreen: View {
                 confirmTitle: model.isNew ? "Add" : "Save",
                 canConfirm: model.canSave,
                 isWorking: model.isSaving,
+                hasChanges: model.hasChanges,
                 cancel: { dismiss() },
                 confirm: {
                     Task {
