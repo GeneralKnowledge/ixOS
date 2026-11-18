@@ -1,0 +1,183 @@
+# Calculator expedition, R1: the sequence table.
+# Each sequence starts from a cleared calculator (All Clear twice) and presses
+# keys by their identifier (R0 findings 1 and 2). After the last key, the
+# display and the "Last Expression" line are read from the tree, in portrait
+# (finding 5: in landscape they are not in the tree).
+#
+# Key ids: Zero..Nine, Decimal, Add, Subtract, Multiply, Divide, Equals,
+# Percent, Negate, AllClear. The Delete key is left out on purpose: its label
+# is "Delete", a commit word, so at `operate` Forge asks before tapping it and
+# refuses with nobody at a terminal.
+#
+# `why` says what each sequence asks. Nothing here says what the answer
+# should be: the reference decides that.
+
+[[sequence]]
+name = "add"
+why = "ordinary addition"
+keys = ["Seven", "Add", "Five", "Equals"]
+
+[[sequence]]
+name = "subtract-below-zero"
+why = "a negative result"
+keys = ["Nine", "Subtract", "One", "Two", "Equals"]
+
+[[sequence]]
+name = "multiply"
+why = "ordinary multiplication"
+keys = ["Six", "Multiply", "Seven", "Equals"]
+
+[[sequence]]
+name = "divide-exact"
+why = "a whole result"
+keys = ["Eight", "Divide", "Two", "Equals"]
+
+[[sequence]]
+name = "divide-third"
+why = "how many digits a recurring decimal shows"
+keys = ["One", "Divide", "Three", "Equals"]
+
+[[sequence]]
+name = "divide-two-thirds"
+why = "rounding of the last digit"
+keys = ["Two", "Divide", "Three", "Equals"]
+
+[[sequence]]
+name = "divide-seventh"
+why = "a long non-recurring-looking decimal"
+keys = ["One", "Divide", "Seven", "Equals"]
+
+[[sequence]]
+name = "point-one-plus-point-two"
+why = "the classic floating-point trap (0.30000000000000004?)"
+keys = ["Decimal", "One", "Add", "Decimal", "Two", "Equals"]
+
+[[sequence]]
+name = "point-without-zero"
+why = "does Point on its own show 0."
+keys = ["Decimal", "Five"]
+
+[[sequence]]
+name = "trailing-zero"
+why = "is a typed trailing zero kept before equals"
+keys = ["Three", "Decimal", "Zero"]
+
+[[sequence]]
+name = "double-point"
+why = "a second Point is ignored or not"
+keys = ["One", "Decimal", "Decimal", "Five"]
+
+[[sequence]]
+name = "leading-zeros"
+why = "leading zeros are dropped"
+keys = ["Zero", "Zero", "Seven"]
+
+[[sequence]]
+name = "repeat-equals-add"
+why = "repeated equals repeats the last operation"
+keys = ["Two", "Add", "Three", "Equals", "Equals", "Equals"]
+
+[[sequence]]
+name = "repeat-equals-multiply"
+why = "repeated equals with multiplication"
+keys = ["Two", "Multiply", "Three", "Equals", "Equals"]
+
+[[sequence]]
+name = "precedence"
+why = "is 2 + 3 x 4 equal to 14 or 20"
+keys = ["Two", "Add", "Three", "Multiply", "Four", "Equals"]
+
+[[sequence]]
+name = "precedence-reversed"
+why = "2 x 3 + 4"
+keys = ["Two", "Multiply", "Three", "Add", "Four", "Equals"]
+
+[[sequence]]
+name = "change-operator"
+why = "pressing a second operator replaces the first"
+keys = ["Five", "Add", "Multiply", "Two", "Equals"]
+
+[[sequence]]
+name = "operator-first"
+why = "an operator with nothing before it"
+keys = ["Add", "Three", "Equals"]
+
+[[sequence]]
+name = "equals-alone"
+why = "equals on a cleared calculator"
+keys = ["Equals"]
+
+[[sequence]]
+name = "chain-after-equals"
+why = "carrying on from a result"
+keys = ["Two", "Add", "Three", "Equals", "Add", "One", "Equals"]
+
+[[sequence]]
+name = "new-number-after-equals"
+why = "typing a digit after a result starts again"
+keys = ["Two", "Add", "Three", "Equals", "Four"]
+
+[[sequence]]
+name = "percent-alone"
+why = "50 %"
+keys = ["Five", "Zero", "Percent"]
+
+[[sequence]]
+name = "percent-of-sum"
+why = "200 + 10 % (10 % of 200, or 0.1?)"
+keys = ["Two", "Zero", "Zero", "Add", "One", "Zero", "Percent", "Equals"]
+
+[[sequence]]
+name = "percent-in-product"
+why = "50 x 10 %"
+keys = ["Five", "Zero", "Multiply", "One", "Zero", "Percent", "Equals"]
+
+[[sequence]]
+name = "negate"
+why = "change sign"
+keys = ["Five", "Negate"]
+
+[[sequence]]
+name = "negate-twice"
+why = "change sign back"
+keys = ["Five", "Negate", "Negate"]
+
+[[sequence]]
+name = "negate-zero"
+why = "is there a minus zero"
+keys = ["Negate"]
+
+[[sequence]]
+name = "negate-then-add"
+why = "a negative operand"
+keys = ["Three", "Negate", "Add", "Five", "Equals"]
+
+[[sequence]]
+name = "divide-by-zero"
+why = "what an impossible answer looks like"
+keys = ["Five", "Divide", "Zero", "Equals"]
+
+[[sequence]]
+name = "zero-by-zero"
+why = "0 / 0"
+keys = ["Zero", "Divide", "Zero", "Equals"]
+
+[[sequence]]
+name = "thousands"
+why = "thousands separators while typing"
+keys = ["One", "Two", "Three", "Four", "Five", "Six", "Seven"]
+
+[[sequence]]
+name = "digit-limit"
+why = "how many digits can be typed"
+keys = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
+
+[[sequence]]
+name = "huge-product"
+why = "when scientific notation starts"
+keys = ["Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Multiply", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Equals"]
+
+[[sequence]]
+name = "tiny-quotient"
+why = "very small numbers"
+keys = ["One", "Divide", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Equals", "Divide", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Nine", "Equals"]

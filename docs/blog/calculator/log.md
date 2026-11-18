@@ -110,6 +110,12 @@ He also asked for no new infrastructure before R0: get the phone connected and s
 
 **01:06.** Reuben, after R0: turning the phone by hand is understandable, but the system should press buttons like History itself rather than ask him. R1 is planned that way: Forge presses keys, History and even the rotation (`forge ui orientation` exists), which needs Calculator moved from `observe` to `operate` in his policy file.
 
+**07:31.** Reuben: "yes, move Calculator to operate". The laptop's policy file now says `"com.apple.calculator" = "operate"` (previous version kept as `device-control.toml.bak-observe`).
+
+- **Inferred** (from Forge's commit gate, before any run): the Delete key can't be pressed unattended. Its label is "Delete", which is on Forge's list of commit words, so at `operate` Forge asks at the terminal before tapping it and refuses when nobody is there. Calculator's backspace looks, to a safety rule, exactly like deleting your files. The sequence table leaves it out.
+
+R1's table is written: 34 sequences ([sequences.toml](../../research/expeditions/calculator/evidence/sequences.toml)), each with the question it asks and no expected answer, and a script that turns them into one `forge ui run` file (about 300 steps), runs it, and reads each answer from the tree saved beside each screenshot ([run_sequences.py](../../research/expeditions/calculator/run_sequences.py)). Forge also opens and closes History and turns the phone itself at the end.
+
 ## Next
 
 R1, collect and map: the sequence table (ordinary sums, repeated equals, percent, sign change, huge numbers, rounding, a relaunch mid-sequence), recorded twice in portrait. Taps need Calculator at `operate` level rather than `observe`, which is Reuben's call.
