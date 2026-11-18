@@ -88,6 +88,13 @@ final class TakePlayer {
     /// restarts (Rust's `save_playback`).
     @ObservationIgnored var onSave: ((SavedPlayback?) -> Void)?
     @ObservationIgnored private var lastSave = Date.distantPast
+    /// The sleep timer: playback fades out over its last ten seconds and
+    /// pauses at this moment.
+    private(set) var sleepAt: Date?
+    /// The sleep timer set to the end of the song: the next one waits.
+    private(set) var sleepAtEndOfSong = false
+    /// How long the fade before a sleep timer's pause takes.
+    static let sleepFade: TimeInterval = 10
     @ObservationIgnored private var counted = false
 
     var isComparing: Bool { b != nil }
@@ -306,6 +313,40 @@ final class TakePlayer {
         save()
     }
 
+    // MARK: Sleep timer
+
+    /// Pauses after `minutes`, fading out over the last ten seconds.
+    func sleep(after minutes: Int) {
+        sleepAtEndOfSong = false
+        sleepAt = Date().addingTimeInterval(TimeInterval(minutes * 60))
+    }
+
+    /// Pauses when the playing song ends; the next one is ready to play.
+    func sleepAtEndOfThisSong() {
+        sleepAt = nil
+        sleepAtEndOfSong = true
+    }
+
+    func cancelSleep() {
+        sleepAt = nil
+        sleepAtEndOfSong = false
+        applyVolumes()
+    }
+
+    /// Fades, then pauses, as the sleep timer runs out.
+    private func checkSleep() {
+        guard let sleepAt, !isComparing else { return }
+        let left = sleepAt.timeIntervalSinceNow
+        if left <= 0 {
+            self.sleepAt = nil
+            pause()
+            applyVolumes()
+            log.info("sleep timer paused playback")
+        } else if left < Self.sleepFade, isPlaying {
+            playerA.volume = Float(left / Self.sleepFade)
+        }
+    }
+
     // MARK: Keeping what plays
 
     /// Hands what is playing to `onSave`: the queue and how far into the
@@ -389,6 +430,7 @@ final class TakePlayer {
         }
         isBuffering = heard.timeControlStatus == .waitingToPlayAtSpecifiedRate
         if isPlaying, Date().timeIntervalSince(lastSave) > 5 { save() }
+        checkSleep()
         if let item = heard.currentItem, item.status == .failed, failure == nil {
             failure = Self.describe(item.error, playing: current)
             log.warn("stream failed: \(item.error.map { "\($0)" } ?? "")")
@@ -509,6 +551,17 @@ final class TakePlayer {
         let heard: Side = isComparing ? active : .a
         guard side == heard else { return }
         if !isComparing, let queue {
+            if sleepAtEndOfSong {
+                // The sleep timer ends with this song: the next waits, paused.
+                sleepAtEndOfSong = false
+                if let moved = queueAdvance(queue: queue, byUser: true) {
+                    self.queue = moved
+                    loadQueued(playing: false)
+                } else {
+                    pause()
+                }
+                return
+            }
             if let moved = queueAdvance(queue: queue, byUser: false) {
                 if moved.position == queue.position && moved.order.count == queue.order.count {
                     counted = false

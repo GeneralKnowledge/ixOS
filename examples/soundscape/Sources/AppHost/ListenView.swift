@@ -765,6 +765,12 @@ private struct NowPlayingView: View {
                             if let failure = player.failure {
                                 Text(failure).font(.caption).forgeForeground(.danger)
                             }
+                            if let sleepNote {
+                                Label(sleepNote, systemImage: "moon.zzz")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("nowPlayingSheet.sleepNote")
+                            }
                         }
                         .frame(maxWidth: .infinity)
                         .listRowBackground(Color.clear)
@@ -812,6 +818,9 @@ private struct NowPlayingView: View {
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
+                    SleepTimerMenu(player: player)
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button("Stop", systemImage: "stop.fill") {
                         player.stop()
                         dismiss()
@@ -827,6 +836,12 @@ private struct NowPlayingView: View {
         }
         .forgeFeedback(model.feedback)
         .presentationDragIndicator(.visible)
+    }
+
+    private var sleepNote: String? {
+        if player.sleepAtEndOfSong { return "Pausing at the end of this song" }
+        guard let at = player.sleepAt else { return nil }
+        return "Pausing at \(at.formatted(date: .omitted, time: .shortened))"
     }
 
     private var transport: some View {
@@ -904,6 +919,34 @@ private struct NowPlayingView: View {
         case .all: return "All"
         case .one: return "One"
         }
+    }
+}
+#endif
+
+#if os(iOS)
+/// The sleep timer: pause after a while, or at the end of this song.
+struct SleepTimerMenu: View {
+    let player: TakePlayer
+
+    private var on: Bool { player.sleepAt != nil || player.sleepAtEndOfSong }
+
+    var body: some View {
+        Menu {
+            ForEach([15, 30, 45, 60, 90], id: \.self) { minutes in
+                Button("\(minutes) Minutes") { player.sleep(after: minutes) }
+                    .accessibilityIdentifier("sleep.\(minutes)")
+            }
+            Button("End of This Song") { player.sleepAtEndOfThisSong() }
+                .accessibilityIdentifier("sleep.endOfSong")
+            if on {
+                Button("Turn Off Sleep Timer", role: .destructive) { player.cancelSleep() }
+                    .accessibilityIdentifier("sleep.off")
+            }
+        } label: {
+            Label("Sleep Timer", systemImage: on ? "moon.zzz.fill" : "moon.zzz")
+        }
+        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityIdentifier("nowPlayingSheet.sleep")
     }
 }
 #endif
