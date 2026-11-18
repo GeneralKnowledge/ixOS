@@ -125,6 +125,11 @@ R1's table is written: 34 sequences ([sequences.toml](../../research/expeditions
 
 **16:15. The fix, seen on the phone.** With the fixed forge, `forge ui tree --any-app --app com.apple.calculator` brought Calculator to the front by itself (8.1 s, portrait). **Observed:** R0 finding 22 is closed; Forge can now open an app that comes with iOS.
 
+**16:16. Second recording attempt: stopped at step 2.** Reuben picked "run now", then (naturally) went back to the Claude app on the same phone to read the thread. The test file turned the screen portrait and then tried to tap All Clear: "com.apple.calculator is not in front (com.anthropic.claude is); refusing to act on another app". No key pressed; Calculator back to `operate`.
+
+- **Observed:** Forge's front-app check did its job. The test file didn't: it never brought Calculator to the front. Fixed by an `activate` step at the start and before every sum, so a glance at another app costs one sum, not the run.
+- **Observed** (failure as finding, privacy): at the failure Forge saved a screenshot and tree of the screen, which was the Claude app showing the thread list. `docs/forge-ui-testing.md` says a run in another app saves failure files "only if the app under test is still in front". Either that rule doesn't cover this path or it has a bug. **Unknown:** which. The files were deleted on the laptop and never committed.
+
 ## Next
 
 R1, collect and map: the sequence table (ordinary sums, repeated equals, percent, sign change, huge numbers, rounding, a relaunch mid-sequence), recorded twice in portrait. Taps need Calculator at `operate` level rather than `observe`, which is Reuben's call.

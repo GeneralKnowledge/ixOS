@@ -38,6 +38,8 @@ LRM = "‎"  # left-to-right mark, before every part of a number (R0 finding 4)
 
 def step(**action):
     key, value = next(iter(action.items()))
+    if value == {}:
+        return f"[[step]]\n{key} = {{}}\n"
     if isinstance(value, dict):
         inner = ", ".join(f'{k} = "{v}"' for k, v in value.items())
         return f"[[step]]\n{key} = {{ {inner} }}\n"
@@ -49,10 +51,14 @@ def test_file(sequences, extras):
         'name = "Calculator R1 sequences"\n',
         f'app = "{APP}"\n',
         "timeout = 10\n\n",
+        step(activate={}),
         step(orientation="portrait"),
     ]
     for number, seq in enumerate(sequences, 1):
         parts.append(f"\n# {seq['name']}: {seq['why']}\n")
+        # Bring Calculator to the front before every sum: `forge ui run`
+        # doesn't, and a person glancing at another app would stop the run.
+        parts.append(step(activate={}))
         parts.append(step(tap={"id": "AllClear"}))
         parts.append(step(tap={"id": "AllClear"}))
         for key in seq["keys"]:
