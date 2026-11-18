@@ -64,7 +64,9 @@ final class ReadAloud: NSObject {
     @ObservationIgnored private var author = ""
     @ObservationIgnored private var chapterTitle = ""
     @ObservationIgnored private var coverFile: String?
-    @ObservationIgnored private var remoteCommandsAdded = false
+    #if os(iOS)
+    @ObservationIgnored private let remoteTargets = RemoteCommandTargets()
+    #endif
     @ObservationIgnored private var cachedVoice: (identifier: String, voice: AVSpeechSynthesisVoice?)?
 
     override init() {
@@ -373,64 +375,46 @@ final class ReadAloud: NSObject {
         try? ForgeAudioSession.activate(.playback)
     }
 
-    #if os(iOS)
-    /// Every lock-screen command Read Aloud answers.
-    private static func remoteCommands(_ center: MPRemoteCommandCenter) -> [MPRemoteCommand] {
-        [center.playCommand, center.pauseCommand, center.togglePlayPauseCommand,
-         center.nextTrackCommand, center.previousTrackCommand,
-         center.skipBackwardCommand, center.skipForwardCommand,
-         center.changePlaybackPositionCommand]
-    }
-    #endif
-
-    /// Takes over the lock-screen commands. The command center is shared by
-    /// every app in Device Lab, so this first removes whatever another
-    /// player left there (Soundscape's player left its skip-back button
-    /// and progress bar behind, found on the phone, 2026-11-18), then adds
-    /// Read Aloud's own. Done on every `play(from:)`, so reading takes the
-    /// controls back after another app's player has had them.
+    /// Adds Read Aloud's lock-screen handlers, once until the reader
+    /// removes them.
     private func addRemoteCommands() {
         #if os(iOS)
-        remoteCommandsAdded = true
+        guard remoteTargets.isEmpty else { return }
         let center = MPRemoteCommandCenter.shared()
-        for command in Self.remoteCommands(center) {
-            command.removeTarget(nil)
-            command.isEnabled = true
-        }
-        center.playCommand.addTarget { @Sendable [weak self] _ in
+        remoteTargets.add(center.playCommand) { [weak self] _ in
             Task { @MainActor in self?.resume() }
             return .success
         }
-        center.pauseCommand.addTarget { @Sendable [weak self] _ in
+        remoteTargets.add(center.pauseCommand) { [weak self] _ in
             Task { @MainActor in self?.pause() }
             return .success
         }
-        center.togglePlayPauseCommand.addTarget { @Sendable [weak self] _ in
+        remoteTargets.add(center.togglePlayPauseCommand) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 self.state == .playing ? self.pause() : self.resume()
             }
             return .success
         }
-        center.nextTrackCommand.addTarget { @Sendable [weak self] _ in
+        remoteTargets.add(center.nextTrackCommand) { [weak self] _ in
             Task { @MainActor in self?.skip(by: 1) }
             return .success
         }
-        center.previousTrackCommand.addTarget { @Sendable [weak self] _ in
+        remoteTargets.add(center.previousTrackCommand) { [weak self] _ in
             Task { @MainActor in self?.skip(by: -1) }
             return .success
         }
         center.skipBackwardCommand.preferredIntervals = [NSNumber(value: Self.skipInterval)]
-        center.skipBackwardCommand.addTarget { @Sendable [weak self] _ in
-            Task { @MainActor in self?.skip(seconds: -Self.skipInterval) }
+        remoteTargets.add(center.skipBackwardCommand) { [weak self] _ in
+            Task { @MainActor in self?.skip(seconds: -ReadAloud.skipInterval) }
             return .success
         }
         center.skipForwardCommand.preferredIntervals = [NSNumber(value: Self.skipInterval)]
-        center.skipForwardCommand.addTarget { @Sendable [weak self] _ in
-            Task { @MainActor in self?.skip(seconds: Self.skipInterval) }
+        remoteTargets.add(center.skipForwardCommand) { [weak self] _ in
+            Task { @MainActor in self?.skip(seconds: ReadAloud.skipInterval) }
             return .success
         }
-        center.changePlaybackPositionCommand.addTarget { @Sendable [weak self] event in
+        remoteTargets.add(center.changePlaybackPositionCommand) { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             let position = event.positionTime
             Task { @MainActor in self?.seek(toSeconds: position) }
@@ -439,14 +423,11 @@ final class ReadAloud: NSObject {
         #endif
     }
 
-    /// Removes the lock-screen handlers; the reader calls it when it closes.
+    /// Removes Read Aloud's lock-screen handlers, and only those; the
+    /// reader calls it when it closes.
     func removeRemoteCommands() {
         #if os(iOS)
-        guard remoteCommandsAdded else { return }
-        remoteCommandsAdded = false
-        for command in Self.remoteCommands(MPRemoteCommandCenter.shared()) {
-            command.removeTarget(nil)
-        }
+        remoteTargets.removeAll()
         #endif
     }
 
@@ -541,3 +522,32 @@ extension ReadAloud: AVSpeechSynthesizerDelegate {
         Task { @MainActor in self.willSpeak(characterRange, in: id) }
     }
 }
+
+#if os(iOS)
+/// The lock-screen handlers one player added, so it removes only its own:
+/// the command center is shared by every app in Device Lab, and
+/// `removeTarget(nil)` would take away another app's controls too. Removes
+/// them when it goes away as well, so a player that is freed without
+/// stopping leaves no dead buttons behind (Soundscape's did, found on the
+/// phone, 2026-11-18). Each app keeps its own copy until the Now Playing
+/// helper is extracted.
+private final class RemoteCommandTargets {
+    private var targets: [(command: MPRemoteCommand, token: Any)] = []
+
+    var isEmpty: Bool { targets.isEmpty }
+
+    func add(
+        _ command: MPRemoteCommand,
+        _ handler: @escaping @Sendable (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus
+    ) {
+        targets.append((command, command.addTarget(handler: handler)))
+    }
+
+    func removeAll() {
+        for target in targets { target.command.removeTarget(target.token) }
+        targets = []
+    }
+
+    deinit { removeAll() }
+}
+#endif
