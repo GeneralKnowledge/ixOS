@@ -47,6 +47,24 @@ final class Narrator: NSObject {
         return voices.first { $0.gender == wanted } ?? voices.first
     }
 
+    /// True when the phone has an Urdu voice of `gender`. Many phones have
+    /// one Urdu voice, or voices that don't say their gender; then every
+    /// line is read by the voice there is.
+    static func hasVoice(of gender: Gender) -> Bool {
+        let wanted: AVSpeechSynthesisVoiceGender = gender == .female ? .female : .male
+        return urduVoices.contains { $0.gender == wanted }
+    }
+
+    /// True when the phone can read in both a woman's and a man's voice.
+    static var hasBothVoices: Bool { hasVoice(of: .female) && hasVoice(of: .male) }
+
+    /// Who you actually hear when a line asks for `gender`: "a woman" or
+    /// "a man" only when that is really the voice reading it.
+    static func speaker(for gender: Gender) -> String {
+        guard hasVoice(of: gender) else { return "the phone's Urdu voice" }
+        return gender == .female ? "a woman" : "a man"
+    }
+
     func say(_ phrase: PhraseView, voice gender: Gender = .male, rate: Float = 1, pace: Pace = .natural) {
         say(text: phrase.speech, id: phrase.id, voice: gender, rate: rate, pace: pace)
     }

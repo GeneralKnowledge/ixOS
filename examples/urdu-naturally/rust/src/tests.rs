@@ -314,3 +314,65 @@ fn a_word_with_a_gap_line_is_reviewed_in_use() {
     assert_eq!(item.phrase.id, "bhi");
     assert_eq!(item.skill, Skill::Speaking);
 }
+
+#[test]
+fn building_blocks_are_words_expressions_and_patterns() {
+    let saved = Saved::default();
+    let kind = |id: &str| saved.phrase(Content::get().phrase(id).unwrap(), 0).kind;
+    assert_eq!(kind("nahi"), EntryKind::Word);
+    assert_eq!(
+        kind("woh-log"),
+        EntryKind::Word,
+        "a pair can be declared one word"
+    );
+    assert_eq!(kind("mujhe-nahi-lagta"), EntryKind::Expression);
+    assert_eq!(kind("pattern-can"), EntryKind::Pattern);
+    assert_eq!(kind("kya-haal-hai"), EntryKind::Phrase);
+
+    let totals = saved.totals(0, 0);
+    assert!(totals.words >= 120 && totals.expressions >= 30 && totals.patterns >= 8);
+}
+
+#[test]
+fn a_pattern_is_practised_by_building_new_sentences() {
+    let mut saved = Saved::default();
+    for skill in [Skill::Recognition, Skill::Recall] {
+        saved
+            .attempt("pattern-can", skill, Outcome::Confident, None, 0)
+            .unwrap();
+    }
+    let first = saved.review(1, 30 * DAY).remove(0);
+    assert_eq!(first.skill, Skill::Speaking);
+    let example = first.example.expect("a sentence to build");
+    let pattern = Content::get().phrase("pattern-can").unwrap();
+    assert!(pattern.combos.iter().any(|c| c.roman == example.roman));
+    assert!(example.speech.is_some());
+
+    // Get it right and the next time round asks for another sentence.
+    saved
+        .attempt(
+            "pattern-can",
+            Skill::Speaking,
+            Outcome::Independent,
+            None,
+            30 * DAY,
+        )
+        .unwrap();
+    let next = saved.review(1, 90 * DAY).remove(0);
+    if next.skill == Skill::Speaking {
+        assert_ne!(next.example.unwrap().roman, example.roman);
+    }
+}
+
+#[test]
+fn listening_never_plays_a_pattern() {
+    let saved = Saved::default();
+    let content = Content::get();
+    for seed in 0..20 {
+        for item in saved.listening(8, seed, 0) {
+            assert_ne!(item.phrase.kind, EntryKind::Pattern);
+            assert!(item.choices.iter().all(|c| !c.contains(BLANK)));
+        }
+    }
+    assert!(content.phrases.iter().any(|p| p.kind == EntryKind::Pattern));
+}

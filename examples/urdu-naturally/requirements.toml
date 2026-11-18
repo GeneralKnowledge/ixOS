@@ -25,6 +25,11 @@ twin = ["UrduModelTests.testAnUnknownPhraseIsAnAlertNotACrash"]
 
 [[requirement]]
 id = "UN-4"
-statement = "A typed answer is checked against the phrase and its accepted spellings: spelling variation is not marked wrong."
-twin = ["UrduModelTests.testTypedAnswersForgiveSpelling"]
+statement = "A typed answer is checked against the phrase and its accepted spellings: spelling variation is not marked wrong, and words that only sound alike (kam, kaam) are never marked right."
+twin = ["UrduModelTests.testTypedAnswersForgiveSpelling", "UrduModelTests.testTypedAnswersDontMergeWordsThatSoundAlike"]
 device = ["uitests/typed-answer.toml"]
+
+[[requirement]]
+id = "UN-5"
+statement = "Building Blocks are words, expressions and sentence patterns; a pattern is practised by building its example sentences from the English, and is never read aloud with its gap."
+twin = ["UrduModelTests.testAPatternIsPractisedWithItsExamples"]

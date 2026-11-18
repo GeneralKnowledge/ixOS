@@ -105,7 +105,7 @@ struct SpeechCheckScreen: View {
             } header: {
                 Text("Urdu voices")
             } footer: {
-                Text("Tap a voice to hear \u{201C}Kya haal hai? Main theek hoon, tum sunao?\u{201D}")
+                Text("Tap a voice to hear \u{201C}Kya haal hai? Main theek hoon, tum sunao?\u{201D} \(pairNote)")
             }
 
             Section {
@@ -126,6 +126,16 @@ struct SpeechCheckScreen: View {
                 .map(\.identifier)
                 .filter { $0.hasPrefix("ur") }
                 .sorted()
+        }
+    }
+
+    /// Whether the app can alternate a woman's and a man's voice.
+    private var pairNote: String {
+        switch (Narrator.hasVoice(of: .female), Narrator.hasVoice(of: .male)) {
+        case (true, true): "There's a woman's and a man's voice, so Listen alternates them."
+        case (true, false): "There's no man's voice, so men's lines are read by a woman's voice."
+        case (false, true): "There's no woman's voice, so women's lines are read by a man's voice."
+        case (false, false): "No voice says whether it's a man's or a woman's, so one voice reads every line."
         }
     }
 

@@ -48,6 +48,10 @@ public final class UrduModel {
     public func check(_ phraseId: String, typed: String) -> Verdict {
         core.checkAnswer(phraseId: phraseId, typed: typed)
     }
+    /// Checks a typed answer against one sentence (a pattern's example).
+    public func check(sentence: String, typed: String) -> Verdict {
+        core.checkSentence(sentence: sentence, typed: typed)
+    }
     public func scenarioSummary(_ id: String) -> ScenarioSummary? {
         home.scenarios.first { $0.id == id }
     }
@@ -151,6 +155,17 @@ extension Skill {
         case .recall: "Recall"
         case .speaking: "Use"
         case .listening: "Hear"
+        }
+    }
+}
+
+extension EntryKind {
+    public var label: String {
+        switch self {
+        case .phrase: "Phrase"
+        case .word: "Word"
+        case .expression: "Expression"
+        case .pattern: "Pattern"
         }
     }
 }

@@ -3,7 +3,8 @@ import ForgeUI
 import SwiftUI
 
 /// Listen and understand: hear a phrase with no text, pick what it meant.
-/// Rounds alternate a woman's and a man's voice, so you get used to both.
+/// Rounds alternate a woman's and a man's voice, so you get used to both,
+/// when the phone has both; the screen names the voice actually reading.
 /// Slow replays are always there. (More listening modes are in the plan:
 /// no subtitles, real conversations, "what did they actually say?")
 struct ListenScreen: View {
@@ -34,9 +35,16 @@ struct ListenScreen: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Hear it. Understand it.")
                 .font(.title.weight(.bold))
-            Text("Eight phrases, read by a woman and a man in turn, with no text. Pick what they meant. Phrases you've met come first.")
+            Text(Narrator.hasBothVoices
+                ? "Eight phrases, read by a woman and a man in turn, with no text. Pick what they meant. Phrases you've met come first."
+                : "Eight phrases, read aloud with no text. Pick what they meant. Phrases you've met come first.")
                 .foregroundStyle(theme.colors.textSecondary)
             NoVoiceNote()
+            if Narrator.hasUrduVoice, !Narrator.hasBothVoices {
+                Text("This iPhone doesn't have both a woman's and a man's Urdu voice, so one voice reads them all. Speech check, in Settings, lists what it has.")
+                    .font(.footnote)
+                    .foregroundStyle(theme.colors.textSecondary)
+            }
             Button("Start listening") { begin() }
                 .buttonStyle(ForgeButtonStyle(.primary, expands: true))
                 .accessibilityIdentifier("listen.start")
@@ -48,7 +56,7 @@ struct ListenScreen: View {
     private func item(_ item: ListeningItem) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("\(index + 1) of \(round.count) · \(item.voice == .female ? "a woman" : "a man") speaking")
+                Text("\(index + 1) of \(round.count) · \(Narrator.speaker(for: item.voice)) speaking")
                     .font(.subheadline)
                     .foregroundStyle(theme.colors.textSecondary)
                 if Narrator.hasUrduVoice {

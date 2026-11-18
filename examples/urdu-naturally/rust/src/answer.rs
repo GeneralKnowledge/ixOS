@@ -1,9 +1,14 @@
-//! Checking a typed answer. Roman Urdu has no enforced spelling, so the
-//! check compares sounds-alike forms, not letters: case, punctuation and
-//! common spelling swaps (nahin/nahi, aa/a, ee/i, oo/u, w/v) don't count
-//! against you. A spelling slip is "close", never "wrong"; only different
-//! words are. Whether you said it well aloud is not this module's call:
-//! nothing here pretends to score pronunciation.
+//! Checking a typed answer. Roman Urdu has no enforced spelling, so case,
+//! punctuation and the common spellings of the same word (nahi or nahin,
+//! hai or hy, kya or kia) don't count against you, and neither does any
+//! spelling the curriculum lists as a variant.
+//!
+//! What it does not do is fold sounds together. Long and short vowels
+//! (kaam, work; kam, less), doubled consonants (pata, know; patta, leaf)
+//! and q against k (qadam, step) are real differences in Urdu, so an answer
+//! that differs only there is "close", never a match: forgiving, without
+//! teaching the wrong word. Whether you said it well aloud is not this
+//! module's call: nothing here pretends to score pronunciation.
 
 /// The verdict on a typed answer.
 #[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,52 +21,71 @@ pub enum Verdict {
     Different,
 }
 
-/// Lower case, letters and spaces only, with spelling variation folded.
+/// Lower case, letters and spaces only, with the common spellings of the
+/// same word made one. Used to check answers.
 pub fn fold(text: &str) -> String {
-    let mut words = Vec::new();
-    for raw in text.split_whitespace() {
-        let word: String = raw
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .flat_map(char::to_lowercase)
-            .collect();
-        if word.is_empty() {
-            continue;
-        }
-        words.push(fold_word(&word));
-    }
-    words.join(" ")
+    words(text)
+        .map(|w| same_word(&w).to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
-fn fold_word(word: &str) -> String {
-    // Whole-word spellings people use interchangeably.
-    let word = match word {
-        "nahin" | "nai" | "nhi" | "nahee" => "nahi",
+/// [`fold`], then sounds-alike letters made one too (aa and a, v and w, q
+/// and k). Too loose to mark an answer; right for search, where "kam"
+/// should find "kaam".
+pub fn fold_loose(text: &str) -> String {
+    words(text)
+        .map(|w| {
+            let mut out = String::with_capacity(w.len());
+            let mut last = None;
+            for c in same_word(&w).chars() {
+                let c = match c {
+                    'v' => 'w',
+                    'q' => 'k',
+                    other => other,
+                };
+                if Some(c) != last {
+                    out.push(c);
+                }
+                last = Some(c);
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn words(text: &str) -> impl Iterator<Item = String> + '_ {
+    text.split_whitespace()
+        .map(|raw| {
+            raw.chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        })
+        .filter(|w| !w.is_empty())
+}
+
+/// Whole-word spellings people use interchangeably for the same word. Each
+/// line is one word, never two words that merely sound alike.
+fn same_word(word: &str) -> &str {
+    match word {
+        "nahin" | "nai" | "nhi" | "nahee" | "nahi" => "nahi",
         "mein" | "main" | "mai" | "mn" => "main",
-        "hy" | "he" | "hay" => "hai",
-        "hun" | "hu" => "hoon",
-        "ap" => "aap",
-        "kia" => "kya",
-        "acha" | "achha" | "accha" => "acha",
+        "hy" | "he" | "hay" | "hai" => "hai",
+        "hun" | "hu" | "hoon" => "hoon",
+        "hain" | "hen" | "hein" => "hain",
+        "ap" | "aap" => "aap",
+        "kia" | "kya" => "kya",
+        "acha" | "achha" | "accha" | "achchha" => "acha",
+        "theek" | "thik" | "theak" => "theek",
+        "kaise" | "kese" | "kaisay" | "kesay" => "kaise",
+        "walaikum" | "walekum" | "walaikam" => "walaikum",
+        "assalam" | "asalam" | "assalaam" | "salam" | "salaam" => "assalam",
+        "shukriya" | "shukria" | "shukriyah" => "shukriya",
+        "yaar" | "yar" => "yaar",
         other => other,
-    };
-    let mut out = String::with_capacity(word.len());
-    let mut last = None;
-    for c in word.chars() {
-        let c = match c {
-            'v' => 'w',
-            'q' => 'k',
-            other => other,
-        };
-        // Doubled letters (aa, ee, oo, kk) count once.
-        if Some(c) == last {
-            continue;
-        }
-        out.push(c);
-        last = Some(c);
     }
-    // "ee"/"i" and "oo"/"u" after doubling folds.
-    out.replace("ey", "e").replace("ay", "e")
 }
 
 /// Edit distance between two strings, by characters.
@@ -114,17 +138,14 @@ mod tests {
     fn spelling_and_punctuation_do_not_count() {
         let forms = ["Mujhe nahin pata."];
         assert_eq!(check("mujhe nahi pata", forms), Verdict::Match);
-        assert_eq!(check("MUJHE NAHEE PATAA!", forms), Verdict::Match);
+        assert_eq!(check("MUJHE NAHEE PATA!", forms), Verdict::Match);
         assert_eq!(check("kia haal hy", ["Kya haal hai?"]), Verdict::Match);
         // The phone scenario uitests/typed-answer.toml types this.
         assert_eq!(
-            check("walaikum asalaam", ["Walaikum assalam."]),
+            check("walekum assalam", ["Walaikum assalam."]),
             Verdict::Match
         );
-        assert_eq!(
-            check("Main theek hun", ["Main theek hoon."]),
-            Verdict::Match
-        );
+        assert_eq!(check("Main thik hun", ["Main theek hoon."]), Verdict::Match);
     }
 
     #[test]
@@ -133,6 +154,34 @@ mod tests {
         assert_eq!(check("kam kesa chal raha hai", forms), Verdict::Close);
         assert_eq!(check("kya haal hai", forms), Verdict::Different);
         assert_eq!(check("", forms), Verdict::Different);
+    }
+
+    /// Words that look alike in Roman Urdu but mean different things are
+    /// never a match for each other: close at best, so you see the answer.
+    #[test]
+    fn look_alikes_are_not_the_same_word() {
+        for (typed, answer) in [
+            ("kam", "Kaam"),      // less / work
+            ("patta", "Pata"),    // leaf / know
+            ("kal", "Kaal"),      // tomorrow or yesterday / era
+            ("kadam", "Qadam"),   // (not a word) / step
+            ("bacha", "Bachcha"), // saved / child
+            ("sona", "Soona"),    // sleep or gold / empty
+            ("pal", "Paal"),      // a moment / raise
+        ] {
+            assert_ne!(
+                check(typed, [answer]),
+                Verdict::Match,
+                "{typed} vs {answer}"
+            );
+        }
+    }
+
+    #[test]
+    fn search_is_looser_than_checking() {
+        assert_eq!(fold_loose("Kaam"), fold_loose("kam"));
+        assert_ne!(fold("Kaam"), fold("kam"));
+        assert_eq!(fold_loose("pata nahee"), fold_loose("Pata nahin"));
     }
 
     #[test]

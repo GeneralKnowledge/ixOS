@@ -9,6 +9,12 @@
 #   cloze     a line with ___ where the word goes, for the third way of
 #             practising: not "what does it mean" or "how do you say it",
 #             but "use it here"
+#   kind      word | expression | pattern. Usually left out: an entry with
+#             ___ in it is a pattern (a sentence frame), one word is a word,
+#             and anything longer is an expression. Say kind = "word" for a
+#             pair that works as one word (woh log, pasand karna).
+#   combos    for a pattern, its example sentences, each with its urdu:
+#             the pattern is practised by building them from the English
 #   variants  as in phrases.toml; kind = feminine | plural for the forms of
 #             a describing word (acha, achi, ache)
 #
@@ -66,6 +72,24 @@ level = "foundation"
 id = "reactions"
 title = "Reactions"
 description = "Haan, jee, bilkul, waah, ruko: answering friends naturally."
+level = "foundation"
+
+[[topic]]
+id = "amounts"
+title = "How much"
+description = "Bohat, thora, zyada, kam, sab, har: amounts and everyone."
+level = "foundation"
+
+[[topic]]
+id = "manners"
+title = "Please, thanks and sorry"
+description = "Maaf karna, meherbani, shukriya, zara: being polite without sounding stiff."
+level = "foundation"
+
+[[topic]]
+id = "patterns"
+title = "Sentence patterns"
+description = "Frames like Main ___ sakta hoon: put your own words in the gap and make sentences you've never been taught."
 level = "foundation"
 
 # ------------------------------------------------------------- questions
@@ -247,6 +271,7 @@ cloze = { prompt = "___ kal milenge.", english = "We'll meet tomorrow." }
 
 [[word]]
 id = "woh-log"
+kind = "word"
 roman = "Woh log"
 english = "They"
 urdu = "وہ لوگ"
@@ -324,6 +349,7 @@ combos = [{ roman = "Tumhara kya khayal hai?", english = "What do you think?" }]
 
 [[word]]
 id = "aap-ka"
+kind = "word"
 roman = "Aap ka"
 english = "Your (polite)"
 urdu = "آپ کا"
@@ -1424,6 +1450,7 @@ combos = [{ roman = "Main chahta hoon…", english = "I want to… (a man speaki
 
 [[word]]
 id = "pasand-karna"
+kind = "word"
 roman = "Pasand karna"
 english = "To like"
 urdu = "پسند کرنا"
@@ -1562,3 +1589,386 @@ urdu = "خیر"
 topic = "reactions"
 difficulty = 2
 usage = "Moves on from a topic: kher, chhoro (anyway, never mind)."
+
+# How much
+
+[[word]]
+id = "bohat"
+roman = "Bohat"
+english = "A lot / very"
+urdu = "بہت"
+topic = "amounts"
+variants = [{ roman = "Bohot", kind = "spelling" }]
+combos = [
+  { roman = "Bohat acha", english = "Very good" },
+  { roman = "Bohat zyada", english = "Far too much" },
+  { roman = "Bohat shukriya", english = "Thanks a lot" },
+]
+cloze = { prompt = "Mujhe ___ bhook lagi hai.", english = "I'm really hungry." }
+
+[[word]]
+id = "thora"
+roman = "Thora"
+english = "A little"
+urdu = "تھوڑا"
+topic = "amounts"
+variants = [{ roman = "Thori", kind = "feminine", note = "Thori der: a little while" }]
+combos = [
+  { roman = "Thora sa", english = "Just a little" },
+  { roman = "Thori der", english = "A little while" },
+  { roman = "Thora aur", english = "A bit more" },
+]
+cloze = { prompt = "___ ruko.", english = "Wait a bit." }
+
+[[word]]
+id = "zyada"
+roman = "Zyada"
+english = "More / too much"
+urdu = "زیادہ"
+topic = "amounts"
+opposite = "kam"
+combos = [
+  { roman = "Bohat zyada", english = "Far too much" },
+  { roman = "Zyada nahi", english = "Not too much" },
+]
+cloze = { prompt = "Yeh ___ mehenga hai.", english = "This is too expensive." }
+
+[[word]]
+id = "kam"
+roman = "Kam"
+english = "Less / not much"
+urdu = "کم"
+topic = "amounts"
+opposite = "zyada"
+usage = "Short a. With a long aa, kaam, it's a different word: work."
+combos = [
+  { roman = "Thora kam", english = "A bit less" },
+  { roman = "Kam se kam", english = "At least" },
+]
+cloze = { prompt = "Cheeni ___ daalna.", english = "Go easy on the sugar." }
+
+[[word]]
+id = "sab"
+roman = "Sab"
+english = "All / everyone"
+urdu = "سب"
+topic = "amounts"
+combos = [
+  { roman = "Sab log", english = "Everyone" },
+  { roman = "Sab kuch", english = "Everything" },
+  { roman = "Sab theek?", english = "All good?" },
+]
+cloze = { prompt = "___ theek hai.", english = "Everything's fine." }
+
+[[word]]
+id = "har"
+roman = "Har"
+english = "Every"
+urdu = "ہر"
+topic = "amounts"
+combos = [
+  { roman = "Har roz", english = "Every day" },
+  { roman = "Har waqt", english = "All the time" },
+  { roman = "Har koi", english = "Everyone" },
+]
+cloze = { prompt = "Woh ___ roz aata hai.", english = "He comes every day." }
+
+[[word]]
+id = "kuch-aur"
+roman = "Kuch aur"
+english = "Something else / some more"
+urdu = "کچھ اور"
+topic = "amounts"
+combos = [
+  { roman = "Kuch aur chahiye?", english = "Need anything else?" },
+]
+
+[[word]]
+id = "koi-aur"
+roman = "Koi aur"
+english = "Someone else / another one"
+urdu = "کوئی اور"
+topic = "amounts"
+combos = [
+  { roman = "Koi aur nahi", english = "No one else" },
+]
+
+# Me, you and everyone: having, for, with
+
+[[word]]
+id = "mere-paas"
+roman = "Mere paas"
+english = "I have / with me"
+urdu = "میرے پاس"
+topic = "people"
+also_in = ["place"]
+usage = "For things you have: mere paas gaari hai. Not for family: mera ek bhai hai."
+combos = [
+  { roman = "Mere paas waqt nahi", english = "I don't have time" },
+  { roman = "Mere paas hai", english = "I've got it" },
+]
+
+[[word]]
+id = "tumhare-paas"
+roman = "Tumhare paas"
+english = "You have / with you"
+urdu = "تمہارے پاس"
+topic = "people"
+variants = [{ roman = "Aap ke paas", kind = "polite" }]
+combos = [
+  { roman = "Tumhare paas waqt hai?", english = "Have you got time?" },
+]
+
+[[word]]
+id = "mere-liye"
+roman = "Mere liye"
+english = "For me"
+urdu = "میرے لیے"
+topic = "people"
+combos = [
+  { roman = "Mere liye chai", english = "Tea for me" },
+  { roman = "Yeh mere liye hai?", english = "Is this for me?" },
+]
+
+[[word]]
+id = "mere-saath"
+roman = "Mere saath"
+english = "With me"
+urdu = "میرے ساتھ"
+topic = "people"
+combos = [
+  { roman = "Mere saath chalo", english = "Come with me" },
+]
+
+[[word]]
+id = "kisi"
+roman = "Kisi"
+english = "Some(one) / any(one), before ko, se or ka"
+urdu = "کسی"
+topic = "people"
+usage = "The form koi takes before ko, se and ka: kisi se poocho, kisi ka phone."
+combos = [
+  { roman = "Kisi se poocho", english = "Ask someone" },
+  { roman = "Kisi ka nahi", english = "Nobody's" },
+]
+
+[[word]]
+id = "kisi-ko"
+roman = "Kisi ko"
+english = "(To) someone / anyone"
+urdu = "کسی کو"
+topic = "people"
+combos = [
+  { roman = "Kisi ko mat batana", english = "Don't tell anyone" },
+  { roman = "Kisi ko pata hai?", english = "Does anyone know?" },
+]
+
+# Time: before and after
+
+[[word]]
+id = "iske-baad"
+roman = "Iske baad"
+english = "After this"
+urdu = "اس کے بعد"
+topic = "time"
+opposite = "is-se-pehle"
+combos = [
+  { roman = "Iske baad kya?", english = "What next?" },
+]
+
+[[word]]
+id = "is-se-pehle"
+roman = "Is se pehle"
+english = "Before this"
+urdu = "اس سے پہلے"
+topic = "time"
+opposite = "iske-baad"
+
+# Please, thanks and sorry (shukriya and koi baat nahi are phrases, also here)
+
+[[word]]
+id = "maaf-karna"
+roman = "Maaf karna"
+english = "Sorry / excuse me"
+urdu = "معاف کرنا"
+topic = "manners"
+usage = "To a friend. To someone older or a stranger: maaf kijiye."
+variants = [{ roman = "Maaf kijiye", kind = "polite" }]
+combos = [
+  { roman = "Maaf karna, der ho gayi", english = "Sorry I'm late" },
+]
+
+[[word]]
+id = "meherbani"
+roman = "Meherbani"
+english = "Kindness (meherbani karke: please)"
+urdu = "مہربانی"
+topic = "manners"
+formality = "polite"
+usage = "Alone, it's thanks for a kindness. Meherbani karke before a request is a polite please."
+combos = [
+  { roman = "Meherbani karke", english = "Please" },
+  { roman = "Aap ki meherbani", english = "That's kind of you" },
+]
+
+[[word]]
+id = "khush-aamdeed"
+roman = "Khush aamdeed"
+english = "Welcome"
+urdu = "خوش آمدید"
+topic = "manners"
+formality = "formal"
+usage = "On signs and in speeches. At someone's door people say aao aao, andar aao."
+
+[[word]]
+id = "zara"
+roman = "Zara"
+english = "Just / a moment (softens a request)"
+urdu = "ذرا"
+topic = "manners"
+also_in = ["amounts"]
+combos = [
+  { roman = "Zara suno", english = "Listen a sec" },
+  { roman = "Zara ruko", english = "Hang on a moment" },
+  { roman = "Zara dekhna", english = "Just have a look" },
+]
+cloze = { prompt = "___ paani dena.", english = "Could you pass the water?" }
+
+# Sentence patterns: practised by building new sentences from the English
+
+[[word]]
+id = "pattern-can"
+roman = "Main ___ sakta hoon."
+english = "I can ___."
+urdu = "میں ___ سکتا ہوں۔"
+topic = "patterns"
+speaker = "male"
+difficulty = 2
+opposite = "pattern-cant"
+usage = "The verb's stem goes in the gap: aa (come), bata (tell), kar (do)."
+variants = [{ roman = "Main ___ sakti hoon.", kind = "female_speaker" }]
+combos = [
+  { roman = "Main aa sakta hoon.", english = "I can come.", urdu = "میں آ سکتا ہوں۔" },
+  { roman = "Main bata sakta hoon.", english = "I can tell you.", urdu = "میں بتا سکتا ہوں۔" },
+  { roman = "Main kal mil sakta hoon.", english = "I can meet tomorrow.", urdu = "میں کل مل سکتا ہوں۔" },
+]
+
+[[word]]
+id = "pattern-cant"
+roman = "Main nahi ___ sakta."
+english = "I can't ___."
+urdu = "میں نہیں ___ سکتا۔"
+topic = "patterns"
+also_in = ["negatives"]
+speaker = "male"
+difficulty = 2
+opposite = "pattern-can"
+usage = "Hoon usually drops in the negative."
+variants = [{ roman = "Main nahi ___ sakti.", kind = "female_speaker" }]
+combos = [
+  { roman = "Main nahi aa sakta.", english = "I can't come.", urdu = "میں نہیں آ سکتا۔" },
+  { roman = "Main nahi ruk sakta.", english = "I can't stay.", urdu = "میں نہیں رک سکتا۔" },
+  { roman = "Main nahi bata sakta.", english = "I can't say.", urdu = "میں نہیں بتا سکتا۔" },
+]
+
+[[word]]
+id = "pattern-need"
+roman = "Mujhe ___ chahiye."
+english = "I want / need ___."
+urdu = "مجھے ___ چاہیے۔"
+topic = "patterns"
+difficulty = 2
+opposite = "pattern-dont-need"
+usage = "For things. To want to do something: Main ___ chahta hoon."
+combos = [
+  { roman = "Mujhe paani chahiye.", english = "I need some water.", urdu = "مجھے پانی چاہیے۔" },
+  { roman = "Mujhe thora waqt chahiye.", english = "I need a bit of time.", urdu = "مجھے تھوڑا وقت چاہیے۔" },
+  { roman = "Mujhe madad chahiye.", english = "I need help.", urdu = "مجھے مدد چاہیے۔" },
+]
+
+[[word]]
+id = "pattern-dont-need"
+roman = "Mujhe ___ nahi chahiye."
+english = "I don't want / need ___."
+urdu = "مجھے ___ نہیں چاہیے۔"
+topic = "patterns"
+also_in = ["negatives"]
+difficulty = 2
+opposite = "pattern-need"
+combos = [
+  { roman = "Mujhe chai nahi chahiye.", english = "I don't want tea.", urdu = "مجھے چائے نہیں چاہیے۔" },
+  { roman = "Mujhe aur nahi chahiye.", english = "I don't want any more.", urdu = "مجھے اور نہیں چاہیے۔" },
+]
+
+[[word]]
+id = "pattern-like"
+roman = "Mujhe ___ pasand hai."
+english = "I like ___."
+urdu = "مجھے ___ پسند ہے۔"
+topic = "patterns"
+difficulty = 2
+opposite = "pattern-dont-like"
+combos = [
+  { roman = "Mujhe chai pasand hai.", english = "I like tea.", urdu = "مجھے چائے پسند ہے۔" },
+  { roman = "Mujhe cricket pasand hai.", english = "I like cricket.", urdu = "مجھے کرکٹ پسند ہے۔" },
+  { roman = "Mujhe yeh gaana pasand hai.", english = "I like this song.", urdu = "مجھے یہ گانا پسند ہے۔" },
+]
+
+[[word]]
+id = "pattern-dont-like"
+roman = "Mujhe ___ pasand nahi."
+english = "I don't like ___."
+urdu = "مجھے ___ پسند نہیں۔"
+topic = "patterns"
+also_in = ["negatives"]
+difficulty = 2
+opposite = "pattern-like"
+combos = [
+  { roman = "Mujhe garmi pasand nahi.", english = "I don't like the heat.", urdu = "مجھے گرمی پسند نہیں۔" },
+  { roman = "Mujhe karela pasand nahi.", english = "I don't like bitter gourd.", urdu = "مجھے کریلا پسند نہیں۔" },
+]
+
+[[word]]
+id = "pattern-want-to"
+roman = "Main ___ chahta hoon."
+english = "I want to ___."
+urdu = "میں ___ چاہتا ہوں۔"
+topic = "patterns"
+speaker = "male"
+difficulty = 2
+usage = "The verb in its -na form goes in the gap: jaana, sona, seekhna."
+variants = [{ roman = "Main ___ chahti hoon.", kind = "female_speaker" }]
+combos = [
+  { roman = "Main ghar jaana chahta hoon.", english = "I want to go home.", urdu = "میں گھر جانا چاہتا ہوں۔" },
+  { roman = "Main sona chahta hoon.", english = "I want to sleep.", urdu = "میں سونا چاہتا ہوں۔" },
+  { roman = "Main Urdu seekhna chahta hoon.", english = "I want to learn Urdu.", urdu = "میں اردو سیکھنا چاہتا ہوں۔" },
+]
+
+[[word]]
+id = "pattern-doing"
+roman = "Main ___ raha hoon."
+english = "I'm ___ing."
+urdu = "میں ___ رہا ہوں۔"
+topic = "patterns"
+speaker = "male"
+difficulty = 2
+usage = "The verb's stem goes in the gap. Also for the near future: main aa raha hoon, I'm on my way."
+variants = [{ roman = "Main ___ rahi hoon.", kind = "female_speaker" }]
+combos = [
+  { roman = "Main aa raha hoon.", english = "I'm coming.", urdu = "میں آ رہا ہوں۔" },
+  { roman = "Main kha raha hoon.", english = "I'm eating.", urdu = "میں کھا رہا ہوں۔" },
+  { roman = "Main kaam kar raha hoon.", english = "I'm working.", urdu = "میں کام کر رہا ہوں۔" },
+]
+
+[[word]]
+id = "pattern-do-you-have"
+roman = "Kya tumhare paas ___ hai?"
+english = "Have you got ___?"
+urdu = "کیا تمہارے پاس ___ ہے؟"
+topic = "patterns"
+difficulty = 2
+variants = [{ roman = "Kya aap ke paas ___ hai?", kind = "polite" }]
+combos = [
+  { roman = "Kya tumhare paas waqt hai?", english = "Have you got time?", urdu = "کیا تمہارے پاس وقت ہے؟" },
+  { roman = "Kya tumhare paas charger hai?", english = "Have you got a charger?", urdu = "کیا تمہارے پاس چارجر ہے؟" },
+]

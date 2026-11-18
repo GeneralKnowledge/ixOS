@@ -40,32 +40,56 @@ extension View {
 
 /// Plays a phrase in Urdu, at natural pace or slowly.
 struct PlayButtons: View {
-    let phrase: PhraseView
-    var voice: Gender = .male
-    var rate: Float = 1
+    private let text: String
+    private let id: String
+    private let label: String
+    private let identifier: String
+    private let voice: Gender
+    private let rate: Float
     @State private var narrator = Narrator.shared
+
+    /// Plays a phrase or word. A pattern has a gap, so it has nothing to
+    /// play: give it its examples' buttons instead.
+    init(phrase: PhraseView, voice: Gender = .male, rate: Float = 1) {
+        text = phrase.kind == .pattern ? "" : phrase.speech
+        id = phrase.id
+        label = phrase.roman
+        identifier = "phrase.play"
+        self.voice = voice
+        self.rate = rate
+    }
+
+    /// Plays one example sentence of a pattern (or a word's combination).
+    init(example: ExampleView, of phrase: PhraseView, index: Int) {
+        text = example.speech ?? ""
+        id = "\(phrase.id)#\(index)"
+        label = example.roman
+        identifier = "phrase.example.\(index).play"
+        voice = .male
+        rate = 1
+    }
 
     var body: some View {
         HStack(spacing: 12) {
             Button {
-                narrator.say(phrase, voice: voice, rate: rate)
+                narrator.say(text: text, id: id, voice: voice, rate: rate)
             } label: {
-                Label("Play", systemImage: narrator.speakingID == phrase.id ? "speaker.wave.3.fill" : "speaker.wave.2")
+                Label("Play", systemImage: narrator.speakingID == id ? "speaker.wave.3.fill" : "speaker.wave.2")
             }
             .buttonStyle(.forgeSecondary)
-            .accessibilityLabel("Play \(phrase.roman)")
-            .accessibilityIdentifier("phrase.play")
+            .accessibilityLabel("Play \(label)")
+            .accessibilityIdentifier(identifier)
 
             Button {
-                narrator.say(phrase, voice: voice, rate: rate, pace: .slow)
+                narrator.say(text: text, id: id, voice: voice, rate: rate, pace: .slow)
             } label: {
                 Label("Slowly", systemImage: "tortoise")
             }
             .buttonStyle(.forgeTertiary)
-            .accessibilityLabel("Play \(phrase.roman) slowly")
-            .accessibilityIdentifier("phrase.playSlow")
+            .accessibilityLabel("Play \(label) slowly")
+            .accessibilityIdentifier(identifier + "Slow")
         }
-        .disabled(!Narrator.hasUrduVoice)
+        .disabled(!Narrator.hasUrduVoice || text.isEmpty)
     }
 }
 

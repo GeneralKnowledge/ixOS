@@ -67,4 +67,22 @@ final class UrduModelTests: XCTestCase {
         XCTAssertEqual(model.check("mujhe-nahi-pata", typed: "mujhe nahin pata"), .match)
         XCTAssertEqual(model.check("mujhe-nahi-pata", typed: "kya haal hai"), .different)
     }
+
+    @MainActor
+    func testTypedAnswersDontMergeWordsThatSoundAlike() async throws {
+        let (_, model) = try await open(try makeDirectory())
+        // kam (less) is not kaam (work): close, so you see the answer.
+        XCTAssertEqual(model.check(sentence: "Main kaam kar raha hoon.", typed: "main kam kar raha hoon"), .close)
+        XCTAssertEqual(model.check(sentence: "Main kaam kar raha hoon.", typed: "main kaam kar raha hun"), .match)
+    }
+
+    @MainActor
+    func testAPatternIsPractisedWithItsExamples() async throws {
+        let (_, model) = try await open(try makeDirectory())
+        let pattern = try XCTUnwrap(model.phrase("pattern-can"))
+        XCTAssertEqual(pattern.kind, .pattern)
+        XCTAssertGreaterThanOrEqual(pattern.combos.count, 2)
+        XCTAssertTrue(pattern.combos.allSatisfy { $0.speech != nil })
+        XCTAssertGreaterThan(model.home.totals.patterns, 0)
+    }
 }

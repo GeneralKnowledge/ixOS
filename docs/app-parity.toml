@@ -54,4 +54,4 @@ reason = "CH-12 (Chat's, now Relay's messaging: data held by a second core) is p
 app = "urdu-naturally"
 rule = "device-checks"
 wave = 5
-reason = "UN-3 (a failed save is an alert) is proved by its twin test only; the phone can't make a save fail from the UI"
+reason = "UN-3 (a failed save is an alert) is proved by its twin test only, as the phone can't make a save fail from the UI; UN-5 (pattern practice) gets a phone scenario after its first phone sitting"

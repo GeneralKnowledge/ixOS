@@ -106,6 +106,15 @@ pub struct PartView {
     pub english: String,
 }
 
+/// A spoken combination of a word, or an example sentence of a pattern.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ExampleView {
+    pub roman: String,
+    pub english: String,
+    /// Urdu script for the voice; always there for a pattern's examples.
+    pub speech: Option<String>,
+}
+
 /// A line with a gap to fill with the word.
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
 pub struct ClozeView {
@@ -144,8 +153,9 @@ pub struct PhraseView {
     pub status: ContentStatus,
     pub variants: Vec<VariantView>,
     pub parts: Vec<PartView>,
-    /// Common spoken combinations (for words).
-    pub combos: Vec<PartView>,
+    /// Common spoken combinations (for words and expressions), or the
+    /// example sentences of a pattern.
+    pub combos: Vec<ExampleView>,
     pub cloze: Option<ClozeView>,
     /// Its positive or negative twin.
     pub opposite: Option<EntryLink>,
@@ -239,6 +249,10 @@ pub struct Totals {
     pub can_recall: u32,
     pub can_use: u32,
     pub due: u32,
+    /// The Building Blocks, by kind.
+    pub words: u32,
+    pub expressions: u32,
+    pub patterns: u32,
     /// Attempts since `day_start_ms`.
     pub attempts_today: u32,
     /// The phrases you've met that you find hardest to say, hardest first.
@@ -258,6 +272,10 @@ pub struct Home {
 pub struct ReviewItem {
     pub phrase: PhraseView,
     pub skill: Skill,
+    /// For a pattern practised by speaking: the sentence to build from its
+    /// English. Check a typed answer with `check_sentence`.
+    #[uniffi(default = None)]
+    pub example: Option<ExampleView>,
 }
 
 /// Hear a phrase, pick what it meant.
@@ -385,14 +403,7 @@ impl Saved {
                     english: p.english.clone(),
                 })
                 .collect(),
-            combos: text
-                .combos
-                .iter()
-                .map(|c| PartView {
-                    roman: c.roman.clone(),
-                    english: c.english.clone(),
-                })
-                .collect(),
+            combos: text.combos.iter().map(example_view).collect(),
             cloze: text.cloze.as_ref().and_then(|cloze| {
                 let (before, after) = cloze.prompt.split_once(BLANK)?;
                 Some(ClozeView {
@@ -513,6 +524,7 @@ impl Saved {
             .map(|p| self.phrase(p, now_ms))
             .collect();
         let at_least = |stage: Stage| views.iter().filter(|v| v.stage >= stage).count() as u32;
+        let of_kind = |kind: EntryKind| views.iter().filter(|v| v.kind == kind).count() as u32;
         let mut hardest: Vec<PhraseView> = views
             .iter()
             .filter(|v| content.is_spoken(&v.id) && v.stage > Stage::New && v.skills.speaking < 3)
@@ -530,6 +542,9 @@ impl Saved {
             can_recall: at_least(Stage::CanRecall),
             can_use: at_least(Stage::CanUse),
             due: views.iter().filter(|v| v.is_due).count() as u32,
+            words: of_kind(EntryKind::Word),
+            expressions: of_kind(EntryKind::Expression),
+            patterns: of_kind(EntryKind::Pattern),
             attempts_today: self
                 .events
                 .iter()
@@ -574,7 +589,7 @@ impl Saved {
     /// Phrases in `topic` (all when None) whose Roman Urdu, English or
     /// accepted variants contain `query`, ignoring case and spelling.
     pub fn search(&self, topic: Option<&str>, query: &str, now_ms: i64) -> Vec<PhraseView> {
-        let folded = answer::fold(query);
+        let folded = answer::fold_loose(query);
         let lower = query.trim().to_lowercase();
         Content::get()
             .phrases
@@ -585,7 +600,7 @@ impl Saved {
                     || p.english.to_lowercase().contains(&lower)
                     || std::iter::once(&p.roman)
                         .chain(p.variants.iter().map(|v| &v.roman))
-                        .any(|r| answer::fold(r).contains(&folded))
+                        .any(|r| answer::fold_loose(r).contains(&folded))
             })
             .map(|p| self.phrase(p, now_ms))
             .collect()
@@ -610,16 +625,18 @@ impl Saved {
             .take(limit as usize)
             .map(|(p, _)| {
                 let phrase = self.phrase(p, now_ms);
-                // What it means first; then saying it from the English; and
-                // for a word with a gap line, using it in the line.
-                let skill = if phrase.skills.recognition < 2 {
-                    Skill::Recognition
-                } else if phrase.cloze.is_some() && phrase.skills.speaking < phrase.skills.recall {
-                    Skill::Speaking
-                } else {
-                    Skill::Recall
-                };
-                ReviewItem { phrase, skill }
+                let skill = review_skill(&phrase);
+                let example =
+                    (skill == Skill::Speaking && phrase.kind == EntryKind::Pattern).then(|| {
+                        // A different sentence each time round.
+                        let turn = self.progress(&p.id).times_correct as usize;
+                        example_view(&p.combos[turn % p.combos.len()])
+                    });
+                ReviewItem {
+                    phrase,
+                    skill,
+                    example,
+                }
             })
             .collect()
     }
@@ -629,7 +646,9 @@ impl Saved {
     /// order of the choices and the distractors.
     pub fn listening(&self, count: u32, seed: u64, now_ms: i64) -> Vec<ListeningItem> {
         let content = Content::get();
-        let mut pool: Vec<&PhraseText> = content.phrases.iter().collect();
+        // A pattern has a gap, so there is nothing whole to hear.
+        let hearable = |p: &&PhraseText| p.kind != EntryKind::Pattern;
+        let mut pool: Vec<&PhraseText> = content.phrases.iter().filter(hearable).collect();
         pool.sort_by_key(|p| {
             let progress = self.progress(&p.id);
             (progress.times_seen == 0, progress.skills.listening)
@@ -642,6 +661,7 @@ impl Saved {
                 let mut others: Vec<&str> = content
                     .phrases
                     .iter()
+                    .filter(hearable)
                     .filter(|o| o.english != p.english && !o.english.contains(NAME_SLOT))
                     .map(|o| o.english.as_str())
                     .collect();
@@ -859,6 +879,11 @@ impl UrduCore {
             .listening(count, seed, forge_runtime::now_ms())
     }
 
+    /// Checks a typed answer against one sentence: a pattern's example.
+    pub fn check_sentence(&self, sentence: String, typed: String) -> Verdict {
+        answer::check(&typed, [sentence.as_str()])
+    }
+
     /// Checks a typed answer. Unknown ids are `Different`.
     pub fn check_answer(&self, phrase_id: String, typed: String) -> Verdict {
         match Content::get().phrase(&phrase_id) {
@@ -950,3 +975,31 @@ forge_app::export_runtime!(UrduCore, rt);
 
 #[cfg(test)]
 mod tests;
+
+/// What to practise a due entry with. What it means first; then saying it
+/// from the English. A word with a gap line is also used in the line, and a
+/// pattern is mostly practised by building new sentences with it.
+fn review_skill(phrase: &PhraseView) -> Skill {
+    let skills = &phrase.skills;
+    if skills.recognition < 2 {
+        Skill::Recognition
+    } else if phrase.kind == EntryKind::Pattern {
+        if skills.recall < 2 || skills.speaking >= skills.recall + 2 {
+            Skill::Recall
+        } else {
+            Skill::Speaking
+        }
+    } else if phrase.cloze.is_some() && skills.speaking < skills.recall {
+        Skill::Speaking
+    } else {
+        Skill::Recall
+    }
+}
+
+fn example_view(combo: &content::Combo) -> ExampleView {
+    ExampleView {
+        roman: combo.roman.clone(),
+        english: combo.english.clone(),
+        speech: combo.urdu.clone(),
+    }
+}

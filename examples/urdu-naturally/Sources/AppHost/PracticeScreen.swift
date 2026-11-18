@@ -58,7 +58,18 @@ struct PracticeCard: View {
     @State private var verdict: Verdict?
     @State private var started = Date()
     @State private var latency: UInt32?
+    /// For a pattern practised by speaking: the sentence to build from its
+    /// English. Practice opened from a pattern's page picks one here.
+    @State private var example: ExampleView?
     @Environment(\.forgeTheme) private var theme
+
+    init(model: UrduModel, item: ReviewItem, next: @escaping @MainActor () -> Void) {
+        self.model = model
+        self.item = item
+        self.next = next
+        let building = item.skill == .speaking && item.phrase.kind == .pattern
+        _example = State(initialValue: item.example ?? (building ? item.phrase.combos.randomElement() : nil))
+    }
 
     private var phrase: PhraseView { item.phrase }
 
@@ -74,7 +85,7 @@ struct PracticeCard: View {
                         typing
                     }
                     HStack(spacing: 8) {
-                        if (item.skill == .recall || item.skill == .speaking), !hinted {
+                        if (item.skill == .recall || item.skill == .speaking), !hinted, example == nil {
                             Button("Hint") { hinted = true }
                                 .buttonStyle(ForgeButtonStyle(.tertiary, expands: true))
                                 .accessibilityIdentifier("practice.hint")
@@ -105,7 +116,9 @@ struct PracticeCard: View {
         switch item.skill {
         case .recognition: "What does it mean?"
         case .recall: "How do you say it? Say it out loud."
-        case .speaking: phrase.cloze == nil ? "Say it out loud." : "Fill the gap and say the whole line."
+        case .speaking:
+            example != nil ? "Make this with the pattern. Say it out loud."
+                : phrase.cloze == nil ? "Say it out loud." : "Fill the gap and say the whole line."
         case .listening: "Listen. What did they say?"
         }
     }
@@ -115,14 +128,24 @@ struct PracticeCard: View {
         switch item.skill {
         case .recognition:
             RomanText(text: phrase.roman, size: .largeTitle.weight(.semibold))
-            PlayButtons(phrase: phrase)
+            if phrase.kind != .pattern {
+                PlayButtons(phrase: phrase)
+            }
         case .recall:
             Text(phrase.english)
                 .font(.title.weight(.semibold))
                 .foregroundStyle(theme.colors.textPrimary)
             if hinted { hint }
         case .speaking:
-            if let cloze = phrase.cloze {
+            if let example {
+                Text(example.english)
+                    .font(.title.weight(.semibold))
+                    .foregroundStyle(theme.colors.textPrimary)
+                Text("With: \(phrase.roman)")
+                    .font(.title3)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .accessibilityLabel("With the pattern \(phrase.roman.replacingOccurrences(of: "___", with: " blank "))")
+            } else if let cloze = phrase.cloze {
                 Text("\(cloze.before)____\(cloze.after)")
                     .font(.title.weight(.semibold))
                     .foregroundStyle(theme.colors.textPrimary)
@@ -176,14 +199,21 @@ struct PracticeCard: View {
     @ViewBuilder
     private var answer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if item.skill == .speaking, let cloze = phrase.cloze {
-                RomanText(text: filled(cloze))
-            } else if item.skill != .recognition {
-                RomanText(text: phrase.roman)
+            if let example {
+                RomanText(text: example.roman)
+                Text(example.english)
+                    .font(.title3)
+                    .foregroundStyle(theme.colors.textSecondary)
+            } else {
+                if item.skill == .speaking, let cloze = phrase.cloze {
+                    RomanText(text: filled(cloze))
+                } else if item.skill != .recognition {
+                    RomanText(text: phrase.roman)
+                }
+                Text(phrase.english)
+                    .font(.title3)
+                    .foregroundStyle(theme.colors.textSecondary)
             }
-            Text(phrase.english)
-                .font(.title3)
-                .foregroundStyle(theme.colors.textSecondary)
             if let literal = phrase.literal {
                 Text("Literally: \(literal)")
                     .font(.footnote)
@@ -192,7 +222,9 @@ struct PracticeCard: View {
             if let verdict, !typed.isEmpty {
                 verdictLine(verdict)
             }
-            if item.skill != .recognition && item.skill != .listening {
+            if let example {
+                PlayButtons(example: example, of: phrase, index: phrase.combos.firstIndex(of: example) ?? 0)
+            } else if item.skill != .recognition && item.skill != .listening && phrase.kind != .pattern {
                 PlayButtons(phrase: phrase)
             }
             if let usage = phrase.usage {
@@ -215,10 +247,14 @@ struct PracticeCard: View {
     private func reveal() {
         latency = elapsedMs(since: started)
         if !typed.trimmingCharacters(in: .whitespaces).isEmpty {
-            verdict = model.check(phrase.id, typed: typed)
+            verdict = if let example {
+                model.check(sentence: example.roman, typed: typed)
+            } else {
+                model.check(phrase.id, typed: typed)
+            }
         }
         revealed = true
-        if item.skill == .recognition || item.skill == .listening {
+        if (item.skill == .recognition || item.skill == .listening), phrase.kind != .pattern {
             Narrator.shared.say(phrase)
         }
     }

@@ -624,6 +624,11 @@ public protocol UrduCoreProtocol: AnyObject, Sendable {
     func checkAnswer(phraseId: String, typed: String)  -> Verdict
     
     /**
+     * Checks a typed answer against one sentence: a pattern's example.
+     */
+    func checkSentence(sentence: String, typed: String)  -> Verdict
+    
+    /**
      * The runtime's event stream: `Changed { revision }` after each
      * committed command, phase changes, and drops. Nil after shutdown.
      */
@@ -818,6 +823,20 @@ open func checkAnswer(phraseId: String, typed: String) -> Verdict  {
     uniffi_urdu_naturally_core_fn_method_urducore_check_answer(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(phraseId),
+        FfiConverterString.lower(typed),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Checks a typed answer against one sentence: a pattern's example.
+     */
+open func checkSentence(sentence: String, typed: String) -> Verdict  {
+    return try!  FfiConverterTypeVerdict_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_urdu_naturally_core_fn_method_urducore_check_sentence(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sentence),
         FfiConverterString.lower(typed),uniffiCallStatus
     )
 })
@@ -1349,6 +1368,73 @@ public func FfiConverterTypeEntryLink_lower(_ value: EntryLink) -> RustBuffer {
 }
 
 
+/**
+ * A spoken combination of a word, or an example sentence of a pattern.
+ */
+public struct ExampleView: Equatable, Hashable {
+    public var roman: String
+    public var english: String
+    /**
+     * Urdu script for the voice; always there for a pattern's examples.
+     */
+    public var speech: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(roman: String, english: String, 
+        /**
+         * Urdu script for the voice; always there for a pattern's examples.
+         */speech: String?) {
+        self.roman = roman
+        self.english = english
+        self.speech = speech
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ExampleView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeExampleView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExampleView {
+        return
+            try ExampleView(
+                roman: FfiConverterString.read(from: &buf), 
+                english: FfiConverterString.read(from: &buf), 
+                speech: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ExampleView, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.roman, into: &buf)
+        FfiConverterString.write(value.english, into: &buf)
+        FfiConverterOptionString.write(value.speech, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExampleView_lift(_ buf: RustBuffer) throws -> ExampleView {
+    return try FfiConverterTypeExampleView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExampleView_lower(_ value: ExampleView) -> RustBuffer {
+    return FfiConverterTypeExampleView.lower(value)
+}
+
+
 public struct Home: Equatable, Hashable {
     public var suggestion: Suggestion
     public var totals: Totals
@@ -1567,9 +1653,10 @@ public struct PhraseView: Equatable, Hashable {
     public var variants: [VariantView]
     public var parts: [PartView]
     /**
-     * Common spoken combinations (for words).
+     * Common spoken combinations (for words and expressions), or the
+     * example sentences of a pattern.
      */
-    public var combos: [PartView]
+    public var combos: [ExampleView]
     public var cloze: ClozeView?
     /**
      * Its positive or negative twin.
@@ -1596,8 +1683,9 @@ public struct PhraseView: Equatable, Hashable {
          * the variants.
          */maleForm: Bool, status: ContentStatus, variants: [VariantView], parts: [PartView], 
         /**
-         * Common spoken combinations (for words).
-         */combos: [PartView], cloze: ClozeView?, 
+         * Common spoken combinations (for words and expressions), or the
+         * example sentences of a pattern.
+         */combos: [ExampleView], cloze: ClozeView?, 
         /**
          * Its positive or negative twin.
          */opposite: EntryLink?, 
@@ -1657,7 +1745,7 @@ public struct FfiConverterTypePhraseView: FfiConverterRustBuffer {
                 status: FfiConverterTypeContentStatus.read(from: &buf), 
                 variants: FfiConverterSequenceTypeVariantView.read(from: &buf), 
                 parts: FfiConverterSequenceTypePartView.read(from: &buf), 
-                combos: FfiConverterSequenceTypePartView.read(from: &buf), 
+                combos: FfiConverterSequenceTypeExampleView.read(from: &buf), 
                 cloze: FfiConverterOptionTypeClozeView.read(from: &buf), 
                 opposite: FfiConverterOptionTypeEntryLink.read(from: &buf), 
                 speech: FfiConverterString.read(from: &buf), 
@@ -1683,7 +1771,7 @@ public struct FfiConverterTypePhraseView: FfiConverterRustBuffer {
         FfiConverterTypeContentStatus.write(value.status, into: &buf)
         FfiConverterSequenceTypeVariantView.write(value.variants, into: &buf)
         FfiConverterSequenceTypePartView.write(value.parts, into: &buf)
-        FfiConverterSequenceTypePartView.write(value.combos, into: &buf)
+        FfiConverterSequenceTypeExampleView.write(value.combos, into: &buf)
         FfiConverterOptionTypeClozeView.write(value.cloze, into: &buf)
         FfiConverterOptionTypeEntryLink.write(value.opposite, into: &buf)
         FfiConverterString.write(value.speech, into: &buf)
@@ -1717,12 +1805,22 @@ public func FfiConverterTypePhraseView_lower(_ value: PhraseView) -> RustBuffer 
 public struct ReviewItem: Equatable, Hashable {
     public var phrase: PhraseView
     public var skill: Skill
+    /**
+     * For a pattern practised by speaking: the sentence to build from its
+     * English. Check a typed answer with `check_sentence`.
+     */
+    public var example: ExampleView?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(phrase: PhraseView, skill: Skill) {
+    public init(phrase: PhraseView, skill: Skill, 
+        /**
+         * For a pattern practised by speaking: the sentence to build from its
+         * English. Check a typed answer with `check_sentence`.
+         */example: ExampleView? = nil) {
         self.phrase = phrase
         self.skill = skill
+        self.example = example
     }
 
     
@@ -1742,13 +1840,15 @@ public struct FfiConverterTypeReviewItem: FfiConverterRustBuffer {
         return
             try ReviewItem(
                 phrase: FfiConverterTypePhraseView.read(from: &buf), 
-                skill: FfiConverterTypeSkill.read(from: &buf)
+                skill: FfiConverterTypeSkill.read(from: &buf), 
+                example: FfiConverterOptionTypeExampleView.read(from: &buf)
         )
     }
 
     public static func write(_ value: ReviewItem, into buf: inout [UInt8]) {
         FfiConverterTypePhraseView.write(value.phrase, into: &buf)
         FfiConverterTypeSkill.write(value.skill, into: &buf)
+        FfiConverterOptionTypeExampleView.write(value.example, into: &buf)
     }
 }
 
@@ -2144,6 +2244,12 @@ public struct Totals: Equatable, Hashable {
     public var canUse: UInt32
     public var due: UInt32
     /**
+     * The Building Blocks, by kind.
+     */
+    public var words: UInt32
+    public var expressions: UInt32
+    public var patterns: UInt32
+    /**
      * Attempts since `day_start_ms`.
      */
     public var attemptsToday: UInt32
@@ -2156,6 +2262,9 @@ public struct Totals: Equatable, Hashable {
     // declare one manually.
     public init(phrases: UInt32, met: UInt32, recognised: UInt32, canRecall: UInt32, canUse: UInt32, due: UInt32, 
         /**
+         * The Building Blocks, by kind.
+         */words: UInt32, expressions: UInt32, patterns: UInt32, 
+        /**
          * Attempts since `day_start_ms`.
          */attemptsToday: UInt32, 
         /**
@@ -2167,6 +2276,9 @@ public struct Totals: Equatable, Hashable {
         self.canRecall = canRecall
         self.canUse = canUse
         self.due = due
+        self.words = words
+        self.expressions = expressions
+        self.patterns = patterns
         self.attemptsToday = attemptsToday
         self.hardestToSay = hardestToSay
     }
@@ -2193,6 +2305,9 @@ public struct FfiConverterTypeTotals: FfiConverterRustBuffer {
                 canRecall: FfiConverterUInt32.read(from: &buf), 
                 canUse: FfiConverterUInt32.read(from: &buf), 
                 due: FfiConverterUInt32.read(from: &buf), 
+                words: FfiConverterUInt32.read(from: &buf), 
+                expressions: FfiConverterUInt32.read(from: &buf), 
+                patterns: FfiConverterUInt32.read(from: &buf), 
                 attemptsToday: FfiConverterUInt32.read(from: &buf), 
                 hardestToSay: FfiConverterSequenceTypePhraseView.read(from: &buf)
         )
@@ -2205,6 +2320,9 @@ public struct FfiConverterTypeTotals: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.canRecall, into: &buf)
         FfiConverterUInt32.write(value.canUse, into: &buf)
         FfiConverterUInt32.write(value.due, into: &buf)
+        FfiConverterUInt32.write(value.words, into: &buf)
+        FfiConverterUInt32.write(value.expressions, into: &buf)
+        FfiConverterUInt32.write(value.patterns, into: &buf)
         FfiConverterUInt32.write(value.attemptsToday, into: &buf)
         FfiConverterSequenceTypePhraseView.write(value.hardestToSay, into: &buf)
     }
@@ -2596,13 +2714,28 @@ public func FfiConverterTypeEnglishSupport_lower(_ value: EnglishSupport) -> Rus
 
 
 /**
- * A building-block word or a whole phrase.
+ * What kind of thing an entry teaches, which decides how it is practised.
  */
 
 public enum EntryKind: Equatable, Hashable {
     
+    /**
+     * A conversational line (phrases.toml).
+     */
     case phrase
+    /**
+     * One word, or a pair that works as one (woh log): nahi, mat, bhi.
+     */
     case word
+    /**
+     * A fixed expression you learn whole: mujhe nahi lagta, koi masla nahi.
+     */
+    case expression
+    /**
+     * A sentence frame with a gap, for making your own sentences:
+     * Main ___ sakta hoon. Practised by building new sentences from it.
+     */
+    case pattern
 
 
 
@@ -2628,6 +2761,10 @@ public struct FfiConverterTypeEntryKind: FfiConverterRustBuffer {
         
         case 2: return .word
         
+        case 3: return .expression
+        
+        case 4: return .pattern
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -2642,6 +2779,14 @@ public struct FfiConverterTypeEntryKind: FfiConverterRustBuffer {
         
         case .word:
             writeInt(&buf, Int32(2))
+        
+        
+        case .expression:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .pattern:
+            writeInt(&buf, Int32(4))
         
         }
     }
@@ -3825,6 +3970,30 @@ fileprivate struct FfiConverterOptionTypeEntryLink: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeExampleView: FfiConverterRustBuffer {
+    typealias SwiftType = ExampleView?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeExampleView.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeExampleView.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypePhraseView: FfiConverterRustBuffer {
     typealias SwiftType = PhraseView?
 
@@ -3915,6 +4084,31 @@ fileprivate struct FfiConverterSequenceTypeCharacterView: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeCharacterView.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeExampleView: FfiConverterRustBuffer {
+    typealias SwiftType = [ExampleView]
+
+    public static func write(_ value: [ExampleView], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeExampleView.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ExampleView] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ExampleView]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeExampleView.read(from: &buf))
         }
         return seq
     }
@@ -4207,6 +4401,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_urdu_naturally_core_checksum_method_urducore_check_answer() != 27382) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_urdu_naturally_core_checksum_method_urducore_check_sentence() != 36264) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_urdu_naturally_core_checksum_method_urducore_events() != 14805) {

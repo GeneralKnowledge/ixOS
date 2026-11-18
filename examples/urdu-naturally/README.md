@@ -10,7 +10,12 @@ The plan, from this first version to free conversation with Ali, Ayesha and Omar
 
 ## What's in 0.1
 
-- **Building Blocks**: 159 foundation words in 9 topics (question words, people, negatives, connectors, time, place, describing words, verbs, reactions), each with its common spoken combinations, a gap line to use it in, its feminine and plural forms, and its positive or negative twin.
+- **Building Blocks**: 188 entries in 12 foundation topics (question words, people, negatives, connectors, time, place, describing words, verbs, reactions, amounts, manners, sentence patterns), each marked as one of three kinds:
+  - **words** (137): nahi, bhi, bohat. Practised by recognising, recalling and using them in a gap line.
+  - **expressions** (42): fixed things you learn whole, like mujhe nahi lagta.
+  - **sentence patterns** (9): frames like *Main ___ sakta hoon* with example sentences. Practised by building new sentences from the English.
+
+  Each comes with its common spoken combinations, its feminine and plural forms, and its positive or negative twin.
 - **Phrases**: 68 conversational phrases in 6 topics, including Conversation Glue (pata nahi, haan shayad, acha acha, matlab?) and what to say when you're lost.
 - **Conversations**: 5 short scenarios with Ali, Ayesha and Omar. Their lines are read aloud in their voice; at your turn you see the English, say it out loud (or type it), then see the Urdu.
 - **Listen**: rounds of 8 phrases heard with no text, alternating a woman's and a man's voice.
@@ -18,7 +23,7 @@ The plan, from this first version to free conversation with Ali, Ayesha and Omar
 - **Progress**: what you can recognise, recall and use, and the phrases you find hardest to say.
 - **Speech check**: which Urdu voices the phone has, and whether its speech recogniser lists Urdu.
 
-Everything runs on the phone. There is no server and no AI in this version.
+The Listen screen names the voice actually reading: a woman or a man only when the phone has that voice, otherwise "the phone's Urdu voice". Everything runs on the phone. There is no server and no AI in this version.
 
 ## Layout
 
@@ -27,7 +32,7 @@ Everything runs on the phone. There is no server and no AI in this version.
 | `rust/content/` | The curriculum, in TOML: `words.toml` (Building Blocks), `phrases.toml`, `scenarios.toml` (characters and conversations). The source of truth |
 | `rust/src/content.rs` | Reads and validates the curriculum: every entry in Urdu script, male forms with their female form, known topics, twins and characters |
 | `rust/src/schedule.rs` | The four skills, outcomes and review intervals |
-| `rust/src/answer.rs` | Checks a typed answer, forgiving Roman Urdu spelling (nahi or nahin, hai or he) |
+| `rust/src/answer.rs` | Checks a typed answer: forgives the common spellings of the same word (nahi or nahin, hai or hy), never merges words that only sound alike (kam, less; kaam, work) |
 | `rust/src/lib.rs` | The UniFFI API (`UrduCore`): home, topics, phrases, conversations, review and listening rounds, and the commands that record practice |
 | `Sources/AppHost/` | The SwiftUI screens, the view model (`UrduModel.swift`) and the narrator (`Narrator.swift`, AVSpeechSynthesizer) |
 | `Tests/AppHostTests/` | XCTests of the view model against the real Rust core |

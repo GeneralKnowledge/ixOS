@@ -11,7 +11,11 @@ struct LearnScreen: View {
     var body: some View {
         List {
             if query.isEmpty {
-                topics(.foundation, "Building Blocks", "The words you'll hear constantly. Learn these and you can build your own sentences.")
+                let totals = model.home.totals
+                topics(
+                    .foundation, "Building Blocks",
+                    "\(totals.words) words, \(totals.expressions) expressions and \(totals.patterns) sentence patterns you'll hear constantly. Learn these and you can build your own sentences."
+                )
                 topics(.conversation, "Phrases for conversations", "Whole things to say, from the conversations.")
             } else {
                 let results = model.phrases(topic: nil, query: query)
@@ -125,8 +129,14 @@ struct PhraseScreen: View {
                             .font(.footnote)
                             .foregroundStyle(theme.colors.textTertiary)
                     }
-                    PlayButtons(phrase: phrase)
-                        .padding(.top, 4)
+                    if phrase.kind == .pattern {
+                        Text("Put your own words in the gap. Its examples below show how.")
+                            .font(.footnote)
+                            .foregroundStyle(theme.colors.textSecondary)
+                    } else {
+                        PlayButtons(phrase: phrase)
+                            .padding(.top, 4)
+                    }
                     NoVoiceNote()
                 }
                 .padding(.vertical, 6)
@@ -147,13 +157,18 @@ struct PhraseScreen: View {
             }
 
             if !phrase.combos.isEmpty {
-                Section("Say it with") {
-                    ForEach(Array(phrase.combos.enumerated()), id: \.offset) { _, combo in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(combo.roman).font(.headline)
-                            Text(combo.english).foregroundStyle(theme.colors.textSecondary)
+                Section(phrase.kind == .pattern ? "Examples" : "Say it with") {
+                    ForEach(Array(phrase.combos.enumerated()), id: \.offset) { index, combo in
+                        VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(combo.roman).font(.headline)
+                                Text(combo.english).foregroundStyle(theme.colors.textSecondary)
+                            }
+                            .accessibilityElement(children: .combine)
+                            if combo.speech != nil {
+                                PlayButtons(example: combo, of: phrase, index: index)
+                            }
                         }
-                        .accessibilityElement(children: .combine)
                     }
                 }
             }
@@ -187,10 +202,14 @@ struct PhraseScreen: View {
             Section("Practise it") {
                 practise(phrase, .recognition, "What does it mean?", "eye")
                 practise(phrase, .recall, "Say it from the English", "mouth")
-                if phrase.cloze != nil {
-                    practise(phrase, .speaking, "Use it in a sentence", "text.insert")
+                if phrase.kind == .pattern {
+                    practise(phrase, .speaking, "Make a sentence with it", "text.insert")
+                } else {
+                    if phrase.cloze != nil {
+                        practise(phrase, .speaking, "Use it in a sentence", "text.insert")
+                    }
+                    practise(phrase, .listening, "Hear it and understand", "ear")
                 }
-                practise(phrase, .listening, "Hear it and understand", "ear")
             }
 
             Section {
@@ -207,7 +226,7 @@ struct PhraseScreen: View {
                 Text(phrase.status.label)
             }
         }
-        .navigationTitle(phrase.kind == .word ? "Word" : "Phrase")
+        .navigationTitle(phrase.kind.label)
         .navigationBarTitleDisplayModeInlineIfAvailable()
     }
 

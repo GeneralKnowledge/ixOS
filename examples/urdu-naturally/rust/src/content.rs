@@ -73,12 +73,20 @@ pub enum VariantKind {
     Plural,
 }
 
-/// A building-block word or a whole phrase.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// What kind of thing an entry teaches, which decides how it is practised.
+#[derive(uniffi::Enum, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum EntryKind {
+    /// A conversational line (phrases.toml).
     #[default]
     Phrase,
+    /// One word, or a pair that works as one (woh log): nahi, mat, bhi.
     Word,
+    /// A fixed expression you learn whole: mujhe nahi lagta, koi masla nahi.
+    Expression,
+    /// A sentence frame with a gap, for making your own sentences:
+    /// Main ___ sakta hoon. Practised by building new sentences from it.
+    Pattern,
 }
 
 /// The foundation (Building Blocks) or the conversations built on it.
@@ -96,6 +104,9 @@ pub enum Level {
 pub struct Combo {
     pub roman: String,
     pub english: String,
+    /// Urdu script, for the voice. Required for a pattern's examples, which
+    /// are practised aloud.
+    pub urdu: Option<String>,
 }
 
 /// A line with a gap where the word goes, for practising it in use.
@@ -170,7 +181,12 @@ pub struct PhraseText {
     #[serde(default)]
     pub combos: Vec<Combo>,
     pub cloze: Option<Cloze>,
-    /// Set from the file it came from.
+    /// In words.toml only: word, expression or pattern. Left out, it is a
+    /// pattern if roman has a ___, a word if roman is one word, and an
+    /// expression otherwise.
+    #[serde(default, rename = "kind")]
+    declared_kind: Option<EntryKind>,
+    /// Set from the file it came from and `kind`.
     #[serde(skip)]
     pub kind: EntryKind,
 }
@@ -289,12 +305,21 @@ impl Content {
         let mut topics = words.topic;
         topics.append(&mut phrases.topic);
         phrases.topic = topics;
-        phrases
-            .phrase
-            .extend(words.word.into_iter().map(|mut word| {
-                word.kind = EntryKind::Word;
-                word
-            }));
+        if let Some(p) = phrases.phrase.iter().find(|p| p.declared_kind.is_some()) {
+            return Err(format!("{}: only words.toml entries have a kind", p.id));
+        }
+        for mut word in words.word {
+            word.kind = match word.declared_kind {
+                Some(EntryKind::Phrase) => {
+                    return Err(format!("{}: a building block isn't a phrase", word.id))
+                }
+                Some(kind) => kind,
+                None if word.roman.contains(BLANK) => EntryKind::Pattern,
+                None if word.roman.split_whitespace().count() == 1 => EntryKind::Word,
+                None => EntryKind::Expression,
+            };
+            phrases.phrase.push(word);
+        }
         let scenarios: ScenariosFile =
             toml::from_str(scenarios).map_err(|e| format!("scenarios.toml: {e}"))?;
 
@@ -315,9 +340,16 @@ impl Content {
             .collect();
         for phrase in &phrases.phrase {
             if let Some(opposite) = &phrase.opposite {
-                if opposite == &phrase.id || !index.contains_key(opposite) {
+                let Some(&twin) = index.get(opposite).filter(|_| opposite != &phrase.id) else {
                     return Err(format!(
                         "{}: opposite {opposite} is not another entry",
+                        phrase.id
+                    ));
+                };
+                // Twins are taught together, so each names the other.
+                if phrases.phrase[twin].opposite.as_ref() != Some(&phrase.id) {
+                    return Err(format!(
+                        "{}: its opposite {opposite} doesn't name it back",
                         phrase.id
                     ));
                 }
@@ -420,8 +452,43 @@ fn check_phrase(phrase: &PhraseText, topics: &HashSet<&str>) -> Result<(), Strin
             return Err(format!("{id}: unknown topic {topic}"));
         }
     }
+    let gaps = |text: &str| text.matches(BLANK).count();
+    if phrase.kind == EntryKind::Pattern {
+        if gaps(&phrase.roman) != 1 || gaps(&phrase.urdu) != 1 {
+            return Err(format!(
+                "{id}: a pattern has exactly one {BLANK} in roman and in urdu"
+            ));
+        }
+        if phrase.combos.len() < 2 {
+            return Err(format!(
+                "{id}: a pattern needs at least two examples (combos)"
+            ));
+        }
+        for combo in &phrase.combos {
+            let urdu = combo.urdu.as_deref().unwrap_or("");
+            if gaps(&combo.roman) > 0 || !is_urdu_script(urdu) {
+                return Err(format!(
+                    "{id}: each example of a pattern is a whole sentence, with its urdu"
+                ));
+            }
+        }
+        if phrase.cloze.is_some() {
+            return Err(format!(
+                "{id}: a pattern is its own gap line; it has no cloze"
+            ));
+        }
+    } else if gaps(&phrase.roman) > 0 || gaps(&phrase.urdu) > 0 {
+        return Err(format!("{id}: only a pattern has a {BLANK} in it"));
+    }
+    for combo in &phrase.combos {
+        if let Some(urdu) = &combo.urdu {
+            if !is_urdu_script(urdu) {
+                return Err(format!("{id}: a combo's urdu is not in Urdu script"));
+            }
+        }
+    }
     if let Some(cloze) = &phrase.cloze {
-        if cloze.prompt.matches(BLANK).count() != 1 {
+        if gaps(&cloze.prompt) != 1 {
             return Err(format!("{id}: a cloze prompt has exactly one {BLANK}"));
         }
     }
@@ -558,5 +625,77 @@ mod tests {
         let scenario = ONE_SCENARIO.replace("phrase = \"x\"", "phrase = \"nope\"");
         let err = Content::parse_test(&phrases("میں جا رہا ہوں۔", "any"), &scenario).unwrap_err();
         assert!(err.contains("unknown phrase"), "{err}");
+    }
+
+    /// A words.toml with one topic and the given entries, against a
+    /// phrases.toml whose one phrase "x" is spoken in ONE_SCENARIO.
+    fn with_words(entries: &str) -> Result<Content, String> {
+        let words = format!(
+            "[[topic]]\nid = \"w\"\ntitle = \"W\"\ndescription = \"d\"\nlevel = \"foundation\"\n{entries}"
+        );
+        Content::parse(&phrases("میں جا رہا ہوں۔", "any"), &words, ONE_SCENARIO)
+    }
+
+    #[test]
+    fn twins_must_name_each_other() {
+        let one_way = r#"
+            [[word]]
+            id = "haan"
+            roman = "Haan"
+            english = "Yes"
+            urdu = "ہاں"
+            topic = "w"
+            opposite = "nahi"
+            [[word]]
+            id = "nahi"
+            roman = "Nahi"
+            english = "No"
+            urdu = "نہیں"
+            topic = "w"
+        "#;
+        let err = with_words(one_way).unwrap_err();
+        assert!(err.contains("doesn't name it back"), "{err}");
+        let both = one_way.replace(
+            "urdu = \"نہیں\"",
+            "urdu = \"نہیں\"\n            opposite = \"haan\"",
+        );
+        with_words(&both).unwrap();
+    }
+
+    #[test]
+    fn a_pattern_needs_a_gap_and_spoken_examples() {
+        let pattern = |combos: &str| {
+            format!(
+                r#"
+                [[word]]
+                id = "p"
+                roman = "Mujhe ___ chahiye."
+                english = "I need ___."
+                urdu = "مجھے ___ چاہیے۔"
+                topic = "w"
+                combos = [{combos}]
+                "#
+            )
+        };
+        let good = r#"{ roman = "Mujhe paani chahiye.", english = "I need water.", urdu = "مجھے پانی چاہیے۔" },
+            { roman = "Mujhe madad chahiye.", english = "I need help.", urdu = "مجھے مدد چاہیے۔" }"#;
+        let content = with_words(&pattern(good)).unwrap();
+        assert_eq!(content.phrase("p").unwrap().kind, EntryKind::Pattern);
+        let no_urdu = r#"{ roman = "Mujhe paani chahiye.", english = "I need water." },
+            { roman = "Mujhe madad chahiye.", english = "I need help." }"#;
+        assert!(with_words(&pattern(no_urdu)).is_err());
+        assert!(with_words(&pattern("")).is_err());
+        // A gap in anything but a pattern is a mistake.
+        let stray = pattern(good).replace(
+            "roman = \"Mujhe ___ chahiye.\"",
+            "roman = \"Mujhe chahiye.\"",
+        );
+        assert!(with_words(&stray).is_err());
+        // Only words.toml says what kind an entry is.
+        let declared = phrases("میں جا رہا ہوں۔", "any").replace(
+            "topic = \"t\"",
+            "topic = \"t\"\n            kind = \"word\"",
+        );
+        assert!(Content::parse(&declared, "", ONE_SCENARIO).is_err());
     }
 }

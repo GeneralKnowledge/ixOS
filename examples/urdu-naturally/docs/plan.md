@@ -42,7 +42,7 @@ Less studying. More talking. Most language apps teach you to pass their exercise
 
 | Level | What | In 0.1 |
 |---|---|---|
-| Building Blocks | 9 foundation topics, about 175 to 225 words, each practised three ways: recognise, recall, use it in a gap line | 159 words |
+| Building Blocks | Foundation topics, about 175 to 225 entries in three kinds: words (recognise, recall, use in a gap line), expressions (learnt whole) and sentence patterns (build new sentences from them) | 188 in 12 topics: 137 words, 42 expressions, 9 patterns |
 | 1. First contact | Hello, how are you, names, goodbye | Yes |
 | 2. Keeping it going | Small talk, reactions, Conversation Glue | Yes |
 | 3. Everyday life | What you're doing, what you want, what you don't | Partly |
@@ -68,7 +68,9 @@ Phone check: open the first conversation, take a turn, relaunch, find it counted
 
 ### M2: Native-speaker review
 
-A reviewer goes through the Building Blocks and the first 50 phrases. The app gains a reviewer mode: mark an entry reviewed or flag it, with a note, and export the notes. Finish the Building Blocks to about 200 words, then settle the starter phrases on top of them.
+Before review, an M1 quality pass (done 2026-11-18) split the Building Blocks into words, expressions and patterns, added amounts, manners and having/for/with, stopped the answer checker treating sound-alikes (kam, kaam) as the same word, made twins name each other, and made Listen name the voice actually reading.
+
+A reviewer goes through the Building Blocks and the first 50 phrases, checking in particular the new entries' natural Pakistani usage (meherbani, zara, khush aamdeed). The app gains a reviewer mode: mark an entry reviewed or flag it, with a note, and export the notes. Finish the Building Blocks to about 200 words, then settle the starter phrases on top of them.
 
 ### M3: Sound Lab
 
