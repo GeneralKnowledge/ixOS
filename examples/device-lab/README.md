@@ -12,6 +12,7 @@ It has three tabs:
   - **Checks**: the next sitting's checks, built into the app (`Sources/AppHost/PhoneChecks.swift`). Tick Pass, Fail or Skip, add a note, and share the results as text. Answers are kept per build number. Whoever prepares a sitting replaces that file's text in the PR the build comes from.
   - **Servers**: whether the chat server (Relay's Chats) and the take server (Soundscape) answer from the phone, at the address each app uses, with the time it took or why not. Tailscale addresses are marked, since Tailscale must be on for the phone too.
   - **Logs**: the last 512 records from Device Lab and every hosted app, kept in memory by Forge's logging pipeline (`rust/src/logs.rs`), with a level filter, search and Share, so a problem can be sent without the cable.
+  - **Spatial Sensor Lab**: the phone as a live 3D model that turns as you turn it, the magnetic field as an arrow with its strength in µT, and a field anomaly monitor: set a baseline, move the phone near an object, and see how far the field moved, with the last 30 seconds as a graph ([below](#spatial-sensor-lab)).
   - AI Lab, Background Downloads and Crash Test.
 
 ## What it shows
@@ -28,6 +29,7 @@ It has three tabs:
 | **Barometer** | Air pressure with its range and a sparkline, height change since it started | Motion & Fitness permission |
 | **Location** | Latitude, longitude, accuracy, altitude, speed, course, floor, distance travelled, top speed, Precise Location, a link to Maps | Location permission, while in use |
 | **Device** | Model identifier, iOS version, cores, screen size, uptime | Nothing |
+| **Spatial Sensor Lab** | A 3D phone following the fused attitude, seen from a fixed point south of it; pitch, roll, yaw, gravity, movement, rate; the calibrated magnetic field as a 3D arrow, its strength, dip and calibration; a baseline averaged over half a second and the anomaly from it (vector change, strength change, peak, 30-second graph) | Nothing |
 | **AI Lab** | Ready-made experiments with Apple's on-device model (short answer, following instructions, summarising, structured output twice, through Apple's `@Generable` macro and through `StructuredShape`, a no-macro stand-in that builds on Linux, a long answer to stop part-way) and a prompt of your own. Each run records time to first text, total time, an estimated speed, how many pieces it streamed in, and the app's memory and thermal state before and after ([plan, phase A0](../../docs/research/esim-ai-lab-plan.md)) | iOS 26 with Apple Intelligence on |
 | **Background Downloads** | A download that keeps going after you leave the app, through Forge's background transfers | Nothing |
 | **What iOS Keeps from Apps** | Wi-Fi name (paid team), the phone's own name (Apple approval), carrier, signal strength, the light sensor, MAC addresses, background sensors | |
@@ -124,6 +126,18 @@ phone sitting or when asked. To add an app with a Rust crate:
 
 An app without Rust (like the ForgeUI Showcase) needs only steps 3 and 4.
 
+## Spatial Sensor Lab
+
+A self-contained instrument in Tools, built on Core Motion directly rather than on a Forge service: one `CMMotionManager`, one device-motion stream at 60 Hz referenced to magnetic north (`.xMagneticNorthZVertical`), running only while the screen is open and the app is in the foreground. The This iPhone tab's sensors are stopped on the Tools tab, so it is the only motion stream running.
+
+- `SensorLabMotion.swift` copies each `CMDeviceMotion` (attitude matrix, roll, pitch, yaw, gravity, user acceleration, calibrated field and its accuracy) into a plain sample.
+- `SensorLabModel.swift` (Foundation and Observation only) holds the baseline and the anomaly: the field turned into world axes with the attitude, so turning the phone doesn't count as a change, minus the baseline's.
+- `SensorLabScene.swift` is the 3D view's geometry, and `SensorLabView.swift` draws it with a SwiftUI `Canvas`: no SceneKit, RealityKit or Metal shaders, so it builds with xtool on Linux.
+
+It shows field anomaly, never distance or identity. A magnetometer measures the field at the phone; the same change can come from a small magnet close by or a big one further off, so the screen says how much the field moved and nothing about what moved it. A neodymium magnet shows strongly; speakers and magnetic accessories often; steel a little; aluminium and copper not at all.
+
+Not yet: a recording mode for scans, raw accelerometer, gyroscope and magnetometer panels (the This iPhone tab's Motion screen has those), and a calibration and sensor-health screen.
+
 ## How it is built
 
 ```
@@ -134,7 +148,8 @@ examples/device-lab/
   rust/src/stats.rs        rolling histories, measured rates, peaks, tilt, distance, change log
   Generated/ForgeFFI/      bindings plus the five optional Swift adapters (copied because lib.rs names them)
   Sources/AppHost/         SwiftUI: ContentView (the tabs), AppsView, DashboardView (This iPhone),
-                           ToolsView, WorkshopView, LabModel, MotionView, CompassView, LimitsView
+                           ToolsView, WorkshopView, LabModel, MotionView, CompassView, LimitsView,
+                           SensorLab* (Spatial Sensor Lab: Core Motion straight from Swift)
   Resources/AppIcon.png    the home-screen icon
 ```
 
@@ -170,4 +185,5 @@ Device Lab has been on the phone since 14 November 2026, as the app every phone 
 6. Location: allow, walk 100 m, and check Travelled.
 7. Battery: plug in and out; turn on Low Power Mode.
 8. AI Lab: Status reads Ready. Run each experiment once: Short Answer streams in pieces with a first-text time; Follow Instructions gives exactly five numbered lines; Structured Output and Structured, No Macro each show the fields filling in, then the dish, minutes, ingredients and steps; stop one part-way and the partial answer stays; start Long Answer and tap Stop part-way, and the run ends as Stopped within a second. With Apple Intelligence turned off in Settings, Check Again shows why it is unavailable.
-9. Crash Test: tap Crash in Swift, then on the laptop `forge device crashes --app AppHostXtool --pull crashes/ --limit 1 --project examples/device-lab`. Expect `swift_runtime_error` with the culprit at `LabModel.swift`. Open the app again, tap Crash in Rust, pull again: `rust_panic`, culprit `on_reading` in `rust/src/crash_test.rs` (Rust aborts at the callback that couldn't unwind; `forge device logs --grep panic` running at the time shows the message and line of the `expect`).
+9. Spatial Sensor Lab (Tools): lay the phone flat and the model lies flat, screen up. Turn it on the table and the model turns the same way against its compass ring (N at the back, so face north to see it from behind); lift its top and the model lifts its top; turn it over and the model shows its back with the camera. Once calibration reads Medium or High, the field is 25 to 65 µT. Set Baseline away from metal, then bring a magnet (a MagSafe charger or a fridge magnet) near: the anomaly rises and the badge reads Clear or Strong disturbance; take it away and it settles back under 3 µT. Turning the phone slowly without a magnet should stay under about 5 µT. Leaving the screen stops the stream.
+10. Crash Test: tap Crash in Swift, then on the laptop `forge device crashes --app AppHostXtool --pull crashes/ --limit 1 --project examples/device-lab`. Expect `swift_runtime_error` with the culprit at `LabModel.swift`. Open the app again, tap Crash in Rust, pull again: `rust_panic`, culprit `on_reading` in `rust/src/crash_test.rs` (Rust aborts at the callback that couldn't unwind; `forge device logs --grep panic` running at the time shows the message and line of the `expect`).
