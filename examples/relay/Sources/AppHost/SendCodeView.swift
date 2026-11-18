@@ -109,7 +109,7 @@ struct SendCodeSheet: View {
                 network.stopWatchingCodeSenders()
                 if !model.isSendingCode { network.advertiseCode(nil) }
             }
-            .interactiveDismissDisabled(model.isSendingCode)
+            .forgeSwipeGuard(model.isSendingCode)
         }
     }
 

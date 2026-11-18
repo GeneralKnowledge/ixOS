@@ -487,6 +487,23 @@ def rule_state_views(app):
     return True, ""
 
 
+# A sheet kept open (while saving, or holding unsaved input) through
+# ForgeUI's `forgeSwipeGuard` or `forgeFormToolbar`. SwiftUI's
+# `interactiveDismissDisabled` didn't stop the swipe on iOS 26.3 when applied
+# inside the sheet's NavigationStack (#326 phone check, 2026-11-18: the
+# showcase task form and Pocket Library's Add Book both closed with text
+# typed). Applies to every app, ForgeUI or not: the fix is in ForgeUI.
+def rule_swipe_guard(app):
+    bad = []
+    for path in swift_sources(app):
+        for i, line in enumerate(read(path).splitlines()):
+            if re.search(r"\.interactiveDismissDisabled\s*\(", line.split("//", 1)[0]):
+                bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "keeps a sheet open with interactiveDismissDisabled, which iOS 26.3 ignores; use forgeSwipeGuard: " + ", ".join(bad)
+    return True, ""
+
+
 def rule_web_images(app):
     bad = []
     for path in swift_sources(app):
@@ -507,6 +524,7 @@ RULES = [
     ("alerts-over-sheets", "A model alert is held back while a sheet is up; the sheet shows alerts itself", rule_alerts_over_sheets),
     ("picked-files", "Picked files copied with ForgeAppKit's `ForgePickedFile` (off the main thread), never by hand", rule_picked_files),
     ("web-images", "Pictures from the web through `ForgeRemoteImage` (kept on disk, decoded at the size shown), never `AsyncImage`", rule_web_images),
+    ("swipe-guard", "Sheets kept open with ForgeUI's `forgeSwipeGuard` (or `forgeFormToolbar`), never SwiftUI's `interactiveDismissDisabled`", rule_swipe_guard),
     ("state-views", "Empty, no-results, loading and failed screens through ForgeUI's `ForgeStateView`", rule_state_views),
     ("toned-text", "Warning and error text in ForgeUI's tones, never raw orange, yellow or (for errors) red", rule_toned_text),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),

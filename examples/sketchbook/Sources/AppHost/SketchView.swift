@@ -43,7 +43,7 @@ struct SketchView: View {
         .toolbar { toolbar }
         // Inside Device Lab's sheet, a stroke started right at the top of
         // the canvas dragged the sheet closed. Back to the grid first.
-        .interactiveDismissDisabled()
+        .forgeSwipeGuard()
         .sheet(isPresented: $showingLayers) {
             LayersPanel(model: model, sketchID: sketchID, detail: $detail, selected: $selected)
                 .presentationDetents([.medium, .large])

@@ -1,5 +1,6 @@
 @preconcurrency import CommonplaceFFI
 import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// The Add Feed sheet: a web address, checked and fetched by Rust, and
@@ -69,7 +70,7 @@ struct AddFeedView: View {
                     }
                 }
             }
-            .interactiveDismissDisabled(adding.isWorking)
+            .forgeSwipeGuard(adding.isWorking)
             .forgeAlert(failure: $adding.failure)
             // Straight to typing when the person has feeds; a new library
             // starts with the suggestions in view, not under the keyboard.

@@ -251,6 +251,8 @@ NavigationStack {
 
 The buttons get the identifiers `taskForm.cancel` and `taskForm.confirm` (the spinner `taskForm.working`). Leave `hasChanges` out and only saving stops the swipe. Use it instead of writing the Cancel and spinner toolbar yourself.
 
+For any other sheet that must not be swiped away (a drawing canvas, a transfer that is running), use `.forgeSwipeGuard(isActive)`, which the toolbar uses too. Don't use SwiftUI's `interactiveDismissDisabled` on its own: on iOS 26.3 it didn't stop the swipe when applied inside the sheet's `NavigationStack` (2026-11-18), and the `swipe-guard` parity rule flags it.
+
 **Increase Contrast.** With Settings > Accessibility > Display & Text Size > Increase Contrast on, every theme's secondary and tertiary text, tone text and separators move 40% of the way toward primary text (`ForgePalette.increasedContrast`), so quieter text reaches WCAG AAA (7:1). Backgrounds and fills stay, so the app still looks like itself. Nothing to do in the app: the theme's colours switch by themselves.
 
 ### Visual language

@@ -73,7 +73,7 @@ struct ReceiveCodeSheet: View {
                 model.resetCodeReceive()
                 typing = true
             }
-            .interactiveDismissDisabled(model.isReceivingCode)
+            .forgeSwipeGuard(model.isReceivingCode)
         }
     }
 

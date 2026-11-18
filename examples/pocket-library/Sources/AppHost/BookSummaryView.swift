@@ -39,7 +39,7 @@ struct BookSummarySheet: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, state.pausedInBackground { state.start() }
         }
-        .interactiveDismissDisabled(state.phase == .working)
+        .forgeSwipeGuard(state.phase == .working)
     }
 
     @ViewBuilder
