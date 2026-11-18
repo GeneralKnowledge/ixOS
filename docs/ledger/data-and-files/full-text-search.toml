@@ -4,6 +4,6 @@ framework = "Partial: FTS5 is built into `Database`; the query builders are stil
 rust_api = "Yes"
 ios_native = "n/a"
 in_app = "Yes: Chat M2 search, Commonplace article search (on its own read-only connection)"
-iphone = "No"
+iphone = "Partial: Chat search inside Relay passed (Device Lab 1.29915393, 2026-11-17, reported by Reuben: searched for a word in Chats); Commonplace article search was part of a general report (Device Lab 1.29913703, 2026-11-16: \"Everything seems to be working\", not item by item)"
 documented = "Partial: chat-demo.md"
 limits = ""
