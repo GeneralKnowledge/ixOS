@@ -42,6 +42,8 @@ Live instances:
 
 **First, a spike on the phone.** Whether content margins set on a stack reach a pushed `List` on iOS 26 is a guess until the iPhone shows it. The spike is one screen in ForgeUI's showcase: a stack with a bar, a pushed long list, a paged `TabView` and a horizontal shelf inside a list. If margins don't pass down, the fallback is #320's design moved into ForgeUI: the bar publishes its height in the environment, and `.forgeBarClearance()` is added by each screen, with a rule to check it.
 
+**Commonplace's banner, which of two causes:** "slightly covered", rather than a whole row hidden, fits either cause. (1) The inset on the stack only partly reaches the pushed timeline. (2) The banner draws past the room it reserves: its shadow (12-point radius) spills upward, and it reserves no space above itself. The spike shows which by putting `forgeBanner` over the same pushed list. `forgeBar` covers (1), and reserving a few points above the bar covers (2).
+
 **One known side effect to check in the spike:** content margins reach *every* scroll view below, including a horizontal shelf inside a list (Weather's hourly strip, Soundscape's album rows). A horizontal scroller would gain empty space under it. If the spike shows that, `forgeBar` limits the margin to vertical scrolling, or ForgeUI's horizontal shelf resets it.
 
 ### 2. Apple's own mini-player slot where it fits
