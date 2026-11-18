@@ -140,6 +140,8 @@ public final class TaskFormModel: Identifiable {
     public private(set) var titleTouched = false
     /// The task being edited, or nil for a new one.
     public let editing: ShowcaseTask.ID?
+    /// What the form opened with, to tell whether anything changed.
+    private let original: (title: String, notes: String, priority: ShowcaseTask.Priority)
 
     public init(editing task: ShowcaseTask? = nil) {
         editing = task?.id
@@ -147,6 +149,7 @@ public final class TaskFormModel: Identifiable {
         notes = task?.notes ?? ""
         priority = task?.priority ?? .normal
         titleTouched = task != nil
+        original = (title, notes, priority)
     }
 
     public var isNew: Bool { editing == nil }
@@ -154,6 +157,11 @@ public final class TaskFormModel: Identifiable {
     public var titleMessage: ForgeFieldMessage? { TaskRules.titleMessage(draft, touched: titleTouched) }
     public var notesMessage: ForgeFieldMessage { TaskRules.notesMessage(draft) }
     public var canSave: Bool { TaskRules.canSave(draft) && !isSaving }
+    /// True once the form differs from what it opened with, so a swipe down
+    /// doesn't throw the edit away (`forgeFormToolbar(hasChanges:)`).
+    public var hasChanges: Bool {
+        title != original.title || notes != original.notes || priority != original.priority
+    }
 
     /// The view calls this when the title field changes.
     public func titleEdited() {
