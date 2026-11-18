@@ -1,7 +1,8 @@
 # Music sources: free catalogues next to your own music (plan)
 
-Reuben, 2026-11-17. This is the first expansion after the six music-player PRs (player, library, collection,
-offline, creation, removing Studio). It is a plan only, and no code exists for it yet.
+Reuben, 2026-11-17. Moved to the front on 2026-11-18: Reuben wants to test Soundscape with real, full-length
+music, and the generation work (takes, picks, timed lyrics) waits. **Jamendo is built** (below); Internet
+Archive and MusicBrainz come next.
 
 ## The idea
 
@@ -72,12 +73,42 @@ Everything plays through the same player and queue.
 - **Requests go through the app's Rust networking**, like the take server's. The rules (what the licence allows,
   building the credit line) are Rust and are tested on Linux.
 
+## Jamendo, as built
+
+- **Discover** (first row of Your Music) searches Jamendo, showing this week's popular tracks until you type.
+  Each result shows its artwork, artist, album, length and licence. Tap plays the results from there through
+  the same player and queue; Play Next and Add to Queue are on the long press.
+- **The client ID is Reuben's own**, typed once in Discover and kept in `listen.json` next to the take server's
+  address. Without one, Discover asks for it and the rest of Soundscape is unaffected.
+- **Add to Library** (the plus) keeps the track in `library.json` under `catalogue`, by its id `jamendo:<id>`,
+  with its rights as they were when added. From then on it is a track like any other: it joins its album and
+  artist, can be edited, favourited, put in playlists, and downloaded where Jamendo allows it
+  (`audiodownload_allowed`). Its screen shows the licence, the credit, whether offline and changes are
+  allowed, and a link to its Jamendo page. **Remove from Library** takes it out again.
+- **Rights**, in `rust/src/catalogue.rs`: the Creative Commons licence URL becomes a name (`CC BY-NC-SA 3.0`),
+  may adapt (no ND), non-commercial (NC), and the credit line. An unknown licence is never adaptable.
+- **The library no longer needs a take server.** It opens on your imported and Jamendo music; the take server
+  is an optional source in the Library's menu.
+
+**One change from the plan above:** saved catalogue tracks are kept in `library.json` (its `catalogue`
+section) rather than a store of their own. Every screen already looks tracks up in the library, so playlists,
+favourites, history, downloads and the queue work for Jamendo tracks with no separate resolver. Their rights
+live with the saved track, so they outlast any cache. Search results that are not added stay in memory only.
+
+Of the resolver tests above, these pass in `rust/tests/catalogue.rs`: adding to a playlist, restarting and
+finding it again, leaving search results without losing the playlist entry, and keeping the licence without
+asking Jamendo. Not done yet: a Jamendo track that has since been taken down plays as a stream error rather than
+showing as unavailable with a reason.
+
 ## Order of work
 
-1. Finish the six player PRs: player, library, collection, offline, creation, removing Studio.
-2. The track resolver, over the personal library only at first, with the tests above.
-3. Jamendo, with Reuben's free client ID.
-4. Internet Archive, as a second and independent source.
+1. ~~The track resolver~~ (the library is the lookup; above) and Jamendo: built.
+2. Internet Archive, as a second and independent source: its metadata gives each file's format, size and
+   checksum, which also tests imports and download checks.
+3. MusicBrainz, to recognise the same recording from different sources (reconciliation in
+   [architecture.md](architecture.md)).
+4. A small fixed test catalogue: short and long tracks, with and without artwork or tags, two recordings of one
+   work, several formats, and one track that may not be downloaded.
 5. Mixed playlists, and playback across all sources, tested together.
 
 Not now: more providers, recommendations, or extra infrastructure.

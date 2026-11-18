@@ -72,7 +72,7 @@ struct LibraryHome: View {
             if library.tracks.isEmpty {
                 ForgeStateView.empty(
                     "No Music Yet", systemImage: "music.note.list",
-                    description: "The take server found no audio. New songs show up here when you pull down."
+                    description: "Find music in Discover, import your own files, or add a take server."
                 )
             } else if !query.isEmpty && model.search(query).isEmpty {
                 ForgeStateView.noResults(for: query)
@@ -603,7 +603,11 @@ struct TrackView: View {
             }
             .accessibilityIdentifier("track.confirmRemove")
         } message: {
-            Text("Soundscape's copy is deleted. The file you imported it from isn't touched.")
+            if detail?.track.preferred?.kind == .catalogue {
+                Text("It stays in the catalogue, where you can find it again in Discover.")
+            } else {
+                Text("Soundscape's copy is deleted. The file you imported it from isn't touched.")
+            }
         }
     }
 
@@ -671,15 +675,16 @@ struct TrackView: View {
                     Label("Add to Playlist", systemImage: "text.badge.plus")
                 }
                 .accessibilityIdentifier("track.addToPlaylist")
-                if track.preferred?.kind == .imported {
+                if !model.downloadable([track]).isEmpty {
+                    downloadButton(track)
+                }
+                if track.preferred?.kind == .imported || track.preferred?.kind == .catalogue {
                     Button(role: .destructive) {
                         confirmingRemove = true
                     } label: {
                         Label("Remove from Library", systemImage: "trash")
                     }
                     .accessibilityIdentifier("track.remove")
-                } else if track.preferred != nil {
-                    downloadButton(track)
                 }
             }
             Section {
@@ -722,6 +727,9 @@ struct TrackView: View {
                          ? "The picked recording plays. Your pick is saved on the take server."
                          : "Nothing is picked yet, so the best rated (or newest) recording plays.")
                 }
+            }
+            if let recording = track.preferred, let rights = recording.rights {
+                LicenceSection(recording: recording, rights: rights)
             }
             if let slug = track.slug {
                 Section {
@@ -793,6 +801,47 @@ extension TrackView {
             }
         }
         .accessibilityIdentifier("track.download")
+    }
+}
+
+/// A catalogue track's licence and credit, and what it allows, kept with
+/// the track when it was added.
+private struct LicenceSection: View {
+    let recording: Recording
+    let rights: Rights
+
+    private var provider: String {
+        if case .catalogue(let provider) = recording.source { return provider }
+        return "the catalogue"
+    }
+
+    var body: some View {
+        Section {
+            if let url = rights.licenceUrl.flatMap(URL.init(string:)) {
+                Link(destination: url) {
+                    LabeledContent("Licence", value: rights.licence)
+                }
+                .accessibilityIdentifier("track.licence")
+            } else {
+                LabeledContent("Licence", value: rights.licence)
+            }
+            LabeledContent("Offline", value: rights.mayDownload ? "Allowed" : "Not allowed")
+            LabeledContent("Changes and remixes", value: rights.mayAdapt ? "Allowed" : "Not allowed")
+            if rights.nonCommercial {
+                LabeledContent("Use", value: "Non-commercial only")
+            }
+            if let page = rights.pageUrl.flatMap(URL.init(string:)) {
+                Link(destination: page) {
+                    Label("Open on \(provider)", systemImage: "safari")
+                }
+                .accessibilityIdentifier("track.openSource")
+            }
+        } header: {
+            Text("From \(provider)")
+        } footer: {
+            Text(rights.attribution)
+                .textSelection(.enabled)
+        }
     }
 }
 

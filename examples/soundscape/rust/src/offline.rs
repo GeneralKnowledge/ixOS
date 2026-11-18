@@ -90,10 +90,14 @@ pub fn file_name(number: u64, extension: &str) -> String {
 // ------------------------------------------------------------ the rules
 
 /// Whether a recording may be kept on the phone. Take-server recordings
-/// may; an imported file already is. Catalogue sources will say per track
-/// (`docs/sources.md`).
+/// may; an imported file already is; a catalogue track only where its
+/// provider allows it (`docs/sources.md`).
 pub fn may_download(recording: &Recording) -> bool {
-    matches!(recording.source, AudioSource::TakeServer { .. })
+    match recording.source {
+        AudioSource::TakeServer { .. } => true,
+        AudioSource::Catalogue { .. } => recording.rights.as_ref().is_some_and(|r| r.may_download),
+        AudioSource::LocalFile { .. } => false,
+    }
 }
 
 /// One recording to download.

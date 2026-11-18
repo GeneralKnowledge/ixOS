@@ -17,6 +17,10 @@ struct YourMusicSection: View {
 
     var body: some View {
         Section("Your Music") {
+            NavigationLink(value: ListenRoute.discover) {
+                row("Discover", systemImage: "globe", tint: .blue, count: nil)
+            }
+            .accessibilityIdentifier("library.discover")
             NavigationLink(value: ListenRoute.favourites) {
                 row("Favourites", systemImage: "heart.fill", tint: .pink,
                     count: collection.favouriteTracks.count + collection.favouriteAlbums.count

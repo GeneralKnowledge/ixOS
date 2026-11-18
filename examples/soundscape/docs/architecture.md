@@ -100,25 +100,31 @@ endpoints would be the same.
 
 Each step is one PR with its tests and a short phone check, as before.
 
-1. **P0, finish what's written.** Recheck #328 and #334 on the phone. The other P0 items are already done.
-2. **Remove Studio and set the navigation** (old PR 6). Drop `project.rs`, `dsp.rs` and the Studio screens.
+**Reordered 2026-11-18.** Reuben: "I don't care about the music gen right now." Real music from free
+catalogues comes first, so Soundscape can be tested with full-length tracks. Jamendo is built
+([sources.md](sources.md#jamendo-as-built)); the generation side (takes, picks, `/v1` on the JewGrass server,
+timed lyrics) waits, and the question of where "your own server" lives waits with it.
+
+1. **Jamendo** (done in Rust and Swift; phone check next), then **Internet Archive** and **MusicBrainz** matching,
+   and a fixed test catalogue ([sources.md](sources.md#order-of-work)).
+2. **P0, finish what's written.** Recheck #328 and #334 on the phone. The other P0 items are already done.
+3. **Remove Studio and set the navigation** (old PR 6). Drop `project.rs`, `dsp.rs` and the Studio screens.
    Soundscape opens on Listen. Tabs: Listen, Library, Search, Collections, with Sources in Settings until there is
    more than one source.
-3. **Persist the queue.** Queue, position and the playing recording survive a restart. This is P0 in the
+4. **Persist the queue.** Queue, position and the playing recording survive a restart. This is P0 in the
    proposal, and it's missing today.
-4. **Stable recording ids and `RecordingSource`.** The model, a schema version bump for `library.json` that
+5. **Stable recording ids and `RecordingSource`.** The model, a schema version bump for `library.json` that
    migrates today's ids, and tests for the five resolver cases in [sources.md](sources.md).
-5. **The resolver.** `resolve` in Rust; the player asks it what to play and shows why when nothing can. It
+6. **The resolver.** `resolve` in Rust; the player asks it what to play and shows why when nothing can. It
    includes the proposal's test: play from the server, lock, lose the network, reconnect, download, restart; the
    same track, recording and queue remain.
-6. **Server `/v1` (JewGrass).** Stable ids, `sha256`, `/v1/library` and `/v1/recordings/{id}/stream`, next to the
+7. **Server `/v1` (JewGrass), when generation is back in focus.** Stable ids, `sha256`, `/v1/library` and `/v1/recordings/{id}/stream`, next to the
    old endpoints.
-7. **Reconciliation.** Imported files link to server recordings by hash. Downloads verify their checksum.
-8. **Upload from the phone** (`POST /v1/imports`).
-9. **Background downloads** (`transfers`) and a storage limit.
-10. **Playback quality:** sleep timer, loudness levelling (the take server already measures LUFS), then gapless
+8. **Reconciliation.** Imported files link to server recordings by hash. Downloads verify their checksum.
+9. **Upload from the phone** (`POST /v1/imports`).
+10. **Background downloads** (`transfers`) and a storage limit.
+11. **Playback quality:** sleep timer, loudness levelling (the take server already measures LUFS), then gapless
     and crossfade, each proven on the phone.
-11. **External catalogues:** Jamendo, then Internet Archive, as [sources.md](sources.md) plans.
 12. **Sync between devices:** versioned records and an operation log, not a distributed database.
 
 Not planned, as the proposal says: replacing Spotify, Apple Music as the model, a custom audio engine,

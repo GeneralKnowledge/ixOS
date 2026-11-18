@@ -15,8 +15,6 @@ private let log = ForgeLog("Listen")
 @MainActor
 public final class ListenModel {
     public enum Phase: Equatable {
-        /// No server address yet.
-        case needsServer
         case loading
         case ready
         case failed(String)
@@ -26,8 +24,11 @@ public final class ListenModel {
         case forgetServer
     }
 
-    /// The take server's address, as Rust saved it.
+    /// The take server's address, as Rust saved it. Optional: the library
+    /// also holds your own files and catalogue tracks.
     public private(set) var server: String?
+    /// The person's Jamendo client ID, as Rust saved it.
+    public private(set) var jamendoClientId: String?
     /// The library as kept on the phone; refreshed from the take server.
     public private(set) var library: Library {
         didSet { collection = core.collection() }
@@ -45,7 +46,7 @@ public final class ListenModel {
     private var downloadStates: [String: DownloadState] = [:]
     private var syncTask: Task<Void, Never>?
     private var syncAgain = false
-    public private(set) var phase: Phase = .needsServer
+    public private(set) var phase: Phase = .ready
     /// Why the last refresh failed while the kept library still shows.
     public var refreshProblem: String?
     public var alert: ForgeAlert<Action>?
@@ -57,13 +58,14 @@ public final class ListenModel {
     public init(core: SoundscapeCore) {
         self.core = core
         server = core.listenServer()
+        jamendoClientId = core.jamendoClientId()
         library = core.library()
         collection = core.collection()
         offline = core.offline()
         downloadStates = Dictionary(
             offline.tracks.map { ($0.track.id, $0.state) }, uniquingKeysWith: { a, _ in a }
         )
-        phase = server == nil ? .needsServer : library.tracks.isEmpty ? .loading : .ready
+        phase = server != nil && library.tracks.isEmpty ? .loading : .ready
     }
 
     // MARK: Server
@@ -73,7 +75,7 @@ public final class ListenModel {
     public func setServer(_ address: String) async throws {
         server = try await core.setListenServer(address: address)
         // The Listen screen reloads when the server changes.
-        phase = server == nil ? .needsServer : .loading
+        phase = server == nil ? .ready : .loading
     }
 
     public func askToForgetServer() {
@@ -105,7 +107,9 @@ public final class ListenModel {
     /// kept library still shows, with the reason in `refreshProblem`.
     public func loadLibrary(fresh: Bool = false) async {
         guard server != nil else {
-            phase = .needsServer
+            library = core.library()
+            refreshProblem = nil
+            phase = .ready
             return
         }
         if library.tracks.isEmpty { phase = .loading }
@@ -130,6 +134,49 @@ public final class ListenModel {
     }
 
     public func search(_ query: String) -> LibrarySearch { core.searchLibrary(query: query) }
+
+    // MARK: Catalogues
+
+    /// Saves the Jamendo client ID; throws Rust's reason when it can't be
+    /// used. Empty forgets it.
+    public func setJamendoClientId(_ text: String) async throws {
+        jamendoClientId = try await core.setJamendoClientId(clientId: text)
+    }
+
+    /// Jamendo tracks for `query` (this week's popular when empty).
+    /// Cancelled with the screen that asked.
+    public func searchJamendo(_ query: String) async -> Result<[CatalogueTrack], ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.searchJamendo(query: query, cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("jamendo search failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// True when a catalogue track is in the library.
+    public func inLibrary(_ id: String) -> Bool {
+        library.tracks.contains { $0.id == id }
+    }
+
+    /// Adds catalogue tracks to the library, with their licences.
+    public func addToLibrary(_ tracks: [CatalogueTrack]) async {
+        do {
+            library = try await core.addCatalogueTracks(tracks: tracks)
+            feedback.play(.success)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Catalogue tracks to play: the library's copy where there is one
+    /// (downloaded, edited), else the stream.
+    public func queue(_ tracks: [CatalogueTrack]) -> [QueueTrack] {
+        core.catalogueQueueTracks(tracks: tracks)
+    }
     public func albums(of artist: LibraryArtist) -> [LibraryAlbum] { core.artistAlbums(artistId: artist.id) }
     public func tracks(of artist: LibraryArtist) -> [LibraryTrack] { core.artistTracks(artistId: artist.id) }
     public func tracks(of album: LibraryAlbum) -> [LibraryTrack] { core.albumTracks(albumId: album.id) }
@@ -312,7 +359,10 @@ public final class ListenModel {
 
     /// Songs that can be downloaded: your own files are on the phone already.
     public func downloadable(_ tracks: [LibraryTrack]) -> [LibraryTrack] {
-        tracks.filter { $0.preferred != nil && $0.preferred?.kind != .imported }
+        tracks.filter { track in
+            guard let recording = track.preferred, recording.kind != .imported else { return false }
+            return recording.rights?.mayDownload ?? true
+        }
     }
 
     /// True when every downloadable one of `tracks` is chosen for the phone.

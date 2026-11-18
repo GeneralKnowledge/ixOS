@@ -2138,6 +2138,13 @@ public func FfiConverterTypeSecureStore_lower(_ value: SecureStore) -> UInt64 {
 public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     
     /**
+     * Adds catalogue tracks to the library, keeping their rights as they
+     * are now. A track already there keeps what was saved. Returns the
+     * library.
+     */
+    func addCatalogueTracks(tracks: [CatalogueTrack]) async throws  -> Library
+    
+    /**
      * Adds songs at the end of a playlist.
      */
     func addToPlaylist(id: UInt64, trackIds: [String]) async throws  -> PlaylistDetail
@@ -2179,6 +2186,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * host holds background time while they are.
      */
     func backgroundWorkPending()  -> Bool
+    
+    /**
+     * What the queue plays for catalogue tracks, in order: the library's
+     * copy (with the person's edits and any download) when the track is
+     * in the library, else the catalogue's stream.
+     */
+    func catalogueQueueTracks(tracks: [CatalogueTrack])  -> [QueueTrack]
     
     /**
      * Makes `recording_id` the one that plays for the track. For a take
@@ -2256,7 +2270,17 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      */
     func importMusic(files: [MusicFile]) async throws  -> ImportResult
     
+    /**
+     * Whether a track (from a catalogue or anywhere) is in the library.
+     */
+    func inLibrary(trackId: String)  -> Bool
+    
     func isFavourite(id: String)  -> Bool
+    
+    /**
+     * The person's Jamendo client ID, or `None` before they set one.
+     */
+    func jamendoClientId()  -> String?
     
     /**
      * What the runtime found at open (unfinished background work).
@@ -2380,8 +2404,9 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func removeAllDownloads() async throws  -> OfflineSummary
     
     /**
-     * Removes an imported file from the library and deletes Soundscape's
-     * copy (the original, wherever it was, is untouched).
+     * Removes a song the person added: an imported file (deleting
+     * Soundscape's copy; the original, wherever it was, is untouched) or a
+     * catalogue track. Its download goes on the next pass.
      */
     func removeImported(trackId: String) async throws  -> Library
     
@@ -2397,6 +2422,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * The last committed revision.
      */
     func revision()  -> UInt64
+    
+    /**
+     * Jamendo tracks matching `query`, or this week's most popular when it
+     * is empty. On-screen work.
+     */
+    func searchJamendo(query: String, cancellation: Cancellation?) async throws  -> [CatalogueTrack]
     
     /**
      * Artists, albums and tracks matching `query`.
@@ -2420,6 +2451,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * Makes a song, album or artist (by library id) a favourite, or not.
      */
     func setFavourite(id: String, on: Bool) async throws  -> MusicCollection
+    
+    /**
+     * Saves the Jamendo client ID (from developer.jamendo.com). Empty
+     * forgets it; Jamendo tracks already in the library stay. Returns
+     * what was saved.
+     */
+    func setJamendoClientId(clientId: String) async throws  -> String?
     
     /**
      * Saves the take server's address after tidying it (a bare
@@ -2582,6 +2620,27 @@ public static func startFresh(dataDirectory: String, cachesDirectory: String)thr
 
     
     /**
+     * Adds catalogue tracks to the library, keeping their rights as they
+     * are now. A track already there keeps what was saved. Returns the
+     * library.
+     */
+open func addCatalogueTracks(tracks: [CatalogueTrack])async throws  -> Library  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_add_catalogue_tracks(
+                        self.uniffiCloneHandle(),FfiConverterSequenceTypeCatalogueTrack.lower(tracks)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLibrary_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Adds songs at the end of a playlist.
      */
 open func addToPlaylist(id: UInt64, trackIds: [String])async throws  -> PlaylistDetail  {
@@ -2699,6 +2758,21 @@ open func backgroundWorkPending() -> Bool  {
         uniffiCallStatus in
     uniffi_soundscape_core_fn_method_soundscapecore_background_work_pending(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * What the queue plays for catalogue tracks, in order: the library's
+     * copy (with the person's edits and any download) when the track is
+     * in the library, else the catalogue's stream.
+     */
+open func catalogueQueueTracks(tracks: [CatalogueTrack]) -> [QueueTrack]  {
+    return try!  FfiConverterSequenceTypeQueueTrack.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_catalogue_queue_tracks(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeCatalogueTrack.lower(tracks),uniffiCallStatus
     )
 })
 }
@@ -2955,12 +3029,37 @@ open func importMusic(files: [MusicFile])async throws  -> ImportResult  {
         )
 }
     
+    /**
+     * Whether a track (from a catalogue or anywhere) is in the library.
+     */
+open func inLibrary(trackId: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_in_library(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(trackId),uniffiCallStatus
+    )
+})
+}
+    
 open func isFavourite(id: String) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_soundscape_core_fn_method_soundscapecore_is_favourite(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The person's Jamendo client ID, or `None` before they set one.
+     */
+open func jamendoClientId() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_jamendo_client_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -3300,8 +3399,9 @@ open func removeAllDownloads()async throws  -> OfflineSummary  {
 }
     
     /**
-     * Removes an imported file from the library and deletes Soundscape's
-     * copy (the original, wherever it was, is untouched).
+     * Removes a song the person added: an imported file (deleting
+     * Soundscape's copy; the original, wherever it was, is untouched) or a
+     * catalogue track. Its download goes on the next pass.
      */
 open func removeImported(trackId: String)async throws  -> Library  {
     return
@@ -3396,6 +3496,26 @@ open func revision() -> UInt64  {
 }
     
     /**
+     * Jamendo tracks matching `query`, or this week's most popular when it
+     * is empty. On-screen work.
+     */
+open func searchJamendo(query: String, cancellation: Cancellation?)async throws  -> [CatalogueTrack]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_search_jamendo(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeCatalogueTrack.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Artists, albums and tracks matching `query`.
      */
 open func searchLibrary(query: String) -> LibrarySearch  {
@@ -3464,6 +3584,27 @@ open func setFavourite(id: String, on: Bool)async throws  -> MusicCollection  {
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeMusicCollection_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Saves the Jamendo client ID (from developer.jamendo.com). Empty
+     * forgets it; Jamendo tracks already in the library stay. Returns
+     * what was saved.
+     */
+open func setJamendoClientId(clientId: String)async throws  -> String?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_set_jamendo_client_id(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(clientId)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionString.lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -3805,6 +3946,128 @@ public func FfiConverterTypeAppDirectories_lift(_ buf: RustBuffer) throws -> App
 #endif
 public func FfiConverterTypeAppDirectories_lower(_ value: AppDirectories) -> RustBuffer {
     return FfiConverterTypeAppDirectories.lower(value)
+}
+
+
+/**
+ * One track from a catalogue, as a search returns it and as the library
+ * keeps it once added.
+ */
+public struct CatalogueTrack: Equatable, Hashable {
+    /**
+     * `jamendo:<id>`: stable, so the same track is recognised again.
+     */
+    public var id: String
+    /**
+     * The catalogue's name, such as `Jamendo`.
+     */
+    public var provider: String
+    public var title: String
+    public var artist: String?
+    public var album: String?
+    public var number: UInt32?
+    public var genre: String?
+    public var durationSeconds: Double?
+    public var artworkUrl: String?
+    /**
+     * What AVPlayer streams.
+     */
+    public var audioUrl: String
+    public var rights: Rights
+    /**
+     * When it was added to the library (0 in search results).
+     */
+    public var addedMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `jamendo:<id>`: stable, so the same track is recognised again.
+         */id: String, 
+        /**
+         * The catalogue's name, such as `Jamendo`.
+         */provider: String, title: String, artist: String?, album: String?, number: UInt32?, genre: String?, durationSeconds: Double?, artworkUrl: String?, 
+        /**
+         * What AVPlayer streams.
+         */audioUrl: String, rights: Rights, 
+        /**
+         * When it was added to the library (0 in search results).
+         */addedMs: Int64) {
+        self.id = id
+        self.provider = provider
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.number = number
+        self.genre = genre
+        self.durationSeconds = durationSeconds
+        self.artworkUrl = artworkUrl
+        self.audioUrl = audioUrl
+        self.rights = rights
+        self.addedMs = addedMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CatalogueTrack: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCatalogueTrack: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CatalogueTrack {
+        return
+            try CatalogueTrack(
+                id: FfiConverterString.read(from: &buf), 
+                provider: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artist: FfiConverterOptionString.read(from: &buf), 
+                album: FfiConverterOptionString.read(from: &buf), 
+                number: FfiConverterOptionUInt32.read(from: &buf), 
+                genre: FfiConverterOptionString.read(from: &buf), 
+                durationSeconds: FfiConverterOptionDouble.read(from: &buf), 
+                artworkUrl: FfiConverterOptionString.read(from: &buf), 
+                audioUrl: FfiConverterString.read(from: &buf), 
+                rights: FfiConverterTypeRights.read(from: &buf), 
+                addedMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CatalogueTrack, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.provider, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.artist, into: &buf)
+        FfiConverterOptionString.write(value.album, into: &buf)
+        FfiConverterOptionUInt32.write(value.number, into: &buf)
+        FfiConverterOptionString.write(value.genre, into: &buf)
+        FfiConverterOptionDouble.write(value.durationSeconds, into: &buf)
+        FfiConverterOptionString.write(value.artworkUrl, into: &buf)
+        FfiConverterString.write(value.audioUrl, into: &buf)
+        FfiConverterTypeRights.write(value.rights, into: &buf)
+        FfiConverterInt64.write(value.addedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCatalogueTrack_lift(_ buf: RustBuffer) throws -> CatalogueTrack {
+    return try FfiConverterTypeCatalogueTrack.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCatalogueTrack_lower(_ value: CatalogueTrack) -> RustBuffer {
+    return FfiConverterTypeCatalogueTrack.lower(value)
 }
 
 
@@ -6628,6 +6891,11 @@ public struct Recording: Equatable, Hashable {
      * The words it sings, with section tags; takes of one song can differ.
      */
     public var lyrics: String?
+    /**
+     * What a catalogue recording's licence allows, and its credit. `None`
+     * for the person's own music.
+     */
+    public var rights: Rights?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6640,7 +6908,11 @@ public struct Recording: Equatable, Hashable {
          */preferred: Bool, generation: Generation?, 
         /**
          * The words it sings, with section tags; takes of one song can differ.
-         */lyrics: String?) {
+         */lyrics: String?, 
+        /**
+         * What a catalogue recording's licence allows, and its credit. `None`
+         * for the person's own music.
+         */rights: Rights?) {
         self.id = id
         self.label = label
         self.kind = kind
@@ -6654,6 +6926,7 @@ public struct Recording: Equatable, Hashable {
         self.preferred = preferred
         self.generation = generation
         self.lyrics = lyrics
+        self.rights = rights
     }
 
     
@@ -6684,7 +6957,8 @@ public struct FfiConverterTypeRecording: FfiConverterRustBuffer {
                 note: FfiConverterString.read(from: &buf), 
                 preferred: FfiConverterBool.read(from: &buf), 
                 generation: FfiConverterOptionTypeGeneration.read(from: &buf), 
-                lyrics: FfiConverterOptionString.read(from: &buf)
+                lyrics: FfiConverterOptionString.read(from: &buf), 
+                rights: FfiConverterOptionTypeRights.read(from: &buf)
         )
     }
 
@@ -6702,6 +6976,7 @@ public struct FfiConverterTypeRecording: FfiConverterRustBuffer {
         FfiConverterBool.write(value.preferred, into: &buf)
         FfiConverterOptionTypeGeneration.write(value.generation, into: &buf)
         FfiConverterOptionString.write(value.lyrics, into: &buf)
+        FfiConverterOptionTypeRights.write(value.rights, into: &buf)
     }
 }
 
@@ -6718,6 +6993,123 @@ public func FfiConverterTypeRecording_lift(_ buf: RustBuffer) throws -> Recordin
 #endif
 public func FfiConverterTypeRecording_lower(_ value: Recording) -> RustBuffer {
     return FfiConverterTypeRecording.lower(value)
+}
+
+
+/**
+ * What a catalogue track's licence and its provider allow.
+ */
+public struct Rights: Equatable, Hashable {
+    /**
+     * Short name, such as `CC BY-NC-SA 3.0`.
+     */
+    public var licence: String
+    public var licenceUrl: String?
+    /**
+     * The credit to show: title, artist, licence and where it came from.
+     */
+    public var attribution: String
+    public var mayStream: Bool
+    /**
+     * May be kept on the phone for offline listening.
+     */
+    public var mayDownload: Bool
+    /**
+     * May be changed or used in something new (no "ND" in its licence).
+     */
+    public var mayAdapt: Bool
+    /**
+     * Only for non-commercial use ("NC" in its licence).
+     */
+    public var nonCommercial: Bool
+    /**
+     * The track's page on the catalogue's site.
+     */
+    public var pageUrl: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Short name, such as `CC BY-NC-SA 3.0`.
+         */licence: String, licenceUrl: String?, 
+        /**
+         * The credit to show: title, artist, licence and where it came from.
+         */attribution: String, mayStream: Bool, 
+        /**
+         * May be kept on the phone for offline listening.
+         */mayDownload: Bool, 
+        /**
+         * May be changed or used in something new (no "ND" in its licence).
+         */mayAdapt: Bool, 
+        /**
+         * Only for non-commercial use ("NC" in its licence).
+         */nonCommercial: Bool, 
+        /**
+         * The track's page on the catalogue's site.
+         */pageUrl: String?) {
+        self.licence = licence
+        self.licenceUrl = licenceUrl
+        self.attribution = attribution
+        self.mayStream = mayStream
+        self.mayDownload = mayDownload
+        self.mayAdapt = mayAdapt
+        self.nonCommercial = nonCommercial
+        self.pageUrl = pageUrl
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Rights: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRights: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Rights {
+        return
+            try Rights(
+                licence: FfiConverterString.read(from: &buf), 
+                licenceUrl: FfiConverterOptionString.read(from: &buf), 
+                attribution: FfiConverterString.read(from: &buf), 
+                mayStream: FfiConverterBool.read(from: &buf), 
+                mayDownload: FfiConverterBool.read(from: &buf), 
+                mayAdapt: FfiConverterBool.read(from: &buf), 
+                nonCommercial: FfiConverterBool.read(from: &buf), 
+                pageUrl: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Rights, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.licence, into: &buf)
+        FfiConverterOptionString.write(value.licenceUrl, into: &buf)
+        FfiConverterString.write(value.attribution, into: &buf)
+        FfiConverterBool.write(value.mayStream, into: &buf)
+        FfiConverterBool.write(value.mayDownload, into: &buf)
+        FfiConverterBool.write(value.mayAdapt, into: &buf)
+        FfiConverterBool.write(value.nonCommercial, into: &buf)
+        FfiConverterOptionString.write(value.pageUrl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRights_lift(_ buf: RustBuffer) throws -> Rights {
+    return try FfiConverterTypeRights.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRights_lower(_ value: Rights) -> RustBuffer {
+    return FfiConverterTypeRights.lower(value)
 }
 
 
@@ -7696,6 +8088,12 @@ public enum AudioSource: Equatable, Hashable {
      */
     case localFile(path: String
     )
+    /**
+     * Streamed from a free catalogue (`provider` is its name, such as
+     * Jamendo).
+     */
+    case catalogue(provider: String
+    )
 
 
 
@@ -7723,6 +8121,9 @@ public struct FfiConverterTypeAudioSource: FfiConverterRustBuffer {
         case 2: return .localFile(path: try FfiConverterString.read(from: &buf)
         )
         
+        case 3: return .catalogue(provider: try FfiConverterString.read(from: &buf)
+        )
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -7739,6 +8140,11 @@ public struct FfiConverterTypeAudioSource: FfiConverterRustBuffer {
         case let .localFile(path):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(path, into: &buf)
+            
+        
+        case let .catalogue(provider):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(provider, into: &buf)
             
         }
     }
@@ -8729,6 +9135,10 @@ public enum RecordingKind: Equatable, Hashable {
      * An ordinary audio file.
      */
     case imported
+    /**
+     * A track from a free catalogue, under its own licence.
+     */
+    case catalogue
 
 
 
@@ -8754,6 +9164,8 @@ public struct FfiConverterTypeRecordingKind: FfiConverterRustBuffer {
         
         case 2: return .imported
         
+        case 3: return .catalogue
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -8768,6 +9180,10 @@ public struct FfiConverterTypeRecordingKind: FfiConverterRustBuffer {
         
         case .imported:
             writeInt(&buf, Int32(2))
+        
+        
+        case .catalogue:
+            writeInt(&buf, Int32(3))
         
         }
     }
@@ -9661,6 +10077,30 @@ fileprivate struct FfiConverterOptionTypeRecording: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeRights: FfiConverterRustBuffer {
+    typealias SwiftType = Rights?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeRights.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeRights.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
     typealias SwiftType = [UInt32]
 
@@ -9728,6 +10168,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCatalogueTrack: FfiConverterRustBuffer {
+    typealias SwiftType = [CatalogueTrack]
+
+    public static func write(_ value: [CatalogueTrack], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCatalogueTrack.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CatalogueTrack] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CatalogueTrack]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCatalogueTrack.read(from: &buf))
         }
         return seq
     }
@@ -10838,6 +11303,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_func_repeat_after() != 38396) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_add_catalogue_tracks() != 7908) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_add_to_playlist() != 3879) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10860,6 +11328,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_background_work_pending() != 52323) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_catalogue_queue_tracks() != 8037) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_choose_recording() != 21037) {
@@ -10904,7 +11375,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_import_music() != 46973) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_in_library() != 42446) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_is_favourite() != 60223) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_client_id() != 42216) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_launch_report() != 4480) {
@@ -10970,7 +11447,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_remove_all_downloads() != 22027) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_remove_imported() != 35435) {
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_remove_imported() != 19279) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_remove_track() != 46950) {
@@ -10988,6 +11465,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_revision() != 34234) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_search_jamendo() != 56603) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_search_library() != 65130) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10998,6 +11478,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_favourite() != 412) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_jamendo_client_id() != 50790) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_listen_server() != 52642) {

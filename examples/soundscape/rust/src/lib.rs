@@ -24,8 +24,10 @@
 //!   library (artists, albums, tracks with their recordings, artwork, the
 //!   person's edits) kept on the phone; [`queue`] decides what plays next.
 
+pub mod catalogue;
 pub mod collection;
 pub mod dsp;
+pub mod jamendo;
 pub mod library;
 pub mod listen;
 pub mod lyrics;
@@ -44,6 +46,7 @@ use forge_net::{HttpClient, UreqClient};
 use forge_runtime::now_ms;
 use forge_storage::{files, FileStore};
 
+pub use catalogue::{CatalogueTrack, Rights};
 use collection::CollectionFile;
 pub use collection::{
     counts_as_played, MusicCollection, Playlist, PlaylistDetail, PlaylistEntry, RecentPlay,
@@ -1023,16 +1026,19 @@ impl SoundscapeCore {
             .await
     }
 
-    /// Removes an imported file from the library and deletes Soundscape's
-    /// copy (the original, wherever it was, is untouched).
+    /// Removes a song the person added: an imported file (deleting
+    /// Soundscape's copy; the original, wherever it was, is untouched) or a
+    /// catalogue track. Its download goes on the next pass.
     pub async fn remove_imported(&self, track_id: String) -> Result<Library, SoundscapeError> {
         self.rt
             .command("library-remove-imported", move |state| {
-                if !state.library.value().imported.contains_key(&track_id) {
+                let lib = state.library.value();
+                if !lib.imported.contains_key(&track_id) && !lib.catalogue.contains_key(&track_id) {
                     return Err(SoundscapeError::NotInLibrary { id: track_id });
                 }
                 state.change_library(|lib| {
                     lib.imported.remove(&track_id);
+                    lib.catalogue.remove(&track_id);
                     lib.edits.remove(&track_id);
                     lib.artwork.remove(&track_id);
                     Ok(())
@@ -1040,6 +1046,121 @@ impl SoundscapeCore {
             })
             .await?;
         Ok(self.library())
+    }
+
+    // MARK: Catalogues
+
+    /// The person's Jamendo client ID, or `None` before they set one.
+    pub fn jamendo_client_id(&self) -> Option<String> {
+        self.listen.get().jamendo_client_id.clone()
+    }
+
+    /// Saves the Jamendo client ID (from developer.jamendo.com). Empty
+    /// forgets it; Jamendo tracks already in the library stay. Returns
+    /// what was saved.
+    pub async fn set_jamendo_client_id(
+        &self,
+        client_id: String,
+    ) -> Result<Option<String>, SoundscapeError> {
+        let client_id = jamendo::clean_client_id(&client_id)?;
+        self.rt
+            .command("set-jamendo-client-id", move |state| {
+                state.listen.change(|s| {
+                    s.jamendo_client_id = client_id.clone();
+                    Ok::<_, SoundscapeError>(())
+                })?;
+                state.listen_published.set(state.listen.value().clone());
+                Ok(client_id)
+            })
+            .await
+    }
+
+    /// Jamendo tracks matching `query`, or this week's most popular when it
+    /// is empty. On-screen work.
+    pub async fn search_jamendo(
+        &self,
+        query: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+        let client_id = self
+            .jamendo_client_id()
+            .ok_or_else(|| SoundscapeError::BadAddress {
+                reason: "add your Jamendo client ID first".into(),
+            })?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-search", work, move |cancel| {
+                jamendo::search(http.as_ref(), &client_id, &query, cancel)
+            })
+            .await
+    }
+
+    /// Adds catalogue tracks to the library, keeping their rights as they
+    /// are now. A track already there keeps what was saved. Returns the
+    /// library.
+    pub async fn add_catalogue_tracks(
+        &self,
+        tracks: Vec<CatalogueTrack>,
+    ) -> Result<Library, SoundscapeError> {
+        if tracks.len() > library::MAX_IMPORT_FILES {
+            return Err(SoundscapeError::range("tracks"));
+        }
+        if let Some(bad) = tracks
+            .iter()
+            .find(|t| catalogue::provider_of(&t.id).is_none() || !t.rights.may_stream)
+        {
+            return Err(SoundscapeError::Server {
+                reason: format!("{} can't be added from a catalogue", bad.title),
+            });
+        }
+        self.rt
+            .command("library-add-catalogue", move |state| {
+                let now = now_ms();
+                state.change_library(|lib| {
+                    for (i, mut track) in tracks.into_iter().enumerate() {
+                        track.added_ms = now + i as i64;
+                        lib.catalogue.entry(track.id.clone()).or_insert(track);
+                    }
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.library())
+    }
+
+    /// Whether a track (from a catalogue or anywhere) is in the library.
+    pub fn in_library(&self, track_id: String) -> bool {
+        self.library.get().has_track(&track_id)
+    }
+
+    /// What the queue plays for catalogue tracks, in order: the library's
+    /// copy (with the person's edits and any download) when the track is
+    /// in the library, else the catalogue's stream.
+    pub fn catalogue_queue_tracks(&self, tracks: Vec<CatalogueTrack>) -> Vec<QueueTrack> {
+        let library = self.library();
+        tracks
+            .iter()
+            .filter(|t| t.rights.may_stream)
+            .map(|t| {
+                library
+                    .tracks
+                    .iter()
+                    .find(|l| l.id == t.id)
+                    .and_then(library::queue_track)
+                    .unwrap_or_else(|| QueueTrack {
+                        track_id: t.id.clone(),
+                        title: t.title.clone(),
+                        artist: t
+                            .artist
+                            .clone()
+                            .unwrap_or_else(|| library::UNKNOWN_ARTIST.into()),
+                        album: t.album.clone(),
+                        artwork_url: t.artwork_url.clone(),
+                        recording: library::catalogue_recording(t),
+                    })
+            })
+            .collect()
     }
 
     // MARK: Library
@@ -1321,6 +1442,7 @@ impl SoundscapeCore {
                 key: take.key.clone(),
             }),
             lyrics: take.lyrics.clone(),
+            rights: None,
         };
         offline::localize(
             &id,

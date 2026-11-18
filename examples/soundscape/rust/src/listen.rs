@@ -37,11 +37,14 @@ pub const MAX_NOTE_CHARS: u32 = 2000;
 /// a wrong measurement can't make one silent.
 pub const MAX_MATCH_DB: f64 = 24.0;
 
-/// What Listen keeps on the phone: the server's address.
+/// What Listen keeps on the phone: the take server's address and the
+/// person's Jamendo client ID.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct ListenSettings {
     #[serde(default)]
     pub server: Option<String>,
+    #[serde(default)]
+    pub jamendo_client_id: Option<String>,
 }
 
 pub const SETTINGS_VERSION: u32 = 1;

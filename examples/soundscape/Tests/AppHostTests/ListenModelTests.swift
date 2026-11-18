@@ -12,7 +12,7 @@ final class ListenModelTests: XCTestCase {
         await host.start()
         let model = ListenModel(core: try XCTUnwrap(host.core))
         XCTAssertNil(model.server)
-        XCTAssertEqual(model.phase, .needsServer)
+        XCTAssertEqual(model.phase, .ready)
 
         // A host name over plain http is refused with a reason to show.
         do {
@@ -31,7 +31,7 @@ final class ListenModelTests: XCTestCase {
         XCTAssertNotNil(model.alert)
         await model.handle(.forgetServer)
         XCTAssertNil(model.server)
-        XCTAssertEqual(model.phase, .needsServer)
+        XCTAssertEqual(model.phase, .ready)
     }
 
     func testFormatting() {
@@ -60,7 +60,7 @@ final class ListenModelTests: XCTestCase {
         XCTAssertTrue(model.library.tracks.isEmpty)
         XCTAssertTrue(model.search("anything").isEmpty)
         await model.loadLibrary()
-        XCTAssertEqual(model.phase, .needsServer)
+        XCTAssertEqual(model.phase, .ready)
     }
 
     func testFavouritesAndPlaylists() async throws {

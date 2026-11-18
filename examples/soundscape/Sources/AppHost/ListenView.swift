@@ -19,6 +19,8 @@ enum ListenRoute: Hashable {
     case downloads
     /// Songs with several takes and no pick yet.
     case toPick
+    /// Free catalogues to search and play (Jamendo).
+    case discover
 }
 
 /// The Listen tab: your music library (artists, albums, songs, each song
@@ -52,14 +54,15 @@ struct ListenView: View {
                     case .recent: RecentlyPlayedView(model: model, player: player)
                     case .downloads: DownloadsView(model: model, player: player)
                     case .toPick: ToPickView(model: model, player: player)
+                    case .discover: DiscoverView(model: model, player: player)
                     }
                 }
                 .toolbar {
-                    if model.server != nil {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button("Take Server", systemImage: "server.rack") { editingServer = true }
-                                .accessibilityIdentifier("listen.server")
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button(model.server == nil ? "Add Take Server" : "Take Server", systemImage: "server.rack") {
+                            editingServer = true
                         }
+                        .accessibilityIdentifier("listen.server")
                     }
                 }
                 .sheet(isPresented: $editingServer) {
@@ -96,8 +99,6 @@ struct ListenView: View {
 
     @ViewBuilder private var content: some View {
         switch model.phase {
-        case .needsServer:
-            ServerForm(model: model, done: nil)
         case .loading:
             ForgeStateView.loading("Asking the take server")
         case .failed(let message):

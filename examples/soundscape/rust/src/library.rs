@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::catalogue::{CatalogueTrack, Rights};
 use crate::listen::{self, SongDetail, SongSummary, Take};
 use crate::model::SoundscapeError;
 use crate::queue::QueueTrack;
@@ -48,6 +49,10 @@ pub struct LibraryFile {
     /// The person's own music files, by track id (`file:<hash>`).
     #[serde(default)]
     pub imported: BTreeMap<String, ImportedFile>,
+    /// Tracks added from free catalogues (Jamendo), by track id
+    /// (`jamendo:<id>`), with their rights as they were when added.
+    #[serde(default)]
+    pub catalogue: BTreeMap<String, CatalogueTrack>,
 }
 
 impl LibraryFile {
@@ -68,6 +73,7 @@ impl LibraryFile {
     /// Whether the library has a track with this id now.
     pub fn has_track(&self, id: &str) -> bool {
         self.imported.contains_key(id)
+            || self.catalogue.contains_key(id)
             || self
                 .snapshot
                 .as_ref()
@@ -210,6 +216,9 @@ pub enum AudioSource {
     TakeServer { server: String },
     /// A file the person imported, by its name in the music store.
     LocalFile { path: String },
+    /// Streamed from a free catalogue (`provider` is its name, such as
+    /// Jamendo).
+    Catalogue { provider: String },
 }
 
 #[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -218,6 +227,8 @@ pub enum RecordingKind {
     Generated,
     /// An ordinary audio file.
     Imported,
+    /// A track from a free catalogue, under its own licence.
+    Catalogue,
 }
 
 /// How a generated recording was made.
@@ -248,6 +259,9 @@ pub struct Recording {
     pub generation: Option<Generation>,
     /// The words it sings, with section tags; takes of one song can differ.
     pub lyrics: Option<String>,
+    /// What a catalogue recording's licence allows, and its credit. `None`
+    /// for the person's own music.
+    pub rights: Option<Rights>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -413,7 +427,7 @@ pub fn build_track(file: &LibraryFile, locate: &Locate<'_>, id: &str) -> Option<
                     lyrics,
                 }
             }
-            Origin::Imported => TrackDetail {
+            Origin::Imported | Origin::Catalogue => TrackDetail {
                 recordings: track.preferred.clone().into_iter().collect(),
                 track,
                 caption: None,
@@ -426,6 +440,7 @@ pub fn build_track(file: &LibraryFile, locate: &Locate<'_>, id: &str) -> Option<
 enum Origin {
     Server(SnapTrack),
     Imported,
+    Catalogue,
 }
 
 struct Built {
@@ -497,7 +512,7 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             album.updated_ms = album.updated_ms.max(source.updated_ms);
             // An imported album takes the first cover one of its songs has.
             if album.artwork_url.is_none() {
-                if let Origin::Imported = origin {
+                if let Origin::Imported | Origin::Catalogue = origin {
                     album.artwork_url = source.artwork.clone();
                 }
             }
@@ -599,6 +614,25 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             Origin::Imported,
         );
     }
+    for (id, saved) in &file.catalogue {
+        add(
+            Source {
+                id: id.clone(),
+                title: saved.title.clone(),
+                artist: saved.artist.clone(),
+                album: saved.album.clone(),
+                number: saved.number,
+                genre: saved.genre.clone(),
+                artwork: saved.artwork_url.clone(),
+                recording_count: 1,
+                preferred: Some(catalogue_recording(saved)),
+                picked: false,
+                slug: None,
+                updated_ms: saved.added_ms,
+            },
+            Origin::Catalogue,
+        );
+    }
 
     let mut artists: Vec<LibraryArtist> = artists
         .into_values()
@@ -643,6 +677,29 @@ fn imported_recording(id: &str, imported: &ImportedFile, url: String) -> Recordi
         preferred: true,
         generation: None,
         lyrics: None,
+        rights: None,
+    }
+}
+
+/// A catalogue track's one recording: its stream, with its rights.
+pub fn catalogue_recording(track: &CatalogueTrack) -> Recording {
+    Recording {
+        id: track.id.clone(),
+        label: track.provider.clone(),
+        kind: RecordingKind::Catalogue,
+        source: AudioSource::Catalogue {
+            provider: track.provider.clone(),
+        },
+        audio_url: track.audio_url.clone(),
+        made_ms: track.added_ms,
+        duration_seconds: track.duration_seconds,
+        lufs: None,
+        stars: 0,
+        note: String::new(),
+        preferred: true,
+        generation: None,
+        lyrics: None,
+        rights: Some(track.rights.clone()),
     }
 }
 
@@ -691,6 +748,7 @@ fn recording(take: &SnapTake, snap: &SnapTrack, server: &str) -> Recording {
             key: take.key.clone(),
         }),
         lyrics: take.lyrics.clone(),
+        rights: None,
     }
 }
 
