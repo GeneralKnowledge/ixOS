@@ -164,6 +164,8 @@ What the calculator said (Observed, pass a only; determinism still to be shown b
 
 **R1 recording done: 39 of 39 sums** ([reference-results.toml](../../research/expeditions/calculator/evidence/reference-results.toml)). Three attempts failed before that, each for a reason worth knowing: Forge couldn't find a system app; the test never brought Calculator to the front; the clear key changes its id. Plus one auto-lock.
 
+**R2a, the engine (cloud, no phone).** Reuben: "Yes please" to starting R2. The arithmetic and its state in Rust, in `examples/sums/rust`, with the 39 recorded answers as its test: **39 of 39 match on Linux.** But it was written looking at those answers, so that proves little. Eight rules had no evidence behind them and are marked `GUESS:` in the code ([reconstruction.md](../../research/expeditions/calculator/reconstruction.md)). To test them honestly, 16 new sums (`sequences-2.toml`) and the engine's predictions for them (`predictions-2.toml`) are committed before the real calculator is asked.
+
 ## Next
 
-R1's map (`map.md`) and the findings from these answers, then R2: the calculator engine in Rust, with `reference-results.toml` as its unit test on Linux.
+R2b: the app on the engine, in Device Lab, and one phone sitting to replay the 39 on it and ask the real calculator the 16 new questions (Calculator at `full` for that run, then back to `operate`).

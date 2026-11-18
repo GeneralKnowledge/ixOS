@@ -1,0 +1,24 @@
+# Sums: the Calculator expedition's recreation
+# (docs/research/app-as-specification.md). This crate owns the calculator's
+# rules; the reference's recorded answers are its test
+# (tests/reference.rs). The SwiftUI app on it comes in R2b.
+[package]
+name = "sums-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[lib]
+name = "sums_core"
+
+[dependencies]
+# Decimal arithmetic: the reference says 0.1 + 0.2 = 0.3 (finding 26).
+rust_decimal = "1.36"
+
+[dev-dependencies]
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
