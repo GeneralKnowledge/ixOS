@@ -111,7 +111,7 @@ forge ui audit                       # unlabelled controls, small tap targets, c
 forge ui tap --id notes.add          # one action at a time, no test file:
 forge ui type --id compose.text "Hi" #   tap, type, clear, scroll, swipe, long-press,
 forge ui key dismiss                 #   double-tap, drag, pinch, pick, key, expect...
-forge ui expect --id compose.save --enabled true
+forge ui expect --id compose.confirm --enabled true
 forge ui alert accept --text Camera  # a permission prompt; also press home, open-url, back
 forge ui tap --at 200,640            # a point, for a control with no identifier (terminal only)
 ```

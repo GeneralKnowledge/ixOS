@@ -29,7 +29,7 @@ The first time you run on an iPhone:
 | `rust/Cargo.toml` | Rust dependencies. Add crates here as usual (`cargo add --manifest-path rust/Cargo.toml <crate>`). The Forge crates (`forge-app`, the runtime the core embeds, and the others) are pinned to a framework release, as ForgeKit is in `Package.swift`. |
 | `Sources/AppHost/` | `AppHost.swift`, where ForgeKit's host opens the Rust core once and follows the app lifecycle; the SwiftUI screens (`ContentView.swift` is the root; `NoteListView`, `NoteDetailView`, `ComposeNoteView`, `SettingsView`); and `NotesModel.swift`, the model that calls Rust. |
 | `Tests/AppHostTests/` | XCTest suite against the real Rust library (macOS only). |
-| `uitests/` | UI tests that drive the app on a plugged-in iPhone from Linux (`forge ui run uitests/smoke.toml`). They find controls by their accessibility identifiers (`notes.add`, `compose.save`). |
+| `uitests/` | UI tests that drive the app on a plugged-in iPhone from Linux (`forge ui run uitests/smoke.toml`). They find controls by their accessibility identifiers (`notes.add`, `compose.confirm`). |
 | `Generated/` | Swift bindings generated from `rust/`. Do not edit; `forge run ios` and `forge bindings generate` rewrite them. |
 | `forge.toml` | App name, bundle identifier, version, minimum iOS, permissions, entitlements (`forge config show`). |
 | `Info.plist`, `App.entitlements`, `xtool.yml` | Generated from `forge.toml` by every `forge build ios` / `forge run ios`. Edit `forge.toml` instead. |
