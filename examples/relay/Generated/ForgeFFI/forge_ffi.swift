@@ -5084,6 +5084,14 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func deviceService() async throws  -> DeviceService
     
     /**
+     * Asks a trusted device what it says about itself (its platform and
+     * what it offers), and remembers the answer and when it came. Tried
+     * where Bonjour sees it now, else where it was last reached. Returns
+     * the device as `devices` lists it.
+     */
+    func deviceStatus(endpointId: String) async throws  -> Device
+    
+    /**
      * Trusted and revoked devices, by name. Forgotten ones aren't listed.
      */
     func devices()  -> [Device]
@@ -5519,6 +5527,28 @@ open func deviceService()async throws  -> DeviceService  {
             completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeDeviceService_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Asks a trusted device what it says about itself (its platform and
+     * what it offers), and remembers the answer and when it came. Tried
+     * where Bonjour sees it now, else where it was last reached. Returns
+     * the device as `devices` lists it.
+     */
+open func deviceStatus(endpointId: String)async throws  -> Device  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_device_status(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeDevice_lift,
             errorHandler: FfiConverterTypeRelayError_lift
         )
 }
@@ -8313,6 +8343,21 @@ public struct Device: Equatable, Hashable {
      * Whether the app sees it on this network now.
      */
     public var nearby: Bool
+    /**
+     * Nearby, reachable (a trusted connection worked in the last few
+     * minutes) or offline. Always offline for a revoked device.
+     */
+    public var presence: Presence
+    /**
+     * When it was last reached, in ms since the epoch.
+     */
+    public var lastSeenMs: Int64?
+    /**
+     * What it last said about itself (`device_status`): its platform, such
+     * as "ios" or "linux", and what it offers. Its own claim, read-only.
+     */
+    public var platform: String?
+    public var offers: [String]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -8331,13 +8376,28 @@ public struct Device: Equatable, Hashable {
          */receivesFrom: Bool, 
         /**
          * Whether the app sees it on this network now.
-         */nearby: Bool) {
+         */nearby: Bool, 
+        /**
+         * Nearby, reachable (a trusted connection worked in the last few
+         * minutes) or offline. Always offline for a revoked device.
+         */presence: Presence, 
+        /**
+         * When it was last reached, in ms since the epoch.
+         */lastSeenMs: Int64?, 
+        /**
+         * What it last said about itself (`device_status`): its platform, such
+         * as "ios" or "linux", and what it offers. Its own claim, read-only.
+         */platform: String?, offers: [String]) {
         self.endpointId = endpointId
         self.name = name
         self.trusted = trusted
         self.sinceMs = sinceMs
         self.receivesFrom = receivesFrom
         self.nearby = nearby
+        self.presence = presence
+        self.lastSeenMs = lastSeenMs
+        self.platform = platform
+        self.offers = offers
     }
 
     
@@ -8361,7 +8421,11 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
                 trusted: FfiConverterBool.read(from: &buf), 
                 sinceMs: FfiConverterInt64.read(from: &buf), 
                 receivesFrom: FfiConverterBool.read(from: &buf), 
-                nearby: FfiConverterBool.read(from: &buf)
+                nearby: FfiConverterBool.read(from: &buf), 
+                presence: FfiConverterTypePresence.read(from: &buf), 
+                lastSeenMs: FfiConverterOptionInt64.read(from: &buf), 
+                platform: FfiConverterOptionString.read(from: &buf), 
+                offers: FfiConverterSequenceString.read(from: &buf)
         )
     }
 
@@ -8372,6 +8436,10 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
         FfiConverterInt64.write(value.sinceMs, into: &buf)
         FfiConverterBool.write(value.receivesFrom, into: &buf)
         FfiConverterBool.write(value.nearby, into: &buf)
+        FfiConverterTypePresence.write(value.presence, into: &buf)
+        FfiConverterOptionInt64.write(value.lastSeenMs, into: &buf)
+        FfiConverterOptionString.write(value.platform, into: &buf)
+        FfiConverterSequenceString.write(value.offers, into: &buf)
     }
 }
 
@@ -12179,6 +12247,82 @@ public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) ->
 
 
 /**
+ * Where a trusted device is now.
+ */
+
+public enum Presence: Equatable, Hashable {
+    
+    case nearby
+    case reachable
+    case offline
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension Presence: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePresence: FfiConverterRustBuffer {
+    typealias SwiftType = Presence
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Presence {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .nearby
+        
+        case 2: return .reachable
+        
+        case 3: return .offline
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Presence, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .nearby:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .reachable:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .offline:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePresence_lift(_ buf: RustBuffer) throws -> Presence {
+    return try FfiConverterTypePresence.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePresence_lower(_ value: Presence) -> RustBuffer {
+    return FfiConverterTypePresence.lower(value)
+}
+
+
+
+/**
  * Everything that can go wrong, in the app's words. `relay_error_kind`
  * maps each case to the framework's [`ErrorKind`].
  */
@@ -14005,6 +14149,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_device_service() != 50466) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_device_status() != 56352) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_devices() != 30140) {

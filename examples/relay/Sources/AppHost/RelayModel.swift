@@ -290,6 +290,44 @@ public final class RelayModel {
         devices = core.devices()
     }
 
+    /// Asks a trusted device what it says about itself (its platform and
+    /// what it offers) and re-reads the list; failing to reach it is not
+    /// an error the person needs to see, it just stays as it was.
+    public func refreshStatus(of device: Device) async {
+        do {
+            _ = try await core.deviceStatus(endpointId: device.endpointId)
+        } catch {
+            log.info("no status from a trusted device: \(error)")
+        }
+        devices = core.devices()
+    }
+
+    /// Re-reads the devices, so presence ages ("reachable" becomes
+    /// "offline" a few minutes after the last connection).
+    public func refreshDevices() {
+        devices = core.devices()
+    }
+
+    /// "Nearby", "Reachable, seen 2 min ago" or "Offline, seen 3 h ago".
+    nonisolated public static func whereNow(_ device: Device, now: Date = Date()) -> String {
+        let word: String
+        switch device.presence {
+        case .nearby: return "Nearby"
+        case .reachable: word = "Reachable"
+        case .offline: word = "Offline"
+        }
+        guard let ms = device.lastSeenMs else { return "\(word), not reached yet" }
+        let seconds = max(0, now.timeIntervalSince1970 - Double(ms) / 1000)
+        let ago: String
+        switch seconds {
+        case ..<60: ago = "just now"
+        case ..<3600: ago = "\(Int(seconds / 60)) min ago"
+        case ..<172_800: ago = "\(Int(seconds / 3600)) h ago"
+        default: ago = "\(Int(seconds / 86_400)) days ago"
+        }
+        return "\(word), seen \(ago)"
+    }
+
     /// Re-reads the trust offer: the sending side learns the other's name
     /// a moment after its code send ends.
     public func refreshTrustOffer() {
