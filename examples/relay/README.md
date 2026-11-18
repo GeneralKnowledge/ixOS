@@ -71,7 +71,10 @@ $R policy automatic                   # codes-only | ask | automatic
 ```
 
 After a code transfer in a terminal, `relay` asks whether to trust the other
-device. `listen` also advertises this device for trusted devices.
+device. `listen` also advertises this device for trusted devices. While it
+runs, `relay send <device>`, `devices`, `revoke`, `forget`, `trust`, `policy`
+and `history` from another terminal go through the listener (a socket in
+the data folder), so a laptop can listen and send at the same time.
 
 ### Asking a model on another device
 

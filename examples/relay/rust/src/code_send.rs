@@ -410,7 +410,7 @@ async fn send(
 ) -> Result<(), RelayError> {
     let started = Instant::now();
     // Held for the whole send, so what it offers stays in the store.
-    let (offer, _tags) = prepare(paths, name.clone(), node).await?;
+    let (offer, _tags) = prepare(paths, name.clone(), node, false).await?;
     log::info!(
         "code send: hashed {} bytes in {:.1}s",
         offer.size,
@@ -541,8 +541,9 @@ async fn send(
     Ok(())
 }
 
-/// Hashes what `paths` hold into the store, where it lies (nothing is
-/// copied): one file as one blob; anything else as a collection of files
+/// Hashes what `paths` hold into the store: where it lies, or copied in
+/// when `copy` (an item that waits in the outbox, whose source may go
+/// before it is sent). One file as one blob; anything else as a collection of files
 /// with their paths inside the transfer (a lone folder's files relative to
 /// it; several items each under its own name). Returns the offer and the
 /// tags that keep it.
@@ -550,13 +551,14 @@ pub(crate) async fn prepare(
     paths: &[PathBuf],
     name: String,
     node: &Node,
+    copy: bool,
 ) -> Result<(Offer, Vec<TempTag>), RelayError> {
     let [path] = paths else {
-        return prepare_files(items_in(paths).map_err(file_error)?, name, node).await;
+        return prepare_files(items_in(paths).map_err(file_error)?, name, node, copy).await;
     };
     let meta = std::fs::metadata(path).map_err(file_error)?;
     if meta.is_file() {
-        let tag = import(node, path.to_path_buf()).await?;
+        let tag = import(node, path.to_path_buf(), copy).await?;
         let hash = tag.hash();
         let offer = Offer {
             hash,
@@ -567,18 +569,22 @@ pub(crate) async fn prepare(
         };
         return Ok((offer, vec![tag]));
     }
-    prepare_files(files_in(path).map_err(file_error)?, name, node).await
+    prepare_files(files_in(path).map_err(file_error)?, name, node, copy).await
 }
 
-/// A file's blob, hashed where it lies.
-async fn import(node: &Node, file: PathBuf) -> Result<TempTag, RelayError> {
+/// A file's blob, hashed where it lies, or copied in when `copy`.
+async fn import(node: &Node, file: PathBuf, copy: bool) -> Result<TempTag, RelayError> {
     node.store
         .blobs()
         .add_path_with_opts(AddPathOptions {
             path: std::path::absolute(file).map_err(file_error)?,
             format: BlobFormat::Raw,
-            // Hash the file where it is instead of copying it.
-            mode: ImportMode::TryReference,
+            // A code send hashes the file where it is; the outbox copies.
+            mode: if copy {
+                ImportMode::Copy
+            } else {
+                ImportMode::TryReference
+            },
         })
         .temp_tag()
         .await
@@ -590,8 +596,9 @@ async fn prepare_files(
     files: Vec<(String, PathBuf, u64)>,
     name: String,
     node: &Node,
+    copy: bool,
 ) -> Result<(Offer, Vec<TempTag>), RelayError> {
-    let import = |file: PathBuf| import(node, file);
+    let import = |file: PathBuf| import(node, file, copy);
     if files.is_empty() {
         return Err(RelayError::File {
             reason: "there are no files to send".into(),
@@ -918,6 +925,9 @@ mod tests {
             progress.stop_at.store(4_000_000, Ordering::SeqCst);
             let failed = take(&first, &b, &inbox, progress).await.unwrap_err();
             assert_eq!(failed.offered.unwrap().size, 24_000_000);
+            // A clean-up runs meanwhile: the receive's tag keeps what
+            // arrived.
+            tokio::time::sleep(Duration::from_millis(1_000)).await;
             b.get().await.unwrap().shutdown().await;
             drop(b);
 
@@ -934,6 +944,74 @@ mod tests {
             );
             assert_eq!(std::fs::read(&receipt.path).unwrap(), content);
             wait_for(&shared, |s| matches!(s, CodeSend::Sent { .. })).await;
+        });
+    }
+
+    /// Bytes under `dir`, every file counted.
+    fn size_of(dir: &Path) -> u64 {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|e| match e.metadata() {
+                        Ok(m) if m.is_dir() => size_of(&e.path()),
+                        Ok(m) => m.len(),
+                        Err(_) => 0,
+                    })
+                    .sum()
+            })
+            .unwrap_or(0)
+    }
+
+    /// The same file sent twice is saved once; a different file with the
+    /// same name is kept beside it; and once the transfers end neither
+    /// store keeps a copy (M1 stage 2: one copy on disk, not two).
+    #[test]
+    fn a_file_received_again_is_kept_once_and_the_store_lets_go() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("photo.bin");
+        let content = bytes(2_000_000, 5);
+        std::fs::write(&file, &content).unwrap();
+        let (a, b) = (device(dir.path(), "a"), device(dir.path(), "b"));
+        let inbox = dir.path().join("inbox");
+        TOKIO.block_on(async {
+            let mut paths = Vec::new();
+            for _ in 0..2 {
+                let shared = sending(file.clone(), &a);
+                let waiting = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
+                let receipt = take(&waiting, &b, &inbox, Arc::default()).await.unwrap();
+                wait_for(&shared, |s| matches!(s, CodeSend::Sent { .. })).await;
+                paths.push(receipt.path);
+            }
+            assert_eq!(paths[0], paths[1], "the second time reuses the first file");
+            assert_eq!(std::fs::read_dir(&inbox).unwrap().count(), 1);
+            assert_eq!(std::fs::read(&paths[0]).unwrap(), content);
+
+            // Same name, different content: both kept.
+            std::fs::write(&file, bytes(2_000_000, 6)).unwrap();
+            let shared = sending(file.clone(), &a);
+            let waiting = wait_for(&shared, |s| matches!(s, CodeSend::Waiting { .. })).await;
+            let other = take(&waiting, &b, &inbox, Arc::default()).await.unwrap();
+            wait_for(&shared, |s| matches!(s, CodeSend::Sent { .. })).await;
+            assert_eq!(Path::new(&other.path), inbox.join("photo (2).bin"));
+            assert_eq!(std::fs::read(&paths[0]).unwrap(), content, "untouched");
+
+            // The stores let go once nothing holds the blobs.
+            let mut sizes = (u64::MAX, u64::MAX);
+            for _ in 0..100 {
+                sizes = (
+                    size_of(&dir.path().join("a/store")),
+                    size_of(&dir.path().join("b/store")),
+                );
+                if sizes.0 < 1_000_000 && sizes.1 < 1_000_000 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            assert!(
+                sizes.0 < 1_000_000 && sizes.1 < 1_000_000,
+                "stores still hold {sizes:?} bytes after 6 MB went across"
+            );
         });
     }
 

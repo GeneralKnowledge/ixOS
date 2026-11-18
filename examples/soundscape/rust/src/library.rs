@@ -5,7 +5,7 @@
 //!   artwork. One track has one or more **recordings** (generated takes,
 //!   mixes, imported files), and one of them is preferred.
 //! - A recording's **audio source** says where its audio lives: on the take
-//!   server now, in a local or downloaded file later.
+//!   server, in a downloaded copy, or in a file the person imported.
 //!
 //! The phone keeps the last catalogue the take server sent (a snapshot),
 //! the person's edits and their own artwork, in `library.json`.
@@ -23,6 +23,8 @@ use crate::queue::QueueTrack;
 pub const LIBRARY_VERSION: u32 = 1;
 /// Prefix of a take-server track's id: `take-server:<slug>`.
 pub const TAKE_SERVER_PREFIX: &str = "take-server:";
+/// Prefix of an imported file's track id: `file:<hash>`.
+pub const IMPORTED_PREFIX: &str = "file:";
 /// Shown for a track with no artist.
 pub const UNKNOWN_ARTIST: &str = "Unknown Artist";
 /// The longest title, artist, album or genre, in characters.
@@ -43,13 +45,58 @@ pub struct LibraryFile {
     /// the artwork store.
     #[serde(default)]
     pub artwork: BTreeMap<String, String>,
+    /// The person's own music files, by track id (`file:<hash>`).
+    #[serde(default)]
+    pub imported: BTreeMap<String, ImportedFile>,
 }
 
 impl LibraryFile {
     /// Every artwork file the library names, for sweeping the store.
     pub fn artwork_files(&self) -> std::collections::HashSet<String> {
-        self.artwork.values().cloned().collect()
+        self.artwork
+            .values()
+            .cloned()
+            .chain(self.imported.values().filter_map(|i| i.artwork.clone()))
+            .collect()
     }
+
+    /// Every imported music file, by its name in the music store.
+    pub fn music_files(&self) -> std::collections::HashSet<String> {
+        self.imported.values().map(|i| i.file.clone()).collect()
+    }
+
+    /// Whether the library has a track with this id now.
+    pub fn has_track(&self, id: &str) -> bool {
+        self.imported.contains_key(id)
+            || self
+                .snapshot
+                .as_ref()
+                .is_some_and(|s| s.tracks.iter().any(|t| track_id(&t.slug) == id))
+    }
+}
+
+/// A music file the person brought in, with the tags it had.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ImportedFile {
+    /// Its copy in the music store.
+    pub file: String,
+    /// The name it had when picked.
+    pub file_name: String,
+    pub title: String,
+    #[serde(default)]
+    pub artist: Option<String>,
+    #[serde(default)]
+    pub album: Option<String>,
+    #[serde(default)]
+    pub number: Option<u32>,
+    #[serde(default)]
+    pub genre: Option<String>,
+    #[serde(default)]
+    pub seconds: Option<f64>,
+    /// Its cover picture, in the artwork store.
+    #[serde(default)]
+    pub artwork: Option<String>,
+    pub added_ms: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -161,7 +208,7 @@ impl TrackEdit {
 pub enum AudioSource {
     /// Streamed from the take server.
     TakeServer { server: String },
-    /// A file on the phone (imported music, later).
+    /// A file the person imported, by its name in the music store.
     LocalFile { path: String },
 }
 
@@ -199,6 +246,8 @@ pub struct Recording {
     /// The one that plays for the track.
     pub preferred: bool,
     pub generation: Option<Generation>,
+    /// The words it sings, with section tags; takes of one song can differ.
+    pub lyrics: Option<String>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -227,6 +276,9 @@ pub struct LibraryTrack {
     pub updated_ms: i64,
     /// True when the person changed its details.
     pub edited: bool,
+    /// True when its preferred recording plays from the phone (downloaded
+    /// or imported).
+    pub downloaded: bool,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -320,10 +372,16 @@ pub fn file_url(path: &std::path::Path) -> String {
     format!("file://{}", listen::encode(&text, true))
 }
 
-/// The library from what is kept. `artwork_url` turns a stored artwork file
-/// name into a URL Swift can load (or `None` if the file is gone).
-pub fn build_library(file: &LibraryFile, artwork_url: &dyn Fn(&str) -> Option<String>) -> Library {
-    let built = build(file, artwork_url);
+/// Where kept files are, as URLs Swift can load (or `None` if a file is
+/// gone): stored artwork, and imported music in the music store.
+pub struct Locate<'a> {
+    pub artwork: &'a dyn Fn(&str) -> Option<String>,
+    pub music: &'a dyn Fn(&str) -> Option<String>,
+}
+
+/// The library from what is kept.
+pub fn build_library(file: &LibraryFile, locate: &Locate<'_>) -> Library {
+    let built = build(file, locate);
     Library {
         artists: built.artists,
         albums: built.albums,
@@ -333,61 +391,86 @@ pub fn build_library(file: &LibraryFile, artwork_url: &dyn Fn(&str) -> Option<St
 }
 
 /// One track with its recordings.
-pub fn build_track(
-    file: &LibraryFile,
-    artwork_url: &dyn Fn(&str) -> Option<String>,
-    id: &str,
-) -> Option<TrackDetail> {
-    build(file, artwork_url)
+pub fn build_track(file: &LibraryFile, locate: &Locate<'_>, id: &str) -> Option<TrackDetail> {
+    build(file, locate)
         .tracks
         .into_iter()
         .find(|(t, _)| t.id == id)
-        .map(|(track, snap)| {
-            let server = file
-                .snapshot
-                .as_ref()
-                .map(|s| s.server.clone())
-                .unwrap_or_default();
-            let recordings = recordings(&snap, &server);
-            let caption = most_common(snap.takes.iter().map(|t| t.caption.clone()));
-            let lyrics = most_common(snap.takes.iter().map(|t| t.lyrics.clone()));
-            TrackDetail {
-                track,
-                recordings,
-                caption,
-                lyrics,
+        .map(|(track, origin)| match origin {
+            Origin::Server(snap) => {
+                let server = file
+                    .snapshot
+                    .as_ref()
+                    .map(|s| s.server.clone())
+                    .unwrap_or_default();
+                let recordings = recordings(&snap, &server);
+                let caption = most_common(snap.takes.iter().map(|t| t.caption.clone()));
+                let lyrics = most_common(snap.takes.iter().map(|t| t.lyrics.clone()));
+                TrackDetail {
+                    track,
+                    recordings,
+                    caption,
+                    lyrics,
+                }
             }
+            Origin::Imported => TrackDetail {
+                recordings: track.preferred.clone().into_iter().collect(),
+                track,
+                caption: None,
+                lyrics: None,
+            },
         })
+}
+
+/// Where a built track came from.
+enum Origin {
+    Server(SnapTrack),
+    Imported,
 }
 
 struct Built {
     artists: Vec<LibraryArtist>,
     albums: Vec<LibraryAlbum>,
-    tracks: Vec<(LibraryTrack, SnapTrack)>,
+    tracks: Vec<(LibraryTrack, Origin)>,
 }
 
-fn build(file: &LibraryFile, artwork_url: &dyn Fn(&str) -> Option<String>) -> Built {
-    let Some(snapshot) = &file.snapshot else {
-        return Built {
-            artists: vec![],
-            albums: vec![],
-            tracks: vec![],
-        };
+/// One track's details as its source has them, before edits.
+struct Source {
+    id: String,
+    title: String,
+    artist: Option<String>,
+    album: Option<String>,
+    number: Option<u32>,
+    genre: Option<String>,
+    artwork: Option<String>,
+    recording_count: u32,
+    preferred: Option<Recording>,
+    picked: bool,
+    slug: Option<String>,
+    updated_ms: i64,
+}
+
+type ArtistEntry = (LibraryArtist, std::collections::BTreeSet<String>);
+
+fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
+    let own_art = |id: &str| file.artwork.get(id).and_then(|name| (locate.artwork)(name));
+    let empty = BTreeMap::new();
+    let (artist_art, album_art) = match &file.snapshot {
+        Some(s) => (&s.artist_art, &s.album_art),
+        None => (&empty, &empty),
     };
-    let own_art = |id: &str| file.artwork.get(id).and_then(|name| artwork_url(name));
 
     let mut albums: BTreeMap<String, LibraryAlbum> = BTreeMap::new();
-    let mut artists: BTreeMap<String, (LibraryArtist, std::collections::BTreeSet<String>)> =
-        BTreeMap::new();
-    let mut tracks = Vec::with_capacity(snapshot.tracks.len());
+    let mut artists: BTreeMap<String, ArtistEntry> = BTreeMap::new();
+    let mut tracks = Vec::new();
 
-    for snap in &snapshot.tracks {
-        let id = track_id(&snap.slug);
+    let mut add = |source: Source, origin: Origin| {
+        let id = source.id;
         let edit = file.edits.get(&id).cloned().unwrap_or_default();
-        let title = edit.title.clone().unwrap_or_else(|| snap.title.clone());
-        let artist_name = edit.artist.clone().or_else(|| snap.artist.clone());
-        let album_title = edit.album.clone().or_else(|| snap.album.clone());
-        let number = edit.number.or(snap.number);
+        let title = edit.title.clone().unwrap_or(source.title);
+        let artist_name = edit.artist.clone().or(source.artist);
+        let album_title = edit.album.clone().or(source.album);
+        let number = edit.number.or(source.number);
         let a_id = artist_name.as_deref().map(artist_id);
         let al_id = album_title
             .as_deref()
@@ -405,13 +488,19 @@ fn build(file: &LibraryFile, artwork_url: &dyn Fn(&str) -> Option<String>) -> Bu
                     title: album_title.clone().unwrap_or_default(),
                     artist_id: a_id.clone(),
                     artist: artist_name.clone().unwrap_or_else(|| UNKNOWN_ARTIST.into()),
-                    artwork_url: own_art(al_id).or_else(|| snapshot.album_art.get(&key).cloned()),
+                    artwork_url: own_art(al_id).or_else(|| album_art.get(&key).cloned()),
                     track_count: 0,
                     updated_ms: i64::MIN,
                 }
             });
             album.track_count += 1;
-            album.updated_ms = album.updated_ms.max(snap.updated_ms);
+            album.updated_ms = album.updated_ms.max(source.updated_ms);
+            // An imported album takes the first cover one of its songs has.
+            if album.artwork_url.is_none() {
+                if let Origin::Imported = origin {
+                    album.artwork_url = source.artwork.clone();
+                }
+            }
         }
         if let (Some(a_id), Some(name)) = (&a_id, &artist_name) {
             let (artist, album_ids) = artists.entry(a_id.clone()).or_insert_with(|| {
@@ -420,7 +509,7 @@ fn build(file: &LibraryFile, artwork_url: &dyn Fn(&str) -> Option<String>) -> Bu
                         id: a_id.clone(),
                         name: name.clone(),
                         artwork_url: own_art(a_id)
-                            .or_else(|| snapshot.artist_art.get(&name.to_lowercase()).cloned()),
+                            .or_else(|| artist_art.get(&name.to_lowercase()).cloned()),
                         album_count: 0,
                         track_count: 0,
                     },
@@ -433,8 +522,7 @@ fn build(file: &LibraryFile, artwork_url: &dyn Fn(&str) -> Option<String>) -> Bu
             }
         }
 
-        let preferred = preferred_snap_take(snap);
-        let album_art = al_id
+        let album_cover = al_id
             .as_ref()
             .and_then(|al| albums.get(al))
             .and_then(|a| a.artwork_url.clone());
@@ -445,21 +533,71 @@ fn build(file: &LibraryFile, artwork_url: &dyn Fn(&str) -> Option<String>) -> Bu
             album_id: al_id,
             album: album_title,
             number,
-            genre: edit.genre.clone(),
-            duration_seconds: preferred.and_then(|t| t.seconds),
-            artwork_url: own_art(&id).or_else(|| snap.artwork.clone()).or(album_art),
-            recording_count: snap.takes.len() as u32,
-            preferred: preferred.map(|t| recording(t, snap, &snapshot.server)),
-            picked: snap
-                .pick
-                .as_ref()
-                .is_some_and(|p| snap.takes.iter().any(|t| &t.id == p)),
-            slug: Some(snap.slug.clone()),
-            updated_ms: snap.updated_ms,
+            genre: edit.genre.clone().or(source.genre),
+            duration_seconds: source.preferred.as_ref().and_then(|r| r.duration_seconds),
+            artwork_url: own_art(&id).or(source.artwork).or(album_cover),
+            recording_count: source.recording_count,
+            preferred: source.preferred,
+            picked: source.picked,
+            slug: source.slug,
+            updated_ms: source.updated_ms,
             edited: !edit.is_empty(),
+            downloaded: matches!(origin, Origin::Imported),
             id,
         };
-        tracks.push((track, snap.clone()));
+        tracks.push((track, origin));
+    };
+
+    if let Some(snapshot) = &file.snapshot {
+        for snap in &snapshot.tracks {
+            let preferred = preferred_snap_take(snap);
+            add(
+                Source {
+                    id: track_id(&snap.slug),
+                    title: snap.title.clone(),
+                    artist: snap.artist.clone(),
+                    album: snap.album.clone(),
+                    number: snap.number,
+                    genre: None,
+                    artwork: snap.artwork.clone(),
+                    recording_count: snap.takes.len() as u32,
+                    preferred: preferred.map(|t| recording(t, snap, &snapshot.server)),
+                    picked: snap
+                        .pick
+                        .as_ref()
+                        .is_some_and(|p| snap.takes.iter().any(|t| &t.id == p)),
+                    slug: Some(snap.slug.clone()),
+                    updated_ms: snap.updated_ms,
+                },
+                Origin::Server(snap.clone()),
+            );
+        }
+    }
+    for (id, imported) in &file.imported {
+        // A copy that has gone missing isn't offered as playable.
+        let Some(url) = (locate.music)(&imported.file) else {
+            continue;
+        };
+        add(
+            Source {
+                id: id.clone(),
+                title: imported.title.clone(),
+                artist: imported.artist.clone(),
+                album: imported.album.clone(),
+                number: imported.number,
+                genre: imported.genre.clone(),
+                artwork: imported
+                    .artwork
+                    .as_deref()
+                    .and_then(|n| (locate.artwork)(n)),
+                recording_count: 1,
+                preferred: Some(imported_recording(id, imported, url)),
+                picked: false,
+                slug: None,
+                updated_ms: imported.added_ms,
+            },
+            Origin::Imported,
+        );
     }
 
     let mut artists: Vec<LibraryArtist> = artists
@@ -485,6 +623,26 @@ fn build(file: &LibraryFile, artwork_url: &dyn Fn(&str) -> Option<String>) -> Bu
         artists,
         albums,
         tracks,
+    }
+}
+
+fn imported_recording(id: &str, imported: &ImportedFile, url: String) -> Recording {
+    Recording {
+        id: id.to_string(),
+        label: imported.file_name.clone(),
+        kind: RecordingKind::Imported,
+        source: AudioSource::LocalFile {
+            path: imported.file.clone(),
+        },
+        audio_url: url,
+        made_ms: imported.added_ms,
+        duration_seconds: imported.seconds,
+        lufs: None,
+        stars: 0,
+        note: String::new(),
+        preferred: true,
+        generation: None,
+        lyrics: None,
     }
 }
 
@@ -532,6 +690,7 @@ fn recording(take: &SnapTake, snap: &SnapTrack, server: &str) -> Recording {
             bpm: take.bpm,
             key: take.key.clone(),
         }),
+        lyrics: take.lyrics.clone(),
     }
 }
 
@@ -878,4 +1037,93 @@ pub fn apply_song(snapshot: &mut Snapshot, detail: &SongDetail) {
 /// The slug of a take-server track id.
 pub fn slug_of(track_id: &str) -> Option<&str> {
     track_id.strip_prefix(TAKE_SERVER_PREFIX)
+}
+
+// ------------------------------------------------------------ your own files
+
+/// Audio files that can be imported, by extension.
+pub const MUSIC_EXTENSIONS: &[&str] = &[
+    "mp3", "m4a", "aac", "alac", "mp4", "wav", "aif", "aiff", "aifc", "flac", "caf",
+];
+/// Files one import may bring.
+pub const MAX_IMPORT_FILES: usize = 1_000;
+
+/// A music file the person picked, with the tags the phone read from it.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct MusicFile {
+    /// Where it is now (readable while the import runs).
+    pub path: String,
+    /// The name it had, with its extension.
+    pub file_name: String,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub number: Option<u32>,
+    pub genre: Option<String>,
+    pub duration_seconds: Option<f64>,
+    /// Its cover picture, written out as a JPEG or PNG file.
+    pub artwork_path: Option<String>,
+}
+
+/// What an import did.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Default)]
+pub struct ImportResult {
+    /// Track ids of the files added.
+    pub added: Vec<String>,
+    /// Files already in the library.
+    pub already: u32,
+    /// Names of files that couldn't be imported, with why.
+    pub refused: Vec<String>,
+}
+
+/// The extension of an importable file name, lower case.
+pub fn music_extension(file_name: &str) -> Option<String> {
+    let (_, extension) = file_name.rsplit_once('.')?;
+    let extension = extension.to_ascii_lowercase();
+    MUSIC_EXTENSIONS
+        .contains(&extension.as_str())
+        .then_some(extension)
+}
+
+/// An imported file's track id from its SHA-256 (hex).
+pub fn imported_id(sha256: &str) -> String {
+    let short: String = sha256.chars().take(16).collect();
+    format!("{IMPORTED_PREFIX}{short}")
+}
+
+/// A tag as kept: trimmed, empty dropped, at most [`MAX_FIELD_CHARS`].
+pub fn tag(text: Option<&str>) -> Option<String> {
+    let text = text?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(text.chars().take(MAX_FIELD_CHARS).collect())
+}
+
+/// What is kept for a picked file, stored as `stored`.
+pub fn imported_file(
+    file: &MusicFile,
+    stored: String,
+    artwork: Option<String>,
+    now: i64,
+) -> ImportedFile {
+    let stem = file
+        .file_name
+        .rsplit_once('.')
+        .map_or(file.file_name.as_str(), |(stem, _)| stem)
+        .replace('_', " ");
+    ImportedFile {
+        file: stored,
+        file_name: tag(Some(&file.file_name)).unwrap_or_else(|| "Imported".into()),
+        title: tag(file.title.as_deref())
+            .or_else(|| tag(Some(&stem)))
+            .unwrap_or_else(|| "Untitled".into()),
+        artist: tag(file.artist.as_deref()),
+        album: tag(file.album.as_deref()),
+        number: file.number.filter(|n| *n > 0),
+        genre: tag(file.genre.as_deref()),
+        seconds: file.duration_seconds.filter(|s| s.is_finite() && *s > 0.0),
+        artwork,
+        added_ms: now,
+    }
 }

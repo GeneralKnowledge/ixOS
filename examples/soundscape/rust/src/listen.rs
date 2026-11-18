@@ -306,6 +306,9 @@ struct TakeJson {
     caption: Option<String>,
     #[serde(default)]
     lyrics: Option<String>,
+    /// Timed lyrics (LRC), when the song generator wrote them.
+    #[serde(default)]
+    lrc: Option<String>,
     #[serde(default)]
     lufs: Option<f64>,
     #[serde(default)]
@@ -370,7 +373,8 @@ pub fn parse_song(body: &[u8], server: &str) -> Result<SongDetail, SoundscapeErr
             bpm: number(&t.bpm),
             key: text(&t.key),
             caption: non_empty(t.caption),
-            lyrics: non_empty(t.lyrics),
+            // Timed lyrics when there are some: `lyric_lines` reads both.
+            lyrics: non_empty(t.lrc).or_else(|| non_empty(t.lyrics)),
             lufs: t.lufs.filter(|l| l.is_finite()),
             stars: t
                 .stars

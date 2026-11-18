@@ -34,6 +34,44 @@ lifecycles. No concern reaches into another's storage.
 | 3 | Persistent delivery outbox | Files and messages wait while a device is away, and go when it reappears |
 | 4 | Device conversations | Each trusted device has its own conversation in Chats, on the existing Chat engine, delivered through the outbox |
 
+## Progress
+
+- Stage 1: listening and sending at once on the laptop (#317), the
+  pairing policy in Settings (#314); revocation on a phone still to run.
+- Stage 2: one saved copy per received item, and the store lets go of
+  its copy (this PR's tests: `a_file_received_again_is_kept_once_and_the_store_lets_go`,
+  and the resume test now runs with clean-ups on) (#319). The iPhone
+  storage check is still to run.
+- Stage 3: the outbox (`rust/src/outbox.rs`, tests in
+  `rust/tests/outbox.rs`). Notes and files for a trusted device are saved
+  in `deliveries` with a 128-bit id before anything is dialled, files
+  copied into the blob store under `relay/delivery/<id>`; one worker per
+  device sends them oldest first when the device is seen, connects here,
+  Relay comes to the foreground, or forge-net's backoff (1 s to 5 min)
+  fires; the receiver remembers ids for 45 days, so a retry whose answer
+  was lost is answered without saving twice. The history shows Waiting,
+  Sending, Sent and Failed, and a waiting item can be cancelled. Notes use
+  the queue for now; stage 4 moves messages to chat-core's outbox on the
+  same scheduler. Deferred: connection arbitration and fairness batches
+  (they matter once a conversation sends many messages, stage 4), and the
+  1 GB free-space check. The phone check is still to run.
+- Stage 4: device conversations (`rust/src/device_chat.rs`, tests in
+  `rust/tests/device_chat.rs`). Each trusted device is a conversation in
+  Chats, `device:<endpoint id>`, on chat-core with no changes to it: one
+  chat-core client per device (so a device that is away holds up only its
+  own conversation), whose `ChatRepo` (`PeerRepo`) sends over
+  `relay/device/1` (`DeviceMsg::Message`, with a golden fixture) and keeps
+  the conversation's truth in a log per device
+  (`devices/<endpoint id>/messages.json`), stamped in arrival order. A
+  message to a device that is away waits in chat-core's outbox, survives a
+  relaunch, and is woken by the delivery scheduler when the device is
+  seen; the receiver's log takes each message id once. Chats works without
+  a chat server account; Settings offers Join a Chat Server. Messages are
+  text and replies for now: edits, deletes, reactions, attachments and
+  read marks to a device answer "not supported" (files go from Send). The
+  `relay` command: `relay send <device> --text TEXT`, `relay messages
+  <device>`. The phone check is still to run.
+
 ## Acceptance criteria
 
 **1. Trust and the device lifecycle**

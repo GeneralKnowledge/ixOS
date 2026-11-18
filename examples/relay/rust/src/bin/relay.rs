@@ -46,6 +46,12 @@
 //!
 //! After a code transfer, the pairing policy may offer to trust the other
 //! device; the command asks on the terminal.
+//!
+//! While `relay listen` runs, it owns the data folder. From another terminal,
+//! `send <device>`, `devices`, `revoke`, `forget`, `trust`, `policy`,
+//! `peers` and `history` go to the listener over `relay.sock` in the data
+//! folder (0600) and print what it answers, so listening and sending work
+//! at the same time.
 
 use std::collections::{HashMap, HashSet};
 use std::net::UdpSocket;
@@ -56,13 +62,14 @@ use std::time::{Duration, Instant};
 
 use forge_services::ai::{ChatMessage, ChatRequest, Collect, LanguageModel};
 use relay_core::{
-    word_code_number, CodeSend, Direction, Item, NearbySender, RelayCore, TransferStatus,
-    CODE_SERVICE_TYPE,
+    word_code_number, CodeSend, Direction, Item, NearbySender, RelayCore, RelayError,
+    TransferStatus, CODE_SERVICE_TYPE,
 };
 
 const USAGE: &str = "usage: relay listen [--port N] | pair <code> | peers | devices | \
 send <peer> [--to host:port] (--note TEXT | FILE) | send PATH... | receive <code> | \
-send <device> (--note TEXT | PATH...) [--to host:port] | revoke <device> | forget <device> | \
+send <device> (--note TEXT | --text TEXT | PATH...) [--to host:port] | \
+messages <device> | revoke <device> | forget <device> | \
 trust <device> | policy [codes-only | ask | automatic] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
@@ -87,16 +94,25 @@ fn data_dir() -> PathBuf {
     base.join("forge-relay")
 }
 
-fn open() -> Result<Arc<RelayCore>, String> {
+fn open() -> Result<Arc<RelayCore>, RelayError> {
     let host = std::fs::read_to_string("/etc/hostname")
         .map(|h| h.trim().to_string())
         .unwrap_or_else(|_| "Linux".into());
-    RelayCore::new(data_dir().to_string_lossy().into_owned(), host).map_err(|e| e.to_string())
+    RelayCore::new(data_dir().to_string_lossy().into_owned(), host)
 }
 
 fn run(args: Vec<String>) -> Result<(), String> {
     let (command, rest) = args.split_first().ok_or(USAGE)?;
-    let core = open()?;
+    let core = match open() {
+        Ok(core) => core,
+        // `relay listen` has the data: hand it the command.
+        Err(RelayError::InUse) => return control::forward(&args),
+        Err(err) => return Err(err.to_string()),
+    };
+    if let Some(result) = shared(&core, command, rest) {
+        core.shutdown();
+        return result.map(|out| print!("{out}"));
+    }
     let result = match command.as_str() {
         "listen" => listen(&core, rest),
         "pair" => {
@@ -105,71 +121,16 @@ fn run(args: Vec<String>) -> Result<(), String> {
             println!("Paired with {}.", peer.name);
             Ok(())
         }
-        "peers" => {
-            for p in core.peers() {
-                let at = p.last_address.unwrap_or_else(|| "not reached yet".into());
-                println!("{}  {}  ({at})", p.name, p.device_id);
-            }
-            Ok(())
-        }
         // `send <peer> ...` to a paired device; otherwise the arguments are
         // files and folders to send with a word code.
         "send" => match rest.first() {
             Some(first) if find_peer(&core, first).is_some() => send(&core, rest),
-            Some(first) if find_device(&core, first).is_some() => send_to_device(&core, rest),
             Some(_) => send_code(&core, rest).and_then(|()| offer_trust(&core)),
             None => Err(USAGE.into()),
         },
         "receive" => match rest {
             [code] => receive_code(&core, code).and_then(|()| offer_trust(&core)),
             _ => Err(USAGE.into()),
-        },
-        "devices" => {
-            for d in core.devices() {
-                let state = if d.trusted { "trusted" } else { "revoked" };
-                let takes = if d.trusted && !d.receives_from {
-                    ", may not send here"
-                } else {
-                    ""
-                };
-                println!("{}  {state}{takes}  {}", d.name, d.endpoint_id);
-            }
-            println!("Pairing policy: {}", policy_name(core.pairing_policy()));
-            Ok(())
-        }
-        "revoke" | "forget" | "trust" => {
-            let who = rest.first().ok_or(USAGE)?;
-            let device = find_device(&core, who)
-                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
-            let id = device.endpoint_id.clone();
-            let done = match command.as_str() {
-                "revoke" => block_on(core.revoke_device(id)),
-                "forget" => block_on(core.forget_device(id)),
-                _ => block_on(core.trust_device(id)),
-            };
-            done.map_err(|e| e.to_string())?;
-            let what = match command.as_str() {
-                "revoke" => "revoked; it can only send here with a code now",
-                "forget" => "forgotten",
-                _ => "trusted",
-            };
-            println!("{}: {what}.", device.name);
-            Ok(())
-        }
-        "policy" => match rest.first().map(String::as_str) {
-            None => {
-                println!("{}", policy_name(core.pairing_policy()));
-                Ok(())
-            }
-            Some(name) => {
-                let policy = match name {
-                    "codes-only" => relay_core::PairingPolicy::CodesOnly,
-                    "ask" => relay_core::PairingPolicy::AskToPair,
-                    "automatic" => relay_core::PairingPolicy::PairAutomatically,
-                    _ => return Err(USAGE.into()),
-                };
-                block_on(core.set_pairing_policy(policy)).map_err(|e| e.to_string())
-            }
         },
         "serve-ai" => serve_ai(&core, rest),
         "ask" => ask(&core, rest),
@@ -194,12 +155,6 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         // Older names for `send PATH...`.
         "send-code" if !rest.is_empty() => send_code(&core, rest),
-        "history" => {
-            for t in core.transfers() {
-                println!("{}", describe(&t));
-            }
-            Ok(())
-        }
         "name" => match rest.first() {
             Some(name) => block_on(core.rename_device(name.clone())).map_err(|e| e.to_string()),
             None => {
@@ -211,6 +166,183 @@ fn run(args: Vec<String>) -> Result<(), String> {
     };
     core.shutdown();
     result
+}
+
+/// The commands that also work while `relay listen` runs, from another
+/// terminal: they go to the listener (`control`), which runs them on its
+/// core and sends back what they print. `None` for any other command.
+fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<String, String>> {
+    let mut out = String::new();
+    let result = match command {
+        "peers" => {
+            for p in core.peers() {
+                let at = p.last_address.unwrap_or_else(|| "not reached yet".into());
+                out += &format!("{}  {}  ({at})\n", p.name, p.device_id);
+            }
+            Ok(())
+        }
+        "send" => match rest.first() {
+            Some(first)
+                if find_peer(core, first).is_none() && find_device(core, first).is_some() =>
+            {
+                send_to_device(core, rest).map(|line| out += &line)
+            }
+            _ => return None,
+        },
+        "messages" => (|| {
+            let who = rest.first().ok_or(USAGE)?;
+            let device = find_device(core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            for m in core
+                .device_messages(&device.endpoint_id)
+                .map_err(|e| e.to_string())?
+            {
+                let who = if m.author_id == device.endpoint_id {
+                    device.name.as_str()
+                } else {
+                    "me"
+                };
+                out += &format!("{who}: {}\n", m.body);
+            }
+            Ok(())
+        })(),
+        "devices" => {
+            for d in core.devices() {
+                let state = if d.trusted { "trusted" } else { "revoked" };
+                let takes = if d.trusted && !d.receives_from {
+                    ", may not send here"
+                } else {
+                    ""
+                };
+                out += &format!("{}  {state}{takes}  {}\n", d.name, d.endpoint_id);
+            }
+            out += &format!("Pairing policy: {}\n", policy_name(core.pairing_policy()));
+            Ok(())
+        }
+        "revoke" | "forget" | "trust" => (|| {
+            let who = rest.first().ok_or(USAGE)?;
+            let device = find_device(core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            let id = device.endpoint_id.clone();
+            let done = match command {
+                "revoke" => block_on(core.revoke_device(id)),
+                "forget" => block_on(core.forget_device(id)),
+                _ => block_on(core.trust_device(id)),
+            };
+            done.map_err(|e| e.to_string())?;
+            let what = match command {
+                "revoke" => "revoked; it can only send here with a code now",
+                "forget" => "forgotten",
+                _ => "trusted",
+            };
+            out += &format!("{}: {what}.\n", device.name);
+            Ok(())
+        })(),
+        "policy" => match rest.first().map(String::as_str) {
+            None => {
+                out += &format!("{}\n", policy_name(core.pairing_policy()));
+                Ok(())
+            }
+            Some(name) => {
+                let policy = match name {
+                    "codes-only" => relay_core::PairingPolicy::CodesOnly,
+                    "ask" => relay_core::PairingPolicy::AskToPair,
+                    "automatic" => relay_core::PairingPolicy::PairAutomatically,
+                    _ => return Some(Err(USAGE.into())),
+                };
+                block_on(core.set_pairing_policy(policy)).map_err(|e| e.to_string())
+            }
+        },
+        "history" => {
+            for t in core.transfers() {
+                out += &format!("{}\n", describe(&t));
+            }
+            Ok(())
+        }
+        _ => return None,
+    };
+    Some(result.map(|()| out))
+}
+
+/// The listener's end of `shared`: a Unix socket in the data folder, one
+/// command per connection. Only this user can reach it (the folder is
+/// theirs, and the socket is made 0600).
+mod control {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use relay_core::RelayCore;
+
+    fn path() -> PathBuf {
+        super::data_dir().join("relay.sock")
+    }
+
+    /// Takes commands from other `relay` processes while listening.
+    pub fn serve(core: Arc<RelayCore>) -> Result<(), String> {
+        let path = path();
+        // No other process has this data folder (we hold its lock), so a
+        // socket left here is from a listener that has ended.
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).map_err(|e| e.to_string())?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| e.to_string())?;
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let core = core.clone();
+                std::thread::spawn(move || answer(&core, stream));
+            }
+        });
+        Ok(())
+    }
+
+    fn answer(core: &RelayCore, stream: UnixStream) {
+        let mut line = String::new();
+        if BufReader::new(&stream).read_line(&mut line).is_err() {
+            return;
+        }
+        let reply = match serde_json::from_str::<Vec<String>>(&line) {
+            Ok(args) => match args.split_first() {
+                Some((command, rest)) => {
+                    super::shared(core, command, rest).unwrap_or_else(|| Err(busy(command)))
+                }
+                None => Err(super::USAGE.into()),
+            },
+            Err(_) => Err("a garbled command".into()),
+        };
+        let reply = serde_json::to_string(&reply.map_err(|e| e.to_string()))
+            .unwrap_or_else(|_| "null".into());
+        let _ = (&stream).write_all(reply.as_bytes());
+    }
+
+    fn busy(command: &str) -> String {
+        format!("`relay listen` is running with this data; stop it to use `relay {command}`")
+    }
+
+    /// Runs `args` on the running listener, printing what it printed.
+    pub fn forward(args: &[String]) -> Result<(), String> {
+        let command = args.first().map(String::as_str).unwrap_or("");
+        let mut stream = UnixStream::connect(path())
+            .map_err(|_| "Relay's data is in use by another relay process".to_string())?;
+        let line = serde_json::to_string(args).map_err(|e| e.to_string())? + "\n";
+        stream
+            .write_all(line.as_bytes())
+            .map_err(|e| e.to_string())?;
+        let mut reply = String::new();
+        BufReader::new(stream)
+            .read_line(&mut reply)
+            .map_err(|e| e.to_string())?;
+        match serde_json::from_str::<Result<String, String>>(&reply) {
+            Ok(Ok(out)) => {
+                print!("{out}");
+                Ok(())
+            }
+            Ok(Err(problem)) => Err(problem),
+            Err(_) => Err(busy(command)),
+        }
+    }
 }
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
@@ -225,7 +357,7 @@ fn local_address() -> Option<String> {
     Some(socket.local_addr().ok()?.ip().to_string())
 }
 
-fn listen(core: &RelayCore, args: &[String]) -> Result<(), String> {
+fn listen(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
     let port = match args {
         [] => 0,
         [flag, n] if flag == "--port" => n.parse().map_err(|_| "--port takes a number")?,
@@ -249,7 +381,13 @@ fn listen(core: &RelayCore, args: &[String]) -> Result<(), String> {
     println!("To pair, scan this with Relay on the phone (valid for five minutes):\n");
     print_qr(&invitation.code);
     println!("\n{}\n", invitation.code);
-    println!("Waiting. Ctrl-C to stop.");
+    match control::serve(core.clone()) {
+        Ok(()) => println!(
+            "Waiting. Ctrl-C to stop. In another terminal, `relay send <device> ...`, \
+             `devices`, `revoke`, `policy` and `history` use this listener."
+        ),
+        Err(err) => println!("Waiting. Ctrl-C to stop. (Other terminals can't use it: {err}.)"),
+    }
     let mut seen = core.transfers().first().map(|t| t.id).unwrap_or(0);
     let mut peers = core.peers().len();
     loop {
@@ -262,7 +400,12 @@ fn listen(core: &RelayCore, args: &[String]) -> Result<(), String> {
             peers = now.len();
         }
         for t in core.transfers().into_iter().rev() {
-            if t.id > seen && !matches!(t.status, TransferStatus::InProgress { .. }) {
+            if t.id > seen
+                && !matches!(
+                    t.status,
+                    TransferStatus::InProgress { .. } | TransferStatus::Waiting
+                )
+            {
                 println!("{}", describe(&t));
                 seen = t.id;
             }
@@ -356,20 +499,32 @@ fn offer_trust(core: &RelayCore) -> Result<(), String> {
 
 /// `send <device> (--note TEXT | PATH...) [--to host:port]`: to a trusted
 /// device, found with mDNS unless `--to` says where.
-fn send_to_device(core: &RelayCore, args: &[String]) -> Result<(), String> {
+fn send_to_device(core: &RelayCore, args: &[String]) -> Result<String, String> {
     let mut args = args.to_vec();
     let to = take_flag(&mut args, "--to")?;
     let note = take_flag(&mut args, "--note")?;
+    let text = take_flag(&mut args, "--text")?;
     let (who, paths) = args.split_first().ok_or(USAGE)?;
     let device = find_device(core, who).ok_or(USAGE)?;
+    // Not found: it is queued, and goes when it is reached (where it was
+    // last seen, or when it connects here) while `relay listen` runs.
     let addresses = match to {
         Some(address) => vec![address],
-        None => find_device_addresses(&device.endpoint_id)?,
+        None => find_device_addresses(&device.endpoint_id).unwrap_or_default(),
     };
-    core.devices_nearby(vec![relay_core::NearbyDevice {
-        endpoint_id: device.endpoint_id.clone(),
-        addresses,
-    }]);
+    if !addresses.is_empty() {
+        core.devices_nearby(vec![relay_core::NearbyDevice {
+            endpoint_id: device.endpoint_id.clone(),
+            addresses,
+        }]);
+    }
+    if let Some(text) = text {
+        if note.is_some() || !paths.is_empty() {
+            return Err(USAGE.into());
+        }
+        block_on(core.send_device_message(&device.endpoint_id, text)).map_err(|e| e.to_string())?;
+        return Ok(format!("to {}: message sent\n", device.name));
+    }
     let transfer = match (note, paths) {
         (Some(text), []) => block_on(core.send_note_to_device(device.endpoint_id, text)),
         (None, paths) if !paths.is_empty() => {
@@ -378,8 +533,7 @@ fn send_to_device(core: &RelayCore, args: &[String]) -> Result<(), String> {
         _ => return Err(USAGE.into()),
     }
     .map_err(|e| e.to_string())?;
-    println!("{}", describe(&transfer));
-    Ok(())
+    Ok(format!("{}\n", describe(&transfer)))
 }
 
 /// Advertises this device for trusted devices: TXT `d` = 1 and its id.
@@ -686,7 +840,7 @@ fn take_flag(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, Strin
     Ok(Some(value))
 }
 
-fn serve_ai(core: &RelayCore, args: &[String]) -> Result<(), String> {
+fn serve_ai(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
     let mut args = args.to_vec();
     let upstream = take_flag(&mut args, "--upstream")?
         .ok_or("serve-ai needs --upstream, the server's OpenAI address (http://127.0.0.1:11434/v1 for Ollama)")?;
@@ -785,6 +939,9 @@ fn describe(t: &relay_core::Transfer) -> String {
     };
     let status = match &t.status {
         TransferStatus::Done => "done".to_string(),
+        TransferStatus::Waiting => {
+            "waiting: it goes when the device is reached, while relay listen runs".to_string()
+        }
         TransferStatus::InProgress { done } => format!("{done} bytes so far"),
         TransferStatus::Failed { reason } => format!("failed: {reason}"),
     };

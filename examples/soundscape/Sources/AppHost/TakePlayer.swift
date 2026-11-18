@@ -33,8 +33,14 @@ final class TakePlayer {
         let id: String
         let label: String
         let audioUrl: String
+        /// The library track it plays for; nil in a comparison.
+        let trackId: String?
+        /// The words this recording sings, with section tags.
+        let lyrics: String?
 
         init(_ track: QueueTrack) {
+            trackId = track.trackId
+            lyrics = track.recording.lyrics
             song = track.title
             artist = track.artist
             album = track.album
@@ -45,6 +51,8 @@ final class TakePlayer {
         }
 
         init(song: String, take: Take) {
+            trackId = nil
+            lyrics = take.lyrics
             self.song = song
             artist = nil
             album = nil
@@ -69,8 +77,18 @@ final class TakePlayer {
     private(set) var duration: Double = 0
     /// Set when a take couldn't be streamed.
     var failure: String?
+    /// Called once per play of a queued song, once it has played long
+    /// enough to count (Rust's `countsAsPlayed`), for the listening history.
+    @ObservationIgnored var onPlayed: ((_ trackId: String, _ recordingId: String) -> Void)?
+    @ObservationIgnored private var counted = false
 
     var isComparing: Bool { b != nil }
+    /// Where the heard take is now, read from the player itself (`time`
+    /// moves four times a second), for lyrics that follow word by word.
+    var exactTime: Double {
+        let seconds = (active == .b && isComparing ? playerB : playerA).currentTime().seconds
+        return seconds.isFinite ? seconds : time
+    }
     var current: Loaded? { active == .b ? b ?? a : a }
     /// The songs after this one, for Up Next.
     var upcoming: [QueueEntry] { queue.map { queueUpcoming(queue: $0) } ?? [] }
@@ -172,6 +190,7 @@ final class TakePlayer {
         active = .a
         time = 0
         duration = 0
+        counted = false
         playerA.replaceCurrentItem(with: Self.item(a.audioUrl))
         playerB.replaceCurrentItem(with: b.flatMap { Self.item($0.audioUrl) })
         applyVolumes()
@@ -341,6 +360,14 @@ final class TakePlayer {
             pause()
         }
         checkStoppedBySystem()
+        countPlay()
+    }
+
+    private func countPlay() {
+        guard !counted, isPlaying, !isComparing, let current, let trackId = current.trackId,
+              countsAsPlayed(listened: time, length: duration > 0 ? duration : nil) else { return }
+        counted = true
+        onPlayed?(trackId, current.id)
     }
 
     // MARK: The system
@@ -438,6 +465,7 @@ final class TakePlayer {
         if !isComparing, let queue {
             if let moved = queueAdvance(queue: queue, byUser: false) {
                 if moved.position == queue.position && moved.order.count == queue.order.count {
+                    counted = false
                     seek(to: 0)
                     resume()
                 } else {

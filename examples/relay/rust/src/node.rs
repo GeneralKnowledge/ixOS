@@ -19,6 +19,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use iroh::endpoint::{presets, Connection};
@@ -37,6 +38,38 @@ use crate::device::{DeviceHandler, DeviceInbound, NodeLink, DEVICE_ALPN};
 use crate::model::RelayError;
 
 const KEY_FILE: &str = "device.key";
+
+/// How often the store drops what nothing holds any more (a received
+/// file's copy once it is saved, a sent file's once the send ends).
+static CLEANUP_INTERVAL_MS: AtomicU64 = AtomicU64::new(if cfg!(test) { 300 } else { 30_000 });
+/// A receive that was neither finished nor resumed for this long lets go of
+/// what arrived, so a transfer that never comes back doesn't hold space for
+/// ever.
+pub(crate) const RECEIVE_KEPT_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+
+/// For tests: clean the store more often. Takes effect for stores opened
+/// afterwards.
+#[doc(hidden)]
+pub fn set_store_cleanup_interval(interval: std::time::Duration) {
+    CLEANUP_INTERVAL_MS.store(interval.as_millis() as u64, Ordering::SeqCst);
+}
+
+/// The blob store, with garbage collection on. What stays is what a tag
+/// holds: a receive's named tag (`relay/receive/...`, `code::hold`) until
+/// the file is saved, and a send's temporary tags while it runs. One tag
+/// per receive, on its root, never one per blob.
+async fn open_store(store_dir: &Path) -> Result<FsStore, RelayError> {
+    let mut options = iroh_blobs::store::fs::options::Options::new(store_dir);
+    options.gc = Some(iroh_blobs::store::GcConfig {
+        interval: std::time::Duration::from_millis(CLEANUP_INTERVAL_MS.load(Ordering::SeqCst)),
+        add_protected: None,
+    });
+    let store = FsStore::load_with_opts(store_dir.join("blobs.db"), options)
+        .await
+        .map_err(file_error)?;
+    crate::code::let_go_of_old_receives(&store).await;
+    Ok(store)
+}
 
 /// The blobs each endpoint may fetch: the current send's, for the
 /// receiver that proved its code.
@@ -66,7 +99,7 @@ impl Node {
         link: NodeLink,
     ) -> Result<Self, RelayError> {
         let key = device_key(key_dir)?;
-        let store = FsStore::load(store_dir).await.map_err(file_error)?;
+        let store = open_store(store_dir).await?;
         let endpoint = Endpoint::builder(presets::Minimal)
             .secret_key(key)
             .relay_mode(RelayMode::Disabled)
