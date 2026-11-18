@@ -18,7 +18,7 @@ So there are two separate mistakes:
 | App | What floats | How | Covers content? |
 |---|---|---|---|
 | Soundscape | the mini-player over every Library screen | was an inset on the stack; #320 (merged) made it an overlay that measures itself, puts its height in the environment, and adds `.miniPlayerClearance()` to each of the 11 screens | Was (seen on the phone); fixed by #320. Each new screen must now remember the modifier |
-| Commonplace | the Undo banner after Mark All as Read (ForgeAppKit's `forgeBanner`) | an inset on the `NavigationStack`, while Mark All as Read is on a **pushed** timeline | **Likely**: the same arrangement as Soundscape before #320. While the banner shows, the timeline's last articles probably can't scroll clear of it. Not seen on the phone |
+| Commonplace | the Undo banner after Mark All as Read (ForgeAppKit's `forgeBanner`) | an inset on the `NavigationStack`, while Mark All as Read is on a **pushed** timeline | **Yes, seen on the phone** (2026-11-18, build 1.29916766): with the Undo banner showing, the last article stays slightly covered when scrolled to the end. The same arrangement as Soundscape before #320 |
 | Weather | the bottom bar (places, the page dots) | an inset on the paged `TabView`; each page's scroll view pads 24 points at its end | **To check**: whether a paged `TabView` passes the inset to its pages. If not, the footer and the end of the details sit under the bar |
 | Relay | the "new messages" button in a chat | an overlay at the bottom of the transcript | No: it shows only when the newest messages are scrolled out of view, and it scrolls to them |
 | Relay, Pocket Library, Good Dog, Soundscape's Studio | composers, the reader's progress bar and player, session and goal footers, the transport | an inset on the scrolling view itself | No: the right way |
@@ -27,7 +27,7 @@ So there are two separate mistakes:
 
 Live instances:
 - **Soundscape:** fixed by #320, but by hand.
-- **Commonplace's Undo banner:** likely. This is in the framework itself: `forgeBanner`'s documentation says lists get room, and that holds only for the screen it is attached to.
+- **Commonplace's Undo banner:** confirmed on the phone on 2026-11-18. This is in the framework itself: `forgeBanner`'s documentation says lists get room, and that holds only for the screen it is attached to.
 - **Weather's bottom bar:** to check on the phone.
 
 ## What changes
@@ -79,5 +79,5 @@ Neither step touches the Now Playing or coming-back work.
 
 These would confirm the two suspected instances. They are items 21 and 22 on the shared checklist:
 
-1. **Commonplace:** open a feed with many articles, then Mark All as Read. While the Undo banner shows, scroll to the end. Is the last article fully visible above the banner?
+1. **Commonplace:** open a feed with many articles, then Mark All as Read. While the Undo banner shows, scroll to the end. Is the last article fully visible above the banner? **No** (2026-11-18): it is slightly covered.
 2. **Weather:** on a page, scroll to the very end. Is the footer fully visible above the bottom bar?
