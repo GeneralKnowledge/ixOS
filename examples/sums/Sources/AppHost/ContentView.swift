@@ -16,6 +16,7 @@ public struct ContentView: View {
         ForgeRoot(host) { core in
             CalculatorScreen(core: core, changes: host.changes)
         }
+        .forgeTheme(ForgeTheme(accent: .teal))
     }
 }
 
