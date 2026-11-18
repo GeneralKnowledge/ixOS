@@ -112,7 +112,7 @@ timed lyrics) waits, and the question of where "your own server" lives waits wit
    Soundscape opens on Listen. Tabs: Listen, Library, Search, Collections, with Sources in Settings until there is
    more than one source.
 4. **Persist the queue.** Done: `rust/src/playback.rs` keeps the queue, the song and how far into it in
-   `playback.json`, saved as it changes, every 15 seconds while playing, and when the app leaves the screen. The
+   `playback.json`, saved as it changes, on pause, and every 5 seconds while playing. The
    app opens paused where it was left. Songs come back as the library has them now (edits, a download since); a
    file on the phone that is gone is left out and playback moves to the next song.
 5. **Stable recording ids and `RecordingSource`.** The model, a schema version bump for `library.json` that

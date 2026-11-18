@@ -388,7 +388,7 @@ final class TakePlayer {
             updateNowPlaying()
         }
         isBuffering = heard.timeControlStatus == .waitingToPlayAtSpecifiedRate
-        if isPlaying, Date().timeIntervalSince(lastSave) > 15 { save() }
+        if isPlaying, Date().timeIntervalSince(lastSave) > 5 { save() }
         if let item = heard.currentItem, item.status == .failed, failure == nil {
             failure = Self.describe(item.error, playing: current)
             log.warn("stream failed: \(item.error.map { "\($0)" } ?? "")")
