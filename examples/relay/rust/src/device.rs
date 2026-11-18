@@ -455,7 +455,10 @@ pub(crate) async fn send(
         .map_err(|e| RelayError::Unreachable {
             reason: e.to_string(),
         })?;
-    if let Some(kind) = route_of(&conn).filter(|k| !mode.allows(*k)) {
+    // The path as connected; asked again after the exchange, when iroh
+    // may have moved to a better one (or, once closed, has none to show).
+    let first_path = crate::resolver::path_of(&conn);
+    if let Some(kind) = first_path.map(|(k, _)| k).filter(|k| !mode.allows(*k)) {
         conn.close(0u32.into(), b"route not allowed");
         return Err(RelayError::Unreachable {
             reason: format!(
@@ -467,7 +470,7 @@ pub(crate) async fn send(
     let result = exchange(node, &conn, them, my_name, id, item, report, &stop)
         .await
         .map(|(name, addresses)| {
-            let path = crate::resolver::path_of(&conn);
+            let path = crate::resolver::path_of(&conn).or(first_path);
             Sent {
                 name,
                 addresses,
