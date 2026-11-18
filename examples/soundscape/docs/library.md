@@ -17,7 +17,7 @@ is empty until the server answers.
 |---|---|---|
 | **Track** | The musical work: title, artist, album, track number, genre, duration, artwork | The source's catalogue, plus your own edits on the phone |
 | **Recording** | One audio version of a track: a generated take, a mix, a master, an imported file | The source, one track can have many |
-| **Audio source** | Where a recording's audio lives | `TakeServer { file }` now, `LocalFile` and `Downloaded` later (PR 4), more later |
+| **Audio source** | Where a recording's audio lives | `TakeServer` or `LocalFile` (an imported file); a downloaded take keeps its source and plays from its copy ([offline.md](offline.md)) |
 
 One track, many recordings. A song generated three times is one library entry with three recordings, and the
 preferred recording is what plays. For a take-server track the preferred recording is the server's pick, so
@@ -33,7 +33,7 @@ names one, numbered in the catalogue's order. A song with no act gets no artist 
 The phone keeps the library in `library.json` (a `Document`, next to the projects):
 
 - **Snapshots:** the last catalogue each source sent, saved as it came. The library browses and searches
-  without the server, but playing a take-server recording still needs the server until PR 4.
+  without the server; a song plays without it once downloaded ([offline.md](offline.md)).
 - **Edits:** your changes to a track's title, artist, album, track number or genre. They apply over the
   snapshot, so a refresh never undoes them.
 - **Artwork:** pictures you chose for an artist, album or track, in Soundscape's file store. They win over the
@@ -89,7 +89,7 @@ The Listen tab becomes **Library**:
 
 The library will hold your own audio files as well as generated music. The model has room for them (an
 `Imported` recording whose source is a `LocalFile`, with tags from the file). Importing comes with offline
-storage in PR 4, because both need files on the phone. This PR doesn't import anything.
+storage in PR 4, because both need files on the phone: see [offline.md](offline.md).
 
 ## Not in this PR
 

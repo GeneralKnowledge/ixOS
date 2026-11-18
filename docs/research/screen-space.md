@@ -6,7 +6,7 @@ Plan, 17 November 2026. Reuben asked after Soundscape's mini-player hid the last
 
 A list or scroll view leaves room only for the **safe area**: the status bar, the home indicator, the navigation and tab bars, and anything added with `.safeAreaInset`. An `.overlay` or a `ZStack` layer takes no room. Content scrolls under it, and the last rows can never come out from under it.
 
-The catch Soundscape found: **an inset added to a `NavigationStack` or `TabView` doesn't reliably reach the screens inside it.** The Library's mini-player was a `.safeAreaInset` on the stack. On the iPhone, a pushed album's list still ran under it (fixed in #320, still open, from the code comment and the phone report). The inset reached the stack's own frame but not the lists of the screens pushed onto it.
+The catch Soundscape found: **an inset added to a `NavigationStack` or `TabView` doesn't reliably reach the screens inside it.** The Library's mini-player was a `.safeAreaInset` on the stack. On the iPhone, a pushed album's list still ran under it (fixed in #320, merged 2026-11-18; from the code comment and the phone report). The inset reached the stack's own frame but not the lists of the screens pushed onto it.
 
 So there are two separate mistakes:
 
@@ -17,7 +17,7 @@ So there are two separate mistakes:
 
 | App | What floats | How | Covers content? |
 |---|---|---|---|
-| Soundscape | the mini-player over every Library screen | was an inset on the stack; #320 makes it an overlay that measures itself, puts its height in the environment, and adds `.miniPlayerClearance()` to each of the 11 screens | **Yes until #320 merges** (seen on the phone). After #320, each new screen must remember the modifier |
+| Soundscape | the mini-player over every Library screen | was an inset on the stack; #320 (merged) made it an overlay that measures itself, puts its height in the environment, and adds `.miniPlayerClearance()` to each of the 11 screens | Was (seen on the phone); fixed by #320. Each new screen must now remember the modifier |
 | Commonplace | the Undo banner after Mark All as Read (ForgeAppKit's `forgeBanner`) | an inset on the `NavigationStack`, while Mark All as Read is on a **pushed** timeline | **Likely**: the same arrangement as Soundscape before #320. While the banner shows, the timeline's last articles probably can't scroll clear of it. Not seen on the phone |
 | Weather | the bottom bar (places, the page dots) | an inset on the paged `TabView`; each page's scroll view pads 24 points at its end | **To check**: whether a paged `TabView` passes the inset to its pages. If not, the footer and the end of the details sit under the bar |
 | Relay | the "new messages" button in a chat | an overlay at the bottom of the transcript | No: it shows only when the newest messages are scrolled out of view, and it scrolls to them |
@@ -50,7 +50,7 @@ iOS 26 has a slot for exactly this: `.tabViewBottomAccessory`, the bar Music sho
 
 ### 3. The apps move
 
-- **Soundscape:** the mini-player becomes `.forgeBar`, and the 11 `.miniPlayerClearance()` calls and the environment key from #320 are removed. This waits for #320 to merge and is done on top of it.
+- **Soundscape:** the mini-player becomes `.forgeBar`, and the 11 `.miniPlayerClearance()` calls and the environment key from #320 are removed.
 - **Commonplace:** nothing to change in the app. `forgeBanner` is fixed underneath it.
 - **Weather:** if the phone shows the bottom bar covering the page, the bar becomes `.forgeBar`.
 
@@ -66,7 +66,7 @@ iOS 26 has a slot for exactly this: `.tabViewBottomAccessory`, the bar Music sho
 ## Order and size
 
 1. **Spike in the ForgeUI showcase:** one screen, one phone look of about 5 minutes. It decides between content margins and the fallback, and whether to use the iOS 26 accessory.
-2. **One PR after #320 merges:**
+2. **One PR after the spike:**
    - `forgeBar`, with `forgeBanner` moved onto it;
    - Soundscape (and Weather if needed) moved onto it;
    - the rule and the two UI scenarios.
