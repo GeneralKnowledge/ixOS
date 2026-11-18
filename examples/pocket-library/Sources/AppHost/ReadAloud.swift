@@ -11,7 +11,8 @@ import UIKit
 /// (paragraph, heading, quote…) per utterance, and reports the block and
 /// word being spoken so the reader can follow and highlight them. Keeps
 /// playing with the screen locked (the `audio` background mode, in
-/// forge.toml) and answers the lock screen's play, pause and skip buttons.
+/// forge.toml) and answers the lock screen's play, pause, skip back and
+/// forward, and progress bar.
 ///
 /// Speech is presentation, not a rule, so it lives in Swift: Rust has
 /// already turned the book into blocks, and the reader saves the position
@@ -152,6 +153,62 @@ final class ReadAloud: NSObject {
         state = .playing
         activateAudioSession()
         speak(from: target)
+    }
+
+    /// How far the lock screen's skip buttons move.
+    nonisolated static let skipInterval: Double = 10
+
+    /// Moves about `seconds` back or forward in the chapter (the lock
+    /// screen's skip buttons). Speech can only start at a block, so this
+    /// goes to the block holding the new time: back restarts the current
+    /// block when the time is still inside it, and forward always moves
+    /// on at least one block, so it never goes backwards.
+    func skip(seconds: Double) {
+        guard let current = block else { return }
+        let now = Self.estimatedTimes(texts: texts, block: current, speed: speed, within: spokenOffset).elapsed
+        guard var target = Self.block(at: now + seconds, texts: texts, speed: speed) else { return }
+        if seconds > 0, target <= current {
+            target = current + 1
+            while target < texts.count, texts[target].isEmpty { target += 1 }
+            // Past the last block: let the chapter end as it would.
+        }
+        jump(to: target)
+    }
+
+    /// Moves to the block at `seconds` into the chapter (the lock screen's
+    /// progress bar), by the same estimate that gives the lock screen its
+    /// duration.
+    func seek(toSeconds seconds: Double) {
+        guard let target = Self.block(at: seconds, texts: texts, speed: speed) else { return }
+        jump(to: target)
+    }
+
+    /// Reads on from `index` when playing; when paused, moves there and
+    /// stays paused, so play carries on from the new place.
+    private func jump(to index: Int) {
+        guard state != .stopped else { return }
+        if state == .playing {
+            activateAudioSession()
+            speak(from: index)
+            return
+        }
+        var index = max(index, 0)
+        while index < texts.count, texts[index].isEmpty { index += 1 }
+        guard index < texts.count else { return }
+        utterance = nil
+        if synthesizer.isSpeaking || synthesizer.isPaused {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+        block = index
+        word = nil
+        onBlock?(index)
+        updateNowPlaying()
+    }
+
+    /// How far into the current block the voice is, in characters.
+    private var spokenOffset: Int {
+        guard let block, block < texts.count, let word else { return 0 }
+        return min(word.location, texts[block].count)
     }
 
     func stop() {
@@ -316,11 +373,30 @@ final class ReadAloud: NSObject {
         try? ForgeAudioSession.activate(.playback)
     }
 
+    #if os(iOS)
+    /// Every lock-screen command Read Aloud answers.
+    private static func remoteCommands(_ center: MPRemoteCommandCenter) -> [MPRemoteCommand] {
+        [center.playCommand, center.pauseCommand, center.togglePlayPauseCommand,
+         center.nextTrackCommand, center.previousTrackCommand,
+         center.skipBackwardCommand, center.skipForwardCommand,
+         center.changePlaybackPositionCommand]
+    }
+    #endif
+
+    /// Takes over the lock-screen commands. The command center is shared by
+    /// every app in Device Lab, so this first removes whatever another
+    /// player left there (Soundscape's player left its skip-back button
+    /// and progress bar behind, found on the phone, 2026-11-18), then adds
+    /// Read Aloud's own. Done on every `play(from:)`, so reading takes the
+    /// controls back after another app's player has had them.
     private func addRemoteCommands() {
         #if os(iOS)
-        guard !remoteCommandsAdded else { return }
         remoteCommandsAdded = true
         let center = MPRemoteCommandCenter.shared()
+        for command in Self.remoteCommands(center) {
+            command.removeTarget(nil)
+            command.isEnabled = true
+        }
         center.playCommand.addTarget { @Sendable [weak self] _ in
             Task { @MainActor in self?.resume() }
             return .success
@@ -344,6 +420,22 @@ final class ReadAloud: NSObject {
             Task { @MainActor in self?.skip(by: -1) }
             return .success
         }
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: Self.skipInterval)]
+        center.skipBackwardCommand.addTarget { @Sendable [weak self] _ in
+            Task { @MainActor in self?.skip(seconds: -Self.skipInterval) }
+            return .success
+        }
+        center.skipForwardCommand.preferredIntervals = [NSNumber(value: Self.skipInterval)]
+        center.skipForwardCommand.addTarget { @Sendable [weak self] _ in
+            Task { @MainActor in self?.skip(seconds: Self.skipInterval) }
+            return .success
+        }
+        center.changePlaybackPositionCommand.addTarget { @Sendable [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            let position = event.positionTime
+            Task { @MainActor in self?.seek(toSeconds: position) }
+            return .success
+        }
         #endif
     }
 
@@ -352,9 +444,7 @@ final class ReadAloud: NSObject {
         #if os(iOS)
         guard remoteCommandsAdded else { return }
         remoteCommandsAdded = false
-        let center = MPRemoteCommandCenter.shared()
-        for command in [center.playCommand, center.pauseCommand, center.togglePlayPauseCommand,
-                        center.nextTrackCommand, center.previousTrackCommand] {
+        for command in Self.remoteCommands(MPRemoteCommandCenter.shared()) {
             command.removeTarget(nil)
         }
         #endif
@@ -367,18 +457,43 @@ final class ReadAloud: NSObject {
     /// Without a duration and elapsed time iOS showed the player with no
     /// details at all (found on the phone, 2026-11-17; Soundscape's player
     /// had the same fault).
-    nonisolated static func estimatedTimes(texts: [String], block: Int?, speed: Double) -> (elapsed: Double, duration: Double) {
-        // About 15 characters a second at normal speed (≈180 words a minute).
-        let perSecond = 15 * max(speed, 0.5)
+    /// `within` is how many characters into the block the voice is, so a
+    /// paused chapter shows where it stopped.
+    nonisolated static func estimatedTimes(
+        texts: [String], block: Int?, speed: Double, within: Int = 0
+    ) -> (elapsed: Double, duration: Double) {
+        let perSecond = charactersPerSecond(speed)
         let total = texts.reduce(0) { $0 + $1.count }
         let before = texts.prefix(max(0, min(block ?? 0, texts.count))).reduce(0) { $0 + $1.count }
-        return (Double(before) / perSecond, Double(total) / perSecond)
+        let inside = block == nil ? 0 : max(0, within)
+        return (Double(min(before + inside, total)) / perSecond, Double(total) / perSecond)
+    }
+
+    /// The block with text at `seconds` into the chapter, by the same
+    /// estimate as `estimatedTimes`: the inverse the lock screen's progress
+    /// bar and skip buttons need. Times before the start give the first
+    /// block, times past the end the last; nil when nothing has text.
+    nonisolated static func block(at seconds: Double, texts: [String], speed: Double) -> Int? {
+        guard let last = texts.lastIndex(where: { !$0.isEmpty }) else { return nil }
+        let position = max(0, seconds) * charactersPerSecond(speed)
+        var start = 0.0
+        for (index, text) in texts.enumerated() where !text.isEmpty {
+            let end = start + Double(text.count)
+            if position < end { return index }
+            start = end
+        }
+        return last
+    }
+
+    /// About 15 characters a second at normal speed (≈180 words a minute).
+    nonisolated private static func charactersPerSecond(_ speed: Double) -> Double {
+        15 * max(speed, 0.5)
     }
 
     private func updateNowPlaying() {
         #if os(iOS)
         guard state != .stopped else { return }
-        let times = Self.estimatedTimes(texts: texts, block: block, speed: speed)
+        let times = Self.estimatedTimes(texts: texts, block: block, speed: speed, within: spokenOffset)
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: chapterTitle.isEmpty ? bookTitle : chapterTitle,
             MPMediaItemPropertyArtist: author,

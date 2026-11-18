@@ -104,7 +104,6 @@ final class TakePlayer {
     @ObservationIgnored private let playerB = AVPlayer()
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
-    @ObservationIgnored private var remoteReady = false
     /// The lock screen's picture for `current`, and the address it came from.
     @ObservationIgnored private var artwork: MPMediaItemArtwork?
     @ObservationIgnored private var artworkUrl: String?
@@ -179,6 +178,7 @@ final class TakePlayer {
         artwork = nil
         artworkUrl = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        removeRemoteCommands()
         ForgeAudioSession.deactivate()
     }
 
@@ -531,10 +531,27 @@ final class TakePlayer {
         MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
 
+    /// Every lock-screen command the player answers or turns off.
+    private static func remoteCommands(_ center: MPRemoteCommandCenter) -> [MPRemoteCommand] {
+        [center.playCommand, center.pauseCommand, center.togglePlayPauseCommand,
+         center.changePlaybackPositionCommand, center.skipBackwardCommand, center.skipForwardCommand,
+         center.nextTrackCommand, center.previousTrackCommand]
+    }
+
+    /// Takes over the lock-screen commands for each song it loads. The
+    /// command center is shared by every app in Device Lab, so this first
+    /// removes whatever another player (Pocket Library's Read Aloud) left
+    /// there, and `stop()` removes the player's own, so its skip-back
+    /// button no longer lingers on another app's lock screen (found on the
+    /// phone, 2026-11-18).
     private func setUpRemoteCommands() {
-        guard !remoteReady else { return }
-        remoteReady = true
         let center = MPRemoteCommandCenter.shared()
+        for command in Self.remoteCommands(center) {
+            command.removeTarget(nil)
+            command.isEnabled = true
+        }
+        // Back 10 seconds only; "next" is the next song.
+        center.skipForwardCommand.isEnabled = false
         center.playCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated { self?.resume() }
             return .success
@@ -574,6 +591,12 @@ final class TakePlayer {
                 if self.isComparing { self.hear(self.active == .a ? .b : .a) } else { self.previous() }
             }
             return .success
+        }
+    }
+
+    private func removeRemoteCommands() {
+        for command in Self.remoteCommands(MPRemoteCommandCenter.shared()) {
+            command.removeTarget(nil)
         }
     }
 }
