@@ -236,6 +236,17 @@ ForgeStateView.empty("Summaries Unavailable", systemImage: "sparkles", message: 
 
 The `state-views` parity rule keeps apps that use ForgeUI off `ContentUnavailableView` itself.
 
+### Bars over content
+
+Anything that floats over a scrolling screen, such as a mini-player or a banner, goes on with `.forgeBar`. It sits on the container (the `NavigationStack`, or a tab's content):
+
+```swift
+NavigationStack { … }
+    .forgeBar { if player.current != nil { MiniPlayer(player: player) } }
+```
+
+The bar measures itself and gives every scroll view below it that much room as a content margin. That includes screens pushed onto the stack, so a list's last row can always scroll clear of the bar. Don't use an `.overlay`, which leaves no room at all, or a `.safeAreaInset` on the stack, whose room didn't reach a pushed list on the iPhone. ForgeAppKit's `forgeBanner` is built on it. The reasons are in [screen-space.md](research/screen-space.md).
+
 ### Alerts, dialogs and sheets
 
 Use SwiftUI's `.alert`, `.confirmationDialog` and `.sheet` as they are; the theme tints them. For a form in a sheet, `forgeFormToolbar` adds Cancel and a confirm button that becomes a spinner while saving, and stops the sheet being swiped away meanwhile:
