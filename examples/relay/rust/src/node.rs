@@ -38,6 +38,9 @@ use crate::device::{DeviceHandler, DeviceInbound, NodeLink, DEVICE_ALPN};
 use crate::model::RelayError;
 
 const KEY_FILE: &str = "device.key";
+/// The UDP port the endpoint last listened on, so a device that remembers
+/// this one's address (over Tailscale, say) finds it there again.
+const PORT_FILE: &str = "device.port";
 
 /// How often the store drops what nothing holds any more (a received
 /// file's copy once it is saved, a sent file's once the send ends).
@@ -100,14 +103,7 @@ impl Node {
     ) -> Result<Self, RelayError> {
         let key = device_key(key_dir)?;
         let store = open_store(store_dir).await?;
-        let endpoint = Endpoint::builder(presets::Minimal)
-            .secret_key(key)
-            .relay_mode(RelayMode::Disabled)
-            .bind()
-            .await
-            .map_err(|e| RelayError::Unreachable {
-                reason: e.to_string(),
-            })?;
+        let endpoint = bind(key, key_dir).await?;
         let sending = Arc::new(Mutex::new(None));
         let allowed: Allowed = Arc::default();
         let device_allowed: Allowed = Arc::default();
@@ -147,6 +143,18 @@ impl Node {
 
     pub fn id(&self) -> EndpointId {
         self.endpoint.id()
+    }
+
+    /// Where this device can be reached ("host:port"), for the Hello that
+    /// tells a trusted device: every interface's address, Tailscale's too.
+    pub fn addresses(&self) -> Vec<String> {
+        self.endpoint
+            .addr()
+            .ip_addrs()
+            .filter(|a| crate::resolver::worth_telling(a))
+            .take(crate::resolver::MAX_ADDRESSES)
+            .map(|a| a.to_string())
+            .collect()
     }
 
     /// The UDP port the endpoint listens on (IPv4), for Bonjour.
@@ -218,6 +226,63 @@ impl Drop for NodeCell {
 
 /// This device's key: read from `dir/device.key`, or made and saved there
 /// (readable by this user only) the first time.
+/// Binds the endpoint on the port it had last time, if it is free, else
+/// on any port, and remembers the port.
+async fn bind(key: SecretKey, key_dir: &Path) -> Result<Endpoint, RelayError> {
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+    let builder = || {
+        Endpoint::builder(presets::Minimal)
+            .secret_key(key.clone())
+            .relay_mode(RelayMode::Disabled)
+    };
+    let saved = std::fs::read_to_string(key_dir.join(PORT_FILE))
+        .ok()
+        .and_then(|s| s.trim().parse::<u16>().ok())
+        .filter(|p| *p != 0);
+    let mut endpoint = None;
+    if let Some(port) = saved {
+        let pinned = builder()
+            .clear_ip_transports()
+            .bind_addr(SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)))
+            .and_then(|b| {
+                b.bind_addr_with_opts(
+                    SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)),
+                    iroh::endpoint::BindOpts::default().set_is_required(false),
+                )
+            });
+        match pinned {
+            Ok(b) => match b.bind().await {
+                Ok(e) => endpoint = Some(e),
+                Err(e) => log::info!("relay node: port {port} isn't free ({e}); using another"),
+            },
+            Err(e) => log::info!("relay node: can't ask for port {port}: {e}"),
+        }
+    }
+    let endpoint = match endpoint {
+        Some(e) => e,
+        None => builder()
+            .bind()
+            .await
+            .map_err(|e| RelayError::Unreachable {
+                reason: e.to_string(),
+            })?,
+    };
+    if let Some(port) = endpoint
+        .bound_sockets()
+        .into_iter()
+        .find(SocketAddr::is_ipv4)
+        .map(|s| s.port())
+    {
+        if saved != Some(port) {
+            let _ = std::fs::create_dir_all(key_dir);
+            if let Err(e) = std::fs::write(key_dir.join(PORT_FILE), port.to_string()) {
+                log::info!("relay node: couldn't remember the port: {e}");
+            }
+        }
+    }
+    Ok(endpoint)
+}
+
 pub(crate) fn device_key(dir: &Path) -> Result<SecretKey, RelayError> {
     let path = dir.join(KEY_FILE);
     match std::fs::read(&path) {

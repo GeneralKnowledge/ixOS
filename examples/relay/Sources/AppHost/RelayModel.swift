@@ -65,6 +65,7 @@ public final class RelayModel {
         port = core.listeningPort()
         devices = core.devices()
         policy = core.pairingPolicy()
+        connectionMode = core.connectionMode()
         trustOffer = core.trustOffer()
     }
 
@@ -259,6 +260,8 @@ public final class RelayModel {
     public private(set) var devices: [Device] = []
     /// What happens after a code transfer (Settings).
     public private(set) var policy: PairingPolicy = .askToPair
+    /// Which routes reach trusted devices (Settings).
+    public private(set) var connectionMode: ConnectionMode = .hybrid
     /// "Trust this device?" after a code transfer, until answered.
     public private(set) var trustOffer: TrustOffer?
 
@@ -344,6 +347,36 @@ public final class RelayModel {
 
     public func setPolicy(_ policy: PairingPolicy) async {
         await perform { try await $0.setPairingPolicy(policy: policy) }
+    }
+
+    public func setConnectionMode(_ mode: ConnectionMode) async {
+        await perform { try await $0.setConnectionMode(mode: mode) }
+    }
+
+    /// How a trusted device can be reached, in words: nearby, why Relay
+    /// couldn't reach it last time, or the route it was last reached by.
+    public static func reach(_ device: Device) -> String {
+        if device.nearby {
+            return "\(device.name) is nearby. No code needed."
+        }
+        if let problem = device.problem {
+            return problem
+        }
+        if let route = device.route {
+            return "Last connected: \(route). Relay tries it there again when something is waiting."
+        }
+        return "\(device.name) isn't showing on this network. Open Relay on it, on the same Wi-Fi."
+    }
+
+    public static func explain(_ mode: ConnectionMode) -> String {
+        switch mode {
+        case .hybrid:
+            "Relay tries the local network first, then a private network such as Tailscale, then the internet."
+        case .private:
+            "Relay tries the local network, then a private network such as Tailscale. It never connects over the open internet."
+        case .local:
+            "Relay only connects to devices on the same network."
+        }
     }
 
     /// Sends a note to a trusted device, no code. It waits in the outbox

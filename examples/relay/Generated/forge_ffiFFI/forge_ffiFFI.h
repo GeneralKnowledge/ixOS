@@ -537,6 +537,11 @@ void uniffi_relay_core_fn_method_relaycore_code_send_nearby(uint64_t ptr, RustBu
 RustBuffer uniffi_relay_core_fn_method_relaycore_code_send_status(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CONNECTION_MODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CONNECTION_MODE
+RustBuffer uniffi_relay_core_fn_method_relaycore_connection_mode(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CREATE_INVITATION
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CREATE_INVITATION
 RustBuffer uniffi_relay_core_fn_method_relaycore_create_invitation(uint64_t ptr, RustBuffer hosts, RustCallStatus *_Nonnull out_status
@@ -675,6 +680,11 @@ uint64_t uniffi_relay_core_fn_method_relaycore_send_to_device(uint64_t ptr, Rust
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_WITH_CODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_WITH_CODE
 void uniffi_relay_core_fn_method_relaycore_send_with_code(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_CONNECTION_MODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_CONNECTION_MODE
+uint64_t uniffi_relay_core_fn_method_relaycore_set_connection_mode(uint64_t ptr, RustBuffer mode
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PAIRING_POLICY
@@ -1931,6 +1941,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_code_send_status(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CONNECTION_MODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CONNECTION_MODE
+uint16_t uniffi_relay_core_checksum_method_relaycore_connection_mode(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CREATE_INVITATION
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CREATE_INVITATION
 uint16_t uniffi_relay_core_checksum_method_relaycore_create_invitation(void
@@ -2096,6 +2112,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_send_to_device(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_WITH_CODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_WITH_CODE
 uint16_t uniffi_relay_core_checksum_method_relaycore_send_with_code(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_CONNECTION_MODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_CONNECTION_MODE
+uint16_t uniffi_relay_core_checksum_method_relaycore_set_connection_mode(void
     
 );
 #endif

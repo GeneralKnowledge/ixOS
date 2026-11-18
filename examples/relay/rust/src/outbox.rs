@@ -41,7 +41,8 @@ use tokio::sync::oneshot;
 use crate::code_send::Offer;
 use crate::model::{RelayError, Transfer};
 use crate::record::{Record, SavedItem, SavedStatus};
-use crate::trust::SavedTrust;
+use crate::resolver::{self, Whereabouts};
+use crate::trust::{SavedDevice, SavedTrust};
 use crate::wire::{hex, unhex};
 use crate::{code, device, RelayCore};
 
@@ -271,7 +272,7 @@ pub(crate) struct Outbox {
 
 /// How one attempt went.
 enum Outcome {
-    Delivered(Vec<String>),
+    Delivered(device::Sent),
     /// It ends unsent: the cause for the history and the error for the
     /// send that queued it.
     Ended(String, RelayError),
@@ -377,7 +378,7 @@ impl RelayCore {
         let reached = !matches!(outcome, Outcome::Retry);
         let (status, answer, seen) = match outcome {
             Outcome::Gone => return true,
-            Outcome::Delivered(addresses) => (SavedStatus::Done, Ok(()), Some(addresses)),
+            Outcome::Delivered(sent) => (SavedStatus::Done, Ok(()), Some(sent)),
             Outcome::Ended(reason, err) => (SavedStatus::Failed { reason }, Err(err), None),
             Outcome::Retry => (SavedStatus::Waiting, Ok(()), None),
         };
@@ -386,8 +387,8 @@ impl RelayCore {
             .rt
             .command("delivery", move |state| {
                 state.change(|r| {
-                    if let Some(addresses) = seen {
-                        r.devices.seen_at(&to, &addresses);
+                    if let Some(sent) = seen {
+                        remember_reached(r, &to, &sent);
                     }
                     Ok(if status == SavedStatus::Waiting {
                         r.delivery_status(&id, status);
@@ -407,6 +408,7 @@ impl RelayCore {
         self.answer(d.transfer, answer);
         let mut backoff = lock(&self.outbox.backoff);
         if reached {
+            lock(&self.problems).remove(&d.to);
             backoff.remove(&d.to);
         } else {
             let (b, next) = backoff
@@ -442,12 +444,7 @@ impl RelayCore {
                 RelayError::UnknownPeer { id: d.to.clone() },
             );
         };
-        let addresses = lock(&self.nearby)
-            .get(&d.to)
-            .cloned()
-            .filter(|a| !a.is_empty())
-            .unwrap_or(saved.addresses);
-        let Ok(addr) = device::endpoint_addr(&d.to, &addresses) else {
+        let Some((addr, plan)) = self.dial(&saved) else {
             return Outcome::Retry;
         };
         let outgoing = match &d.payload {
@@ -503,8 +500,11 @@ impl RelayCore {
             other => other,
         };
         match result {
-            Ok(_) => Outcome::Delivered(addresses),
-            Err(RelayError::Unreachable { .. } | RelayError::Connection { .. }) => Outcome::Retry,
+            Ok(sent) => Outcome::Delivered(sent),
+            Err(RelayError::Unreachable { .. } | RelayError::Connection { .. }) => {
+                self.problem(&saved.endpoint_id, resolver::no_answer(&saved.name, &plan));
+                Outcome::Retry
+            }
             Err(err @ RelayError::Stopped { .. }) => Outcome::Ended("Cancelled".into(), err),
             Err(err) => Outcome::Ended(err.saved_reason(), err),
         }
@@ -578,7 +578,57 @@ impl RelayCore {
     }
 }
 
+/// A delivery reached `to`: remember where, what it said about itself,
+/// and the route.
+fn remember_reached(r: &mut Record, to: &str, sent: &device::Sent) {
+    if let Some(at) = sent.at {
+        r.devices.seen_at(to, &[at.to_string()]);
+    }
+    r.devices.met(to, &sent.addresses, sent.route);
+}
+
 impl RelayCore {
+    /// Where to dial a trusted device, by the resolver: what Bonjour sees
+    /// now, what it told this device, where it was last reached, limited
+    /// by the connection mode. `None` (with the reason kept for the app)
+    /// when there is nothing to try.
+    pub(crate) fn dial(&self, saved: &SavedDevice) -> Option<(iroh::EndpointAddr, resolver::Plan)> {
+        let nearby = lock(&self.nearby)
+            .get(&saved.endpoint_id)
+            .cloned()
+            .unwrap_or_default();
+        let mode = self.record.get().devices.mode;
+        let w = Whereabouts {
+            name: &saved.name,
+            nearby: &nearby,
+            told: &saved.told,
+            remembered: &saved.addresses,
+        };
+        let plan = match resolver::plan(&w, mode) {
+            Ok(plan) => plan,
+            Err(reason) => {
+                self.problem(&saved.endpoint_id, reason);
+                return None;
+            }
+        };
+        match device::endpoint_addr(&saved.endpoint_id, &plan.addresses) {
+            Ok(addr) => Some((addr, plan)),
+            Err(err) => {
+                self.problem(&saved.endpoint_id, err.to_string());
+                None
+            }
+        }
+    }
+
+    /// Why `to` wasn't reached the last time Relay tried, in words.
+    pub(crate) fn problem(&self, to: &str, reason: String) {
+        lock(&self.problems).insert(to.to_string(), reason);
+    }
+
+    pub(crate) fn problem_of(&self, to: &str) -> Option<String> {
+        lock(&self.problems).get(to).cloned()
+    }
+
     /// Sends one conversation message to a trusted device now, by its
     /// own id (`device_chat`): the caller's outbox keeps it while the
     /// device can't be reached.
@@ -591,32 +641,40 @@ impl RelayCore {
         let Some(saved) = saved.filter(|s| s.trust == SavedTrust::Trusted) else {
             return Err(RelayError::UnknownPeer { id: to.into() });
         };
-        let addresses = lock(&self.nearby)
-            .get(to)
-            .cloned()
-            .filter(|a| !a.is_empty())
-            .unwrap_or(saved.addresses);
-        let addr = device::endpoint_addr(to, &addresses)?;
+        let Some((addr, plan)) = self.dial(&saved) else {
+            return Err(RelayError::Unreachable {
+                reason: self.problem_of(to).unwrap_or_default(),
+            });
+        };
         let node = Arc::clone(&self.node);
         let my_name = self.identity().name;
         let stop = Arc::new(AtomicBool::new(false));
-        code::TOKIO
+        let sent = code::TOKIO
             .spawn(async move {
                 let node = node.get().await?;
                 let outgoing = device::Outgoing::Message(message);
                 device::send(&node, addr, my_name, new_id(), outgoing, |_| {}, stop).await
             })
             .await
-            .unwrap_or_else(|e| Err(code::connection(e)))?;
+            .unwrap_or_else(|e| Err(code::connection(e)))
+            .inspect_err(|e| {
+                if matches!(
+                    e,
+                    RelayError::Unreachable { .. } | RelayError::Connection { .. }
+                ) {
+                    self.problem(to, resolver::no_answer(&saved.name, &plan));
+                }
+            })?;
         if self.lose_answer() {
             return Err(code::connection("the answer was lost"));
         }
+        lock(&self.problems).remove(to);
         let to = to.to_string();
         let _ = self
             .rt
             .command("message-reached", move |state| {
                 state.change(|r| {
-                    r.devices.seen_at(&to, &addresses);
+                    remember_reached(r, &to, &sent);
                     Ok(())
                 })
             })

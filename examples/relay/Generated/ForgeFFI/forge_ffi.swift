@@ -5062,6 +5062,11 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func codeSendStatus()  -> CodeSend
     
     /**
+     * Which routes trusted devices are reached by.
+     */
+    func connectionMode()  -> ConnectionMode
+    
+    /**
      * A pairing code for the other device to scan, valid once for five
      * minutes. `hosts` are this device's addresses on the local network
      * (the app reads them from `NWPathMonitor`); the listening port is
@@ -5238,6 +5243,8 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * goes into the history. One at a time.
      */
     func sendWithCode(path: String) throws 
+    
+    func setConnectionMode(mode: ConnectionMode) async throws 
     
     func setPairingPolicy(policy: PairingPolicy) async throws 
     
@@ -5468,6 +5475,18 @@ open func codeSendStatus() -> CodeSend  {
     return try!  FfiConverterTypeCodeSend_lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_relay_core_fn_method_relaycore_code_send_status(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Which routes trusted devices are reached by.
+     */
+open func connectionMode() -> ConnectionMode  {
+    return try!  FfiConverterTypeConnectionMode_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_connection_mode(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -5928,6 +5947,22 @@ open func sendWithCode(path: String)throws   {try rustCallWithError(FfiConverter
         FfiConverterString.lower(path),uniffiCallStatus
     )
 }
+}
+    
+open func setConnectionMode(mode: ConnectionMode)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_set_connection_mode(
+                        self.uniffiCloneHandle(),FfiConverterTypeConnectionMode_lower(mode)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
 }
     
 open func setPairingPolicy(policy: PairingPolicy)async throws   {
@@ -8313,6 +8348,15 @@ public struct Device: Equatable, Hashable {
      * Whether the app sees it on this network now.
      */
     public var nearby: Bool
+    /**
+     * The route of the last connection with it, as the app shows it:
+     * "Direct, local network", "Private network", "Direct, internet".
+     */
+    public var route: String?
+    /**
+     * Why Relay couldn't reach it the last time it tried, in words.
+     */
+    public var problem: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -8331,13 +8375,22 @@ public struct Device: Equatable, Hashable {
          */receivesFrom: Bool, 
         /**
          * Whether the app sees it on this network now.
-         */nearby: Bool) {
+         */nearby: Bool, 
+        /**
+         * The route of the last connection with it, as the app shows it:
+         * "Direct, local network", "Private network", "Direct, internet".
+         */route: String?, 
+        /**
+         * Why Relay couldn't reach it the last time it tried, in words.
+         */problem: String?) {
         self.endpointId = endpointId
         self.name = name
         self.trusted = trusted
         self.sinceMs = sinceMs
         self.receivesFrom = receivesFrom
         self.nearby = nearby
+        self.route = route
+        self.problem = problem
     }
 
     
@@ -8361,7 +8414,9 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
                 trusted: FfiConverterBool.read(from: &buf), 
                 sinceMs: FfiConverterInt64.read(from: &buf), 
                 receivesFrom: FfiConverterBool.read(from: &buf), 
-                nearby: FfiConverterBool.read(from: &buf)
+                nearby: FfiConverterBool.read(from: &buf), 
+                route: FfiConverterOptionString.read(from: &buf), 
+                problem: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -8372,6 +8427,8 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
         FfiConverterInt64.write(value.sinceMs, into: &buf)
         FfiConverterBool.write(value.receivesFrom, into: &buf)
         FfiConverterBool.write(value.nearby, into: &buf)
+        FfiConverterOptionString.write(value.route, into: &buf)
+        FfiConverterOptionString.write(value.problem, into: &buf)
     }
 }
 
@@ -8398,12 +8455,22 @@ public func FfiConverterTypeDevice_lower(_ value: Device) -> RustBuffer {
 public struct DeviceService: Equatable, Hashable {
     public var endpointId: String
     public var port: UInt16
+    /**
+     * Where this device can be reached ("host:port", every interface's
+     * address, Tailscale's too): what it tells trusted devices it meets.
+     */
+    public var addresses: [String]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(endpointId: String, port: UInt16) {
+    public init(endpointId: String, port: UInt16, 
+        /**
+         * Where this device can be reached ("host:port", every interface's
+         * address, Tailscale's too): what it tells trusted devices it meets.
+         */addresses: [String]) {
         self.endpointId = endpointId
         self.port = port
+        self.addresses = addresses
     }
 
     
@@ -8423,13 +8490,15 @@ public struct FfiConverterTypeDeviceService: FfiConverterRustBuffer {
         return
             try DeviceService(
                 endpointId: FfiConverterString.read(from: &buf), 
-                port: FfiConverterUInt16.read(from: &buf)
+                port: FfiConverterUInt16.read(from: &buf), 
+                addresses: FfiConverterSequenceString.read(from: &buf)
         )
     }
 
     public static func write(_ value: DeviceService, into buf: inout [UInt8]) {
         FfiConverterString.write(value.endpointId, into: &buf)
         FfiConverterUInt16.write(value.port, into: &buf)
+        FfiConverterSequenceString.write(value.addresses, into: &buf)
     }
 }
 
@@ -11175,6 +11244,91 @@ public func FfiConverterTypeCodeSend_lower(_ value: CodeSend) -> RustBuffer {
 
 
 
+/**
+ * Which kinds of route Relay may use to reach a trusted device.
+ */
+
+public enum ConnectionMode: Equatable, Hashable {
+    
+    /**
+     * Only devices on the same local network.
+     */
+    case local
+    /**
+     * The local network, then private networks such as Tailscale.
+     */
+    case `private`
+    /**
+     * Every route Relay has: local, private, then direct over the internet.
+     */
+    case hybrid
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ConnectionMode: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeConnectionMode: FfiConverterRustBuffer {
+    typealias SwiftType = ConnectionMode
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ConnectionMode {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .local
+        
+        case 2: return .`private`
+        
+        case 3: return .hybrid
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ConnectionMode, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .local:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .`private`:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .hybrid:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectionMode_lift(_ buf: RustBuffer) throws -> ConnectionMode {
+    return try FfiConverterTypeConnectionMode.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectionMode_lower(_ value: ConnectionMode) -> RustBuffer {
+    return FfiConverterTypeConnectionMode.lower(value)
+}
+
+
+
 
 public enum Direction: Equatable, Hashable {
     
@@ -12426,6 +12580,101 @@ public func FfiConverterTypeRelayError_lift(_ buf: RustBuffer) throws -> RelayEr
 public func FfiConverterTypeRelayError_lower(_ value: RelayError) -> RustBuffer {
     return FfiConverterTypeRelayError.lower(value)
 }
+
+
+/**
+ * The kind of route an address, or a connection, uses.
+ */
+
+public enum RouteKind: Equatable, Hashable {
+    
+    /**
+     * The same local network (Wi-Fi or Ethernet at home).
+     */
+    case local
+    /**
+     * A private network between the devices, such as Tailscale.
+     */
+    case `private`
+    /**
+     * Directly over the internet.
+     */
+    case internet
+    /**
+     * Through a relay server (none yet: PR 7).
+     */
+    case relay
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension RouteKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRouteKind: FfiConverterRustBuffer {
+    typealias SwiftType = RouteKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RouteKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .local
+        
+        case 2: return .`private`
+        
+        case 3: return .internet
+        
+        case 4: return .relay
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RouteKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .local:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .`private`:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .internet:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .relay:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRouteKind_lift(_ buf: RustBuffer) throws -> RouteKind {
+    return try FfiConverterTypeRouteKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRouteKind_lower(_ value: RouteKind) -> RustBuffer {
+    return FfiConverterTypeRouteKind.lower(value)
+}
+
 
 
 /**
@@ -13998,6 +14247,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_code_send_status() != 42563) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_connection_mode() != 5394) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_create_invitation() != 11711) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14080,6 +14332,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_send_with_code() != 8349) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_set_connection_mode() != 58690) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_set_pairing_policy() != 5214) {

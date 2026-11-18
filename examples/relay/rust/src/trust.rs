@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::resolver::{ConnectionMode, RouteKind};
+
 /// What happens after a word-code transfer with a device (Settings).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum PairingPolicy {
@@ -53,6 +55,13 @@ pub struct SavedDevice {
     /// Where it was last reached or seen, for when Bonjour hasn't found it.
     #[serde(default)]
     pub addresses: Vec<String>,
+    /// Where it said it can be reached, the last time the two met: its
+    /// Tailscale address too, which Bonjour never shows (M2 PR 6).
+    #[serde(default)]
+    pub told: Vec<String>,
+    /// The route of the last connection with it, either way.
+    #[serde(default)]
+    pub route: Option<RouteKind>,
 }
 
 fn yes() -> bool {
@@ -93,6 +102,9 @@ pub fn may_connect(known: Option<SavedTrust>) -> bool {
 pub struct Devices {
     #[serde(default)]
     pub policy: PairingPolicy,
+    /// Which routes trusted devices are reached by (M2 PR 6).
+    #[serde(default)]
+    pub mode: ConnectionMode,
     #[serde(default)]
     pub list: Vec<SavedDevice>,
 }
@@ -129,6 +141,8 @@ impl Devices {
                 since_ms: now_ms,
                 receives_from: true,
                 addresses: Vec::new(),
+                told: Vec::new(),
+                route: None,
             }),
         }
     }
@@ -186,6 +200,22 @@ impl Devices {
         if let Some(d) = self.get_mut(endpoint_id) {
             if d.trust == SavedTrust::Trusted && !addresses.is_empty() {
                 d.addresses = addresses.to_vec();
+            }
+        }
+    }
+
+    /// A trusted device said where it can be reached, and a connection with
+    /// it used `route`.
+    pub fn met(&mut self, endpoint_id: &str, told: &[String], route: Option<RouteKind>) {
+        if let Some(d) = self.get_mut(endpoint_id) {
+            if d.trust == SavedTrust::Trusted {
+                let told = crate::resolver::clean(told);
+                if !told.is_empty() {
+                    d.told = told;
+                }
+                if route.is_some() {
+                    d.route = route;
+                }
             }
         }
     }

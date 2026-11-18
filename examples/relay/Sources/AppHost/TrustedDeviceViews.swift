@@ -121,12 +121,45 @@ struct PairingPolicySection: View {
     }
 }
 
-/// The pairing policy in the Settings tab, which has no `RelayModel`:
-/// it asks Relay's core directly. The Devices tab re-reads it after the
-/// change, like any other.
+/// Which routes reach trusted devices (Rust's `ConnectionMode`), on the
+/// Devices tab and in Settings.
+struct ConnectionModeSection: View {
+    let mode: ConnectionMode
+    let choose: (ConnectionMode) -> Void
+
+    init(model: RelayModel) {
+        mode = model.connectionMode
+        choose = { mode in Task { await model.setConnectionMode(mode) } }
+    }
+
+    init(mode: ConnectionMode, choose: @escaping (ConnectionMode) -> Void) {
+        self.mode = mode
+        self.choose = choose
+    }
+
+    var body: some View {
+        Section {
+            Picker("Reach Trusted Devices", selection: Binding(get: { mode }, set: choose)) {
+                Text("Any Route").tag(ConnectionMode.hybrid)
+                Text("Local and Private Networks").tag(ConnectionMode.private)
+                Text("Local Network Only").tag(ConnectionMode.local)
+            }
+            .accessibilityIdentifier("devices.connectionMode")
+        } header: {
+            Text("Connections")
+        } footer: {
+            Text(RelayModel.explain(mode))
+        }
+    }
+}
+
+/// The pairing policy and connection mode in the Settings tab, which has
+/// no `RelayModel`: it asks Relay's core directly. The Devices tab
+/// re-reads them after the change, like any other.
 struct RelaySettingsSection: View {
     let core: RelayCore
     @State private var policy: PairingPolicy = .askToPair
+    @State private var mode: ConnectionMode = .hybrid
 
     var body: some View {
         PairingPolicySection(policy: policy) { chosen in
@@ -140,6 +173,17 @@ struct RelaySettingsSection: View {
             }
         }
         .onAppear { policy = core.pairingPolicy() }
+        ConnectionModeSection(mode: mode) { chosen in
+            mode = chosen
+            Task {
+                do {
+                    try await core.setConnectionMode(mode: chosen)
+                } catch {
+                    mode = core.connectionMode()
+                }
+            }
+        }
+        .onAppear { mode = core.connectionMode() }
     }
 }
 
@@ -191,9 +235,7 @@ struct TrustedDeviceView: View {
             } header: {
                 TrustBadge()
             } footer: {
-                Text(device.nearby
-                     ? "\(device.name) is nearby. No code needed."
-                     : "\(device.name) isn't showing on this network. Open Relay on it, on the same Wi-Fi.")
+                Text(RelayModel.reach(device))
             }
             Section {
                 Toggle("Can Send to This Device", isOn: Binding(
