@@ -59,8 +59,10 @@ def test_file(sequences, extras):
         # Bring Calculator to the front before every sum: `forge ui run`
         # doesn't, and a person glancing at another app would stop the run.
         parts.append(step(activate={}))
-        parts.append(step(tap={"id": "AllClear"}))
-        parts.append(step(tap={"id": "AllClear"}))
+        # The clear key is id Clear ("Clear") while there is something to
+        # clear and AllClear ("All Clear") after: press whichever is showing.
+        parts.append(step(tap={"label_contains": "Clear"}))
+        parts.append(step(tap={"label_contains": "Clear"}))
         for key in seq["keys"]:
             parts.append(step(tap={"id": key}))
         parts.append(step(screenshot=f"{number:02d}-{seq['name']}"))

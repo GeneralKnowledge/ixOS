@@ -130,6 +130,11 @@ R1's table is written: 34 sequences ([sequences.toml](../../research/expeditions
 - **Observed:** Forge's front-app check did its job. The test file didn't: it never brought Calculator to the front. Fixed by an `activate` step at the start and before every sum, so a glance at another app costs one sum, not the run.
 - **Observed** (failure as finding, privacy): at the failure Forge saved a screenshot and tree of the screen, which was the Claude app showing the thread list. `docs/forge-ui-testing.md` says a run in another app saves failure files "only if the app under test is still in front". Either that rule doesn't cover this path or it has a bug. **Unknown:** which. The files were deleted on the laptop and never committed.
 
+**16:17. Third attempt: 8 sums, then stopped** (170 s, step 77): "no element matches id `AllClear`". After typing ".5" the clear key isn't AllClear any more: it becomes id **`Clear`**, label "Clear", and only turns back into AllClear once there's nothing left to clear.
+
+- **Observed:** this corrects R0 finding 8. We thought the tree didn't show the C/AC state; it does, through the key's *identifier and label*, which change. R0 only ever saw it in the All Clear state, and our "Inferred" guess filled the gap wrongly. Exactly what the tags are for.
+- Fix: press whichever key's label contains "Clear", twice. Pass a restarted at 16:21.
+
 ## Next
 
 R1, collect and map: the sequence table (ordinary sums, repeated equals, percent, sign change, huge numbers, rounding, a relaunch mid-sequence), recorded twice in portrait. Taps need Calculator at `operate` level rather than `observe`, which is Reuben's call.

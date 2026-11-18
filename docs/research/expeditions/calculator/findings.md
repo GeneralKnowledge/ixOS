@@ -11,7 +11,7 @@ Tags: **O** Observed, **I** Inferred, **U** Unknown. Representation: visual, str
 | 5 | O | structural | **In landscape the result and expression are not in the tree at all**: both containers hold only invisible, empty children. Two reads, same result | landscape-tree.txt |
 | 6 | O | visual | Landscape is the basic keypad in pill-shaped keys, not a scientific calculator. Rows: 7 8 9 ⌫ ÷ / 4 5 6 C × / 1 2 3 % − / ± 0 . = + | r0-landscape.png |
 | 7 | I | navigational | Scientific mode is behind Change Mode, whose id carries the state: `Mode: basic; unitConversion: false` | main-tree.txt |
-| 8 | O | visual | The clear key shows C or AC depending on state; the tree says "All Clear" / AllClear either way | r0-landscape.png, landscape-tree.txt |
+| 8 | O | visual, structural | The clear key shows C or AC depending on state. **Corrected 2026-11-18 (R1):** the tree does show it: id `Clear` / "Clear" while there is something to clear, `AllClear` / "All Clear" after. R0 only saw the AllClear state | r0-landscape.png, R1 attempt 3 |
 | 9 | O | structural | All Clear's place in the tree changes: last (round 1, display 0) or second after Delete (display 19), matching the screen | main-tree.txt, relaunch-tree.txt |
 | 10 | I | structural | The tree order depends on the clear key's AC/C state | from 9 |
 | 11 | U | visual | Whether the key read AC or C in round 1 | not recorded |
