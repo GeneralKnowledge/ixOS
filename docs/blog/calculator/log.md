@@ -108,6 +108,8 @@ He also asked for no new infrastructure before R0: get the phone connected and s
 
 **What surprised us, in one list:** sideways is not scientific; the answer vanishes from the tree sideways; invisible marks inside every number; tree order changes with the clear key's state; History is an "alert"; Forge can't open a system app itself.
 
+**01:06.** Reuben, after R0: turning the phone by hand is understandable, but the system should press buttons like History itself rather than ask him. R1 is planned that way: Forge presses keys, History and even the rotation (`forge ui orientation` exists), which needs Calculator moved from `observe` to `operate` in his policy file.
+
 ## Next
 
 R1, collect and map: the sequence table (ordinary sums, repeated equals, percent, sign change, huge numbers, rounding, a relaunch mid-sequence), recorded twice in portrait. Taps need Calculator at `operate` level rather than `observe`, which is Reuben's call.

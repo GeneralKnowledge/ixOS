@@ -110,7 +110,8 @@ With the phone on the cable, in the next sitting already planned for Device Lab:
 
 1. Write the field map from the R0 evidence: screens, controls, where each leads (`map.md`), and move what it shows into the findings register.
 2. Write the sequence table: about 40 key sequences covering ordinary sums, the edge cases and some nobody sensible would press, plus a relaunch in the middle of a few to test what persists (`evidence/sequences.toml`).
-3. A small script runs each sequence on the reference through `forge ui run --any-app` (tapping keys by label) and reads the display with `forge --json ui tree`, writing `evidence/reference-results.toml`. It uses only commands ixOS already has, so a person can run it without an agent.
+3. A small script runs each sequence on the reference through `forge ui run --any-app` (tapping keys by their ids: Seven, Add, Equals…) and reads the display with `forge --json ui tree` in portrait (R0 found the answer is missing from the tree in landscape), stripping every U+200E, writing `evidence/reference-results.toml`. It uses only commands ixOS already has, so a person can run it without an agent.
+4. Forge does the pressing, not the person: keys, History, Close, Change Mode, and the rotations, through `forge ui run` steps and `forge ui orientation` (both built). That needs Calculator at `operate` in the person's policy file instead of `observe`, which is the person's call; at `operate` the taps go into the real History. The only thing left to the person is opening Calculator, until Forge's `--app` can launch a system app (R0 finding 22).
 
 **Exit:** the table recorded twice on the phone gives identical results, which shows the reference is deterministic enough to compare against, and every rule in the field map is in the findings register, tagged Observed, Inferred or Unknown.
 
