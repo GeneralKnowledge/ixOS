@@ -6,7 +6,9 @@ resolver, own servers) and #333 (presence and status). It changes no code
 and no decision. Its recommendations are proposals for Reuben; where one
 is adopted, the canonical plan ([relay-platform-plan.md](relay-platform-plan.md))
 or the current milestone ([relay-reliable-delivery.md](relay-reliable-delivery.md))
-records it. It follows the [open-ended design
+records it. **Reuben's response the same evening (18:57) is
+[below](#agreed-with-reuben-2026-11-18): it sets the priorities and the
+sequence, and where it differs from the review, it wins.** It follows the [open-ended design
 principles](relay-open-ended-design-principles.md): it reviews what Relay
 is today and what it needs next, and leaves what Relay might become open.
 
@@ -307,6 +309,9 @@ Tailscale as a route), and our own group encryption (Marmot / MLS stays).
 
 ## Recommended order
 
+The review's first proposal, refined by Reuben's
+[sequence](#the-sequence) below.
+
 M1 and M2 stay as they are; this only adds what the review found, in the
 places it fits.
 
@@ -330,3 +335,124 @@ Then the choice Reuben already reserved for after M2 (computing, social,
 rooms, capabilities) is made on top of a real network. Steps 3 and 4 make
 Relay smaller; 6 and 7 are the first features that only a personal network
 can offer.
+
+## Agreed with Reuben (2026-11-18)
+
+Reuben's response at 18:57 accepted the diagnosis: Relay's biggest problem
+is no longer a lack of capabilities, it is duplicated infrastructure and
+the absence of a unified device network. He keeps this review as a
+reference point for judging future feature proposals, and **no new product
+features until My Devices works properly.**
+
+### Two jobs, one after the other
+
+- **Consolidation:** make the existing implementation coherent, durable
+  and secure (P0 to P4).
+- **Expansion:** turn independently paired devices into a coordinated
+  personal network (P5, P6).
+
+Consolidation finishes before expansion starts.
+
+| Priority | Work | Recommendation |
+|---|---|---|
+| P0 | Physical iPhone checks | Do immediately |
+| P1 | Remove the TCP/Noise legacy path | Consolidate onto iroh |
+| P2 | Unified message and file delivery | One queue, one conversation model |
+| P3 | SQLite migration | Remove whole-file JSON persistence |
+| P4 | Device identity | Keychain, device-only keys |
+| P5 | Device network identity | Introducer, then signed device list |
+| P6 | Offline delivery | Encrypted server-side mailbox |
+
+The dependency that matters most: the signed device list is never built on
+an identity system that still has the backup-cloning problem, so P4 lands
+before P5.
+
+### The sequence
+
+1. **Close M1 with real-device evidence.** Run revocation and offline
+   delivery on the physical iPhone and record the results, rather than
+   relying on unit tests.
+2. **Finish M2 networking.** Reconcile #332 and #333. Fix the
+   private-address publication (only the relay URL and public addresses
+   in the lookup record) **before** public lookup is turned on. Test
+   Tailscale, then Hetzner.
+3. **PR 3b: remove legacy networking.** AI requests and the remaining
+   pairing on iroh; existing devices migrated or explicitly re-paired;
+   TCP/Noise removed.
+4. **Unified delivery and SQLite.** Messages and files become
+   first-class conversation items on one durable delivery infrastructure,
+   with existing records migrated safely. The device key moves into the
+   Keychain (P4) before step 5.
+5. **My Devices.** Network membership, onboarding and revocation across
+   devices.
+6. **Encrypted mailbox.** Somewhere reliable to leave messages and files
+   when their recipient is unavailable.
+
+Between steps 4 and 5 Relay changes from a collection of communication
+and transfer features into a personal network. It doesn't need to become a
+distributed operating system for that: Relay provides identity,
+connectivity, permissions and delivery, and existing software provides the
+services.
+
+### Four refinements to the recommendations
+
+These make the review's recommendations closer to an implementation
+specification; each is a requirement on the PR that builds it.
+
+**1. The introducer's authority model.** Three acts stay distinct:
+
+- a device **recommending** another device (a suggestion the person
+  sees);
+- a device **authorising** another device (membership by delegation);
+- the owner **cryptographically confirming** membership.
+
+The introducer is the bootstrap mechanism; the signed device list becomes
+the source of truth. Compromising an introducer must never silently give
+an attacker permanent authority over the whole network: what an introducer
+did can be seen, undone, and is superseded by the signed list.
+
+**2. One delivery infrastructure, not one state machine.** Notes merge
+into messages and files become attachments, but the two keep their own
+lifecycles:
+
+- **messages:** queued, sent, delivered, acknowledged;
+- **files:** queued, transferring, verified, saved, failed.
+
+They share durable scheduling, retry, identity and persistence, and the
+SQLite schema keeps their states separate.
+
+**3. The mailbox is an untrusted courier, not a participant.** Its design
+covers:
+
+- encryption bound to the recipient;
+- sender authentication;
+- expiry and automatic deletion;
+- deduplication and replay protection;
+- storage quotas;
+- acknowledgement, and deletion only once safe;
+- what happens when the holder is compromised or unavailable (delivery
+  falls back to direct routes; a compromised holder learns nothing it
+  could read and cannot forge senders).
+
+**4. Device identity needs a migration strategy,** tested for:
+
+- a fresh installation;
+- an upgrade from an existing installation (the key moves from
+  `device.key` into the Keychain unchanged, so trusted devices keep
+  working);
+- restoring an iPhone backup (a new identity, to be trusted again);
+- reinstalling the application;
+- replacing a lost phone;
+- revoking the old identity.
+
+Linux keeps an appropriately protected local key store (the 0600 file);
+the iPhone's Keychain policy is not forced onto every platform.
+
+### The next major acceptance test
+
+> Pair a new device once. Have every existing device learn about it.
+> Revoke it once. Have every existing device reject it. Send a file to an
+> offline device and have it arrive intact when that device returns.
+
+Passing it reliably is what turns Relay from a file-sharing application
+into a personal network.
