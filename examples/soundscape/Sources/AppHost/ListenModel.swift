@@ -561,7 +561,7 @@ public final class ListenModel {
     }
 
     nonisolated static func message(_ error: Error) -> String {
-        if let error = error as? SoundscapeError { return SoundscapeModel.describe(error) }
+        if let error = error as? SoundscapeError { return SoundscapeErrors.describe(error) }
         return error.localizedDescription
     }
 }

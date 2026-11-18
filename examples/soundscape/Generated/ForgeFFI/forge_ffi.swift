@@ -2150,11 +2150,6 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func addToPlaylist(id: UInt64, trackIds: [String]) async throws  -> PlaylistDetail
     
     /**
-     * Adds an empty track, named "Track N" when `name` is `None`.
-     */
-    func addTrack(id: UInt64, name: String?) async throws  -> ProjectDetail
-    
-    /**
      * An album's tracks in order.
      */
     func albumTracks(albumId: String)  -> [LibraryTrack]
@@ -2212,20 +2207,7 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      */
     func clearArtwork(target: ArtworkTarget) async throws  -> Library
     
-    /**
-     * Removes a track's recording; the track stays.
-     */
-    func clearClip(id: UInt64, trackId: UInt64) async throws  -> ProjectDetail
-    
     func clearHistory() async throws  -> MusicCollection
-    
-    /**
-     * A WAV file of one pass of the project's metronome at `sample_rate`
-     * (see [`dsp::clicks`]): the app loops it under playback and plays its
-     * first bar as the count-in before a recording. Kept in the caches,
-     * one file per tempo, length and rate, written the first time.
-     */
-    func clickTrack(id: UInt64, sampleRate: UInt32) async throws  -> String
     
     /**
      * Favourites, playlists and recently played, as the library has them
@@ -2238,18 +2220,7 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      */
     func createPlaylist(name: String, trackIds: [String]) async throws  -> PlaylistDetail
     
-    /**
-     * A new project with one empty track. Tempo from 40 to 240 beats per
-     * minute, 1 to 16 bars of four beats.
-     */
-    func createProject(title: String, tempoBpm: Double, bars: UInt32) async throws  -> ProjectDetail
-    
     func deletePlaylist(id: UInt64) async throws  -> MusicCollection
-    
-    /**
-     * Deletes a project and the recordings only it used.
-     */
-    func deleteProject(id: UInt64) async throws 
     
     /**
      * A song's download state.
@@ -2329,12 +2300,6 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func listenSongs(fresh: Bool, cancellation: Cancellation?) async throws  -> [SongSummary]
     
     /**
-     * How many frames to record for one pass of the loop at
-     * `sample_rate`, so a recording loops cleanly.
-     */
-    func loopFrames(id: UInt64, sampleRate: UInt32) throws  -> UInt64
-    
-    /**
      * Rates, notes or picks one of a track's take-server recordings, on the
      * server (JewGrass's picks file stays the record), and returns the
      * track as it now is. Finishing work.
@@ -2349,14 +2314,6 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func markTake(slug: String, takeId: String, mark: TakeMark) async throws  -> SongDetail
     
     /**
-     * Mixes the audible tracks for `passes` passes of the loop (1 to 16)
-     * into a 44.1 kHz stereo WAV file for sharing. Finishing work: it
-     * keeps going when the app leaves the screen, for as long as iOS
-     * gives the app; stopped by `cancellation` and shutdown.
-     */
-    func mixdown(id: UInt64, passes: UInt32, cancellation: Cancellation?) async throws  -> Mixdown
-    
-    /**
      * What the person chose for the phone and how far along it is. Never
      * waits for a command.
      */
@@ -2368,18 +2325,6 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func phase()  -> AppPhase
     
     func playlist(id: UInt64) throws  -> PlaylistDetail
-    
-    /**
-     * A project with its tracks, their recordings and their mix in
-     * AVAudioEngine's units. Never waits for a command.
-     */
-    func project(id: UInt64) throws  -> ProjectDetail
-    
-    /**
-     * Every project, most recently changed first. Never waits for a
-     * command.
-     */
-    func projects()  -> [ProjectSummary]
     
     /**
      * One recording of a track, to play instead of the preferred one.
@@ -2416,13 +2361,7 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      */
     func removeImported(trackId: String) async throws  -> Library
     
-    func removeTrack(id: UInt64, trackId: UInt64) async throws  -> ProjectDetail
-    
     func renamePlaylist(id: UInt64, name: String) async throws  -> PlaylistDetail
-    
-    func renameProject(id: UInt64, title: String) async throws 
-    
-    func renameTrack(id: UInt64, trackId: UInt64, name: String) async throws  -> ProjectDetail
     
     /**
      * The last committed revision.
@@ -2469,13 +2408,6 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func setArtwork(target: ArtworkTarget, sourcePath: String) async throws  -> Library
     
     /**
-     * Makes the WAV file at `source_path` the track's loop, copied into
-     * Soundscape's store (the caller may delete its copy). Replaces any
-     * earlier recording.
-     */
-    func setClip(id: UInt64, trackId: UInt64, sourcePath: String) async throws  -> ProjectDetail
-    
-    /**
      * Makes a song, album or artist (by library id) a favourite, or not.
      */
     func setFavourite(id: String, on: Bool) async throws  -> MusicCollection
@@ -2496,12 +2428,6 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func setListenServer(address: String) async throws  -> String?
     
     /**
-     * Turns the metronome on or off for a project. It is never in the
-     * mixdown.
-     */
-    func setMetronome(id: UInt64, on: Bool) async throws  -> ProjectDetail
-    
-    /**
      * Chooses songs for the phone, or takes them off. Call
      * `sync_downloads` after, to fetch or remove the files.
      */
@@ -2511,18 +2437,6 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * The host reports the application lifecycle phase.
      */
     func setPhase(phase: AppPhase) 
-    
-    /**
-     * Changes tempo and length. Recordings stay as they are: a longer
-     * loop plays them followed by silence, a shorter one cuts them.
-     */
-    func setTiming(id: UInt64, tempoBpm: Double, bars: UInt32) async throws  -> ProjectDetail
-    
-    /**
-     * Gain, pan, mute, solo, tone and echo, all at once (the mixer sends
-     * the whole strip). Checked before it is saved.
-     */
-    func setTrackSettings(id: UInt64, trackId: UInt64, settings: TrackSettings) async throws  -> ProjectDetail
     
     /**
      * Refuses new commands, stops work in flight and ends event
@@ -2551,13 +2465,6 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * recently changed first.
      */
     func tracksToPick()  -> [LibraryTrack]
-    
-    /**
-     * A track's waveform: the loudest sample in each of `buckets` slices
-     * of its recording, from 0 to 1. On-screen work: stopped by
-     * `cancellation`, the background and shutdown.
-     */
-    func waveform(id: UInt64, trackId: UInt64, buckets: UInt32, cancellation: Cancellation?) async throws  -> [Float]
     
 }
 /**
@@ -2603,11 +2510,10 @@ open class SoundscapeCore: SoundscapeCoreProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_soundscape_core_fn_clone_soundscapecore(self.handle, $0) }
     }
     /**
-     * Opens the projects saved in `data_directory` (created if missing),
-     * holding the directory so no second core can write to it.
-     * `caches_directory` is for files the app can lose (mixdowns). A saved
-     * file that can't be read is an error (`Corrupt`); `start_fresh` sets
-     * it aside once the person agrees.
+     * Opens the library saved in `data_directory` (created if missing),
+     * holding the directory so no second core can write to it. A file that
+     * can't be read is set aside and starts again empty.
+     * `caches_directory` is for files the app can lose.
      */
 public convenience init(dataDirectory: String, cachesDirectory: String)throws  {
     let handle =
@@ -2632,8 +2538,8 @@ public convenience init(dataDirectory: String, cachesDirectory: String)throws  {
 
     
     /**
-     * Opens with no projects in place of a file that can't be read, which
-     * is kept next to it. Refused for data from a newer version.
+     * The same as `new`: kept for the host's recovery screen, which offers
+     * a fresh start when opening fails.
      */
 public static func startFresh(dataDirectory: String, cachesDirectory: String)throws  -> SoundscapeCore  {
     return try  FfiConverterTypeSoundscapeCore_lift(try rustCallWithError(FfiConverterTypeSoundscapeError_lift) {
@@ -2683,25 +2589,6 @@ open func addToPlaylist(id: UInt64, trackIds: [String])async throws  -> Playlist
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypePlaylistDetail_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
-    /**
-     * Adds an empty track, named "Track N" when `name` is `None`.
-     */
-open func addTrack(id: UInt64, name: String?)async throws  -> ProjectDetail  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_add_track(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterOptionString.lower(name)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeProjectDetail_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -2865,25 +2752,6 @@ open func clearArtwork(target: ArtworkTarget)async throws  -> Library  {
         )
 }
     
-    /**
-     * Removes a track's recording; the track stays.
-     */
-open func clearClip(id: UInt64, trackId: UInt64)async throws  -> ProjectDetail  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_clear_clip(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt64.lower(trackId)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeProjectDetail_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
 open func clearHistory()async throws  -> MusicCollection  {
     return
         try  await uniffiRustCallAsync(
@@ -2896,28 +2764,6 @@ open func clearHistory()async throws  -> MusicCollection  {
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeMusicCollection_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
-    /**
-     * A WAV file of one pass of the project's metronome at `sample_rate`
-     * (see [`dsp::clicks`]): the app loops it under playback and plays its
-     * first bar as the count-in before a recording. Kept in the caches,
-     * one file per tempo, length and rate, written the first time.
-     */
-open func clickTrack(id: UInt64, sampleRate: UInt32)async throws  -> String  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_click_track(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt32.lower(sampleRate)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -2954,26 +2800,6 @@ open func createPlaylist(name: String, trackIds: [String])async throws  -> Playl
         )
 }
     
-    /**
-     * A new project with one empty track. Tempo from 40 to 240 beats per
-     * minute, 1 to 16 bars of four beats.
-     */
-open func createProject(title: String, tempoBpm: Double, bars: UInt32)async throws  -> ProjectDetail  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_create_project(
-                        self.uniffiCloneHandle(),FfiConverterString.lower(title),FfiConverterDouble.lower(tempoBpm),FfiConverterUInt32.lower(bars)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeProjectDetail_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
 open func deletePlaylist(id: UInt64)async throws  -> MusicCollection  {
     return
         try  await uniffiRustCallAsync(
@@ -2986,25 +2812,6 @@ open func deletePlaylist(id: UInt64)async throws  -> MusicCollection  {
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeMusicCollection_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
-    /**
-     * Deletes a project and the recordings only it used.
-     */
-open func deleteProject(id: UInt64)async throws   {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_delete_project(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_void,
-            completeFunc: ffi_soundscape_core_rust_future_complete_void,
-            freeFunc: ffi_soundscape_core_rust_future_free_void,
-            liftFunc: { $0 },
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -3219,21 +3026,6 @@ open func listenSongs(fresh: Bool, cancellation: Cancellation?)async throws  -> 
 }
     
     /**
-     * How many frames to record for one pass of the loop at
-     * `sample_rate`, so a recording loops cleanly.
-     */
-open func loopFrames(id: UInt64, sampleRate: UInt32)throws  -> UInt64  {
-    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeSoundscapeError_lift) {
-        uniffiCallStatus in
-    uniffi_soundscape_core_fn_method_soundscapecore_loop_frames(
-            self.uniffiCloneHandle(),
-        FfiConverterUInt64.lower(id),
-        FfiConverterUInt32.lower(sampleRate),uniffiCallStatus
-    )
-})
-}
-    
-    /**
      * Rates, notes or picks one of a track's take-server recordings, on the
      * server (JewGrass's picks file stays the record), and returns the
      * track as it now is. Finishing work.
@@ -3276,28 +3068,6 @@ open func markTake(slug: String, takeId: String, mark: TakeMark)async throws  ->
 }
     
     /**
-     * Mixes the audible tracks for `passes` passes of the loop (1 to 16)
-     * into a 44.1 kHz stereo WAV file for sharing. Finishing work: it
-     * keeps going when the app leaves the screen, for as long as iOS
-     * gives the app; stopped by `cancellation` and shutdown.
-     */
-open func mixdown(id: UInt64, passes: UInt32, cancellation: Cancellation?)async throws  -> Mixdown  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_mixdown(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt32.lower(passes),FfiConverterOptionTypeCancellation.lower(cancellation)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeMixdown_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
-    /**
      * What the person chose for the phone and how far along it is. Never
      * waits for a command.
      */
@@ -3328,33 +3098,6 @@ open func playlist(id: UInt64)throws  -> PlaylistDetail  {
     uniffi_soundscape_core_fn_method_soundscapecore_playlist(
             self.uniffiCloneHandle(),
         FfiConverterUInt64.lower(id),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * A project with its tracks, their recordings and their mix in
-     * AVAudioEngine's units. Never waits for a command.
-     */
-open func project(id: UInt64)throws  -> ProjectDetail  {
-    return try  FfiConverterTypeProjectDetail_lift(try rustCallWithError(FfiConverterTypeSoundscapeError_lift) {
-        uniffiCallStatus in
-    uniffi_soundscape_core_fn_method_soundscapecore_project(
-            self.uniffiCloneHandle(),
-        FfiConverterUInt64.lower(id),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * Every project, most recently changed first. Never waits for a
-     * command.
-     */
-open func projects() -> [ProjectSummary]  {
-    return try!  FfiConverterSequenceTypeProjectSummary.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_soundscape_core_fn_method_soundscapecore_projects(
-            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -3467,22 +3210,6 @@ open func removeImported(trackId: String)async throws  -> Library  {
         )
 }
     
-open func removeTrack(id: UInt64, trackId: UInt64)async throws  -> ProjectDetail  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_remove_track(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt64.lower(trackId)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeProjectDetail_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
 open func renamePlaylist(id: UInt64, name: String)async throws  -> PlaylistDetail  {
     return
         try  await uniffiRustCallAsync(
@@ -3495,38 +3222,6 @@ open func renamePlaylist(id: UInt64, name: String)async throws  -> PlaylistDetai
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypePlaylistDetail_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
-open func renameProject(id: UInt64, title: String)async throws   {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_rename_project(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterString.lower(title)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_void,
-            completeFunc: ffi_soundscape_core_rust_future_complete_void,
-            freeFunc: ffi_soundscape_core_rust_future_free_void,
-            liftFunc: { $0 },
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
-open func renameTrack(id: UInt64, trackId: UInt64, name: String)async throws  -> ProjectDetail  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_rename_track(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt64.lower(trackId),FfiConverterString.lower(name)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeProjectDetail_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -3654,27 +3349,6 @@ open func setArtwork(target: ArtworkTarget, sourcePath: String)async throws  -> 
 }
     
     /**
-     * Makes the WAV file at `source_path` the track's loop, copied into
-     * Soundscape's store (the caller may delete its copy). Replaces any
-     * earlier recording.
-     */
-open func setClip(id: UInt64, trackId: UInt64, sourcePath: String)async throws  -> ProjectDetail  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_set_clip(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt64.lower(trackId),FfiConverterString.lower(sourcePath)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeProjectDetail_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
-    /**
      * Makes a song, album or artist (by library id) a favourite, or not.
      */
 open func setFavourite(id: String, on: Bool)async throws  -> MusicCollection  {
@@ -3737,26 +3411,6 @@ open func setListenServer(address: String)async throws  -> String?  {
 }
     
     /**
-     * Turns the metronome on or off for a project. It is never in the
-     * mixdown.
-     */
-open func setMetronome(id: UInt64, on: Bool)async throws  -> ProjectDetail  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_set_metronome(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterBool.lower(on)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeProjectDetail_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
-    /**
      * Chooses songs for the phone, or takes them off. Call
      * `sync_downloads` after, to fetch or remove the files.
      */
@@ -3786,46 +3440,6 @@ open func setPhase(phase: AppPhase)  {try! rustCall() {
         FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
     )
 }
-}
-    
-    /**
-     * Changes tempo and length. Recordings stay as they are: a longer
-     * loop plays them followed by silence, a shorter one cuts them.
-     */
-open func setTiming(id: UInt64, tempoBpm: Double, bars: UInt32)async throws  -> ProjectDetail  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_set_timing(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterDouble.lower(tempoBpm),FfiConverterUInt32.lower(bars)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeProjectDetail_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
-}
-    
-    /**
-     * Gain, pan, mute, solo, tone and echo, all at once (the mixer sends
-     * the whole strip). Checked before it is saved.
-     */
-open func setTrackSettings(id: UInt64, trackId: UInt64, settings: TrackSettings)async throws  -> ProjectDetail  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_set_track_settings(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt64.lower(trackId),FfiConverterTypeTrackSettings_lower(settings)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeProjectDetail_lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
 }
     
     /**
@@ -3890,27 +3504,6 @@ open func tracksToPick() -> [LibraryTrack]  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
-}
-    
-    /**
-     * A track's waveform: the loudest sample in each of `buckets` slices
-     * of its recording, from 0 to 1. On-screen work: stopped by
-     * `cancellation`, the background and shutdown.
-     */
-open func waveform(id: UInt64, trackId: UInt64, buckets: UInt32, cancellation: Cancellation?)async throws  -> [Float]  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_soundscape_core_fn_method_soundscapecore_waveform(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt64.lower(trackId),FfiConverterUInt32.lower(buckets),FfiConverterOptionTypeCancellation.lower(cancellation)
-                )
-            },
-            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterSequenceFloat.lift,
-            errorHandler: FfiConverterTypeSoundscapeError_lift
-        )
 }
     
 
@@ -4256,81 +3849,6 @@ public func FfiConverterTypeCatalogueTrack_lower(_ value: CatalogueTrack) -> Rus
 
 
 /**
- * A recorded or imported loop.
- */
-public struct Clip: Equatable, Hashable {
-    /**
-     * The WAV file. Absolute; valid until the clip is replaced or removed.
-     */
-    public var path: String
-    public var sampleRate: UInt32
-    public var channels: UInt16
-    public var frames: UInt64
-    public var durationMs: Int64
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * The WAV file. Absolute; valid until the clip is replaced or removed.
-         */path: String, sampleRate: UInt32, channels: UInt16, frames: UInt64, durationMs: Int64) {
-        self.path = path
-        self.sampleRate = sampleRate
-        self.channels = channels
-        self.frames = frames
-        self.durationMs = durationMs
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension Clip: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeClip: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Clip {
-        return
-            try Clip(
-                path: FfiConverterString.read(from: &buf), 
-                sampleRate: FfiConverterUInt32.read(from: &buf), 
-                channels: FfiConverterUInt16.read(from: &buf), 
-                frames: FfiConverterUInt64.read(from: &buf), 
-                durationMs: FfiConverterInt64.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: Clip, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.path, into: &buf)
-        FfiConverterUInt32.write(value.sampleRate, into: &buf)
-        FfiConverterUInt16.write(value.channels, into: &buf)
-        FfiConverterUInt64.write(value.frames, into: &buf)
-        FfiConverterInt64.write(value.durationMs, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeClip_lift(_ buf: RustBuffer) throws -> Clip {
-    return try FfiConverterTypeClip.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeClip_lower(_ value: Clip) -> RustBuffer {
-    return FfiConverterTypeClip.lower(value)
-}
-
-
-/**
  * A URL the app was opened with (custom scheme, universal link
  * or notification tap), split into parts.
  */
@@ -4441,85 +3959,6 @@ public func FfiConverterTypeDeepLink_lift(_ buf: RustBuffer) throws -> DeepLink 
 #endif
 public func FfiConverterTypeDeepLink_lower(_ value: DeepLink) -> RustBuffer {
     return FfiConverterTypeDeepLink.lower(value)
-}
-
-
-/**
- * A track's echo, in step with the tempo.
- */
-public struct Echo: Equatable, Hashable {
-    /**
-     * The time between repeats, in beats (0.25 is a sixteenth note at 4/4).
-     */
-    public var beats: Double
-    /**
-     * How much of each repeat comes back, from 0 to 0.9.
-     */
-    public var feedback: Double
-    /**
-     * How loud the repeats are against the dry sound, from 0 to 1.
-     */
-    public var mix: Double
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * The time between repeats, in beats (0.25 is a sixteenth note at 4/4).
-         */beats: Double, 
-        /**
-         * How much of each repeat comes back, from 0 to 0.9.
-         */feedback: Double, 
-        /**
-         * How loud the repeats are against the dry sound, from 0 to 1.
-         */mix: Double) {
-        self.beats = beats
-        self.feedback = feedback
-        self.mix = mix
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension Echo: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeEcho: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Echo {
-        return
-            try Echo(
-                beats: FfiConverterDouble.read(from: &buf), 
-                feedback: FfiConverterDouble.read(from: &buf), 
-                mix: FfiConverterDouble.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: Echo, into buf: inout [UInt8]) {
-        FfiConverterDouble.write(value.beats, into: &buf)
-        FfiConverterDouble.write(value.feedback, into: &buf)
-        FfiConverterDouble.write(value.mix, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeEcho_lift(_ buf: RustBuffer) throws -> Echo {
-    return try FfiConverterTypeEcho.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeEcho_lower(_ value: Echo) -> RustBuffer {
-    return FfiConverterTypeEcho.lower(value)
 }
 
 
@@ -5707,87 +5146,6 @@ public func FfiConverterTypeLyricWord_lower(_ value: LyricWord) -> RustBuffer {
 
 
 /**
- * What `mixdown` wrote.
- */
-public struct Mixdown: Equatable, Hashable {
-    public var path: String
-    public var sampleRate: UInt32
-    public var durationMs: Int64
-    /**
-     * The loudest sample before any limiting, in dBFS (0 is full scale).
-     */
-    public var peakDb: Double
-    /**
-     * Whether the mix went over full scale and was turned down to fit.
-     */
-    public var limited: Bool
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(path: String, sampleRate: UInt32, durationMs: Int64, 
-        /**
-         * The loudest sample before any limiting, in dBFS (0 is full scale).
-         */peakDb: Double, 
-        /**
-         * Whether the mix went over full scale and was turned down to fit.
-         */limited: Bool) {
-        self.path = path
-        self.sampleRate = sampleRate
-        self.durationMs = durationMs
-        self.peakDb = peakDb
-        self.limited = limited
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension Mixdown: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeMixdown: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Mixdown {
-        return
-            try Mixdown(
-                path: FfiConverterString.read(from: &buf), 
-                sampleRate: FfiConverterUInt32.read(from: &buf), 
-                durationMs: FfiConverterInt64.read(from: &buf), 
-                peakDb: FfiConverterDouble.read(from: &buf), 
-                limited: FfiConverterBool.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: Mixdown, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.path, into: &buf)
-        FfiConverterUInt32.write(value.sampleRate, into: &buf)
-        FfiConverterInt64.write(value.durationMs, into: &buf)
-        FfiConverterDouble.write(value.peakDb, into: &buf)
-        FfiConverterBool.write(value.limited, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMixdown_lift(_ buf: RustBuffer) throws -> Mixdown {
-    return try FfiConverterTypeMixdown.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMixdown_lower(_ value: Mixdown) -> RustBuffer {
-    return FfiConverterTypeMixdown.lower(value)
-}
-
-
-/**
  * Favourites, playlists and what was played, as the library has them now.
  */
 public struct MusicCollection: Equatable, Hashable {
@@ -6650,160 +6008,6 @@ public func FfiConverterTypePlaylistEntry_lift(_ buf: RustBuffer) throws -> Play
 #endif
 public func FfiConverterTypePlaylistEntry_lower(_ value: PlaylistEntry) -> RustBuffer {
     return FfiConverterTypePlaylistEntry.lower(value)
-}
-
-
-/**
- * A project with everything the mixer needs.
- */
-public struct ProjectDetail: Equatable, Hashable {
-    public var summary: ProjectSummary
-    /**
-     * How long one pass of the loop is, from tempo and bars (4/4).
-     */
-    public var loopSeconds: Double
-    public var tracks: [Track]
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(summary: ProjectSummary, 
-        /**
-         * How long one pass of the loop is, from tempo and bars (4/4).
-         */loopSeconds: Double, tracks: [Track]) {
-        self.summary = summary
-        self.loopSeconds = loopSeconds
-        self.tracks = tracks
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension ProjectDetail: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeProjectDetail: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProjectDetail {
-        return
-            try ProjectDetail(
-                summary: FfiConverterTypeProjectSummary.read(from: &buf), 
-                loopSeconds: FfiConverterDouble.read(from: &buf), 
-                tracks: FfiConverterSequenceTypeTrack.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: ProjectDetail, into buf: inout [UInt8]) {
-        FfiConverterTypeProjectSummary.write(value.summary, into: &buf)
-        FfiConverterDouble.write(value.loopSeconds, into: &buf)
-        FfiConverterSequenceTypeTrack.write(value.tracks, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeProjectDetail_lift(_ buf: RustBuffer) throws -> ProjectDetail {
-    return try FfiConverterTypeProjectDetail.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeProjectDetail_lower(_ value: ProjectDetail) -> RustBuffer {
-    return FfiConverterTypeProjectDetail.lower(value)
-}
-
-
-/**
- * A project as the list shows it.
- */
-public struct ProjectSummary: Equatable, Hashable {
-    public var id: UInt64
-    public var title: String
-    public var createdMs: Int64
-    public var modifiedMs: Int64
-    public var tempoBpm: Double
-    public var bars: UInt32
-    /**
-     * Whether the metronome clicks while the loop plays and records.
-     */
-    public var metronome: Bool
-    public var trackCount: UInt32
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(id: UInt64, title: String, createdMs: Int64, modifiedMs: Int64, tempoBpm: Double, bars: UInt32, 
-        /**
-         * Whether the metronome clicks while the loop plays and records.
-         */metronome: Bool, trackCount: UInt32) {
-        self.id = id
-        self.title = title
-        self.createdMs = createdMs
-        self.modifiedMs = modifiedMs
-        self.tempoBpm = tempoBpm
-        self.bars = bars
-        self.metronome = metronome
-        self.trackCount = trackCount
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension ProjectSummary: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeProjectSummary: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProjectSummary {
-        return
-            try ProjectSummary(
-                id: FfiConverterUInt64.read(from: &buf), 
-                title: FfiConverterString.read(from: &buf), 
-                createdMs: FfiConverterInt64.read(from: &buf), 
-                modifiedMs: FfiConverterInt64.read(from: &buf), 
-                tempoBpm: FfiConverterDouble.read(from: &buf), 
-                bars: FfiConverterUInt32.read(from: &buf), 
-                metronome: FfiConverterBool.read(from: &buf), 
-                trackCount: FfiConverterUInt32.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: ProjectSummary, into buf: inout [UInt8]) {
-        FfiConverterUInt64.write(value.id, into: &buf)
-        FfiConverterString.write(value.title, into: &buf)
-        FfiConverterInt64.write(value.createdMs, into: &buf)
-        FfiConverterInt64.write(value.modifiedMs, into: &buf)
-        FfiConverterDouble.write(value.tempoBpm, into: &buf)
-        FfiConverterUInt32.write(value.bars, into: &buf)
-        FfiConverterBool.write(value.metronome, into: &buf)
-        FfiConverterUInt32.write(value.trackCount, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeProjectSummary_lift(_ buf: RustBuffer) throws -> ProjectSummary {
-    return try FfiConverterTypeProjectSummary.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeProjectSummary_lower(_ value: ProjectSummary) -> RustBuffer {
-    return FfiConverterTypeProjectSummary.lower(value)
 }
 
 
@@ -7822,91 +7026,6 @@ public func FfiConverterTypeTakeMark_lower(_ value: TakeMark) -> RustBuffer {
 
 
 /**
- * One track of a project, in the order the mixer shows them.
- */
-public struct Track: Equatable, Hashable {
-    public var id: UInt64
-    public var name: String
-    public var clip: Clip?
-    public var settings: TrackSettings
-    /**
-     * Whether this track is heard, given mute and every track's solo.
-     */
-    public var audible: Bool
-    /**
-     * The settings in AVAudioEngine's units, for live playback.
-     */
-    public var mix: TrackMix
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(id: UInt64, name: String, clip: Clip?, settings: TrackSettings, 
-        /**
-         * Whether this track is heard, given mute and every track's solo.
-         */audible: Bool, 
-        /**
-         * The settings in AVAudioEngine's units, for live playback.
-         */mix: TrackMix) {
-        self.id = id
-        self.name = name
-        self.clip = clip
-        self.settings = settings
-        self.audible = audible
-        self.mix = mix
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension Track: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTrack: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Track {
-        return
-            try Track(
-                id: FfiConverterUInt64.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf), 
-                clip: FfiConverterOptionTypeClip.read(from: &buf), 
-                settings: FfiConverterTypeTrackSettings.read(from: &buf), 
-                audible: FfiConverterBool.read(from: &buf), 
-                mix: FfiConverterTypeTrackMix.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: Track, into buf: inout [UInt8]) {
-        FfiConverterUInt64.write(value.id, into: &buf)
-        FfiConverterString.write(value.name, into: &buf)
-        FfiConverterOptionTypeClip.write(value.clip, into: &buf)
-        FfiConverterTypeTrackSettings.write(value.settings, into: &buf)
-        FfiConverterBool.write(value.audible, into: &buf)
-        FfiConverterTypeTrackMix.write(value.mix, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTrack_lift(_ buf: RustBuffer) throws -> Track {
-    return try FfiConverterTypeTrack.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTrack_lower(_ value: Track) -> RustBuffer {
-    return FfiConverterTypeTrack.lower(value)
-}
-
-
-/**
  * A track with all its recordings, newest last, and the words that went
  * into generating it.
  */
@@ -8039,205 +7158,6 @@ public func FfiConverterTypeTrackEdit_lift(_ buf: RustBuffer) throws -> TrackEdi
 #endif
 public func FfiConverterTypeTrackEdit_lower(_ value: TrackEdit) -> RustBuffer {
     return FfiConverterTypeTrackEdit.lower(value)
-}
-
-
-/**
- * A track's settings as AVAudioEngine takes them: `AVAudioPlayerNode`
- * volume and pan, an `AVAudioUnitEQ` low-pass band, an `AVAudioUnitDelay`.
- * The mixdown uses the same numbers, so what you hear is what you export.
- */
-public struct TrackMix: Equatable, Hashable {
-    /**
-     * Linear gain, 0 when the track isn't audible.
-     */
-    public var volume: Float
-    public var pan: Float
-    /**
-     * The low-pass cutoff in hertz, or `None` when tone is untouched.
-     */
-    public var lowPassHz: Float?
-    /**
-     * `AVAudioUnitDelay.delayTime`, in seconds, or `None` without echo.
-     */
-    public var delaySeconds: Double?
-    /**
-     * `AVAudioUnitDelay.feedback`, in percent.
-     */
-    public var delayFeedbackPercent: Float
-    /**
-     * `AVAudioUnitDelay.wetDryMix`, in percent.
-     */
-    public var delayWetDryPercent: Float
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * Linear gain, 0 when the track isn't audible.
-         */volume: Float, pan: Float, 
-        /**
-         * The low-pass cutoff in hertz, or `None` when tone is untouched.
-         */lowPassHz: Float?, 
-        /**
-         * `AVAudioUnitDelay.delayTime`, in seconds, or `None` without echo.
-         */delaySeconds: Double?, 
-        /**
-         * `AVAudioUnitDelay.feedback`, in percent.
-         */delayFeedbackPercent: Float, 
-        /**
-         * `AVAudioUnitDelay.wetDryMix`, in percent.
-         */delayWetDryPercent: Float) {
-        self.volume = volume
-        self.pan = pan
-        self.lowPassHz = lowPassHz
-        self.delaySeconds = delaySeconds
-        self.delayFeedbackPercent = delayFeedbackPercent
-        self.delayWetDryPercent = delayWetDryPercent
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension TrackMix: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTrackMix: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TrackMix {
-        return
-            try TrackMix(
-                volume: FfiConverterFloat.read(from: &buf), 
-                pan: FfiConverterFloat.read(from: &buf), 
-                lowPassHz: FfiConverterOptionFloat.read(from: &buf), 
-                delaySeconds: FfiConverterOptionDouble.read(from: &buf), 
-                delayFeedbackPercent: FfiConverterFloat.read(from: &buf), 
-                delayWetDryPercent: FfiConverterFloat.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: TrackMix, into buf: inout [UInt8]) {
-        FfiConverterFloat.write(value.volume, into: &buf)
-        FfiConverterFloat.write(value.pan, into: &buf)
-        FfiConverterOptionFloat.write(value.lowPassHz, into: &buf)
-        FfiConverterOptionDouble.write(value.delaySeconds, into: &buf)
-        FfiConverterFloat.write(value.delayFeedbackPercent, into: &buf)
-        FfiConverterFloat.write(value.delayWetDryPercent, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTrackMix_lift(_ buf: RustBuffer) throws -> TrackMix {
-    return try FfiConverterTypeTrackMix.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTrackMix_lower(_ value: TrackMix) -> RustBuffer {
-    return FfiConverterTypeTrackMix.lower(value)
-}
-
-
-/**
- * What a track sounds like in the mix. Saved as the person set it;
- * [`TrackMix`] says what it means in AVAudioEngine's units.
- */
-public struct TrackSettings: Equatable, Hashable {
-    /**
-     * Decibels, from -60 to +6.
-     */
-    public var gainDb: Double
-    /**
-     * From -1 (left) to 1 (right).
-     */
-    public var pan: Double
-    public var muted: Bool
-    public var solo: Bool
-    /**
-     * How bright the track is, from 0 (muffled) to 1 (untouched): a
-     * low-pass filter.
-     */
-    public var tone: Double
-    public var echo: Echo?
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * Decibels, from -60 to +6.
-         */gainDb: Double, 
-        /**
-         * From -1 (left) to 1 (right).
-         */pan: Double, muted: Bool, solo: Bool, 
-        /**
-         * How bright the track is, from 0 (muffled) to 1 (untouched): a
-         * low-pass filter.
-         */tone: Double, echo: Echo?) {
-        self.gainDb = gainDb
-        self.pan = pan
-        self.muted = muted
-        self.solo = solo
-        self.tone = tone
-        self.echo = echo
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension TrackSettings: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTrackSettings: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TrackSettings {
-        return
-            try TrackSettings(
-                gainDb: FfiConverterDouble.read(from: &buf), 
-                pan: FfiConverterDouble.read(from: &buf), 
-                muted: FfiConverterBool.read(from: &buf), 
-                solo: FfiConverterBool.read(from: &buf), 
-                tone: FfiConverterDouble.read(from: &buf), 
-                echo: FfiConverterOptionTypeEcho.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: TrackSettings, into buf: inout [UInt8]) {
-        FfiConverterDouble.write(value.gainDb, into: &buf)
-        FfiConverterDouble.write(value.pan, into: &buf)
-        FfiConverterBool.write(value.muted, into: &buf)
-        FfiConverterBool.write(value.solo, into: &buf)
-        FfiConverterDouble.write(value.tone, into: &buf)
-        FfiConverterOptionTypeEcho.write(value.echo, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTrackSettings_lift(_ buf: RustBuffer) throws -> TrackSettings {
-    return try FfiConverterTypeTrackSettings.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTrackSettings_lower(_ value: TrackSettings) -> RustBuffer {
-    return FfiConverterTypeTrackSettings.lower(value)
 }
 
 
@@ -9723,15 +8643,10 @@ enum SoundscapeError: Swift.Error, Equatable, Hashable, Foundation.LocalizedErro
     case EmptyName
     case NameTooLong(max: UInt32
     )
-    case NotFound(id: UInt64
-    )
-    case TooManyTracks(max: UInt32
-    )
     case OutOfRange(setting: String
     )
     case Audio(reason: String
     )
-    case Silent
     case InUse
     case Corrupt(reason: String
     )
@@ -9799,40 +8714,33 @@ public struct FfiConverterTypeSoundscapeError: FfiConverterRustBuffer {
         case 2: return .NameTooLong(
             max: try FfiConverterUInt32.read(from: &buf)
             )
-        case 3: return .NotFound(
-            id: try FfiConverterUInt64.read(from: &buf)
-            )
-        case 4: return .TooManyTracks(
-            max: try FfiConverterUInt32.read(from: &buf)
-            )
-        case 5: return .OutOfRange(
+        case 3: return .OutOfRange(
             setting: try FfiConverterString.read(from: &buf)
             )
-        case 6: return .Audio(
+        case 4: return .Audio(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 7: return .Silent
-        case 8: return .InUse
-        case 9: return .Corrupt(
+        case 5: return .InUse
+        case 6: return .Corrupt(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 10: return .NewerData
-        case 11: return .Storage(
+        case 7: return .NewerData
+        case 8: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 12: return .BadAddress(
+        case 9: return .BadAddress(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 13: return .Unreachable(
+        case 10: return .Unreachable(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 14: return .Server(
+        case 11: return .Server(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 15: return .NotInLibrary(
+        case 12: return .NotInLibrary(
             id: try FfiConverterString.read(from: &buf)
             )
-        case 16: return .Stopped(
+        case 13: return .Stopped(
             kind: try FfiConverterTypeErrorKind.read(from: &buf)
             )
 
@@ -9856,70 +8764,56 @@ public struct FfiConverterTypeSoundscapeError: FfiConverterRustBuffer {
             FfiConverterUInt32.write(max, into: &buf)
             
         
-        case let .NotFound(id):
-            writeInt(&buf, Int32(3))
-            FfiConverterUInt64.write(id, into: &buf)
-            
-        
-        case let .TooManyTracks(max):
-            writeInt(&buf, Int32(4))
-            FfiConverterUInt32.write(max, into: &buf)
-            
-        
         case let .OutOfRange(setting):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(3))
             FfiConverterString.write(setting, into: &buf)
             
         
         case let .Audio(reason):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .InUse:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .Corrupt(reason):
             writeInt(&buf, Int32(6))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .Silent:
+        case .NewerData:
             writeInt(&buf, Int32(7))
         
         
-        case .InUse:
-            writeInt(&buf, Int32(8))
-        
-        
-        case let .Corrupt(reason):
-            writeInt(&buf, Int32(9))
-            FfiConverterString.write(reason, into: &buf)
-            
-        
-        case .NewerData:
-            writeInt(&buf, Int32(10))
-        
-        
         case let .Storage(reason):
-            writeInt(&buf, Int32(11))
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .BadAddress(reason):
-            writeInt(&buf, Int32(12))
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .Unreachable(reason):
-            writeInt(&buf, Int32(13))
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .Server(reason):
-            writeInt(&buf, Int32(14))
+            writeInt(&buf, Int32(11))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .NotInLibrary(id):
-            writeInt(&buf, Int32(15))
+            writeInt(&buf, Int32(12))
             FfiConverterString.write(id, into: &buf)
             
         
         case let .Stopped(kind):
-            writeInt(&buf, Int32(16))
+            writeInt(&buf, Int32(13))
             FfiConverterTypeErrorKind.write(kind, into: &buf)
             
         }
@@ -10008,30 +8902,6 @@ fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterInt64.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionFloat: FfiConverterRustBuffer {
-    typealias SwiftType = Float?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterFloat.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterFloat.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -10176,54 +9046,6 @@ fileprivate struct FfiConverterOptionTypeRuntimeEvents: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeRuntimeEvents.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionTypeClip: FfiConverterRustBuffer {
-    typealias SwiftType = Clip?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeClip.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeClip.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionTypeEcho: FfiConverterRustBuffer {
-    typealias SwiftType = Echo?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeEcho.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeEcho.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -10393,31 +9215,6 @@ fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterUInt32.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceFloat: FfiConverterRustBuffer {
-    typealias SwiftType = [Float]
-
-    public static func write(_ value: [Float], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterFloat.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Float] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [Float]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterFloat.read(from: &buf))
         }
         return seq
     }
@@ -10801,31 +9598,6 @@ fileprivate struct FfiConverterSequenceTypePlaylistEntry: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypeProjectSummary: FfiConverterRustBuffer {
-    typealias SwiftType = [ProjectSummary]
-
-    public static func write(_ value: [ProjectSummary], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeProjectSummary.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ProjectSummary] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [ProjectSummary]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeProjectSummary.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
     typealias SwiftType = [QueryItem]
 
@@ -11018,31 +9790,6 @@ fileprivate struct FfiConverterSequenceTypeTake: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeTake.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypeTrack: FfiConverterRustBuffer {
-    typealias SwiftType = [Track]
-
-    public static func write(_ value: [Track], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeTrack.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Track] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [Track]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeTrack.read(from: &buf))
         }
         return seq
     }
@@ -11609,9 +10356,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_add_to_playlist() != 3879) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_add_track() != 41719) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_album_tracks() != 41674) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11642,13 +10386,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_clear_artwork() != 37726) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_clear_clip() != 43470) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_clear_history() != 38025) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_click_track() != 18791) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_collection() != 2516) {
@@ -11657,13 +10395,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_create_playlist() != 26215) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_create_project() != 44462) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_delete_playlist() != 35469) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_delete_project() != 38413) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_download_state() != 23422) {
@@ -11708,16 +10440,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_listen_songs() != 60133) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_loop_frames() != 65425) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_mark_recording() != 48226) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_mark_take() != 58743) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_mixdown() != 48775) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_offline() != 23785) {
@@ -11727,12 +10453,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_playlist() != 53541) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_project() != 12515) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_projects() != 3517) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_queue_recording() != 23683) {
@@ -11753,16 +10473,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_remove_imported() != 19279) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_remove_track() != 46950) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_rename_playlist() != 41138) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_rename_project() != 57129) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_rename_track() != 39313) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_revision() != 34234) {
@@ -11786,9 +10497,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_artwork() != 31551) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_clip() != 57804) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_favourite() != 412) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11798,19 +10506,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_listen_server() != 52642) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_metronome() != 23123) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_offline() != 56046) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_phase() != 58514) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_timing() != 25569) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_track_settings() != 64235) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_shutdown() != 30947) {
@@ -11823,9 +10522,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_tracks_to_pick() != 21309) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_waveform() != 39390) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_localnotifier_schedule() != 19447) {
@@ -11873,10 +10569,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_httptransport_cancel() != 42409) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_constructor_soundscapecore_new() != 38125) {
+    if (uniffi_soundscape_core_checksum_constructor_soundscapecore_new() != 45) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_constructor_soundscapecore_start_fresh() != 13694) {
+    if (uniffi_soundscape_core_checksum_constructor_soundscapecore_start_fresh() != 10569) {
         return InitializationResult.apiChecksumMismatch
     }
 

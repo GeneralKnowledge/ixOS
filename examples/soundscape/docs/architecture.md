@@ -20,7 +20,7 @@ in [library.md](library.md), [collection.md](collection.md), [offline.md](offlin
 | Offline (M4) | `offline.rs`: songs chosen for the phone, downloads, `offline.json`. Import Music copies files in with their tags | Passed 2026-11-18 |
 | Takes (M5) | #334: rating and notes on the song, sort order, To Pick, stars in Now Playing. Blind A/B already existed | Not built yet |
 | Server | JewGrass `tools/player/serve.py`: `/api/library`, `/api/song`, `/api/catalog`, `/api/pick`, and `/audio/…` with byte ranges (206). Picks, stars and notes are in `~/band/picks.json` | In use |
-| Studio | The Projects tab (`project.rs`, `dsp.rs`, LoopEngine, ProjectView, TrackStrip, about 2,300 lines) is still the first tab | To remove |
+| Studio | The Projects tab (`project.rs`, `dsp.rs`, LoopEngine, ProjectView, TrackStrip, about 2,300 lines) was the first tab | Removed 2026-11-18 |
 
 The proposal's P0, finishing the player that's already written and proving it on the phone, is nearly done. The
 #328 and #334 checks are queued for the next combined Device Lab build.
@@ -108,9 +108,10 @@ timed lyrics) waits, and the question of where "your own server" lives waits wit
 1. **Jamendo** (done in Rust and Swift; phone check next), then **Internet Archive** and **MusicBrainz** matching,
    and a fixed test catalogue ([sources.md](sources.md#order-of-work)).
 2. **P0, finish what's written.** Recheck #328 and #334 on the phone. The other P0 items are already done.
-3. **Remove Studio and set the navigation** (old PR 6). Drop `project.rs`, `dsp.rs` and the Studio screens.
-   Soundscape opens on Listen. Tabs: Listen, Library, Search, Collections, with Sources in Settings until there is
-   more than one source.
+3. **Remove Studio** (old PR 6). Done: `project.rs`, `dsp.rs`, the Studio screens and the microphone permission are
+   gone, and Soundscape opens straight on the library (one stack, no tab bar: Discover and Your Music are rows at
+   its top). Old Studio files stay on the phone untouched. A tab bar (Library, Discover, Search) can come later,
+   once the mini-player is moved above it.
 4. **Persist the queue.** Done: `rust/src/playback.rs` keeps the queue, the song and how far into it in
    `playback.json`, saved as it changes, on pause, and every 5 seconds while playing. The
    app opens paused where it was left. Songs come back as the library has them now (edits, a download since); a

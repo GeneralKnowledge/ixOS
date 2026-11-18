@@ -115,7 +115,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .commonplace: "A feed reader that keeps articles to read offline."
         case .fieldKit: "A field notebook: record a GPS track and take notes along the way."
         case .sketchbook: "Draw with your finger in layers, with undo, and export to PNG or PDF."
-        case .soundscape: "A music player for your songs from your computer: albums, a queue, lock-screen playback, and takes to compare and pick."
+        case .soundscape: "Your music player: your own files, Jamendo and the Internet Archive, and songs from your computer, with playlists, downloads and lock-screen playback."
         case .relay: "Messages through your chat server with an on-device assistant, and files, photos and folders straight to a nearby device."
         case .forgeUI: "Every ForgeUI component, with example screens."
         }
