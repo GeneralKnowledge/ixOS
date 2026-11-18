@@ -15,7 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::resolver::{ConnectionMode, RouteKind};
+use crate::resolver::{ConnectionMode, RelayServers, RouteKind};
 
 /// What happens after a word-code transfer with a device (Settings).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
@@ -105,6 +105,9 @@ pub struct Devices {
     /// Which routes trusted devices are reached by (M2 PR 6).
     #[serde(default)]
     pub mode: ConnectionMode,
+    /// Relay's own servers (M2 PR 7); none until they are set.
+    #[serde(default)]
+    pub servers: RelayServers,
     #[serde(default)]
     pub list: Vec<SavedDevice>,
 }

@@ -479,6 +479,7 @@ impl RelayCore {
         let stop = Arc::new(AtomicBool::new(false));
         lock(&self.device_stops).insert(transfer, Arc::clone(&stop));
         let node = Arc::clone(&self.node);
+        let mode = self.record.get().devices.mode;
         let my_name = self.identity().name;
         let weak = self.me.clone();
         let result = code::TOKIO
@@ -489,7 +490,7 @@ impl RelayCore {
                         lock(&core.progress).insert(transfer, done);
                     }
                 };
-                device::send(&node, addr, my_name, id, outgoing, report, stop).await
+                device::send(&node, addr, mode, my_name, id, outgoing, report, stop).await
             })
             .await
             .unwrap_or_else(|e| Err(code::connection(e)));
@@ -603,6 +604,7 @@ impl RelayCore {
             nearby: &nearby,
             told: &saved.told,
             remembered: &saved.addresses,
+            by_key: self.record.get().devices.servers.finds_by_key(),
         };
         let plan = match resolver::plan(&w, mode) {
             Ok(plan) => plan,
@@ -618,6 +620,41 @@ impl RelayCore {
                 None
             }
         }
+    }
+
+    /// Tries everything that waits now, forgetting the backoff: the
+    /// network changed, so routes that failed may work.
+    pub(crate) fn retry_now(&self) {
+        lock(&self.outbox.backoff).clear();
+        self.deliver_waiting();
+    }
+
+    /// Watches this device's addresses: when they change (another Wi-Fi,
+    /// Wi-Fi to mobile data, Tailscale coming on), Relay retries at once.
+    /// iroh notices the change itself and rebinds; this is what tells the
+    /// outbox. Started once, with the node.
+    pub(crate) fn watch_network(&self, node: &crate::node::Node) {
+        if self.watching_network.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        use iroh::Watcher;
+        let me = self.me.clone();
+        let mut watcher = node.endpoint.watch_addr();
+        code::TOKIO.spawn(async move {
+            let mut last: HashSet<std::net::SocketAddr> =
+                watcher.get().ip_addrs().copied().collect();
+            while watcher.updated().await.is_ok() {
+                let now: HashSet<std::net::SocketAddr> =
+                    watcher.get().ip_addrs().copied().collect();
+                if now == last {
+                    continue;
+                }
+                last = now;
+                let Some(core) = me.upgrade() else { break };
+                forge_runtime::logging::info!("relay: the network changed; retrying what waits");
+                core.retry_now();
+            }
+        });
     }
 
     /// Why `to` wasn't reached the last time Relay tried, in words.
@@ -647,13 +684,14 @@ impl RelayCore {
             });
         };
         let node = Arc::clone(&self.node);
+        let mode = self.record.get().devices.mode;
         let my_name = self.identity().name;
         let stop = Arc::new(AtomicBool::new(false));
         let sent = code::TOKIO
             .spawn(async move {
                 let node = node.get().await?;
                 let outgoing = device::Outgoing::Message(message);
-                device::send(&node, addr, my_name, new_id(), outgoing, |_| {}, stop).await
+                device::send(&node, addr, mode, my_name, new_id(), outgoing, |_| {}, stop).await
             })
             .await
             .unwrap_or_else(|e| Err(code::connection(e)))

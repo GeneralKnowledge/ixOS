@@ -17,6 +17,8 @@
 //!                                    what happens after a code transfer
 //! relay connections [local | private | any]
 //!                                    which routes reach trusted devices
+//! relay servers [--relay URL] [--lookup URL] [--none]
+//!                                    Relay's own relay and lookup server
 //! relay send <peer> [--to host:port] (--note TEXT | FILE)
 //! relay send PATH...                 send files and folders with a word code
 //!                                    to anyone on this network
@@ -73,7 +75,7 @@ send <peer> [--to host:port] (--note TEXT | FILE) | send PATH... | receive <code
 send <device> (--note TEXT | --text TEXT | PATH...) [--to host:port] | \
 messages <device> | revoke <device> | forget <device> | \
 trust <device> | policy [codes-only | ask | automatic] | \
-connections [local | private | any] | \
+connections [local | private | any] | servers [--relay URL] [--lookup URL] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
 ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
@@ -278,6 +280,30 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 block_on(core.set_connection_mode(mode)).map_err(|e| e.to_string())
             }
         },
+        "servers" => (|| {
+            if rest.is_empty() {
+                let s = core.servers();
+                out += &format!(
+                    "relay: {}\nlookup: {}\n",
+                    s.relay_url.as_deref().unwrap_or("none"),
+                    s.lookup_url.as_deref().unwrap_or("none")
+                );
+                return Ok(());
+            }
+            let mut servers = core.servers();
+            let mut args = rest.iter();
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--relay" => servers.relay_url = args.next().cloned(),
+                    "--lookup" => servers.lookup_url = args.next().cloned(),
+                    "--none" => servers = relay_core::RelayServers::default(),
+                    _ => return Err(USAGE.to_string()),
+                }
+            }
+            block_on(core.set_servers(servers)).map_err(|e| e.to_string())?;
+            out += "Saved. Relay uses them from the next time it starts.\n";
+            Ok(())
+        })(),
         "history" => {
             for t in core.transfers() {
                 out += &format!("{}\n", describe(&t));

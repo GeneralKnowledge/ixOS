@@ -38,7 +38,7 @@ mod node;
 mod outbox;
 mod record;
 mod resolver;
-pub use resolver::{ConnectionMode, RouteKind};
+pub use resolver::{ConnectionMode, RelayServers, RouteKind};
 mod trust;
 pub mod wire;
 
@@ -150,6 +150,8 @@ pub struct RelayCore {
     trust_offer: Arc<Mutex<Option<TrustOffer>>>,
     /// Trusted devices the app sees nearby, with their addresses.
     nearby: Mutex<HashMap<String, Vec<String>>>,
+    /// Whether the node's addresses are watched for network changes.
+    watching_network: AtomicBool,
     /// Why each trusted device wasn't reached the last time Relay tried,
     /// in words (the resolver's diagnostics); gone once it is reached.
     problems: Mutex<HashMap<String, String>>,
@@ -208,6 +210,7 @@ impl RelayCore {
         let key_dir = directory.path().to_path_buf();
         let peer_logs = device_chat::PeerLogs::new(directory.path().join("devices"));
         let store_dir = code_dir.join("store");
+        let servers = record.value().devices.servers.clone();
         let state = State {
             record,
             inbox,
@@ -225,6 +228,7 @@ impl RelayCore {
                 key_dir,
                 store_dir,
                 Arc::new(CoreDevices { core: me.clone() }),
+                servers,
             )),
             received_in: Mutex::new(code_dir.join("received")),
             code_dir,
@@ -234,6 +238,7 @@ impl RelayCore {
             trust_offer: Arc::new(Mutex::new(None)),
             nearby: Mutex::new(HashMap::new()),
             problems: Mutex::new(HashMap::new()),
+            watching_network: AtomicBool::new(false),
             device_stops: Mutex::new(HashMap::new()),
             outbox: outbox::Outbox::default(),
             peer_logs,
@@ -824,6 +829,7 @@ impl RelayCore {
     /// on screen.
     pub async fn device_service(&self) -> Result<DeviceService, RelayError> {
         let node = self.node().await?;
+        self.watch_network(&node);
         self.deliver_waiting();
         Ok(DeviceService {
             endpoint_id: node.id().to_string(),
@@ -897,6 +903,39 @@ impl RelayCore {
             .await?;
         self.deliver_waiting();
         Ok(())
+    }
+
+    /// Relay's own servers: a relay and a lookup server (M2 PR 7).
+    pub fn servers(&self) -> RelayServers {
+        self.record.get().devices.servers.clone()
+    }
+
+    /// Sets Relay's servers. They are used from the next time Relay opens.
+    pub async fn set_servers(&self, servers: RelayServers) -> Result<(), RelayError> {
+        let clean = RelayServers {
+            relay_url: servers.relay_url.filter(|u| !u.trim().is_empty()),
+            lookup_url: servers.lookup_url.filter(|u| !u.trim().is_empty()),
+        };
+        clean
+            .check()
+            .map_err(|reason| RelayError::Unreachable { reason })?;
+        self.rt
+            .command("servers", move |state| {
+                state.change(|r| {
+                    r.devices.servers = clean;
+                    Ok(())
+                })
+            })
+            .await
+    }
+
+    /// The network changed (another Wi-Fi, Wi-Fi to mobile data): Relay
+    /// looks for its routes again and tries what waits.
+    pub fn network_changed(&self) {
+        if let Some(node) = self.node.started() {
+            code::TOKIO.spawn(async move { node.endpoint.network_change().await });
+        }
+        self.retry_now();
     }
 
     pub fn pairing_policy(&self) -> PairingPolicy {

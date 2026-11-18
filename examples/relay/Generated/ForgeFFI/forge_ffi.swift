@@ -5139,6 +5139,12 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func listeningPort()  -> UInt16?
     
     /**
+     * The network changed (another Wi-Fi, Wi-Fi to mobile data): Relay
+     * looks for its routes again and tries what waits.
+     */
+    func networkChanged() 
+    
+    /**
      * Pairs with the device whose code was scanned: connects to it, proves
      * both hold the code's secret, and keeps the other device. Expires
      * with the code (the other device refuses it).
@@ -5244,6 +5250,11 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      */
     func sendWithCode(path: String) throws 
     
+    /**
+     * Relay's own servers: a relay and a lookup server (M2 PR 7).
+     */
+    func servers()  -> RelayServers
+    
     func setConnectionMode(mode: ConnectionMode) async throws 
     
     func setPairingPolicy(policy: PairingPolicy) async throws 
@@ -5257,6 +5268,11 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * Whether a trusted device may send files and notes here.
      */
     func setReceivesFrom(endpointId: String, on: Bool) async throws 
+    
+    /**
+     * Sets Relay's servers. They are used from the next time Relay opens.
+     */
+    func setServers(servers: RelayServers) async throws 
     
     /**
      * Refuses new commands, stops work in flight and ends event
@@ -5669,6 +5685,18 @@ open func listeningPort() -> UInt16?  {
 }
     
     /**
+     * The network changed (another Wi-Fi, Wi-Fi to mobile data): Relay
+     * looks for its routes again and tries what waits.
+     */
+open func networkChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_network_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Pairs with the device whose code was scanned: connects to it, proves
      * both hold the code's secret, and keeps the other device. Expires
      * with the code (the other device refuses it).
@@ -5949,6 +5977,18 @@ open func sendWithCode(path: String)throws   {try rustCallWithError(FfiConverter
 }
 }
     
+    /**
+     * Relay's own servers: a relay and a lookup server (M2 PR 7).
+     */
+open func servers() -> RelayServers  {
+    return try!  FfiConverterTypeRelayServers_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_servers(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
 open func setConnectionMode(mode: ConnectionMode)async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -6002,6 +6042,25 @@ open func setReceivesFrom(endpointId: String, on: Bool)async throws   {
             rustFutureFunc: {
                 uniffi_relay_core_fn_method_relaycore_set_receives_from(
                         self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterBool.lower(on)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Sets Relay's servers. They are used from the next time Relay opens.
+     */
+open func setServers(servers: RelayServers)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_set_servers(
+                        self.uniffiCloneHandle(),FfiConverterTypeRelayServers_lower(servers)
                 )
             },
             pollFunc: ffi_relay_core_rust_future_poll_void,
@@ -9485,6 +9544,80 @@ public func FfiConverterTypeQueryItem_lift(_ buf: RustBuffer) throws -> QueryIte
 #endif
 public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
     return FfiConverterTypeQueryItem.lower(value)
+}
+
+
+/**
+ * Relay's own servers (brief M2 PR 7), both optional: Relay works with
+ * neither, on the local and private routes.
+ */
+public struct RelayServers: Equatable, Hashable {
+    /**
+     * An `iroh-relay` server, for connections no direct route reaches.
+     */
+    public var relayUrl: String?
+    /**
+     * A pkarr lookup server: each device publishes a record of where it can
+     * be reached there, signed by its key, so a trusted device finds it by
+     * key alone.
+     */
+    public var lookupUrl: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * An `iroh-relay` server, for connections no direct route reaches.
+         */relayUrl: String?, 
+        /**
+         * A pkarr lookup server: each device publishes a record of where it can
+         * be reached there, signed by its key, so a trusted device finds it by
+         * key alone.
+         */lookupUrl: String?) {
+        self.relayUrl = relayUrl
+        self.lookupUrl = lookupUrl
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RelayServers: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRelayServers: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RelayServers {
+        return
+            try RelayServers(
+                relayUrl: FfiConverterOptionString.read(from: &buf), 
+                lookupUrl: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RelayServers, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.relayUrl, into: &buf)
+        FfiConverterOptionString.write(value.lookupUrl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayServers_lift(_ buf: RustBuffer) throws -> RelayServers {
+    return try FfiConverterTypeRelayServers.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayServers_lower(_ value: RelayServers) -> RustBuffer {
+    return FfiConverterTypeRelayServers.lower(value)
 }
 
 
@@ -14286,6 +14419,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_listening_port() != 28817) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_network_changed() != 22393) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_pair() != 15375) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14334,6 +14470,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_send_with_code() != 8349) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_servers() != 62920) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_set_connection_mode() != 58690) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14344,6 +14483,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_set_receives_from() != 48202) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_set_servers() != 37385) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_shutdown() != 23618) {

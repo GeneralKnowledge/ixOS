@@ -36,6 +36,7 @@ use crate::code::{connection, get_within, put, CODE_ALPN, GONE, STEP, TOKIO};
 use crate::code_send::CodeHandler;
 use crate::device::{DeviceHandler, DeviceInbound, NodeLink, DEVICE_ALPN};
 use crate::model::RelayError;
+use crate::resolver::RelayServers;
 
 const KEY_FILE: &str = "device.key";
 /// The UDP port the endpoint last listened on, so a device that remembers
@@ -100,10 +101,11 @@ impl Node {
         store_dir: &Path,
         devices: Arc<dyn DeviceInbound>,
         link: NodeLink,
+        servers: &RelayServers,
     ) -> Result<Self, RelayError> {
         let key = device_key(key_dir)?;
         let store = open_store(store_dir).await?;
-        let endpoint = bind(key, key_dir).await?;
+        let endpoint = bind(key, key_dir, servers).await?;
         let sending = Arc::new(Mutex::new(None));
         let allowed: Allowed = Arc::default();
         let device_allowed: Allowed = Arc::default();
@@ -181,17 +183,31 @@ pub(crate) struct NodeCell {
     key_dir: PathBuf,
     store_dir: PathBuf,
     devices: Arc<dyn DeviceInbound>,
+    /// Relay's servers, as they were when the node started (a change takes
+    /// effect the next time Relay opens).
+    servers: RelayServers,
     cell: OnceCell<Arc<Node>>,
 }
 
 impl NodeCell {
-    pub fn new(key_dir: PathBuf, store_dir: PathBuf, devices: Arc<dyn DeviceInbound>) -> Self {
+    pub fn new(
+        key_dir: PathBuf,
+        store_dir: PathBuf,
+        devices: Arc<dyn DeviceInbound>,
+        servers: RelayServers,
+    ) -> Self {
         Self {
             key_dir,
             store_dir,
             devices,
+            servers,
             cell: OnceCell::new(),
         }
+    }
+
+    /// The node, if it has started.
+    pub fn started(&self) -> Option<Arc<Node>> {
+        self.cell.get().cloned()
     }
 
     /// The running node. Call on Relay's runtime (`TOKIO`).
@@ -205,6 +221,7 @@ impl NodeCell {
                         &self.store_dir,
                         Arc::clone(&self.devices),
                         Arc::clone(&link),
+                        &self.servers,
                     )
                     .await?,
                 );
@@ -224,16 +241,34 @@ impl Drop for NodeCell {
     }
 }
 
-/// This device's key: read from `dir/device.key`, or made and saved there
-/// (readable by this user only) the first time.
 /// Binds the endpoint on the port it had last time, if it is free, else
 /// on any port, and remembers the port.
-async fn bind(key: SecretKey, key_dir: &Path) -> Result<Endpoint, RelayError> {
+async fn bind(
+    key: SecretKey,
+    key_dir: &Path,
+    servers: &RelayServers,
+) -> Result<Endpoint, RelayError> {
+    use iroh::address_lookup::pkarr::{PkarrPublisher, PkarrResolver};
+    use iroh::endpoint_info::AddrFilter;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+    let relay = servers.relay();
+    let lookup = servers.lookup();
     let builder = || {
-        Endpoint::builder(presets::Minimal)
-            .secret_key(key.clone())
-            .relay_mode(RelayMode::Disabled)
+        let mut b = Endpoint::builder(presets::Minimal).secret_key(key.clone());
+        b = match &relay {
+            Some(url) => b.relay_mode(RelayMode::Custom(iroh::RelayMap::from(url.clone()))),
+            None => b.relay_mode(RelayMode::Disabled),
+        };
+        if let Some(url) = &lookup {
+            // Our own server: it gets this device's addresses too, so a
+            // trusted device can try a direct route before the relay.
+            b = b
+                .address_lookup(
+                    PkarrPublisher::builder(url.clone()).addr_filter(AddrFilter::unfiltered()),
+                )
+                .address_lookup(PkarrResolver::builder(url.clone()));
+        }
+        b
     };
     let saved = std::fs::read_to_string(key_dir.join(PORT_FILE))
         .ok()
@@ -283,6 +318,8 @@ async fn bind(key: SecretKey, key_dir: &Path) -> Result<Endpoint, RelayError> {
     Ok(endpoint)
 }
 
+/// This device's key: read from `dir/device.key`, or made and saved there
+/// (readable by this user only) the first time.
 pub(crate) fn device_key(dir: &Path) -> Result<SecretKey, RelayError> {
     let path = dir.join(KEY_FILE);
     match std::fs::read(&path) {
@@ -455,6 +492,7 @@ mod tests {
                 &dir.path().join("store"),
                 Arc::new(crate::device::NoDevices),
                 NodeLink::default(),
+                &RelayServers::default(),
             )
             .await
             .unwrap();
@@ -465,6 +503,7 @@ mod tests {
                 &dir.path().join("store"),
                 Arc::new(crate::device::NoDevices),
                 NodeLink::default(),
+                &RelayServers::default(),
             )
             .await
             .unwrap();

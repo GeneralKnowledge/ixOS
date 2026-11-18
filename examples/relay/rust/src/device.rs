@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use crate::code::{connection, get_within, put, CodeProgress, STEP};
 use crate::model::{RelayError, MAX_FILE_BYTES};
 use crate::node::{lock, Node};
-use crate::resolver::{route_of, RouteKind};
+use crate::resolver::{route_of, ConnectionMode, RouteKind};
 
 pub(crate) const DEVICE_ALPN: &[u8] = b"forge-relay/device/1";
 /// The protocol's version inside `relay/device/1`.
@@ -432,11 +432,14 @@ pub(crate) struct Sent {
     pub at: Option<std::net::SocketAddr>,
 }
 
-/// Sends one item, `id`, to a trusted device at `to`. `report` hears how
-/// many bytes of a file the receiver has; `stop` ends the send.
+/// Sends one item, `id`, to a trusted device at `to`, on a route `mode`
+/// allows. `report` hears how many bytes of a file the receiver has;
+/// `stop` ends the send.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn send(
     node: &Node,
     to: EndpointAddr,
+    mode: ConnectionMode,
     my_name: String,
     id: [u8; 16],
     item: Outgoing,
@@ -452,6 +455,15 @@ pub(crate) async fn send(
         .map_err(|e| RelayError::Unreachable {
             reason: e.to_string(),
         })?;
+    if let Some(kind) = route_of(&conn).filter(|k| !mode.allows(*k)) {
+        conn.close(0u32.into(), b"route not allowed");
+        return Err(RelayError::Unreachable {
+            reason: format!(
+                "the only route found was {}, which the Connections setting doesn't allow",
+                kind.label().to_lowercase()
+            ),
+        });
+    }
     let result = exchange(node, &conn, them, my_name, id, item, report, &stop)
         .await
         .map(|(name, addresses)| {

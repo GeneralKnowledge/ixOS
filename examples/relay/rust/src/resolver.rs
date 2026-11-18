@@ -44,7 +44,7 @@ pub enum ConnectionMode {
 }
 
 impl ConnectionMode {
-    fn allows(self, kind: RouteKind) -> bool {
+    pub(crate) fn allows(self, kind: RouteKind) -> bool {
         match self {
             ConnectionMode::Local => kind == RouteKind::Local,
             ConnectionMode::Private => kind != RouteKind::Internet,
@@ -140,6 +140,53 @@ pub(crate) fn clean(addresses: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// Relay's own servers (brief M2 PR 7), both optional: Relay works with
+/// neither, on the local and private routes.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct RelayServers {
+    /// An `iroh-relay` server, for connections no direct route reaches.
+    pub relay_url: Option<String>,
+    /// A pkarr lookup server: each device publishes a record of where it can
+    /// be reached there, signed by its key, so a trusted device finds it by
+    /// key alone.
+    pub lookup_url: Option<String>,
+}
+
+impl RelayServers {
+    /// The relay, if set and a valid URL.
+    pub(crate) fn relay(&self) -> Option<iroh::RelayUrl> {
+        self.relay_url.as_deref()?.parse().ok()
+    }
+
+    /// The lookup server, if set and a valid URL.
+    pub(crate) fn lookup(&self) -> Option<url::Url> {
+        self.lookup_url.as_deref()?.parse().ok()
+    }
+
+    /// Whether a device can be looked up by key at all.
+    pub(crate) fn finds_by_key(&self) -> bool {
+        self.lookup().is_some()
+    }
+
+    /// Checks both URLs, in words.
+    pub(crate) fn check(&self) -> Result<(), String> {
+        for (what, url) in [
+            ("relay", &self.relay_url),
+            ("lookup server", &self.lookup_url),
+        ] {
+            if let Some(url) = url {
+                let parsed: url::Url = url
+                    .parse()
+                    .map_err(|e| format!("The {what} address isn't a URL: {e}"))?;
+                if !matches!(parsed.scheme(), "http" | "https") {
+                    return Err(format!("The {what} address must start with https://"));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// What Relay knows about where a trusted device might be.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Whereabouts<'a> {
@@ -150,6 +197,8 @@ pub(crate) struct Whereabouts<'a> {
     pub told: &'a [String],
     /// Where it was last reached.
     pub remembered: &'a [String],
+    /// Whether a lookup server can find it by key (PR 7).
+    pub by_key: bool,
 }
 
 /// The addresses to dial, best first, or why there are none.
@@ -175,7 +224,8 @@ pub(crate) fn plan(w: &Whereabouts<'_>, mode: ConnectionMode) -> Result<Plan, St
         .enumerate()
         .map(|(i, a)| (kind_of(&a), i, a))
         .collect();
-    if all.is_empty() {
+    let by_key = w.by_key && mode == ConnectionMode::Hybrid;
+    if all.is_empty() && !by_key {
         return Err(format!(
             "Relay hasn't met {} on a network yet. Open Relay on both devices on the same Wi-Fi once, so they learn where to find each other.",
             w.name
@@ -183,6 +233,13 @@ pub(crate) fn plan(w: &Whereabouts<'_>, mode: ConnectionMode) -> Result<Plan, St
     }
     let known: Vec<RouteKind> = kinds(&all);
     all.retain(|(kind, _, _)| mode.allows(*kind));
+    if all.is_empty() && by_key {
+        // Nothing to dial directly: the lookup server says where it is.
+        return Ok(Plan {
+            addresses: Vec::new(),
+            kinds: vec![RouteKind::Internet],
+        });
+    }
     if all.is_empty() {
         return Err(format!(
             "{} can only be reached {}, and Connections is set to {}.",
@@ -192,8 +249,12 @@ pub(crate) fn plan(w: &Whereabouts<'_>, mode: ConnectionMode) -> Result<Plan, St
         ));
     }
     all.sort_by_key(|(kind, i, _)| (*kind, *i));
+    let mut found = kinds(&all);
+    if by_key && !found.contains(&RouteKind::Internet) {
+        found.push(RouteKind::Internet);
+    }
     Ok(Plan {
-        kinds: kinds(&all),
+        kinds: found,
         addresses: all.into_iter().map(|(_, _, a)| a).collect(),
     })
 }
@@ -300,6 +361,7 @@ mod tests {
             nearby: &[],
             told: &told,
             remembered: &remembered,
+            by_key: false,
         };
         let p = plan(&w, ConnectionMode::Hybrid).unwrap();
         assert_eq!(
@@ -329,6 +391,7 @@ mod tests {
             nearby: &nearby,
             told: &[],
             remembered: &remembered,
+            by_key: false,
         };
         let p = plan(&w, ConnectionMode::Hybrid).unwrap();
         assert_eq!(p.addresses[0], sa("192.168.1.50:4000"));
@@ -349,6 +412,7 @@ mod tests {
             nearby: &[],
             told: &told,
             remembered: &[],
+            by_key: false,
         };
         let err = plan(&w, ConnectionMode::Local).unwrap_err();
         assert!(err.contains("over a private network"), "{err}");
@@ -360,11 +424,41 @@ mod tests {
             nearby: &[],
             told: &local,
             remembered: &[],
+            by_key: false,
         };
         let p = plan(&w, ConnectionMode::Hybrid).unwrap();
         let why = no_answer("create", &p);
         assert!(why.contains("on the local network"), "{why}");
         assert!(why.contains("Tailscale"), "{why}");
+    }
+
+    #[test]
+    fn a_lookup_server_finds_a_device_by_key_only_on_any_route() {
+        let w = Whereabouts {
+            name: "create",
+            by_key: true,
+            ..Default::default()
+        };
+        let p = plan(&w, ConnectionMode::Hybrid).unwrap();
+        assert!(p.addresses.is_empty());
+        assert_eq!(p.kinds, vec![RouteKind::Internet]);
+        assert!(plan(&w, ConnectionMode::Private).is_err());
+    }
+
+    #[test]
+    fn server_addresses_are_checked() {
+        let ok = RelayServers {
+            relay_url: Some("https://relay.example.org".into()),
+            lookup_url: Some("https://relay.example.org/pkarr".into()),
+        };
+        assert_eq!(ok.check(), Ok(()));
+        assert!(ok.finds_by_key());
+        let bad = RelayServers {
+            relay_url: Some("relay.example.org".into()),
+            lookup_url: None,
+        };
+        assert!(bad.check().is_err());
+        assert!(!RelayServers::default().finds_by_key());
     }
 
     #[test]
