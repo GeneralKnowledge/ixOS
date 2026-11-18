@@ -16,7 +16,7 @@ It separates two failure modes, because they need opposite fixes:
 **Foundations are mostly in place; the apps mostly don't use them, and the checks can't see that.** Rebuilding the apps today, ForgeUI and ForgeAppKit could carry the colour, tones, text hierarchy, state screens, alerts and save flows of every list, form and settings screen. What would still be built by hand is mostly what *should* be built by hand: Weather's sky, Relay's chat bubbles, Soundscape's player, Sketchbook's canvas, cover-led headers. Four things would still be reinvented because the framework is missing a small piece:
 
 1. **A form sheet that guards unsaved changes.** `forgeFormToolbar` exists but has no users, not even the starter, because it only stops a swipe-away *while saving*. Six apps and the starter hand-roll the same toolbar instead, most of them to also stop a swipe-away while the form has changes (finding C1).
-2. **A rename prompt.** Seven hand-rolled rename alerts in five apps, each with its own identifiers and none refusing an empty name except by accident (C2).
+2. **A rename prompt.** Seven hand-rolled rename alerts in five apps, each with its own plumbing and identifiers, and none refusing an empty name (C2).
 3. **An inline notice** for offline, stale or reconnecting. Three apps, three looks (C3).
 4. **Icon tiles in a category colour.** `ForgeRow`'s icon tile only takes meaning tones, so Soundscape's "Your Music" rows and Pocket Library's Activity rows rebuild it (C4).
 
