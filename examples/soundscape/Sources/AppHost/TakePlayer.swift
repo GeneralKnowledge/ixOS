@@ -356,12 +356,23 @@ final class TakePlayer {
         }
         isBuffering = heard.timeControlStatus == .waitingToPlayAtSpecifiedRate
         if let item = heard.currentItem, item.status == .failed, failure == nil {
-            failure = item.error?.localizedDescription ?? "The take couldn't be played."
-            log.warn("stream failed: \(failure ?? "")")
+            failure = Self.describe(item.error, playing: current)
+            log.warn("stream failed: \(item.error.map { "\($0)" } ?? "")")
             pause()
         }
         checkStoppedBySystem()
         countPlay()
+    }
+
+    /// Why a recording can't play, in words. A catalogue that lists a
+    /// track but serves no file for it (Jamendo answers 404 for some) is
+    /// said plainly rather than as a network failure.
+    static func describe(_ error: Error?, playing: Loaded?) -> String {
+        let nsError = error as NSError?
+        if let id = playing?.id, id.hasPrefix("jamendo:"), nsError?.domain != NSURLErrorDomain {
+            return "Jamendo has no playable file for this track right now."
+        }
+        return nsError?.localizedDescription ?? "The take couldn't be played."
     }
 
     private func countPlay() {

@@ -2,7 +2,10 @@
 //! Jamendo tracks behaving like the person's own music once added (library,
 //! playlists, favourites, restart, downloads), against canned answers.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use forge_net::{HttpClient, NetError, Request};
 
 use forge_net::{Method, Response, StaticClient};
 use soundscape_core::catalogue::rights_from_licence;
@@ -309,4 +312,73 @@ fn a_jamendo_track_downloads_only_where_jamendo_allows_it() {
     let queue = core.catalogue_queue_tracks(found);
     assert!(queue[0].recording.audio_url.starts_with("file://"));
     assert!(queue[1].recording.audio_url.starts_with("https://"));
+}
+
+/// Answers "success" with no results the first `empty` times, then the
+/// results, as Jamendo did live.
+struct Flaky {
+    empty: usize,
+    asked: AtomicUsize,
+}
+
+const EMPTY: &str = r#"{"headers": {"status": "success", "code": 0, "error_message": "", "results_count": 0}, "results": []}"#;
+
+impl HttpClient for Flaky {
+    fn send(&self, _request: &Request) -> Result<Response, NetError> {
+        let n = self.asked.fetch_add(1, Ordering::SeqCst);
+        Ok(Response::new(
+            200,
+            if n < self.empty { EMPTY } else { RESULTS },
+        ))
+    }
+}
+
+#[test]
+fn an_empty_answer_is_asked_again_before_it_counts_as_none() {
+    let cancel = forge_net::CancelHandle::new();
+    let flaky = Flaky {
+        empty: 2,
+        asked: AtomicUsize::new(0),
+    };
+    let found = jamendo::search(&flaky, CLIENT, "jazz", &cancel).unwrap();
+    assert_eq!(found.len(), 2);
+    assert_eq!(flaky.asked.load(Ordering::SeqCst), 3);
+
+    let none = Flaky {
+        empty: usize::MAX,
+        asked: AtomicUsize::new(0),
+    };
+    assert!(jamendo::search(&none, CLIENT, "zzzz", &cancel)
+        .unwrap()
+        .is_empty());
+    assert_eq!(none.asked.load(Ordering::SeqCst), jamendo::ATTEMPTS);
+}
+
+#[test]
+fn a_live_answer_reads() {
+    // Trimmed from Jamendo's real answer (2026-11-18): album_image without a
+    // track image, a by-nc-nd licence.
+    let body = r#"{"headers": {"status": "success", "code": 0, "error_message": "", "warnings": "", "results_count": 1,
+      "next": "https://api.jamendo.com/v3.0/tracks?offset=2"},
+     "results": [{"id": "2034080", "name": "Music Soothe - Meditation Music", "duration": 216, "artist_id": "551562",
+      "artist_name": "StimiBeats", "artist_idstr": "Stimi", "album_name": "Impression - Meditation Music",
+      "album_id": "522038", "license_ccurl": "http://creativecommons.org/licenses/by-nc-nd/3.0/", "position": 5,
+      "releasedate": "2023-06-01",
+      "album_image": "https://usercontent.jamendo.com?type=album&id=522038&width=300&trackid=2034080",
+      "audio": "https://prod-1.storage.jamendo.com/?trackid=2034080&format=mp32&from=x",
+      "audiodownload": "https://prod-1.storage.jamendo.com/download/track/2034080/mp32/", "prourl": "",
+      "shorturl": "https://jamen.do/t/2034080", "shareurl": "https://www.jamendo.com/track/2034080",
+      "waveform": "{\"peaks\": [13, 14, 24]}", "audiodownload_allowed": true,
+      "musicinfo": {"tags": {"genres": ["newage", "ambient"]}}}]}"#;
+    let tracks = jamendo::parse_tracks(body.as_bytes()).unwrap();
+    let t = &tracks[0];
+    assert_eq!(t.id, "jamendo:2034080");
+    assert_eq!(t.genre.as_deref(), Some("Newage"));
+    assert!(t.artwork_url.as_deref().unwrap().contains("type=album"));
+    assert_eq!(t.rights.licence, "CC BY-NC-ND 3.0");
+    assert!(t.rights.non_commercial && !t.rights.may_adapt && t.rights.may_download);
+
+    let refused = r#"{"headers":{"status":"failed","code":5,"error_message":"Jamendo Api Invalid Client Id Error: Your credential is not authorized.","warnings":"","results_count":0},"results":[]}"#;
+    let err = jamendo::parse_tracks(refused.as_bytes()).unwrap_err();
+    assert!(err.to_string().contains("Invalid Client Id"), "{err}");
 }

@@ -67,6 +67,28 @@ pub fn search(
     query: &str,
     cancel: &CancelHandle,
 ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+    // Jamendo sometimes answers "success" with no results to a request
+    // that finds tracks a moment later (seen live, 2026-11-18), so an empty
+    // answer is asked again before it counts as none.
+    let mut found = Vec::new();
+    for _ in 0..ATTEMPTS {
+        found = search_once(http, client_id, query, cancel)?;
+        if !found.is_empty() {
+            break;
+        }
+    }
+    Ok(found)
+}
+
+/// How many times an empty answer is asked for again, in all.
+pub const ATTEMPTS: usize = 3;
+
+fn search_once(
+    http: &dyn HttpClient,
+    client_id: &str,
+    query: &str,
+    cancel: &CancelHandle,
+) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
     let response = http
         .send_cancellable(
             &Request::get(search_url(client_id, query)).timeout(TIMEOUT),
@@ -87,7 +109,8 @@ pub fn search(
 }
 
 /// Tracks from a `/tracks` answer. A track without an id, title or stream
-/// is left out; a failed answer is an error with Jamendo's reason.
+/// is left out. A failed answer is an error with Jamendo's reason: Jamendo
+/// says so in `headers.status` (a wrong client ID is HTTP 200, code 5).
 pub fn parse_tracks(body: &[u8]) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
     if body.len() > MAX_ANSWER_BYTES {
         return Err(SoundscapeError::Server {

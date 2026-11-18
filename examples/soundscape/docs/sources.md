@@ -97,8 +97,20 @@ live with the saved track, so they outlast any cache. Search results that are no
 
 Of the resolver tests above, these pass in `rust/tests/catalogue.rs`: adding to a playlist, restarting and
 finding it again, leaving search results without losing the playlist entry, and keeping the licence without
-asking Jamendo. Not done yet: a Jamendo track that has since been taken down plays as a stream error rather than
-showing as unavailable with a reason.
+asking Jamendo. Not done yet: a Jamendo track that has since been taken down is not marked unavailable in the library.
+
+**Checked live** from the laptop with Reuben's client ID (2026-11-18):
+
+- **Empty answers.** Jamendo sometimes answers "success" with no results to a search that finds tracks a
+  moment later (2, 0, 2, 2, 0, 2 results for the same request). Soundscape asks up to three times before it
+  shows "no results".
+- **Listed tracks with no file.** Some tracks it lists have no file: the stream answers 404, even for this week's
+  most popular track. The player then says "Jamendo has no playable file for this track right now", not a
+  network error. Tracks that do stream answer byte ranges (206, `audio/mpeg`), so seeking works.
+- **A wrong client ID** is HTTP 200 with `status: failed`, code 5; Soundscape reads the status, not the HTTP code.
+- **Licences.** Most tracks are CC BY-NC-ND (non-commercial, no changes), and downloading is allowed per track.
+- **Audio URLs** carry a `from=` token. Saved tracks keep the URL they were added with; if those turn out to
+  expire, the next step is fetching a fresh URL by id (`/tracks/?id=`) when a saved track plays.
 
 ## Order of work
 
