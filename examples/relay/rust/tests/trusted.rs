@@ -7,7 +7,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use relay_core::{
-    CodeSend, Direction, Item, NearbyDevice, PairingPolicy, RelayCore, RelayError, TransferStatus,
+    CodeSend, Direction, Item, NearbyDevice, PairingPolicy, Presence, RelayCore, RelayError,
+    TransferStatus,
 };
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
@@ -252,6 +253,66 @@ fn only_trusted_devices_can_be_sent_to() {
     // The laptop never trusted the phone.
     assert!(matches!(
         block_on(laptop.send_note_to_device(phone_id, "hi".into())),
+        Err(RelayError::UnknownPeer { .. })
+    ));
+}
+
+#[test]
+fn a_trusted_device_says_what_it_is_and_shows_where_it_is() {
+    let dir = tempfile::tempdir().unwrap();
+    let (phone, laptop, phone_id, laptop_id) = trusted_pair(dir.path());
+    // Nothing reached yet over relay/device/1, and Bonjour sees nothing.
+    let before = &laptop.devices()[0];
+    assert_eq!(before.platform, None);
+    assert!(before.offers.is_empty());
+
+    // Bonjour sees the phone: nearby, and its status can be asked.
+    sees(&laptop, &phone);
+    assert_eq!(laptop.devices()[0].presence, Presence::Nearby);
+    let asked = block_on(laptop.device_status(phone_id.clone())).unwrap();
+    assert_eq!(asked.platform.as_deref(), Some(std::env::consts::OS));
+    for offer in ["notes", "files", "messages"] {
+        assert!(
+            asked.offers.iter().any(|o| o == offer),
+            "{offer} in {:?}",
+            asked.offers
+        );
+    }
+    assert!(asked.last_seen_ms.is_some());
+
+    // The phone was asked over a trusted connection: the laptop reached it,
+    // so the phone shows it as reachable though Bonjour never saw it.
+    let on_phone = phone
+        .devices()
+        .into_iter()
+        .find(|d| d.endpoint_id == laptop_id)
+        .unwrap();
+    assert_eq!(on_phone.presence, Presence::Reachable);
+    assert!(on_phone.last_seen_ms.is_some());
+
+    // Bonjour loses the phone: reachable for a while, not nearby.
+    laptop.devices_nearby(vec![]);
+    assert_eq!(laptop.devices()[0].presence, Presence::Reachable);
+
+    // What it said is kept across a relaunch.
+    drop(laptop);
+    std::thread::sleep(Duration::from_millis(500));
+    let laptop = device(dir.path(), "laptop");
+    let kept = &laptop.devices()[0];
+    assert_eq!(kept.platform.as_deref(), Some(std::env::consts::OS));
+    assert!(kept.last_seen_ms.is_some());
+
+    // A revoked device can't ask, and shows as offline where it was revoked.
+    block_on(phone.revoke_device(laptop_id.clone())).unwrap();
+    sees(&laptop, &phone);
+    let refused = block_on(laptop.device_status(phone_id));
+    assert_eq!(refused.unwrap_err(), RelayError::Refused);
+    let revoked = &phone.devices()[0];
+    assert!(!revoked.trusted);
+    assert_eq!(revoked.presence, Presence::Offline);
+    // And nobody can ask about a device that isn't trusted here.
+    assert!(matches!(
+        block_on(phone.device_status(laptop_id)),
         Err(RelayError::UnknownPeer { .. })
     ));
 }

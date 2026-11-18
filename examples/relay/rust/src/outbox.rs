@@ -387,7 +387,7 @@ impl RelayCore {
             .command("delivery", move |state| {
                 state.change(|r| {
                     if let Some(addresses) = seen {
-                        r.devices.seen_at(&to, &addresses);
+                        r.devices.seen_at(&to, &addresses, now_ms());
                     }
                     Ok(if status == SavedStatus::Waiting {
                         r.delivery_status(&id, status);
@@ -616,7 +616,7 @@ impl RelayCore {
             .rt
             .command("message-reached", move |state| {
                 state.change(|r| {
-                    r.devices.seen_at(&to, &addresses);
+                    r.devices.seen_at(&to, &addresses, now_ms());
                     Ok(())
                 })
             })
