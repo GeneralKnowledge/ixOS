@@ -5,6 +5,9 @@ Run on the laptop with the iPhone on USB, unlocked, and Calculator open in
 front (Forge can't open a system app itself: R0 finding 22). Calculator must
 be at `full` in ~/.config/forge/device-control.toml, so Forge presses Delete
 without asking (at `operate` the commit gate stops at its "Delete" label).
+That is the person's decision: back up the file, set only Calculator's line to
+`full`, and set it back to `operate` straight after the passes (see the plan,
+docs/research/app-as-specification.md, R1).
 
     python3 run_sequences.py --pass a
     python3 run_sequences.py --pass b

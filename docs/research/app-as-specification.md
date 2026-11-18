@@ -108,6 +108,15 @@ With the phone on the cable, in the next sitting already planned for Device Lab:
 
 ### R1: map by hand
 
+**Before running R1, change the policy on purpose, and change it back after.** `run_sequences.py` presses Delete without asking, and Forge only allows that when Calculator is at `full` in the person's own `~/.config/forge/device-control.toml`:
+
+1. Back up the file, then change only Calculator's line to `"com.apple.calculator" = "full"`. At `full` there is no commit gate for that one app (secure fields and the hard refusals still apply). Only the person decides this; Reuben agreed for this run on 2026-11-18 ("yes, full, then back to operate").
+2. Run the passes (below).
+3. Put the line back to `"com.apple.calculator" = "operate"`, or restore the backup, as soon as the passes finish or a step fails.
+
+Without step 1, the first Delete step stops at the commit gate ("Allow it? [y/N]") and, with nobody at the terminal, fails.
+
+
 1. Write the field map from the R0 evidence: screens, controls, where each leads (`map.md`), and move what it shows into the findings register.
 2. Write the sequence table: about 40 key sequences covering ordinary sums, the edge cases and some nobody sensible would press, plus a relaunch in the middle of a few to test what persists (`evidence/sequences.toml`).
 3. A small script runs each sequence on the reference through `forge ui run --any-app` (tapping keys by their ids: Seven, Add, Equals…) and reads the display with `forge --json ui tree` in portrait (R0 found the answer is missing from the tree in landscape), stripping every U+200E, writing `evidence/reference-results.toml`. It uses only commands ixOS already has, so a person can run it without an agent.
