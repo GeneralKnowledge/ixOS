@@ -29,6 +29,8 @@ public final class ListenModel {
     public private(set) var server: String?
     /// The person's Jamendo client ID, as Rust saved it.
     public private(set) var jamendoClientId: String?
+    /// Seconds songs overlap as one ends and the next starts; 0 is gapless.
+    public private(set) var crossfadeSeconds: UInt32
     /// The library as kept on the phone; refreshed from the take server.
     public private(set) var library: Library {
         didSet { collection = core.collection() }
@@ -59,6 +61,7 @@ public final class ListenModel {
         self.core = core
         server = core.listenServer()
         jamendoClientId = core.jamendoClientId()
+        crossfadeSeconds = core.crossfadeSeconds()
         library = core.library()
         collection = core.collection()
         offline = core.offline()
@@ -149,6 +152,15 @@ public final class ListenModel {
 
     /// What was playing when the app closed, brought up to date.
     public func savedPlayback() -> SavedPlayback? { core.savedPlayback() }
+
+    /// Saves the crossfade (0 is gapless); a failure shows in an alert.
+    public func setCrossfade(_ seconds: UInt32) async {
+        do {
+            crossfadeSeconds = try await core.setCrossfadeSeconds(seconds: seconds)
+        } catch {
+            report(error)
+        }
+    }
 
     // MARK: Catalogues
 

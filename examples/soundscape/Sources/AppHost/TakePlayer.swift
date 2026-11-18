@@ -15,6 +15,11 @@ private let log = ForgeLog("Listen")
 /// changes which one you hear, so A and B are heard at the same moment of
 /// the song. Volumes come from Rust's loudness match.
 ///
+/// Songs in a queue run into each other with no gap, or overlap by
+/// `crossfade` seconds: the next song is loaded on the second player
+/// before this one ends and takes over from it, and the two players swap
+/// roles.
+///
 /// Keeps playing with the screen locked (`background_modes = ["audio"]`)
 /// and shows on the lock screen with play, pause and seeking.
 @Observable
@@ -72,7 +77,11 @@ final class TakePlayer {
     /// What plays one after another, when not comparing. Kept (`onSave`)
     /// whenever it changes, so the app opens where it was left.
     private(set) var queue: PlayQueue? {
-        didSet { save() }
+        didSet {
+            save()
+            // The next song was loaded for the queue as it was.
+            if let prepared, queue != prepared.from { cancelPrepared() }
+        }
     }
     private(set) var isPlaying = false
     private(set) var isBuffering = false
@@ -96,6 +105,16 @@ final class TakePlayer {
     /// How long the fade before a sleep timer's pause takes.
     static let sleepFade: TimeInterval = 10
     @ObservationIgnored private var counted = false
+    /// Seconds the end of one song overlaps the start of the next; 0 plays
+    /// them back to back with no gap. Set from Rust's saved setting.
+    var crossfade: Double = 0 {
+        didSet { cancelPrepared() }
+    }
+    /// How long before a song ends the next is loaded.
+    static let prepareAhead: TimeInterval = 30
+    /// How long before a song ends the next is started at the exact moment
+    /// it ends (no crossfade).
+    static let gaplessLead: TimeInterval = 0.5
 
     var isComparing: Bool { b != nil }
     /// Where the heard take is now, read from the player itself (`time`
@@ -115,9 +134,30 @@ final class TakePlayer {
         return queue.repeat != .off || Int(queue.position) + 1 < queue.order.count
     }
 
-    @ObservationIgnored private let playerA = AVPlayer()
-    @ObservationIgnored private let playerB = AVPlayer()
-    @ObservationIgnored private var timeObserver: Any?
+    /// Two players. In a comparison A is one take and B the other; in a
+    /// queue A plays the song and B holds the next, then they swap.
+    @ObservationIgnored private let players = [AVPlayer(), AVPlayer()]
+    @ObservationIgnored private var mainIndex = 0
+    private var playerA: AVPlayer { players[mainIndex] }
+    private var playerB: AVPlayer { players[1 - mainIndex] }
+    @ObservationIgnored private var timeObservers: [Any] = []
+    /// The next song, loaded on B before A's song ends.
+    private struct Prepared {
+        /// The queue it was loaded for, and the queue once it plays.
+        let from: PlayQueue
+        let to: PlayQueue
+        let loaded: Loaded
+    }
+    @ObservationIgnored private var prepared: Prepared?
+    /// Where A starts the next song: `crossfade` (or `gaplessLead`) before
+    /// its end.
+    @ObservationIgnored private var boundary: (player: AVPlayer, token: Any)?
+    /// While the song that ended is still heard on B after the next took
+    /// over: when that began and how long its fade lasts (0: it plays out
+    /// its last moment at full volume).
+    @ObservationIgnored private var handoverStart: Date?
+    @ObservationIgnored private var fadeLength: TimeInterval = 0
+    @ObservationIgnored private var fadeTimer: Timer?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private let remoteTargets = RemoteCommandTargets()
     /// The lock screen's picture for `current`, and the address it came from.
@@ -132,14 +172,18 @@ final class TakePlayer {
     @ObservationIgnored private var interruptedWhilePlaying = false
 
     init() {
-        for player in [playerA, playerB] {
+        for (index, player) in players.enumerated() {
             player.automaticallyWaitsToMinimizeStalling = true
             player.actionAtItemEnd = .pause
-        }
-        timeObserver = playerA.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+            // Either player can be A; only A's clock moves the screen.
+            timeObservers.append(player.addPeriodicTimeObserver(
+                forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, index == self.mainIndex else { return }
+                    self.tick()
+                }
+            })
         }
         watchSystem()
     }
@@ -180,6 +224,8 @@ final class TakePlayer {
     }
 
     func stop() {
+        endHandover()
+        cancelPrepared()
         playerA.pause()
         playerB.pause()
         playerA.replaceCurrentItem(with: nil)
@@ -200,6 +246,8 @@ final class TakePlayer {
     }
 
     private func load(a: Loaded, b: Loaded?, match: LoudnessMatch?) {
+        endHandover()
+        cancelPrepared()
         failure = nil
         self.a = a
         self.b = b
@@ -306,8 +354,9 @@ final class TakePlayer {
     }
 
     func pause() {
+        endHandover()
         playerA.pause()
-        playerB.pause()
+        if isComparing { playerB.pause() }
         isPlaying = false
         updateNowPlaying()
         save()
@@ -330,7 +379,7 @@ final class TakePlayer {
     func cancelSleep() {
         sleepAt = nil
         sleepAtEndOfSong = false
-        applyVolumes()
+        if handoverStart == nil { applyVolumes() } else { mixVolumes() }
     }
 
     /// Fades, then pauses, as the sleep timer runs out.
@@ -343,7 +392,7 @@ final class TakePlayer {
             applyVolumes()
             log.info("sleep timer paused playback")
         } else if left < Self.sleepFade, isPlaying {
-            playerA.volume = Float(left / Self.sleepFade)
+            mixVolumes()
         }
     }
 
@@ -431,6 +480,7 @@ final class TakePlayer {
         isBuffering = heard.timeControlStatus == .waitingToPlayAtSpecifiedRate
         if isPlaying, Date().timeIntervalSince(lastSave) > 5 { save() }
         checkSleep()
+        prepareNext()
         if let item = heard.currentItem, item.status == .failed, failure == nil {
             failure = Self.describe(item.error, playing: current)
             log.warn("stream failed: \(item.error.map { "\($0)" } ?? "")")
@@ -512,6 +562,8 @@ final class TakePlayer {
     /// is `ended`): the system paused it.
     private func checkStoppedBySystem() {
         guard isPlaying else { return }
+        // A song started at the moment the one before ends waits until then.
+        if let handoverStart, Date().timeIntervalSince(handoverStart) < Self.gaplessLead + 1 { return }
         let heard = active == .b && isComparing ? playerB : playerA
         guard heard.timeControlStatus == .paused, let item = heard.currentItem,
               item.status == .readyToPlay else { return }
@@ -523,6 +575,7 @@ final class TakePlayer {
 
     private func stoppedBySystem() {
         guard isPlaying else { return }
+        endHandover()
         // In a comparison the other side keeps in step only if it stops too.
         playerA.pause()
         playerB.pause()
@@ -548,9 +601,21 @@ final class TakePlayer {
     /// The take you hear came to its end: the queue's next song, the same
     /// song again (repeat One), or back to the start, paused.
     private func ended(_ side: Side) {
+        if side == .b, !isComparing {
+            // The song that handed over has finished.
+            endHandover()
+            return
+        }
         let heard: Side = isComparing ? active : .a
         guard side == heard else { return }
         if !isComparing, let queue {
+            if !sleepAtEndOfSong, let prepared, prepared.from == queue,
+               playerB.currentItem?.status == .readyToPlay {
+                // Ended before the hand-over was due (a seek past it): the
+                // next song, already loaded, starts now.
+                handOver(prepared, now: true)
+                return
+            }
             if sleepAtEndOfSong {
                 // The sleep timer ends with this song: the next waits, paused.
                 sleepAtEndOfSong = false
@@ -576,6 +641,140 @@ final class TakePlayer {
         }
         pause()
         seek(to: 0)
+    }
+
+    // MARK: Between songs
+
+    /// Near the end of a queued song, loads the next on B, quietly, and
+    /// marks where A hands over to it.
+    private func prepareNext() {
+        guard prepared == nil, handoverStart == nil, isPlaying, !isComparing, !sleepAtEndOfSong,
+              let queue, duration > 0, duration - time < Self.prepareAhead + crossfade,
+              let moved = queueAdvance(queue: queue, byUser: false),
+              // Repeat One plays the same song again from its start.
+              moved.position != queue.position || moved.order.count != queue.order.count,
+              let track = queueCurrent(queue: moved) else { return }
+        let next = Loaded(track)
+        guard let item = Self.item(next.audioUrl) else { return }
+        playerB.volume = 0
+        playerB.replaceCurrentItem(with: item)
+        prepared = Prepared(from: queue, to: moved, loaded: next)
+        let at = max(time, duration - max(crossfade, Self.gaplessLead))
+        let main = playerA
+        let token = main.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: CMTime(seconds: at, preferredTimescale: 600))], queue: .main
+        ) { [weak self] in
+            MainActor.assumeIsolated { self?.startPrepared() }
+        }
+        boundary = (main, token)
+    }
+
+    /// A reached the hand-over point: the next song starts if it is ready;
+    /// otherwise A plays to its end and the next loads then, as before.
+    private func startPrepared() {
+        clearBoundary()
+        guard let prepared, prepared.from == queue, isPlaying, !isComparing, !sleepAtEndOfSong,
+              playerB.currentItem?.status == .readyToPlay else { return }
+        handOver(prepared, now: false)
+    }
+
+    /// The next song, loaded on B, becomes the song playing, and the
+    /// players swap: the one ending, now B, fades out (crossfade) or plays
+    /// its last moment (gapless) while the next starts on A.
+    private func handOver(_ prepared: Prepared, now: Bool) {
+        let ending = playerA
+        let next = playerB
+        if now {
+            next.volume = 1
+            next.play()
+            fadeLength = 0
+        } else if crossfade > 0 {
+            next.volume = 0
+            next.play()
+            fadeLength = crossfade
+        } else {
+            // Starts the moment A's song ends, by the host clock, so there
+            // is no gap.
+            let left = (ending.currentItem?.duration.seconds ?? 0) - ending.currentTime().seconds
+            let wait = CMTime(seconds: left.isFinite ? max(0, left) : 0, preferredTimescale: 1_000_000_000)
+            next.volume = 1
+            next.automaticallyWaitsToMinimizeStalling = false
+            next.setRate(1, time: .zero, atHostTime: CMTimeAdd(CMClockGetTime(CMClockGetHostTimeClock()), wait))
+            fadeLength = 0
+        }
+        self.prepared = nil
+        mainIndex = 1 - mainIndex
+        a = prepared.loaded
+        queue = prepared.to
+        time = 0
+        duration = 0
+        counted = false
+        failure = nil
+        observeEnds()
+        loadArtwork(prepared.loaded.artworkUrl)
+        updateNowPlaying()
+        if now {
+            ending.pause()
+            ending.replaceCurrentItem(with: nil)
+            return
+        }
+        handoverStart = Date()
+        if fadeLength > 0 {
+            fadeTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.mixVolumes() }
+            }
+        }
+        log.info(fadeLength > 0 ? "crossfade to the next song" : "next song starts with no gap")
+    }
+
+    /// The volumes outside a comparison: the crossfade between the song
+    /// ending (B) and the next (A), under the sleep timer's fade.
+    private func mixVolumes() {
+        guard !isComparing else { return }
+        var sleep: Float = 1
+        if let sleepAt {
+            sleep = Float(min(1, max(0, sleepAt.timeIntervalSinceNow / Self.sleepFade)))
+        }
+        guard let handoverStart else {
+            playerA.volume = sleep
+            return
+        }
+        guard fadeLength > 0 else {
+            playerA.volume = sleep
+            playerB.volume = sleep
+            return
+        }
+        let done = Float(min(1, Date().timeIntervalSince(handoverStart) / fadeLength))
+        playerA.volume = done * sleep
+        playerB.volume = (1 - done) * sleep
+        if done >= 1 { endHandover() }
+    }
+
+    /// The song that handed over is done: B is cleared for the next one.
+    private func endHandover() {
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+        guard handoverStart != nil else { return }
+        handoverStart = nil
+        fadeLength = 0
+        playerB.pause()
+        playerB.replaceCurrentItem(with: nil)
+        playerA.automaticallyWaitsToMinimizeStalling = true
+        mixVolumes()
+        observeEnds()
+    }
+
+    /// Forgets the next song loaded on B, when the queue changed under it.
+    private func cancelPrepared() {
+        clearBoundary()
+        guard prepared != nil else { return }
+        prepared = nil
+        playerB.replaceCurrentItem(with: nil)
+    }
+
+    private func clearBoundary() {
+        if let boundary { boundary.player.removeTimeObserver(boundary.token) }
+        boundary = nil
     }
 
     // MARK: Lock screen

@@ -28,6 +28,7 @@ longer asks for the microphone.
 | M7 | Studio removed: Soundscape opens straight on your library; no microphone permission | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | M6 | Carry on where you left off: the queue, the song and how far into it survive closing the app, and it opens paused there | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | M8 | Sleep timer: pause after 15 to 90 minutes or at the end of this song, fading out over the last 10 seconds | Swift written, not yet built with xtool or run on a phone |
+| M9 | Between songs: no gap (the next song is loaded early and starts the moment one ends) or a 2 to 12 second crossfade, kept as a setting | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 
 ## How the work is split
 

@@ -126,8 +126,8 @@ timed lyrics) waits, and the question of where "your own server" lives waits wit
 8. **Reconciliation.** Imported files link to server recordings by hash. Downloads verify their checksum.
 9. **Upload from the phone** (`POST /v1/imports`).
 10. **Background downloads** (`transfers`) and a storage limit.
-11. **Playback quality:** sleep timer (done), loudness levelling (the take server already measures LUFS), then gapless
-    and crossfade, each proven on the phone.
+11. **Playback quality:** sleep timer (done), gapless and crossfade (done), then loudness
+    levelling, which first needs the phone to measure songs from catalogues and files; each proven on the phone.
 12. **Sync between devices:** versioned records and an operation log, not a distributed database.
 
 Not planned, as the proposal says: replacing Spotify, Apple Music as the model, a custom audio engine,

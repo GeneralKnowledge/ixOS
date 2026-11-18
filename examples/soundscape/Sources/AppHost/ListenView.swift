@@ -100,6 +100,7 @@ struct ListenView: View {
             player.onSave = { [model] saved in
                 Task { await model.savePlayback(saved) }
             }
+            player.crossfade = Double(model.crossfadeSeconds)
             // Where the app was left: the same queue and song, paused.
             if let saved = model.savedPlayback() { player.restore(saved) }
         }
@@ -820,6 +821,11 @@ private struct NowPlayingView: View {
                 ToolbarItem(placement: .primaryAction) {
                     SleepTimerMenu(player: player)
                 }
+                if !player.isComparing {
+                    ToolbarItem(placement: .primaryAction) {
+                        CrossfadeMenu(model: model, player: player)
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Stop", systemImage: "stop.fill") {
                         player.stop()
@@ -947,6 +953,36 @@ struct SleepTimerMenu: View {
         }
         .accessibilityValue(on ? "On" : "Off")
         .accessibilityIdentifier("nowPlayingSheet.sleep")
+    }
+}
+
+/// How songs run into each other: back to back with no gap, or
+/// overlapping by a few seconds.
+struct CrossfadeMenu: View {
+    let model: ListenModel
+    let player: TakePlayer
+
+    var body: some View {
+        Menu {
+            Picker("Between Songs", selection: Binding(
+                get: { model.crossfadeSeconds },
+                set: { seconds in
+                    player.crossfade = Double(seconds)
+                    Task { await model.setCrossfade(seconds) }
+                }
+            )) {
+                Text("No Gap").tag(UInt32(0))
+                    .accessibilityIdentifier("crossfade.0")
+                ForEach([UInt32(2), 4, 6, 8, 12], id: \.self) { seconds in
+                    Text("Crossfade \(seconds) Seconds").tag(seconds)
+                        .accessibilityIdentifier("crossfade.\(seconds)")
+                }
+            }
+        } label: {
+            Label("Between Songs", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+        }
+        .accessibilityValue(model.crossfadeSeconds == 0 ? "No gap" : "Crossfade \(model.crossfadeSeconds) seconds")
+        .accessibilityIdentifier("nowPlayingSheet.crossfade")
     }
 }
 #endif

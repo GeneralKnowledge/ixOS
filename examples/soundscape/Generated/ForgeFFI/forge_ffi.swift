@@ -2220,6 +2220,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      */
     func createPlaylist(name: String, trackIds: [String]) async throws  -> PlaylistDetail
     
+    /**
+     * How many seconds songs overlap as one ends and the next starts; 0
+     * is gapless.
+     */
+    func crossfadeSeconds()  -> UInt32
+    
     func deletePlaylist(id: UInt64) async throws  -> MusicCollection
     
     /**
@@ -2406,6 +2412,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * album's or track's artwork. The file is copied into Soundscape.
      */
     func setArtwork(target: ArtworkTarget, sourcePath: String) async throws  -> Library
+    
+    /**
+     * Sets the crossfade, up to `MAX_CROSSFADE_SECONDS`; 0 plays songs
+     * back to back with no gap. Returns what was saved.
+     */
+    func setCrossfadeSeconds(seconds: UInt32) async throws  -> UInt32
     
     /**
      * Makes a song, album or artist (by library id) a favourite, or not.
@@ -2798,6 +2810,19 @@ open func createPlaylist(name: String, trackIds: [String])async throws  -> Playl
             liftFunc: FfiConverterTypePlaylistDetail_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
+}
+    
+    /**
+     * How many seconds songs overlap as one ends and the next starts; 0
+     * is gapless.
+     */
+open func crossfadeSeconds() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_crossfade_seconds(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 open func deletePlaylist(id: UInt64)async throws  -> MusicCollection  {
@@ -3344,6 +3369,26 @@ open func setArtwork(target: ArtworkTarget, sourcePath: String)async throws  -> 
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeLibrary_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Sets the crossfade, up to `MAX_CROSSFADE_SECONDS`; 0 plays songs
+     * back to back with no gap. Returns what was saved.
+     */
+open func setCrossfadeSeconds(seconds: UInt32)async throws  -> UInt32  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_set_crossfade_seconds(
+                        self.uniffiCloneHandle(),FfiConverterUInt32.lower(seconds)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_u32,
+            completeFunc: ffi_soundscape_core_rust_future_complete_u32,
+            freeFunc: ffi_soundscape_core_rust_future_free_u32,
+            liftFunc: FfiConverterUInt32.lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -10395,6 +10440,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_create_playlist() != 26215) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_crossfade_seconds() != 31805) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_delete_playlist() != 35469) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10495,6 +10543,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_artwork() != 31551) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_crossfade_seconds() != 28349) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_favourite() != 412) {

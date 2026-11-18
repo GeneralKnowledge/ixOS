@@ -155,3 +155,14 @@ fn a_broken_saved_queue_is_made_safe() {
     queue.order = vec![5];
     assert!(tidy(saved(queue, 1.0)).is_none());
 }
+
+#[test]
+fn the_crossfade_is_kept_and_has_a_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    assert_eq!(core.crossfade_seconds(), 0, "gapless until set");
+    assert_eq!(block(core.set_crossfade_seconds(6)).unwrap(), 6);
+    assert_eq!(block(core.set_crossfade_seconds(60)).unwrap(), 12);
+    drop(core);
+    assert_eq!(open(&dir).crossfade_seconds(), 12);
+}

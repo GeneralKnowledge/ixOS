@@ -705,6 +705,28 @@ impl SoundscapeCore {
             .await
     }
 
+    /// How many seconds songs overlap as one ends and the next starts; 0
+    /// is gapless.
+    pub fn crossfade_seconds(&self) -> u32 {
+        self.listen.get().crossfade_seconds
+    }
+
+    /// Sets the crossfade, up to `MAX_CROSSFADE_SECONDS`; 0 plays songs
+    /// back to back with no gap. Returns what was saved.
+    pub async fn set_crossfade_seconds(&self, seconds: u32) -> Result<u32, SoundscapeError> {
+        let seconds = seconds.min(listen::MAX_CROSSFADE_SECONDS);
+        self.rt
+            .command("set-crossfade", move |state| {
+                state.listen.change(|s| {
+                    s.crossfade_seconds = seconds;
+                    Ok::<_, SoundscapeError>(())
+                })?;
+                state.listen_published.set(state.listen.value().clone());
+                Ok(seconds)
+            })
+            .await
+    }
+
     /// Jamendo tracks matching `query`, or this week's most popular when it
     /// is empty. On-screen work.
     pub async fn search_jamendo(

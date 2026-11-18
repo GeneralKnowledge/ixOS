@@ -37,15 +37,22 @@ pub const MAX_NOTE_CHARS: u32 = 2000;
 /// a wrong measurement can't make one silent.
 pub const MAX_MATCH_DB: f64 = 24.0;
 
-/// What Listen keeps on the phone: the take server's address and the
-/// person's Jamendo client ID.
+/// What Listen keeps on the phone: the take server's address, the
+/// person's Jamendo client ID and how songs run into each other.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct ListenSettings {
     #[serde(default)]
     pub server: Option<String>,
     #[serde(default)]
     pub jamendo_client_id: Option<String>,
+    /// How many seconds the end of one song overlaps the start of the
+    /// next; 0 plays them back to back with no gap.
+    #[serde(default)]
+    pub crossfade_seconds: u32,
 }
+
+/// The longest crossfade offered.
+pub const MAX_CROSSFADE_SECONDS: u32 = 12;
 
 pub const SETTINGS_VERSION: u32 = 1;
 
