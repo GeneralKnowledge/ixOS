@@ -1,8 +1,8 @@
 //! Relay's own servers (Relay M2 PR 7): with a relay and a lookup server
 //! set, each device publishes a record of where it can be reached, signed
 //! by its key, and a trusted device it never saw on a network is found by
-//! key alone. The record names the relay and public addresses only; the
-//! laptop is reached through the relay first. Both servers run in process: a plain-HTTP relay, as on
+//! key alone. With a relay, the record names only the relay; the laptop
+//! is reached through it first. Both servers run in process: a plain-HTTP relay, as on
 //! Hetzner, and iroh's test pkarr server.
 
 use std::path::Path;
@@ -135,9 +135,8 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
     let id: iroh::EndpointId = laptop_id.parse().unwrap();
     rt.block_on(server.on_endpoint(&id, Duration::from_secs(20)))
         .unwrap();
-    // What anyone who knows its id can read: the relay, and no home-network,
-    // Tailscale or loopback address (a machine with a public address, as
-    // some test machines have, may publish that).
+    // What anyone who knows its id can read: the relay, and no address of
+    // this machine at all, not even a public one.
     let deadline = Instant::now() + Duration::from_secs(20);
     let published = loop {
         let record = rt
@@ -154,6 +153,8 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
         assert!(Instant::now() < deadline, "no relay in {published:?}");
         std::thread::sleep(Duration::from_millis(100));
     };
+    // With a relay set, the relay is all it names.
+    assert!(published.iter().all(|a| a.is_relay()), "{published:?}");
     for addr in &published {
         if let iroh::TransportAddr::Ip(addr) = addr {
             let private = match addr.ip() {

@@ -82,18 +82,39 @@ impl RouteKind {
 
 /// What a device publishes to the lookup server, which anyone who knows its
 /// endpoint id can read (and ids aren't secret: every connection and
-/// Bonjour record shows one). Only its relay and its public internet
-/// addresses; its home-network and Tailscale addresses go only to trusted
-/// devices, in Hello.
+/// Bonjour record shows one). With a relay, only the relay: a trusted
+/// device connects through it, and the two find a direct path from there.
+/// Without one, only public internet addresses, and never an IPv6 address
+/// made from the network card's hardware address (EUI-64), which would
+/// name this machine wherever it goes. Home-network and Tailscale
+/// addresses go only to trusted devices, in Hello.
 pub(crate) fn publishable(addrs: &[iroh::TransportAddr]) -> Vec<iroh::TransportAddr> {
+    let relays: Vec<_> = addrs.iter().filter(|a| a.is_relay()).cloned().collect();
+    if !relays.is_empty() {
+        return relays;
+    }
     addrs
         .iter()
         .filter(|a| match a {
-            iroh::TransportAddr::Ip(addr) => kind_of(addr) == RouteKind::Internet,
-            other => other.is_relay(),
+            iroh::TransportAddr::Ip(addr) => {
+                kind_of(addr) == RouteKind::Internet && !from_hardware(addr)
+            }
+            _ => false,
         })
         .cloned()
         .collect()
+}
+
+/// An IPv6 address whose second half is made from a MAC address
+/// (`xx:xxff:fexx:xxxx`, EUI-64).
+fn from_hardware(addr: &SocketAddr) -> bool {
+    match addr.ip() {
+        IpAddr::V6(ip) => {
+            let s = ip.segments();
+            ip.to_ipv4_mapped().is_none() && (s[5] & 0x00ff) == 0x00ff && (s[6] >> 8) == 0xfe
+        }
+        IpAddr::V4(_) => false,
+    }
 }
 
 /// The kind of route `addr` is on.
@@ -363,8 +384,8 @@ mod tests {
     }
 
     #[test]
-    fn only_the_relay_and_public_addresses_are_published() {
-        let relay: iroh::RelayUrl = "http://204.168.213.152:3340".parse().unwrap();
+    fn with_a_relay_only_the_relay_is_published() {
+        let relay: iroh::RelayUrl = "https://relay.avedeus.ovh".parse().unwrap();
         let ip = |s: &str| iroh::TransportAddr::Ip(sa(s));
         let all = vec![
             ip("192.168.1.169:4000"),
@@ -373,11 +394,34 @@ mod tests {
             ip("[fe80::1]:4000"),
             ip("127.0.0.1:4000"),
             ip("81.2.69.160:4000"),
+            // A home IPv6 address made from the Wi-Fi card's MAC address.
+            ip("[2a00:23c4:11ec:7501:9a2c:bcff:fe73:2b93]:46787"),
             iroh::TransportAddr::Relay(relay.clone()),
+        ];
+        assert_eq!(publishable(&all), vec![iroh::TransportAddr::Relay(relay)]);
+    }
+
+    #[test]
+    fn without_a_relay_only_public_addresses_not_made_from_hardware() {
+        let ip = |s: &str| iroh::TransportAddr::Ip(sa(s));
+        let all = vec![
+            ip("192.168.1.169:4000"),
+            ip("100.72.135.124:4000"),
+            ip("[fd7a:115c:a1e0::1]:4000"),
+            ip("[fd12:3456::1]:4000"),
+            ip("[fe80::1]:4000"),
+            ip("127.0.0.1:4000"),
+            ip("[::1]:4000"),
+            ip("81.2.69.160:4000"),
+            ip("[2a00:23c4:11ec:7501:9a2c:bcff:fe73:2b93]:46787"),
+            ip("[2a00:23c4:11ec:7501:1d4e:77a0:3c21:9b08]:46787"),
         ];
         assert_eq!(
             publishable(&all),
-            vec![ip("81.2.69.160:4000"), iroh::TransportAddr::Relay(relay)]
+            vec![
+                ip("81.2.69.160:4000"),
+                ip("[2a00:23c4:11ec:7501:1d4e:77a0:3c21:9b08]:46787"),
+            ]
         );
     }
 
