@@ -34,6 +34,7 @@ struct ListenView: View {
     @State private var editingServer = false
     @State private var showingNowPlaying = false
     @State private var barHeight: CGFloat = 0
+    @Environment(\.scenePhase) private var scenePhase
 
     init(core: SoundscapeCore) {
         _model = State(initialValue: ListenModel(core: core))
@@ -97,6 +98,14 @@ struct ListenView: View {
             player.onPlayed = { [model] trackId, recordingId in
                 Task { await model.recordPlay(trackId: trackId, recordingId: recordingId) }
             }
+            player.onSave = { [model] saved in
+                Task { await model.savePlayback(saved) }
+            }
+            // Where the app was left: the same queue and song, paused.
+            if let saved = model.savedPlayback() { player.restore(saved) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { player.save() }
         }
     }
 

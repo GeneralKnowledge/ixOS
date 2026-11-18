@@ -69,8 +69,11 @@ final class TakePlayer {
     /// Which side you hear while comparing.
     private(set) var active: Side = .a
     private(set) var match: LoudnessMatch?
-    /// What plays one after another, when not comparing.
-    private(set) var queue: PlayQueue?
+    /// What plays one after another, when not comparing. Kept (`onSave`)
+    /// whenever it changes, so the app opens where it was left.
+    private(set) var queue: PlayQueue? {
+        didSet { save() }
+    }
     private(set) var isPlaying = false
     private(set) var isBuffering = false
     private(set) var time: Double = 0
@@ -80,6 +83,11 @@ final class TakePlayer {
     /// Called once per play of a queued song, once it has played long
     /// enough to count (Rust's `countsAsPlayed`), for the listening history.
     @ObservationIgnored var onPlayed: ((_ trackId: String, _ recordingId: String) -> Void)?
+    /// Called with what is playing whenever it changes, now and then while
+    /// it plays, and with `nil` when playback stops, to keep it across
+    /// restarts (Rust's `save_playback`).
+    @ObservationIgnored var onSave: ((SavedPlayback?) -> Void)?
+    @ObservationIgnored private var lastSave = Date.distantPast
     @ObservationIgnored private var counted = false
 
     var isComparing: Bool { b != nil }
@@ -155,11 +163,12 @@ final class TakePlayer {
 
     /// Loads two takes to compare, A heard first, both from the start.
     func compare(_ first: Take, _ second: Take, of song: String, match: LoudnessMatch) {
-        queue = nil
         load(
             a: Loaded(song: song, take: first),
             b: Loaded(song: song, take: second), match: match
         )
+        // A comparison isn't kept: the saved queue stays what it was.
+        queue = nil
         resume()
     }
 
@@ -294,6 +303,30 @@ final class TakePlayer {
         playerB.pause()
         isPlaying = false
         updateNowPlaying()
+        save()
+    }
+
+    // MARK: Keeping what plays
+
+    /// Hands what is playing to `onSave`: the queue and how far into the
+    /// song. Nothing while comparing; `nil` once stopped.
+    func save() {
+        guard !isComparing else { return }
+        lastSave = Date()
+        guard let queue else {
+            onSave?(nil)
+            return
+        }
+        onSave?(SavedPlayback(queue: queue, seconds: time, savedMs: Int64(Date().timeIntervalSince1970 * 1000)))
+    }
+
+    /// Opens what was playing when the app closed, paused at the same
+    /// moment, ready to carry on with Play.
+    func restore(_ saved: SavedPlayback) {
+        guard current == nil else { return }
+        queue = saved.queue
+        loadQueued(playing: false)
+        if saved.seconds > 0 { seek(to: saved.seconds) }
     }
 
     func seek(to seconds: Double) {
@@ -355,6 +388,7 @@ final class TakePlayer {
             updateNowPlaying()
         }
         isBuffering = heard.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        if isPlaying, Date().timeIntervalSince(lastSave) > 15 { save() }
         if let item = heard.currentItem, item.status == .failed, failure == nil {
             failure = Self.describe(item.error, playing: current)
             log.warn("stream failed: \(item.error.map { "\($0)" } ?? "")")

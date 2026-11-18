@@ -2430,6 +2430,21 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func revision()  -> UInt64
     
     /**
+     * Keeps what is playing (the queue and how far into the song), or
+     * forgets it (`None`, when playback stops), so the app opens where it
+     * was left.
+     */
+    func savePlayback(saved: SavedPlayback?) async throws 
+    
+    /**
+     * What was playing when the app closed, brought up to date: each
+     * library song as the library has it now (edits, a download since, or
+     * a file that moved), songs no longer playable left out. `None` when
+     * nothing was playing.
+     */
+    func savedPlayback()  -> SavedPlayback?
+    
+    /**
      * Internet Archive items (albums, concerts, recordings) matching
      * `query`, most downloaded first; this week's most downloaded
      * net-label releases when it is empty. On-screen work.
@@ -3523,6 +3538,42 @@ open func revision() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_soundscape_core_fn_method_soundscapecore_revision(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Keeps what is playing (the queue and how far into the song), or
+     * forgets it (`None`, when playback stops), so the app opens where it
+     * was left.
+     */
+open func savePlayback(saved: SavedPlayback?)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_save_playback(
+                        self.uniffiCloneHandle(),FfiConverterOptionTypeSavedPlayback.lower(saved)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_void,
+            completeFunc: ffi_soundscape_core_rust_future_complete_void,
+            freeFunc: ffi_soundscape_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * What was playing when the app closed, brought up to date: each
+     * library song as the library has it now (edits, a download since, or
+     * a file that moved), songs no longer playable left out. `None` when
+     * nothing was playing.
+     */
+open func savedPlayback() -> SavedPlayback?  {
+    return try!  FfiConverterOptionTypeSavedPlayback.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_saved_playback(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -7247,6 +7298,73 @@ public func FfiConverterTypeRights_lower(_ value: Rights) -> RustBuffer {
 
 
 /**
+ * The queue and how far into its current song playback was.
+ */
+public struct SavedPlayback: Equatable, Hashable {
+    public var queue: PlayQueue
+    /**
+     * Seconds into the current song.
+     */
+    public var seconds: Double
+    public var savedMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(queue: PlayQueue, 
+        /**
+         * Seconds into the current song.
+         */seconds: Double, savedMs: Int64) {
+        self.queue = queue
+        self.seconds = seconds
+        self.savedMs = savedMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedPlayback: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedPlayback: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedPlayback {
+        return
+            try SavedPlayback(
+                queue: FfiConverterTypePlayQueue.read(from: &buf), 
+                seconds: FfiConverterDouble.read(from: &buf), 
+                savedMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedPlayback, into buf: inout [UInt8]) {
+        FfiConverterTypePlayQueue.write(value.queue, into: &buf)
+        FfiConverterDouble.write(value.seconds, into: &buf)
+        FfiConverterInt64.write(value.savedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedPlayback_lift(_ buf: RustBuffer) throws -> SavedPlayback {
+    return try FfiConverterTypeSavedPlayback.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedPlayback_lower(_ value: SavedPlayback) -> RustBuffer {
+    return FfiConverterTypeSavedPlayback.lower(value)
+}
+
+
+/**
  * A song with its takes, oldest first.
  */
 public struct SongDetail: Equatable, Hashable {
@@ -10234,6 +10352,30 @@ fileprivate struct FfiConverterOptionTypeRights: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeSavedPlayback: FfiConverterRustBuffer {
+    typealias SwiftType = SavedPlayback?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSavedPlayback.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSavedPlayback.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
     typealias SwiftType = [UInt32]
 
@@ -11624,6 +11766,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_revision() != 34234) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_save_playback() != 47578) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_saved_playback() != 13538) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_search_archive() != 25802) {

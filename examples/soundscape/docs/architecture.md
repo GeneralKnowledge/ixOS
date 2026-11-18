@@ -111,8 +111,10 @@ timed lyrics) waits, and the question of where "your own server" lives waits wit
 3. **Remove Studio and set the navigation** (old PR 6). Drop `project.rs`, `dsp.rs` and the Studio screens.
    Soundscape opens on Listen. Tabs: Listen, Library, Search, Collections, with Sources in Settings until there is
    more than one source.
-4. **Persist the queue.** Queue, position and the playing recording survive a restart. This is P0 in the
-   proposal, and it's missing today.
+4. **Persist the queue.** Done: `rust/src/playback.rs` keeps the queue, the song and how far into it in
+   `playback.json`, saved as it changes, every 15 seconds while playing, and when the app leaves the screen. The
+   app opens paused where it was left. Songs come back as the library has them now (edits, a download since); a
+   file on the phone that is gone is left out and playback moves to the next song.
 5. **Stable recording ids and `RecordingSource`.** The model, a schema version bump for `library.json` that
    migrates today's ids, and tests for the five resolver cases in [sources.md](sources.md).
 6. **The resolver.** `resolve` in Rust; the player asks it what to play and shows why when nothing can. It

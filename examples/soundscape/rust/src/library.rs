@@ -210,7 +210,7 @@ impl TrackEdit {
 
 // ------------------------------------------------------------ what Swift sees
 
-#[derive(uniffi::Enum, Clone, Debug, PartialEq)]
+#[derive(uniffi::Enum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum AudioSource {
     /// Streamed from the take server.
     TakeServer { server: String },
@@ -221,7 +221,7 @@ pub enum AudioSource {
     Catalogue { provider: String },
 }
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RecordingKind {
     /// Made by a music model (a JewGrass take).
     Generated,
@@ -232,7 +232,7 @@ pub enum RecordingKind {
 }
 
 /// How a generated recording was made.
-#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Generation {
     pub seed: Option<i64>,
     pub model: Option<String>,
@@ -241,7 +241,7 @@ pub struct Generation {
 }
 
 /// One audio version of a track.
-#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Recording {
     pub id: String,
     pub label: String,
@@ -261,6 +261,7 @@ pub struct Recording {
     pub lyrics: Option<String>,
     /// What a catalogue recording's licence allows, and its credit. `None`
     /// for the person's own music.
+    #[serde(default)]
     pub rights: Option<Rights>,
 }
 

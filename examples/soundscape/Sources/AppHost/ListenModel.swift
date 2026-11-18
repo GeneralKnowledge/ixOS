@@ -135,6 +135,21 @@ public final class ListenModel {
 
     public func search(_ query: String) -> LibrarySearch { core.searchLibrary(query: query) }
 
+    // MARK: What was playing
+
+    /// Keeps what is playing so the app opens where it was left; `nil`
+    /// forgets it. A failure only costs the resume, so it is logged.
+    public func savePlayback(_ saved: SavedPlayback?) async {
+        do {
+            try await core.savePlayback(saved: saved)
+        } catch {
+            log.warn("playback not kept: \(error)")
+        }
+    }
+
+    /// What was playing when the app closed, brought up to date.
+    public func savedPlayback() -> SavedPlayback? { core.savedPlayback() }
+
     // MARK: Catalogues
 
     /// Saves the Jamendo client ID; throws Rust's reason when it can't be

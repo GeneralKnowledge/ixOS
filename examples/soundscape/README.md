@@ -21,6 +21,7 @@ it runs inside Device Lab (Apps, then Soundscape) and on its own.
 | N1 | Jamendo ([plan](docs/sources.md)): Discover searches Jamendo with your own client ID (this week's popular until you type) and plays full tracks through the same player; Add to Library keeps a track with your music (playlists, favourites, edits, downloads where Jamendo allows), with its licence, credit and what it allows on its screen. The library now works without a take server | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | N2 | Internet Archive ([plan](docs/sources.md#internet-archive-as-built)): a Jamendo / Internet Archive switch in Discover; Archive albums and concerts open to their tracks (best MP3 of each), to play, add one or all to the library, and download unless the item is restricted | Rust tested on Linux against canned answers; live API not yet checked; Swift written, not yet built with xtool or run on a phone |
 | N3 | MusicBrainz for matching recordings, and a small fixed test catalogue | Planned |
+| M6 | Carry on where you left off: the queue, the song and how far into it survive closing the app, and it opens paused there | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | S4 | Spike: one effect in Rust on the real-time audio thread, measured on the phone | Not started; decides whether live effects move to Rust |
 
 ## How the work is split

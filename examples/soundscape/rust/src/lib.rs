@@ -34,6 +34,7 @@ pub mod listen;
 pub mod lyrics;
 mod model;
 pub mod offline;
+pub mod playback;
 pub mod project;
 pub mod queue;
 
@@ -71,6 +72,8 @@ pub use model::{
 };
 pub use offline::{DownloadState, OfflineSummary, OfflineTrack};
 use offline::{OfflineFile, Progress};
+use playback::PlaybackFile;
+pub use playback::SavedPlayback;
 use project::{Loaded, Project, Projects, SavedClip};
 pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
 
@@ -94,6 +97,8 @@ const LIBRARY_FILE: &str = "library.json";
 const COLLECTION_FILE: &str = "collection.json";
 /// What is kept on the phone to play offline.
 const OFFLINE_FILE: &str = "offline.json";
+/// What was playing, to carry on after the app closes.
+const PLAYBACK_FILE: &str = "playback.json";
 /// The largest music file imported.
 const MAX_IMPORT_BYTES: u64 = 1024 * 1024 * 1024;
 /// The largest picture accepted as artwork.
@@ -126,6 +131,7 @@ struct State {
     offline: Document<OfflineFile>,
     offline_published: Arc<Published<OfflineFile>>,
     downloads: FileStore,
+    playback: Document<PlaybackFile>,
 }
 
 impl State {
@@ -207,6 +213,7 @@ pub struct SoundscapeCore {
     offline: Arc<Published<OfflineFile>>,
     downloads: PathBuf,
     progress: Arc<Mutex<Progress>>,
+    playback: Arc<Published<PlaybackFile>>,
     /// True while `sync_downloads` runs, so a second one returns at once.
     syncing: Arc<AtomicBool>,
     http: Arc<dyn HttpClient>,
@@ -1198,6 +1205,50 @@ impl SoundscapeCore {
             .collect()
     }
 
+    // MARK: Playback
+
+    /// Keeps what is playing (the queue and how far into the song), or
+    /// forgets it (`None`, when playback stops), so the app opens where it
+    /// was left.
+    pub async fn save_playback(&self, saved: Option<SavedPlayback>) -> Result<(), SoundscapeError> {
+        let saved = saved.and_then(playback::tidy);
+        let published = Arc::clone(&self.playback);
+        self.rt
+            .command("playback-save", move |state| {
+                state.playback.change(|p| {
+                    p.saved = saved;
+                    Ok::<_, SoundscapeError>(())
+                })?;
+                published.set(state.playback.value().clone());
+                Ok(())
+            })
+            .await
+    }
+
+    /// What was playing when the app closed, brought up to date: each
+    /// library song as the library has it now (edits, a download since, or
+    /// a file that moved), songs no longer playable left out. `None` when
+    /// nothing was playing.
+    pub fn saved_playback(&self) -> Option<SavedPlayback> {
+        let saved = self.playback.get().saved.clone()?;
+        let library = self.library();
+        playback::refresh(saved, |queued| {
+            match library.tracks.iter().find(|t| t.id == queued.track_id) {
+                Some(track)
+                    if track.preferred.as_ref().map(|r| &r.id) == Some(&queued.recording.id) =>
+                {
+                    library::queue_track(track)
+                }
+                Some(_) => self
+                    .queue_recording(queued.track_id.clone(), queued.recording.id.clone())
+                    .ok(),
+                // Not in the library: a stream (catalogue, take server)
+                // still plays; a file on the phone that nothing names is gone.
+                None => (!queued.recording.audio_url.starts_with("file:")).then(|| queued.clone()),
+            }
+        })
+    }
+
     // MARK: Library
 
     /// The library as kept on the phone: artists, albums and tracks, each
@@ -1669,6 +1720,21 @@ impl SoundscapeCore {
         downloads.sweep(|name| named.contains(name));
         let downloads_root = downloads.root().to_path_buf();
         let offline_published = Arc::new(Published::new(offline_doc.value().clone()));
+        // Losing what was playing is a small loss: an unreadable file is
+        // set aside and playback starts empty.
+        let (playback_doc, kept) = Document::<PlaybackFile>::start_fresh(
+            directory.path().join(PLAYBACK_FILE),
+            playback::PLAYBACK_VERSION,
+            None,
+            now_ms(),
+        )?;
+        if let Some(kept) = kept {
+            forge_runtime::logging::warn!(
+                "unreadable playback state set aside as {}",
+                kept.display()
+            );
+        }
+        let playback_published = Arc::new(Published::new(playback_doc.value().clone()));
         let state = State {
             projects,
             recordings,
@@ -1684,6 +1750,7 @@ impl SoundscapeCore {
             offline: offline_doc,
             offline_published: Arc::clone(&offline_published),
             downloads,
+            playback: playback_doc,
         };
         Ok(Arc::new(Self {
             rt: Runtime::with_directory("soundscape", directory, state),
@@ -1697,6 +1764,7 @@ impl SoundscapeCore {
             imported: imported_root,
             offline: offline_published,
             downloads: downloads_root,
+            playback: playback_published,
             progress: Arc::default(),
             syncing: Arc::default(),
             http,
