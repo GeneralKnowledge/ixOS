@@ -2,7 +2,7 @@
 
 *Or: how rebuilding a calculator became an exercise in digital archaeology, accessibility-tree archaeology, and questioning my life choices.*
 
-<!-- Kept in step with what actually happened: see log.md next to this file. As of 2026-11-17 nothing has run yet, so everything from "1. Survey the terrain" on is still the plan. -->
+<!-- Kept in step with what actually happened: see log.md next to this file. "1. Survey the terrain" happened on 2026-11-18 and is written from the field notes; everything after it is still the plan. -->
 
 I thought rebuilding a calculator would be easy.
 
@@ -56,10 +56,27 @@ We use `forge ui tree`, which asks WebDriverAgent (a small test runner that live
 
 Instead of simply looking at a button and deciding that it looks like a button, we can ask what the operating system thinks that button is.
 
-Our notebook before setting off:
+Except first we had to get past our own border control. Forge won't read an app it didn't build unless you say `--any-app` out loud and your own policy file lists the app. Around half past midnight, the laptop politely declined to edit that file on my behalf until I typed the words myself. Annoying. Also exactly what it's for.
 
-- **Unknown:** whether we can read Apple's own app this way at all. Nobody on the project has tried an Apple app yet.
-- **Unknown:** whether every key has a label, and whether the display's number can be read from the tree rather than squinted at in a screenshot.
+Then the calculator started talking.
+
+- **Observed:** all twenty keys are there, each with a sensible label and a name underneath: Seven, Divide, Negate, AllClear. Not "Button 14". Somebody at Apple cares.
+- **Observed:** the number on the display is in the tree too, but with an invisible left-to-right character glued to the front. And, as we found later, glued in front of *every part* of "12+7". A comparison that doesn't strip these will fail forever and never tell you why.
+- **Observed:** Forge can't open Calculator by itself. It only knows apps that were installed, and Calculator just *is*. So the most advanced piece of our tooling was, for this step, me, opening an app with my thumb.
+
+Then I turned the phone sideways, fully expecting the scientific calculator. Everyone knows sideways is the scientific calculator.
+
+- **Observed:** it isn't. Not any more. Sideways is the same basic keypad, stretched into pills and rearranged. My first confident assumption lasted about four minutes.
+- **Observed:** and sideways, the answer vanishes. Calculator happily showed 19 on the screen, while the accessibility tree had two neat, empty, invisible boxes where the numbers should be. Turn it upright and the 19 comes back.
+
+The calculator has a portrait mode where it tells you the answer and a landscape mode where it shows you the answer but won't say it. I have no idea why. Into the Unknown column it goes.
+
+- **Observed:** the clear key flips between C and AC, but the tree calls it "All Clear" either way. Only the screenshot knows. And its *position* in the tree moves depending on which one it is.
+- **Observed:** close the app from the app switcher, open it again, and 12 + 7 = 19 is still sitting there, with the sum above it. It's in History too.
+- **Observed:** History, according to the accessibility tree, is an *alert*. I've been alerted.
+- **Unknown:** what the little ">" tab on the left edge of the screen does. It's in every screenshot and never once in the tree.
+
+Seventeen minutes, one phone that fell off the USB cable mid-expedition, twenty-five findings. None of them are hard. All of them would have broken a naive recreation, or a naive test.
 
 I am no longer looking at a calculator. I am interrogating a calculator like it owes me money.
 

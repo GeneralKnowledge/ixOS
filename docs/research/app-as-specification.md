@@ -1,6 +1,6 @@
 # Plan: an app as a specification
 
-**Status (2026-11-17):** plan only, nothing built. Asked for by Reuben on 2026-11-17: pick a relatively simple existing iOS app, map it through its accessibility tree, rebuild it with ixOS, and compare the two, so that every difference is evidence about the platform.
+**Status (2026-11-18):** R0 done on the phone (exit met): Calculator's [profile](expeditions/calculator/profile.md), [findings](expeditions/calculator/findings.md) and [evidence](expeditions/calculator/evidence/README.md). Nothing built. Asked for by Reuben on 2026-11-17: pick a relatively simple existing iOS app, map it through its accessibility tree, rebuild it with ixOS, and compare the two, so that every difference is evidence about the platform.
 
 This extends the [replication benchmarks](../../examples/commonplace/docs/benchmark/benchmarks.md) that started with NetNewsWire and Commonplace on 2026-11-10. Their rules still hold: behaviour, not implementation; our own name, icon and look; nothing copied from the reference; the real iPhone, never a simulator; every workaround becomes a gap record.
 
@@ -79,7 +79,7 @@ What makes a good first target: small enough to rebuild in days, native UIKit or
 |---|---|---|---|
 | Install | Ships with iOS, no slot | App Store, no slot | Ships with iOS, no slot |
 | Source | Closed; behaviour is public | Open source, MIT | Closed |
-| Size | One main screen, a history list, unit conversion, a scientific layout in landscape | Feeds, timelines, reader, settings, search | A recording list, recording, playback, rename, delete |
+| Size | One main screen, a history list, unit conversion, a scientific mode (assumed to be the landscape layout; R0 found landscape is the basic keypad, see the findings) | Feeds, timelines, reader, settings, search | A recording list, recording, playback, rename, delete |
 | Deterministic | Fully: keys in, display out | Yes with the fixture feeds served from the laptop | Mostly; recordings are made of real audio |
 | Accessibility | Apple's own labels on every key (to confirm in R0) | Good, and already partly read on 2026-11-10 | Apple's own (to confirm) |
 | What it tests in ixOS | The Rust and Swift boundary on every key press, a ForgeUI grid of buttons, Dynamic Type, rotation, history persistence | Networking, parsing, SQLite, the reader, navigation, settings: most of the platform | Audio recording and playback, files, permissions, the lock screen |
