@@ -26,6 +26,33 @@ struct DownloadMenuItem: View {
     }
 }
 
+/// Download Album on an album's screen, with how far along it is, or
+/// Remove Download once it is all chosen.
+struct AlbumDownloadButton: View {
+    let model: ListenModel
+    let tracks: [LibraryTrack]
+
+    var body: some View {
+        let songs = model.downloadable(tracks)
+        if !songs.isEmpty {
+            let chosen = model.allChosenForPhone(tracks)
+            let here = songs.filter { model.downloadState($0.id) == .downloaded }.count
+            Button {
+                Task { await model.keepOnPhone(tracks, !chosen) }
+            } label: {
+                if !chosen {
+                    Label("Download Album", systemImage: "arrow.down.circle")
+                } else if here < songs.count {
+                    Label("Downloading \(here) of \(songs.count)…", systemImage: "arrow.down.circle.dotted")
+                } else {
+                    Label("Downloaded · Remove Download", systemImage: "arrow.down.circle.fill")
+                }
+            }
+            .accessibilityIdentifier("album.downloadButton")
+        }
+    }
+}
+
 /// A small sign on a song's row: on the phone, coming, or failed.
 struct DownloadBadge: View {
     let model: ListenModel

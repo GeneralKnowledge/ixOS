@@ -112,7 +112,7 @@ struct FavouritesView: View {
             if !collection.favouriteAlbums.isEmpty {
                 Section("Albums") {
                     ForEach(collection.favouriteAlbums) { album in
-                        NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album) }
+                        NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album, model: model) }
                             .accessibilityIdentifier("favourites.album")
                     }
                 }

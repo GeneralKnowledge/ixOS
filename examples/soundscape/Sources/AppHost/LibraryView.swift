@@ -98,7 +98,7 @@ struct LibraryHome: View {
     @ViewBuilder private func albums(_ albums: [LibraryAlbum]) -> some View {
         Section {
             ForEach(albums) { album in
-                NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album) }
+                NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album, model: model) }
                     .accessibilityIdentifier("library.album")
             }
         }
@@ -125,7 +125,7 @@ struct LibraryHome: View {
         if !found.albums.isEmpty {
             Section("Albums") {
                 ForEach(found.albums) { album in
-                    NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album) }
+                    NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album, model: model) }
                         .accessibilityIdentifier("search.album")
                 }
             }
@@ -294,6 +294,8 @@ struct TrackRow: View {
 
 struct AlbumRow: View {
     let album: LibraryAlbum
+    /// Gives the row a long-press menu with Download.
+    var model: ListenModel? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -307,6 +309,11 @@ struct AlbumRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .contextMenu {
+            if let model {
+                DownloadMenuItem(model: model, tracks: model.tracks(of: album), identifier: "library.albumDownload")
+            }
+        }
     }
 }
 
@@ -362,7 +369,7 @@ struct ArtistView: View {
             if !albums.isEmpty {
                 Section("Albums") {
                     ForEach(albums) { album in
-                        NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album) }
+                        NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album, model: model) }
                             .accessibilityIdentifier("artist.album")
                     }
                 }
@@ -437,6 +444,7 @@ struct AlbumView: View {
                 PlayShuffleButtons(disabled: tracks.isEmpty) { shuffle in
                     player.play(model.queue(tracks), shuffle: shuffle)
                 }
+                AlbumDownloadButton(model: model, tracks: tracks)
             }
             Section {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
