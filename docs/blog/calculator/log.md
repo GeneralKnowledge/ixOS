@@ -118,6 +118,11 @@ R1's table is written: 34 sequences ([sequences.toml](../../research/expeditions
 
 **09:46.** Reuben: ignore landscape for now, and run the test autonomously, Delete included. The only way Forge allows that without a person at the terminal is the `full` level for Calculator alone (no commit gate for that one app; secure fields and the hard refusals still apply). The table gains five Delete sequences (39 in all) and loses the rotation.
 
+**11:07. First recording attempt: stopped before the first tap.** `forge ui run` refused the test file in 1.9 s: "com.apple.calculator is not installed on the phone". The same gap as R0 finding 22, now blocking a whole run, and neither `--any-app` nor `full` gets past it. Nothing was pressed; Calculator went back to `operate`.
+
+- **Observed** (failure as finding): Forge only looked apps up among the ones a person installed. The phone lists the apps that come with iOS separately.
+- **Fix** (7e31e76): when a bundle id isn't among the installed apps, Forge now looks for it among the system apps, by exact id. The policy and its hard refusals still decide what Forge may do there. The first change to ixOS itself that this expedition caused.
+
 ## Next
 
 R1, collect and map: the sequence table (ordinary sums, repeated equals, percent, sign change, huge numbers, rounding, a relaunch mid-sequence), recorded twice in portrait. Taps need Calculator at `operate` level rather than `observe`, which is Reuben's call.
