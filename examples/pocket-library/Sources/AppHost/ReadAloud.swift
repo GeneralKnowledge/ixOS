@@ -3,7 +3,6 @@
 import Foundation
 import Observation
 #if os(iOS)
-import MediaPlayer
 import UIKit
 #endif
 
@@ -11,8 +10,9 @@ import UIKit
 /// (paragraph, heading, quote…) per utterance, and reports the block and
 /// word being spoken so the reader can follow and highlight them. Keeps
 /// playing with the screen locked (the `audio` background mode, in
-/// forge.toml) and answers the lock screen's play, pause, skip back and
-/// forward, and progress bar.
+/// forge.toml) and answers the lock screen's play, pause, next and previous
+/// chapter, skip back and forward, and progress bar. Pauses for calls, Siri
+/// and unplugged headphones, and carries on after a call or Siri.
 ///
 /// Speech is presentation, not a rule, so it lives in Swift: Rust has
 /// already turned the book into blocks, and the reader saves the position
@@ -57,6 +57,11 @@ final class ReadAloud: NSObject {
     /// reader can load the next one and call `play(from: 0)`.
     @ObservationIgnored var onChapterEnd: (@MainActor () -> Void)?
 
+    /// Called with -1 or 1 for the lock screen's previous and next chapter.
+    /// The reader loads that chapter and returns true, or returns false
+    /// when there is none.
+    @ObservationIgnored var onChapterMove: (@MainActor (Int) -> Bool)?
+
     @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
     @ObservationIgnored private var texts: [String] = []
     @ObservationIgnored private var utterance: AVSpeechUtterance?
@@ -65,7 +70,13 @@ final class ReadAloud: NSObject {
     @ObservationIgnored private var chapterTitle = ""
     @ObservationIgnored private var coverFile: String?
     #if os(iOS)
-    @ObservationIgnored private let remoteTargets = RemoteCommandTargets()
+    /// The lock screen, headphone buttons, and the system's rules for
+    /// calls, Siri and unplugged headphones (Forge's Now Playing helper).
+    @ObservationIgnored private lazy var nowPlaying = ForgeNowPlaying(
+        isPlaying: { [weak self] in self?.state == .playing },
+        pause: { [weak self] in self?.pause() },
+        play: { [weak self] in self?.resume() }
+    )
     #endif
     @ObservationIgnored private var cachedVoice: (identifier: String, voice: AVSpeechSynthesisVoice?)?
 
@@ -155,6 +166,18 @@ final class ReadAloud: NSObject {
         state = .playing
         activateAudioSession()
         speak(from: target)
+    }
+
+    /// The previous or next chapter (the lock screen's buttons): reading
+    /// carries on from the new chapter's start, also when it was paused.
+    func moveChapter(by offset: Int) {
+        guard state != .stopped, onChapterMove?(offset) == true else { return }
+        if state == .paused {
+            // The reader loads the chapter after this returns, and reads on
+            // because it sees `playing`.
+            state = .playing
+            activateAudioSession()
+        }
     }
 
     /// How far the lock screen's skip buttons move.
@@ -375,59 +398,32 @@ final class ReadAloud: NSObject {
         try? ForgeAudioSession.activate(.playback)
     }
 
-    /// Adds Read Aloud's lock-screen handlers, once until the reader
-    /// removes them.
+    /// Puts Read Aloud's buttons on the lock screen and headphones, once
+    /// until the reader removes them.
     private func addRemoteCommands() {
         #if os(iOS)
-        guard remoteTargets.isEmpty else { return }
-        let center = MPRemoteCommandCenter.shared()
-        remoteTargets.add(center.playCommand) { [weak self] _ in
-            Task { @MainActor in self?.resume() }
-            return .success
-        }
-        remoteTargets.add(center.pauseCommand) { [weak self] _ in
-            Task { @MainActor in self?.pause() }
-            return .success
-        }
-        remoteTargets.add(center.togglePlayPauseCommand) { [weak self] _ in
-            Task { @MainActor in
+        guard !nowPlaying.hasCommands else { return }
+        nowPlaying.commands(.init(
+            play: { [weak self] in self?.resume() },
+            pause: { [weak self] in self?.pause() },
+            toggle: { [weak self] in
                 guard let self else { return }
                 self.state == .playing ? self.pause() : self.resume()
-            }
-            return .success
-        }
-        remoteTargets.add(center.nextTrackCommand) { [weak self] _ in
-            Task { @MainActor in self?.skip(by: 1) }
-            return .success
-        }
-        remoteTargets.add(center.previousTrackCommand) { [weak self] _ in
-            Task { @MainActor in self?.skip(by: -1) }
-            return .success
-        }
-        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: Self.skipInterval)]
-        remoteTargets.add(center.skipBackwardCommand) { [weak self] _ in
-            Task { @MainActor in self?.skip(seconds: -ReadAloud.skipInterval) }
-            return .success
-        }
-        center.skipForwardCommand.preferredIntervals = [NSNumber(value: Self.skipInterval)]
-        remoteTargets.add(center.skipForwardCommand) { [weak self] _ in
-            Task { @MainActor in self?.skip(seconds: ReadAloud.skipInterval) }
-            return .success
-        }
-        remoteTargets.add(center.changePlaybackPositionCommand) { [weak self] event in
-            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            let position = event.positionTime
-            Task { @MainActor in self?.seek(toSeconds: position) }
-            return .success
-        }
+            },
+            next: { [weak self] in self?.moveChapter(by: 1) },
+            previous: { [weak self] in self?.moveChapter(by: -1) },
+            seek: { [weak self] seconds in self?.seek(toSeconds: seconds) },
+            skipBackward: (interval: Self.skipInterval, run: { [weak self] in self?.skip(seconds: -ReadAloud.skipInterval) }),
+            skipForward: (interval: Self.skipInterval, run: { [weak self] in self?.skip(seconds: ReadAloud.skipInterval) })
+        ))
         #endif
     }
 
-    /// Removes Read Aloud's lock-screen handlers, and only those; the
-    /// reader calls it when it closes.
+    /// Removes Read Aloud's lock-screen buttons and details, and only
+    /// those; the reader calls it when it closes.
     func removeRemoteCommands() {
         #if os(iOS)
-        remoteTargets.removeAll()
+        nowPlaying.end()
         #endif
     }
 
@@ -475,34 +471,21 @@ final class ReadAloud: NSObject {
         #if os(iOS)
         guard state != .stopped else { return }
         let times = Self.estimatedTimes(texts: texts, block: block, speed: speed, within: spokenOffset)
-        var info: [String: Any] = [
-            MPMediaItemPropertyTitle: chapterTitle.isEmpty ? bookTitle : chapterTitle,
-            MPMediaItemPropertyArtist: author,
-            MPMediaItemPropertyAlbumTitle: bookTitle,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: times.elapsed,
-            MPNowPlayingInfoPropertyPlaybackRate: state == .playing ? 1.0 : 0.0,
-            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
-            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
-        ]
-        if times.duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = times.duration }
-        if let coverFile, let image = UIImage(contentsOfFile: coverFile) {
-            info[MPMediaItemPropertyArtwork] = Self.lockScreenArtwork(image)
-        }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        nowPlaying.update(.init(
+            title: chapterTitle.isEmpty ? bookTitle : chapterTitle,
+            artist: author,
+            album: bookTitle,
+            artwork: coverFile.flatMap { UIImage(contentsOfFile: $0) },
+            duration: times.duration,
+            position: times.elapsed,
+            playing: state == .playing
+        ))
         #endif
     }
 
-    #if os(iOS)
-    /// Made outside the main actor: MediaPlayer asks for the picture on a
-    /// background queue, and a closure made on the main actor traps there.
-    nonisolated private static func lockScreenArtwork(_ image: UIImage) -> MPMediaItemArtwork {
-        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-    }
-    #endif
-
     private func clearNowPlaying() {
         #if os(iOS)
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        nowPlaying.end()
         #endif
     }
 }
@@ -522,32 +505,3 @@ extension ReadAloud: AVSpeechSynthesizerDelegate {
         Task { @MainActor in self.willSpeak(characterRange, in: id) }
     }
 }
-
-#if os(iOS)
-/// The lock-screen handlers one player added, so it removes only its own:
-/// the command center is shared by every app in Device Lab, and
-/// `removeTarget(nil)` would take away another app's controls too. Removes
-/// them when it goes away as well, so a player that is freed without
-/// stopping leaves no dead buttons behind (Soundscape's did, found on the
-/// phone, 2026-11-18). Each app keeps its own copy until the Now Playing
-/// helper is extracted.
-private final class RemoteCommandTargets {
-    private var targets: [(command: MPRemoteCommand, token: Any)] = []
-
-    var isEmpty: Bool { targets.isEmpty }
-
-    func add(
-        _ command: MPRemoteCommand,
-        _ handler: @escaping @Sendable (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus
-    ) {
-        targets.append((command, command.addTarget(handler: handler)))
-    }
-
-    func removeAll() {
-        for target in targets { target.command.removeTarget(target.token) }
-        targets = []
-    }
-
-    deinit { removeAll() }
-}
-#endif

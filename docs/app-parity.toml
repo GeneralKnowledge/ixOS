@@ -55,3 +55,16 @@ app = "device-lab"
 rule = "resume"
 status = "not-applicable"
 reason = "Its dashboard reports the phase for its lab services and its transfer test, not a hosted app's model; each hosted app follows its own host"
+
+[[lag]]
+app = "device-lab"
+rule = "now-playing"
+status = "not-applicable"
+reason = "AudioMonitor only records interruptions and route changes for the dashboard; it plays nothing"
+
+[[lag]]
+app = "soundscape"
+rule = "now-playing"
+status = "deferred"
+wave = 4
+reason = "The Studio's LoopEngine keeps its own interruption handling until the Studio screens are removed (Soundscape PR 6); the song player is on ForgeNowPlaying"

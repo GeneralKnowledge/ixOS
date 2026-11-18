@@ -19,6 +19,7 @@ When the framework gains a better way to do something, every app moves to it, or
 | `state-views` | Empty, no-results, loading and failed screens through ForgeUI's `ForgeStateView` |
 | `toned-text` | Warning and error text in ForgeUI's tones, never raw orange, yellow or (for errors) red |
 | `resume` | Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase` |
+| `now-playing` | Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying` |
 | `feedback` | Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback` |
 | `forgeui-appearance` | Launch appearance from ForgeUI, no own LaunchAppearance.swift |
 | `urlsession` | iOS requests through the URLSession `http` service |
@@ -36,19 +37,19 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 ## Apps
 
-| App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `web-images` | `state-views` | `toned-text` | `resume` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `rust-cancellation` | `swift-logging` | `connectivity` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | n/a | n/a | Yes |
-| fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | Yes | Yes | Yes |
-| good-dog | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `web-images` | `state-views` | `toned-text` | `resume` | `now-playing` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `rust-cancellation` | `swift-logging` | `connectivity` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Not applicable | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | n/a | n/a | Yes |
+| fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | Yes | Yes | Yes |
+| good-dog | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (wave 4) | Yes | Yes | Yes | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 
 ## Known lag
 
@@ -59,6 +60,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | good-dog | `device-checks` | missing | GD requirements without a scenario yet; written with GD2b's phone run | 4 |
 | relay | `device-checks` | missing | CH-12 (Chat's, now Relay's messaging: data held by a second core) is proved by its twin test only; the phone can't open a second core from the UI | 4 |
 | sketchbook | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
+| soundscape | `now-playing` | deferred | The Studio's LoopEngine keeps its own interruption handling until the Studio screens are removed (Soundscape PR 6); the song player is on ForgeNowPlaying | 4 |
 | soundscape | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
 
 ## Not applicable
@@ -66,4 +68,5 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | App | Rule | Why |
 |---|---|---|
 | device-lab | `forge-host` | LabModel's state is lab services (sensors, permissions, hosting the other apps), not an app core (decided 2026-11-15) |
+| device-lab | `now-playing` | AudioMonitor only records interruptions and route changes for the dashboard; it plays nothing |
 | device-lab | `resume` | Its dashboard reports the phase for its lab services and its transfer test, not a hosted app's model; each hosted app follows its own host |

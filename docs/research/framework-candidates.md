@@ -7,7 +7,7 @@ This is a survey of what the apps built that now belongs in the framework, judge
 | What | Apps | Waiting on |
 |---|---|---|
 | Photo picker: turning a picked photo into a temporary file Rust reads, next to `ForgePickedFile` | Relay (Send, and photos in Chats), Soundscape (song artwork) | Soundscape's artwork picker passing on the phone. Relay's photo send passed on 2026-11-17. Soundscape, not FieldKit, is the second app: it already has its own copy (`LibraryView.swift`) |
-| Now Playing: lock screen, headphone controls and interruptions (everyday capabilities phase 5) | Pocket Library (Read Aloud), Soundscape (song player) | #306 merging and Soundscape's lock screen passing a recheck (it failed on 2026-11-17) |
+| Now Playing: lock screen, headphone controls and interruptions (everyday capabilities phase 5) | Pocket Library (Read Aloud), Soundscape (song player) | Done (2026-11-18): `ForgeNowPlaying` and `ForgeAudioRules` in `crates/forge-services/swift/helpers/`, both apps moved, rule `now-playing`. Reuben chose chapters for Read Aloud's next and previous. Awaits a phone check |
 
 Already in the framework: web images (`ForgeRemoteImage`, #298), Undo banners (`ForgeBanner`, #294), haptics (`ForgeFeedback`, #309).
 
@@ -53,7 +53,7 @@ On 2026-11-17 Reuben asked to look for places where apps do by hand what the fra
 | 2 | Error text in raw `.red` (`Text(problem).foregroundStyle(.red)`) | ForgeUI `.forgeForeground(.danger)`, which passes contrast in light and dark | 12 places: Device Lab, FieldKit, Relay, Sketchbook, Soundscape | PR A, widen the `toned-text` rule to red. A red that marks recording (Soundscape's "Recording one pass") is a state colour, not an error; it moves to the same tone |
 | 3 | Swift logging through `print` and `NSLog`, which bypass the log pipeline (`forge device logs`, crash reports) | `ForgeLog` (crates call `forge_runtime::log_export!()`) | Pocket Library (model), Relay (`ChatModel`). Pocket Library and Checklist don't export `ForgeLog` at all | PR A, rule `swift-logging` (no `print` or `NSLog` in `Sources/AppHost`; launchers and Device Lab's crash test are exempt) |
 | 4 | Empty, missing and failed screens built directly with `ContentUnavailableView` | ForgeUI `ForgeStateView` (`empty`, `noResults`, `loading`, `failed` with a retry button and identifier) | 22 places in 9 apps; Pocket Library and Relay have the most | PR B on its own, since screens change look slightly: a glance at each app in Device Lab. Rule `state-views` |
-| 5 | Soundscape sets `AVAudioSession` itself | `ForgeAudioSession` (no music mode yet) | Soundscape | Part of the Now Playing extraction, which adds the music mode |
+| 5 | Soundscape sets `AVAudioSession` itself | `ForgeAudioSession` (no music mode yet) | Soundscape | Done with Now Playing: `ForgeAudioSession.activate(.music)` |
 
 Already in flight: outcome haptics through `ForgeFeedback` in every app (#309).
 

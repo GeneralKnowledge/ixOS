@@ -513,6 +513,27 @@ def rule_resume(app):
     return True, ""
 
 
+# The lock screen, headphone buttons and the system's audio rules (calls,
+# Siri, unplugged headphones) through the `ForgeNowPlaying` helper, not by
+# hand in each player (docs/research/framework-candidates.md, 2026-11-18). Read
+# Aloud's hand-written copy had none of the system rules.
+NOW_PLAYING = re.compile(
+    r"\bMPNowPlayingInfoCenter\b|\bMPRemoteCommandCenter\b"
+    r"|\binterruptionNotification\b|\brouteChangeNotification\b"
+)
+
+
+def rule_now_playing(app):
+    bad = []
+    for path in swift_sources(app):
+        for i, line in enumerate(read(path).splitlines()):
+            if NOW_PLAYING.search(line.split("//", 1)[0]):
+                bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "lock screen or audio interruptions by hand; use ForgeNowPlaying: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -525,6 +546,7 @@ RULES = [
     ("state-views", "Empty, no-results, loading and failed screens through ForgeUI's `ForgeStateView`", rule_state_views),
     ("toned-text", "Warning and error text in ForgeUI's tones, never raw orange, yellow or (for errors) red", rule_toned_text),
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
+    ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
