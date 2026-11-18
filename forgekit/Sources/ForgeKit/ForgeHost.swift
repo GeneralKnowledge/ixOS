@@ -147,6 +147,21 @@ public final class ForgeHost<Core: ForgeCore> {
     @ObservationIgnored public var backgroundTime: (any ForgeBackgroundTime)?
     @ObservationIgnored private var holdingBackgroundTime = false
 
+    /// The last return from the background: when, and how long the app was
+    /// away. Nil until the app has been in the background once.
+    public private(set) var lastResume: ForgeResume?
+    /// The time, for `lastResume`. Tests set a clock they can move.
+    @ObservationIgnored public var clock: @MainActor () -> Date = { Date() }
+    @ObservationIgnored private var backgroundSince: Date?
+    @ObservationIgnored private var backgroundHandlers: [PhaseHandler<Void>] = []
+    @ObservationIgnored private var resumeHandlers: [PhaseHandler<ForgeResume>] = []
+
+    /// A model's phase handler, dropped once the model is gone.
+    private struct PhaseHandler<Argument> {
+        weak var owner: AnyObject?
+        let run: @MainActor (Argument) -> Void
+    }
+
     @ObservationIgnored private let environment: @Sendable () throws -> ForgeEnvironment
     @ObservationIgnored private let opener: @Sendable (ForgeEnvironment) throws -> Core
     @ObservationIgnored private var listener: Task<Void, Never>?
@@ -216,11 +231,50 @@ public final class ForgeHost<Core: ForgeCore> {
             // Commands still saving, or finishing work: ask for time now,
             // while the system is still running the app.
             if core?.backgroundWorkPending() == true { holdBackgroundTime() }
+            if backgroundSince == nil {
+                backgroundSince = clock()
+                backgroundHandlers.removeAll { $0.owner == nil }
+                for handler in backgroundHandlers { handler.run(()) }
+            }
         case .active, .inactive:
             releaseBackgroundTime()
+            if let since = backgroundSince {
+                backgroundSince = nil
+                let now = clock()
+                let resume = ForgeResume(at: now, away: max(0, now.timeIntervalSince(since)))
+                lastResume = resume
+                resumeHandlers.removeAll { $0.owner == nil }
+                for handler in resumeHandlers { handler.run(resume) }
+            }
         default:
             break
         }
+    }
+
+    /// Runs `handler` each time the app goes to the background, where iOS
+    /// soon suspends it: sockets drop, adverts and timers stop. The handler
+    /// is dropped when `owner` (the model) goes, and replaced if the same
+    /// owner registers again; capture it weakly:
+    ///
+    ///     host.onBackground(self) { [weak self] in self?.closeConnections() }
+    public func onBackground(_ owner: AnyObject, _ handler: @escaping @MainActor () -> Void) {
+        backgroundHandlers.removeAll { $0.owner == nil || $0.owner === owner }
+        backgroundHandlers.append(PhaseHandler(owner: owner, run: { _ in handler() }))
+    }
+
+    /// Runs `handler` each time the app comes back from the background,
+    /// with how long it was away, after Rust has been told. This is where a
+    /// model reopens what iOS ended and refreshes what may have aged; Rust's
+    /// own state is re-read anyway (`changes` moves). The handler is dropped
+    /// when `owner` (the model) goes, and replaced if the same owner
+    /// registers again; capture it weakly:
+    ///
+    ///     host.onResume(self) { [weak self] resume in
+    ///         if resume.away > 10 * 60 { self?.refresh() }
+    ///     }
+    public func onResume(_ owner: AnyObject, _ handler: @escaping @MainActor (ForgeResume) -> Void) {
+        resumeHandlers.removeAll { $0.owner == nil || $0.owner === owner }
+        resumeHandlers.append(PhaseHandler(owner: owner, run: handler))
     }
 
     private func holdBackgroundTime() {
@@ -282,6 +336,19 @@ public final class ForgeHost<Core: ForgeCore> {
                 }
             }
         }
+    }
+}
+
+/// A return from the background (`ForgeHost.lastResume`, `onResume`).
+public struct ForgeResume: Equatable, Sendable {
+    /// When the app came back.
+    public let at: Date
+    /// How long it was in the background, in seconds.
+    public let away: TimeInterval
+
+    public init(at: Date, away: TimeInterval) {
+        self.at = at
+        self.away = away
     }
 }
 

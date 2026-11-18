@@ -1,3 +1,4 @@
+import ForgeKit
 import Foundation
 @testable import WeatherApp
 @preconcurrency import WeatherFFI
@@ -171,9 +172,15 @@ final class WeatherViewModelTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
 
-        // Back after a long time away: the phone may have moved.
+        // Back after a long time away, through the host as on the phone:
+        // the phone may have moved.
+        let host = ForgeHost<ForgeWeatherApp>(environment: { try ForgeEnvironment.temporary() }) {
+            try ForgeWeatherApp(storageDirectory: $0.dataDirectory)
+        }
+        model.follow(host)
+        host.report(.background)
         clock += 60 * 60
-        model.becameActive()
+        host.report(.active)
         for _ in 0..<200 where model.place?.name != "Paris" {
             try await Task.sleep(for: .milliseconds(10))
         }

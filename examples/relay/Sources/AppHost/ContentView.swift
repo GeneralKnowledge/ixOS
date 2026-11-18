@@ -19,7 +19,7 @@ public struct ContentView: View {
 
     public var body: some View {
         ForgeRoot(host) { core in
-            RelayScreen(core: core, changes: host.changes)
+            RelayScreen(core: core, host: host, changes: host.changes)
         }
         .forgeTheme(.standard)
     }
@@ -30,8 +30,10 @@ private struct RelayScreen: View {
     @State private var model: RelayModel
     let changes: UInt64
 
-    init(core: RelayCore, changes: UInt64) {
-        _model = State(initialValue: RelayModel(core: core))
+    init(core: RelayCore, host: ForgeHost<RelayCore>, changes: UInt64) {
+        let model = RelayModel(core: core)
+        model.follow(host)
+        _model = State(initialValue: model)
         self.changes = changes
     }
 
@@ -62,7 +64,6 @@ struct DevicesView: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var preview: URL?
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -217,9 +218,10 @@ struct DevicesView: View {
         )) { action in Task { await model.handle(action) } }
         .onAppear(perform: open)
         .onDisappear(perform: close)
-        .onChange(of: scenePhase) {
-            // iOS suspends the port in the background anyway.
-            if scenePhase == .active { open() } else if scenePhase == .background { close() }
+        // The model follows the app's phases: iOS suspends the port and
+        // the adverts in the background anyway.
+        .onChange(of: model.isAway) { _, away in
+            if away { close() } else { open() }
         }
     }
 

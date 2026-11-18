@@ -96,6 +96,21 @@ Rust raises its revision after each command it has saved, and `ForgeHost` runs t
 
 After a command succeeds, the model also reads the state directly (`notes = core.notes()`), so the screen changes in the same frame as the tap. Reads are cheap: Rust hands over its published list without waiting for a command.
 
+### Coming back from the background
+
+Re-reading Rust's state covers most of a return. What lives outside it does not: a connection or Bonjour advert iOS ended, a forecast or feed that has aged, a permission changed in Settings, work the background cut off. The model follows the host for those, and decides there, where a Linux test can drive it:
+
+```swift
+public func follow(_ host: ForgeHost<NotesCore>) {
+    host.onBackground(self) { [weak self] in self?.closeConnections() }
+    host.onResume(self) { [weak self] resume in
+        if resume.away > 10 * 60 { Task { await self?.refresh() } }
+    }
+}
+```
+
+Call it where the screen makes the model. `resume.away` is how long the app was in the background; `host.lastResume` holds the last one, for a view that has to run something only a view can (an Apple Network listener in Relay) or has no model of its own: `.onChange(of: host.lastResume) { refresh() }`. A test reports `.background` then `.active` on the host (its `clock` can be moved). Don't watch SwiftUI's `scenePhase` in an app's views: `scripts/check-app-parity.sh` (rule `resume`) fails on it ([coming-back.md](research/coming-back.md)).
+
 ### Records in SwiftUI
 
 UniFFI records are already `Equatable`, `Hashable` and `Sendable`. To use them in `ForEach`, `List(selection:)` and `navigationDestination` without an `id:` argument, add `Identifiable` in Swift:
