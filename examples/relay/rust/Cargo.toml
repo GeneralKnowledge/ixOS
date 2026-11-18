@@ -63,6 +63,8 @@ thiserror = "2.0"
 # versions as the M0 spike (examples/relay/spike), whose sender it talks to.
 iroh = { version = "1", default-features = false, features = ["tls-ring"] }
 iroh-blobs = "=0.104.1"
+# Relay's own servers (M2 PR 7): a relay and a lookup server, by URL.
+url = "2.5"
 blake3 = "1"
 # Streams of download progress (iroh-blobs' own async helpers).
 n0-future = "0.3"
@@ -90,6 +92,8 @@ tempfile = "3.14"
 chat-server = { path = "../messaging/chat-server" }
 axum = "0.8"
 tokio = { version = "1", features = ["net"] }
+# A pkarr lookup server in process (tests/servers.rs).
+iroh = { version = "1", default-features = false, features = ["tls-ring", "test-utils"] }
 
 # Its own workspace, like every app made with `forge init`.
 [workspace]

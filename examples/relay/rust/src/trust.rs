@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::resolver::{ConnectionMode, RelayServers, RouteKind};
+
 /// What happens after a word-code transfer with a device (Settings).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum PairingPolicy {
@@ -65,6 +67,13 @@ pub struct SavedDevice {
     pub platform: Option<String>,
     #[serde(default)]
     pub offers: Vec<String>,
+    /// Where it said it can be reached, the last time the two met: its
+    /// Tailscale address too, which Bonjour never shows (M2 PR 6).
+    #[serde(default)]
+    pub told: Vec<String>,
+    /// The route of the last connection with it, either way.
+    #[serde(default)]
+    pub route: Option<RouteKind>,
 }
 
 fn yes() -> bool {
@@ -105,6 +114,12 @@ pub fn may_connect(known: Option<SavedTrust>) -> bool {
 pub struct Devices {
     #[serde(default)]
     pub policy: PairingPolicy,
+    /// Which routes trusted devices are reached by (M2 PR 6).
+    #[serde(default)]
+    pub mode: ConnectionMode,
+    /// Relay's own servers (M2 PR 7); none until they are set.
+    #[serde(default)]
+    pub servers: RelayServers,
     #[serde(default)]
     pub list: Vec<SavedDevice>,
 }
@@ -144,6 +159,8 @@ impl Devices {
                 last_seen_ms: None,
                 platform: None,
                 offers: Vec::new(),
+                told: Vec::new(),
+                route: None,
             }),
         }
     }
@@ -216,6 +233,22 @@ impl Devices {
                 d.platform = (!platform.is_empty()).then(|| platform.to_string());
                 d.offers = offers.to_vec();
                 d.last_seen_ms = Some(d.last_seen_ms.map_or(now_ms, |t| t.max(now_ms)));
+            }
+        }
+    }
+
+    /// A trusted device said where it can be reached, and a connection with
+    /// it used `route`.
+    pub fn met(&mut self, endpoint_id: &str, told: &[String], route: Option<RouteKind>) {
+        if let Some(d) = self.get_mut(endpoint_id) {
+            if d.trust == SavedTrust::Trusted {
+                let told = crate::resolver::clean(told);
+                if !told.is_empty() {
+                    d.told = told;
+                }
+                if route.is_some() {
+                    d.route = route;
+                }
             }
         }
     }
