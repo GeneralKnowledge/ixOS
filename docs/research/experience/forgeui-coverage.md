@@ -1,6 +1,6 @@
 # ForgeUI coverage audit
 
-Status: 2026-11-18, on main at `61c9e13`. Part of [ixOS Experience Research](README.md). Research only: no app, ForgeUI or ForgeAppKit code changes here. Evidence is the source (S) unless a row says otherwise; nothing here was checked on the phone.
+Status: 2026-11-18, on main at `61c9e13`. Part of [ixOS Experience Research](README.md). Research only: no app, ForgeUI or ForgeAppKit code changes here. Reviewed by Reuben on 2026-11-18: decisions and implementation order recorded in sections 5 and Decisions. Evidence is the source (S) unless a row says otherwise; nothing here was checked on the phone.
 
 The question this audit answers:
 
@@ -16,11 +16,11 @@ It separates two failure modes, because they need opposite fixes:
 **Foundations are mostly in place; the apps mostly don't use them, and the checks can't see that.** Rebuilding the apps today, ForgeUI and ForgeAppKit could carry the colour, tones, text hierarchy, state screens, alerts and save flows of every list, form and settings screen. What would still be built by hand is mostly what *should* be built by hand: Weather's sky, Relay's chat bubbles, Soundscape's player, Sketchbook's canvas, cover-led headers. Four things would still be reinvented because the framework is missing a small piece:
 
 1. **A form sheet that guards unsaved changes.** `forgeFormToolbar` exists but has no users, not even the starter, because it only stops a swipe-away *while saving*. Six apps and the starter hand-roll the same toolbar instead, most of them to also stop a swipe-away while the form has changes (finding C1).
-2. **A rename prompt.** Seven hand-rolled rename alerts in five apps, each with its own plumbing and identifiers, and none refusing an empty name (C2).
+2. **A rename prompt.** Seven hand-rolled rename alerts in five apps, each with its own plumbing, identifiers and validation policy (C2).
 3. **An inline notice** for offline, stale or reconnecting. Three apps, three looks (C3).
 4. **Icon tiles in a category colour.** `ForgeRow`'s icon tile only takes meaning tones, so Soundscape's "Your Music" rows and Pocket Library's Activity rows rebuild it (C4).
 
-Item 1 is a parameter. Items 2 and 3 have their second user already. Item 4 is a decision about the visual language before it is code.
+Item 1 is a parameter. Items 2 and 3 have their second user already. Item 4 needed a visual-language decision first; it is now decided (D1).
 
 The bigger gap is adoption, not coverage:
 
@@ -133,7 +133,7 @@ Each finding: what, where, evidence, priority (P1 next, P2 soon, P3 when conveni
 
 **A1. No app uses text roles (P1, apps + check).** `forgeText` and `Font.forge` appear only in the showcase. Every app picks system styles by hand: `.font(.headline)` 48 times, `.font(.subheadline)` 67, `.font(.caption)` 72, and `title3.monospacedDigit().bold()`-style figures in FieldKit's `Stat`, Pocket Library's `StatRow` and Weather's `Tile`. The roles were made for exactly these: `rowTitle` + `metadata` for FieldKit's `TripRow` and the starter's `NoteRow`, `figure` + `figureCaption` for FieldKit's `Stat`. This is the one finding where "the same kind of text looks different in every app" is directly fixable by migration. Move the starter first (so new apps start right), then apps a screen at a time when they are next touched; don't do a mass rewrite.
 
-**A2. Accents: Relay and Soundscape still standard (P2, apps).** Both were left for their redesigns (forgeui.md: "Relay and the rest keep the standard blue for now"). Checklist has no theme because it has no ForgeUI. One line each once the accent is chosen (D1).
+**A2. Accents: Relay and Soundscape still standard (P2, apps).** Both were left for their redesigns (forgeui.md: "Relay and the rest keep the standard blue for now"). Checklist has no theme because it has no ForgeUI. Deferred to their redesigns (D3).
 
 **A3. Raw colours outside the `toned-text` rule (P2, apps + check).** The rule catches raw orange/yellow `.foregroundStyle` and red error text. It misses status in raw green and red on icons and labels: Relay `TrustBadge` (`TrustedDeviceViews.swift:20`), received-transfer and code-sent labels (`ReceiveCodeView.swift:124`, `SendCodeView.swift:160`, `ContentView.swift:322`), failed delivery (`ChatView.swift:1000`, `:1188`), Pocket Library's catalogue match (`CatalogueSearchView.swift:197`), FieldKit's "Recording" label (`TripListView.swift:117`), Soundscape's recording text (`ProjectView.swift:181`, in the Studio screens the music-player plan removes, so leave it). These are success/danger tones, contrast-checked in ForgeUI and unchecked as raw colours. Not findings: swipe-action tints (Relay's blue/indigo follow Mail's convention), Device Lab's chart series colours, Soundscape's mute/solo toggle colours (mixer convention), ratings stars, Weather's sky.
 
@@ -145,7 +145,7 @@ Each finding: what, where, evidence, priority (P1 next, P2 soon, P3 when conveni
 
 ### Coverage: apps need it, the framework lacks it
 
-**C1. `forgeFormToolbar` can't guard unsaved changes (P1, ForgeUI + ForgeAppKit).** The toolbar disables swipe-to-dismiss only while saving. Every real form also stops it while there are unsaved changes, so nobody uses the helper; each hand-rolls the identical Cancel / spinner-labelled-"Saving" / Add toolbar plus `.interactiveDismissDisabled(...)`:
+**C1. `forgeFormToolbar` can't guard unsaved changes (P1, ForgeUI + ForgeAppKit).** The toolbar disables swipe-to-dismiss only while saving. Most of these forms also need to prevent dismissal while there are unsaved changes, so nobody uses the helper; each hand-rolls the identical Cancel / spinner-labelled-"Saving" / Add toolbar plus `.interactiveDismissDisabled(...)`:
 
 | Where | Guard while |
 |---|---|
@@ -160,11 +160,11 @@ Each finding: what, where, evidence, priority (P1 next, P2 soon, P3 when conveni
 
 Fix: one parameter (`hasChanges: Bool = false`) on both overloads, then the starter and these forms adopt it in the same PR (rule 12), with a parity rule that flags a hand-rolled `confirmationAction` spinner. Also move `forgeFormToolbar` out of `ForgeDetailHeader.swift` into its own file. This is the clearest case of "the helper exists but is one behaviour short, so everybody reinvents it".
 
-**C2. Rename prompt (P2, ForgeAppKit).** Seven hand-rolled alerts with a `TextField`: Commonplace feed, FieldKit trip, Relay device, Sketchbook sketch, Soundscape project, track and playlist. Each has its own Bool or optional-binding plumbing and its own identifiers (`feeds.rename.title`, `trip.renameField`, `rename.title`); Rename is never disabled for an empty or unchanged name (Commonplace accepts empty on purpose, to restore the feed's own name). A `ForgeRename` value (current name, whether empty is allowed, the action) and `.forgeRename($model.rename)` modifier, presented as the same system alert, gives consistent identifiers and validation and a Linux test. #285 listed "validated rename" for ForgeAppKit; the count confirms it. Five apps already, so the second-use rule is met; extract after the next phone sitting passes the rename flows in two of them.
+**C2. Rename prompt (P2, ForgeAppKit).** Seven hand-rolled alerts with a `TextField`: Commonplace feed, FieldKit trip, Relay device, Sketchbook sketch, Soundscape project, track and playlist. Each has its own Bool or optional-binding plumbing and its own identifiers (`feeds.rename.title`, `trip.renameField`, `rename.title`); The problem is that the validation policy is inconsistent and implicit, not that every rename should reject an empty name: Commonplace deliberately accepts an empty name to restore the feed's own name, while the others accept an empty or unchanged name without having decided to. A shared prompt makes each app state its policy. A `ForgeRename` value (current name, the app's policy for an empty name, the action) and `.forgeRename($model.rename)` modifier, presented as the same system alert, gives consistent identifiers and validation and a Linux test. #285 listed "validated rename" for ForgeAppKit; the count confirms it. Five apps already, so the second-use rule is met; extract after the next phone sitting passes the rename flows in two of them.
 
 **C3. Inline notice (P2, ForgeUI).** Offline, stale and reconnecting states are drawn three ways: Weather's `Notice` card on the sky (`ForecastPage.swift`), Relay's `ConnectionBanner` on `.bar` (`ChatView.swift`), Commonplace's `RefreshStatus` caption in the bottom toolbar (`FeedListView.swift`). A small `ForgeNotice(text, systemImage:, tone:, action:)` that takes the theme's colours would serve Relay and Commonplace; Weather keeps its own look but can share the wording rules. #285 X17 named the same three. Second use is met; extract with the next Relay or Commonplace screen change, not on its own.
 
-**C4. Icon tiles in a category colour (decide first; ForgeUI).** `ForgeRow`'s icon tile takes a `ForgeTone`, which the visual language reserves for meaning. Soundscape's "Your Music" rows (`CollectionView.swift:53`, pink/indigo/orange/green gradient tiles) and Pocket Library's Activity rows (`ActivityView.swift:29`, green/blue/orange/yellow symbols) want the Settings-app look: a different colour per category. Either ForgeRow accepts a `ForgeAccent` for the tile (checked colours, no meaning implied) or the apps follow the one-accent rule. A decision (D1), not a component.
+**C4. Icon tiles in a category colour (decided: D1; ForgeUI).** `ForgeRow`'s icon tile takes a `ForgeTone`, which the visual language reserves for meaning. Soundscape's "Your Music" rows (`CollectionView.swift:53`, pink/indigo/orange/green gradient tiles) and Pocket Library's Activity rows (`ActivityView.swift:29`, green/blue/orange/yellow symbols) want the Settings-app look: a different colour per category. Decided (D1): `ForgeRow` accepts a `ForgeAccent` for the tile (checked colours, no meaning implied). A parameter, not a component.
 
 ### Not gaps (native is right, or fine as it is)
 
@@ -196,31 +196,34 @@ The useful automatic checks are cheap and match the existing rule style (a plain
 - Widen `toned-text` to `.foregroundStyle(.green)` / `.red` on `Label` and `Image` status.
 - Apply ForgeUI rules to apps that use ForgeKit but not ForgeUI (Checklist), so leaving ForgeUI out isn't a way round them.
 
-Text roles are deliberately **not** proposed as a hard rule: plain system styles stay correct for one-off text (forgeui.md says so). A count in the parity report, or a rule for the specific repeated cases (row title + metadata), is enough.
+Text roles are deliberately **not** proposed as a hard rule: plain system styles stay correct for one-off text (forgeui.md says so). The parity report should show how much of each app uses ForgeUI (counts, like the appendix), but counts are information, not pass/fail: a requirement on every count would encourage pointless component use (Reuben, 2026-11-18).
 
-## 5. Recommendations, in order
+## 5. Implementation order (agreed)
 
-Modest by design: the milestone is "complete, not bigger".
+Modest by design: the milestone is "complete, not bigger". Reuben's order (review of this PR, 2026-11-18); no redesign of all ten apps.
 
-| # | What | Where | Size | Gate |
+| # | What | Where | Why | Gate |
 |---|---|---|---|---|
-| 1 | `forgeFormToolbar(hasChanges:)`; every sheet in C1's table (the starter included) adopts it; `form-toolbar` rule | ForgeUI + ForgeAppKit + apps | Small | Linux CI, laptop build, short phone check of one form |
-| 2 | Starter: text roles on its rows, a comment prompting an accent choice | Template | Small | Template sync |
-| 3 | `forge-theme` and `root-loading` rules; widen `toned-text`; make ForgeUI rules see Checklist | Check | Small | Linux CI |
-| 4 | Fix A3–A5 in Relay, Pocket Library, FieldKit, Soundscape (tones, `ForgeStatus`, `ForgeStateView.loading`) as each is next touched | Apps | Small each | Rule 3 forces it |
-| 5 | Text roles, app by app, when a screen is next changed: FieldKit and Pocket Library first (most figure/metadata text) | Apps | Medium overall | None extra |
-| 6 | Move Checklist onto ForgeUI | App | Small | Laptop build |
-| 7 | `ForgeRename` | ForgeAppKit | Small | After rename flows pass the phone in two apps |
-| 8 | `ForgeNotice` | ForgeUI | Small | With the next Relay or Commonplace change that touches it |
-| 9 | ForgeAppKit examples in Device Lab's Patterns page; record catalogue baselines | Showcase, Device Lab | Small | A phone sitting (~3 min for the catalogue) |
+| 1 | `forgeFormToolbar(hasChanges:)`, and the starter adopts it; the other sheets in C1's table follow, with a `form-toolbar` rule | ForgeUI + ForgeAppKit + starter, then apps | A real shared gap; gives new apps the right pattern | Linux CI, laptop build, short phone check of one form |
+| 2 | Starter typography on ForgeUI text roles (and a comment prompting an accent choice) | Template | New apps stop inheriting the problem | Template sync |
+| 3 | Parity blind spots: `forge-theme` and `root-loading` rules, wider `toned-text`, ForgeUI rules apply to Checklist; usage counts in the report as information | Check | Apps can't escape the checks by leaving ForgeUI out | Linux CI |
+| 4 | Move Checklist onto ForgeUI | App | Smallest app; a test of adoption | Laptop build |
+| 5 | Typography and A3–A5 (tones, `ForgeStatus`, `ForgeStateView.loading`) migrated as screens are touched: FieldKit and Pocket Library first | Apps | No mass rewrite | None extra |
+| 6 | `ForgeRename` and `ForgeNotice` | ForgeAppKit, ForgeUI | Worthwhile, not urgent enough to interrupt app work | Rename flows pass the phone in two apps; notice with the next Relay or Commonplace change |
+
+Later, when convenient: ForgeAppKit examples in Device Lab's Patterns page, and recording the catalogue baselines (a ~3 minute phone sitting).
 
 Not recommended: a ForgeUI content-row component, a stats/metric component (roles cover it), a search-state type, migrating every `.sheet` to destinations, making ForgeUI button styles mandatory, or touching Weather's visual system.
 
-## Decisions for Reuben
+### Working rule
 
-- **D1. Category colours.** Should icon tiles (and only icon tiles) be allowed to use ForgeUI's checked accent set as category colours, as Settings and Music do? Yes makes C4 a one-parameter change; no means Soundscape and Pocket Library move to one accent. *Recommendation: yes, icon tiles only.*
-- **D2. Buttons.** Apps use SwiftUI's `.borderedProminent` / `.bordered` (35 uses), tinted by the theme, and ForgeUI's button styles once. On iOS 26 the system styles get Liquid Glass; ForgeUI's draw their own shape. Bless the system styles for in-content buttons and keep ForgeUI's for full-width calls to action, or move apps to ForgeUI's? *Recommendation: bless the system styles, keep `ForgeButton(isWorking:)` and `.forgeIcon`, say so in forgeui.md. Check the Liquid Glass question on the phone first (#285 sitting step 1).*
-- **D3. Accents for Relay and Soundscape.** Pick now (one line each) or with their redesigns? *Recommendation: with the Relay transfer-journey work and the Soundscape player PRs already planned.*
+Every new app feature first considers what ForgeUI and ForgeAppKit already have. Where it builds something itself, the PR says why: either the native or app-specific version is better here, or it names a genuine missing shared capability (Reuben, 2026-11-18). This is what makes ForgeUI the normal way to build an app rather than a library that happens to be in the repository. It goes into the build guidance (ios-ui.md, AGENTS.md) with the first implementation PR.
+
+## Decisions (Reuben, 2026-11-18)
+
+- **D1. Category colours: yes, on icon tiles only.** Icon tiles may use ForgeUI's checked accent set (`ForgeAccent`) as category colours, as Settings and Music do; never arbitrary colours. Semantic tones stay reserved for meaning (success, warning, danger). This makes C4 a one-parameter change to `ForgeRow`.
+- **D2. Native button styles: yes, with a phone check.** `.bordered` and `.borderedProminent`, tinted by the theme, are first-class choices. ForgeUI's styles stay for where they add something specific: full-width calls to action and working buttons (`ForgeButton(isWorking:)`), and `.forgeIcon`. Check Liquid Glass on the iPhone before the visual guidance in forgeui.md is finalised.
+- **D3. Relay and Soundscape accents: deferred** to their redesigns. No arbitrary colour now only to tick an adoption box.
 
 ## Method and limits
 
