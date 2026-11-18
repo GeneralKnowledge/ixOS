@@ -157,7 +157,7 @@ struct SendCodeSheet: View {
         case .sent(let name, let size, let seconds, let speed):
             VStack(alignment: .leading, spacing: 6) {
                 Label("Sent \(name)", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .forgeForeground(.success)
                 Text("\(RelayFormat.size(size)) in \(String(format: "%.1f", seconds)) s, \(String(format: "%.1f", speed)) MB/s")
                     .font(.caption)
                     .foregroundStyle(.secondary)

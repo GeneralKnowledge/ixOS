@@ -18,7 +18,7 @@ public struct ContentView: View {
         Group {
             switch model.phase {
             case .loading:
-                ProgressView()
+                ForgeStateView.loading()
             case .needsDog:
                 OnboardingView(model: model)
             case .ready:

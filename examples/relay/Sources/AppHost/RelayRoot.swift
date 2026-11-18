@@ -94,7 +94,7 @@ public struct RelayRoot: View {
     @ViewBuilder private var chats: some View {
         switch chat.phase {
         case .loading:
-            ProgressView()
+            ForgeStateView.loading()
         case .signedOut:
             SignUpView(model: chat)
         case .ready:
