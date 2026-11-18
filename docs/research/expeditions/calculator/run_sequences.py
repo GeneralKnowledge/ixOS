@@ -13,6 +13,14 @@ docs/research/app-as-specification.md, R1).
     python3 run_sequences.py --pass b
     python3 run_sequences.py --compare a b
 
+The same sums on the recreation (Sums, inside Device Lab, R2): no policy
+change, because Forge built it. And the held-out sums on either app:
+
+    python3 run_sequences.py --app sums --pass sums-a
+    python3 run_sequences.py --pass b2 --sequences evidence/sequences-2.toml
+    python3 run_sequences.py --compare a sums-a
+    python3 run_sequences.py --compare evidence/predictions-2.toml b2
+
 Each pass writes one `forge ui run` test file from evidence/sequences.toml,
 runs it with --any-app (Forge presses every key and opens and closes
 History; landscape is left out for now), then reads the display from the tree Forge saved
@@ -32,7 +40,23 @@ import tomllib
 
 HERE = pathlib.Path(__file__).resolve().parent
 SEQUENCES = HERE / "evidence" / "sequences.toml"
-APP = "com.apple.calculator"
+APPS = {
+    # The reference: keys by its own ids, the display in StandardInputView.
+    "reference": {
+        "bundle": "com.apple.calculator",
+        "key": lambda name: name,
+        "display": "StandardInputView",
+        "expression": "StandardResultView",
+    },
+    # The recreation, inside Device Lab: sums.key.<id in lower case>.
+    "sums": {
+        "bundle": "org.forgemobile.devicelab",
+        "launch_args": ["-ForgeTemporaryData", "-launchApp", "sums"],
+        "key": lambda name: "sums.key." + ("clear" if name == "AllClear" else name.lower()),
+        "display": "sums.display",
+        "expression": "sums.expression",
+    },
+}
 LRM = "‎"  # left-to-right mark, before every part of a number (R0 finding 4)
 
 
@@ -46,14 +70,16 @@ def step(**action):
     return f'[[step]]\n{key} = "{value}"\n'
 
 
-def test_file(sequences, extras):
+def test_file(sequences, extras, app):
     parts = [
-        'name = "Calculator R1 sequences"\n',
-        f'app = "{APP}"\n',
+        'name = "Calculator sequences"\n',
+        f'app = "{app["bundle"]}"\n',
         "timeout = 10\n\n",
-        step(activate={}),
-        step(orientation="portrait"),
     ]
+    if "launch_args" in app:
+        args = ", ".join(f'"{a}"' for a in app["launch_args"])
+        parts.append(f"[[step]]\nlaunch = {{ args = [{args}] }}\n")
+    parts += [step(activate={}), step(orientation="portrait")]
     for number, seq in enumerate(sequences, 1):
         parts.append(f"\n# {seq['name']}: {seq['why']}\n")
         # Bring Calculator to the front before every sum: `forge ui run`
@@ -64,7 +90,7 @@ def test_file(sequences, extras):
         parts.append(step(tap={"label_contains": "Clear"}))
         parts.append(step(tap={"label_contains": "Clear"}))
         for key in seq["keys"]:
-            parts.append(step(tap={"id": key}))
+            parts.append(step(tap={"id": app["key"](key)}))
         parts.append(step(screenshot=f"{number:02d}-{seq['name']}"))
     if extras:
         parts.append("\n# History, opened and closed by Forge\n")
@@ -95,12 +121,12 @@ def texts(node):
     return found
 
 
-def read_display(tree_file):
+def read_display(tree_file, app):
     if not tree_file.exists():
         return None, None, "no tree saved"
     tree = json.loads(tree_file.read_text())
-    display = texts(find(tree, "StandardInputView"))
-    expression = texts(find(tree, "StandardResultView"))
+    display = texts(find(tree, app["display"]))
+    expression = [t for t in texts(find(tree, app["expression"])) if t.strip()]
     note = "" if display else "display not in the tree"
     return (display[0] if display else None), (expression[0] if expression else None), note
 
@@ -110,7 +136,8 @@ def toml_string(text):
 
 
 def record(args):
-    sequences = tomllib.loads(SEQUENCES.read_text())["sequence"]
+    app = APPS[args.app]
+    sequences = tomllib.loads(pathlib.Path(args.sequences).read_text())["sequence"]
     if args.start_at:
         names = [seq["name"] for seq in sequences]
         if args.start_at not in names:
@@ -119,8 +146,11 @@ def record(args):
     out = pathlib.Path(args.out or f"~/expeditions/calculator/r1-{args.pass_}").expanduser()
     out.mkdir(parents=True, exist_ok=True)
     run_file = out / "run.toml"
-    run_file.write_text(test_file(sequences, not args.no_extras))
-    command = [args.forge, "ui", "run", str(run_file), "--any-app", "--out", str(out / "run")]
+    # History is the reference's; Sums has none.
+    run_file.write_text(test_file(sequences, args.app == "reference" and not args.no_extras, app))
+    command = [args.forge, "ui", "run", str(run_file), "--out", str(out / "run")]
+    if args.app == "reference":
+        command.insert(4, "--any-app")
     print("$", " ".join(command), flush=True)
     started = time.monotonic()
     status = subprocess.call(command)
@@ -128,13 +158,13 @@ def record(args):
     print(f"forge ui run: exit {status} in {seconds:.0f} s", flush=True)
 
     lines = [
-        f"# Calculator R1, pass {args.pass_}: forge ui run exit {status}, {seconds:.0f} s.",
+        f"# Calculator, {args.app}, pass {args.pass_}: forge ui run exit {status}, {seconds:.0f} s.",
         "# display/expression have every U+200E removed; *_raw keep them escaped.",
         "",
     ]
     for number, seq in enumerate(sequences, 1):
         tree_file = out / "run" / f"{number:02d}-{seq['name']}.tree.json"
-        display, expression, note = read_display(tree_file)
+        display, expression, note = read_display(tree_file, app)
         lines += ["[[result]]", f"name = {toml_string(seq['name'])}"]
         lines.append("keys = [" + ", ".join(toml_string(k) for k in seq["keys"]) + "]")
         if display is not None:
@@ -153,8 +183,10 @@ def record(args):
 
 def compare(args):
     def load(label):
-        path = pathlib.Path(args.out or "~/expeditions/calculator").expanduser()
-        path = path / f"r1-{label}" / f"results-{label}.toml"
+        path = pathlib.Path(label)
+        if not path.is_file():
+            path = pathlib.Path(args.out or "~/expeditions/calculator").expanduser()
+            path = path / f"r1-{label}" / f"results-{label}.toml"
         return {r["name"]: r for r in tomllib.loads(path.read_text())["result"]}
 
     first, second = load(args.compare[0]), load(args.compare[1])
@@ -176,6 +208,8 @@ def main():
     parser.add_argument("--out", help="output folder (default ~/expeditions/calculator/r1-<pass>)")
     parser.add_argument("--start-at", metavar="NAME", help="skip the sequences before this one (to finish a pass that stopped)")
     parser.add_argument("--no-extras", action="store_true", help="skip opening History at the end")
+    parser.add_argument("--app", choices=sorted(APPS), default="reference", help="which calculator (default: the reference)")
+    parser.add_argument("--sequences", default=str(SEQUENCES), help="the sequence file (default: evidence/sequences.toml)")
     args = parser.parse_args()
     if args.compare:
         sys.exit(compare(args))

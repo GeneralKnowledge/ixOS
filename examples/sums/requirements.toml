@@ -1,0 +1,25 @@
+# What Sums must do, and what proves it (docs/evidence.md).
+# `twin`: XCTests that drive the real view model against the real Rust core
+# (`forge check swift` runs them on Linux). `device`: UI scenarios for
+# `forge ui run`; their verdicts come only from a run on an iPhone.
+# The reference comparison itself (39 recorded sums, 16 held out) is
+# rust/tests/reference.rs on Linux and run_sequences.py on the phone
+# (docs/research/expeditions/calculator/).
+
+[[requirement]]
+id = "SU-1"
+statement = "Keys pressed on screen reach the Rust engine and the answer it gives is what the screen shows: 12 + 7 = gives 19, with 12+7 above it."
+twin = ["SumsModelTests.testASumIsShownAndSurvivesARestart"]
+device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "SU-2"
+statement = "The sum on the screen survives closing the app, as the reference calculator's does."
+twin = ["SumsModelTests.testASumIsShownAndSurvivesARestart"]
+device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "SU-3"
+statement = "Every one of the twenty keys has its own accessibility identifier (sums.key.<name>) and a label VoiceOver can read."
+twin = ["SumsModelTests.testEveryKeyHasOneFaceAndAnIdentifier"]
+device = ["uitests/smoke.toml"]

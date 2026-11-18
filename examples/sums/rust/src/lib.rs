@@ -1,21 +1,48 @@
-//! Sums: a calculator rebuilt from the outside.
+//! Sums: a calculator rebuilt from the outside, the Calculator expedition's
+//! recreation (docs/research/app-as-specification.md).
 //!
-//! Every rule here comes from the Calculator expedition's evidence
+//! Every rule is in [`engine`], and comes from the expedition's evidence
 //! (`docs/research/expeditions/calculator/`): the findings register and the
 //! answers recorded from the reference on an iPhone. Where the evidence ran
-//! out the rule is a guess, and it says so with `GUESS:`; the reconstruction
-//! record lists them all. The words people see ("Undefined") are the
-//! reference's, kept here because the test compares them exactly; Swift
-//! decides how they look.
+//! out the rule is a guess, marked `GUESS:` and listed in the reconstruction
+//! record. The words people see ("Undefined") are the reference's, kept here
+//! because the test compares them exactly; Swift decides how they look.
+//!
+//! This file is the API the SwiftUI app calls, on the application runtime
+//! (`forge_app`): each key press is a command, run one at a time on the
+//! runtime's command thread. The keys pressed since the last All Clear are
+//! saved, so the sum on the screen survives the app being closed, as the
+//! reference's does (R0 finding 21).
 
-use rust_decimal::prelude::*;
-use rust_decimal::Decimal;
+pub mod engine;
 
-/// A key on the keypad. The names are the reference's accessibility ids
-/// (finding 1), which the recreation reuses so one sequence table drives both.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Key {
-    Digit(u8),
+use std::sync::Arc;
+
+use forge_app::{DataDirectory, ErrorKind, OpenError, Published, Runtime, Stopped};
+use forge_storage::{JsonFile, StorageError};
+use serde::{Deserialize, Serialize};
+
+pub use engine::{format_result, Calculator, Key};
+
+uniffi::setup_scaffolding!();
+
+/// Version of `sums.json`. Bump it (and migrate) when [`Saved`] changes shape.
+const SAVE_VERSION: u32 = 1;
+const SAVE_FILE: &str = "sums.json";
+
+/// A key, as Swift sees it.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SumsKey {
+    Zero,
+    One,
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
     Decimal,
     Add,
     Subtract,
@@ -25,567 +52,251 @@ pub enum Key {
     Percent,
     Negate,
     Delete,
-    /// "C" while there is an entry to clear, "All Clear" otherwise (finding 8).
     Clear,
 }
 
-impl Key {
-    /// The key for a reference id such as `Seven` or `AllClear`.
-    pub fn from_id(id: &str) -> Option<Key> {
-        let digit = [
-            "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
-        ]
-        .iter()
-        .position(|name| *name == id);
-        if let Some(d) = digit {
-            return Some(Key::Digit(d as u8));
-        }
-        Some(match id {
-            "Decimal" => Key::Decimal,
-            "Add" => Key::Add,
-            "Subtract" => Key::Subtract,
-            "Multiply" => Key::Multiply,
-            "Divide" => Key::Divide,
-            "Equals" => Key::Equals,
-            "Percent" => Key::Percent,
-            "Negate" => Key::Negate,
-            "Delete" => Key::Delete,
-            "Clear" | "AllClear" => Key::Clear,
-            _ => return None,
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Op {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-}
-
-impl Op {
-    fn symbol(self) -> &'static str {
-        match self {
-            Op::Add => "+",
-            Op::Subtract => "-",
-            Op::Multiply => "×",
-            Op::Divide => "÷",
-        }
-    }
-
-    fn binds_tightly(self) -> bool {
-        matches!(self, Op::Multiply | Op::Divide)
-    }
-}
-
-/// A number as it was typed: digits, an optional point, a sign and a
-/// percent mark. Kept as text so "3.0" stays "3.0" (finding: trailing zero).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct Entry {
-    digits: String,
-    negative: bool,
-    percent: bool,
-}
-
-impl Entry {
-    /// A result carried into the next sum. The reference's expression line
-    /// shows 1 ÷ 999,999,999 as 0.000000001000000001: ten significant
-    /// digits, in plain notation (sequence tiny-quotient).
-    /// GUESS: the carried value is rounded the same way, not just shown so.
-    fn from_value(value: Decimal) -> Entry {
-        let carried = value.round_sf(10).unwrap_or(value);
-        Entry {
-            digits: carried.abs().normalize().to_string(),
-            negative: value.is_sign_negative() && !value.is_zero(),
-            percent: false,
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.digits.is_empty()
-    }
-
-    fn number(&self) -> Decimal {
-        let text = if self.digits.is_empty() || self.digits == "." {
-            "0"
-        } else {
-            self.digits.as_str()
-        };
-        let text = text.strip_suffix('.').unwrap_or(text);
-        let value = Decimal::from_str(text).unwrap_or(Decimal::ZERO);
-        if self.negative {
-            -value
-        } else {
-            value
-        }
-    }
-
-    /// What the display shows while typing: grouped digits, "0." for a bare
-    /// point, "(-5)" for a negative entry, "50%" with the mark.
-    fn shown(&self) -> String {
-        let digits = if self.digits.is_empty() {
-            "0".to_owned()
-        } else {
-            group_typed(&self.digits)
-        };
-        let mut text = if self.negative {
-            format!("(-{digits})")
-        } else {
-            digits
-        };
-        if self.percent {
-            text.push('%');
-        }
-        text
-    }
-}
-
-/// Typed digits with thousands separators; "007" shows as "7", ".5" as "0.5".
-fn group_typed(digits: &str) -> String {
-    let (int, frac) = match digits.split_once('.') {
-        Some((i, f)) => (i, Some(f)),
-        None => (digits, None),
-    };
-    let int = int.trim_start_matches('0');
-    let int = if int.is_empty() { "0" } else { int };
-    let mut out = group(int);
-    if let Some(f) = frac {
-        out.push('.');
-        out.push_str(f);
-    }
-    out
-}
-
-fn group(int: &str) -> String {
-    let mut out = String::new();
-    for (i, c) in int.chars().enumerate() {
-        if i > 0 && (int.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
-}
-
-/// A finished result as the display shows it.
-///
-/// Observed: up to 11 decimal places, last digit rounded (finding 28);
-/// thousands separators; scientific notation with up to 10 significant
-/// digits for 9.99999998e17 and 1.000000002e-18 (finding 29).
-/// GUESS: where plain notation stops (here at 1e16, and below what 11
-/// decimal places can show). No recorded sum sits near either edge.
-pub fn format_result(value: Decimal) -> String {
-    if value.is_zero() {
-        return "0".to_owned();
-    }
-    let abs = value.abs();
-    let rounded = abs.round_dp_with_strategy(11, RoundingStrategy::MidpointAwayFromZero);
-    let sign = if value.is_sign_negative() { "-" } else { "" };
-    if abs >= Decimal::from(10_000_000_000_000_000u64) || rounded.is_zero() {
-        return format!("{sign}{}", scientific(abs));
-    }
-    let text = rounded.normalize().to_string();
-    let (int, frac) = match text.split_once('.') {
-        Some((i, f)) => (i.to_owned(), Some(f.to_owned())),
-        None => (text, None),
-    };
-    let mut out = format!("{sign}{}", group(&int));
-    if let Some(f) = frac {
-        out.push('.');
-        out.push_str(&f);
-    }
-    out
-}
-
-/// "9.99999998e17": a mantissa of up to 10 significant digits, trailing
-/// zeros dropped.
-fn scientific(abs: Decimal) -> String {
-    let mut exponent: i32 = 0;
-    let ten = Decimal::TEN;
-    let mut mantissa = abs;
-    while mantissa >= ten {
-        mantissa /= ten;
-        exponent += 1;
-    }
-    while mantissa < Decimal::ONE {
-        mantissa *= ten;
-        exponent -= 1;
-    }
-    let mut mantissa = mantissa
-        .round_dp_with_strategy(9, RoundingStrategy::MidpointAwayFromZero)
-        .normalize();
-    if mantissa >= ten {
-        mantissa /= ten;
-        exponent += 1;
-    }
-    format!("{mantissa}e{exponent}")
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum Token {
-    Number(Entry),
-    Op(Op),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum Shown {
-    /// The number being typed.
-    Entry,
-    /// A finished result, or an error word.
-    Result(String),
-}
-
-/// The calculator's whole state. Rust owns it; Swift only shows
-/// `display()` and `expression()` and sends key presses.
-#[derive(Debug, Clone)]
-pub struct Calculator {
-    tokens: Vec<Token>,
-    entry: Entry,
-    shown: Shown,
-    /// The line above the display after equals ("12+7").
-    last_expression: Option<String>,
-    /// For repeated equals: the last operator and its right-hand operand
-    /// (finding 32).
-    repeat: Option<(Op, Entry)>,
-    /// The last result, which an operator carries on from.
-    result: Option<Decimal>,
-}
-
-impl Default for Calculator {
-    fn default() -> Self {
-        Calculator::new()
-    }
-}
-
-impl Calculator {
-    pub fn new() -> Calculator {
-        Calculator {
-            tokens: Vec::new(),
-            entry: Entry::default(),
-            shown: Shown::Entry,
-            last_expression: None,
-            repeat: None,
-            result: None,
-        }
-    }
-
-    /// What the main display shows.
-    pub fn display(&self) -> String {
-        match &self.shown {
-            Shown::Result(text) => text.clone(),
-            Shown::Entry => {
-                if !self.entry.is_empty() || self.entry.negative || self.entry.percent {
-                    self.entry.shown()
-                } else if let Some(n) = self.tokens.iter().rev().find_map(|t| match t {
-                    Token::Number(n) => Some(n),
-                    Token::Op(_) => None,
-                }) {
-                    // GUESS: after an operator the display keeps the number
-                    // before it until the next digit. Not recorded.
-                    n.shown()
-                } else {
-                    "0".to_owned()
-                }
-            }
-        }
-    }
-
-    /// The "Last Expression" line, when there is one (finding 12).
-    pub fn expression(&self) -> Option<String> {
-        self.last_expression.clone()
-    }
-
-    /// Whether the clear key is "C" (something to clear) or "All Clear".
-    pub fn clears_entry(&self) -> bool {
-        !self.entry.is_empty() || self.entry.negative || self.entry.percent
-    }
-
-    pub fn press(&mut self, key: Key) {
+impl From<SumsKey> for Key {
+    fn from(key: SumsKey) -> Key {
         match key {
-            Key::Digit(d) => self.digit(d),
-            Key::Decimal => self.point(),
-            Key::Add => self.operator(Op::Add),
-            Key::Subtract => self.operator(Op::Subtract),
-            Key::Multiply => self.operator(Op::Multiply),
-            Key::Divide => self.operator(Op::Divide),
-            Key::Equals => self.equals(),
-            Key::Percent => self.percent(),
-            Key::Negate => self.negate(),
-            Key::Delete => self.delete(),
-            Key::Clear => self.clear(),
-        }
-    }
-
-    fn after_result(&self) -> bool {
-        matches!(self.shown, Shown::Result(_))
-    }
-
-    /// A digit after a result starts again (sequence new-number-after-equals).
-    fn start_fresh_if_result(&mut self) {
-        if self.after_result() {
-            *self = Calculator::new();
-        }
-    }
-
-    fn digit(&mut self, d: u8) {
-        self.start_fresh_if_result();
-        if self.entry.percent {
-            // GUESS: a digit after % is ignored. Not recorded.
-            return;
-        }
-        self.entry.digits.push(char::from(b'0' + d));
-        self.shown = Shown::Entry;
-    }
-
-    fn point(&mut self) {
-        self.start_fresh_if_result();
-        // A second point is ignored ("1..5" shows 1.5).
-        if !self.entry.digits.contains('.') && !self.entry.percent {
-            self.entry.digits.push('.');
-        }
-        self.shown = Shown::Entry;
-    }
-
-    fn operator(&mut self, op: Op) {
-        if let (Shown::Result(_), Some(value)) = (&self.shown, self.result) {
-            // Carry on from the result (2+3= +1= gives 6, "5+1").
-            self.tokens = vec![Token::Number(Entry::from_value(value)), Token::Op(op)];
-            self.entry = Entry::default();
-            self.shown = Shown::Entry;
-            self.last_expression = None;
-            return;
-        }
-        self.shown = Shown::Entry;
-        if !self.entry.is_empty() || self.entry.negative || self.entry.percent {
-            self.tokens
-                .push(Token::Number(std::mem::take(&mut self.entry)));
-            self.tokens.push(Token::Op(op));
-        } else if let Some(Token::Op(last)) = self.tokens.last_mut() {
-            // A second operator replaces the first (5 + × 2 = 10).
-            *last = op;
-        } else if self.tokens.is_empty() {
-            // An operator first starts from 0 ("+3=" shows "0+3").
-            self.tokens.push(Token::Number(Entry {
-                digits: "0".to_owned(),
-                ..Entry::default()
-            }));
-            self.tokens.push(Token::Op(op));
-        }
-    }
-
-    fn percent(&mut self) {
-        if self.after_result() {
-            // GUESS: % on a result is not recorded; treat the result as typed.
-            if let Some(value) = self.result {
-                *self = Calculator::new();
-                self.entry = Entry::from_value(value);
-            }
-        }
-        if self.entry.is_empty() {
-            return;
-        }
-        self.entry.percent = true;
-        self.shown = Shown::Entry;
-    }
-
-    fn negate(&mut self) {
-        if self.after_result() {
-            // GUESS: ± on a result negates it. Not recorded.
-            if let Some(value) = self.result {
-                *self = Calculator::new();
-                self.entry = Entry::from_value(-value);
-            }
-            return;
-        }
-        // ± on nothing stays 0: no minus zero (finding 35).
-        if self.entry.is_empty() {
-            return;
-        }
-        self.entry.negative = !self.entry.negative;
-        self.shown = Shown::Entry;
-    }
-
-    fn delete(&mut self) {
-        if self.after_result() {
-            // After a result, Delete clears it to 0 (finding 37).
-            *self = Calculator::new();
-            return;
-        }
-        if self.entry.percent {
-            self.entry.percent = false;
-        } else if !self.entry.digits.is_empty() {
-            self.entry.digits.pop();
-            if self.entry.digits.is_empty() {
-                self.entry.negative = false;
-            }
-        } else if let Some(Token::Op(_)) = self.tokens.last() {
-            // Delete removes a pending operator and the number before it is
-            // being typed again: 7 + ⌫ 5 = gives 75 (finding 37).
-            self.tokens.pop();
-            if let Some(Token::Number(n)) = self.tokens.pop() {
-                self.entry = n;
-            }
-        }
-        self.shown = Shown::Entry;
-    }
-
-    fn clear(&mut self) {
-        if self.clears_entry() {
-            self.entry = Entry::default();
-            self.shown = Shown::Entry;
-        } else {
-            *self = Calculator::new();
-        }
-    }
-
-    fn equals(&mut self) {
-        let mut tokens = self.tokens.clone();
-        if self.after_result() {
-            // Repeated equals repeats the last operation (2+3=== gives 11).
-            let (Some((op, operand)), Some(value)) = (self.repeat.clone(), self.result) else {
-                return;
-            };
-            tokens = vec![
-                Token::Number(Entry::from_value(value)),
-                Token::Op(op),
-                Token::Number(operand),
-            ];
-        } else {
-            if !self.entry.is_empty() || self.entry.negative || self.entry.percent {
-                tokens.push(Token::Number(self.entry.clone()));
-            } else if let Some(Token::Op(_)) = tokens.last() {
-                // GUESS: "2 + =" drops the dangling operator. Not recorded.
-                tokens.pop();
-            }
-            if tokens.is_empty() {
-                // "=" on its own shows 0, with no expression line.
-                return;
-            }
-        }
-        let has_operator = tokens.iter().any(|t| matches!(t, Token::Op(_)));
-        let expression = render(&tokens);
-        let outcome = evaluate(&tokens);
-        if let (Some(Token::Op(op)), Some(Token::Number(n))) =
-            (tokens.iter().rev().nth(1), tokens.last())
-        {
-            self.repeat = Some((*op, n.clone()));
-        }
-        self.tokens.clear();
-        self.entry = Entry::default();
-        self.last_expression = if has_operator { Some(expression) } else { None };
-        match outcome {
-            Ok(value) => {
-                self.result = Some(value);
-                self.shown = Shown::Result(format_result(value));
-            }
-            Err(word) => {
-                // "Undefined" and "Indeterminate" come with no expression line.
-                self.last_expression = None;
-                self.result = None;
-                self.repeat = None;
-                self.shown = Shown::Result(word.to_owned());
-            }
+            SumsKey::Zero => Key::Digit(0),
+            SumsKey::One => Key::Digit(1),
+            SumsKey::Two => Key::Digit(2),
+            SumsKey::Three => Key::Digit(3),
+            SumsKey::Four => Key::Digit(4),
+            SumsKey::Five => Key::Digit(5),
+            SumsKey::Six => Key::Digit(6),
+            SumsKey::Seven => Key::Digit(7),
+            SumsKey::Eight => Key::Digit(8),
+            SumsKey::Nine => Key::Digit(9),
+            SumsKey::Decimal => Key::Decimal,
+            SumsKey::Add => Key::Add,
+            SumsKey::Subtract => Key::Subtract,
+            SumsKey::Multiply => Key::Multiply,
+            SumsKey::Divide => Key::Divide,
+            SumsKey::Equals => Key::Equals,
+            SumsKey::Percent => Key::Percent,
+            SumsKey::Negate => Key::Negate,
+            SumsKey::Delete => Key::Delete,
+            SumsKey::Clear => Key::Clear,
         }
     }
 }
 
-/// The expression line: operands as typed, grouped, no spaces ("(-3)+5").
-fn render(tokens: &[Token]) -> String {
-    tokens
-        .iter()
-        .map(|t| match t {
-            Token::Number(n) => n.shown(),
-            Token::Op(op) => op.symbol().to_owned(),
-        })
-        .collect()
+/// What the screen shows.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct SumsScreen {
+    /// The number (or "Undefined") in the big line.
+    pub display: String,
+    /// The sum above it, after equals ("12+7").
+    pub expression: Option<String>,
+    /// True while the clear key clears only the entry ("C"); false when it
+    /// clears everything ("AC").
+    pub clears_entry: bool,
 }
 
-/// Precedence-respecting evaluation (2+3×4 = 14, finding 31), with percent
-/// relative to the left operand of + and - (200+10% = 220) and a plain
-/// hundredth after × and ÷ (50×10% = 5) (finding 34).
-fn evaluate(tokens: &[Token]) -> Result<Decimal, &'static str> {
-    // Split into terms joined by + and -, each a product of factors.
-    let mut sum = Decimal::ZERO;
-    let mut term: Option<Decimal> = None;
-    let mut term_sign = Op::Add;
-    let mut pending: Option<Op> = None;
-    for token in tokens {
-        match token {
-            Token::Op(op) if op.binds_tightly() => pending = Some(*op),
-            Token::Op(op) => {
-                sum = add(sum, term_sign, term.unwrap_or(Decimal::ZERO))?;
-                term = None;
-                term_sign = *op;
-                pending = None;
+fn screen(calc: &Calculator) -> SumsScreen {
+    SumsScreen {
+        display: calc.display(),
+        expression: calc.expression(),
+        clears_entry: calc.clears_entry(),
+    }
+}
+
+/// What can go wrong. Arrives in Swift as a thrown `SumsError`.
+#[derive(uniffi::Error, thiserror::Error, Clone, Debug, PartialEq, Eq)]
+pub enum SumsError {
+    /// The saved sum could not be read or saved.
+    #[error("storage error: {reason}")]
+    Storage { reason: String },
+    /// Another copy of the app has the data open (one core per data folder).
+    #[error("the calculator is open in another copy of the app")]
+    InUse,
+    /// The app is shutting down and takes no more key presses.
+    #[error("the app has been shut down")]
+    ShutDown,
+}
+
+impl From<Stopped> for SumsError {
+    fn from(_: Stopped) -> Self {
+        Self::ShutDown
+    }
+}
+
+impl From<StorageError> for SumsError {
+    fn from(err: StorageError) -> Self {
+        Self::Storage {
+            reason: err.to_string(),
+        }
+    }
+}
+
+impl From<OpenError> for SumsError {
+    fn from(err: OpenError) -> Self {
+        match err {
+            OpenError::InUse { .. } => Self::InUse,
+            other => Self::Storage {
+                reason: other.to_string(),
+            },
+        }
+    }
+}
+
+/// The framework kind of an error, so ForgeKit can present any of them.
+#[uniffi::export]
+pub fn sums_error_kind(error: SumsError) -> ErrorKind {
+    match error {
+        SumsError::Storage { .. } => ErrorKind::Internal,
+        SumsError::InUse => ErrorKind::Unavailable,
+        SumsError::ShutDown => ErrorKind::ShutDown,
+    }
+}
+
+/// What is written to `sums.json`: the reference ids of the keys pressed
+/// since the calculator was last fully cleared. Opening replays them, so the
+/// saved state is exactly what the rules make of those keys.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct Saved {
+    keys: Vec<String>,
+}
+
+/// What the command thread owns.
+struct State {
+    calc: Calculator,
+    saved: Saved,
+    file: JsonFile<Saved>,
+    published: Arc<Published<SumsScreen>>,
+}
+
+/// The app. ForgeKit's `ForgeHost` opens one per process and keeps it.
+#[derive(uniffi::Object)]
+pub struct SumsCore {
+    rt: Runtime<State>,
+    screen: Arc<Published<SumsScreen>>,
+}
+
+#[uniffi::export]
+impl SumsCore {
+    /// Opens the calculator saved in `storage_directory`, or a cleared one.
+    /// Fails with `InUse` if another core has that folder open.
+    #[uniffi::constructor]
+    pub fn new(storage_directory: String) -> Result<Arc<Self>, SumsError> {
+        forge_runtime::logging::init();
+        if storage_directory.is_empty() {
+            return Err(SumsError::Storage {
+                reason: "storage directory must not be empty".into(),
+            });
+        }
+        let directory = DataDirectory::open(&storage_directory)?;
+        let file = JsonFile::new(directory.path().join(SAVE_FILE), SAVE_VERSION);
+        let saved: Saved = file.load()?.unwrap_or_default();
+        let mut calc = Calculator::new();
+        for id in &saved.keys {
+            // An id this version doesn't know is skipped, not fatal.
+            if let Some(key) = Key::from_id(id) {
+                calc.press(key);
             }
-            Token::Number(n) => {
-                let mut value = n.number();
-                if n.percent {
-                    let hundredth = value / Decimal::ONE_HUNDRED;
-                    value = match (term, pending) {
-                        // After + or -: a percent of what came before.
-                        (None, None) if !sum.is_zero() || term_sign != Op::Add => sum * hundredth,
-                        _ => hundredth,
-                    };
+        }
+        let published = Arc::new(Published::new(screen(&calc)));
+        let state = State {
+            calc,
+            saved,
+            file,
+            published: Arc::clone(&published),
+        };
+        Ok(Arc::new(Self {
+            rt: Runtime::with_directory("sums-core", directory, state),
+            screen: published,
+        }))
+    }
+
+    /// What the screen shows now. Quick: it never waits for a command.
+    pub fn screen(&self) -> SumsScreen {
+        self.screen.get().as_ref().clone()
+    }
+
+    /// Presses a key, saves, and returns what the screen shows after it.
+    pub async fn press(&self, key: SumsKey) -> Result<SumsScreen, SumsError> {
+        self.rt
+            .command("press", move |state| {
+                let key = Key::from(key);
+                let mut calc = state.calc.clone();
+                calc.press(key);
+                let mut next = state.saved.clone();
+                if key == Key::Clear && calc == Calculator::new() {
+                    // All Clear: nothing before it matters any more.
+                    next.keys.clear();
+                } else {
+                    next.keys.push(key.id().to_string());
                 }
-                term = Some(match (term, pending) {
-                    (Some(left), Some(Op::Multiply)) => left.checked_mul(value).ok_or("Error")?,
-                    (Some(left), Some(Op::Divide)) => {
-                        if value.is_zero() {
-                            return Err(if left.is_zero() {
-                                "Indeterminate"
-                            } else {
-                                "Undefined"
-                            });
-                        }
-                        left.checked_div(value).ok_or("Error")?
-                    }
-                    _ => value,
-                });
-                pending = None;
-            }
-        }
+                state.file.save(&next)?;
+                state.calc = calc;
+                state.saved = next;
+                let shown = screen(&state.calc);
+                state.published.set(shown.clone());
+                Ok(shown)
+            })
+            .await
     }
-    add(sum, term_sign, term.unwrap_or(Decimal::ZERO))
 }
 
-fn add(sum: Decimal, sign: Op, term: Decimal) -> Result<Decimal, &'static str> {
-    match sign {
-        Op::Subtract => sum.checked_sub(term),
-        _ => sum.checked_add(term),
-    }
-    .ok_or("Error")
-}
+// events(), set_phase(), phase(), revision() and shutdown(), for ForgeKit.
+forge_app::export_runtime!(SumsCore, rt);
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use forge_runtime::block_on;
 
-    fn run(ids: &[&str]) -> Calculator {
-        let mut calc = Calculator::new();
-        for id in ids {
-            calc.press(Key::from_id(id).unwrap());
+    fn open(dir: &tempfile::TempDir) -> Arc<SumsCore> {
+        SumsCore::new(dir.path().to_string_lossy().into_owned()).unwrap()
+    }
+
+    fn press(core: &SumsCore, keys: &[SumsKey]) -> SumsScreen {
+        let mut last = core.screen();
+        for key in keys {
+            last = block_on(core.press(*key)).unwrap();
         }
-        calc
+        last
     }
 
     #[test]
-    fn clear_key_says_c_while_typing() {
-        let mut calc = run(&["Decimal", "Five"]);
-        assert!(calc.clears_entry());
-        calc.press(Key::Clear);
-        assert!(!calc.clears_entry());
-        assert_eq!(calc.display(), "0");
+    fn a_sum_survives_a_restart() {
+        use SumsKey::*;
+        let dir = tempfile::tempdir().unwrap();
+        let core = open(&dir);
+        let shown = press(&core, &[One, Two, Add, Seven, Equals]);
+        assert_eq!(shown.display, "19");
+        assert_eq!(shown.expression.as_deref(), Some("12+7"));
+        drop(core);
+
+        let reopened = open(&dir);
+        assert_eq!(reopened.screen(), shown);
+        // Equals still repeats the last step after the restart.
+        assert_eq!(press(&reopened, &[Equals]).display, "26");
     }
 
     #[test]
-    fn results_round_to_eleven_places() {
+    fn all_clear_forgets_the_keys() {
+        use SumsKey::*;
+        let dir = tempfile::tempdir().unwrap();
+        let core = open(&dir);
+        let shown = press(&core, &[Four, Add, Two, Equals, Clear]);
+        assert_eq!(shown.display, "0");
+        assert!(!shown.clears_entry);
+        drop(core);
+        let text = std::fs::read_to_string(dir.path().join(SAVE_FILE)).unwrap();
+        assert!(!text.contains("Four"), "{text}");
+    }
+
+    #[test]
+    fn one_core_per_folder_and_nothing_after_shutdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = open(&dir);
         assert_eq!(
-            format_result(Decimal::from(2) / Decimal::from(3)),
-            "0.66666666667"
+            SumsCore::new(dir.path().to_string_lossy().into_owned()).err(),
+            Some(SumsError::InUse)
         );
-        assert_eq!(format_result(Decimal::from(1_002)), "1,002");
-        assert_eq!(format_result(Decimal::from(-3)), "-3");
+        core.shutdown();
+        assert_eq!(block_on(core.press(SumsKey::One)), Err(SumsError::ShutDown));
     }
 }

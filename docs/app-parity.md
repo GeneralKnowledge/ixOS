@@ -47,6 +47,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
 | soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| sums | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 | weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 
 ## Known lag
