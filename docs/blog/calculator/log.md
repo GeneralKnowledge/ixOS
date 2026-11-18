@@ -166,6 +166,8 @@ What the calculator said (Observed, pass a only; determinism still to be shown b
 
 **R2a, the engine (cloud, no phone).** Reuben: "Yes please" to starting R2. The arithmetic and its state in Rust, in `examples/sums/rust`, with the 39 recorded answers as its test: **39 of 39 match on Linux.** But it was written looking at those answers, so that proves little. Eight rules had no evidence behind them and are marked `GUESS:` in the code ([reconstruction.md](../../research/expeditions/calculator/reconstruction.md)). To test them honestly, 16 new sums (`sequences-2.toml`) and the engine's predictions for them (`predictions-2.toml`) are committed before the real calculator is asked.
 
+**R2b, the app (cloud, then the laptop).** `forge init --minimal` made `examples/sums`; the engine moved in as `src/engine.rs`, and each key press became a command on the forge-app runtime. The keys since the last All Clear are saved, so a sum survives closing the app, as the reference's does. Twenty keys, each `sums.key.<reference id in lower case>`, so `run_sequences.py --app sums` drives our calculator with the same table. Hosted in Device Lab. Compiled for iPhone on the laptop (all 8 affected apps, 28 minutes including the queue). Nothing in the platform needed changing for it.
+
 ## Next
 
 R2b: the app on the engine, in Device Lab, and one phone sitting to replay the 39 on it and ask the real calculator the 16 new questions (Calculator at `full` for that run, then back to `operate`).
