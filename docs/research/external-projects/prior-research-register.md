@@ -74,6 +74,10 @@ From [ixOS Experience Research](../experience/README.md) (#285 and its deep audi
 | Apple's accessibility audit service (Accessibility Inspector's daemon) | [ax-audit.md](../ax-audit.md) (2026-11-07) | Reading the screen and pressing by identifier work from Linux without the DDI; the audit call itself isn't working yet (one probe bug) | **Adopt in progress** (spike); finish the audit call in the experience programme's phase 3 |
 | WebDriverAgent | [forge-ui-testing.md](../../forge-ui-testing.md) | Text entry and UI tests on the physical iPhone | **Adopted** (`forge ui`) |
 | [xtool](https://github.com/xtool-org/xtool) | Fork at GeneralKnowledge/xtool | The build toolchain | **Adopted.** Changes go to the fork only |
+| [Craft Anything](https://github.com/storytold/craft-anything) (MIT or Apache-2.0) | [app-studio.md](../app-studio.md#external-tools-checked) (2026-11-19) | Study, build, check, refine loop; drives Claude Code as its builder; early alpha; iOS and SwiftUI are not output targets | **Study**, reassess after its first public release. Not a dependency |
+| [REA](https://github.com/morluto/rea) (MIT) | [app-studio.md](../app-studio.md#external-tools-checked) (2026-11-19) | Agent reverse-engineering over CLI and MCP (binaries via Hopper or Ghidra, JS/Electron, .NET, IPA/APK); builds nothing | **Watch:** optional reference study, only on software the person may examine |
+| [OpenHands CLI](https://github.com/OpenHands/OpenHands-CLI) (MIT) | [app-studio.md](../app-studio.md#external-tools-checked) (2026-11-19) | Headless mode and MCP, but its README says it is no longer actively maintained (Agent Canvas replaces it) | **Watch** Agent Canvas as a possible second agent backend |
+| [Aider](https://github.com/Aider-AI/aider) (Apache-2.0) | [app-studio.md](../app-studio.md#external-tools-checked) (2026-11-19) | Scriptable editor (`--message`), local models; no MCP, so it can't use forge-lab | **Reject** as an App Studio backend for now |
 
 ## Corrections to the 2026-11-17 recovery summary
 
