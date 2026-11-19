@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::catalogue::{CatalogueTrack, Rights};
 use crate::listen::{self, SongDetail, SongSummary, Take};
 use crate::model::SoundscapeError;
 use crate::queue::QueueTrack;
@@ -48,6 +49,24 @@ pub struct LibraryFile {
     /// The person's own music files, by track id (`file:<hash>`).
     #[serde(default)]
     pub imported: BTreeMap<String, ImportedFile>,
+    /// Tracks added from free catalogues (Jamendo), by track id
+    /// (`jamendo:<id>`), with their rights as they were when added.
+    #[serde(default)]
+    pub catalogue: BTreeMap<String, CatalogueTrack>,
+    /// Songs the person linked to a MusicBrainz recording, by track id.
+    #[serde(default)]
+    pub musicbrainz: BTreeMap<String, MusicBrainzLink>,
+}
+
+/// A song linked to the recording MusicBrainz knows it as.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct MusicBrainzLink {
+    pub recording_id: String,
+    #[serde(default)]
+    pub release_id: Option<String>,
+    /// The release's cover, used when the song has no picture of its own.
+    #[serde(default)]
+    pub artwork_url: Option<String>,
 }
 
 impl LibraryFile {
@@ -68,6 +87,7 @@ impl LibraryFile {
     /// Whether the library has a track with this id now.
     pub fn has_track(&self, id: &str) -> bool {
         self.imported.contains_key(id)
+            || self.catalogue.contains_key(id)
             || self
                 .snapshot
                 .as_ref()
@@ -204,24 +224,29 @@ impl TrackEdit {
 
 // ------------------------------------------------------------ what Swift sees
 
-#[derive(uniffi::Enum, Clone, Debug, PartialEq)]
+#[derive(uniffi::Enum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum AudioSource {
     /// Streamed from the take server.
     TakeServer { server: String },
     /// A file the person imported, by its name in the music store.
     LocalFile { path: String },
+    /// Streamed from a free catalogue (`provider` is its name, such as
+    /// Jamendo).
+    Catalogue { provider: String },
 }
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RecordingKind {
     /// Made by a music model (a JewGrass take).
     Generated,
     /// An ordinary audio file.
     Imported,
+    /// A track from a free catalogue, under its own licence.
+    Catalogue,
 }
 
 /// How a generated recording was made.
-#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Generation {
     pub seed: Option<i64>,
     pub model: Option<String>,
@@ -230,7 +255,7 @@ pub struct Generation {
 }
 
 /// One audio version of a track.
-#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Recording {
     pub id: String,
     pub label: String,
@@ -248,6 +273,10 @@ pub struct Recording {
     pub generation: Option<Generation>,
     /// The words it sings, with section tags; takes of one song can differ.
     pub lyrics: Option<String>,
+    /// What a catalogue recording's licence allows, and its credit. `None`
+    /// for the person's own music.
+    #[serde(default)]
+    pub rights: Option<Rights>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -279,6 +308,8 @@ pub struct LibraryTrack {
     /// True when its preferred recording plays from the phone (downloaded
     /// or imported).
     pub downloaded: bool,
+    /// The MusicBrainz recording it was linked to, if any.
+    pub musicbrainz_id: Option<String>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -320,6 +351,9 @@ pub struct TrackDetail {
     pub recordings: Vec<Recording>,
     pub caption: Option<String>,
     pub lyrics: Option<String>,
+    /// Other songs in the library linked to the same MusicBrainz
+    /// recording: the same recording from another source.
+    pub same_recording: Vec<LibraryTrack>,
 }
 
 /// What a picture is for.
@@ -392,40 +426,54 @@ pub fn build_library(file: &LibraryFile, locate: &Locate<'_>) -> Library {
 
 /// One track with its recordings.
 pub fn build_track(file: &LibraryFile, locate: &Locate<'_>, id: &str) -> Option<TrackDetail> {
-    build(file, locate)
-        .tracks
-        .into_iter()
-        .find(|(t, _)| t.id == id)
-        .map(|(track, origin)| match origin {
-            Origin::Server(snap) => {
-                let server = file
-                    .snapshot
-                    .as_ref()
-                    .map(|s| s.server.clone())
-                    .unwrap_or_default();
-                let recordings = recordings(&snap, &server);
-                let caption = most_common(snap.takes.iter().map(|t| t.caption.clone()));
-                let lyrics = most_common(snap.takes.iter().map(|t| t.lyrics.clone()));
-                TrackDetail {
-                    track,
-                    recordings,
-                    caption,
-                    lyrics,
-                }
-            }
-            Origin::Imported => TrackDetail {
-                recordings: track.preferred.clone().into_iter().collect(),
+    let tracks = build(file, locate).tracks;
+    let same_recording = |track: &LibraryTrack| -> Vec<LibraryTrack> {
+        let Some(mbid) = &track.musicbrainz_id else {
+            return Vec::new();
+        };
+        tracks
+            .iter()
+            .filter(|(t, _)| t.id != track.id && t.musicbrainz_id.as_ref() == Some(mbid))
+            .map(|(t, _)| t.clone())
+            .collect()
+    };
+    let (track, origin) = tracks.iter().find(|(t, _)| t.id == id)?;
+    let same = same_recording(track);
+    let track = track.clone();
+    Some(match origin {
+        Origin::Server(snap) => {
+            let snap = snap.clone();
+            let server = file
+                .snapshot
+                .as_ref()
+                .map(|s| s.server.clone())
+                .unwrap_or_default();
+            let recordings = recordings(&snap, &server);
+            let caption = most_common(snap.takes.iter().map(|t| t.caption.clone()));
+            let lyrics = most_common(snap.takes.iter().map(|t| t.lyrics.clone()));
+            TrackDetail {
                 track,
-                caption: None,
-                lyrics: None,
-            },
-        })
+                recordings,
+                caption,
+                lyrics,
+                same_recording: same,
+            }
+        }
+        Origin::Imported | Origin::Catalogue => TrackDetail {
+            recordings: track.preferred.clone().into_iter().collect(),
+            track,
+            caption: None,
+            lyrics: None,
+            same_recording: same,
+        },
+    })
 }
 
 /// Where a built track came from.
 enum Origin {
     Server(SnapTrack),
     Imported,
+    Catalogue,
 }
 
 struct Built {
@@ -467,6 +515,8 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
     let mut add = |source: Source, origin: Origin| {
         let id = source.id;
         let edit = file.edits.get(&id).cloned().unwrap_or_default();
+        let link = file.musicbrainz.get(&id);
+        let link_art = link.and_then(|l| l.artwork_url.clone());
         let title = edit.title.clone().unwrap_or(source.title);
         let artist_name = edit.artist.clone().or(source.artist);
         let album_title = edit.album.clone().or(source.album);
@@ -497,9 +547,13 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             album.updated_ms = album.updated_ms.max(source.updated_ms);
             // An imported album takes the first cover one of its songs has.
             if album.artwork_url.is_none() {
-                if let Origin::Imported = origin {
+                if let Origin::Imported | Origin::Catalogue = origin {
                     album.artwork_url = source.artwork.clone();
                 }
+            }
+            // Else the cover of the release a song was linked to.
+            if album.artwork_url.is_none() {
+                album.artwork_url = link_art.clone();
             }
         }
         if let (Some(a_id), Some(name)) = (&a_id, &artist_name) {
@@ -535,7 +589,7 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             number,
             genre: edit.genre.clone().or(source.genre),
             duration_seconds: source.preferred.as_ref().and_then(|r| r.duration_seconds),
-            artwork_url: own_art(&id).or(source.artwork).or(album_cover),
+            artwork_url: own_art(&id).or(source.artwork).or(album_cover).or(link_art),
             recording_count: source.recording_count,
             preferred: source.preferred,
             picked: source.picked,
@@ -543,6 +597,7 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             updated_ms: source.updated_ms,
             edited: !edit.is_empty(),
             downloaded: matches!(origin, Origin::Imported),
+            musicbrainz_id: link.map(|l| l.recording_id.clone()),
             id,
         };
         tracks.push((track, origin));
@@ -599,6 +654,25 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             Origin::Imported,
         );
     }
+    for (id, saved) in &file.catalogue {
+        add(
+            Source {
+                id: id.clone(),
+                title: saved.title.clone(),
+                artist: saved.artist.clone(),
+                album: saved.album.clone(),
+                number: saved.number,
+                genre: saved.genre.clone(),
+                artwork: saved.artwork_url.clone(),
+                recording_count: 1,
+                preferred: Some(catalogue_recording(saved)),
+                picked: false,
+                slug: None,
+                updated_ms: saved.added_ms,
+            },
+            Origin::Catalogue,
+        );
+    }
 
     let mut artists: Vec<LibraryArtist> = artists
         .into_values()
@@ -643,6 +717,29 @@ fn imported_recording(id: &str, imported: &ImportedFile, url: String) -> Recordi
         preferred: true,
         generation: None,
         lyrics: None,
+        rights: None,
+    }
+}
+
+/// A catalogue track's one recording: its stream, with its rights.
+pub fn catalogue_recording(track: &CatalogueTrack) -> Recording {
+    Recording {
+        id: track.id.clone(),
+        label: track.provider.clone(),
+        kind: RecordingKind::Catalogue,
+        source: AudioSource::Catalogue {
+            provider: track.provider.clone(),
+        },
+        audio_url: track.audio_url.clone(),
+        made_ms: track.added_ms,
+        duration_seconds: track.duration_seconds,
+        lufs: None,
+        stars: 0,
+        note: String::new(),
+        preferred: true,
+        generation: None,
+        lyrics: None,
+        rights: Some(track.rights.clone()),
     }
 }
 
@@ -691,6 +788,7 @@ fn recording(take: &SnapTake, snap: &SnapTrack, server: &str) -> Recording {
             key: take.key.clone(),
         }),
         lyrics: take.lyrics.clone(),
+        rights: None,
     }
 }
 
@@ -1126,4 +1224,43 @@ pub fn imported_file(
         artwork,
         added_ms: now,
     }
+}
+
+// ------------------------------------------------------------ takes and versions
+
+/// How a track's recordings are listed.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecordingOrder {
+    /// The one that plays first, then most stars, then newest.
+    Best,
+    Newest,
+    Oldest,
+}
+
+/// A track's recordings in `order`.
+pub fn sort_recordings(mut recordings: Vec<Recording>, order: RecordingOrder) -> Vec<Recording> {
+    match order {
+        RecordingOrder::Best => recordings.sort_by(|a, b| {
+            b.preferred
+                .cmp(&a.preferred)
+                .then(b.stars.cmp(&a.stars))
+                .then(b.made_ms.cmp(&a.made_ms))
+        }),
+        RecordingOrder::Newest => recordings.sort_by_key(|r| std::cmp::Reverse(r.made_ms)),
+        RecordingOrder::Oldest => recordings.sort_by_key(|r| r.made_ms),
+    }
+    recordings
+}
+
+/// Songs waiting for a pick: from the take server, with two or more takes
+/// and none picked yet. Most recently changed first.
+pub fn to_pick(library: &Library) -> Vec<LibraryTrack> {
+    let mut tracks: Vec<LibraryTrack> = library
+        .tracks
+        .iter()
+        .filter(|t| t.slug.is_some() && t.recording_count >= 2 && !t.picked)
+        .cloned()
+        .collect();
+    tracks.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms).then(a.id.cmp(&b.id)));
+    tracks
 }

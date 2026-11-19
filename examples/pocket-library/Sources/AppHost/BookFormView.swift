@@ -164,7 +164,7 @@ struct BookFormView: View {
                 }
                 #endif
             }
-            .interactiveDismissDisabled(saving.isWorking || hasChanges)
+            .forgeSwipeGuard(saving.isWorking || hasChanges)
             .forgeAlert(failure: $saving.failure)
             .onAppear { if !isEditing { focused = .title } }
         }

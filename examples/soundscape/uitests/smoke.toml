@@ -1,7 +1,7 @@
-# Smoke test: make a project, add a track, turn on echo. Uses a temporary
-# data folder and records nothing, so it needs no microphone answer.
+# Smoke test: the app opens on the library, and Discover opens from it.
+# Uses a temporary data folder, so the library is empty.
 # Run with the phone plugged in:  forge ui run uitests/smoke.toml
-name = "Smoke: new project, add a track, echo on"
+name = "Smoke: library, then Discover"
 app = "org.forgemobile.agentlab"
 
 [[step]]
@@ -11,25 +11,16 @@ terminate = {}
 launch = { args = ["-ForgeTemporaryData"] }
 
 [[step]]
-screenshot = "1-empty"
+expect = { id = "library.discover" }
 
 [[step]]
-tap = { id = "projects.newFirst" }
+screenshot = "1-library"
 
 [[step]]
-expect = { id = "newProject.create", enabled = true }
+tap = { id = "library.discover" }
 
 [[step]]
-tap = { id = "newProject.create" }
+expect = { id = "discover.source" }
 
 [[step]]
-expect = { id = "project.play" }
-
-[[step]]
-tap = { id = "project.addTrack" }
-
-[[step]]
-tap = { id = "track.echo" }
-
-[[step]]
-screenshot = "2-mixer"
+screenshot = "2-discover"

@@ -1,6 +1,7 @@
 #if canImport(SwiftUI)
 import ChecklistFFI
 import ForgeKit
+import ForgeUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -16,6 +17,7 @@ public struct ChecklistRoot: View {
         ForgeRoot(host) { core in
             ChecklistScreen(core: core, changes: host.changes)
         }
+        .forgeTheme(.standard)
     }
 }
 
@@ -57,6 +59,7 @@ struct ChecklistScreen: View {
                 } footer: {
                     if !searching && model.summary.total > 0 {
                         Text("\(model.summary.done) of \(model.summary.total) done")
+                            .forgeText(.note)
                             .accessibilityIdentifier("checklist.summary")
                     }
                 }
@@ -157,7 +160,8 @@ struct ChecklistScreen: View {
         } label: {
             HStack {
                 Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(item.done ? Color.accentColor : Color.secondary)
+                    // `.tint` is the theme's accent (forgeTheme sets it).
+                    .foregroundStyle(item.done ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                     .imageScale(.large)
                 Text(item.title)
                     .strikethrough(item.done)
@@ -189,12 +193,12 @@ struct ChecklistScreen: View {
     @ViewBuilder
     private var emptyState: some View {
         if searching && resultsFor == query && results?.isEmpty == true {
-            ContentUnavailableView.search(text: query)
+            ForgeStateView.noResults(for: query)
         } else if !searching && model.items.isEmpty {
-            ContentUnavailableView(
+            ForgeStateView.empty(
                 "Nothing to do",
                 systemImage: "checklist",
-                description: Text("Add the first item above.")
+                description: "Add the first item above."
             )
             .allowsHitTesting(false)
         }
@@ -276,6 +280,7 @@ private struct RenameSheet: View {
     let save: (String) async -> String?
     @State private var title: String
     @State private var failure: String?
+    @State private var saving = false
     @Environment(\.dismiss) private var dismiss
 
     init(item: Item, save: @escaping (String) async -> String?) {
@@ -294,24 +299,28 @@ private struct RenameSheet: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("rename.cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task {
-                            if let reason = await save(title) {
-                                failure = reason
-                            } else {
-                                dismiss()
-                            }
+            // Rust checks the title, so Save stays enabled and a refusal
+            // is shown below. A changed title keeps the sheet from being
+            // swiped away.
+            .forgeFormToolbar(
+                id: "rename",
+                canConfirm: true,
+                isWorking: saving,
+                hasChanges: title != item.title,
+                cancel: { dismiss() },
+                confirm: {
+                    saving = true
+                    Task {
+                        let reason = await save(title)
+                        saving = false
+                        if let reason {
+                            failure = reason
+                        } else {
+                            dismiss()
                         }
                     }
-                    .accessibilityIdentifier("rename.save")
                 }
-            }
+            )
             .alert(
                 "Couldn't Rename",
                 isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })
@@ -342,7 +351,7 @@ private struct ShareSheet: View {
                 ShareLink(item: file.url) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.forgePrimary)
                 .accessibilityIdentifier("share.send")
             }
             .padding()

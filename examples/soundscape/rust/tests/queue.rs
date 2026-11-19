@@ -29,6 +29,7 @@ fn track(slug: &str) -> QueueTrack {
             preferred: true,
             generation: None,
             lyrics: None,
+            rights: None,
         },
     }
 }

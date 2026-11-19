@@ -105,6 +105,7 @@ struct DevicesView: View {
                 }
                 if !isEmpty {
                     PairingPolicySection(model: model)
+                    ConnectionModeSection(model: model)
                 }
                 if !model.transfers.isEmpty {
                     Section("History") {
@@ -206,6 +207,13 @@ struct DevicesView: View {
                 while model.isTransferring || model.isWaiting,
                       (try? await Task.sleep(for: .milliseconds(model.isTransferring ? 500 : 2000))) != nil {
                     model.reload()
+                }
+            }
+            // Presence ages: "reachable" turns "offline" a few minutes after
+            // the last connection, with nothing else changing.
+            .task {
+                while (try? await Task.sleep(for: .seconds(30))) != nil {
+                    model.refreshDevices()
                 }
             }
         }

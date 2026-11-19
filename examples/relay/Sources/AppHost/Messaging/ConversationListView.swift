@@ -279,7 +279,7 @@ private struct NewConversationView: View {
                     }
                 }
             }
-            .interactiveDismissDisabled(!trimmed.isEmpty)
+            .forgeSwipeGuard(!trimmed.isEmpty)
             .forgeAlert(failure: $error)
             .onAppear { focused = true }
         }

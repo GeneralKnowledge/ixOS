@@ -95,6 +95,20 @@ storage in PR 4, because both need files on the phone: see [offline.md](offline.
 
 - Favourites, playlists and history (PR 3).
 - Downloads and importing files (PR 4).
-- Deeper take and version tools (PR 5).
+- Deeper take and version tools (PR 5, below).
 - Removing Studio (PR 6).
 - Streaming services, cloud sync, tagging and recommendations: not planned.
+
+## Takes and versions
+
+PR 5 makes a generated song's takes part of the library rather than a separate Listen screen:
+
+- **On the song's screen** each take shows its stars (tap to rate, tap the same star to clear) and its note, and
+  the takes can be listed **best** first (the one that plays, then most stars, then newest), **newest** or
+  **oldest** first. Ratings, notes and picks go to the take server, so JewGrass's `picks.json` stays the record.
+- **Compare Takes** on the song opens the A/B comparison (matched loudness, Blind hides which is which).
+- **Now Playing** shows the playing take's stars, to rate it while listening.
+- **To Pick**, in Your Music, lists songs with two or more takes and no pick yet, newest first.
+
+The rules (`to_pick`, `sort_recordings`, `mark_recording`) are Rust, tested on Linux. Imported files have one
+recording and no ratings.

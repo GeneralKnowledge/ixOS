@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::resolver::{ConnectionMode, RelayServers, RouteKind};
+
 /// What happens after a word-code transfer with a device (Settings).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum PairingPolicy {
@@ -53,6 +55,25 @@ pub struct SavedDevice {
     /// Where it was last reached or seen, for when Bonjour hasn't found it.
     #[serde(default)]
     pub addresses: Vec<String>,
+    /// When it was last reached, in ms since the epoch: something was
+    /// delivered to it, or it answered a status request (brief PR 5).
+    #[serde(default)]
+    pub last_seen_ms: Option<i64>,
+    /// What it last said about itself on `relay/device/1` (`Status`): its
+    /// platform, such as "ios" or "linux", and what it offers, such as
+    /// "notes" or "files". Its own claim, shown read-only; it grants
+    /// nothing here.
+    #[serde(default)]
+    pub platform: Option<String>,
+    #[serde(default)]
+    pub offers: Vec<String>,
+    /// Where it said it can be reached, the last time the two met: its
+    /// Tailscale address too, which Bonjour never shows (M2 PR 6).
+    #[serde(default)]
+    pub told: Vec<String>,
+    /// The route of the last connection with it, either way.
+    #[serde(default)]
+    pub route: Option<RouteKind>,
 }
 
 fn yes() -> bool {
@@ -93,6 +114,12 @@ pub fn may_connect(known: Option<SavedTrust>) -> bool {
 pub struct Devices {
     #[serde(default)]
     pub policy: PairingPolicy,
+    /// Which routes trusted devices are reached by (M2 PR 6).
+    #[serde(default)]
+    pub mode: ConnectionMode,
+    /// Relay's own servers (M2 PR 7); none until they are set.
+    #[serde(default)]
+    pub servers: RelayServers,
     #[serde(default)]
     pub list: Vec<SavedDevice>,
 }
@@ -129,6 +156,11 @@ impl Devices {
                 since_ms: now_ms,
                 receives_from: true,
                 addresses: Vec::new(),
+                last_seen_ms: None,
+                platform: None,
+                offers: Vec::new(),
+                told: Vec::new(),
+                route: None,
             }),
         }
     }
@@ -181,11 +213,42 @@ impl Devices {
         }
     }
 
-    /// Remembers where a trusted device was reached or seen.
-    pub fn seen_at(&mut self, endpoint_id: &str, addresses: &[String]) {
+    /// Remembers where and when a trusted device was reached.
+    pub fn seen_at(&mut self, endpoint_id: &str, addresses: &[String], now_ms: i64) {
         if let Some(d) = self.get_mut(endpoint_id) {
-            if d.trust == SavedTrust::Trusted && !addresses.is_empty() {
-                d.addresses = addresses.to_vec();
+            if d.trust == SavedTrust::Trusted {
+                if !addresses.is_empty() {
+                    d.addresses = addresses.to_vec();
+                }
+                d.last_seen_ms = Some(d.last_seen_ms.map_or(now_ms, |t| t.max(now_ms)));
+            }
+        }
+    }
+
+    /// Remembers what a trusted device said about itself (its `Status`).
+    /// A revoked or unknown device's claims aren't kept.
+    pub fn reported(&mut self, endpoint_id: &str, platform: &str, offers: &[String], now_ms: i64) {
+        if let Some(d) = self.get_mut(endpoint_id) {
+            if d.trust == SavedTrust::Trusted {
+                d.platform = (!platform.is_empty()).then(|| platform.to_string());
+                d.offers = offers.to_vec();
+                d.last_seen_ms = Some(d.last_seen_ms.map_or(now_ms, |t| t.max(now_ms)));
+            }
+        }
+    }
+
+    /// A trusted device said where it can be reached, and a connection with
+    /// it used `route`.
+    pub fn met(&mut self, endpoint_id: &str, told: &[String], route: Option<RouteKind>) {
+        if let Some(d) = self.get_mut(endpoint_id) {
+            if d.trust == SavedTrust::Trusted {
+                let told = crate::resolver::clean(told);
+                if !told.is_empty() {
+                    d.told = told;
+                }
+                if route.is_some() {
+                    d.route = route;
+                }
             }
         }
     }
@@ -268,14 +331,39 @@ mod tests {
     fn revoking_or_forgetting_drops_where_it_was() {
         let mut d = Devices::default();
         d.trust("a", "A", 1);
-        d.seen_at("a", &["192.168.1.2:4000".into()]);
+        d.seen_at("a", &["192.168.1.2:4000".into()], 5);
         assert_eq!(d.get("a").unwrap().addresses.len(), 1);
         d.revoke("a");
         assert!(d.get("a").unwrap().addresses.is_empty());
-        d.seen_at("a", &["192.168.1.2:4000".into()]);
+        d.seen_at("a", &["192.168.1.2:4000".into()], 6);
         assert!(d.get("a").unwrap().addresses.is_empty());
         assert!(!d.revoke("nobody"));
         assert!(!d.forget("nobody"));
+    }
+
+    #[test]
+    fn last_seen_only_moves_forward_and_status_is_kept_for_trusted_devices() {
+        let mut d = Devices::default();
+        d.trust("a", "A", 1);
+        d.seen_at("a", &[], 50);
+        d.seen_at("a", &[], 40);
+        assert_eq!(d.get("a").unwrap().last_seen_ms, Some(50));
+        d.reported("a", "ios", &["notes".into(), "files".into()], 60);
+        let a = d.get("a").unwrap();
+        assert_eq!(a.platform.as_deref(), Some("ios"));
+        assert_eq!(a.offers, ["notes", "files"]);
+        assert_eq!(a.last_seen_ms, Some(60));
+        d.revoke("a");
+        d.reported("a", "linux", &[], 70);
+        d.seen_at("a", &[], 80);
+        let a = d.get("a").unwrap();
+        assert_eq!(
+            a.platform.as_deref(),
+            Some("ios"),
+            "a revoked device's claims aren't kept"
+        );
+        assert_eq!(a.last_seen_ms, Some(60));
+        d.reported("nobody", "linux", &[], 1);
     }
 
     #[test]
@@ -288,5 +376,8 @@ mod tests {
         )
         .unwrap();
         assert!(one.receives_from);
+        assert_eq!(one.last_seen_ms, None);
+        assert_eq!(one.platform, None);
+        assert!(one.offers.is_empty());
     }
 }

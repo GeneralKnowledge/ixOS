@@ -15,8 +15,6 @@ private let log = ForgeLog("Listen")
 @MainActor
 public final class ListenModel {
     public enum Phase: Equatable {
-        /// No server address yet.
-        case needsServer
         case loading
         case ready
         case failed(String)
@@ -26,8 +24,13 @@ public final class ListenModel {
         case forgetServer
     }
 
-    /// The take server's address, as Rust saved it.
+    /// The take server's address, as Rust saved it. Optional: the library
+    /// also holds your own files and catalogue tracks.
     public private(set) var server: String?
+    /// The person's Jamendo client ID, as Rust saved it.
+    public private(set) var jamendoClientId: String?
+    /// Seconds songs overlap as one ends and the next starts; 0 is gapless.
+    public private(set) var crossfadeSeconds: UInt32
     /// The library as kept on the phone; refreshed from the take server.
     public private(set) var library: Library {
         didSet { collection = core.collection() }
@@ -45,7 +48,7 @@ public final class ListenModel {
     private var downloadStates: [String: DownloadState] = [:]
     private var syncTask: Task<Void, Never>?
     private var syncAgain = false
-    public private(set) var phase: Phase = .needsServer
+    public private(set) var phase: Phase = .ready
     /// Why the last refresh failed while the kept library still shows.
     public var refreshProblem: String?
     public var alert: ForgeAlert<Action>?
@@ -57,13 +60,15 @@ public final class ListenModel {
     public init(core: SoundscapeCore) {
         self.core = core
         server = core.listenServer()
+        jamendoClientId = core.jamendoClientId()
+        crossfadeSeconds = core.crossfadeSeconds()
         library = core.library()
         collection = core.collection()
         offline = core.offline()
         downloadStates = Dictionary(
             offline.tracks.map { ($0.track.id, $0.state) }, uniquingKeysWith: { a, _ in a }
         )
-        phase = server == nil ? .needsServer : library.tracks.isEmpty ? .loading : .ready
+        phase = server != nil && library.tracks.isEmpty ? .loading : .ready
     }
 
     // MARK: Server
@@ -73,7 +78,7 @@ public final class ListenModel {
     public func setServer(_ address: String) async throws {
         server = try await core.setListenServer(address: address)
         // The Listen screen reloads when the server changes.
-        phase = server == nil ? .needsServer : .loading
+        phase = server == nil ? .ready : .loading
     }
 
     public func askToForgetServer() {
@@ -118,7 +123,9 @@ public final class ListenModel {
     /// kept library still shows, with the reason in `refreshProblem`.
     public func loadLibrary(fresh: Bool = false) async {
         guard server != nil else {
-            phase = .needsServer
+            library = core.library()
+            refreshProblem = nil
+            phase = .ready
             return
         }
         if library.tracks.isEmpty { phase = .loading }
@@ -143,6 +150,100 @@ public final class ListenModel {
     }
 
     public func search(_ query: String) -> LibrarySearch { core.searchLibrary(query: query) }
+
+    // MARK: What was playing
+
+    /// Keeps what is playing so the app opens where it was left; `nil`
+    /// forgets it. A failure only costs the resume, so it is logged.
+    public func savePlayback(_ saved: SavedPlayback?) async {
+        do {
+            try await core.savePlayback(saved: saved)
+        } catch {
+            log.warn("playback not kept: \(error)")
+        }
+    }
+
+    /// What was playing when the app closed, brought up to date.
+    public func savedPlayback() -> SavedPlayback? { core.savedPlayback() }
+
+    /// Saves the crossfade (0 is gapless); a failure shows in an alert.
+    public func setCrossfade(_ seconds: UInt32) async {
+        do {
+            crossfadeSeconds = try await core.setCrossfadeSeconds(seconds: seconds)
+        } catch {
+            report(error)
+        }
+    }
+
+    // MARK: Catalogues
+
+    /// Saves the Jamendo client ID; throws Rust's reason when it can't be
+    /// used. Empty forgets it.
+    public func setJamendoClientId(_ text: String) async throws {
+        jamendoClientId = try await core.setJamendoClientId(clientId: text)
+    }
+
+    /// Jamendo tracks for `query` (this week's popular when empty).
+    /// Cancelled with the screen that asked.
+    public func searchJamendo(_ query: String) async -> Result<[CatalogueTrack], ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.searchJamendo(query: query, cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("jamendo search failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// Internet Archive items (albums, concerts) for `query`, or this
+    /// week's most downloaded net-label releases when empty.
+    public func searchArchive(_ query: String) async -> Result<[ArchiveItem], ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.searchArchive(query: query, cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("archive search failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// An Internet Archive item's playable tracks, in order.
+    public func archiveTracks(_ item: ArchiveItem) async -> Result<[CatalogueTrack], ListenFailure> {
+        do {
+            let tracks = try await withRustCancellation { cancellation in
+                try await core.archiveItemTracks(identifier: item.identifier, cancellation: cancellation)
+            }
+            return .success(tracks)
+        } catch {
+            if !Self.isStop(error) { log.warn("archive item failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// True when a catalogue track is in the library.
+    public func inLibrary(_ id: String) -> Bool {
+        library.tracks.contains { $0.id == id }
+    }
+
+    /// Adds catalogue tracks to the library, with their licences.
+    public func addToLibrary(_ tracks: [CatalogueTrack]) async {
+        do {
+            library = try await core.addCatalogueTracks(tracks: tracks)
+            feedback.play(.success)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Catalogue tracks to play: the library's copy where there is one
+    /// (downloaded, edited), else the stream.
+    public func queue(_ tracks: [CatalogueTrack]) -> [QueueTrack] {
+        core.catalogueQueueTracks(tracks: tracks)
+    }
     public func albums(of artist: LibraryArtist) -> [LibraryAlbum] { core.artistAlbums(artistId: artist.id) }
     public func tracks(of artist: LibraryArtist) -> [LibraryTrack] { core.artistTracks(artistId: artist.id) }
     public func tracks(of album: LibraryAlbum) -> [LibraryTrack] { core.albumTracks(albumId: album.id) }
@@ -178,11 +279,86 @@ public final class ListenModel {
         }
     }
 
+    // MARK: Takes and versions
+
+    /// A track with its recordings in `order`.
+    public func track(_ id: String, order: RecordingOrder) -> TrackDetail? {
+        try? core.libraryTrackSorted(id: id, order: order)
+    }
+
+    /// Songs with several takes and no pick yet.
+    public var toPick: [LibraryTrack] { core.tracksToPick() }
+
+    /// Rates one of a track's recordings on the take server; tapping its
+    /// current rating clears it.
+    public func rate(_ recording: Recording, of trackId: String, stars: Int) async -> TrackDetail? {
+        let value = stars == Int(recording.stars) ? 0 : max(0, min(5, stars))
+        return await markRecording(recording, of: trackId, TakeMark(picked: nil, stars: UInt8(value), note: nil))
+    }
+
+    public func note(_ recording: Recording, of trackId: String, _ text: String) async -> TrackDetail? {
+        await markRecording(recording, of: trackId, TakeMark(picked: nil, stars: nil, note: text))
+    }
+
+    private func markRecording(_ recording: Recording, of trackId: String, _ mark: TakeMark) async -> TrackDetail? {
+        do {
+            let detail = try await core.markRecording(trackId: trackId, recordingId: recording.id, mark: mark)
+            library = core.library()
+            feedback.play(.success)
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
     /// Changes a track's details on the phone; empty fields go back to the
     /// server's.
     public func edit(_ track: LibraryTrack, _ edit: TrackEdit) async -> TrackDetail? {
         do {
             let detail = try await core.editTrack(id: track.id, edit: edit)
+            library = core.library()
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
+    // MARK: MusicBrainz
+
+    /// Recordings MusicBrainz knows that might be this song, best first.
+    /// Changes nothing. Cancelled with the screen that asked.
+    public func identify(_ track: LibraryTrack) async -> Result<[MusicBrainzMatch], ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.identifyTrack(trackId: track.id, cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("musicbrainz lookup failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// Links a song to the MusicBrainz recording picked, and with
+    /// `useDetails` gives it that recording's title, artist and album.
+    public func link(_ track: LibraryTrack, to found: MusicBrainzMatch, useDetails: Bool) async -> TrackDetail? {
+        do {
+            let detail = try await core.linkMusicbrainz(trackId: track.id, found: found, useDetails: useDetails)
+            library = core.library()
+            feedback.play(.success)
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
+    /// Forgets a song's MusicBrainz link; details it took stay.
+    public func unlink(_ track: LibraryTrack) async -> TrackDetail? {
+        do {
+            let detail = try await core.unlinkMusicbrainz(trackId: track.id)
             library = core.library()
             return detail
         } catch {
@@ -292,7 +468,10 @@ public final class ListenModel {
 
     /// Songs that can be downloaded: your own files are on the phone already.
     public func downloadable(_ tracks: [LibraryTrack]) -> [LibraryTrack] {
-        tracks.filter { $0.preferred != nil && $0.preferred?.kind != .imported }
+        tracks.filter { track in
+            guard let recording = track.preferred, recording.kind != .imported else { return false }
+            return recording.rights?.mayDownload ?? true
+        }
     }
 
     /// True when every downloadable one of `tracks` is chosen for the phone.
@@ -449,7 +628,7 @@ public final class ListenModel {
     }
 
     nonisolated static func message(_ error: Error) -> String {
-        if let error = error as? SoundscapeError { return SoundscapeModel.describe(error) }
+        if let error = error as? SoundscapeError { return SoundscapeErrors.describe(error) }
         return error.localizedDescription
     }
 }

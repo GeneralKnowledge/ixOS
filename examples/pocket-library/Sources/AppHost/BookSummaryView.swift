@@ -34,7 +34,7 @@ struct BookSummarySheet: View {
             keepAwake(false)
         }
         .onChange(of: state.phase) { _, phase in keepAwake(phase == .working) }
-        .interactiveDismissDisabled(state.phase == .working)
+        .forgeSwipeGuard(state.phase == .working)
     }
 
     @ViewBuilder

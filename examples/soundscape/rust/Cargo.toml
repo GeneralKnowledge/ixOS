@@ -1,8 +1,7 @@
-# Soundscape's own Rust library: projects of looping tracks, their mix
-# settings, waveforms and the mixdown, and the UniFFI API (SoundscapeCore)
-# the SwiftUI app calls. AVAudioEngine records and plays; this crate decides
-# what a project is, what each setting means in Apple's units, and renders
-# the finished mix. Built the way a hostable app is
+# Soundscape's own Rust library: the music library, collection, offline
+# copies, queue, catalogues (Jamendo, Internet Archive) and the UniFFI API
+# (SoundscapeCore) the SwiftUI app calls. AVPlayer plays; this crate owns the
+# state and the rules. Built the way a hostable app is
 # (docs/research/app-friction-log.md).
 [package]
 name = "soundscape-core"
@@ -20,8 +19,8 @@ crate-type = ["staticlib", "lib"]
 # lifecycle, cancellation, shutdown (docs/app-model-review.md).
 forge-app = { path = "../../../crates/forge-app" }
 forge-runtime = { path = "../../../crates/forge-runtime" }
-# Projects are one JSON document; recordings are files named by their
-# SHA-256.
+# The library and the rest are JSON documents; imported music and artwork
+# are files named by their SHA-256.
 forge-storage = { path = "../../../crates/forge-storage", features = ["hash"] }
 # Listen: the take server's API through URLSession on iOS (ureq in Linux
 # tests), so it follows the phone's VPN (Tailscale).
@@ -30,8 +29,6 @@ forge-services = { path = "../../../crates/forge-services", features = ["http"] 
 serde_json = "1.0"
 # The native_services! macro expands to async traits.
 async-trait = "0.1"
-# WAV reading and writing (AVAudioFile records WAV; the mixdown is WAV).
-hound = "3.5"
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 serde = { version = "1.0", features = ["derive"] }

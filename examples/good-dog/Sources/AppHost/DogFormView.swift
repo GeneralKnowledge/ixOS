@@ -1,5 +1,6 @@
 @preconcurrency import GoodDogFFI
 import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// The dog's details, for onboarding and for editing on My Dog. The form
@@ -184,7 +185,7 @@ struct EditDogView: View {
                     }
                 }
             }
-            .interactiveDismissDisabled(edited != dog)
+            .forgeSwipeGuard(edited != dog)
             .forgeAlert(failure: $error)
         }
     }

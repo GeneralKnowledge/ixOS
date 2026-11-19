@@ -1,50 +1,45 @@
 # Soundscape
 
-A small multi-track sound sketchpad: record loops, layer them, shape each
-with tone and echo, and mix down to a WAV file to share. Its **Listen** tab
-plays, compares and picks song takes kept on another computer (see below). The third of the
-remaining demo apps ([friction log](../../docs/research/app-friction-log.md));
-it runs inside Device Lab (Apps, then Soundscape) and on its own.
+A personal music player: one library for your own music files, free
+catalogues (Jamendo, the Internet Archive) and songs on a take server on your
+computer, with favourites, playlists, offline downloads, a queue that survives
+restarts, and lock-screen playback. The player doesn't care where a song comes
+from ([architecture](docs/architecture.md)). It runs inside Device Lab (Apps,
+then Soundscape) and on its own.
+
+Until 2026-11-18 Soundscape was also a loop recorder ("Studio": record loops,
+layer them, mix down to WAV). Studio was removed then; a phone that used it
+keeps its old `soundscape.json` and `recordings/` untouched, and the app no
+longer asks for the microphone.
 
 ## Where it is
 
 | Step | What | State |
 |---|---|---|
-| SS1 | Rust core (`rust/`): projects, tracks, settings checked and mapped to AVAudioEngine units, waveforms, offline mixdown | Done, tested on Linux |
-| SS2 | SwiftUI app: project list, recorder, mixer with Canvas waveforms, AVAudioEngine playback, background audio, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
 | L1 | Listen tab: songs and takes from a take server, A/B at matched loudness, stars, notes and picks, lock-screen playback | Passed on the iPhone (Device Lab, 2026-11-16) |
 | M2 | Music library ([design](docs/library.md)): tracks apart from their recordings and audio sources, artists, albums and songs with search, artwork (from the server or Photos), your own edits, a preferred recording per song, kept on the phone | Passed on the iPhone (Device Lab, 2026-11-17) |
-| M3 | Your collection ([design](docs/collection.md)): favourite songs, albums and artists, playlists (new, rename, reorder, delete, add a song, an album or what's playing), listening history and Recently Played, and lyrics to read along (Now Playing and a song's screen, the playing take's own words; with LRC timings from the generator the line, and with word timings the word, being sung lights up) | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
-| M4 | Offline ([design](docs/offline.md)): download a song, album or playlist to play it without the take server (its preferred take, replaced when you pick another), a Downloaded screen with the space it takes, and Import Music from Files (your own MP3, M4A, WAV, AIFF, FLAC files, with their tags and cover) as tracks like any other | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
-| M1 | Music player: play all, an act or a song, shuffle and repeat, Play Next and Add to Queue, previous and next (also on the lock screen), a mini-player on every screen and a Now Playing screen with Up Next | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
-| N1 | Music sources ([plan](docs/sources.md)): Jamendo and Internet Archive as optional catalogues next to your own music, with each track's licence kept; the first expansion after the six player PRs | Planned |
-| S4 | Spike: one effect in Rust on the real-time audio thread, measured on the phone | Not started; decides whether live effects move to Rust |
+| M3 | Your collection ([design](docs/collection.md)): favourite songs, albums and artists, playlists (new, rename, reorder, delete, add a song, an album or what's playing), listening history and Recently Played, and lyrics to read along (Now Playing and a song's screen, the playing take's own words; with LRC timings from the generator the line, and with word timings the word, being sung lights up) | Passed on the iPhone (Device Lab, 2026-11-18); playlist delete, remove and reorder fixes (#328) to recheck |
+| M4 | Offline ([design](docs/offline.md)): download a song, album or playlist to play it without the take server (its preferred take, replaced when you pick another), a Downloaded screen with the space it takes, and Import Music from Files (your own MP3, M4A, WAV, AIFF, FLAC files, with their tags and cover) as tracks like any other | Passed on the iPhone (Device Lab, 2026-11-18): album and song downloads, Import Music |
+| M1 | Music player: play all, an act or a song, shuffle and repeat, Play Next and Add to Queue, previous and next (also on the lock screen), a mini-player on every screen and a Now Playing screen with Up Next | Passed on the iPhone (Device Lab, 2026-11-17): plays on, next song while locked, lock-screen controls |
+| M5 | Takes and versions ([design](docs/library.md#takes-and-versions)): rate and note a song's takes on its own screen, sort them best, newest or oldest first, rate the playing take in Now Playing, and a To Pick list of songs with several takes and no pick; compare A/B (blind if you like) from the song | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| N1 | Jamendo ([plan](docs/sources.md)): Discover searches Jamendo with your own client ID (this week's popular until you type) and plays full tracks through the same player; Add to Library keeps a track with your music (playlists, favourites, edits, downloads where Jamendo allows), with its licence, credit and what it allows on its screen. The library now works without a take server | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| N2 | Internet Archive ([plan](docs/sources.md#internet-archive-as-built)): a Jamendo / Internet Archive switch in Discover; Archive albums and concerts open to their tracks (best MP3 of each), to play, add one or all to the library, and download unless the item is restricted | Rust tested on Linux against canned answers; live API not yet checked; Swift written, not yet built with xtool or run on a phone |
+| N3 | MusicBrainz: Identify Song looks a song up, ranks what MusicBrainz knows by title, artist and length, and links the one picked, with or without its details and cover; songs linked to the same recording list each other | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone; live API checked from the laptop (2026-11-19) |
+| N4 | A small fixed test catalogue | Planned |
+| M7 | Studio removed: Soundscape opens straight on your library; no microphone permission | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| M6 | Carry on where you left off: the queue, the song and how far into it survive closing the app, and it opens paused there | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| M8 | Sleep timer: pause after 15 to 90 minutes or at the end of this song, fading out over the last 10 seconds | Swift written, not yet built with xtool or run on a phone |
+| M9 | Between songs: no gap (the next song is loaded early and starts the moment one ends) or a 2 to 12 second crossfade, kept as a setting | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 
 ## How the work is split
 
-- **AVAudioEngine records and plays.** The recorder writes a WAV file of
-  `loop_frames(project, sampleRate)` frames, so it loops cleanly, and hands
-  it to `set_clip`. Playback is one `AVAudioPlayerNode` per track, looping
-  its clip through an `AVAudioUnitEQ` low-pass band and an
-  `AVAudioUnitDelay`, set from `Track.mix` (volume, pan, cutoff in hertz,
-  delay in seconds and percent).
-- **Rust owns the project and the mixdown.** Settings are checked and saved
-  in Rust and mapped to Apple's units in one place
-  (`project::mix`), and `mixdown` renders the same chain offline (one-pole
-  low-pass, feedback echo, gain, balance), so the exported file sounds like
-  playback. A mix over full scale is turned down to fit and says so.
-- **A metronome counts in.** Rust renders one pass of the loop's clicks
-  (`click_track`, a tick on every beat, the bar's first accented) to a WAV
-  file in the caches. The app loops it on its own player straight into the
-  main mixer, so it is never recorded or mixed down, and plays its first
-  bar as a count-in before every recording. The on/off switch is saved
-  with the project.
-- Until spike S4 says Rust is safe on the real-time audio thread, live
-  effects are Apple's audio units. The Rust filters in `dsp.rs` allocate
-  nothing per sample, so they could move there.
-- Recordings are files named by their SHA-256 (with `.wav`, which
-  AVAudioFile wants). One nothing uses any more is deleted after the change
-  that dropped it.
+- **Rust owns the state and the rules** (`rust/src`): the library (`library.rs`),
+  favourites, playlists and history (`collection.rs`), what is kept on the phone
+  (`offline.rs`), the queue (`queue.rs`) and what was playing (`playback.rs`),
+  the catalogues (`jamendo.rs`, `archive.rs`, rights in `catalogue.rs`), the take
+  server's client (`listen.rs`) and lyrics (`lyrics.rs`). All of it is tested on Linux.
+- **AVPlayer plays** (`TakePlayer.swift`): the queue, the mini-player and Now
+  Playing, the lock screen and interruptions, and blind A/B of two takes.
 
 ## Rust
 
@@ -56,15 +51,15 @@ cargo test --manifest-path examples/soundscape/rust/Cargo.toml
 
 | File | What |
 |---|---|
-| `Sources/AppHost/SoundscapeModel.swift` | The screens' model: asks the core, keeps alerts, runs waveforms and mixdowns with cancellation. Foundation only |
-| `Sources/AppHost/ContentView.swift` | The project list, and the new-project sheet (name, tempo, length) |
-| `Sources/AppHost/ProjectView.swift` | One project: the transport (play, stop), tracks, tempo and length, mixdown and sharing |
-| `Sources/AppHost/TrackStrip.swift` | One track: waveform, record, mute, solo, echo, level, pan, tone |
-| `Sources/AppHost/LoopEngine.swift` | AVAudioEngine: one player, EQ and delay per track from `Track.mix`; records one pass while the others play |
-
-Recording starts with the loop and skips the input and output latency
-`AVAudioSession` reports, so a part played along to the loop lines up. It
-writes 16-bit PCM at the microphone's rate, which Rust reads.
+| `Sources/AppHost/ContentView.swift` | The root: opens the core, then the library |
+| `Sources/AppHost/ListenModel.swift` | The screens' model: asks the core, keeps alerts and feedback. Foundation only |
+| `Sources/AppHost/ListenView.swift` | The library stack with the mini-player, Now Playing, a song's takes |
+| `Sources/AppHost/LibraryView.swift` | Songs, albums and artists, search, a song's screen with its recordings and licence |
+| `Sources/AppHost/CollectionView.swift` | Your Music: favourites, playlists, history, To Pick |
+| `Sources/AppHost/DiscoverView.swift` | Jamendo and the Internet Archive |
+| `Sources/AppHost/OfflineView.swift`, `MusicImporter.swift` | Downloads, and importing your own files |
+| `Sources/AppHost/TakePlayer.swift` | AVPlayer: queue, lock screen, interruptions, saving what plays |
+| `Sources/AppHost/SoundscapeErrors.swift` | Rust's errors in words |
 
 ## Listen
 
