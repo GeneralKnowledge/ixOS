@@ -4,7 +4,10 @@
 //! - a pending note delivery becomes a message delivery with the same id,
 //!   and the message `note-<delivery id>` is in the conversation, queued;
 //! - a pending files delivery stays queued, and its message
-//!   `file-<delivery id>` is in the conversation;
+//!   `file-<delivery id>` is in the conversation, always: its name, size
+//!   and attachment id (the content hash) come from the delivery itself,
+//!   whether or not the history still has it or the sent file is still
+//!   there;
 //! - notes in the history (sent and received) move into their device's
 //!   conversation as `note-h<history id>`, with their times, and leave the
 //!   history; those of a device that is no longer listed stay;
@@ -86,26 +89,34 @@ fn moves(record: &Record) -> Vec<Move> {
                 },
                 path: None,
             }),
-            Payload::Files { .. } => {
-                let Some(SavedItem::File { name, size, file }) = record
+            Payload::Files {
+                hash,
+                name,
+                size,
+                collection,
+                ..
+            } => {
+                // The delivery itself names what it carries, so every
+                // pending files delivery gets its message; the history
+                // entry (if it wasn't trimmed) adds where the sent file
+                // was.
+                let file = record
                     .transfers
                     .iter()
                     .find(|t| t.id == d.transfer)
-                    .map(|t| &t.item)
-                else {
-                    continue;
-                };
-                let path = file.as_deref().map(Path::new);
-                let Ok(attachment) = files_attachment(&d.id, path, name, *size) else {
-                    continue;
-                };
+                    .and_then(|t| match &t.item {
+                        SavedItem::File { file, .. } => file.as_deref(),
+                        SavedItem::Note { .. } => None,
+                    })
+                    .map(Path::new);
+                let attachment = files_attachment(hash, *collection, name, *size);
                 moves.push(Move {
                     to: d.to.clone(),
                     message: Message {
                         attachments: vec![attachment],
                         ..ours(files_message_id(&d.id))
                     },
-                    path: path.filter(|p| p.exists()).map(Path::to_path_buf),
+                    path: file.filter(|p| p.exists()).map(Path::to_path_buf),
                 });
             }
             Payload::Message { .. } => {}
@@ -234,7 +245,7 @@ mod tests {
                 to: PHONE.into(),
                 transfer: 5,
                 payload: Payload::Files {
-                    hash: String::new(),
+                    hash: "5".repeat(64),
                     collection: false,
                     name: "map.txt".into(),
                     size: 5,
@@ -242,8 +253,41 @@ mod tests {
                 },
                 queued_ms: 5_000,
             },
+            // Its history entry was trimmed (the history keeps 500).
+            files_delivery("d6", 0, "trimmed.pdf", 7),
+            // Its sent file can't be read any more.
+            files_delivery("d7", 7, "gone.jpg", 9),
         ];
+        r.transfers.push(SavedTransfer {
+            id: 7,
+            peer_id: PHONE.into(),
+            peer_name: "phone".into(),
+            sent: true,
+            item: SavedItem::File {
+                name: "gone.jpg".into(),
+                size: 9,
+                file: Some(dir.join("gone.jpg").to_string_lossy().into_owned()),
+            },
+            status: SavedStatus::Waiting,
+            at_ms: 7_000,
+        });
         r
+    }
+
+    fn files_delivery(id: &str, transfer: u64, name: &str, size: u64) -> SavedDelivery {
+        SavedDelivery {
+            id: id.into(),
+            to: PHONE.into(),
+            transfer,
+            payload: Payload::Files {
+                hash: id.repeat(32),
+                collection: false,
+                name: name.into(),
+                size,
+                hashes: Vec::new(),
+            },
+            queued_ms: 1_000 * transfer.max(6) as i64,
+        }
     }
 
     #[test]
@@ -265,8 +309,30 @@ mod tests {
                 ("note-h2", "received", MessageStatus::Sent, 2_000),
                 ("note-d4", "waiting", MessageStatus::Queued, 4_000),
                 ("file-d5", "", MessageStatus::Queued, 5_000),
+                ("file-d6", "", MessageStatus::Queued, 6_000),
+                ("file-d7", "", MessageStatus::Queued, 7_000),
             ]
         );
+        // Every pending file has its attachment, from the delivery itself
+        // when the history has no entry or the file can't be read.
+        let named: Vec<(&str, &str, u64)> = got[3..]
+            .iter()
+            .map(|m| &m.attachments[0])
+            .map(|a| (a.name.as_str(), a.mime.as_str(), a.size))
+            .collect();
+        assert_eq!(
+            named,
+            [
+                ("map.txt", "text/plain", 5),
+                ("trimmed.pdf", "application/pdf", 7),
+                ("gone.jpg", "image/jpeg", 9),
+            ]
+        );
+        let ids: Vec<&str> = got[3..]
+            .iter()
+            .map(|m| m.attachments[0].id.as_str())
+            .collect();
+        assert_eq!(ids, ["5".repeat(64), "d6".repeat(32), "d7".repeat(32)]);
         assert_eq!(got[0].author_id, "relay:me");
         assert_eq!(got[1].author_id, PHONE);
         assert_eq!(got[3].attachments[0].name, "map.txt");
@@ -298,7 +364,7 @@ mod tests {
         ));
         // Only the forgotten device's note and the file stay in history.
         let left: Vec<u64> = record.transfers.iter().map(|t| t.id).collect();
-        assert_eq!(left, [3, 5]);
+        assert_eq!(left, [3, 5, 7]);
         assert!(record.notes_are_messages);
 
         // Again (Relay ended before the record was saved): nothing changes.

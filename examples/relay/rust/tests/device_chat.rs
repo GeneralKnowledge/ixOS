@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use relay_core::chat::{ChatCore, ChatMessageStatus};
-use relay_core::{CodeSend, NearbyDevice, RelayCore};
+use relay_core::{CodeSend, NearbyDevice, RelayCore, TransferStatus};
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     forge_runtime::block_on(future)
@@ -209,6 +209,8 @@ fn messages_and_files_to_an_away_device_arrive_in_the_order_sent() {
     block_on(laptop.send_to_device(phone_id.clone(), vec![file.to_string_lossy().into_owned()]))
         .unwrap();
     block_on(laptop.send_device_message(&phone_id, "after".into())).unwrap();
+    // The picked file can go: its bytes wait in the store.
+    std::fs::remove_file(&file).unwrap();
 
     let phone = device(dir.path(), "phone");
     let laptop_id = phone.devices()[0].endpoint_id.clone();
@@ -219,6 +221,9 @@ fn messages_and_files_to_an_away_device_arrive_in_the_order_sent() {
     let messages = phone.device_messages(&laptop_id).unwrap();
     assert_eq!(messages[0].body, "before");
     assert_eq!(messages[1].attachments[0].name, "harbour.txt");
+    // One attachment identity on both sides, though the sent file is gone.
+    let sent = laptop.device_messages(&phone_id).unwrap();
+    assert_eq!(sent[1].attachments, messages[1].attachments);
     assert_eq!(messages[2].body, "after");
     assert!(messages[0].sent_at < messages[1].sent_at && messages[1].sent_at < messages[2].sent_at);
     eventually("both delivered on the laptop", || {
@@ -345,4 +350,84 @@ fn a_note_from_an_older_build_is_a_message() {
         .transfers()
         .iter()
         .any(|t| matches!(t.item, relay_core::Item::Note { .. })));
+}
+
+/// A file whose bytes were damaged in the sender's store is refused: the
+/// receiver checks every chunk, saves nothing, and both sides say why.
+#[test]
+fn a_damaged_file_fails_verification_and_is_not_saved() {
+    let dir = tempfile::tempdir().unwrap();
+    let (phone, laptop, phone_id) = trusted_pair(dir.path());
+    sees(&laptop, &phone);
+    drop(phone);
+    std::thread::sleep(Duration::from_millis(500));
+    let file = dir.path().join("big.bin");
+    let bytes: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+    std::fs::write(&file, &bytes).unwrap();
+    block_on(laptop.send_to_device(phone_id.clone(), vec![file.to_string_lossy().into_owned()]))
+        .unwrap();
+    drop(laptop);
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Damage the bytes the laptop keeps to send.
+    let mut damaged = 0;
+    for entry in walk(&dir.path().join("laptop")) {
+        if entry.extension().is_some_and(|e| e == "data") {
+            let mut data = std::fs::read(&entry).unwrap();
+            if data.len() >= 200_000 {
+                data[100_000] ^= 0xff;
+                std::fs::write(&entry, data).unwrap();
+                damaged += 1;
+            }
+        }
+    }
+    assert_eq!(damaged, 1, "the blob on disk");
+
+    let laptop = device(dir.path(), "laptop");
+    let phone = device(dir.path(), "phone");
+    let laptop_id = phone.devices()[0].endpoint_id.clone();
+    sees(&laptop, &phone);
+    eventually("the send ends on the laptop", || {
+        laptop.device_messages(&phone_id).unwrap()[0].status != chat_core::MessageStatus::Queued
+    });
+    let sent = laptop
+        .transfers()
+        .into_iter()
+        .find(|t| t.peer_id == phone_id)
+        .unwrap();
+    let got = phone
+        .transfers()
+        .into_iter()
+        .find(|t| t.peer_id == laptop_id)
+        .unwrap();
+    let failed = |status: TransferStatus| match status {
+        TransferStatus::Failed { reason } => reason,
+        other => panic!("not failed: {other:?}"),
+    };
+    assert!(failed(sent.status).contains("verification failed"));
+    assert!(failed(got.status).starts_with("Verification failed"));
+    assert_eq!(
+        laptop.device_messages(&phone_id).unwrap()[0].status,
+        chat_core::MessageStatus::Failed
+    );
+    // Nothing was saved, and nothing shows in the phone's conversation.
+    assert!(phone.device_messages(&laptop_id).unwrap().is_empty());
+    let received = walk(&dir.path().join("phone").join("Received"));
+    assert!(
+        !received.iter().any(|p| p.ends_with("big.bin")),
+        "{received:?}"
+    );
+}
+
+fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(walk(&path));
+        } else {
+            found.push(path);
+        }
+    }
+    found
 }

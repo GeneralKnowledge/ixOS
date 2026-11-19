@@ -36,15 +36,16 @@ Sending files to a device posts a message with those attachments; the bytes
 still travel by the outbox and iroh-blobs, as today, and the receiver saves
 them in Documents/Relay as today. A folder is one attachment (a collection),
 shown as a folder that opens in the Files app. Both sides use one message
-id, `file-<delivery id>`; a file's attachment id is the SHA-256 of its
-bytes, a folder's is derived from the delivery, with type
-`inode/directory`. The conversation's log keeps where each attachment is on
-this device (the saved file on the receiver, the file that was sent on the
-sender, which may be gone later), `RelayCore::device_file` returns it, and
-`PeerRepo::download_attachment` copies it for chat-core, which checks it
-against the id. Files are sent from the device's Send Files; attaching
-files to a message in Chats (`upload_attachment`) is left for later, so
-chat-core's 25 MB attachment limit never applies to device files.
+id, `file-<delivery id>`, and one attachment id: the BLAKE3 hash iroh-blobs
+verifies the content by (a folder's collection, with type
+`inode/directory`), so the sender's and the receiver's attachments match
+even after the sent file is gone, and nothing has to be read to make one.
+The conversation's log keeps where each attachment is on this device (the
+saved file on the receiver; on the sender a copy of a file up to 25 MB,
+else the file that was sent while it is there), `RelayCore::device_file`
+returns it, and Chats opens it from there. Files are sent from the device's
+Send Files; attaching files to a message in Chats (`upload_attachment`) is
+left for later, so chat-core's 25 MB attachment limit never applies to device files.
 
 **3. One durable queue: Relay's outbox.** Every item for a trusted device,
 message or files, is a `SavedDelivery` in `Record::deliveries`, saved

@@ -26,10 +26,9 @@
 //!   oldest first and stops at the first that waits, per device, so a
 //!   device that is away holds up only what is for it.
 //! - **Files are attachments.** Files sent to a device (Send Files) are a
-//!   message `file-<delivery id>` with one attachment, on both sides: a
-//!   file's attachment id is the SHA-256 of its bytes, so chat-core checks
-//!   what it opens; a folder's is derived from the delivery and its type
-//!   is [`FOLDER_MIME`]. The bytes travel by the outbox and iroh-blobs as
+//!   message `file-<delivery id>` with one attachment, on both sides,
+//!   whose id is the BLAKE3 hash of what was sent (a folder's collection,
+//!   typed [`FOLDER_MIME`]), the hash iroh-blobs verified it by. The bytes travel by the outbox and iroh-blobs as
 //!   before; the log keeps where each attachment is on this device (the
 //!   saved file on the receiver, the file that was sent on the sender).
 
@@ -70,43 +69,22 @@ pub(crate) fn files_message_id(delivery: &str) -> String {
     format!("file-{delivery}")
 }
 
-/// The attachment of what delivery `delivery` (hex) carries: `file` is
-/// the one file it is, kept on this device; anything else (a folder, or
-/// several items, which arrive as a folder) is a folder. A file's id is
-/// its SHA-256, a folder's the SHA-256 of the delivery's id, the same on
-/// both sides.
-pub(crate) fn files_attachment(
-    delivery: &str,
-    file: Option<&Path>,
-    name: &str,
-    size: u64,
-) -> Result<Attachment, RelayError> {
-    let (id, mime) = if let Some(path) = file.filter(|p| p.is_file()) {
-        let id = forge_storage::files::sha256_file(path).map_err(|e| RelayError::File {
-            reason: e.to_string(),
-        })?;
-        (id, mime_for(name).to_string())
-    } else if file.is_some_and(|p| !p.exists()) {
-        // The file that was sent is gone (its bytes wait in the store).
-        (derived_id(delivery), mime_for(name).to_string())
-    } else {
-        (derived_id(delivery), FOLDER_MIME.to_string())
-    };
-    Ok(Attachment {
-        id,
+/// The attachment of a files delivery whose content has BLAKE3 hash
+/// `content` (hex; a folder's is its collection's): the hash is its id,
+/// the same on both sides whether or not the file is still here, and
+/// nothing needs reading to make it. A folder (several items arrive as
+/// one) has type [`FOLDER_MIME`].
+pub(crate) fn files_attachment(content: &str, folder: bool, name: &str, size: u64) -> Attachment {
+    Attachment {
+        id: content.to_string(),
         name: name.to_string(),
-        mime,
+        mime: if folder {
+            FOLDER_MIME.to_string()
+        } else {
+            mime_for(name).to_string()
+        },
         size,
-    })
-}
-
-/// An attachment id for what has no bytes of its own here: the SHA-256
-/// of the delivery's id.
-fn derived_id(delivery: &str) -> String {
-    use sha2::Digest;
-    crate::hex::hex(&sha2::Sha256::digest(
-        format!("relay-folder:{delivery}").as_bytes(),
-    ))
+    }
 }
 
 /// A file's type from its name, for how Chats shows it.
@@ -302,7 +280,7 @@ impl PeerLog {
     /// it was, while it is there.
     pub fn keep(&self, file: &Path, id: &str) -> Option<PathBuf> {
         let size = std::fs::metadata(file).ok()?.len();
-        if size > KEEP_UP_TO || !forge_storage::files::is_sha256_hex(id) {
+        if size > KEEP_UP_TO || !chat_core::is_attachment_id(id) {
             return None;
         }
         let kept = self.dir.join("files").join(id);
@@ -510,24 +488,13 @@ impl ChatRepo for PeerRepo {
         }))
     }
 
-    /// Copies the attachment from where it is on this device; chat-core
-    /// checks the bytes against the id. A folder isn't one file: it opens
-    /// from its place in Files.
-    fn download_attachment(&self, id: &str, destination: &Path) -> Result<(), ChatError> {
-        let invalid = |reason: &str| ChatError::InvalidInput {
-            reason: reason.into(),
-        };
-        let path = self
-            .log
-            .file(id)
-            .ok_or_else(|| invalid("the file is no longer on this device"))?;
-        if path.is_dir() {
-            return Err(invalid("a folder opens from Files, not as one file"));
-        }
-        std::fs::copy(&path, destination).map_err(|err| ChatError::UnsupportedOnHost {
-            detail: format!("cannot copy {}: {err}", path.display()),
-        })?;
-        Ok(())
+    /// A device attachment opens from where it is on this device
+    /// (`ChatCore::attachment_file` finds it), so a download is asked for
+    /// only when it is gone: there is nowhere else to get it from yet.
+    fn download_attachment(&self, _id: &str, _destination: &Path) -> Result<(), ChatError> {
+        Err(ChatError::InvalidInput {
+            reason: "the file is no longer on this device".into(),
+        })
     }
 }
 

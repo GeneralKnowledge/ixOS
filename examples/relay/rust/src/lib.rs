@@ -971,7 +971,12 @@ impl RelayCore {
         // Queued until the delivery ends.
         let delivery = hex::hex(&id);
         let local = file.as_deref().map(Path::new);
-        let attachment = device_chat::files_attachment(&delivery, local, &offer.name, size)?;
+        let attachment = device_chat::files_attachment(
+            &hex::hex(offer.hash.as_bytes()),
+            offer.collection,
+            &offer.name,
+            size,
+        );
         let me = self.identity();
         let message_id = device_chat::files_message_id(&delivery);
         let log = self.peer_logs.get(&endpoint_id)?;
@@ -1165,7 +1170,13 @@ impl CoreDevices {
 impl CoreDevices {
     /// Adds what delivery `delivery` saved at `path` to `from`'s
     /// conversation, once.
-    fn files_arrived(&self, from: &str, delivery: [u8; 16], path: &Path) -> Result<(), RelayError> {
+    fn files_arrived(
+        &self,
+        from: &str,
+        delivery: [u8; 16],
+        content: [u8; 32],
+        path: &Path,
+    ) -> Result<(), RelayError> {
         let core = self.core.upgrade().ok_or(RelayError::Stopped {
             kind: forge_app::ErrorKind::ShutDown,
         })?;
@@ -1182,7 +1193,8 @@ impl CoreDevices {
         let size = code_send::items_in(&[path.to_path_buf()])
             .map(|f| f.iter().map(|(_, _, n)| n).sum())
             .unwrap_or(0);
-        let attachment = device_chat::files_attachment(&delivery, Some(path), &name, size)?;
+        let attachment =
+            device_chat::files_attachment(&hex::hex(&content), path.is_dir(), &name, size);
         let author = core
             .record
             .get()
@@ -1366,13 +1378,20 @@ impl device::DeviceInbound for CoreDevices {
         }
     }
 
-    fn finish_file(&self, id: u64, from: &str, delivery: [u8; 16], result: Result<String, String>) {
+    fn finish_file(
+        &self,
+        id: u64,
+        from: &str,
+        delivery: [u8; 16],
+        content: [u8; 32],
+        result: Result<String, String>,
+    ) {
         if let Some(core) = self.core.upgrade() {
             lock(&core.progress).remove(&id);
         }
         if let Ok(path) = &result {
             // The conversation shows it as a message with the saved file.
-            if let Err(err) = self.files_arrived(from, delivery, Path::new(path)) {
+            if let Err(err) = self.files_arrived(from, delivery, content, Path::new(path)) {
                 forge_runtime::logging::warn!("relay couldn't add files to a conversation: {err}");
             }
         }

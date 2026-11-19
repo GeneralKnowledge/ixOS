@@ -196,8 +196,16 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn begin_file(&self, from: &str, name: &str, size: u64) -> Result<u64, RelayError>;
     fn progress(&self, id: u64, done: u64);
     /// It ended: saved at the path (and the item's id `delivery` from
-    /// `from` remembered), or failed with the reason.
-    fn finish_file(&self, id: u64, from: &str, delivery: [u8; 16], result: Result<String, String>);
+    /// `from` remembered), or failed with the reason. `content` is the
+    /// BLAKE3 hash of what was sent (a folder's collection).
+    fn finish_file(
+        &self,
+        id: u64,
+        from: &str,
+        delivery: [u8; 16],
+        content: [u8; 32],
+        result: Result<String, String>,
+    );
 }
 
 /// Trusts nobody: for nodes in tests that only use word codes.
@@ -232,7 +240,7 @@ impl DeviceInbound for NoDevices {
         Err(RelayError::Refused)
     }
     fn progress(&self, _: u64, _: u64) {}
-    fn finish_file(&self, _: u64, _: &str, _: [u8; 16], _: Result<String, String>) {}
+    fn finish_file(&self, _: u64, _: &str, _: [u8; 16], _: [u8; 32], _: Result<String, String>) {}
 }
 
 /// What a device says about itself in a `Status`.
@@ -558,6 +566,22 @@ impl DeviceHandler {
                 }
             }
         };
+        // The sender is still connected but what it sent couldn't be had
+        // intact: a chunk failed its BLAKE3 check (or the sender no longer
+        // holds it). That doesn't heal with a retry.
+        if fetched.is_err() && conn.close_reason().is_none() {
+            let host = Arc::clone(&self.host);
+            let from = them.to_string();
+            let reason = VERIFICATION_FAILED.to_string();
+            tokio::task::spawn_blocking(move || {
+                host.finish_file(id, &from, delivery, *hash.as_bytes(), Err(reason))
+            })
+            .await
+            .map_err(connection)?;
+            return Ok(DeviceMsg::Refused {
+                reason: VERIFICATION_FAILED.to_lowercase(),
+            });
+        }
         let folder = self.host.folder();
         let saved = match fetched {
             Ok(()) => {
@@ -580,12 +604,18 @@ impl DeviceHandler {
         };
         let host = Arc::clone(&self.host);
         let from = them.to_string();
-        tokio::task::spawn_blocking(move || host.finish_file(id, &from, delivery, result))
-            .await
-            .map_err(connection)?;
+        tokio::task::spawn_blocking(move || {
+            host.finish_file(id, &from, delivery, *hash.as_bytes(), result)
+        })
+        .await
+        .map_err(connection)?;
         Ok(reply)
     }
 }
+
+/// Why a file that didn't arrive intact failed, on both sides.
+pub(crate) const VERIFICATION_FAILED: &str =
+    "Verification failed: what arrived didn't match what was sent";
 
 /// What a send to a trusted device carries.
 pub(crate) enum Outgoing {
