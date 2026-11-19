@@ -1,0 +1,281 @@
+{
+ "created": "2026-11-19T09:13:01.546Z",
+ "count": 236,
+ "offset": 0,
+ "recordings": [
+  {
+   "id": "e83a33d8-7843-4e2f-b5bd-b54da22dacbd",
+   "score": 100,
+   "artist-credit-id": "edbf1ee2-3861-3d95-b971-8f243cbc7e54",
+   "title": "Bohemian Rhapsody",
+   "video": null,
+   "artist-credit": [
+    {
+     "name": "Queen",
+     "artist": {
+      "id": "0383dadf-2a4e-4d10-a46a-e9e041da8eb3",
+      "name": "Queen",
+      "sort-name": "Queen",
+      "disambiguation": "UK rock group",
+      "aliases": [
+       {
+        "sort-name": "Queen",
+        "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+        "name": "Queen",
+        "locale": "en",
+        "type": "Artist name",
+        "primary": true,
+        "begin-date": null,
+        "end-date": null
+       }
+      ]
+     }
+    }
+   ],
+   "first-release-date": "2005",
+   "releases": [
+    {
+     "id": "684d4328-802f-479f-8ce1-617c676fde71",
+     "artist-credit-id": "edbf1ee2-3861-3d95-b971-8f243cbc7e54",
+     "count": 2,
+     "title": "Queen On Fire (Live At The Bowl)",
+     "artist-credit": [
+      {
+       "name": "Queen",
+       "artist": {
+        "id": "0383dadf-2a4e-4d10-a46a-e9e041da8eb3",
+        "name": "Queen",
+        "sort-name": "Queen",
+        "disambiguation": "UK rock group"
+       }
+      }
+     ],
+     "release-group": {
+      "id": "c9a223e1-377f-363f-9699-4d209006a2b7",
+      "type-id": "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "Queen on Fire: Live at the Bowl",
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ],
+      "secondary-type-ids": [
+       "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ]
+     },
+     "date": "2005",
+     "country": "CN",
+     "release-events": [
+      {
+       "date": "2005",
+       "area": {
+        "id": "7c81bb69-a99b-3487-b6d4-0f76d7a29ca0",
+        "name": "China",
+        "sort-name": "China",
+        "iso-3166-1-codes": [
+         "CN"
+        ]
+       }
+      }
+     ],
+     "track-count": 23,
+     "media": [
+      {
+       "id": "615f8ce9-7df9-46b2-b6df-72dfe63a5445",
+       "position": 2,
+       "format": "CD",
+       "track": [
+        {
+         "id": "a696a5f0-ee29-4d82-b644-4ed0547c3c01",
+         "number": "4",
+         "title": "Bohemian Rhapsody"
+        }
+       ],
+       "track-count": 10,
+       "track-offset": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "01d2788d-862f-4d00-aa1e-f326a0d353a6",
+   "score": 100,
+   "artist-credit-id": "edbf1ee2-3861-3d95-b971-8f243cbc7e54",
+   "title": "Bohemian Rhapsody",
+   "length": 139000,
+   "disambiguation": "live, 2003-11-29: Green Point Stadium, Cape Town, South Africa",
+   "video": true,
+   "artist-credit": [
+    {
+     "name": "Queen",
+     "artist": {
+      "id": "0383dadf-2a4e-4d10-a46a-e9e041da8eb3",
+      "name": "Queen",
+      "sort-name": "Queen",
+      "disambiguation": "UK rock group",
+      "aliases": [
+       {
+        "sort-name": "Queen",
+        "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+        "name": "Queen",
+        "locale": "en",
+        "type": "Artist name",
+        "primary": true,
+        "begin-date": null,
+        "end-date": null
+       }
+      ]
+     }
+    }
+   ],
+   "first-release-date": "2004",
+   "releases": [
+    {
+     "id": "aab07809-e340-48c3-9748-2a1666010fc1",
+     "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+     "artist-credit-id": "949a7fd5-fe73-3e8f-922e-01ff4ca958f7",
+     "count": 2,
+     "title": "46664: The Event",
+     "status": "Official",
+     "artist-credit": [
+      {
+       "name": "Various Artists",
+       "artist": {
+        "id": "89ad4ac3-39f7-470e-963a-56509c546377",
+        "name": "Various Artists",
+        "sort-name": "Various Artists",
+        "disambiguation": "add compilations to this artist"
+       }
+      }
+     ],
+     "release-group": {
+      "id": "74c2fc4c-c052-416a-bbc2-cabaaec76d1f",
+      "type-id": "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "46664: The Event",
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ],
+      "secondary-type-ids": [
+       "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ]
+     },
+     "date": "2004",
+     "country": "XE",
+     "release-events": [
+      {
+       "date": "2004",
+       "area": {
+        "id": "89a675c2-3e37-3518-b83c-418bad59a85a",
+        "name": "Europe",
+        "sort-name": "Europe",
+        "iso-3166-1-codes": [
+         "XE"
+        ]
+       }
+      }
+     ],
+     "track-count": 51,
+     "media": [
+      {
+       "id": "1752b1ab-0f39-3fe6-aaa0-e8bb33a5270d",
+       "position": 2,
+       "format": "DVD-Video",
+       "track": [
+        {
+         "id": "28dfd4ba-c346-35fd-88d3-d1038636ba8f",
+         "number": "20",
+         "title": "Bohemian Rhapsody",
+         "length": 139000
+        }
+       ],
+       "track-count": 26,
+       "track-offset": 19
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "40e37f04-6fdd-459d-8c31-6f5cd0a197cf",
+   "score": 100,
+   "artist-credit-id": "edbf1ee2-3861-3d95-b971-8f243cbc7e54",
+   "title": "Bohemian Rhapsody",
+   "disambiguation": "live, 1979-01-24: Deutschlandhalle, Berlin, Germany",
+   "video": null,
+   "artist-credit": [
+    {
+     "name": "Queen",
+     "artist": {
+      "id": "0383dadf-2a4e-4d10-a46a-e9e041da8eb3",
+      "name": "Queen",
+      "sort-name": "Queen",
+      "disambiguation": "UK rock group",
+      "aliases": [
+       {
+        "sort-name": "Queen",
+        "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+        "name": "Queen",
+        "locale": "en",
+        "type": "Artist name",
+        "primary": true,
+        "begin-date": null,
+        "end-date": null
+       }
+      ]
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "11ec942f-5b66-44e8-85fe-6827cf1d1ed8",
+     "status-id": "1156806e-d06a-38bd-83f0-cf2284a808b9",
+     "artist-credit-id": "edbf1ee2-3861-3d95-b971-8f243cbc7e54",
+     "count": 2,
+     "title": "1979-01-24: Deutschlandhalle, Berlin, Germany",
+     "status": "Bootleg",
+     "artist-credit": [
+      {
+       "name": "Queen",
+       "artist": {
+        "id": "0383dadf-2a4e-4d10-a46a-e9e041da8eb3",
+        "name": "Queen",
+        "sort-name": "Queen",
+        "disambiguation": "UK rock group"
+       }
+      }
+     ],
+     "release-group": {
+      "id": "e8118626-332e-49f1-a878-d4077389dab2",
+      "title": "1979-01-24: Deutschlandhalle, Berlin, Germany",
+      "secondary-types": [
+       "Live"
+      ],
+      "secondary-type-ids": [
+       "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ]
+     },
+     "track-count": 42,
+     "media": [
+      {
+       "id": "c0d2313d-79e6-31bd-a680-6481da5a7209",
+       "position": 2,
+       "format": "Digital Media",
+       "track": [
+        {
+         "id": "3fc361f4-7a5c-3ca4-9450-c730a269835c",
+         "number": "9",
+         "title": "Bohemian Rhapsody"
+        }
+       ],
+       "track-count": 18,
+       "track-offset": 8
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
