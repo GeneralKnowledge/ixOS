@@ -126,7 +126,7 @@ fn a_device_is_found_again_without_bonjour_and_says_why_when_it_isnt() {
 
     // Together: the phone sees the laptop with Bonjour, and a note goes.
     sees(&phone, &laptop);
-    block_on(phone.send_note_to_device(laptop_id.clone(), "one".into())).unwrap();
+    block_on(phone.send_note_as_older_build(laptop_id.clone(), "one".into())).unwrap();
     eventually("the first note", || notes_from(&laptop, "phone") == ["one"]);
     eventually("the route", || {
         laptop_on(&phone).route.as_deref() == Some("Direct, local network")
@@ -137,7 +137,7 @@ fn a_device_is_found_again_without_bonjour_and_says_why_when_it_isnt() {
     phone.devices_nearby(vec![]);
     drop(laptop);
     std::thread::sleep(Duration::from_millis(500));
-    let sent = block_on(phone.send_note_to_device(laptop_id.clone(), "two".into())).unwrap();
+    let sent = block_on(phone.send_note_as_older_build(laptop_id.clone(), "two".into())).unwrap();
     assert_eq!(sent.status, TransferStatus::Waiting);
     eventually("the reason, in words", || {
         laptop_on(&phone)
@@ -159,7 +159,7 @@ fn a_device_is_found_again_without_bonjour_and_says_why_when_it_isnt() {
     // setting lasts.
     block_on(phone.set_connection_mode(ConnectionMode::Local)).unwrap();
     assert_eq!(phone.connection_mode(), ConnectionMode::Local);
-    block_on(phone.send_note_to_device(laptop_id, "three".into())).unwrap();
+    block_on(phone.send_note_as_older_build(laptop_id, "three".into())).unwrap();
     eventually("the third note", || {
         notes_from(&laptop, "phone") == ["one", "two", "three"]
     });

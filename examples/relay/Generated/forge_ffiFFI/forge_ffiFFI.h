@@ -632,11 +632,6 @@ uint64_t uniffi_relay_core_fn_method_relaycore_revision(uint64_t ptr, RustCallSt
 uint64_t uniffi_relay_core_fn_method_relaycore_revoke_device(uint64_t ptr, RustBuffer endpoint_id
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_NOTE_TO_DEVICE
-#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_NOTE_TO_DEVICE
-uint64_t uniffi_relay_core_fn_method_relaycore_send_note_to_device(uint64_t ptr, RustBuffer endpoint_id, RustBuffer text
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
 void uniffi_relay_core_fn_method_relaycore_send_paths_with_code(uint64_t ptr, RustBuffer paths, RustCallStatus *_Nonnull out_status
@@ -1388,6 +1383,11 @@ RustBuffer uniffi_relay_core_fn_func_app_lock_method(RustCallStatus *_Nonnull ou
 RustBuffer uniffi_relay_core_fn_func_chat_message_link(RustBuffer conversation_id, RustBuffer message_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_DEVICE_CONVERSATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_DEVICE_CONVERSATION_ID
+RustBuffer uniffi_relay_core_fn_func_device_conversation_id(RustBuffer endpoint_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_DELIVERY
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_DELIVERY
 RustBuffer uniffi_relay_core_fn_func_chat_delivery(RustBuffer message, RustBuffer conversation, RustCallStatus *_Nonnull out_status
@@ -1767,6 +1767,12 @@ uint16_t uniffi_relay_core_checksum_func_chat_message_link(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_DEVICE_CONVERSATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_DEVICE_CONVERSATION_ID
+uint16_t uniffi_relay_core_checksum_func_device_conversation_id(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_DELIVERY
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_DELIVERY
 uint16_t uniffi_relay_core_checksum_func_chat_delivery(void
@@ -2034,12 +2040,6 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_revision(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_REVOKE_DEVICE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_REVOKE_DEVICE
 uint16_t uniffi_relay_core_checksum_method_relaycore_revoke_device(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_NOTE_TO_DEVICE
-#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_NOTE_TO_DEVICE
-uint16_t uniffi_relay_core_checksum_method_relaycore_send_note_to_device(void
     
 );
 #endif

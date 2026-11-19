@@ -73,6 +73,11 @@ public struct RelayRoot: View {
             }
 
             ContentView(host: host)
+                // A device's Message button opens its conversation here.
+                .environment(\.openDeviceConversation) { endpointID in
+                    tab = .chats
+                    chatPath = [ChatRoute(conversationId: deviceConversationId(endpointId: endpointID))]
+                }
                 .tabItem { Label("Devices", systemImage: "arrow.left.arrow.right") }
                 .tag(Tab.devices)
 
@@ -102,5 +107,18 @@ public struct RelayRoot: View {
                 retry: ForgeStateAction("Try Again", identifier: "content.retry") { Task { await chat.open() } }
             )
         }
+    }
+}
+
+/// Opens a trusted device's conversation in Chats. Set by `RelayRoot`; nil
+/// where Relay's Devices screen shows without Chats.
+struct OpenDeviceConversationKey: EnvironmentKey {
+    static let defaultValue: ((String) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var openDeviceConversation: ((String) -> Void)? {
+        get { self[OpenDeviceConversationKey.self] }
+        set { self[OpenDeviceConversationKey.self] = newValue }
     }
 }

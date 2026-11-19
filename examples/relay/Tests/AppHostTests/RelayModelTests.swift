@@ -97,17 +97,21 @@ final class RelayModelTests: XCTestCase {
         a.devicesNearby([NearbyDevice(endpointId: service.endpointId, addresses: [RelayFormat.address(host: "127.0.0.1", port: service.port)])])
         let toB = try XCTUnwrap(a.device(service.endpointId))
         XCTAssertTrue(toB.nearby)
-        let sent = await a.send(note: "No code", toDevice: toB)
+        // Files go with no code (text is a message in the conversation).
+        let map = FileManager.default.temporaryDirectory.appendingPathComponent("map-\(UUID().uuidString).txt")
+        try Data("north".utf8).write(to: map)
+        defer { try? FileManager.default.removeItem(at: map) }
+        let sent = await a.send(paths: [map.path], toDevice: toB)
         XCTAssertTrue(sent)
         b.reload()
-        XCTAssertEqual(b.transfers.first.map { RelayFormat.title($0.item) }, "No code")
+        XCTAssertEqual(b.transfers.first.map { RelayFormat.title($0.item) }, map.lastPathComponent)
 
-        // Revoked on B: A's next note is refused, with an alert on A.
+        // Revoked on B: A's next send is refused, with an alert on A.
         let aOnB = try XCTUnwrap(b.device(advert.endpointID))
         b.askToRevoke(aOnB)
         await b.handle(.revoke(endpointID: aOnB.endpointId))
         XCTAssertEqual(b.revokedDevices.count, 1)
-        let refused = await a.send(note: "Again", toDevice: toB)
+        let refused = await a.send(paths: [map.path], toDevice: toB)
         XCTAssertFalse(refused)
         XCTAssertNotNil(a.alert)
     }

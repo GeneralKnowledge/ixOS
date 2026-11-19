@@ -180,10 +180,6 @@ public final class RelayModel {
         devices.first { $0.endpointId == endpointID }
     }
 
-    public func transfers(with device: Device) -> [Transfer] {
-        transfers.filter { $0.peerId == device.endpointId }
-    }
-
     /// Where this device takes trusted connections, for Bonjour; `nil` if
     /// Relay's endpoint couldn't start.
     public func deviceService() async -> DeviceService? {
@@ -326,13 +322,6 @@ public final class RelayModel {
         case .local:
             "Relay only connects to devices on the same network."
         }
-    }
-
-    /// Sends a note to a trusted device, no code. It waits in the outbox
-    /// while the device is away. `false` (and an alert) if it was refused.
-    @discardableResult
-    public func send(note: String, toDevice device: Device) async -> Bool {
-        await sendingToDevice { try await $0.sendNoteToDevice(endpointId: device.endpointId, text: note) }
     }
 
     /// Sends files and folders (in one folder when several) to a trusted

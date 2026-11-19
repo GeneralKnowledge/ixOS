@@ -913,22 +913,6 @@ impl RelayCore {
             .await
     }
 
-    /// Sends a note to a trusted device, with no code. It waits in the
-    /// outbox until the device is reached: the transfer comes back Done,
-    /// or Waiting when the device wasn't reached. A refusal is an error.
-    pub async fn send_note_to_device(
-        &self,
-        endpoint_id: String,
-        text: String,
-    ) -> Result<Transfer, RelayError> {
-        let text = model::clean_note(&text)?;
-        self.trusted(&endpoint_id)?;
-        let item = SavedItem::Note { text: text.clone() };
-        let payload = outbox::Payload::Note { text };
-        self.queue(outbox::new_id(), endpoint_id, item, payload)
-            .await
-    }
-
     /// Sends files and folders to a trusted device as one transfer, with
     /// no code. Several items arrive in one folder named "N items". They
     /// are copied into Relay's store first, so they can wait in the outbox
@@ -991,6 +975,7 @@ impl RelayCore {
         let me = self.identity();
         let message_id = device_chat::files_message_id(&delivery);
         let log = self.peer_logs.get(&endpoint_id)?;
+        let kept = local.and_then(|file| log.keep(file, &attachment.id));
         log.add_files(
             chat_core::Message {
                 id: message_id.clone(),
@@ -1000,7 +985,7 @@ impl RelayCore {
                 status: chat_core::MessageStatus::Queued,
                 ..chat_core::Message::default()
             },
-            local,
+            kept.as_deref().or(local),
         )?;
         let queued = self
             .queue(id, endpoint_id, item, outbox::Payload::files(&offer))
@@ -1024,6 +1009,25 @@ impl RelayCore {
                 core.cancel_delivery(id).await;
             }
         });
+    }
+}
+
+/// What a device on an older build does to send a note (a `DeviceMsg::Note`
+/// through the outbox), for the tests of how this build receives one. Not
+/// for the app: text to a trusted device is a message in its conversation.
+impl RelayCore {
+    #[doc(hidden)]
+    pub async fn send_note_as_older_build(
+        &self,
+        endpoint_id: String,
+        text: String,
+    ) -> Result<Transfer, RelayError> {
+        let text = model::clean_note(&text)?;
+        self.trusted(&endpoint_id)?;
+        let item = SavedItem::Note { text: text.clone() };
+        let payload = outbox::Payload::Note { text };
+        self.queue(outbox::new_id(), endpoint_id, item, payload)
+            .await
     }
 }
 

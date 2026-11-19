@@ -49,13 +49,13 @@ fn bad_input_is_refused_early() {
     let dir = tempfile::tempdir().unwrap();
     let laptop = device(&dir, "laptop");
     assert_eq!(
-        block_on(laptop.send_note_to_device("nobody".into(), "hi".into())),
+        block_on(laptop.send_note_as_older_build("nobody".into(), "hi".into())),
         Err(RelayError::UnknownPeer {
             id: "nobody".into()
         })
     );
     assert_eq!(
-        block_on(laptop.send_note_to_device("nobody".into(), "   ".into())),
+        block_on(laptop.send_note_as_older_build("nobody".into(), "   ".into())),
         Err(RelayError::EmptyNote)
     );
 }

@@ -137,6 +137,9 @@ const LOG_VERSION: u32 = 1;
 const QUIET: Duration = Duration::from_millis(250);
 /// How often a quiet stream says it is still there.
 const HEARTBEAT: Duration = Duration::from_secs(15);
+/// The largest file we send that the conversation keeps a copy of: what
+/// chat-core keeps of an attachment.
+const KEEP_UP_TO: u64 = chat_core::MAX_ATTACHMENT_BYTES;
 /// Longest message id accepted from another device.
 pub(crate) const MAX_ID_CHARS: usize = 100;
 
@@ -155,6 +158,7 @@ pub struct LogFile {
 /// One device conversation's messages on this device.
 pub struct PeerLog {
     conversation_id: String,
+    dir: PathBuf,
     doc: Mutex<Document<LogFile>>,
     listeners: Mutex<Vec<mpsc::Sender<Message>>>,
 }
@@ -164,6 +168,7 @@ impl PeerLog {
         std::fs::create_dir_all(&dir).map_err(crate::node::file_error)?;
         Ok(Self {
             conversation_id: device_conversation(endpoint_id),
+            dir: dir.clone(),
             doc: Mutex::new(Document::open(dir.join("messages.json"), LOG_VERSION)?),
             listeners: Mutex::new(Vec::new()),
         })
@@ -289,6 +294,26 @@ impl PeerLog {
             })?;
         }
         self.add(message)
+    }
+
+    /// A copy of a file we send, kept with the conversation so it still
+    /// opens here after the picked file is gone (as chat-core keeps what
+    /// it sends). Only up to [`KEEP_UP_TO`]; a larger file is opened where
+    /// it was, while it is there.
+    pub fn keep(&self, file: &Path, id: &str) -> Option<PathBuf> {
+        let size = std::fs::metadata(file).ok()?.len();
+        if size > KEEP_UP_TO || !forge_storage::files::is_sha256_hex(id) {
+            return None;
+        }
+        let kept = self.dir.join("files").join(id);
+        if kept.exists() {
+            return Some(kept);
+        }
+        std::fs::create_dir_all(kept.parent()?).ok()?;
+        let partial = kept.with_extension("partial");
+        std::fs::copy(file, &partial).ok()?;
+        std::fs::rename(&partial, &kept).ok()?;
+        Some(kept)
     }
 
     /// Where attachment `id` is on this device, if it is still there.
@@ -513,6 +538,21 @@ impl RelayCore {
     pub fn device_file(&self, endpoint_id: &str, attachment_id: &str) -> Option<String> {
         let log = self.peer_logs.get(endpoint_id).ok()?;
         Some(log.file(attachment_id)?.to_string_lossy().into_owned())
+    }
+
+    /// [`device_file`](Self::device_file) in whichever listed device's
+    /// conversation has it.
+    pub fn device_attachment(&self, attachment_id: &str) -> Option<String> {
+        let listed: Vec<String> = self
+            .record
+            .get()
+            .devices
+            .listed()
+            .map(|d| d.endpoint_id.clone())
+            .collect();
+        listed
+            .iter()
+            .find_map(|id| self.device_file(id, attachment_id))
     }
 }
 

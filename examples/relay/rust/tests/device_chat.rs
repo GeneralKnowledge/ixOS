@@ -317,10 +317,13 @@ fn files_to_a_device_are_attachments_in_both_conversations() {
     assert!(Path::new(&phone.device_file(&laptop_id, &trip.id).unwrap())
         .join("b.txt")
         .is_file());
-    assert_eq!(
-        laptop.device_file(&phone_id, &photo.id).unwrap(),
-        file.to_string_lossy()
-    );
+    // The laptop kept a copy of the photo it sent: it opens after the
+    // picked file is gone, from Chats too.
+    std::fs::remove_file(&file).unwrap();
+    let kept = laptop.device_file(&phone_id, &photo.id).unwrap();
+    assert_eq!(std::fs::read(&kept).unwrap(), b"not really a photo");
+    let laptop_chat = chat(dir.path(), "laptop", &laptop);
+    assert_eq!(laptop_chat.attachment_file(photo.id.clone()), Some(kept));
 }
 
 /// A note from a device on an older build is a message in its
@@ -331,7 +334,7 @@ fn a_note_from_an_older_build_is_a_message() {
     let (phone, laptop, phone_id) = trusted_pair(dir.path());
     let laptop_id = phone.devices()[0].endpoint_id.clone();
     sees(&laptop, &phone);
-    block_on(laptop.send_note_to_device(phone_id, "from the old build".into())).unwrap();
+    block_on(laptop.send_note_as_older_build(phone_id, "from the old build".into())).unwrap();
     eventually("the note as a message", || {
         phone.device_messages(&laptop_id).unwrap().len() == 1
     });

@@ -25,8 +25,9 @@ device sit in two queues that don't know each other's order.
 that device's conversation. `DeviceMsg::Note` is no longer sent; one that
 arrives from an older build is added to the conversation as a message (the
 only devices paired today are Reuben's, all updated by the combined build,
-so this is a one-release courtesy). `send_note_to_device` and
-`relay send <device> --note` post a message.
+so this is a one-release courtesy). `send_note_to_device` leaves the app's
+API (the tests keep an older build's sender to check the courtesy), and
+`relay send <device> --note` posts a message.
 
 **2. Files sent to a trusted device are an attachment in its
 conversation.** chat-core already has attachments (`Attachment`: id, name,
