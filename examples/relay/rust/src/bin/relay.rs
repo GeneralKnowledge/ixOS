@@ -71,7 +71,7 @@ use relay_core::{
 const USAGE: &str = "usage: relay listen | devices | send PATH... | receive <code> | \
 send <device> (--text TEXT | PATH...) [--to host:port] | \
 messages <device> | status <device> | revoke <device> | forget <device> | \
-trust <device> | policy [codes-only | ask | automatic] | \
+trust <device> | asks <device> on|off | policy [codes-only | ask | automatic] | \
 connections [local | private | any] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] | \
@@ -229,8 +229,13 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 } else {
                     ""
                 };
+                let asks = if d.trusted && d.may_ask {
+                    ", may ask"
+                } else {
+                    ""
+                };
                 out += &format!(
-                    "{}  {state}{takes}  {}  {}\n",
+                    "{}  {state}{takes}{asks}  {}  {}\n",
                     d.name,
                     where_now(&d),
                     d.endpoint_id
@@ -282,6 +287,21 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 _ => "trusted",
             };
             out += &format!("{}: {what}.\n", device.name);
+            Ok(())
+        })(),
+        // Whether a trusted device may ask this one's AI: off when trusted.
+        "asks" => (|| {
+            let (who, on) = match rest {
+                [who, on] if on == "on" => (who, true),
+                [who, off] if off == "off" => (who, false),
+                _ => return Err(USAGE.to_string()),
+            };
+            let device = find_device(core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            block_on(core.set_may_ask(device.endpoint_id.clone(), on))
+                .map_err(|e| e.to_string())?;
+            let what = if on { "may ask" } else { "may not ask" };
+            out += &format!("{}: {what} this device's AI.\n", device.name);
             Ok(())
         })(),
         "policy" => match rest.first().map(String::as_str) {

@@ -163,6 +163,12 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     /// The device's rights here, or `None` when it isn't trusted: then the
     /// connection is closed before anything is read.
     fn rights(&self, from: &str) -> Option<Rights>;
+    /// Whether `from` is still trusted and may send here, asked again
+    /// before something it sent is saved: it may have been revoked while
+    /// the transfer ran.
+    fn still_takes_from(&self, from: &str) -> bool {
+        self.rights(from).is_some_and(|r| r.receives_from)
+    }
     /// This device's name, for the reply to Hello.
     fn my_name(&self) -> String;
     /// What this device says about itself, for a `StatusAsk`.
@@ -206,6 +212,44 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
         content: [u8; 32],
         result: Result<String, String>,
     );
+}
+
+/// Trusts everybody and takes nothing: for tests of the protocol itself.
+#[cfg(test)]
+pub(crate) struct TrustsAll;
+
+#[cfg(test)]
+impl DeviceInbound for TrustsAll {
+    fn rights(&self, _: &str) -> Option<Rights> {
+        Some(Rights {
+            receives_from: true,
+            may_ask: true,
+        })
+    }
+    fn my_name(&self) -> String {
+        "listener".into()
+    }
+    fn status(&self) -> StatusReport {
+        StatusReport::default()
+    }
+    fn reached(&self, _: &str) {}
+    fn folder(&self) -> PathBuf {
+        PathBuf::from("/nonexistent")
+    }
+    fn received_before(&self, _: &str, _: &[u8; 16]) -> bool {
+        false
+    }
+    fn note(&self, _: &str, _: [u8; 16], _: String) -> Result<(), RelayError> {
+        Ok(())
+    }
+    fn message(&self, _: &str, _: crate::device_chat::PeerMessage) -> Result<(), RelayError> {
+        Ok(())
+    }
+    fn begin_file(&self, _: &str, _: &str, _: u64) -> Result<u64, RelayError> {
+        Err(RelayError::Refused)
+    }
+    fn progress(&self, _: u64, _: u64) {}
+    fn finish_file(&self, _: u64, _: &str, _: [u8; 16], _: [u8; 32], _: Result<String, String>) {}
 }
 
 /// Trusts nobody: for nodes in tests that only use word codes.
@@ -267,6 +311,9 @@ pub struct AskReport {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Rights {
     pub receives_from: bool,
+    /// May ask this device's AI: its own switch, off by default, never
+    /// implied by trust.
+    pub may_ask: bool,
 }
 
 /// The node, for the protocol handler, which is made before the node is.
@@ -435,8 +482,28 @@ impl DeviceHandler {
         )
         .await?;
         self.host.reached(them);
-        let item = match hear(&mut recv, STEP).await? {
-            // Any trusted device may ask, as with the old TCP pairing.
+        // An item this build can't read (a newer build's) is refused with
+        // a reason, so the sender ends it instead of retrying it for days.
+        let item = match DeviceMsg::decode(&get_within(&mut recv, STEP).await?) {
+            Ok(item) => item,
+            Err(_) => {
+                say(&mut send, &unsupported()).await?;
+                return Ok(());
+            }
+        };
+        let item = match item {
+            // Asks need their own switch: trust alone doesn't grant them.
+            DeviceMsg::Ask { .. } if !rights.may_ask => {
+                say(
+                    &mut send,
+                    &DeviceMsg::Refused {
+                        reason: NOT_ASKED.into(),
+                    },
+                )
+                .await?;
+                send.finish().ok();
+                return Ok(());
+            }
             DeviceMsg::Ask { request } => return self.answer_ask(send, recv, them, request).await,
             other => other,
         };
@@ -510,7 +577,7 @@ impl DeviceHandler {
                 )
                 .await?
             }
-            _ => return Err(connection("expected a note or a file")),
+            _ => unsupported(),
         };
         say(&mut send, &reply).await?;
         send.finish().ok();
@@ -582,6 +649,27 @@ impl DeviceHandler {
                 reason: VERIFICATION_FAILED.to_lowercase(),
             });
         }
+        // Revoked (or no longer taking from it) while the file came: what
+        // arrived isn't saved, and the store lets go of it.
+        let host = Arc::clone(&self.host);
+        let from = them.to_string();
+        let still = tokio::task::spawn_blocking(move || host.still_takes_from(&from))
+            .await
+            .map_err(connection)?;
+        if !still {
+            crate::code::release(node, hash).await;
+            let host = Arc::clone(&self.host);
+            let from = them.to_string();
+            let reason = NO_LONGER_TAKEN.to_string();
+            tokio::task::spawn_blocking(move || {
+                host.finish_file(id, &from, delivery, *hash.as_bytes(), Err(reason))
+            })
+            .await
+            .map_err(connection)?;
+            return Ok(DeviceMsg::Refused {
+                reason: NO_LONGER_TAKEN.into(),
+            });
+        }
         let folder = self.host.folder();
         let saved = match fetched {
             Ok(()) => {
@@ -612,6 +700,18 @@ impl DeviceHandler {
         Ok(reply)
     }
 }
+
+/// The answer to an item this build doesn't take: refused, so the sender
+/// ends it at once (a connection error would be retried for 30 days).
+fn unsupported() -> DeviceMsg {
+    DeviceMsg::Refused {
+        reason: "This device's Relay doesn't support that yet; update it".into(),
+    }
+}
+
+/// Why a file from a device revoked while it came isn't saved.
+pub(crate) const NOT_ASKED: &str = "The other device doesn't take asks from this one";
+pub(crate) const NO_LONGER_TAKEN: &str = "Not saved: that device is no longer trusted here";
 
 /// Why a file that didn't arrive intact failed, on both sides.
 pub(crate) const VERIFICATION_FAILED: &str =
@@ -1089,6 +1189,144 @@ mod tests {
         assert_eq!(clean_label("ai.inference"), "ai.inference");
         assert_eq!(clean_label("files\u{202E}exe <b>"), "filesexeb");
         assert_eq!(clean_label(&"x".repeat(100)).len(), 32);
+    }
+
+    /// A newer build's item, which this build can't read, is refused
+    /// with a reason, never dropped with the connection (which the outbox
+    /// would retry for 30 days).
+    #[test]
+    fn an_item_this_build_cant_read_is_refused_not_dropped() {
+        #[derive(Serialize)]
+        enum Newer {
+            Teleport { to: String },
+        }
+        let dir = tempfile::tempdir().unwrap();
+        crate::code::TOKIO.block_on(async {
+            let listener = test_node(dir.path(), "listener", Arc::new(TrustsAll)).await;
+            let sender = test_node(dir.path(), "sender", Arc::new(NoDevices)).await;
+            let conn = connect(&sender, listener.endpoint.addr()).await.unwrap();
+            let (mut send, mut recv) = hello(&sender, &conn, "sender".into()).await.unwrap();
+            let mut newer = Vec::new();
+            ciborium::into_writer(&Newer::Teleport { to: "moon".into() }, &mut newer).unwrap();
+            put(&mut send, &newer).await.unwrap();
+            let answer = hear(&mut recv, STEP).await.unwrap();
+            assert_eq!(answer, unsupported());
+            conn.close(0u32.into(), b"bye");
+            // A message it reads, but doesn't take on this protocol's item
+            // step, is refused the same way.
+            let conn = connect(&sender, listener.endpoint.addr()).await.unwrap();
+            let (mut send, mut recv) = hello(&sender, &conn, "sender".into()).await.unwrap();
+            say(&mut send, &DeviceMsg::Done).await.unwrap();
+            assert_eq!(hear(&mut recv, STEP).await.unwrap(), unsupported());
+            conn.close(0u32.into(), b"bye");
+            sender.shutdown().await;
+            listener.shutdown().await;
+        });
+    }
+
+    /// Takes from anyone when a connection opens, but no longer by the
+    /// time a file has arrived (it was revoked meanwhile); keeps how each
+    /// file ended.
+    struct RevokedMeanwhile(std::sync::Mutex<Vec<Result<String, String>>>);
+
+    impl DeviceInbound for RevokedMeanwhile {
+        fn rights(&self, from: &str) -> Option<Rights> {
+            TrustsAll.rights(from)
+        }
+        fn still_takes_from(&self, _: &str) -> bool {
+            false
+        }
+        fn my_name(&self) -> String {
+            TrustsAll.my_name()
+        }
+        fn status(&self) -> StatusReport {
+            StatusReport::default()
+        }
+        fn reached(&self, _: &str) {}
+        fn folder(&self) -> PathBuf {
+            PathBuf::from("/nonexistent")
+        }
+        fn received_before(&self, _: &str, _: &[u8; 16]) -> bool {
+            false
+        }
+        fn note(&self, _: &str, _: [u8; 16], _: String) -> Result<(), RelayError> {
+            Ok(())
+        }
+        fn message(&self, _: &str, _: crate::device_chat::PeerMessage) -> Result<(), RelayError> {
+            Ok(())
+        }
+        fn begin_file(&self, _: &str, _: &str, _: u64) -> Result<u64, RelayError> {
+            Ok(1)
+        }
+        fn progress(&self, _: u64, _: u64) {}
+        fn finish_file(
+            &self,
+            _: u64,
+            _: &str,
+            _: [u8; 16],
+            _: [u8; 32],
+            result: Result<String, String>,
+        ) {
+            lock(&self.0).push(result);
+        }
+    }
+
+    /// A device revoked while its file arrives: the file isn't saved, and
+    /// both sides say why.
+    #[test]
+    fn a_file_from_a_device_revoked_meanwhile_is_not_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = Arc::new(RevokedMeanwhile(std::sync::Mutex::new(Vec::new())));
+        crate::code::TOKIO.block_on(async {
+            let listener = test_node(dir.path(), "listener", Arc::clone(&host) as _).await;
+            let sender = test_node(dir.path(), "sender", Arc::new(NoDevices)).await;
+            let file = dir.path().join("map.txt");
+            std::fs::write(&file, b"north").unwrap();
+            let (offer, _tags) =
+                crate::code_send::prepare(&[file], "map.txt".into(), &sender, true)
+                    .await
+                    .unwrap();
+            let sent = send(
+                &sender,
+                listener.endpoint.addr(),
+                ConnectionMode::Hybrid,
+                "sender".into(),
+                [7; 16],
+                Outgoing::Stored(offer),
+                |_| {},
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await;
+            assert!(
+                matches!(&sent, Err(RelayError::Declined { reason }) if reason == NO_LONGER_TAKEN),
+                "{sent:?}"
+            );
+            assert_eq!(*lock(&host.0), [Err(NO_LONGER_TAKEN.to_string())]);
+            sender.shutdown().await;
+            listener.shutdown().await;
+        });
+    }
+
+    async fn test_node(
+        dir: &std::path::Path,
+        name: &str,
+        host: Arc<dyn DeviceInbound>,
+    ) -> Arc<Node> {
+        let key_dir = dir.join(name);
+        let link = NodeLink::default();
+        let node = Arc::new(
+            Node::start(
+                &key_dir,
+                &key_dir.join("store"),
+                host,
+                Arc::clone(&link),
+                &crate::resolver::RelayServers::default(),
+            )
+            .await
+            .unwrap(),
+        );
+        let _ = link.set(Arc::downgrade(&node));
+        node
     }
 
     #[test]

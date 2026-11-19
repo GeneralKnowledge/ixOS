@@ -5100,7 +5100,7 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func devicesNearby(devices: [NearbyDevice]) 
     
     /**
-     * The person said Not Now.
+     * The person said Not Now to the offer `trust_offer` gave.
      */
     func dismissTrustOffer() 
     
@@ -5212,7 +5212,20 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      */
     func servers()  -> RelayServers
     
+    /**
+     * Only Hybrid uses the relay server. Leaving Hybrid lets go of the
+     * relay at once, and any connection that still finds a relay path is
+     * refused; Relay opens without the relay from then on. Coming back to
+     * Hybrid takes the relay up again (fully from the next open, when
+     * Relay opened outside Hybrid).
+     */
     func setConnectionMode(mode: ConnectionMode) async throws 
+    
+    /**
+     * Whether a trusted device may ask this device's AI. Off when a
+     * device is trusted; trust never turns it on.
+     */
+    func setMayAsk(endpointId: String, on: Bool) async throws 
     
     func setPairingPolicy(policy: PairingPolicy) async throws 
     
@@ -5251,8 +5264,9 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func trustDevice(endpointId: String) async throws 
     
     /**
-     * The device the last code transfer was with, when the pairing policy
-     * asks whether to trust it. Ask on both sides; each decides for itself.
+     * The oldest device a code transfer was with that the pairing policy
+     * asks whether to trust. Ask on both sides; each decides for itself.
+     * Once it is answered, the next one (if any) is offered.
      */
     func trustOffer()  -> TrustOffer?
     
@@ -5524,7 +5538,7 @@ open func devicesNearby(devices: [NearbyDevice])  {try! rustCall() {
 }
     
     /**
-     * The person said Not Now.
+     * The person said Not Now to the offer `trust_offer` gave.
      */
 open func dismissTrustOffer()  {try! rustCall() {
         uniffiCallStatus in
@@ -5802,12 +5816,39 @@ open func servers() -> RelayServers  {
 })
 }
     
+    /**
+     * Only Hybrid uses the relay server. Leaving Hybrid lets go of the
+     * relay at once, and any connection that still finds a relay path is
+     * refused; Relay opens without the relay from then on. Coming back to
+     * Hybrid takes the relay up again (fully from the next open, when
+     * Relay opened outside Hybrid).
+     */
 open func setConnectionMode(mode: ConnectionMode)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_relay_core_fn_method_relaycore_set_connection_mode(
                         self.uniffiCloneHandle(),FfiConverterTypeConnectionMode_lower(mode)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Whether a trusted device may ask this device's AI. Off when a
+     * device is trusted; trust never turns it on.
+     */
+open func setMayAsk(endpointId: String, on: Bool)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_set_may_ask(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterBool.lower(on)
                 )
             },
             pollFunc: ffi_relay_core_rust_future_poll_void,
@@ -5931,8 +5972,9 @@ open func trustDevice(endpointId: String)async throws   {
 }
     
     /**
-     * The device the last code transfer was with, when the pairing policy
-     * asks whether to trust it. Ask on both sides; each decides for itself.
+     * The oldest device a code transfer was with that the pairing policy
+     * asks whether to trust. Ask on both sides; each decides for itself.
+     * Once it is answered, the next one (if any) is offered.
      */
 open func trustOffer() -> TrustOffer?  {
     return try!  FfiConverterOptionTypeTrustOffer.lift(try! rustCall() {
@@ -8190,6 +8232,10 @@ public struct Device: Equatable, Hashable {
      */
     public var receivesFrom: Bool
     /**
+     * Whether it may ask this device's AI (off until turned on).
+     */
+    public var mayAsk: Bool
+    /**
      * Whether the app sees it on this network now.
      */
     public var nearby: Bool
@@ -8234,6 +8280,9 @@ public struct Device: Equatable, Hashable {
          * Whether it may send files and notes here.
          */receivesFrom: Bool, 
         /**
+         * Whether it may ask this device's AI (off until turned on).
+         */mayAsk: Bool, 
+        /**
          * Whether the app sees it on this network now.
          */nearby: Bool, 
         /**
@@ -8259,6 +8308,7 @@ public struct Device: Equatable, Hashable {
         self.trusted = trusted
         self.sinceMs = sinceMs
         self.receivesFrom = receivesFrom
+        self.mayAsk = mayAsk
         self.nearby = nearby
         self.presence = presence
         self.lastSeenMs = lastSeenMs
@@ -8289,6 +8339,7 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
                 trusted: FfiConverterBool.read(from: &buf), 
                 sinceMs: FfiConverterInt64.read(from: &buf), 
                 receivesFrom: FfiConverterBool.read(from: &buf), 
+                mayAsk: FfiConverterBool.read(from: &buf), 
                 nearby: FfiConverterBool.read(from: &buf), 
                 presence: FfiConverterTypePresence.read(from: &buf), 
                 lastSeenMs: FfiConverterOptionInt64.read(from: &buf), 
@@ -8305,6 +8356,7 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
         FfiConverterBool.write(value.trusted, into: &buf)
         FfiConverterInt64.write(value.sinceMs, into: &buf)
         FfiConverterBool.write(value.receivesFrom, into: &buf)
+        FfiConverterBool.write(value.mayAsk, into: &buf)
         FfiConverterBool.write(value.nearby, into: &buf)
         FfiConverterTypePresence.write(value.presence, into: &buf)
         FfiConverterOptionInt64.write(value.lastSeenMs, into: &buf)
@@ -11083,11 +11135,13 @@ public enum ConnectionMode: Equatable, Hashable {
      */
     case local
     /**
-     * The local network, then private networks such as Tailscale.
+     * The local network, then private networks such as Tailscale. Never
+     * over the open internet, and never through a relay server.
      */
     case `private`
     /**
-     * Every route Relay has: local, private, then direct over the internet.
+     * Every route Relay has: local, private, direct over the internet, and
+     * Relay's own relay server. The only mode that uses a relay.
      */
     case hybrid
 
@@ -14104,7 +14158,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_devices_nearby() != 37105) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_dismiss_trust_offer() != 41948) {
+    if (uniffi_relay_core_checksum_method_relaycore_dismiss_trust_offer() != 41745) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_events() != 39843) {
@@ -14158,7 +14212,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_servers() != 62920) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_set_connection_mode() != 58690) {
+    if (uniffi_relay_core_checksum_method_relaycore_set_connection_mode() != 22027) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_set_may_ask() != 27909) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_set_pairing_policy() != 5214) {
@@ -14182,7 +14239,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_trust_device() != 54559) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_trust_offer() != 13088) {
+    if (uniffi_relay_core_checksum_method_relaycore_trust_offer() != 46070) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_account() != 28427) {

@@ -245,12 +245,15 @@ public final class RelayModel {
     public func trust(_ offer: TrustOffer) async {
         trustOffer = nil
         await perform { try await $0.trustDevice(endpointId: offer.endpointId) }
+        // The next device waiting to be trusted, if any.
+        refreshTrustOffer()
     }
 
-    /// The person answered Not Now: nothing is remembered.
+    /// The person answered Not Now: nothing is remembered, and the next
+    /// device waiting to be trusted, if any, is offered.
     public func dismissTrustOffer() {
         core.dismissTrustOffer()
-        trustOffer = nil
+        trustOffer = core.trustOffer()
     }
 
     /// Trust Again, for a revoked device: the only way it is trusted again.
@@ -316,9 +319,9 @@ public final class RelayModel {
     public static func explain(_ mode: ConnectionMode) -> String {
         switch mode {
         case .hybrid:
-            "Relay tries the local network first, then a private network such as Tailscale, then the internet."
+            "Relay tries the local network first, then a private network such as Tailscale, then the internet and Relay's own servers, if they are on."
         case .private:
-            "Relay tries the local network, then a private network such as Tailscale. It never connects over the open internet."
+            "Relay tries the local network, then a private network such as Tailscale. It never connects over the open internet or through a relay."
         case .local:
             "Relay only connects to devices on the same network."
         }

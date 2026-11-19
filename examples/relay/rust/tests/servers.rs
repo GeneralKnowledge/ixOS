@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use relay_core::{CodeSend, RelayCore, RelayServers};
+use relay_core::{CodeSend, ConnectionMode, RelayCore, RelayServers};
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     forge_runtime::block_on(future)
@@ -189,4 +189,63 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
             .iter()
             .any(|d| d.name == "laptop" && d.route.is_some())
     });
+}
+
+#[test]
+fn in_private_a_device_found_only_through_the_servers_is_not_reached() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let server = rt
+        .block_on(iroh::test_utils::DnsPkarrServer::run())
+        .unwrap();
+    let mut relay = iroh_relay::server::RelayConfig::new((std::net::Ipv4Addr::LOCALHOST, 0));
+    relay.tls = None;
+    let mut config = iroh_relay::server::ServerConfig::default();
+    config.relay = Some(relay);
+    let relay_server = rt
+        .block_on(iroh_relay::server::Server::spawn(config))
+        .unwrap();
+    let servers = RelayServers {
+        relay_url: Some(format!("http://{}", relay_server.http_addr().unwrap())),
+        lookup_url: Some(server.pkarr_url().to_string()),
+    };
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["phone", "laptop"] {
+        let core = device(dir.path(), name);
+        block_on(core.set_servers(servers.clone())).unwrap();
+        if name == "phone" {
+            block_on(core.set_connection_mode(ConnectionMode::Private)).unwrap();
+        }
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let phone = device(dir.path(), "phone");
+    let laptop = device(dir.path(), "laptop");
+    trust_each_other(dir.path(), &phone, &laptop);
+    let laptop_id = phone
+        .devices()
+        .into_iter()
+        .find(|d| d.name == "laptop")
+        .unwrap()
+        .endpoint_id;
+    // The laptop publishes where it is, as in the test above.
+    block_on(laptop.device_service()).unwrap();
+    let id: iroh::EndpointId = laptop_id.parse().unwrap();
+    rt.block_on(server.on_endpoint(&id, Duration::from_secs(20)))
+        .unwrap();
+
+    block_on(phone.send_note_as_older_build(laptop_id.clone(), "not by relay".into())).unwrap();
+    eventually("the reason", || {
+        phone
+            .devices()
+            .iter()
+            .find(|d| d.endpoint_id == laptop_id)
+            .and_then(|d| d.problem.clone())
+            .is_some_and(|p| {
+                p.contains("through Relay's servers") && p.contains("Local and private")
+            })
+    });
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(
+        notes_from(&laptop, "phone").is_empty(),
+        "nothing went by relay"
+    );
 }

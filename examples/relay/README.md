@@ -32,6 +32,7 @@ The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay
 | M2 PR 5 | Device discovery and status: each trusted device shows as nearby (Bonjour sees it), reachable (a trusted connection worked either way in the last five minutes) or offline, with when it was last reached, kept across launches (`presence.rs`); `relay/device/1` gains `StatusAsk` / `Status` (name, platform, what it offers; read-only, the device's own claim, grants nothing); "About This Device" on a device's screen with Ask Again; `relay devices` shows presence, `relay status <device>` asks ([brief](docs/relay-m1-m2-brief.md#5-device-discovery-and-status)) | Rust and the command tested on Linux (two cores over localhost); the screens compiled for iOS, not yet tried on a phone. Not yet: the Nearby / Connections / Activity screens, which follow |
 | R3 | Resume, background transfers, a share extension (costs an App ID) | Later, within M1 and the plan's milestones |
 | Review step 4 | Unified delivery ([plan](docs/relay-unified-delivery.md)): text to a trusted device is a message in its conversation in Chats (notes are gone; one from an older build arrives as a message), files sent to it are an attachment there (a folder opens in Files), and Relay's outbox is the one queue for both, so they keep their order. Notes already sent or received move into their device's conversation once, on the first open. The device's screen has Message and Send Files; History keeps word-code transfers and file deliveries | Rust and the command tested on Linux (order, relaunch, a lost answer, revocation, the migration from a saved record); the Swift model tested on Linux, the screens not yet compiled or tried on a phone |
+| Audit fixes | Five fixes from the [November audit](docs/relay-audit-2026-11.md#2-fix-now-small-and-in-scope): an item this build can't read is refused at once ("update it"), not retried for 30 days; a file from a device revoked while it is on its way isn't saved; AI asks need their own per-device switch, off when a device is trusted (`relay asks <device> on`); a second code transfer's trust offer waits behind the first instead of replacing it; Private means no relay: only Any Route (Hybrid) opens Relay with its relay and lookup servers, and Private explains when a device could only be found through them | Rust and the command tested on Linux; the Swift changes (offer after offer, the Connections wording) not compiled; no phone run yet |
 | AI A1 | Ask a trusted device's language model (over `relay/device/1` since review step 3): `relay serve-ai` answers with an OpenAI-compatible server, `relay ask` asks from a terminal ([forge-ai-plan.md](../../docs/forge-ai-plan.md)) | Done in Rust and the command, tested on Linux; the app gets it with the AI Lab (A2) |
 
 ## How it works
@@ -80,6 +81,8 @@ the data folder), so a laptop can listen and send at the same time.
 ```bash
 # On the laptop, with Ollama (or llama.cpp's llama-server, LM Studio) running:
 $R serve-ai --upstream http://127.0.0.1:11434/v1 --model qwen3:8b
+# Once, on the laptop: trust alone doesn't let a device ask.
+$R asks phone on
 # From a trusted machine (a second RELAY_DATA works on the same one):
 $R ask laptop --system "Be brief." "What is a night train?"
 ```
@@ -88,7 +91,9 @@ $R ask laptop --system "Be brief." "What is a night train?"
 trusted devices' asks with the server's model, one at a time; a second ask
 meanwhile gets "busy". Without `--model` it takes the first model the server
 lists. `$RELAY_AI_KEY`, if set, is sent as a bearer token. Only trusted devices
-can ask, and the server's address is never shared, so keep the server on
+whose asks are switched on (`relay asks <device> on`; off when a device is
+trusted, and again after it is trusted afresh) can ask; the others get "The
+other device doesn't take asks from this one", and the server's address is never shared, so keep the server on
 localhost. The answer streams back in pieces (at most five times a second);
 stopping the asker stops the model. The log records the model, the number of
 pieces and the time, never the text.

@@ -135,7 +135,7 @@ final class RelayModelTests: XCTestCase {
     /// wasn't reached, then reachable, then the route it was last reached by.
     func testReachText() {
         func device(nearby: Bool, route: String?, problem: String?, presence: Presence = .offline) -> Device {
-            Device(endpointId: "id", name: "create", trusted: true, sinceMs: 0, receivesFrom: true,
+            Device(endpointId: "id", name: "create", trusted: true, sinceMs: 0, receivesFrom: true, mayAsk: false,
                    nearby: nearby, presence: nearby ? .nearby : presence, lastSeenMs: nil,
                    platform: nil, offers: [], route: route, problem: problem)
         }
