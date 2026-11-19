@@ -111,6 +111,33 @@ final class LibraryModelTests: XCTestCase {
 
     /// Leaving the screen (the task that started the refresh is cancelled)
     /// stops it in Rust the same way.
+    /// A refresh the background stopped says nothing, and is tried again
+    /// when the app comes back (friction #12).
+    @MainActor
+    func testARefreshTheBackgroundStoppedIsTriedAgainOnReturn() async throws {
+        let (host, model, server) = try await stalledRefresh()
+        model.follow(host)
+        host.report(.active)
+        let refreshing = Task { await model.refresh() }
+        try await waitUntilRefreshing(model)
+        host.report(.background)
+        await refreshing.value
+        XCTAssertTrue(model.refreshCutOff)
+        XCTAssertNil(model.alert)
+        XCTAssertNil(model.lastRefresh)
+
+        server.stalling = false
+        host.report(.active)
+        for _ in 0..<500 where model.lastRefresh == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertNotNil(model.lastRefresh)
+        XCTAssertFalse(model.refreshCutOff)
+        XCTAssertNil(model.alert)
+        withExtendedLifetime(server) {}
+        host.close()
+    }
+
     @MainActor
     func testCancellingTheTaskEndsARefreshInRust() async throws {
         let (host, model, server) = try await stalledRefresh()

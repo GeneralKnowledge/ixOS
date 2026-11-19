@@ -46,10 +46,6 @@ public struct RelayRoot: View {
             .task(id: host.core != nil) {
                 if let core = host.core { chat.useRelay(core) }
             }
-            // Back on screen: Apple Intelligence may have been turned on.
-            .onChange(of: chat.host.phase) { _, phase in
-                if phase == .active { chat.becameActive() }
-            }
             // A tapped message notification opens its room (rust/src/chat/alerts.rs).
             .onForgeDeepLink { link in
                 guard let route = ChatLinks.route(link) else { return }

@@ -25,8 +25,9 @@ The Library screen gets a **Your Music** row above Songs, Albums and Artists:
 
 - **Favourites:** your favourite songs, then albums, then artists. A heart on every song, album and artist
   screen, and in the Now Playing sheet, adds or removes it.
-- **Playlists:** new, rename, delete; add a song from its screen, its row's menu or Now Playing; add a whole
-  album; reorder and remove by editing. Play and Shuffle like an album.
+- **Playlists:** new, rename, delete (a swipe in the list, or Delete Playlist in its More menu); add a song from
+  its screen, its row's menu or Now Playing; add a whole album; reorder by editing; remove a song by editing, a
+  swipe or its menu. Play and Shuffle like an album.
 - **Recently Played:** the last 50 different songs, newest first, with when; clear history from there.
 
 The Library's home also shows the last few songs you played, so getting back to them is one tap.

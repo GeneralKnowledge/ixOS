@@ -39,6 +39,35 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertEqual(ReadAloud.estimatedTimes(texts: texts, block: nil, speed: 1).elapsed, 0)
     }
 
+    /// A paused chapter shows where the voice stopped, not where its block
+    /// began.
+    func testLockScreenTimeIncludesTheSpokenPartOfTheBlock() {
+        let texts = [String(repeating: "a", count: 150), "", String(repeating: "b", count: 300)]
+        XCTAssertEqual(ReadAloud.estimatedTimes(texts: texts, block: 2, speed: 1, within: 75).elapsed, 15, accuracy: 0.001)
+        // Never past the end.
+        XCTAssertEqual(ReadAloud.estimatedTimes(texts: texts, block: 2, speed: 1, within: 9999).elapsed, 30, accuracy: 0.001)
+    }
+
+    /// The lock screen's progress bar and skip buttons: a time maps back to
+    /// the block that holds it, by the same estimate as the duration.
+    func testTimeMapsBackToTheBlockHoldingIt() {
+        let texts = [String(repeating: "a", count: 150), "", String(repeating: "b", count: 300)]
+        XCTAssertEqual(ReadAloud.block(at: 0, texts: texts, speed: 1), 0)
+        XCTAssertEqual(ReadAloud.block(at: 9.9, texts: texts, speed: 1), 0)
+        // The empty block is never chosen.
+        XCTAssertEqual(ReadAloud.block(at: 10, texts: texts, speed: 1), 2)
+        XCTAssertEqual(ReadAloud.block(at: 5, texts: texts, speed: 2), 2)
+        // Before the start and past the end stay in the chapter.
+        XCTAssertEqual(ReadAloud.block(at: -3, texts: texts, speed: 1), 0)
+        XCTAssertEqual(ReadAloud.block(at: 500, texts: texts, speed: 1), 2)
+        XCTAssertNil(ReadAloud.block(at: 1, texts: ["", ""], speed: 1))
+        // Round trip: each block's start time maps to that block.
+        for index in [0, 2] {
+            let start = ReadAloud.estimatedTimes(texts: texts, block: index, speed: 2).elapsed
+            XCTAssertEqual(ReadAloud.block(at: start, texts: texts, speed: 2), index)
+        }
+    }
+
     func testSpeedsMapToRisingRatesWithinRange() {
         let speeds: [Double] = [0.75, 1, 1.25, 1.5, 2, 3]
         let rates = speeds.map(ReadAloud.rate(for:))

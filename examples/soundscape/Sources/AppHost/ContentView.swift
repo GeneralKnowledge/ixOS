@@ -15,7 +15,7 @@ public struct ContentView: View {
 
     public var body: some View {
         ForgeRoot(host) { core in
-            SoundscapeScreen(core: core, changes: host.changes)
+            SoundscapeScreen(core: core, host: host, changes: host.changes)
         }
         .forgeTheme(.standard)
     }
@@ -25,10 +25,12 @@ public struct ContentView: View {
 /// and the Listen tab.
 private struct SoundscapeScreen: View {
     @State private var model: SoundscapeModel
+    let host: ForgeHost<SoundscapeCore>
     let changes: UInt64
 
-    init(core: SoundscapeCore, changes: UInt64) {
+    init(core: SoundscapeCore, host: ForgeHost<SoundscapeCore>, changes: UInt64) {
         _model = State(initialValue: SoundscapeModel(core: core))
+        self.host = host
         self.changes = changes
     }
 
@@ -48,7 +50,7 @@ private struct SoundscapeScreen: View {
     /// the player (ListenView.swift, LibraryView.swift).
     @ViewBuilder private var listen: some View {
         #if os(iOS)
-        ListenView(core: model.core)
+        ListenView(core: model.core, host: host)
         #else
         Text("Listening needs an iPhone.")
         #endif

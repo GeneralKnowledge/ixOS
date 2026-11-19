@@ -57,6 +57,12 @@ status = "not-applicable"
 reason = "The lab shell keeps system styling; every hosted app sets its own theme at its own root"
 
 [[lag]]
+app = "device-lab"
+rule = "resume"
+status = "not-applicable"
+reason = "Its dashboard reports the phase for its lab services and its transfer test, not a hosted app's model; each hosted app follows its own host"
+
+[[lag]]
 app = "weather"
 rule = "forge-theme"
 status = "deferred"

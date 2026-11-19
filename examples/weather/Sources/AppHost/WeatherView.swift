@@ -13,8 +13,14 @@ public struct WeatherRoot: View {
 
     public var body: some View {
         ForgeRoot(host) { core in
-            WeatherView(model: WeatherViewModel(client: WeatherClient(core: core)))
+            WeatherView(model: Self.model(core, following: host))
         }
+    }
+
+    private static func model(_ core: ForgeWeatherApp, following host: ForgeHost<ForgeWeatherApp>) -> WeatherViewModel {
+        let model = WeatherViewModel(client: WeatherClient(core: core))
+        model.follow(host)
+        return model
     }
 }
 
@@ -25,7 +31,6 @@ public struct WeatherView: View {
     @State private var model: WeatherViewModel
     /// `-WeatherShowPlaces YES` opens the places list at launch (screenshots).
     @State private var showingLocations = UserDefaults.standard.bool(forKey: "WeatherShowPlaces")
-    @Environment(\.scenePhase) private var scenePhase
 
     public init(model: WeatherViewModel) {
         _model = State(initialValue: model)
@@ -52,9 +57,6 @@ public struct WeatherView: View {
             }
             .task { await model.start() }
             .onChange(of: model.selection) { _, _ in model.pageDidAppear() }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active { model.becameActive() }
-            }
     }
 
     @ViewBuilder private var pager: some View {

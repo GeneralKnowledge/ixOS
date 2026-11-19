@@ -104,7 +104,7 @@ final class TakePlayer {
     @ObservationIgnored private let playerB = AVPlayer()
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
-    @ObservationIgnored private var remoteReady = false
+    @ObservationIgnored private let remoteTargets = RemoteCommandTargets()
     /// The lock screen's picture for `current`, and the address it came from.
     @ObservationIgnored private var artwork: MPMediaItemArtwork?
     @ObservationIgnored private var artworkUrl: String?
@@ -179,6 +179,7 @@ final class TakePlayer {
         artwork = nil
         artworkUrl = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        remoteTargets.removeAll()
         ForgeAudioSession.deactivate()
     }
 
@@ -531,44 +532,45 @@ final class TakePlayer {
         MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
 
+    /// Adds the player's lock-screen handlers on the first song after a
+    /// stop; `stop()` removes them again, and only them.
     private func setUpRemoteCommands() {
-        guard !remoteReady else { return }
-        remoteReady = true
+        guard remoteTargets.isEmpty else { return }
         let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { [weak self] _ in
+        remoteTargets.add(center.playCommand) { [weak self] _ in
             MainActor.assumeIsolated { self?.resume() }
             return .success
         }
-        center.pauseCommand.addTarget { [weak self] _ in
+        remoteTargets.add(center.pauseCommand) { [weak self] _ in
             MainActor.assumeIsolated { self?.pause() }
             return .success
         }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+        remoteTargets.add(center.togglePlayPauseCommand) { [weak self] _ in
             MainActor.assumeIsolated { self?.toggle() }
             return .success
         }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+        remoteTargets.add(center.changePlaybackPositionCommand) { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             let position = event.positionTime
             MainActor.assumeIsolated { self?.seek(to: position) }
             return .success
         }
         center.skipBackwardCommand.preferredIntervals = [10]
-        center.skipBackwardCommand.addTarget { [weak self] _ in
+        remoteTargets.add(center.skipBackwardCommand) { [weak self] _ in
             MainActor.assumeIsolated { self?.skip(-10) }
             return .success
         }
         // In a comparison, "next" and "previous" on headphones or the lock
         // screen switch between A and B; otherwise they move through the
         // queue.
-        center.nextTrackCommand.addTarget { [weak self] _ in
+        remoteTargets.add(center.nextTrackCommand) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 if self.isComparing { self.hear(self.active == .a ? .b : .a) } else { self.next() }
             }
             return .success
         }
-        center.previousTrackCommand.addTarget { [weak self] _ in
+        remoteTargets.add(center.previousTrackCommand) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 if self.isComparing { self.hear(self.active == .a ? .b : .a) } else { self.previous() }
@@ -576,5 +578,32 @@ final class TakePlayer {
             return .success
         }
     }
+}
+
+/// The lock-screen handlers one player added, so it removes only its own:
+/// the command center is shared by every app in Device Lab, and
+/// `removeTarget(nil)` would take away another app's controls too. Removes
+/// them when it goes away as well, so a player that is freed without
+/// stopping leaves no dead buttons behind (Soundscape's did, found on the
+/// phone, 2026-11-18). Each app keeps its own copy until the Now Playing
+/// helper is extracted.
+private final class RemoteCommandTargets {
+    private var targets: [(command: MPRemoteCommand, token: Any)] = []
+
+    var isEmpty: Bool { targets.isEmpty }
+
+    func add(
+        _ command: MPRemoteCommand,
+        _ handler: @escaping @Sendable (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus
+    ) {
+        targets.append((command, command.addTarget(handler: handler)))
+    }
+
+    func removeAll() {
+        for target in targets { target.command.removeTarget(target.token) }
+        targets = []
+    }
+
+    deinit { removeAll() }
 }
 #endif

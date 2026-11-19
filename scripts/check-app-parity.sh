@@ -548,6 +548,21 @@ def rule_web_images(app):
     return True, ""
 
 
+# Coming back from the background through ForgeHost (`onResume`,
+# `onBackground`, `lastResume`), decided in the model and tested there, not
+# in a view watching SwiftUI's scenePhase (docs/research/coming-back.md,
+# 2026-11-17). Four apps had each fixed the same bug that way.
+def rule_resume(app):
+    bad = []
+    for path in swift_sources(app):
+        for i, line in enumerate(read(path).splitlines()):
+            if re.search(r"\bscenePhase\b", line.split("//", 1)[0]):
+                bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "watches scenePhase in a view; follow the host with ForgeHost.onResume in the model: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -562,6 +577,7 @@ RULES = [
     ("state-views", "Empty, no-results, loading and failed screens through ForgeUI's `ForgeStateView`", rule_state_views),
     ("root-loading", "A screen still opening shows `ForgeStateView.loading()`, never a bare `ProgressView()`", rule_root_loading),
     ("toned-text", "Warning, success and error text in ForgeUI's tones, never raw orange, yellow, green or (for errors) red", rule_toned_text),
+    ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),

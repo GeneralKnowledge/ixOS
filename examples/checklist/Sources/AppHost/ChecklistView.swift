@@ -28,6 +28,9 @@ struct ChecklistScreen: View {
     @State private var newTitle = ""
     @State private var query = ""
     @State private var results: [Item]?
+    /// The words `results` answer; until they match `query`, a search is
+    /// still running and the screen must not say "No Results".
+    @State private var resultsFor = ""
     @State private var editing: Editing?
     @State private var export: ExportFile?
     @State private var importing = false
@@ -126,7 +129,10 @@ struct ChecklistScreen: View {
         // cancelled in Rust.
         .task(id: SearchKey(query: query, changes: changes)) {
             guard searching else { results = nil; return }
-            if let found = await model.search(query) { results = found }
+            if let found = await model.search(query) {
+                results = found
+                resultsFor = query
+            }
         }
     }
 
@@ -186,7 +192,7 @@ struct ChecklistScreen: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        if searching && results?.isEmpty == true {
+        if searching && resultsFor == query && results?.isEmpty == true {
             ForgeStateView.noResults(for: query)
         } else if !searching && model.items.isEmpty {
             ForgeStateView.empty(
