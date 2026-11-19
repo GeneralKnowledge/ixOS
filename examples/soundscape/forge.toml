@@ -38,16 +38,15 @@ xtool_product = "SoundscapeXtool"
 # icon = "Resources/AppIcon.png"    # 1024x1024 PNG
 orientations = ["portrait"]
 # url_schemes = ["myapp"]           # opens myapp://... links
-# The loop keeps playing when the screen locks.
+# Music keeps playing when the screen locks.
 background_modes = ["audio"]
 
 # The text iOS shows when the app asks for a permission.
 [ios.permissions]
 # camera = "Scan barcodes to add items."
-microphone = "Soundscape records the loops you layer into a project. Recordings stay on this phone."
-# Listen plays song takes from a take server on your computer (over the
+# Soundscape can play songs from a take server on your computer (over the
 # local network or Tailscale).
-local_network = "Soundscape's Listen tab plays song takes from the take server on your computer."
+local_network = "Soundscape plays songs from the take server on your computer."
 # location_when_in_use = "Show places near you."
 
 [ios.entitlements]

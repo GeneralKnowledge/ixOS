@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use crate::code::{connection, get_within, put, CodeProgress, STEP};
 use crate::model::{RelayError, MAX_FILE_BYTES};
 use crate::node::{lock, Node};
+use crate::resolver::{route_of, ConnectionMode, RouteKind};
 
 pub(crate) const DEVICE_ALPN: &[u8] = b"forge-relay/device/1";
 /// The protocol's version inside `relay/device/1`.
@@ -44,8 +45,16 @@ const NOT_TRUSTED: u32 = 403;
 /// Everything said on `relay/device/1`.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum DeviceMsg {
-    /// First from each side: the protocol version and the device's name.
-    Hello { version: u16, name: String },
+    /// First from each side: the protocol version, the device's name and
+    /// where it can be reached ("host:port", for the resolver; added in M2
+    /// PR 6, left out when empty so older devices read it unchanged, and
+    /// ignored by them when present).
+    Hello {
+        version: u16,
+        name: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        addresses: Vec<String>,
+    },
     Note {
         /// Chosen by the sender, kept through retries (the outbox's id).
         id: [u8; 16],
@@ -71,6 +80,17 @@ pub(crate) enum DeviceMsg {
         id: String,
         body: String,
         reply_to: Option<String>,
+    },
+    /// Instead of an item: "tell me about yourself" (brief PR 5). Any
+    /// trusted device may ask; the answer is `Status`.
+    StatusAsk,
+    /// What a device says about itself: read-only, its own claim. `offers`
+    /// names what it does over `relay/device/1`, such as "notes", "files",
+    /// "messages" or "ai".
+    Status {
+        name: String,
+        platform: String,
+        offers: Vec<String>,
     },
 }
 
@@ -125,6 +145,13 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn rights(&self, from: &str) -> Option<Rights>;
     /// This device's name, for the reply to Hello.
     fn my_name(&self) -> String;
+    /// What this device says about itself, for a `StatusAsk`.
+    fn status(&self) -> StatusReport;
+    /// A trusted connection from `from` got past Hello: it was reached.
+    fn reached(&self, from: &str);
+    /// A trusted device said where it can be reached, and connected over
+    /// `route`.
+    fn met(&self, _from: &str, _addresses: Vec<String>, _route: Option<RouteKind>) {}
     /// Where received files go.
     fn folder(&self) -> PathBuf;
     /// Whether the item `id` from `from` is here already: a retry whose
@@ -159,6 +186,10 @@ impl DeviceInbound for NoDevices {
     fn my_name(&self) -> String {
         "test".into()
     }
+    fn status(&self) -> StatusReport {
+        StatusReport::default()
+    }
+    fn reached(&self, _: &str) {}
     fn folder(&self) -> PathBuf {
         PathBuf::from("/nonexistent")
     }
@@ -176,6 +207,14 @@ impl DeviceInbound for NoDevices {
     }
     fn progress(&self, _: u64, _: u64) {}
     fn finish_file(&self, _: u64, _: &str, _: [u8; 16], _: Result<String, String>) {}
+}
+
+/// What a device says about itself in a `Status`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct StatusReport {
+    pub name: String,
+    pub platform: String,
+    pub offers: Vec<String>,
 }
 
 /// What a trusted device may do here.
@@ -234,7 +273,11 @@ impl DeviceHandler {
             .map_err(|_| connection("no stream"))?
             .map_err(connection)?;
         match hear(&mut recv, STEP).await? {
-            DeviceMsg::Hello { version, .. } if version == VERSION => {}
+            DeviceMsg::Hello {
+                version, addresses, ..
+            } if version == VERSION => {
+                self.host.met(them, addresses, route_of(conn));
+            }
             DeviceMsg::Hello { .. } => {
                 let reason = "The other device's Relay is a different version; update both".into();
                 say(&mut send, &DeviceMsg::Refused { reason }).await?;
@@ -251,10 +294,30 @@ impl DeviceHandler {
             &DeviceMsg::Hello {
                 version: VERSION,
                 name,
+                addresses: node.addresses(),
             },
         )
         .await?;
+        self.host.reached(them);
         let item = hear(&mut recv, STEP).await?;
+        // Status is read-only: a device that may not send here may still ask.
+        if item == DeviceMsg::StatusAsk {
+            let host = Arc::clone(&self.host);
+            let me = tokio::task::spawn_blocking(move || host.status())
+                .await
+                .map_err(connection)?;
+            say(
+                &mut send,
+                &DeviceMsg::Status {
+                    name: me.name,
+                    platform: me.platform,
+                    offers: me.offers,
+                },
+            )
+            .await?;
+            send.finish().ok();
+            return Ok(());
+        }
         if !rights.receives_from {
             let reason = "The other device isn't taking files and notes from this one".into();
             say(&mut send, &DeviceMsg::Refused { reason }).await?;
@@ -402,18 +465,33 @@ pub(crate) enum Outgoing {
     Stored(crate::code_send::Offer),
 }
 
-/// Sends one item, `id`, to a trusted device at `to`. `report` hears how
-/// many bytes of a file the receiver has; `stop` ends the send. Returns
-/// the receiver's name as it says it.
+/// What a delivered send learned about the receiver.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Sent {
+    /// Its name, as it says it.
+    pub name: String,
+    /// Where it says it can be reached.
+    pub addresses: Vec<String>,
+    /// The route the connection used.
+    pub route: Option<RouteKind>,
+    /// The address it was reached at, when the route is direct.
+    pub at: Option<std::net::SocketAddr>,
+}
+
+/// Sends one item, `id`, to a trusted device at `to`, on a route `mode`
+/// allows. `report` hears how many bytes of a file the receiver has;
+/// `stop` ends the send.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn send(
     node: &Node,
     to: EndpointAddr,
+    mode: ConnectionMode,
     my_name: String,
     id: [u8; 16],
     item: Outgoing,
     report: impl Fn(u64),
     stop: Arc<AtomicBool>,
-) -> Result<String, RelayError> {
+) -> Result<Sent, RelayError> {
     let them = to.id;
     let conn = tokio::time::timeout(STEP, node.endpoint.connect(to, DEVICE_ALPN))
         .await
@@ -423,7 +501,29 @@ pub(crate) async fn send(
         .map_err(|e| RelayError::Unreachable {
             reason: e.to_string(),
         })?;
-    let result = exchange(node, &conn, them, my_name, id, item, report, &stop).await;
+    // The path as connected; asked again after the exchange, when iroh
+    // may have moved to a better one (or, once closed, has none to show).
+    let first_path = crate::resolver::path_of(&conn);
+    if let Some(kind) = first_path.map(|(k, _)| k).filter(|k| !mode.allows(*k)) {
+        conn.close(0u32.into(), b"route not allowed");
+        return Err(RelayError::Unreachable {
+            reason: format!(
+                "the only route found was {}, which the Connections setting doesn't allow",
+                kind.label().to_lowercase()
+            ),
+        });
+    }
+    let result = exchange(node, &conn, them, my_name, id, item, report, &stop)
+        .await
+        .map(|(name, addresses)| {
+            let path = crate::resolver::path_of(&conn).or(first_path);
+            Sent {
+                name,
+                addresses,
+                route: path.map(|(kind, _)| kind),
+                at: path.and_then(|(_, at)| at),
+            }
+        });
     let result = match result {
         // The listener closed the connection without a word: it doesn't
         // trust this device.
@@ -436,6 +536,81 @@ pub(crate) async fn send(
     result
 }
 
+/// Asks a trusted device at `to` what it says about itself (brief PR 5).
+pub(crate) async fn ask_status(
+    node: &Node,
+    to: EndpointAddr,
+    my_name: String,
+) -> Result<StatusReport, RelayError> {
+    let conn = tokio::time::timeout(STEP, node.endpoint.connect(to, DEVICE_ALPN))
+        .await
+        .map_err(|_| RelayError::Unreachable {
+            reason: "the other device didn't answer".into(),
+        })?
+        .map_err(|e| RelayError::Unreachable {
+            reason: e.to_string(),
+        })?;
+    let result = async {
+        let (mut send, mut recv) = conn.open_bi().await.map_err(connection)?;
+        say(
+            &mut send,
+            &DeviceMsg::Hello {
+                version: VERSION,
+                name: my_name,
+                addresses: node.addresses(),
+            },
+        )
+        .await?;
+        match hear(&mut recv, STEP).await? {
+            DeviceMsg::Hello { .. } => {}
+            DeviceMsg::Refused { reason } => return Err(RelayError::Declined { reason }),
+            _ => return Err(connection("no hello")),
+        }
+        say(&mut send, &DeviceMsg::StatusAsk).await?;
+        let answer = hear(&mut recv, STEP).await;
+        send.finish().ok();
+        match answer? {
+            DeviceMsg::Status {
+                name,
+                platform,
+                offers,
+            } => Ok(StatusReport {
+                name,
+                platform: clean_label(&platform),
+                offers: offers
+                    .iter()
+                    .map(|o| clean_label(o))
+                    .filter(|o| !o.is_empty())
+                    .take(32)
+                    .collect(),
+            }),
+            DeviceMsg::Refused { reason } => Err(RelayError::Declined { reason }),
+            _ => Err(connection("unexpected answer")),
+        }
+    }
+    .await;
+    let result = match result {
+        // The listener closed the connection without a word: it doesn't
+        // trust this device.
+        Err(RelayError::Connection { .. }) if matches!(conn.close_reason(), Some(iroh::endpoint::ConnectionError::ApplicationClosed(ref c)) if c.error_code == NOT_TRUSTED.into()) => {
+            Err(RelayError::Refused)
+        }
+        other => other,
+    };
+    conn.close(0u32.into(), b"bye");
+    result
+}
+
+/// A short word from another device (a platform or an offer) made safe to
+/// show: letters, digits, '-', '_' and '.', at most 32 characters.
+pub(crate) fn clean_label(label: &str) -> String {
+    label
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        .take(32)
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn exchange(
     node: &Node,
@@ -446,18 +621,21 @@ async fn exchange(
     item: Outgoing,
     report: impl Fn(u64),
     stop: &AtomicBool,
-) -> Result<String, RelayError> {
+) -> Result<(String, Vec<String>), RelayError> {
     let (mut send, mut recv) = conn.open_bi().await.map_err(connection)?;
     say(
         &mut send,
         &DeviceMsg::Hello {
             version: VERSION,
             name: my_name,
+            addresses: node.addresses(),
         },
     )
     .await?;
-    let their_name = match hear(&mut recv, STEP).await? {
-        DeviceMsg::Hello { name, .. } => name,
+    let (their_name, their_addresses) = match hear(&mut recv, STEP).await? {
+        DeviceMsg::Hello {
+            name, addresses, ..
+        } => (name, crate::resolver::clean(&addresses)),
         DeviceMsg::Refused { reason } => return Err(RelayError::Declined { reason }),
         _ => return Err(connection("no hello")),
     };
@@ -489,7 +667,7 @@ async fn exchange(
     };
     send.finish().ok();
     match ending {
-        DeviceMsg::Done => Ok(their_name),
+        DeviceMsg::Done => Ok((their_name, their_addresses)),
         DeviceMsg::Refused { reason } => Err(RelayError::Declined { reason }),
         _ => Err(connection("unexpected answer")),
     }
@@ -527,24 +705,16 @@ async fn offer_file(
     }
 }
 
-/// The addresses ("host:port") a device can be dialled at.
+/// The dial address of a trusted device: its key, and where the resolver
+/// says to look for it.
 pub(crate) fn endpoint_addr(
     endpoint_id: &str,
-    addresses: &[String],
+    addresses: &[std::net::SocketAddr],
 ) -> Result<EndpointAddr, RelayError> {
     let id: EndpointId = endpoint_id.parse().map_err(|_| RelayError::UnknownPeer {
         id: endpoint_id.to_string(),
     })?;
-    let addrs: Vec<iroh::TransportAddr> = addresses
-        .iter()
-        .filter_map(|a| a.parse::<std::net::SocketAddr>().ok())
-        .map(iroh::TransportAddr::Ip)
-        .collect();
-    if addrs.is_empty() {
-        return Err(RelayError::Unreachable {
-            reason: "the other device hasn't been seen on this network".into(),
-        });
-    }
+    let addrs = addresses.iter().copied().map(iroh::TransportAddr::Ip);
     Ok(EndpointAddr::from_parts(id, addrs))
 }
 
@@ -564,8 +734,17 @@ mod tests {
                 DeviceMsg::Hello {
                     version: 1,
                     name: "Laptop".into(),
+                    addresses: vec![],
                 },
                 include_str!("../fixtures/device-1/hello.hex"),
+            ),
+            (
+                DeviceMsg::Hello {
+                    version: 1,
+                    name: "Laptop".into(),
+                    addresses: vec!["100.72.135.124:4000".into()],
+                },
+                include_str!("../fixtures/device-1/hello-addresses.hex"),
             ),
             (
                 DeviceMsg::Note {
@@ -606,6 +785,18 @@ mod tests {
                 },
                 include_str!("../fixtures/device-1/message.hex"),
             ),
+            (
+                DeviceMsg::StatusAsk,
+                include_str!("../fixtures/device-1/status-ask.hex"),
+            ),
+            (
+                DeviceMsg::Status {
+                    name: "Laptop".into(),
+                    platform: "linux".into(),
+                    offers: vec!["notes".into(), "files".into()],
+                },
+                include_str!("../fixtures/device-1/status.hex"),
+            ),
         ]
     }
 
@@ -620,6 +811,33 @@ mod tests {
                 .collect();
             assert_eq!(DeviceMsg::decode(&bytes).unwrap(), msg);
         }
+    }
+
+    /// What lets a device without M2 PR 6 read a Hello with addresses: a
+    /// field it doesn't know is skipped, not an error.
+    #[test]
+    fn unknown_hello_fields_are_ignored() {
+        let later = "a16548656c6c6fa36776657273696f6e01646e616d65664c6170746f70656c61746572f5";
+        let bytes: Vec<u8> = (0..later.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&later[i..i + 2], 16).unwrap())
+            .collect();
+        assert_eq!(
+            DeviceMsg::decode(&bytes).unwrap(),
+            DeviceMsg::Hello {
+                version: 1,
+                name: "Laptop".into(),
+                addresses: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn labels_from_another_device_are_cleaned() {
+        assert_eq!(clean_label("ios"), "ios");
+        assert_eq!(clean_label("ai.inference"), "ai.inference");
+        assert_eq!(clean_label("files\u{202E}exe <b>"), "filesexeb");
+        assert_eq!(clean_label(&"x".repeat(100)).len(), 32);
     }
 
     #[test]

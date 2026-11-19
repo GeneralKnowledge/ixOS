@@ -93,6 +93,7 @@ public final class RelayModel {
         port = core.listeningPort()
         devices = core.devices()
         policy = core.pairingPolicy()
+        connectionMode = core.connectionMode()
         trustOffer = core.trustOffer()
     }
 
@@ -287,6 +288,8 @@ public final class RelayModel {
     public private(set) var devices: [Device] = []
     /// What happens after a code transfer (Settings).
     public private(set) var policy: PairingPolicy = .askToPair
+    /// Which routes reach trusted devices (Settings).
+    public private(set) var connectionMode: ConnectionMode = .hybrid
     /// "Trust this device?" after a code transfer, until answered.
     public private(set) var trustOffer: TrustOffer?
 
@@ -316,6 +319,44 @@ public final class RelayModel {
     public func devicesNearby(_ nearby: [NearbyDevice]) {
         core.devicesNearby(devices: nearby)
         devices = core.devices()
+    }
+
+    /// Asks a trusted device what it says about itself (its platform and
+    /// what it offers) and re-reads the list; failing to reach it is not
+    /// an error the person needs to see, it just stays as it was.
+    public func refreshStatus(of device: Device) async {
+        do {
+            _ = try await core.deviceStatus(endpointId: device.endpointId)
+        } catch {
+            log.info("no status from a trusted device: \(error)")
+        }
+        devices = core.devices()
+    }
+
+    /// Re-reads the devices, so presence ages ("reachable" becomes
+    /// "offline" a few minutes after the last connection).
+    public func refreshDevices() {
+        devices = core.devices()
+    }
+
+    /// "Nearby", "Reachable, seen 2 min ago" or "Offline, seen 3 h ago".
+    nonisolated public static func whereNow(_ device: Device, now: Date = Date()) -> String {
+        let word: String
+        switch device.presence {
+        case .nearby: return "Nearby"
+        case .reachable: word = "Reachable"
+        case .offline: word = "Offline"
+        }
+        guard let ms = device.lastSeenMs else { return "\(word), not reached yet" }
+        let seconds = max(0, now.timeIntervalSince1970 - Double(ms) / 1000)
+        let ago: String
+        switch seconds {
+        case ..<60: ago = "just now"
+        case ..<3600: ago = "\(Int(seconds / 60)) min ago"
+        case ..<172_800: ago = "\(Int(seconds / 3600)) h ago"
+        default: ago = "\(Int(seconds / 86_400)) days ago"
+        }
+        return "\(word), seen \(ago)"
     }
 
     /// Re-reads the trust offer: the sending side learns the other's name
@@ -372,6 +413,39 @@ public final class RelayModel {
 
     public func setPolicy(_ policy: PairingPolicy) async {
         await perform { try await $0.setPairingPolicy(policy: policy) }
+    }
+
+    public func setConnectionMode(_ mode: ConnectionMode) async {
+        await perform { try await $0.setConnectionMode(mode: mode) }
+    }
+
+    /// How a trusted device can be reached, in words: nearby, why Relay
+    /// couldn't reach it last time, or the route it was last reached by.
+    public static func reach(_ device: Device) -> String {
+        if device.nearby {
+            return "\(device.name) is nearby. No code needed."
+        }
+        if let problem = device.problem {
+            return problem
+        }
+        if device.presence == .reachable {
+            return "\(device.name) can be reached. No code needed."
+        }
+        if let route = device.route {
+            return "Last connected: \(route). Relay tries it there again when something is waiting."
+        }
+        return "\(device.name) isn't showing on this network. Open Relay on it, on the same Wi-Fi."
+    }
+
+    public static func explain(_ mode: ConnectionMode) -> String {
+        switch mode {
+        case .hybrid:
+            "Relay tries the local network first, then a private network such as Tailscale, then the internet."
+        case .private:
+            "Relay tries the local network, then a private network such as Tailscale. It never connects over the open internet."
+        case .local:
+            "Relay only connects to devices on the same network."
+        }
     }
 
     /// Sends a note to a trusted device, no code. It waits in the outbox

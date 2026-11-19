@@ -164,6 +164,26 @@ final class RelayModelTests: XCTestCase {
         XCTAssertEqual(RelayFormat.address(host: "192.168.1.5", port: 4000), "192.168.1.5:4000")
         XCTAssertEqual(RelayFormat.address(host: "fd00::1", port: 4000), "[fd00::1]:4000")
     }
+
+    /// How a device can be reached, in words: nearby wins, then why it
+    /// wasn't reached, then reachable, then the route it was last reached by.
+    func testReachText() {
+        func device(nearby: Bool, route: String?, problem: String?, presence: Presence = .offline) -> Device {
+            Device(endpointId: "id", name: "create", trusted: true, sinceMs: 0, receivesFrom: true,
+                   nearby: nearby, presence: nearby ? .nearby : presence, lastSeenMs: nil,
+                   platform: nil, offers: [], route: route, problem: problem)
+        }
+        XCTAssertEqual(RelayModel.reach(device(nearby: true, route: "Private network", problem: "x")),
+                       "create is nearby. No code needed.")
+        XCTAssertEqual(RelayModel.reach(device(nearby: false, route: "Private network", problem: "create didn't answer.")),
+                       "create didn't answer.")
+        XCTAssertTrue(RelayModel.reach(device(nearby: false, route: "Private network", problem: nil))
+            .hasPrefix("Last connected: Private network."))
+        XCTAssertEqual(RelayModel.reach(device(nearby: false, route: "Private network", problem: nil, presence: .reachable)),
+                       "create can be reached. No code needed.")
+        XCTAssertTrue(RelayModel.reach(device(nearby: false, route: nil, problem: nil))
+            .contains("isn't showing on this network"))
+    }
 }
 
 private struct TimedOut: Error {}

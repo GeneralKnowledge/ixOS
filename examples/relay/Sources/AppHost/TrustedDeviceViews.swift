@@ -17,7 +17,7 @@ struct TrustBadge: View {
     var body: some View {
         Label("Trusted", systemImage: "checkmark.shield.fill")
             .font(.caption)
-            .foregroundStyle(.green)
+            .forgeForeground(.success)
     }
 }
 
@@ -29,13 +29,13 @@ struct TrustedDeviceRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "laptopcomputer.and.iphone")
-                .foregroundStyle(device.nearby ? Color.accentColor : .secondary)
+                .foregroundStyle(device.presence == .offline ? .secondary : Color.accentColor)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
                 HStack(spacing: 8) {
                     TrustBadge()
-                    Text(device.nearby ? "Nearby" : "Not seen on this network")
+                    Text(RelayModel.whereNow(device))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -121,12 +121,45 @@ struct PairingPolicySection: View {
     }
 }
 
-/// The pairing policy in the Settings tab, which has no `RelayModel`:
-/// it asks Relay's core directly. The Devices tab re-reads it after the
-/// change, like any other.
+/// Which routes reach trusted devices (Rust's `ConnectionMode`), on the
+/// Devices tab and in Settings.
+struct ConnectionModeSection: View {
+    let mode: ConnectionMode
+    let choose: (ConnectionMode) -> Void
+
+    init(model: RelayModel) {
+        mode = model.connectionMode
+        choose = { mode in Task { await model.setConnectionMode(mode) } }
+    }
+
+    init(mode: ConnectionMode, choose: @escaping (ConnectionMode) -> Void) {
+        self.mode = mode
+        self.choose = choose
+    }
+
+    var body: some View {
+        Section {
+            Picker("Reach Trusted Devices", selection: Binding(get: { mode }, set: choose)) {
+                Text("Any Route").tag(ConnectionMode.hybrid)
+                Text("Local and Private Networks").tag(ConnectionMode.private)
+                Text("Local Network Only").tag(ConnectionMode.local)
+            }
+            .accessibilityIdentifier("devices.connectionMode")
+        } header: {
+            Text("Connections")
+        } footer: {
+            Text(RelayModel.explain(mode))
+        }
+    }
+}
+
+/// The pairing policy and connection mode in the Settings tab, which has
+/// no `RelayModel`: it asks Relay's core directly. The Devices tab
+/// re-reads them after the change, like any other.
 struct RelaySettingsSection: View {
     let core: RelayCore
     @State private var policy: PairingPolicy = .askToPair
+    @State private var mode: ConnectionMode = .hybrid
 
     var body: some View {
         PairingPolicySection(policy: policy) { chosen in
@@ -140,6 +173,46 @@ struct RelaySettingsSection: View {
             }
         }
         .onAppear { policy = core.pairingPolicy() }
+        ConnectionModeSection(mode: mode) { chosen in
+            mode = chosen
+            Task {
+                do {
+                    try await core.setConnectionMode(mode: chosen)
+                } catch {
+                    mode = core.connectionMode()
+                }
+            }
+        }
+        .onAppear { mode = core.connectionMode() }
+        RelayServersSection(core: core)
+    }
+}
+
+/// Whether Relay uses its own relay and lookup server, so trusted devices
+/// find each other away from any shared network. Off until turned on.
+struct RelayServersSection: View {
+    let core: RelayCore
+    @State private var on = false
+
+    var body: some View {
+        Section {
+            Toggle("Use Relay's Servers", isOn: Binding(get: { on }, set: { chosen in
+                on = chosen
+                Task {
+                    do {
+                        try await core.setServers(servers: chosen ? ownRelayServers() : RelayServers(relayUrl: nil, lookupUrl: nil))
+                    } catch {
+                        on = core.servers() == ownRelayServers()
+                    }
+                }
+            }))
+            .accessibilityIdentifier("settings.relayServers")
+        } footer: {
+            Text(on
+                 ? "Trusted devices can find each other from anywhere, through relay.avedeus.ovh. What they send stays encrypted end to end. Takes effect the next time Relay opens."
+                 : "Relay reaches trusted devices on local and private networks, such as Tailscale, only.")
+        }
+        .onAppear { on = core.servers() == ownRelayServers() }
     }
 }
 
@@ -153,7 +226,21 @@ struct TrustedDeviceView: View {
     @State private var note = ""
     @State private var sending = false
     @State private var pickingFiles = false
+    @State private var asking = false
     @FocusState private var writing: Bool
+
+    /// "iPhone or iPad", "Linux", "Mac": the platform Rust reports, in
+    /// words.
+    static func platformName(_ os: String) -> String {
+        switch os {
+        case "ios": "iPhone or iPad"
+        case "macos": "Mac"
+        case "linux": "Linux"
+        case "windows": "Windows"
+        case "android": "Android"
+        default: os
+        }
+    }
 
     var body: some View {
         if let device = model.device(endpointID), device.trusted {
@@ -191,9 +278,30 @@ struct TrustedDeviceView: View {
             } header: {
                 TrustBadge()
             } footer: {
-                Text(device.nearby
-                     ? "\(device.name) is nearby. No code needed."
-                     : "\(device.name) isn't showing on this network. Open Relay on it, on the same Wi-Fi.")
+                Text(RelayModel.reach(device))
+            }
+            Section {
+                LabeledContent("Where", value: RelayModel.whereNow(device))
+                    .accessibilityIdentifier("trusted.where")
+                LabeledContent("Platform", value: device.platform.map(Self.platformName) ?? "Not known yet")
+                    .accessibilityIdentifier("trusted.platform")
+                LabeledContent("Offers", value: device.offers.isEmpty ? "Not known yet" : device.offers.joined(separator: ", "))
+                    .accessibilityIdentifier("trusted.offers")
+                Button {
+                    Task {
+                        asking = true
+                        await model.refreshStatus(of: device)
+                        asking = false
+                    }
+                } label: {
+                    Label(asking ? "Asking…" : "Ask Again", systemImage: "arrow.clockwise")
+                }
+                .disabled(asking)
+                .accessibilityIdentifier("trusted.askStatus")
+            } header: {
+                Text("About This Device")
+            } footer: {
+                Text("What \(device.name) says about itself. It grants nothing here.")
             }
             Section {
                 Toggle("Can Send to This Device", isOn: Binding(
@@ -217,6 +325,14 @@ struct TrustedDeviceView: View {
         }
         .navigationTitle(device.name)
         .navigationBarTitleDisplayMode(.inline)
+        // Ask once when the device can be reached; Ask Again does it later.
+        .task(id: device.endpointId) {
+            if device.presence != .offline {
+                asking = true
+                await model.refreshStatus(of: device)
+                asking = false
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
