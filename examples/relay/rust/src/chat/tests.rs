@@ -324,7 +324,21 @@ fn the_assistant_works_signed_out_and_survives_sign_out() {
     // And after a relaunch.
     core.shutdown();
     drop(core);
-    let again = ChatCore::open(dir.path().join("chats"), credentials).unwrap();
+    // The closing core lets go of its folder a moment later, off this
+    // thread: wait for it, as a relaunch would.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    let again = loop {
+        match ChatCore::open(dir.path().join("chats"), credentials.clone()) {
+            Ok(core) => break core,
+            Err(err) => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "couldn't reopen: {err:?}"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+    };
     assert_eq!(again.assistant().conversations().unwrap()[0].id, mia.id);
 }
 

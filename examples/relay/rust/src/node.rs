@@ -36,8 +36,12 @@ use crate::code::{connection, get_within, put, CODE_ALPN, GONE, STEP, TOKIO};
 use crate::code_send::CodeHandler;
 use crate::device::{DeviceHandler, DeviceInbound, NodeLink, DEVICE_ALPN};
 use crate::model::RelayError;
+use crate::resolver::RelayServers;
 
 const KEY_FILE: &str = "device.key";
+/// The UDP port the endpoint last listened on, so a device that remembers
+/// this one's address (over Tailscale, say) finds it there again.
+const PORT_FILE: &str = "device.port";
 
 /// How often the store drops what nothing holds any more (a received
 /// file's copy once it is saved, a sent file's once the send ends).
@@ -97,17 +101,11 @@ impl Node {
         store_dir: &Path,
         devices: Arc<dyn DeviceInbound>,
         link: NodeLink,
+        servers: &RelayServers,
     ) -> Result<Self, RelayError> {
         let key = device_key(key_dir)?;
         let store = open_store(store_dir).await?;
-        let endpoint = Endpoint::builder(presets::Minimal)
-            .secret_key(key)
-            .relay_mode(RelayMode::Disabled)
-            .bind()
-            .await
-            .map_err(|e| RelayError::Unreachable {
-                reason: e.to_string(),
-            })?;
+        let endpoint = bind(key, key_dir, servers).await?;
         let sending = Arc::new(Mutex::new(None));
         let allowed: Allowed = Arc::default();
         let device_allowed: Allowed = Arc::default();
@@ -149,6 +147,18 @@ impl Node {
         self.endpoint.id()
     }
 
+    /// Where this device can be reached ("host:port"), for the Hello that
+    /// tells a trusted device: every interface's address, Tailscale's too.
+    pub fn addresses(&self) -> Vec<String> {
+        self.endpoint
+            .addr()
+            .ip_addrs()
+            .filter(|a| crate::resolver::worth_telling(a))
+            .take(crate::resolver::MAX_ADDRESSES)
+            .map(|a| a.to_string())
+            .collect()
+    }
+
     /// The UDP port the endpoint listens on (IPv4), for Bonjour.
     pub fn port(&self) -> Result<u16, RelayError> {
         self.endpoint
@@ -173,17 +183,31 @@ pub(crate) struct NodeCell {
     key_dir: PathBuf,
     store_dir: PathBuf,
     devices: Arc<dyn DeviceInbound>,
+    /// Relay's servers, as they were when the node started (a change takes
+    /// effect the next time Relay opens).
+    servers: RelayServers,
     cell: OnceCell<Arc<Node>>,
 }
 
 impl NodeCell {
-    pub fn new(key_dir: PathBuf, store_dir: PathBuf, devices: Arc<dyn DeviceInbound>) -> Self {
+    pub fn new(
+        key_dir: PathBuf,
+        store_dir: PathBuf,
+        devices: Arc<dyn DeviceInbound>,
+        servers: RelayServers,
+    ) -> Self {
         Self {
             key_dir,
             store_dir,
             devices,
+            servers,
             cell: OnceCell::new(),
         }
+    }
+
+    /// The node, if it has started.
+    pub fn started(&self) -> Option<Arc<Node>> {
+        self.cell.get().cloned()
     }
 
     /// The running node. Call on Relay's runtime (`TOKIO`).
@@ -197,6 +221,7 @@ impl NodeCell {
                         &self.store_dir,
                         Arc::clone(&self.devices),
                         Arc::clone(&link),
+                        &self.servers,
                     )
                     .await?,
                 );
@@ -214,6 +239,83 @@ impl Drop for NodeCell {
             TOKIO.spawn(async move { node.shutdown().await });
         }
     }
+}
+
+/// Binds the endpoint on the port it had last time, if it is free, else
+/// on any port, and remembers the port.
+async fn bind(
+    key: SecretKey,
+    key_dir: &Path,
+    servers: &RelayServers,
+) -> Result<Endpoint, RelayError> {
+    use iroh::address_lookup::pkarr::{PkarrPublisher, PkarrResolver};
+    use iroh::endpoint_info::AddrFilter;
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+    let relay = servers.relay();
+    let lookup = servers.lookup();
+    let builder = || {
+        let mut b = Endpoint::builder(presets::Minimal).secret_key(key.clone());
+        b = match &relay {
+            Some(url) => b.relay_mode(RelayMode::Custom(iroh::RelayMap::from(url.clone()))),
+            None => b.relay_mode(RelayMode::Disabled),
+        };
+        if let Some(url) = &lookup {
+            // Our own server: it gets the relay and any public address,
+            // never home-network or Tailscale ones (`publishable`).
+            b =
+                b.address_lookup(PkarrPublisher::builder(url.clone()).addr_filter(
+                    AddrFilter::new(|a| std::borrow::Cow::Owned(crate::resolver::publishable(a))),
+                ))
+                .address_lookup(PkarrResolver::builder(url.clone()));
+        }
+        b
+    };
+    let saved = std::fs::read_to_string(key_dir.join(PORT_FILE))
+        .ok()
+        .and_then(|s| s.trim().parse::<u16>().ok())
+        .filter(|p| *p != 0);
+    let mut endpoint = None;
+    if let Some(port) = saved {
+        let pinned = builder()
+            .clear_ip_transports()
+            .bind_addr(SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)))
+            .and_then(|b| {
+                b.bind_addr_with_opts(
+                    SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)),
+                    iroh::endpoint::BindOpts::default().set_is_required(false),
+                )
+            });
+        match pinned {
+            Ok(b) => match b.bind().await {
+                Ok(e) => endpoint = Some(e),
+                Err(e) => log::info!("relay node: port {port} isn't free ({e}); using another"),
+            },
+            Err(e) => log::info!("relay node: can't ask for port {port}: {e}"),
+        }
+    }
+    let endpoint = match endpoint {
+        Some(e) => e,
+        None => builder()
+            .bind()
+            .await
+            .map_err(|e| RelayError::Unreachable {
+                reason: e.to_string(),
+            })?,
+    };
+    if let Some(port) = endpoint
+        .bound_sockets()
+        .into_iter()
+        .find(SocketAddr::is_ipv4)
+        .map(|s| s.port())
+    {
+        if saved != Some(port) {
+            let _ = std::fs::create_dir_all(key_dir);
+            if let Err(e) = std::fs::write(key_dir.join(PORT_FILE), port.to_string()) {
+                log::info!("relay node: couldn't remember the port: {e}");
+            }
+        }
+    }
+    Ok(endpoint)
 }
 
 /// This device's key: read from `dir/device.key`, or made and saved there
@@ -390,6 +492,7 @@ mod tests {
                 &dir.path().join("store"),
                 Arc::new(crate::device::NoDevices),
                 NodeLink::default(),
+                &RelayServers::default(),
             )
             .await
             .unwrap();
@@ -400,6 +503,7 @@ mod tests {
                 &dir.path().join("store"),
                 Arc::new(crate::device::NoDevices),
                 NodeLink::default(),
+                &RelayServers::default(),
             )
             .await
             .unwrap();

@@ -17,6 +17,12 @@ enum ListenRoute: Hashable {
     case recent
     /// What is kept on the phone.
     case downloads
+    /// Songs with several takes and no pick yet.
+    case toPick
+    /// Free catalogues to search and play (Jamendo, Internet Archive).
+    case discover
+    /// An Internet Archive album or concert, with its tracks.
+    case archiveItem(ArchiveItem)
 }
 
 /// The Listen tab: your music library (artists, albums, songs, each song
@@ -51,14 +57,17 @@ struct ListenView: View {
                     case .playlist(let id): PlaylistView(model: model, player: player, id: id)
                     case .recent: RecentlyPlayedView(model: model, player: player)
                     case .downloads: DownloadsView(model: model, player: player)
+                    case .toPick: ToPickView(model: model, player: player)
+                    case .discover: DiscoverView(model: model, player: player)
+                    case .archiveItem(let item): ArchiveItemView(model: model, player: player, item: item)
                     }
                 }
                 .toolbar {
-                    if model.server != nil {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button("Take Server", systemImage: "server.rack") { editingServer = true }
-                                .accessibilityIdentifier("listen.server")
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button(model.server == nil ? "Add Take Server" : "Take Server", systemImage: "server.rack") {
+                            editingServer = true
                         }
+                        .accessibilityIdentifier("listen.server")
                     }
                 }
                 .sheet(isPresented: $editingServer) {
@@ -90,13 +99,17 @@ struct ListenView: View {
             player.onPlayed = { [model] trackId, recordingId in
                 Task { await model.recordPlay(trackId: trackId, recordingId: recordingId) }
             }
+            player.onSave = { [model] saved in
+                Task { await model.savePlayback(saved) }
+            }
+            player.crossfade = Double(model.crossfadeSeconds)
+            // Where the app was left: the same queue and song, paused.
+            if let saved = model.savedPlayback() { player.restore(saved) }
         }
     }
 
     @ViewBuilder private var content: some View {
         switch model.phase {
-        case .needsServer:
-            ServerForm(model: model, done: nil)
         case .loading:
             ForgeStateView.loading("Asking the take server")
         case .failed(let message):
@@ -387,8 +400,9 @@ private struct TakeRow: View {
     }
 }
 
-private struct Stars: View {
+struct Stars: View {
     let value: Int
+    var identifier = "take"
     let rate: (Int) -> Void
 
     var body: some View {
@@ -400,7 +414,7 @@ private struct Stars: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("\(n) \(n == 1 ? "star" : "stars")")
-                .accessibilityIdentifier("take.star\(n)")
+                .accessibilityIdentifier("\(identifier).star\(n)")
             }
         }
         .font(.subheadline)
@@ -728,6 +742,15 @@ private struct NowPlayingView: View {
                             .accessibilityElement(children: .combine)
                             Scrubber(player: player, showsButtons: false)
                             if player.isComparing { abSwitch } else { transport }
+                            if !player.isComparing, let trackId = current.trackId,
+                               let recording = model.track(trackId)?.recordings.first(where: { $0.id == current.id }),
+                               recording.kind == .generated {
+                                Stars(value: Int(recording.stars), identifier: "nowPlayingSheet") { n in
+                                    Task { _ = await model.rate(recording, of: trackId, stars: n) }
+                                }
+                                .font(.title3)
+                                .accessibilityLabel("Rate this take")
+                            }
                             if let lyrics = current.lyrics, !lyricLines(lyrics: lyrics).isEmpty {
                                 Button {
                                     showingLyrics = true
@@ -744,6 +767,12 @@ private struct NowPlayingView: View {
                             }
                             if let failure = player.failure {
                                 Text(failure).font(.caption).forgeForeground(.danger)
+                            }
+                            if let sleepNote {
+                                Label(sleepNote, systemImage: "moon.zzz")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("nowPlayingSheet.sleepNote")
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -792,6 +821,14 @@ private struct NowPlayingView: View {
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
+                    SleepTimerMenu(player: player)
+                }
+                if !player.isComparing {
+                    ToolbarItem(placement: .primaryAction) {
+                        CrossfadeMenu(model: model, player: player)
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button("Stop", systemImage: "stop.fill") {
                         player.stop()
                         dismiss()
@@ -807,6 +844,12 @@ private struct NowPlayingView: View {
         }
         .forgeFeedback(model.feedback)
         .presentationDragIndicator(.visible)
+    }
+
+    private var sleepNote: String? {
+        if player.sleepAtEndOfSong { return "Pausing at the end of this song" }
+        guard let at = player.sleepAt else { return nil }
+        return "Pausing at \(at.formatted(date: .omitted, time: .shortened))"
     }
 
     private var transport: some View {
@@ -884,6 +927,64 @@ private struct NowPlayingView: View {
         case .all: return "All"
         case .one: return "One"
         }
+    }
+}
+#endif
+
+#if os(iOS)
+/// The sleep timer: pause after a while, or at the end of this song.
+struct SleepTimerMenu: View {
+    let player: TakePlayer
+
+    private var on: Bool { player.sleepAt != nil || player.sleepAtEndOfSong }
+
+    var body: some View {
+        Menu {
+            ForEach([15, 30, 45, 60, 90], id: \.self) { minutes in
+                Button("\(minutes) Minutes") { player.sleep(after: minutes) }
+                    .accessibilityIdentifier("sleep.\(minutes)")
+            }
+            Button("End of This Song") { player.sleepAtEndOfThisSong() }
+                .accessibilityIdentifier("sleep.endOfSong")
+            if on {
+                Button("Turn Off Sleep Timer", role: .destructive) { player.cancelSleep() }
+                    .accessibilityIdentifier("sleep.off")
+            }
+        } label: {
+            Label("Sleep Timer", systemImage: on ? "moon.zzz.fill" : "moon.zzz")
+        }
+        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityIdentifier("nowPlayingSheet.sleep")
+    }
+}
+
+/// How songs run into each other: back to back with no gap, or
+/// overlapping by a few seconds.
+struct CrossfadeMenu: View {
+    let model: ListenModel
+    let player: TakePlayer
+
+    var body: some View {
+        Menu {
+            Picker("Between Songs", selection: Binding(
+                get: { model.crossfadeSeconds },
+                set: { seconds in
+                    player.crossfade = Double(seconds)
+                    Task { await model.setCrossfade(seconds) }
+                }
+            )) {
+                Text("No Gap").tag(UInt32(0))
+                    .accessibilityIdentifier("crossfade.0")
+                ForEach([UInt32(2), 4, 6, 8, 12], id: \.self) { seconds in
+                    Text("Crossfade \(seconds) Seconds").tag(seconds)
+                        .accessibilityIdentifier("crossfade.\(seconds)")
+                }
+            }
+        } label: {
+            Label("Between Songs", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+        }
+        .accessibilityValue(model.crossfadeSeconds == 0 ? "No gap" : "Crossfade \(model.crossfadeSeconds) seconds")
+        .accessibilityIdentifier("nowPlayingSheet.crossfade")
     }
 }
 #endif
