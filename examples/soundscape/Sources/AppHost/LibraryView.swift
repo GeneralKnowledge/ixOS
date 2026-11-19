@@ -1269,6 +1269,11 @@ private struct MatchRow: View {
                 if let artist = match.artist {
                     Text(artist).font(.subheadline).foregroundStyle(.secondary)
                 }
+                if let note = match.disambiguation {
+                    Text(note).font(.caption).foregroundStyle(.secondary)
+                } else if match.live {
+                    Text("Live").font(.caption).foregroundStyle(.secondary)
+                }
                 let facts = [match.album, match.year, match.durationSeconds.map(TakeFormat.time)]
                     .compactMap { $0 }
                 if !facts.isEmpty {

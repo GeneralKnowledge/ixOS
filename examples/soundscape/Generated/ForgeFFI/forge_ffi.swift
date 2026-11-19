@@ -5294,6 +5294,15 @@ public struct MusicBrainzMatch: Equatable, Hashable {
     public var recordingId: String
     public var title: String
     /**
+     * What tells it apart from recordings of the same name ("live,
+     * 1979-01-24: Deutschlandhalle, Berlin").
+     */
+    public var disambiguation: String?
+    /**
+     * A live recording: said so, or only released on live albums.
+     */
+    public var live: Bool
+    /**
      * The artist credit as MusicBrainz writes it ("A & B").
      */
     public var artist: String?
@@ -5338,6 +5347,13 @@ public struct MusicBrainzMatch: Equatable, Hashable {
          * The MusicBrainz recording id (a UUID).
          */recordingId: String, title: String, 
         /**
+         * What tells it apart from recordings of the same name ("live,
+         * 1979-01-24: Deutschlandhalle, Berlin").
+         */disambiguation: String?, 
+        /**
+         * A live recording: said so, or only released on live albums.
+         */live: Bool, 
+        /**
          * The artist credit as MusicBrainz writes it ("A & B").
          */artist: String?, 
         /**
@@ -5365,6 +5381,8 @@ public struct MusicBrainzMatch: Equatable, Hashable {
          */pageUrl: String) {
         self.recordingId = recordingId
         self.title = title
+        self.disambiguation = disambiguation
+        self.live = live
         self.artist = artist
         self.album = album
         self.releaseId = releaseId
@@ -5396,6 +5414,8 @@ public struct FfiConverterTypeMusicBrainzMatch: FfiConverterRustBuffer {
             try MusicBrainzMatch(
                 recordingId: FfiConverterString.read(from: &buf), 
                 title: FfiConverterString.read(from: &buf), 
+                disambiguation: FfiConverterOptionString.read(from: &buf), 
+                live: FfiConverterBool.read(from: &buf), 
                 artist: FfiConverterOptionString.read(from: &buf), 
                 album: FfiConverterOptionString.read(from: &buf), 
                 releaseId: FfiConverterOptionString.read(from: &buf), 
@@ -5413,6 +5433,8 @@ public struct FfiConverterTypeMusicBrainzMatch: FfiConverterRustBuffer {
     public static func write(_ value: MusicBrainzMatch, into buf: inout [UInt8]) {
         FfiConverterString.write(value.recordingId, into: &buf)
         FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.disambiguation, into: &buf)
+        FfiConverterBool.write(value.live, into: &buf)
         FfiConverterOptionString.write(value.artist, into: &buf)
         FfiConverterOptionString.write(value.album, into: &buf)
         FfiConverterOptionString.write(value.releaseId, into: &buf)

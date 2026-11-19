@@ -29,7 +29,12 @@ pub const SITE: &str = "https://musicbrainz.org";
 /// Who is asking, as MusicBrainz requires: the app and where it lives.
 pub const USER_AGENT: &str = "Soundscape/1.0 ( https://github.com/GeneralKnowledge/ixOS )";
 /// Recordings asked for in one search.
-pub const LIMIT: u32 = 15;
+pub const LIMIT: u32 = 25;
+/// Tries of one search while MusicBrainz says it is busy (503), which it
+/// does often, for everyone at once, waiting what it asks between them.
+pub const ATTEMPTS: u32 = 4;
+/// The longest wait between tries, whatever `Retry-After` says.
+const MAX_RETRY_WAIT: Duration = Duration::from_secs(3);
 /// A match whose length differs by more than this, in seconds, is a
 /// different recording (a live take, a radio edit).
 pub const LENGTH_TOLERANCE_SECONDS: f64 = 5.0;
@@ -45,6 +50,11 @@ pub struct MusicBrainzMatch {
     /// The MusicBrainz recording id (a UUID).
     pub recording_id: String,
     pub title: String,
+    /// What tells it apart from recordings of the same name ("live,
+    /// 1979-01-24: Deutschlandhalle, Berlin").
+    pub disambiguation: Option<String>,
+    /// A live recording: said so, or only released on live albums.
+    pub live: bool,
     /// The artist credit as MusicBrainz writes it ("A & B").
     pub artist: Option<String>,
     /// The release it is best known from: an official album, earliest
@@ -137,14 +147,34 @@ pub fn identify(
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/json")
         .timeout(TIMEOUT);
-    let response = http.send_cancellable(&request, cancel).map_err(|err| {
-        match SoundscapeError::from(err) {
-            SoundscapeError::Unreachable { reason } => SoundscapeError::Server {
-                reason: format!("can't reach MusicBrainz: {reason}"),
-            },
-            other => other,
+    let mut attempt = 1;
+    let response = loop {
+        let response = http.send_cancellable(&request, cancel).map_err(|err| {
+            match SoundscapeError::from(err) {
+                SoundscapeError::Unreachable { reason } => SoundscapeError::Server {
+                    reason: format!("can't reach MusicBrainz: {reason}"),
+                },
+                other => other,
+            }
+        })?;
+        if response.status != 503 || attempt >= ATTEMPTS {
+            break response;
         }
-    })?;
+        // Busy for everyone (seen live, 2026-11-19: three 503s in a row,
+        // then an answer): wait what it asks, then try again.
+        let wait = response
+            .header("Retry-After")
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .map(Duration::from_secs)
+            .unwrap_or(Duration::from_secs(1))
+            .clamp(Duration::from_millis(500), MAX_RETRY_WAIT);
+        if cancel.wait_timeout(wait) {
+            return Err(SoundscapeError::Stopped {
+                kind: forge_app::ErrorKind::Cancelled,
+            });
+        }
+        attempt += 1;
+    };
     match response.status {
         200..=299 => {}
         503 => {
@@ -231,9 +261,23 @@ fn recording(json: &Value) -> Option<MusicBrainzMatch> {
         .and_then(|t| t["number"].as_str())
         .and_then(|n| n.trim().parse().ok())
         .filter(|n| *n > 0);
+    let disambiguation = json["disambiguation"]
+        .as_str()
+        .map(|d| d.trim().to_string())
+        .filter(|d| !d.is_empty());
+    let live = disambiguation
+        .as_deref()
+        .is_some_and(|d| d.to_lowercase().starts_with("live"))
+        || release.is_some_and(|r| {
+            r["release-group"]["secondary-types"]
+                .as_array()
+                .is_some_and(|t| t.iter().any(|t| t.as_str() == Some("Live")))
+        });
     Some(MusicBrainzMatch {
         recording_id: id.to_string(),
         title: title.to_string(),
+        disambiguation,
+        live,
         artist: Some(artist.trim().to_string()).filter(|a| !a.is_empty()),
         album: release
             .and_then(|r| r["title"].as_str())
@@ -299,6 +343,8 @@ fn bare_title(text: &str) -> String {
 pub fn rank(found: Vec<MusicBrainzMatch>, wanted: &Wanted) -> Vec<MusicBrainzMatch> {
     let title = plain(&wanted.title);
     let bare = bare_title(&wanted.title);
+    // A song that says it is live may be matched to a live recording.
+    let wants_live = wanted.title.to_lowercase().contains("live");
     let artist = wanted
         .artist
         .as_deref()
@@ -337,6 +383,11 @@ pub fn rank(found: Vec<MusicBrainzMatch>, wanted: &Wanted) -> Vec<MusicBrainzMat
                 }
                 _ => true,
             };
+            // The same name, played on another night (seen live, 2026-11-19:
+            // MusicBrainz's top three for a studio song were all concerts).
+            if m.live && !wants_live {
+                points -= 15.0;
+            }
             m.confidence = points.clamp(0.0, 100.0).round() as u8;
             m.likely = length_ok && m.confidence >= LIKELY;
             m

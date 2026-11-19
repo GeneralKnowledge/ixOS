@@ -240,3 +240,108 @@ fn two_sources_of_one_recording_know_each_other() {
     assert!(block(core.link_musicbrainz("jamendo:42".into(), bad, false)).is_err());
     assert!(block(core.link_musicbrainz("jamendo:404".into(), found[0].clone(), false)).is_err());
 }
+
+/// A real answer (2026-11-19, `recording:"Bohemian Rhapsody" AND
+/// artist:"Queen"`, limit 3; each artist's aliases cut to one): the top
+/// three, all scored 100, are concerts.
+const LIVE_ANSWER: &str = include_str!("data/musicbrainz-bohemian-rhapsody.json");
+
+#[test]
+fn a_live_answer_reads_and_concerts_are_not_offered_for_a_studio_song() {
+    let found = parse(LIVE_ANSWER.as_bytes()).unwrap();
+    assert_eq!(found.len(), 3);
+    let first = &found[0];
+    assert_eq!(first.artist.as_deref(), Some("Queen"));
+    assert_eq!(first.duration_seconds, None, "no length given");
+    assert_eq!(first.number, Some(4));
+    assert_eq!(first.year.as_deref(), Some("2005"));
+    assert!(first.live, "only on a live album");
+    assert_eq!(
+        first.artwork_url.as_deref(),
+        Some("https://coverartarchive.org/release-group/c9a223e1-377f-363f-9699-4d209006a2b7/front-250")
+    );
+    assert_eq!(
+        found[2].disambiguation.as_deref(),
+        Some("live, 1979-01-24: Deutschlandhalle, Berlin, Germany")
+    );
+    assert_eq!(
+        found[2].album.as_deref(),
+        Some("1979-01-24: Deutschlandhalle, Berlin, Germany"),
+        "a bootleg, the only release"
+    );
+    assert!(found.iter().all(|m| m.live));
+
+    let studio = Wanted {
+        title: "Bohemian Rhapsody".into(),
+        artist: Some("Queen".into()),
+        duration_seconds: Some(354.0),
+    };
+    assert!(rank(found.clone(), &studio).iter().all(|m| !m.likely));
+    let unknown_length = Wanted {
+        duration_seconds: None,
+        ..studio.clone()
+    };
+    assert!(rank(found.clone(), &unknown_length)
+        .iter()
+        .all(|m| !m.likely));
+    // A song that says it is live may be one of them.
+    let live = Wanted {
+        title: "Bohemian Rhapsody (Live)".into(),
+        duration_seconds: None,
+        ..studio
+    };
+    assert!(rank(found, &live).iter().any(|m| m.likely));
+}
+
+/// Busy for everyone, then an answer, as MusicBrainz was on 2026-11-19.
+struct Busy {
+    busy: usize,
+    asked: std::sync::atomic::AtomicUsize,
+}
+
+impl forge_net::HttpClient for Busy {
+    fn send(&self, request: &forge_net::Request) -> Result<Response, forge_net::NetError> {
+        assert!(request
+            .headers
+            .iter()
+            .any(|h| h.name == "User-Agent" && h.value.starts_with("Soundscape/")));
+        let n = self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if n < self.busy {
+            let mut busy = Response::new(
+                503,
+                r#"{"error": "The MusicBrainz web server is currently busy. Please try again later."}"#,
+            );
+            busy.headers.push(forge_net::Header {
+                name: "retry-after".into(),
+                value: "0".into(),
+            });
+            Ok(busy)
+        } else {
+            Ok(Response::new(200, LIVE_ANSWER))
+        }
+    }
+}
+
+#[test]
+fn a_busy_answer_is_asked_again() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let cancel = forge_net::CancelHandle::new();
+    let busy = Busy {
+        busy: 3,
+        asked: AtomicUsize::new(0),
+    };
+    let found = soundscape_core::musicbrainz::identify(&busy, &wanted(), &cancel).unwrap();
+    assert_eq!(found.len(), 3);
+    assert_eq!(busy.asked.load(Ordering::SeqCst), 4);
+
+    let always = Busy {
+        busy: usize::MAX,
+        asked: AtomicUsize::new(0),
+    };
+    let err = soundscape_core::musicbrainz::identify(&always, &wanted(), &cancel).unwrap_err();
+    assert!(err.to_string().contains("busy"), "{err}");
+    assert_eq!(
+        always.asked.load(Ordering::SeqCst),
+        soundscape_core::musicbrainz::ATTEMPTS as usize
+    );
+}
