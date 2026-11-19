@@ -55,7 +55,11 @@ let package = Package(
         ),
         .target(
             name: "ChecklistApp",
-            dependencies: ["ChecklistFFI", .product(name: "ForgeKit", package: "forgekit")],
+            dependencies: [
+                "ChecklistFFI",
+                .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeUI", package: "forgekit"),
+            ],
             path: "Sources/AppHost",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

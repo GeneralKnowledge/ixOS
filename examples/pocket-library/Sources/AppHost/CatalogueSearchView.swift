@@ -194,7 +194,7 @@ private struct CatalogueRow: View {
                     ProgressView()
                 } else if result.libraryBookId != nil {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .forgeForeground(.success)
                         .font(.title2)
                 } else {
                     Image(systemName: "plus.circle.fill")

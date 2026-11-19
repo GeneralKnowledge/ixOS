@@ -1,5 +1,6 @@
 @preconcurrency import FieldKitFFI
 import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// The Add Note sheet: a text note on a trip. On a recording trip it is
@@ -42,7 +43,7 @@ struct AddNoteView: View {
                     }
                 }
             }
-            .interactiveDismissDisabled(!trimmed.isEmpty)
+            .forgeSwipeGuard(!trimmed.isEmpty)
             .forgeAlert(failure: $saving.failure)
             .onAppear { isFocused = true }
         }

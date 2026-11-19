@@ -423,10 +423,12 @@ def rule_errors_shown(app):
     return True, ""
 
 
-# Raw orange or yellow text fails contrast on a light background (the
-# friction audit, 2026-11-16); ForgeUI's tones pass in light and dark:
-# `.forgeForeground(.warning)`. Fills and tints may stay any colour.
-RAW_TONE_TEXT = re.compile(r"\.foregroundStyle\(\s*(?:Color)?\.(orange|yellow)\s*\)")
+# Raw orange, yellow or green text fails contrast on a light background (the
+# friction audit, 2026-11-16; green added by the ForgeUI coverage audit E3,
+# 2026-11-18); ForgeUI's tones pass in light and dark:
+# `.forgeForeground(.warning)`, `.forgeForeground(.success)`. Fills and tints
+# may stay any colour.
+RAW_TONE_TEXT = re.compile(r"\.foreground(?:Style|Color)\(\s*(?:Color)?\.(orange|yellow|green)\s*\)")
 
 
 # Error text in raw red (framework candidates PR A, 2026-11-17): the
@@ -465,18 +467,16 @@ def rule_toned_text(app):
         for line in raw_tone_problems(read(path)):
             bad.append(f"{path.name}:{line}")
     if bad:
-        return False, "orange, yellow or red error text; use .forgeForeground(.warning) or .forgeForeground(.danger): " + ", ".join(bad)
+        return False, "orange, yellow, green or red error text; use .forgeForeground(.warning), (.success) or (.danger): " + ", ".join(bad)
     return True, ""
 
 
 # Empty, no-results, loading and failed screens through ForgeUI's
 # `ForgeStateView` (framework candidates PR B, 2026-11-17), which keeps the
 # states apart, gives every action an identifier and uses the system's own
-# no-results view. Apps that don't use ForgeUI (Checklist, on ForgeKit
-# alone) draw SwiftUI's own.
+# no-results view. Applies to every app on ForgeKit, ForgeUI or not, so
+# leaving ForgeUI out isn't a way round it (ForgeUI coverage audit E1).
 def rule_state_views(app):
-    if '.product(name: "ForgeUI"' not in read(app / "Package.swift"):
-        return None
     bad = []
     for path in swift_sources(app):
         for i, line in enumerate(read(path).splitlines()):
@@ -484,6 +484,56 @@ def rule_state_views(app):
                 bad.append(f"{path.name}:{i + 1}")
     if bad:
         return False, "builds state screens with ContentUnavailableView; use ForgeStateView: " + ", ".join(bad)
+    return True, ""
+
+
+# A sheet kept open (while saving, or holding unsaved input) through
+# ForgeUI's `forgeSwipeGuard` or `forgeFormToolbar`. SwiftUI's
+# `interactiveDismissDisabled` didn't stop the swipe on iOS 26.3 when applied
+# inside the sheet's NavigationStack (#326 phone check, 2026-11-18: the
+# showcase task form and Pocket Library's Add Book both closed with text
+# typed). Applies to every app, ForgeUI or not: the fix is in ForgeUI.
+def rule_swipe_guard(app):
+    bad = []
+    for path in swift_sources(app):
+        for i, line in enumerate(read(path).splitlines()):
+            if re.search(r"\.interactiveDismissDisabled\s*\(", line.split("//", 1)[0]):
+                bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "keeps a sheet open with interactiveDismissDisabled, which iOS 26.3 ignores; use forgeSwipeGuard: " + ", ".join(bad)
+    return True, ""
+
+
+# The app's look comes from a ForgeUI theme set once at its root
+# (`.forgeTheme(...)`), which also tints plain SwiftUI controls with the
+# app's accent (ForgeUI coverage audit E2, 2026-11-18).
+def rule_forge_theme(app):
+    if any(".forgeTheme(" in read(p) for p in swift_sources(app)):
+        return True, ""
+    return False, "sets no ForgeUI theme; add .forgeTheme(...) at the root view"
+
+
+# A screen that is still opening shows ForgeUI's `ForgeStateView.loading()`,
+# not a bare `ProgressView()` as the whole screen: the same size and place
+# in every app, and room for a label (ForgeUI coverage audit E2).
+LOADING_CASE = re.compile(r"^\s*case\s+\.(?:loading|opening|starting)\b[^:]*:\s*$")
+BARE_SPINNER = re.compile(r"^\s*ProgressView\(\)\s*$")
+
+
+def rule_root_loading(app):
+    bad = []
+    for path in swift_sources(app):
+        lines = read(path).splitlines()
+        for i, line in enumerate(lines[:-1]):
+            if not (LOADING_CASE.match(line) and BARE_SPINNER.match(lines[i + 1].split("//", 1)[0])):
+                continue
+            # A spinner sized or placed by the lines after it is part of a
+            # screen (a section still loading), not the whole screen.
+            after = lines[i + 2].lstrip() if i + 2 < len(lines) else ""
+            if not after.startswith("."):
+                bad.append(f"{path.name}:{i + 2}")
+    if bad:
+        return False, "a loading screen is a bare ProgressView(); use ForgeStateView.loading(): " + ", ".join(bad)
     return True, ""
 
 
@@ -522,8 +572,11 @@ RULES = [
     ("alerts-over-sheets", "A model alert is held back while a sheet is up; the sheet shows alerts itself", rule_alerts_over_sheets),
     ("picked-files", "Picked files copied with ForgeAppKit's `ForgePickedFile` (off the main thread), never by hand", rule_picked_files),
     ("web-images", "Pictures from the web through `ForgeRemoteImage` (kept on disk, decoded at the size shown), never `AsyncImage`", rule_web_images),
+    ("swipe-guard", "Sheets kept open with ForgeUI's `forgeSwipeGuard` (or `forgeFormToolbar`), never SwiftUI's `interactiveDismissDisabled`", rule_swipe_guard),
+    ("forge-theme", "A ForgeUI theme at the root (`.forgeTheme`), so controls wear the app's accent", rule_forge_theme),
     ("state-views", "Empty, no-results, loading and failed screens through ForgeUI's `ForgeStateView`", rule_state_views),
-    ("toned-text", "Warning and error text in ForgeUI's tones, never raw orange, yellow or (for errors) red", rule_toned_text),
+    ("root-loading", "A screen still opening shows `ForgeStateView.loading()`, never a bare `ProgressView()`", rule_root_loading),
+    ("toned-text", "Warning, success and error text in ForgeUI's tones, never raw orange, yellow, green or (for errors) red", rule_toned_text),
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
