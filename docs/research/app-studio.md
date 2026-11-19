@@ -190,13 +190,13 @@ Chosen by Reuben (D6, 2026-11-19 09:16) because it tests both sources on the sam
 2. **Web, through REA:** passive observation of the web player in a browser where Reuben is signed in: page structure, screenshots and network *metadata* (which requests a view makes, their timing and shape), to learn behaviour. No replaying or calling Spotify's API, no scraping, no tools that decompile or patch the player's scripts. Spotify's terms restrict reverse engineering of the service, so the study stays at what a user's own browser shows, and Reuben decides whether network metadata is in bounds before X1 starts ([open point](#open-points-before-x1)).
 3. **iPhone, through `forge ui --any-app`:** Spotify is added to the person's policy at **observe** first (read the tree, screenshots, scroll). Opening items and switching views needs **operate**, his call; **full** is never used on a real account. Changing a sort or filter may sync to his account; the run puts each one back as it found it and records that it did.
 4. **His library is personal data.** Screenshots and trees show his playlists and listening. They stay out of the ixOS repository: raw evidence goes in project files, and what the repository gets is redacted (titles replaced) or described in words.
-5. REA runs where his signed-in browser is. A cloud session has no access to his account, so X1's web part runs on a machine he chooses; X0 stays cloud-only.
+5. REA runs where his signed-in browser is: his own computer (decided 09:43). A cloud session has no access to his account; X0 stays cloud-only.
 
 #### Open points before X1
 
-- Is Spotify installed on the phone? (If not, D6's fallback.)
-- Is network metadata from the web player in bounds, or only page structure and screenshots?
-- Which machine runs REA against the signed-in web player: the laptop (shared, GPU job running) or his own computer?
+- ~~Is Spotify installed on the phone?~~ **Yes** (Reuben, 2026-11-19 09:43).
+- ~~Which machine runs REA?~~ **His computer or the server** (09:43). REA's passive browser observation attaches to an existing, signed-in Chrome-family browser, and the server (the Ubuntu laptop) is headless and runs his GPU job. So the web part runs on **his own computer**, where he signs in to the web player himself; App Studio never handles his Spotify password. The server keeps doing what it does now: builds, `forge ui` on the phone over USB, and the queue.
+- **Still open:** is network metadata from the web player in bounds, or only page structure and screenshots? Until he says, X1 plans for structure and screenshots only.
 
 ## Safety and permissions
 
