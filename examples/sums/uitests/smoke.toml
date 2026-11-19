@@ -1,0 +1,49 @@
+# Sums answers a sum, found by accessibility identifier. The full comparison
+# with the reference is docs/research/expeditions/calculator/run_sequences.py.
+# Run with the phone plugged in:  forge ui run uitests/smoke.toml
+# Format: docs/forge-ui-testing.md.
+
+name = "Smoke: 12 + 7 = 19, still there after a relaunch"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = {}
+
+[[step]]
+tap = { id = "sums.key.clear" }
+
+[[step]]
+tap = { id = "sums.key.clear" }
+
+[[step]]
+tap = { id = "sums.key.one" }
+
+[[step]]
+tap = { id = "sums.key.two" }
+
+[[step]]
+tap = { id = "sums.key.add" }
+
+[[step]]
+tap = { id = "sums.key.seven" }
+
+[[step]]
+tap = { id = "sums.key.equals" }
+
+[[step]]
+expect = { id = "sums.display", has_label = "19" }
+
+[[step]]
+screenshot = "1-twelve-plus-seven"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = {}
+
+[[step]]
+expect = { id = "sums.display", has_label = "19" }

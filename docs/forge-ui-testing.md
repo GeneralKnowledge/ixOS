@@ -343,7 +343,7 @@ WebDriverAgent drives any installed app, so a test file can name an App Store ap
 
 **Your own apps are unchanged.** An app is yours when its installed id has xtool's `XTL-` prefix (free team), or the `forge.toml` in the current folder, in the app folder holding the test file, or in an app of this checkout's `examples/` names it (Pocket Library's tests drive Device Lab, which hosts it on the phone), or your policy file marks it `full`. Everything works as before for these.
 
-**Every other app needs `--any-app`.** Without it, `forge ui run` refuses a test file that names one, and `ui tree` and `ui screenshot` refuse to read the screen while one is in front (the home screen is fine). The MCP server never passes `--any-app`, so an agent can't reach another app through it.
+**Every other app needs `--any-app`.** Without it, `forge ui run` refuses a test file that names one, and `ui tree` and `ui screenshot` refuse to read the screen while one is in front (the home screen is fine). The MCP server never passes `--any-app`, so an agent can't reach another app through it. Apps that come with iOS (Calculator, Weather) are found by their bundle id too, although the phone lists them apart from installed apps; the hard refusals and the person's policy still decide what Forge may do in them.
 
 **Then a per-app level, from a file you write:** `~/.config/forge/device-control.toml` (or under `$XDG_CONFIG_HOME`). It is outside every project, so an agent editing a project can't loosen it.
 

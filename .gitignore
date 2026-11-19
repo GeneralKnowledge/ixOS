@@ -24,3 +24,4 @@ xtool/
 
 # Cargo output of app-owned crates built directly (cargo test --manifest-path ...)
 /examples/*/rust/target/
+__pycache__/
