@@ -72,7 +72,7 @@ review.
 |---|---|---|
 | Who is dialled where | `resolver.rs` `plan` puts together Bonjour (nearby), what the device told (Hello), and where it was last reached; filtered by the Connections mode | Good separation: a key says who, never where |
 | The route check | `device::send` connects, then closes if the path's kind isn't allowed | The connection is made before it is refused. In Local mode with a relay configured, iroh may still reach the device through the relay and only then close. Building the address without the relay, and skipping key lookup, in Local and Private modes would avoid the attempt |
-| **Private allows the relay (new)** | `ConnectionMode::Private` allows every kind but `Internet`, so `Relay` is allowed; the app says Private "never connects over the open internet" | Traffic through Hetzner crosses the internet (end-to-end encrypted, but it does go there). Decide: Private excludes the relay, or the text names it. This is a product decision for Reuben |
+| **Private allows the relay (new)** | `ConnectionMode::Private` allows every kind but `Internet`, so `Relay` is allowed; the app says Private "never connects over the open internet" | Traffic through Hetzner crosses the internet (end-to-end encrypted, but it does go there). **Decided by Reuben (2026-11-19): Private means no relay.** The relay is used only in Hybrid |
 | **Unknown messages (still open from review item 7)** | `DeviceMsg::decode` fails on a variant it doesn't know, and an unexpected item is `connection("expected a note or a file")`. Both are connection errors, which the outbox retries (`Outcome::Retry`) for 30 days | Mixed builds are normal (phone, laptop CLI, server). Answer an item this build can't read with `Refused { "This device's Relay doesn't support that yet" }`, so the sender ends it at once, and let `Hello` list the features a build speaks |
 | One connection per item | `device::send` dials for every message or file | Known (review item 8). It matters once the relay route is in use |
 
@@ -140,8 +140,10 @@ One PR, no new features. Each fix ships with its test.
   a trusted device can't ask until the switch is on.
 - **Trust offers don't replace each other.** Test: two code transfers,
   then two offers.
-- **Private and the relay:** Reuben decides; then the mode and its text
-  agree, and Local and Private don't try a relay path at all.
+- **Private means no relay** (Reuben, 2026-11-19): only Hybrid uses the
+  relay, and Local and Private don't try a relay path at all. Test: in
+  Private, a device reachable only through the relay is not reached, and
+  the reason says so.
 
 ### 3. P3: one database
 
