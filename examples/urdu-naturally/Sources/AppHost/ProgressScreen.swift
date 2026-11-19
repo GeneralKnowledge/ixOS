@@ -21,24 +21,6 @@ struct ProgressScreen: View {
                 Text("\(totals.attemptsToday) practised today. \(totals.due) ready to come back.")
             }
 
-            if !totals.hardestToSay.isEmpty {
-                Section("Hardest to say") {
-                    ForEach(totals.hardestToSay, id: \.id) { phrase in
-                        NavigationLink(value: Route.phrase(phrase.id)) {
-                            PhraseRow(phrase: phrase)
-                        }
-                        .accessibilityIdentifier("progress.hard.\(phrase.id)")
-                    }
-                    NavigationLink(value: Route.practice(PracticeSet(
-                        title: "Hardest to say",
-                        items: totals.hardestToSay.map { ReviewItem(phrase: $0, skill: .speaking) }
-                    ))) {
-                        Label("Practise saying these", systemImage: "mouth")
-                    }
-                    .accessibilityIdentifier("progress.practiseHard")
-                }
-            }
-
             Section("Conversations") {
                 ForEach(model.home.scenarios, id: \.id) { scenario in
                     NavigationLink(value: Route.scenario(scenario.id)) {

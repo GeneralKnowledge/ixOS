@@ -2,8 +2,9 @@
 import ForgeUI
 import SwiftUI
 
-/// The curriculum: Building Blocks first, then the phrases for
-/// conversations, and a search across everything.
+/// Words: for looking things up, not for studying. Search first, then every
+/// line from the conversations by topic, then the Building Blocks (words,
+/// expressions, patterns) the conversations are made of.
 struct LearnScreen: View {
     let model: UrduModel
     @State private var query = ""
@@ -12,11 +13,11 @@ struct LearnScreen: View {
         List {
             if query.isEmpty {
                 let totals = model.home.totals
+                topics(.conversation, "From the conversations", "Every line from the conversations, by what it's about.")
                 topics(
                     .foundation, "Building Blocks",
-                    "\(totals.words) words, \(totals.expressions) expressions and \(totals.patterns) sentence patterns you'll hear constantly. Learn these and you can build your own sentences."
+                    "The \(totals.words) words, \(totals.expressions) expressions and \(totals.patterns) sentence patterns the conversations are made of. You pick them up by talking; look them up here."
                 )
-                topics(.conversation, "Phrases for conversations", "Whole things to say, from the conversations.")
             } else {
                 let results = model.phrases(topic: nil, query: query)
                 if results.isEmpty {
@@ -31,7 +32,7 @@ struct LearnScreen: View {
                 }
             }
         }
-        .navigationTitle("Learn")
+        .navigationTitle("Words")
         .searchable(text: $query, prompt: "English or Roman Urdu")
     }
 

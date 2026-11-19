@@ -1,4 +1,5 @@
-# Urdu, Naturally: the people you talk to, and the conversations of 0.1.
+# Urdu, Naturally: the people you talk to, and the conversations. The
+# conversations ARE the course: every word you learn comes from one.
 #
 # A scenario's turns name phrases from phrases.toml, so the same phrase met
 # in two conversations is one phrase with one progress record. "them" is the
@@ -24,6 +25,13 @@ name = "Omar"
 gender = "male"
 description = "Talks fast, full of slang, always making plans."
 speech_rate = 1.1
+
+[[character]]
+id = "khala"
+name = "Khala"
+gender = "female"
+description = "Your aunt. Feeds you, asks after everyone, and can't believe how grown up you are."
+speech_rate = 0.85
 
 [[scenario]]
 id = "meeting-someone-new"
@@ -121,4 +129,160 @@ turns = [
   { who = "them", phrase = "tum-bhi-na" },
   { who = "them", phrase = "phir-milte-hain" },
   { who = "you", phrase = "bohat-maza-aaya" },
+]
+
+[[scenario]]
+id = "how-was-your-day"
+title = "How was your day?"
+description = "Ali calls in the evening to see how you are."
+character = "ali"
+difficulty = 1
+objective = "Say how your day went and that you're tired."
+turns = [
+  { who = "them", phrase = "aaj-din-kaisa-raha" },
+  { who = "you", phrase = "theek-tha-bas-thak-gaya" },
+  { who = "them", phrase = "kyun-kya-hua" },
+  { who = "you", phrase = "kaam-bohat-zyada-tha" },
+  { who = "them", phrase = "chalo-ab-aaram-karo" },
+  { who = "you", phrase = "pehle-chai-peeni-hai" },
+]
+
+[[scenario]]
+id = "tea-at-khalas"
+title = "Tea at Khala's"
+description = "You drop in on your aunt. She won't let you leave hungry."
+character = "khala"
+difficulty = 1
+objective = "Accept tea, say how you take it, and politely give in to the biscuit."
+turns = [
+  { who = "them", phrase = "assalam-o-alaikum" },
+  { who = "you", phrase = "walaikum-assalam" },
+  { who = "them", phrase = "chai-piyoge" },
+  { who = "you", phrase = "haan-zaroor-shukriya" },
+  { who = "them", phrase = "cheeni-kitni" },
+  { who = "you", phrase = "bas-thori-si" },
+  { who = "them", phrase = "kuch-khaoge" },
+  { who = "you", phrase = "nahi-shukriya" },
+  { who = "them", phrase = "arre-lo-na" },
+  { who = "you", phrase = "ek-le-leta-hoon" },
+]
+
+[[scenario]]
+id = "everyone-at-home"
+title = "Everyone at home"
+description = "Ayesha asks after your family."
+character = "ayesha"
+difficulty = 1
+objective = "Say everyone's well, ask after her mum, and send your regards."
+turns = [
+  { who = "them", phrase = "ghar-mein-sab-kaise-hain" },
+  { who = "you", phrase = "sab-theek-hain-shukar-hai" },
+  { who = "you", phrase = "aur-tumhare-ghar-mein" },
+  { who = "them", phrase = "sab-theek-hain-shukar-hai" },
+  { who = "you", phrase = "ammi-ki-tabiyat-kaisi-hai" },
+  { who = "them", phrase = "pehle-se-behtar-hain" },
+  { who = "you", phrase = "unko-mera-salaam-dena" },
+  { who = "them", phrase = "zaroor" },
+]
+
+[[scenario]]
+id = "have-you-eaten"
+title = "Have you eaten?"
+description = "Ali wants to know what you had for dinner."
+character = "ali"
+difficulty = 2
+objective = "Say what you ate, then tease him about the leftovers."
+turns = [
+  { who = "them", phrase = "khana-kha-liya" },
+  { who = "you", phrase = "haan-kha-liya" },
+  { who = "them", phrase = "kya-khaya" },
+  { who = "you", phrase = "biryani-ammi-ne-banayi" },
+  { who = "them", phrase = "mere-liye-bachi-hai" },
+  { who = "you", phrase = "bilkul-nahi" },
+  { who = "them", phrase = "pagal-ho-kya" },
+  { who = "you", phrase = "mazaaq-kar-raha-hoon" },
+  { who = "you", phrase = "aa-jao-abhi-garam-hai" },
+]
+
+[[scenario]]
+id = "on-my-way"
+title = "On my way"
+description = "You're late. Omar rings to find out where you are."
+character = "omar"
+difficulty = 2
+objective = "Say you're on your way and defend your five minutes."
+turns = [
+  { who = "them", phrase = "hello-kahan-ho" },
+  { who = "you", phrase = "raste-mein-hoon" },
+  { who = "them", phrase = "tumhare-paanch-minute" },
+  { who = "you", phrase = "sach-mein-traffic-hai" },
+  { who = "them", phrase = "jaldi-aao-sab-intezaar" },
+  { who = "you", phrase = "bas-pohanch-gaya" },
+]
+
+[[scenario]]
+id = "this-weekend"
+title = "This weekend"
+description = "Omar wants to play cricket. Far too early."
+character = "omar"
+difficulty = 2
+objective = "Say you've no plans, push back on the time, and agree."
+turns = [
+  { who = "them", phrase = "weekend-pe-kya-plan-hai" },
+  { who = "you", phrase = "abhi-kuch-pakka-nahi" },
+  { who = "them", phrase = "cricket-khelne-chalein" },
+  { who = "you", phrase = "kab" },
+  { who = "them", phrase = "itwaar-subah-das-baje" },
+  { who = "you", phrase = "itni-subah" },
+  { who = "them", phrase = "acha-gyarah-baje-pakka" },
+  { who = "you", phrase = "pakka-main-aa-jaunga" },
+]
+
+[[scenario]]
+id = "you-look-tired"
+title = "You look tired"
+description = "Ayesha notices you haven't slept."
+character = "ayesha"
+difficulty = 2
+objective = "Say why you're tired and accept a bit of comfort."
+turns = [
+  { who = "them", phrase = "tum-thake-hue-lag-rahe-ho" },
+  { who = "you", phrase = "raat-ko-neend-nahi-aayi" },
+  { who = "them", phrase = "koi-pareshani-hai" },
+  { who = "you", phrase = "bas-kaam-ki-tension-hai" },
+  { who = "them", phrase = "fikar-mat-karo" },
+  { who = "you", phrase = "inshallah" },
+  { who = "you", phrase = "shukriya" },
+]
+
+[[scenario]]
+id = "the-match"
+title = "The match"
+description = "Ali's team won. He won't let it go."
+character = "ali"
+difficulty = 3
+objective = "Talk about the match and give as good as you get."
+turns = [
+  { who = "them", phrase = "kal-ka-match-dekha" },
+  { who = "you", phrase = "kya-match-tha" },
+  { who = "them", phrase = "tumhari-team-to-haar-gayi" },
+  { who = "you", phrase = "toh-kya-agli-baar-dekhna" },
+  { who = "them", phrase = "har-baar-yahi-kehte-ho" },
+  { who = "you", phrase = "bas-karo" },
+]
+
+[[scenario]]
+id = "eid-at-khalas"
+title = "Eid at Khala's"
+description = "Eid morning at your aunt's. Prepare to be fed and admired."
+character = "khala"
+difficulty = 3
+objective = "Greet her for Eid, take the compliment graciously, and agree to stay for food."
+turns = [
+  { who = "them", phrase = "eid-mubarak" },
+  { who = "you", phrase = "khair-mubarak" },
+  { who = "them", phrase = "kitne-bare-ho-gaye-ho" },
+  { who = "you", phrase = "bas-aap-ki-duaayein-hain" },
+  { who = "them", phrase = "khana-kha-ke-jaana" },
+  { who = "you", phrase = "jee-zaroor" },
 ]

@@ -93,8 +93,11 @@ pub struct PhraseProgress {
     pub times_seen: u32,
     pub times_correct: u32,
     pub times_missed: u32,
+    /// Every attempt at any skill, struggles included.
+    #[serde(default)]
+    pub attempts: u32,
     pub last_seen_ms: Option<i64>,
-    /// When it is due again; None until it has been practised.
+    /// When it is due again; None until it has been seen or practised.
     pub next_review_ms: Option<i64>,
 }
 
@@ -111,9 +114,15 @@ pub struct ReviewEvent {
 
 impl PhraseProgress {
     /// The phrase was shown (learnt from a card, or met in a conversation).
+    /// Shown in a conversation or on a card. The first time, it is booked
+    /// to come back the next day, so whatever came up in a conversation
+    /// returns in Practise even if you never practised it there.
     pub fn seen(&mut self, now_ms: i64) {
         self.times_seen += 1;
         self.last_seen_ms = Some(now_ms);
+        if self.next_review_ms.is_none() {
+            self.next_review_ms = Some(now_ms + DAY);
+        }
     }
 
     /// Records an attempt at `skill`.
@@ -127,6 +136,7 @@ impl PhraseProgress {
             Outcome::Confident => level + 2,
         };
         self.skills.set(skill, next);
+        self.attempts += 1;
         if outcome == Outcome::Missed {
             self.times_missed += 1;
         } else if outcome != Outcome::Struggled {
@@ -134,6 +144,11 @@ impl PhraseProgress {
         }
         self.last_seen_ms = Some(now_ms);
         self.next_review_ms = Some(now_ms + rest_ms(outcome, self.skills.get(skill)));
+    }
+
+    /// True once you have tried it at least once (not just seen it).
+    pub fn practised(&self) -> bool {
+        self.attempts > 0 || self.times_correct + self.times_missed > 0
     }
 
     pub fn is_due(&self, now_ms: i64) -> bool {

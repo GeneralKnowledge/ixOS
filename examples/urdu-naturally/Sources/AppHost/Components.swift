@@ -9,6 +9,7 @@ enum Route: Hashable {
     case phrase(String)
     case practice(PracticeSet)
     case review
+    case listen
     case settings
     case speechCheck
 }
@@ -18,6 +19,17 @@ struct PracticeSet: Hashable {
     let id = UUID()
     let title: String
     let items: [ReviewItem]
+
+    /// Words, expressions and patterns, each with the skill it needs next:
+    /// what it means until you know it, then saying it (a pattern: making
+    /// a sentence with it).
+    static func words(_ title: String, _ words: [PhraseView]) -> PracticeSet {
+        PracticeSet(title: title, items: words.map { word in
+            let skill: Skill = word.skills.recognition < 2 ? .recognition
+                : word.kind == .pattern ? .speaking : .recall
+            return ReviewItem(phrase: word, skill: skill)
+        })
+    }
 }
 
 extension View {
@@ -30,7 +42,8 @@ extension View {
             case let .topic(id): TopicScreen(model: model, topicID: id)
             case let .phrase(id): PhraseScreen(model: model, phraseID: id)
             case let .practice(set): PracticeScreen(model: model, title: set.title, items: set.items)
-            case .review: PracticeScreen(model: model, title: "Review", items: model.reviewQueue())
+            case .review: PracticeScreen(model: model, title: "What came up", items: model.reviewQueue())
+            case .listen: ListenScreen(model: model)
             case .settings: SettingsScreen(model: model)
             case .speechCheck: SpeechCheckScreen()
             }

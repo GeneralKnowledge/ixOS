@@ -119,7 +119,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .sketchbook: "Draw with your finger in layers, with undo, and export to PNG or PDF."
         case .soundscape: "A music player for your songs from your computer: albums, a queue, lock-screen playback, and takes to compare and pick."
         case .relay: "Messages through your chat server with an on-device assistant, and files, photos and folders straight to a nearby device."
-        case .urdu: "Conversational Pakistani Urdu, learnt by talking: Roman Urdu, conversations with Ali, Ayesha and Omar, listening and review."
+        case .urdu: "Conversational Pakistani Urdu, learnt by talking: everyday conversations with Ali, Ayesha, Omar and Khala, and the words that come up in them."
         case .forgeUI: "Every ForgeUI component, with example screens."
         }
     }

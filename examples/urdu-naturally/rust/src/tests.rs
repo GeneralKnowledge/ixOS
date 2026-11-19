@@ -30,7 +30,7 @@ fn a_beginner_is_sent_to_the_first_conversation() {
         }
     );
     assert_eq!(home.totals.met, 0);
-    assert_eq!(home.scenarios.len(), 5);
+    assert!(home.scenarios.len() >= 14);
     assert!(home.scenarios.iter().all(|s| s.new_lines == s.your_lines));
 }
 
@@ -375,4 +375,45 @@ fn listening_never_plays_a_pattern() {
         }
     }
     assert!(content.phrases.iter().any(|p| p.kind == EntryKind::Pattern));
+}
+
+#[test]
+fn each_conversation_teaches_the_words_in_it() {
+    let saved = Saved::default();
+    let content = Content::get();
+    let tea = saved.scenario(content.scenario("tea-at-khalas").unwrap(), 0);
+    let ids: Vec<&str> = tea.words.iter().map(|w| w.id.as_str()).collect();
+    assert!(ids.contains(&"nahi-shukriya"), "{ids:?}");
+    assert!(ids.contains(&"zaroor"), "{ids:?}");
+    // "Raste mein hoon" is "in", not "I": no spelling is merged here.
+    let late = saved.scenario(content.scenario("on-my-way").unwrap(), 0);
+    assert!(late.words.iter().all(|w| w.id != "main"));
+    // Patterns are found by their frame.
+    let busy = saved.scenario(content.scenario("what-are-you-up-to").unwrap(), 0);
+    assert!(busy.words.iter().any(|w| w.id == "pattern-doing"));
+    // Every conversation teaches something.
+    for scenario in &content.scenarios {
+        assert!(!content.words_in(scenario).is_empty(), "{}", scenario.id);
+    }
+}
+
+#[test]
+fn what_came_up_in_a_conversation_comes_back_the_next_day() {
+    let mut saved = Saved::default();
+    let words: Vec<String> = Content::get()
+        .words_in(Content::get().scenario("tea-at-khalas").unwrap())
+        .iter()
+        .map(|w| w.id.clone())
+        .collect();
+    saved.seen(&words, 0).unwrap();
+    assert!(saved.review(50, DAY / 2).is_empty(), "not the same day");
+    let back: Vec<String> = saved
+        .review(50, DAY)
+        .into_iter()
+        .map(|i| i.phrase.id)
+        .collect();
+    assert!(words.iter().all(|w| back.contains(w)));
+    // Seeing a line doesn't make its conversation stop counting as new.
+    let summary = saved.home(DAY, 0).scenarios;
+    assert!(summary.iter().all(|s| s.new_lines == s.your_lines));
 }

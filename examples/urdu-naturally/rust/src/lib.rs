@@ -214,6 +214,10 @@ pub struct ScenarioSummary {
 pub struct ScenarioView {
     pub summary: ScenarioSummary,
     pub turns: Vec<TurnView>,
+    /// The building blocks (words, expressions, patterns) used in its lines,
+    /// in the order they come up. This is how you learn words: from the
+    /// conversations you have, not from lists.
+    pub words: Vec<PhraseView>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
@@ -234,8 +238,6 @@ pub enum Suggestion {
     Review { count: u32 },
     /// A conversation with something new to say.
     Conversation { scenario_id: String },
-    /// Phrases you haven't met, in this topic.
-    Learn { topic_id: String },
     /// Nothing due and nothing new. Go and talk to someone.
     AllDone,
 }
@@ -458,7 +460,7 @@ impl Saved {
         };
         for id in yours {
             match self.phrases.get(id) {
-                Some(p) if p.next_review_ms.is_some() || p.skills.speaking > 0 => {
+                Some(p) if p.practised() => {
                     summary.due_lines += p.is_due(now_ms) as u32;
                     summary.can_use += (p.skills.speaking >= 3) as u32;
                 }
@@ -485,6 +487,11 @@ impl Saved {
                         now_ms,
                     ),
                 })
+                .collect(),
+            words: content
+                .words_in(scenario)
+                .into_iter()
+                .map(|w| self.phrase(w, now_ms))
                 .collect(),
         }
     }
@@ -557,12 +564,16 @@ impl Saved {
     pub fn home(&self, now_ms: i64, day_start_ms: i64) -> Home {
         let content = Content::get();
         let totals = self.totals(now_ms, day_start_ms);
-        let scenarios: Vec<ScenarioSummary> = content
+        // Easiest first; the file's order within a difficulty.
+        let mut scenarios: Vec<ScenarioSummary> = content
             .scenarios
             .iter()
             .map(|s| self.scenario_summary(s, now_ms))
             .collect();
+        scenarios.sort_by_key(|s| s.difficulty);
         let topics = self.topics();
+        // Always a conversation, or practising what came up in one. Word
+        // lists are for looking things up, never the next thing to do.
         let suggestion = if totals.due >= 5 {
             Suggestion::Review { count: totals.due }
         } else if let Some(s) = scenarios.iter().find(|s| s.new_lines > 0) {
@@ -571,10 +582,6 @@ impl Saved {
             }
         } else if totals.due > 0 {
             Suggestion::Review { count: totals.due }
-        } else if let Some(t) = topics.iter().find(|t| t.met < t.phrases) {
-            Suggestion::Learn {
-                topic_id: t.id.clone(),
-            }
         } else {
             Suggestion::AllDone
         };

@@ -21,7 +21,8 @@ public struct ContentView: View {
     }
 }
 
-/// Five tabs: Home, Learn, Talk, Listen, Progress.
+/// Four tabs, conversation first: Talk (the app), Practise (what came up in
+/// your conversations, and listening), Words (to look things up), Progress.
 private struct RootTabs: View {
     @State private var model: UrduModel
     let changes: UInt64
@@ -34,13 +35,11 @@ private struct RootTabs: View {
     var body: some View {
         TabView {
             tab { HomeScreen(model: model) }
-                .tabItem { Label("Home", systemImage: "house") }
-            tab { LearnScreen(model: model) }
-                .tabItem { Label("Learn", systemImage: "text.book.closed") }
-            tab { TalkScreen(model: model) }
                 .tabItem { Label("Talk", systemImage: "bubble.left.and.bubble.right") }
-            tab { ListenScreen(model: model) }
-                .tabItem { Label("Listen", systemImage: "ear") }
+            tab { PractiseScreen(model: model) }
+                .tabItem { Label("Practise", systemImage: "arrow.counterclockwise") }
+            tab { LearnScreen(model: model) }
+                .tabItem { Label("Words", systemImage: "text.magnifyingglass") }
             tab { ProgressScreen(model: model) }
                 .tabItem { Label("Progress", systemImage: "chart.bar") }
         }
@@ -68,7 +67,8 @@ private struct RootTabs: View {
 
 // MARK: Home
 
-/// Where to pick up, what's due, and the conversations.
+/// The app's front door: the next conversation, and all of them. Words are
+/// learnt inside conversations, so this is where learning starts.
 struct HomeScreen: View {
     let model: UrduModel
     @Environment(\.forgeTheme) private var theme
@@ -87,33 +87,27 @@ struct HomeScreen: View {
                 .listRowBackground(Color.clear)
             }
 
-            Section("Pick up where you left off") {
+            Section("Next") {
                 suggestion(home.suggestion)
             }
 
-            if home.totals.due > 0 {
-                Section {
-                    NavigationLink(value: Route.review) {
-                        ForgeRow(
-                            "Review",
-                            subtitle: "\(home.totals.due) phrases are ready to come back",
-                            systemImage: "arrow.counterclockwise"
-                        )
+            ForEach(Self.levels, id: \.difficulty) { level in
+                let scenarios = home.scenarios.filter { $0.difficulty == level.difficulty }
+                if !scenarios.isEmpty {
+                    Section {
+                        ForEach(scenarios, id: \.id) { scenario in
+                            NavigationLink(value: Route.scenario(scenario.id)) {
+                                ScenarioRow(scenario: scenario)
+                            }
+                            .accessibilityIdentifier("home.scenario.\(scenario.id)")
+                        }
+                    } header: {
+                        Text(level.title)
                     }
-                    .accessibilityIdentifier("home.review")
-                }
-            }
-
-            Section("Conversations") {
-                ForEach(home.scenarios, id: \.id) { scenario in
-                    NavigationLink(value: Route.scenario(scenario.id)) {
-                        ScenarioRow(scenario: scenario)
-                    }
-                    .accessibilityIdentifier("home.scenario.\(scenario.id)")
                 }
             }
         }
-        .navigationTitle("Urdu, Naturally")
+        .navigationTitle("Talk")
         .navigationBarTitleDisplayModeInlineIfAvailable()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -126,12 +120,23 @@ struct HomeScreen: View {
         }
     }
 
+    private struct Band {
+        let difficulty: UInt32
+        let title: String
+    }
+
+    private static let levels = [
+        Band(difficulty: 1, title: "Starting out"),
+        Band(difficulty: 2, title: "Everyday"),
+        Band(difficulty: 3, title: "Having fun"),
+    ]
+
     @ViewBuilder
     private func suggestion(_ suggestion: Suggestion) -> some View {
         switch suggestion {
         case let .review(count):
             NavigationLink(value: Route.review) {
-                ForgeRow("Review \(count) phrases", subtitle: "A few minutes, then something new.", systemImage: "arrow.counterclockwise")
+                ForgeRow("Practise what came up", subtitle: "\(count) from your conversations. A few minutes, then the next one.", systemImage: "arrow.counterclockwise")
             }
             .accessibilityIdentifier("home.next")
         case let .conversation(id):
@@ -145,17 +150,10 @@ struct HomeScreen: View {
                 }
                 .accessibilityIdentifier("home.next")
             }
-        case let .learn(topicID):
-            if let topic = model.topic(topicID) {
-                NavigationLink(value: Route.topic(topicID)) {
-                    ForgeRow("Learn: \(topic.title)", subtitle: topic.description, systemImage: "text.book.closed")
-                }
-                .accessibilityIdentifier("home.next")
-            }
         case .allDone:
             ForgeRow(
-                "Nothing due",
-                subtitle: "Go and talk to someone. Come back to note what you couldn't say.",
+                "You've had every conversation",
+                subtitle: "Have one again, or go and talk to someone for real.",
                 systemImage: "checkmark.circle"
             )
         }

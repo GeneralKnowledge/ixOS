@@ -10,26 +10,21 @@ The plan, from this first version to free conversation with Ali, Ayesha and Omar
 
 ## What's in 0.1
 
-- **Building Blocks**: 188 entries in 12 foundation topics (question words, people, negatives, connectors, time, place, describing words, verbs, reactions, amounts, manners, sentence patterns), each marked as one of three kinds:
-  - **words** (137): nahi, bhi, bohat. Practised by recognising, recalling and using them in a gap line.
-  - **expressions** (42): fixed things you learn whole, like mujhe nahi lagta.
-  - **sentence patterns** (9): frames like *Main ___ sakta hoon* with example sentences. Practised by building new sentences from the English.
+The conversations are the course. You don't study word lists first: you have a conversation, and the words come from it.
 
-  Each comes with its common spoken combinations, its feminine and plural forms, and its positive or negative twin.
-- **Phrases**: 68 conversational phrases in 6 topics, including Conversation Glue (pata nahi, haan shayad, acha acha, matlab?) and what to say when you're lost.
-- **Conversations**: 5 short scenarios with Ali, Ayesha and Omar. Their lines are read aloud in their voice; at your turn you see the English, say it out loud (or type it), then see the Urdu.
-- **Listen**: rounds of 8 phrases heard with no text, alternating a woman's and a man's voice.
-- **Review**: spaced repetition per phrase and per skill (missed 10 minutes, struggled 1 day, with help 2 days, on your own 4 days, confident 7 to 30 days).
-- **Progress**: what you can recognise, recall and use, and the phrases you find hardest to say.
-- **Speech check**: which Urdu voices the phone has, and whether its speech recogniser lists Urdu.
+- **Talk**: 14 conversations about what people actually talk about (how was your day, everyone at home, tea at your aunt's, have you eaten, on my way, this weekend, you look tired, the match, Eid), in three levels, with Ali, Ayesha, Omar and Khala. Their lines are read aloud in their voice; at your turn you see the English, say it out loud (or type it), then see the Urdu. Each conversation shows what you'll pick up, and ends with its words and a button to practise them.
+- **Practise**: what came up in your conversations comes back, spaced per skill (missed 10 minutes, struggled 1 day, with help 2 days, on your own 4 days, confident 7 to 30 days; anything you only met, the next day). Plus listening with no text, and the lines you find hardest to say.
+- **Words**: for looking things up. Search, every line by topic, and the Building Blocks the conversations are made of: 183 words, expressions and sentence patterns (*Main ___ sakta hoon*), each with combinations, gender forms and its opposite.
+- **Progress**: what you can recognise, recall and use.
+- **Speech check**: which Urdu voices the phone has, and whether its speech recogniser lists Urdu. Listen names the voice actually reading: a woman or a man only when the phone has that voice.
 
-The Listen screen names the voice actually reading: a woman or a man only when the phone has that voice, otherwise "the phone's Urdu voice". Everything runs on the phone. There is no server and no AI in this version.
+Everything runs on the phone. There is no server and no AI in this version; free conversation with the characters is next ([plan](docs/plan.md)).
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `rust/content/` | The curriculum, in TOML: `words.toml` (Building Blocks), `phrases.toml`, `scenarios.toml` (characters and conversations). The source of truth |
+| `rust/content/` | The curriculum, in TOML: `scenarios.toml` (characters and conversations, the course itself), `phrases.toml` (their lines), `words.toml` (Building Blocks). The source of truth |
 | `rust/src/content.rs` | Reads and validates the curriculum: every entry in Urdu script, male forms with their female form, known topics, twins and characters |
 | `rust/src/schedule.rs` | The four skills, outcomes and review intervals |
 | `rust/src/answer.rs` | Checks a typed answer: forgives the common spellings of the same word (nahi or nahin, hai or hy), never merges words that only sound alike (kam, less; kaam, work) |

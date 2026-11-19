@@ -85,4 +85,12 @@ final class UrduModelTests: XCTestCase {
         XCTAssertTrue(pattern.combos.allSatisfy { $0.speech != nil })
         XCTAssertGreaterThan(model.home.totals.patterns, 0)
     }
+
+    @MainActor
+    func testAConversationBringsItsWords() async throws {
+        let (_, model) = try await open(try makeDirectory())
+        let tea = try XCTUnwrap(model.scenario("tea-at-khalas"))
+        XCTAssertTrue(tea.words.contains { $0.id == "nahi-shukriya" })
+        XCTAssertGreaterThanOrEqual(model.home.scenarios.count, 14)
+    }
 }

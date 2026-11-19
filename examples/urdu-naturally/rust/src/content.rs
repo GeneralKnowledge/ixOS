@@ -413,10 +413,77 @@ impl Content {
         self.topics.iter().find(|t| t.id == id)
     }
 
+    /// The building blocks used in a scenario's lines, in the order they
+    /// first come up: each word and expression whose words appear together
+    /// in a line, and each pattern a line follows (Mujhe ___ chahiye in
+    /// "Mujhe chai chahiye"). Matched on exact spellings, so "mein" (in)
+    /// never counts as "main" (I).
+    pub fn words_in(&self, scenario: &ScenarioText) -> Vec<&PhraseText> {
+        let lines: Vec<Vec<String>> = scenario
+            .turns
+            .iter()
+            .filter_map(|t| self.phrase(&t.phrase))
+            .map(|p| tokens(&p.roman))
+            .collect();
+        let mut found: Vec<(usize, usize, &PhraseText)> = Vec::new();
+        for entry in self.phrases.iter().filter(|p| p.kind != EntryKind::Phrase) {
+            let at = lines.iter().enumerate().find_map(|(n, line)| {
+                let pos = if entry.kind == EntryKind::Pattern {
+                    let (before, after) = entry.roman.split_once(BLANK)?;
+                    follows(line, &tokens(before), &tokens(after))
+                } else {
+                    find(line, &tokens(&entry.roman), 0)
+                };
+                pos.map(|p| (n, p))
+            });
+            if let Some((n, p)) = at {
+                found.push((n, p, entry));
+            }
+        }
+        found.sort_by_key(|(n, p, _)| (*n, *p));
+        found.into_iter().map(|(_, _, e)| e).collect()
+    }
+
     /// True for a phrase you say in some scenario.
     pub fn is_spoken(&self, id: &str) -> bool {
         self.spoken.contains(id)
     }
+}
+
+/// Lower-case words, letters only: no spelling is merged.
+fn tokens(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        })
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// Where `needle` starts in `line`, at or after `from`.
+fn find(line: &[String], needle: &[String], from: usize) -> Option<usize> {
+    if needle.is_empty() || needle.len() > line.len() {
+        return None;
+    }
+    (from..=line.len() - needle.len()).find(|&i| line[i..i + needle.len()] == *needle)
+}
+
+/// Where a pattern's frame starts in `line`: its words before the gap, at
+/// least one word in the gap, then its words after it.
+fn follows(line: &[String], before: &[String], after: &[String]) -> Option<usize> {
+    let start = if before.is_empty() {
+        Some(0)
+    } else {
+        find(line, before, 0)
+    }?;
+    let gap = start + before.len();
+    if after.is_empty() {
+        return (gap < line.len()).then_some(start);
+    }
+    find(line, after, gap + 1).map(|_| start)
 }
 
 fn unique<'a>(ids: impl Iterator<Item = &'a String>, what: &str) -> Result<(), String> {
@@ -595,8 +662,11 @@ mod tests {
             content.phrases.len() >= 50,
             "0.1 teaches at least 50 phrases"
         );
-        assert_eq!(content.scenarios.len(), 5);
-        assert_eq!(content.characters.len(), 3);
+        assert!(
+            content.scenarios.len() >= 14,
+            "conversations are the course"
+        );
+        assert_eq!(content.characters.len(), 4);
         // Nothing has been checked by a native speaker yet, and the app
         // must not say otherwise.
         assert!(content

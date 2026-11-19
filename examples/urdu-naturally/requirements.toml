@@ -33,3 +33,9 @@ device = ["uitests/typed-answer.toml"]
 id = "UN-5"
 statement = "Building Blocks are words, expressions and sentence patterns; a pattern is practised by building its example sentences from the English, and is never read aloud with its gap."
 twin = ["UrduModelTests.testAPatternIsPractisedWithItsExamples"]
+
+[[requirement]]
+id = "UN-6"
+statement = "Conversations are the course: each one lists the words, expressions and patterns it uses, offers to practise them at the end, and what you met comes back in Practise the next day."
+twin = ["UrduModelTests.testAConversationBringsItsWords"]
+device = ["uitests/smoke.toml"]

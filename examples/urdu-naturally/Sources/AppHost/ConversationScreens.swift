@@ -2,27 +2,6 @@
 import ForgeUI
 import SwiftUI
 
-/// The conversations, by who you're talking to.
-struct TalkScreen: View {
-    let model: UrduModel
-
-    var body: some View {
-        List {
-            Section {
-                ForEach(model.home.scenarios, id: \.id) { scenario in
-                    NavigationLink(value: Route.scenario(scenario.id)) {
-                        ScenarioRow(scenario: scenario)
-                    }
-                    .accessibilityIdentifier("talk.scenario.\(scenario.id)")
-                }
-            } footer: {
-                Text("Their lines are for listening; yours are for saying out loud. Free conversation with Ali, Ayesha and Omar comes later.")
-            }
-        }
-        .navigationTitle("Talk")
-    }
-}
-
 /// A conversation, turn by turn. The other person's lines appear and are
 /// read aloud in their voice; at your turn you see what you want to say in
 /// English, say it out loud (or type it), then see the Urdu and say how it
@@ -78,7 +57,7 @@ struct ConversationScreen: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    header(scenario.summary)
+                    header(scenario)
                     ForEach(Array(scenario.turns.prefix(shown).enumerated()), id: \.offset) { offset, turn in
                         bubble(turn, character: scenario.summary.character)
                             .id(offset)
@@ -87,7 +66,7 @@ struct ConversationScreen: View {
                         yourTurn(scenario.turns[shown].phrase)
                             .id("turn")
                     } else if shown >= scenario.turns.count {
-                        finished(scenario.summary)
+                        finished(scenario)
                             .id("turn")
                     }
                 }
@@ -102,13 +81,19 @@ struct ConversationScreen: View {
         }
     }
 
-    private func header(_ summary: ScenarioSummary) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func header(_ scenario: ScenarioView) -> some View {
+        let summary = scenario.summary
+        return VStack(alignment: .leading, spacing: 4) {
             Text(summary.description)
                 .foregroundStyle(theme.colors.textSecondary)
             Text("Goal: \(summary.objective)")
                 .font(.footnote)
                 .foregroundStyle(theme.colors.textTertiary)
+            if !scenario.words.isEmpty {
+                Text("You'll pick up: \(scenario.words.prefix(6).map(\.roman).joined(separator: ", "))\(scenario.words.count > 6 ? "…" : "")")
+                    .font(.footnote)
+                    .foregroundStyle(theme.colors.textTertiary)
+            }
             NoVoiceNote()
         }
         .padding(.bottom, 8)
@@ -195,13 +180,36 @@ struct ConversationScreen: View {
         .background(theme.colors.surfaceRaised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func finished(_ summary: ScenarioSummary) -> some View {
+    private func finished(_ scenario: ScenarioView) -> some View {
         let gotIt = results.filter { $0 != .missed && $0 != .struggled }.count
         return VStack(alignment: .leading, spacing: 12) {
             Text("Conversation done")
                 .font(.title2.weight(.bold))
-            Text("You said \(gotIt) of \(results.count) of your lines without trouble. The ones you found hard come back in Review.")
+            Text("You said \(gotIt) of \(results.count) of your lines without trouble. The ones you found hard come back in Practise.")
                 .foregroundStyle(theme.colors.textSecondary)
+            if !scenario.words.isEmpty {
+                Text("Words from this conversation")
+                    .font(.headline)
+                    .padding(.top, 4)
+                ForEach(scenario.words, id: \.id) { word in
+                    NavigationLink(value: Route.phrase(word.id)) {
+                        HStack {
+                            Text(word.roman).foregroundStyle(theme.colors.textPrimary)
+                            Spacer()
+                            Text(word.english)
+                                .font(.footnote)
+                                .foregroundStyle(theme.colors.textSecondary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    .accessibilityIdentifier("conversation.word.\(word.id)")
+                }
+                NavigationLink(value: Route.practice(PracticeSet.words("Words from \(scenario.summary.title)", scenario.words))) {
+                    Label("Practise these words", systemImage: "text.badge.checkmark")
+                }
+                .buttonStyle(ForgeButtonStyle(.secondary, expands: true))
+                .accessibilityIdentifier("conversation.practiseWords")
+            }
             Button("Have it again") { restart() }
                 .buttonStyle(ForgeButtonStyle(.primary, expands: true))
                 .accessibilityIdentifier("conversation.again")
@@ -237,7 +245,10 @@ struct ConversationScreen: View {
             let text = theirs.map(\.speech).joined(separator: " ")
             Narrator.shared.say(text: text, id: first.id, voice: character.gender, rate: character.speechRate)
         }
-        let ids = theirs.map(\.id)
+        var ids = theirs.map(\.id)
+        // At the end, the conversation's words count as met: that is how a
+        // word enters your practice.
+        if shown >= scenario.turns.count { ids += scenario.words.map(\.id) }
         Task { await model.markSeen(ids) }
     }
 

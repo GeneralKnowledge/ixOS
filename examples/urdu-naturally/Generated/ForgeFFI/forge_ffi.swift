@@ -1981,12 +1981,24 @@ public func FfiConverterTypeScenarioSummary_lower(_ value: ScenarioSummary) -> R
 public struct ScenarioView: Equatable, Hashable {
     public var summary: ScenarioSummary
     public var turns: [TurnView]
+    /**
+     * The building blocks (words, expressions, patterns) used in its lines,
+     * in the order they come up. This is how you learn words: from the
+     * conversations you have, not from lists.
+     */
+    public var words: [PhraseView]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(summary: ScenarioSummary, turns: [TurnView]) {
+    public init(summary: ScenarioSummary, turns: [TurnView], 
+        /**
+         * The building blocks (words, expressions, patterns) used in its lines,
+         * in the order they come up. This is how you learn words: from the
+         * conversations you have, not from lists.
+         */words: [PhraseView]) {
         self.summary = summary
         self.turns = turns
+        self.words = words
     }
 
     
@@ -2006,13 +2018,15 @@ public struct FfiConverterTypeScenarioView: FfiConverterRustBuffer {
         return
             try ScenarioView(
                 summary: FfiConverterTypeScenarioSummary.read(from: &buf), 
-                turns: FfiConverterSequenceTypeTurnView.read(from: &buf)
+                turns: FfiConverterSequenceTypeTurnView.read(from: &buf), 
+                words: FfiConverterSequenceTypePhraseView.read(from: &buf)
         )
     }
 
     public static func write(_ value: ScenarioView, into buf: inout [UInt8]) {
         FfiConverterTypeScenarioSummary.write(value.summary, into: &buf)
         FfiConverterSequenceTypeTurnView.write(value.turns, into: &buf)
+        FfiConverterSequenceTypePhraseView.write(value.words, into: &buf)
     }
 }
 
@@ -3338,11 +3352,6 @@ public enum Suggestion: Equatable, Hashable {
     case conversation(scenarioId: String
     )
     /**
-     * Phrases you haven't met, in this topic.
-     */
-    case learn(topicId: String
-    )
-    /**
      * Nothing due and nothing new. Go and talk to someone.
      */
     case allDone
@@ -3373,10 +3382,7 @@ public struct FfiConverterTypeSuggestion: FfiConverterRustBuffer {
         case 2: return .conversation(scenarioId: try FfiConverterString.read(from: &buf)
         )
         
-        case 3: return .learn(topicId: try FfiConverterString.read(from: &buf)
-        )
-        
-        case 4: return .allDone
+        case 3: return .allDone
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3396,13 +3402,8 @@ public struct FfiConverterTypeSuggestion: FfiConverterRustBuffer {
             FfiConverterString.write(scenarioId, into: &buf)
             
         
-        case let .learn(topicId):
-            writeInt(&buf, Int32(3))
-            FfiConverterString.write(topicId, into: &buf)
-            
-        
         case .allDone:
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(3))
         
         }
     }

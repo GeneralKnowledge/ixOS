@@ -1027,34 +1027,6 @@ topic = "place"
 combos = [{ roman = "Bahar khana", english = "Eating out" }]
 
 [[word]]
-id = "upar"
-roman = "Upar"
-english = "Up / upstairs"
-urdu = "اوپر"
-topic = "place"
-
-[[word]]
-id = "neeche"
-roman = "Neeche"
-english = "Down / downstairs"
-urdu = "نیچے"
-topic = "place"
-
-[[word]]
-id = "aage"
-roman = "Aage"
-english = "Ahead / in front"
-urdu = "آگے"
-topic = "place"
-
-[[word]]
-id = "peeche"
-roman = "Peeche"
-english = "Behind"
-urdu = "پیچھے"
-topic = "place"
-
-[[word]]
 id = "paas"
 roman = "Paas"
 english = "Near / with (having)"
@@ -1077,14 +1049,6 @@ english = "With / together"
 urdu = "ساتھ"
 topic = "place"
 combos = [{ roman = "Mere saath chalo.", english = "Come with me." }]
-
-[[word]]
-id = "darmiyan"
-roman = "Darmiyan"
-english = "Between"
-urdu = "درمیان"
-topic = "place"
-difficulty = 3
 
 # ------------------------------------------------------------ describing
 
