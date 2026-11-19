@@ -170,7 +170,33 @@ Small first, as Reuben asked: connect REA, investigate one feature, produce one 
 | **X1 One feature, end to end** | The agent investigates one feature of a reference with REA (web) and/or `forge ui --any-app` (iOS, at the policy's level), writes the expedition outputs, builds the feature in a studio app through forge-lab, compares | One feature works on the phone and its comparison is written from evidence. Every gap is logged with whether an existing tool already covers it | One sitting after M0, VPN slot borrowed and restored |
 | **X2 Fill real gaps** | Only what X1 showed was missing; first candidate is reviving the parked explorer in forge-lab for walking an app's screens | Decided after X1, and after the freeze review where it touches frozen tooling | — |
 
-Recommended X1 reference: a feature with a **web version** observable through REA and an **iPhone app already on the phone** through `forge ui --any-app` at observe level, so both sources are tried on the same thing. A music app's library screen fits the description in Reuben's message; the choice of app is his ([D6](#decisions)). An Apple stock app (as with Calculator) is the fallback: no account, deterministic, already policy-listed.
+### X1: Spotify Library
+
+Chosen by Reuben (D6, 2026-11-19 09:16) because it tests both sources on the same feature: REA on the web player, `forge ui --any-app` on the iPhone app, and a comparison of where the two differ.
+
+**Scope: the Library screen only.**
+
+- View saved albums, playlists and artists.
+- Search and filter the library.
+- Switch between library views.
+- Open an item and navigate back.
+- Keep sorting and filtering state where the reference does.
+
+**Output:** the expedition outputs (profile, evidence, map, findings tagged Observed / Inferred / Unknown, reconstruction, verification), then a working native Library app on ForgeUI, with its own name and look, Rust owning the library model, search, filter and sort, and local fixture data.
+
+**Boundaries** (Reuben's, plus what follows from them):
+
+1. No proprietary backend, no streaming, no protected audio, no extracted assets (artwork, icons, fonts, the logo). The recreation uses invented fixture data and its own artwork.
+2. **Web, through REA:** passive observation of the web player in a browser where Reuben is signed in: page structure, screenshots and network *metadata* (which requests a view makes, their timing and shape), to learn behaviour. No replaying or calling Spotify's API, no scraping, no tools that decompile or patch the player's scripts. Spotify's terms restrict reverse engineering of the service, so the study stays at what a user's own browser shows, and Reuben decides whether network metadata is in bounds before X1 starts ([open point](#open-points-before-x1)).
+3. **iPhone, through `forge ui --any-app`:** Spotify is added to the person's policy at **observe** first (read the tree, screenshots, scroll). Opening items and switching views needs **operate**, his call; **full** is never used on a real account. Changing a sort or filter may sync to his account; the run puts each one back as it found it and records that it did.
+4. **His library is personal data.** Screenshots and trees show his playlists and listening. They stay out of the ixOS repository: raw evidence goes in project files, and what the repository gets is redacted (titles replaced) or described in words.
+5. REA runs where his signed-in browser is. A cloud session has no access to his account, so X1's web part runs on a machine he chooses; X0 stays cloud-only.
+
+#### Open points before X1
+
+- Is Spotify installed on the phone? (If not, D6's fallback.)
+- Is network metadata from the web player in bounds, or only page structure and screenshots?
+- Which machine runs REA against the signed-in web player: the laptop (shared, GPU job running) or his own computer?
 
 ## Safety and permissions
 
@@ -293,7 +319,7 @@ Answered by Reuben on 2026-11-19 (09:08).
 | **D3** | May the agent edit on the laptop? | **Yes, within bounds**: generated apps and the studio workspace only. No ixOS edits, no Device Lab edits, no framework dependency changes beyond approved updates. ixOS development stays on the cloud PR workflow |
 | **D4** | Does the person approve the design? | **Always, for M1.** No agent decides on its own that an app needs extra capabilities, a different architecture or new permissions. Revisit automatic approval after three genuinely different apps have passed the workflow |
 | **D5** | Which app for M0? | **A small habit tracker**: several screens, persistent local storage, create, edit and complete actions, a simple history view, at least one UI test. A better test than another tip calculator because it exercises app structure and persistence |
-| **D6** | Which reference for Recreate's first feature (X1)? | **Open.** Recommended: a feature with both a web version (for REA) and an iPhone app already on the phone (for `forge ui --any-app` at observe level). Fallback: an Apple stock app, as with Calculator |
+| **D6** | Which reference for Recreate's first feature (X1)? | **Spotify's Library** (Reuben, 2026-11-19 09:16): the web player through REA, the iPhone app through `forge ui --any-app`, compared, then recreated natively. If Spotify isn't on the phone, another installed music app with a web version. Scope and boundaries in [X1: Spotify Library](#x1-spotify-library) |
 
 ## Sources
 
