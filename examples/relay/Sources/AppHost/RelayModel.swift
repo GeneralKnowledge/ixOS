@@ -604,10 +604,6 @@ extension RelayError: ForgeDescribedError {
     }
 }
 
-extension Peer: Identifiable {
-    public var id: String { deviceId }
-}
-
 extension Transfer: Identifiable {}
 
 extension Device: Identifiable {
