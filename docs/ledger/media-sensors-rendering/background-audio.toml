@@ -1,9 +1,9 @@
 order = 50
 capability = "Background audio"
-framework = "Partial: config"
+framework = "Partial: config, `ForgeNowPlaying` helper (lock screen, remote commands, interruptions, unplugged headphones) and `ForgeAudioSession` music mode"
 rust_api = "No"
 ios_native = "No"
-in_app = "Partial: Soundscape Listen streams song takes with AVPlayer and shows them on the lock screen (MPNowPlayingInfoCenter, remote commands)"
+in_app = "Partial: Soundscape Listen streams song takes with AVPlayer, and Pocket Library's Read Aloud speaks chapters; both show on the lock screen through `ForgeNowPlaying` (Read Aloud's next and previous move a chapter)"
 iphone = "Partial: Soundscape Listen in Device Lab (playing with the screen locked, lock-screen controls, A/B comparison) reported working by a person, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-16; one app only. Then Device Lab 1.29915393, 2026-11-17, reported by Reuben: the next song started by itself with the screen locked; and Device Lab 1.29915595, 2026-11-17 evening, reported by Reuben: the lock screen showed the title, artwork, play time and a progress bar, and another app's audio switched Soundscape to Play, which then continued (#306). Pocket Library's Read Aloud showed on the lock screen without details (fixed in #313, recheck pending)"
 documented = "Partial"
-limits = "No framework helper yet: Soundscape sets the playback session and Now Playing in its own code (ForgeAudioSession has no music mode)"
+limits = "The `ForgeNowPlaying` helper has not yet run on an iPhone (both apps passed with their own copies before it). No Rust API: players stay in Swift"

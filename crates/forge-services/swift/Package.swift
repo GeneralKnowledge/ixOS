@@ -17,7 +17,7 @@ let package = Package(
             name: "ForgeServicesHelpers",
             path: "helpers",
             // UIKit, WebKit and AVFoundation helpers aren't tested here.
-            exclude: ["ForgeAudioSession.swift", "ForgeDocuments.swift", "ForgeWeb.swift"],
+            exclude: ["ForgeAudioSession.swift", "ForgeDocuments.swift", "ForgeNowPlaying.swift", "ForgeWeb.swift"],
             // The apps build Generated/ in Swift 5 mode; test the same way.
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
