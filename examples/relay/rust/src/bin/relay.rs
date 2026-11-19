@@ -15,6 +15,10 @@
 //! relay trust <device>               trust a revoked device again
 //! relay policy [codes-only | ask | automatic]
 //!                                    what happens after a code transfer
+//! relay connections [local | private | any]
+//!                                    which routes reach trusted devices
+//! relay servers [--own] [--relay URL] [--lookup URL] [--none]
+//!                                    Relay's own relay and lookup server
 //! relay send <peer> [--to host:port] (--note TEXT | FILE)
 //! relay send PATH...                 send files and folders with a word code
 //!                                    to anyone on this network
@@ -48,7 +52,7 @@
 //! device; the command asks on the terminal.
 //!
 //! While `relay listen` runs, it owns the data folder. From another terminal,
-//! `send <device>`, `devices`, `revoke`, `forget`, `trust`, `policy`,
+//! `send <device>`, `devices`, `revoke`, `forget`, `trust`, `policy`, `connections`,
 //! `peers` and `history` go to the listener over `relay.sock` in the data
 //! folder (0600) and print what it answers, so listening and sending work
 //! at the same time.
@@ -71,6 +75,7 @@ send <peer> [--to host:port] (--note TEXT | FILE) | send PATH... | receive <code
 send <device> (--note TEXT | --text TEXT | PATH...) [--to host:port] | \
 messages <device> | revoke <device> | forget <device> | \
 trust <device> | policy [codes-only | ask | automatic] | \
+connections [local | private | any] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
 ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
@@ -215,8 +220,15 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                     ""
                 };
                 out += &format!("{}  {state}{takes}  {}\n", d.name, d.endpoint_id);
+                if let Some(route) = &d.route {
+                    out += &format!("  last connected: {route}\n");
+                }
+                if let Some(problem) = &d.problem {
+                    out += &format!("  {problem}\n");
+                }
             }
             out += &format!("Pairing policy: {}\n", policy_name(core.pairing_policy()));
+            out += &format!("Connections: {}\n", mode_name(core.connection_mode()));
             Ok(())
         }
         "revoke" | "forget" | "trust" => (|| {
@@ -253,6 +265,46 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 block_on(core.set_pairing_policy(policy)).map_err(|e| e.to_string())
             }
         },
+        "connections" => match rest.first().map(String::as_str) {
+            None => {
+                out += &format!("{}\n", mode_name(core.connection_mode()));
+                Ok(())
+            }
+            Some(name) => {
+                let mode = match name {
+                    "local" => relay_core::ConnectionMode::Local,
+                    "private" => relay_core::ConnectionMode::Private,
+                    "any" => relay_core::ConnectionMode::Hybrid,
+                    _ => return Some(Err(USAGE.into())),
+                };
+                block_on(core.set_connection_mode(mode)).map_err(|e| e.to_string())
+            }
+        },
+        "servers" => (|| {
+            if rest.is_empty() {
+                let s = core.servers();
+                out += &format!(
+                    "relay: {}\nlookup: {}\n",
+                    s.relay_url.as_deref().unwrap_or("none"),
+                    s.lookup_url.as_deref().unwrap_or("none")
+                );
+                return Ok(());
+            }
+            let mut servers = core.servers();
+            let mut args = rest.iter();
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--relay" => servers.relay_url = args.next().cloned(),
+                    "--lookup" => servers.lookup_url = args.next().cloned(),
+                    "--none" => servers = relay_core::RelayServers::default(),
+                    "--own" => servers = relay_core::own_relay_servers(),
+                    _ => return Err(USAGE.to_string()),
+                }
+            }
+            block_on(core.set_servers(servers)).map_err(|e| e.to_string())?;
+            out += "Saved. Relay uses them from the next time it starts.\n";
+            Ok(())
+        })(),
         "history" => {
             for t in core.transfers() {
                 out += &format!("{}\n", describe(&t));
@@ -458,6 +510,16 @@ fn policy_name(policy: relay_core::PairingPolicy) -> &'static str {
         relay_core::PairingPolicy::AskToPair => "ask (offer to trust after a code transfer)",
         relay_core::PairingPolicy::PairAutomatically => {
             "automatic (trust devices trusted before again by themselves)"
+        }
+    }
+}
+
+fn mode_name(mode: relay_core::ConnectionMode) -> &'static str {
+    match mode {
+        relay_core::ConnectionMode::Local => "local (the same network only)",
+        relay_core::ConnectionMode::Private => "private (the same network, then Tailscale)",
+        relay_core::ConnectionMode::Hybrid => {
+            "any (the same network, Tailscale, then the internet)"
         }
     }
 }

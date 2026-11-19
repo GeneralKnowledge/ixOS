@@ -37,6 +37,8 @@ mod model;
 mod node;
 mod outbox;
 mod record;
+mod resolver;
+pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind};
 mod trust;
 pub mod wire;
 
@@ -148,6 +150,11 @@ pub struct RelayCore {
     trust_offer: Arc<Mutex<Option<TrustOffer>>>,
     /// Trusted devices the app sees nearby, with their addresses.
     nearby: Mutex<HashMap<String, Vec<String>>>,
+    /// Whether the node's addresses are watched for network changes.
+    watching_network: AtomicBool,
+    /// Why each trusted device wasn't reached the last time Relay tried,
+    /// in words (the resolver's diagnostics); gone once it is reached.
+    problems: Mutex<HashMap<String, String>>,
     /// The stop switch of each send to a trusted device, by history id.
     device_stops: Mutex<HashMap<u64, Arc<AtomicBool>>>,
     /// What waits for trusted devices, and when to try them (`outbox`).
@@ -203,6 +210,7 @@ impl RelayCore {
         let key_dir = directory.path().to_path_buf();
         let peer_logs = device_chat::PeerLogs::new(directory.path().join("devices"));
         let store_dir = code_dir.join("store");
+        let servers = record.value().devices.servers.clone();
         let state = State {
             record,
             inbox,
@@ -220,6 +228,7 @@ impl RelayCore {
                 key_dir,
                 store_dir,
                 Arc::new(CoreDevices { core: me.clone() }),
+                servers,
             )),
             received_in: Mutex::new(code_dir.join("received")),
             code_dir,
@@ -228,6 +237,8 @@ impl RelayCore {
             code_send: Arc::new(CodeSendShared::default()),
             trust_offer: Arc::new(Mutex::new(None)),
             nearby: Mutex::new(HashMap::new()),
+            problems: Mutex::new(HashMap::new()),
+            watching_network: AtomicBool::new(false),
             device_stops: Mutex::new(HashMap::new()),
             outbox: outbox::Outbox::default(),
             peer_logs,
@@ -773,6 +784,11 @@ pub struct Device {
     pub receives_from: bool,
     /// Whether the app sees it on this network now.
     pub nearby: bool,
+    /// The route of the last connection with it, as the app shows it:
+    /// "Direct, local network", "Private network", "Direct, internet".
+    pub route: Option<String>,
+    /// Why Relay couldn't reach it the last time it tried, in words.
+    pub problem: Option<String>,
 }
 
 /// A device a code transfer was just made with, which the person may
@@ -798,6 +814,9 @@ pub struct NearbyDevice {
 pub struct DeviceService {
     pub endpoint_id: String,
     pub port: u16,
+    /// Where this device can be reached ("host:port", every interface's
+    /// address, Tailscale's too): what it tells trusted devices it meets.
+    pub addresses: Vec<String>,
 }
 
 /// Trusted devices (brief PR 3): trust after a code transfer, the pairing
@@ -810,10 +829,12 @@ impl RelayCore {
     /// on screen.
     pub async fn device_service(&self) -> Result<DeviceService, RelayError> {
         let node = self.node().await?;
+        self.watch_network(&node);
         self.deliver_waiting();
         Ok(DeviceService {
             endpoint_id: node.id().to_string(),
             port: node.port()?,
+            addresses: node.addresses(),
         })
     }
 
@@ -840,6 +861,10 @@ impl RelayCore {
                 since_ms: d.since_ms,
                 receives_from: d.receives_from,
                 nearby: d.trust == SavedTrust::Trusted && nearby.contains_key(&d.endpoint_id),
+                route: d.route.map(|r| r.label().to_string()),
+                problem: (d.trust == SavedTrust::Trusted)
+                    .then(|| lock(&self.problems).get(&d.endpoint_id).cloned())
+                    .flatten(),
             })
             .collect();
         list.sort_by_key(|d| (!d.trusted, d.name.to_lowercase()));
@@ -860,6 +885,57 @@ impl RelayCore {
                 self.try_now(id);
             }
         }
+    }
+
+    /// Which routes trusted devices are reached by.
+    pub fn connection_mode(&self) -> ConnectionMode {
+        self.record.get().devices.mode
+    }
+
+    pub async fn set_connection_mode(&self, mode: ConnectionMode) -> Result<(), RelayError> {
+        self.rt
+            .command("connection-mode", move |state| {
+                state.change(|r| {
+                    r.devices.mode = mode;
+                    Ok(())
+                })
+            })
+            .await?;
+        self.deliver_waiting();
+        Ok(())
+    }
+
+    /// Relay's own servers: a relay and a lookup server (M2 PR 7).
+    pub fn servers(&self) -> RelayServers {
+        self.record.get().devices.servers.clone()
+    }
+
+    /// Sets Relay's servers. They are used from the next time Relay opens.
+    pub async fn set_servers(&self, servers: RelayServers) -> Result<(), RelayError> {
+        let clean = RelayServers {
+            relay_url: servers.relay_url.filter(|u| !u.trim().is_empty()),
+            lookup_url: servers.lookup_url.filter(|u| !u.trim().is_empty()),
+        };
+        clean
+            .check()
+            .map_err(|reason| RelayError::Unreachable { reason })?;
+        self.rt
+            .command("servers", move |state| {
+                state.change(|r| {
+                    r.devices.servers = clean;
+                    Ok(())
+                })
+            })
+            .await
+    }
+
+    /// The network changed (another Wi-Fi, Wi-Fi to mobile data): Relay
+    /// looks for its routes again and tries what waits.
+    pub fn network_changed(&self) {
+        if let Some(node) = self.node.started() {
+            code::TOKIO.spawn(async move { node.endpoint.network_change().await });
+        }
+        self.retry_now();
     }
 
     pub fn pairing_policy(&self) -> PairingPolicy {
@@ -1366,6 +1442,25 @@ impl device::DeviceInbound for CoreDevices {
             .upgrade()
             .map(|c| c.identity().name)
             .unwrap_or_default()
+    }
+
+    fn met(&self, from: &str, addresses: Vec<String>, route: Option<RouteKind>) {
+        let Some(core) = self.core.upgrade() else {
+            return;
+        };
+        lock(&core.problems).remove(from);
+        let from = from.to_string();
+        code::TOKIO.spawn(async move {
+            let _ = core
+                .rt
+                .command("device-met", move |state| {
+                    state.change(|r| {
+                        r.devices.met(&from, &addresses, route);
+                        Ok(())
+                    })
+                })
+                .await;
+        });
     }
 
     fn folder(&self) -> PathBuf {

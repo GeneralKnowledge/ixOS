@@ -735,6 +735,7 @@ mod tests {
             home.clone(),
             home.join("store"),
             Arc::new(crate::device::NoDevices),
+            Default::default(),
         ))
     }
 

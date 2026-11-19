@@ -105,6 +105,7 @@ struct DevicesView: View {
                 }
                 if !isEmpty {
                     PairingPolicySection(model: model)
+                    ConnectionModeSection(model: model)
                 }
                 if !model.transfers.isEmpty {
                     Section("History") {
