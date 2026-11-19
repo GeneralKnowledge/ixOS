@@ -209,6 +209,13 @@ struct DevicesView: View {
                     model.reload()
                 }
             }
+            // Presence ages: "reachable" turns "offline" a few minutes after
+            // the last connection, with nothing else changing.
+            .task {
+                while (try? await Task.sleep(for: .seconds(30))) != nil {
+                    model.refreshDevices()
+                }
+            }
         }
         // On the stack, not its first screen: the device screen it pushes asks
         // to forget a device, and an alert on the root showed behind it.

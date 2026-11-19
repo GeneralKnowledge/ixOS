@@ -166,11 +166,12 @@ final class RelayModelTests: XCTestCase {
     }
 
     /// How a device can be reached, in words: nearby wins, then why it
-    /// wasn't reached, then the route it was last reached by.
+    /// wasn't reached, then reachable, then the route it was last reached by.
     func testReachText() {
-        func device(nearby: Bool, route: String?, problem: String?) -> Device {
+        func device(nearby: Bool, route: String?, problem: String?, presence: Presence = .offline) -> Device {
             Device(endpointId: "id", name: "create", trusted: true, sinceMs: 0, receivesFrom: true,
-                   nearby: nearby, route: route, problem: problem)
+                   nearby: nearby, presence: nearby ? .nearby : presence, lastSeenMs: nil,
+                   platform: nil, offers: [], route: route, problem: problem)
         }
         XCTAssertEqual(RelayModel.reach(device(nearby: true, route: "Private network", problem: "x")),
                        "create is nearby. No code needed.")
@@ -178,6 +179,8 @@ final class RelayModelTests: XCTestCase {
                        "create didn't answer.")
         XCTAssertTrue(RelayModel.reach(device(nearby: false, route: "Private network", problem: nil))
             .hasPrefix("Last connected: Private network."))
+        XCTAssertEqual(RelayModel.reach(device(nearby: false, route: "Private network", problem: nil, presence: .reachable)),
+                       "create can be reached. No code needed.")
         XCTAssertTrue(RelayModel.reach(device(nearby: false, route: nil, problem: nil))
             .contains("isn't showing on this network"))
     }

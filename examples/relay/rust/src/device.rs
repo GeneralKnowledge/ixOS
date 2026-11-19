@@ -81,6 +81,17 @@ pub(crate) enum DeviceMsg {
         body: String,
         reply_to: Option<String>,
     },
+    /// Instead of an item: "tell me about yourself" (brief PR 5). Any
+    /// trusted device may ask; the answer is `Status`.
+    StatusAsk,
+    /// What a device says about itself: read-only, its own claim. `offers`
+    /// names what it does over `relay/device/1`, such as "notes", "files",
+    /// "messages" or "ai".
+    Status {
+        name: String,
+        platform: String,
+        offers: Vec<String>,
+    },
 }
 
 impl DeviceMsg {
@@ -134,6 +145,10 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn rights(&self, from: &str) -> Option<Rights>;
     /// This device's name, for the reply to Hello.
     fn my_name(&self) -> String;
+    /// What this device says about itself, for a `StatusAsk`.
+    fn status(&self) -> StatusReport;
+    /// A trusted connection from `from` got past Hello: it was reached.
+    fn reached(&self, from: &str);
     /// A trusted device said where it can be reached, and connected over
     /// `route`.
     fn met(&self, _from: &str, _addresses: Vec<String>, _route: Option<RouteKind>) {}
@@ -171,6 +186,10 @@ impl DeviceInbound for NoDevices {
     fn my_name(&self) -> String {
         "test".into()
     }
+    fn status(&self) -> StatusReport {
+        StatusReport::default()
+    }
+    fn reached(&self, _: &str) {}
     fn folder(&self) -> PathBuf {
         PathBuf::from("/nonexistent")
     }
@@ -188,6 +207,14 @@ impl DeviceInbound for NoDevices {
     }
     fn progress(&self, _: u64, _: u64) {}
     fn finish_file(&self, _: u64, _: &str, _: [u8; 16], _: Result<String, String>) {}
+}
+
+/// What a device says about itself in a `Status`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct StatusReport {
+    pub name: String,
+    pub platform: String,
+    pub offers: Vec<String>,
 }
 
 /// What a trusted device may do here.
@@ -271,7 +298,26 @@ impl DeviceHandler {
             },
         )
         .await?;
+        self.host.reached(them);
         let item = hear(&mut recv, STEP).await?;
+        // Status is read-only: a device that may not send here may still ask.
+        if item == DeviceMsg::StatusAsk {
+            let host = Arc::clone(&self.host);
+            let me = tokio::task::spawn_blocking(move || host.status())
+                .await
+                .map_err(connection)?;
+            say(
+                &mut send,
+                &DeviceMsg::Status {
+                    name: me.name,
+                    platform: me.platform,
+                    offers: me.offers,
+                },
+            )
+            .await?;
+            send.finish().ok();
+            return Ok(());
+        }
         if !rights.receives_from {
             let reason = "The other device isn't taking files and notes from this one".into();
             say(&mut send, &DeviceMsg::Refused { reason }).await?;
@@ -490,6 +536,81 @@ pub(crate) async fn send(
     result
 }
 
+/// Asks a trusted device at `to` what it says about itself (brief PR 5).
+pub(crate) async fn ask_status(
+    node: &Node,
+    to: EndpointAddr,
+    my_name: String,
+) -> Result<StatusReport, RelayError> {
+    let conn = tokio::time::timeout(STEP, node.endpoint.connect(to, DEVICE_ALPN))
+        .await
+        .map_err(|_| RelayError::Unreachable {
+            reason: "the other device didn't answer".into(),
+        })?
+        .map_err(|e| RelayError::Unreachable {
+            reason: e.to_string(),
+        })?;
+    let result = async {
+        let (mut send, mut recv) = conn.open_bi().await.map_err(connection)?;
+        say(
+            &mut send,
+            &DeviceMsg::Hello {
+                version: VERSION,
+                name: my_name,
+                addresses: node.addresses(),
+            },
+        )
+        .await?;
+        match hear(&mut recv, STEP).await? {
+            DeviceMsg::Hello { .. } => {}
+            DeviceMsg::Refused { reason } => return Err(RelayError::Declined { reason }),
+            _ => return Err(connection("no hello")),
+        }
+        say(&mut send, &DeviceMsg::StatusAsk).await?;
+        let answer = hear(&mut recv, STEP).await;
+        send.finish().ok();
+        match answer? {
+            DeviceMsg::Status {
+                name,
+                platform,
+                offers,
+            } => Ok(StatusReport {
+                name,
+                platform: clean_label(&platform),
+                offers: offers
+                    .iter()
+                    .map(|o| clean_label(o))
+                    .filter(|o| !o.is_empty())
+                    .take(32)
+                    .collect(),
+            }),
+            DeviceMsg::Refused { reason } => Err(RelayError::Declined { reason }),
+            _ => Err(connection("unexpected answer")),
+        }
+    }
+    .await;
+    let result = match result {
+        // The listener closed the connection without a word: it doesn't
+        // trust this device.
+        Err(RelayError::Connection { .. }) if matches!(conn.close_reason(), Some(iroh::endpoint::ConnectionError::ApplicationClosed(ref c)) if c.error_code == NOT_TRUSTED.into()) => {
+            Err(RelayError::Refused)
+        }
+        other => other,
+    };
+    conn.close(0u32.into(), b"bye");
+    result
+}
+
+/// A short word from another device (a platform or an offer) made safe to
+/// show: letters, digits, '-', '_' and '.', at most 32 characters.
+pub(crate) fn clean_label(label: &str) -> String {
+    label
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        .take(32)
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn exchange(
     node: &Node,
@@ -664,6 +785,18 @@ mod tests {
                 },
                 include_str!("../fixtures/device-1/message.hex"),
             ),
+            (
+                DeviceMsg::StatusAsk,
+                include_str!("../fixtures/device-1/status-ask.hex"),
+            ),
+            (
+                DeviceMsg::Status {
+                    name: "Laptop".into(),
+                    platform: "linux".into(),
+                    offers: vec!["notes".into(), "files".into()],
+                },
+                include_str!("../fixtures/device-1/status.hex"),
+            ),
         ]
     }
 
@@ -697,6 +830,14 @@ mod tests {
                 addresses: vec![],
             }
         );
+    }
+
+    #[test]
+    fn labels_from_another_device_are_cleaned() {
+        assert_eq!(clean_label("ios"), "ios");
+        assert_eq!(clean_label("ai.inference"), "ai.inference");
+        assert_eq!(clean_label("files\u{202E}exe <b>"), "filesexeb");
+        assert_eq!(clean_label(&"x".repeat(100)).len(), 32);
     }
 
     #[test]

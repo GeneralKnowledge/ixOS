@@ -29,13 +29,13 @@ struct TrustedDeviceRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "laptopcomputer.and.iphone")
-                .foregroundStyle(device.nearby ? Color.accentColor : .secondary)
+                .foregroundStyle(device.presence == .offline ? .secondary : Color.accentColor)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
                 HStack(spacing: 8) {
                     TrustBadge()
-                    Text(device.nearby ? "Nearby" : "Not seen on this network")
+                    Text(RelayModel.whereNow(device))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -226,7 +226,21 @@ struct TrustedDeviceView: View {
     @State private var note = ""
     @State private var sending = false
     @State private var pickingFiles = false
+    @State private var asking = false
     @FocusState private var writing: Bool
+
+    /// "iPhone or iPad", "Linux", "Mac": the platform Rust reports, in
+    /// words.
+    static func platformName(_ os: String) -> String {
+        switch os {
+        case "ios": "iPhone or iPad"
+        case "macos": "Mac"
+        case "linux": "Linux"
+        case "windows": "Windows"
+        case "android": "Android"
+        default: os
+        }
+    }
 
     var body: some View {
         if let device = model.device(endpointID), device.trusted {
@@ -267,6 +281,29 @@ struct TrustedDeviceView: View {
                 Text(RelayModel.reach(device))
             }
             Section {
+                LabeledContent("Where", value: RelayModel.whereNow(device))
+                    .accessibilityIdentifier("trusted.where")
+                LabeledContent("Platform", value: device.platform.map(Self.platformName) ?? "Not known yet")
+                    .accessibilityIdentifier("trusted.platform")
+                LabeledContent("Offers", value: device.offers.isEmpty ? "Not known yet" : device.offers.joined(separator: ", "))
+                    .accessibilityIdentifier("trusted.offers")
+                Button {
+                    Task {
+                        asking = true
+                        await model.refreshStatus(of: device)
+                        asking = false
+                    }
+                } label: {
+                    Label(asking ? "Asking…" : "Ask Again", systemImage: "arrow.clockwise")
+                }
+                .disabled(asking)
+                .accessibilityIdentifier("trusted.askStatus")
+            } header: {
+                Text("About This Device")
+            } footer: {
+                Text("What \(device.name) says about itself. It grants nothing here.")
+            }
+            Section {
                 Toggle("Can Send to This Device", isOn: Binding(
                     get: { device.receivesFrom },
                     set: { on in Task { await model.setReceives(on, from: device) } }
@@ -288,6 +325,14 @@ struct TrustedDeviceView: View {
         }
         .navigationTitle(device.name)
         .navigationBarTitleDisplayMode(.inline)
+        // Ask once when the device can be reached; Ask Again does it later.
+        .task(id: device.endpointId) {
+            if device.presence != .offline {
+                asking = true
+                await model.refreshStatus(of: device)
+                asking = false
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

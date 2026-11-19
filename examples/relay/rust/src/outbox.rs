@@ -582,9 +582,8 @@ impl RelayCore {
 /// A delivery reached `to`: remember where, what it said about itself,
 /// and the route.
 fn remember_reached(r: &mut Record, to: &str, sent: &device::Sent) {
-    if let Some(at) = sent.at {
-        r.devices.seen_at(to, &[at.to_string()]);
-    }
+    let at: Vec<String> = sent.at.iter().map(|a| a.to_string()).collect();
+    r.devices.seen_at(to, &at, now_ms());
     r.devices.met(to, &sent.addresses, sent.route);
 }
 

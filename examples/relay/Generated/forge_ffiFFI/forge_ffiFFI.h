@@ -557,6 +557,11 @@ void uniffi_relay_core_fn_method_relaycore_deliver_waiting(uint64_t ptr, RustCal
 uint64_t uniffi_relay_core_fn_method_relaycore_device_service(uint64_t ptr
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICE_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICE_STATUS
+uint64_t uniffi_relay_core_fn_method_relaycore_device_status(uint64_t ptr, RustBuffer endpoint_id
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICES
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_DEVICES
 RustBuffer uniffi_relay_core_fn_method_relaycore_devices(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -1989,6 +1994,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_deliver_waiting(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICE_SERVICE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICE_SERVICE
 uint16_t uniffi_relay_core_checksum_method_relaycore_device_service(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICE_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_DEVICE_STATUS
+uint16_t uniffi_relay_core_checksum_method_relaycore_device_status(void
     
 );
 #endif

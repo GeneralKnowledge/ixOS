@@ -36,6 +36,7 @@ pub mod link;
 mod model;
 mod node;
 mod outbox;
+mod presence;
 mod record;
 mod resolver;
 pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind};
@@ -61,6 +62,7 @@ pub use code_send::{CodeSend, NearbySender};
 #[doc(hidden)]
 pub use node::set_store_cleanup_interval;
 use node::NodeCell;
+pub use presence::Presence;
 pub use trust::PairingPolicy;
 use trust::{AfterCode, SavedTrust};
 
@@ -150,6 +152,10 @@ pub struct RelayCore {
     trust_offer: Arc<Mutex<Option<TrustOffer>>>,
     /// Trusted devices the app sees nearby, with their addresses.
     nearby: Mutex<HashMap<String, Vec<String>>>,
+    /// When each trusted device last got past Hello on a connection it
+    /// made here (in memory; deliveries and status answers are saved in
+    /// the record as `last_seen_ms`). For presence (`presence`).
+    reached: Mutex<HashMap<String, i64>>,
     /// Whether the node's addresses are watched for network changes.
     watching_network: AtomicBool,
     /// Why each trusted device wasn't reached the last time Relay tried,
@@ -237,6 +243,7 @@ impl RelayCore {
             code_send: Arc::new(CodeSendShared::default()),
             trust_offer: Arc::new(Mutex::new(None)),
             nearby: Mutex::new(HashMap::new()),
+            reached: Mutex::new(HashMap::new()),
             problems: Mutex::new(HashMap::new()),
             watching_network: AtomicBool::new(false),
             device_stops: Mutex::new(HashMap::new()),
@@ -784,6 +791,15 @@ pub struct Device {
     pub receives_from: bool,
     /// Whether the app sees it on this network now.
     pub nearby: bool,
+    /// Nearby, reachable (a trusted connection worked in the last few
+    /// minutes) or offline. Always offline for a revoked device.
+    pub presence: Presence,
+    /// When it was last reached, in ms since the epoch.
+    pub last_seen_ms: Option<i64>,
+    /// What it last said about itself (`device_status`): its platform, such
+    /// as "ios" or "linux", and what it offers. Its own claim, read-only.
+    pub platform: Option<String>,
+    pub offers: Vec<String>,
     /// The route of the last connection with it, as the app shows it:
     /// "Direct, local network", "Private network", "Direct, internet".
     pub route: Option<String>,
@@ -850,25 +866,88 @@ impl RelayCore {
     /// Trusted and revoked devices, by name. Forgotten ones aren't listed.
     pub fn devices(&self) -> Vec<Device> {
         let nearby = lock(&self.nearby).clone();
+        let reached = lock(&self.reached).clone();
+        let now = now_ms();
         let record = self.record.get();
         let mut list: Vec<Device> = record
             .devices
             .listed()
-            .map(|d| Device {
-                endpoint_id: d.endpoint_id.clone(),
-                name: d.name.clone(),
-                trusted: d.trust == SavedTrust::Trusted,
-                since_ms: d.since_ms,
-                receives_from: d.receives_from,
-                nearby: d.trust == SavedTrust::Trusted && nearby.contains_key(&d.endpoint_id),
-                route: d.route.map(|r| r.label().to_string()),
-                problem: (d.trust == SavedTrust::Trusted)
-                    .then(|| lock(&self.problems).get(&d.endpoint_id).cloned())
-                    .flatten(),
+            .map(|d| {
+                let trusted = d.trust == SavedTrust::Trusted;
+                let is_nearby = trusted && nearby.contains_key(&d.endpoint_id);
+                let last_seen_ms = [d.last_seen_ms, reached.get(&d.endpoint_id).copied()]
+                    .into_iter()
+                    .flatten()
+                    .max();
+                Device {
+                    endpoint_id: d.endpoint_id.clone(),
+                    name: d.name.clone(),
+                    trusted,
+                    since_ms: d.since_ms,
+                    receives_from: d.receives_from,
+                    nearby: is_nearby,
+                    presence: if trusted {
+                        presence::presence(is_nearby, last_seen_ms, now)
+                    } else {
+                        Presence::Offline
+                    },
+                    last_seen_ms,
+                    platform: d.platform.clone(),
+                    offers: d.offers.clone(),
+                    route: d.route.map(|r| r.label().to_string()),
+                    problem: trusted
+                        .then(|| lock(&self.problems).get(&d.endpoint_id).cloned())
+                        .flatten(),
+                }
             })
             .collect();
         list.sort_by_key(|d| (!d.trusted, d.name.to_lowercase()));
         list
+    }
+
+    /// Asks a trusted device what it says about itself (its platform and
+    /// what it offers), and remembers the answer and when it came. Tried
+    /// where the resolver says (`dial`), within the connection mode. Returns
+    /// the device as `devices` lists it.
+    pub async fn device_status(&self, endpoint_id: String) -> Result<Device, RelayError> {
+        let saved = self
+            .record
+            .get()
+            .devices
+            .get(&endpoint_id)
+            .filter(|d| d.trust == SavedTrust::Trusted)
+            .cloned()
+            .ok_or_else(|| RelayError::UnknownPeer {
+                id: endpoint_id.clone(),
+            })?;
+        let Some((addr, _)) = self.dial(&saved) else {
+            return Err(RelayError::Unreachable {
+                reason: self.problem_of(&endpoint_id).unwrap_or_default(),
+            });
+        };
+        let node = Arc::clone(&self.node);
+        let my_name = self.identity().name;
+        let report = code::TOKIO
+            .spawn(async move {
+                let node = node.get().await?;
+                device::ask_status(&node, addr, my_name).await
+            })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)))?;
+        let id = endpoint_id.clone();
+        self.rt
+            .command("device-status", move |state| {
+                state.change(|r| {
+                    r.devices
+                        .reported(&id, &report.platform, &report.offers, now_ms());
+                    Ok(())
+                })
+            })
+            .await?;
+        self.devices()
+            .into_iter()
+            .find(|d| d.endpoint_id == endpoint_id)
+            .ok_or(RelayError::UnknownPeer { id: endpoint_id })
     }
 
     /// The trusted devices the app sees nearby now, replacing the last list.
@@ -1004,6 +1083,7 @@ impl RelayCore {
     /// transfers still work, as with any device.
     pub async fn revoke_device(&self, endpoint_id: String) -> Result<(), RelayError> {
         lock(&self.nearby).remove(&endpoint_id);
+        lock(&self.reached).remove(&endpoint_id);
         let endpoint = endpoint_id.clone();
         self.rt
             .command("revoke-device", move |state| {
@@ -1442,6 +1522,30 @@ impl device::DeviceInbound for CoreDevices {
             .upgrade()
             .map(|c| c.identity().name)
             .unwrap_or_default()
+    }
+
+    fn status(&self) -> device::StatusReport {
+        let Some(core) = self.core.upgrade() else {
+            return device::StatusReport::default();
+        };
+        let mut offers: Vec<String> = ["notes", "files", "messages"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        if lock(&core.answers_with).is_some() {
+            offers.push("ai".into());
+        }
+        device::StatusReport {
+            name: core.identity().name,
+            platform: std::env::consts::OS.to_string(),
+            offers,
+        }
+    }
+
+    fn reached(&self, from: &str) {
+        if let Some(core) = self.core.upgrade() {
+            lock(&core.reached).insert(from.to_string(), now_ms());
+        }
     }
 
     fn met(&self, from: &str, addresses: Vec<String>, route: Option<RouteKind>) {
