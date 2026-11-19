@@ -14,7 +14,7 @@ public struct ContentView: View {
 
     public var body: some View {
         ForgeRoot(host) { core in
-            TripsScreen(core: core, changes: host.changes)
+            TripsScreen(core: core, host: host, changes: host.changes)
         }
         .forgeTheme(ForgeTheme(accent: .teal))
     }
@@ -24,10 +24,11 @@ public struct ContentView: View {
 private struct TripsScreen: View {
     @State private var model: TripsModel
     let changes: UInt64
-    @Environment(\.scenePhase) private var scenePhase
 
-    init(core: FieldKitCore, changes: UInt64) {
-        _model = State(initialValue: TripsModel(core: core))
+    init(core: FieldKitCore, host: ForgeHost<FieldKitCore>, changes: UInt64) {
+        let model = TripsModel(core: core)
+        model.follow(host)
+        _model = State(initialValue: model)
         self.changes = changes
     }
 
@@ -36,8 +37,5 @@ private struct TripsScreen: View {
             // Rust committed a change (a new fix, a note), or the app came
             // back from the background: show what Rust holds now.
             .onChange(of: changes) { model.reload() }
-            .onChange(of: scenePhase) {
-                if scenePhase == .active { model.resume() }
-            }
     }
 }

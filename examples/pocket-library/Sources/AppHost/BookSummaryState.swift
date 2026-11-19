@@ -1,4 +1,5 @@
 @preconcurrency import PocketLibraryFFI
+import ForgeKit
 import Foundation
 import Observation
 
@@ -42,6 +43,12 @@ public final class BookSummaryState {
         self.bookTitle = bookTitle
         self.model = model
         info = model.describe()
+        // A run the background stopped carries on from its saved progress
+        // when the app is back.
+        library.host.onResume(self) { [weak self] _ in
+            guard let self, self.pausedInBackground else { return }
+            self.start()
+        }
     }
 
     public func load() {
@@ -90,7 +97,7 @@ public final class BookSummaryState {
 
     /// Whether the run stopped because the app was in the background (iOS
     /// or Apple's model wouldn't let it carry on there): the sheet starts
-    /// it again when the app is back.
+    /// it again when the app is back (`init`, through the host).
     public var pausedInBackground: Bool {
         guard phase == .failed, let error = error as? LibraryError else { return false }
         if case .Interrupted = error { return true }

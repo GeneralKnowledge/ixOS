@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 @preconcurrency import PocketLibraryFFI
+import ForgeKit
 import ForgeUI
 import SwiftUI
 
@@ -11,7 +12,7 @@ struct VoiceSettingsSection: View {
     @State private var voices: [VoiceCandidate] = []
     @State private var canAskForPersonalVoice = false
     @State private var sampler = VoiceSampler()
-    @Environment(\.scenePhase) private var scenePhase
+    @Environment(LibraryModel.self) private var model
 
     var body: some View {
         Section {
@@ -52,10 +53,9 @@ struct VoiceSettingsSection: View {
             }
         }
         .onAppear(perform: refresh)
-        .onChange(of: scenePhase) { _, phase in
-            // Voices downloaded in the Settings app show up on return.
-            if phase == .active { refresh() }
-        }
+        // Voices downloaded in the Settings app show up on return from
+        // the background.
+        .onChange(of: model.host.lastResume) { _, _ in refresh() }
         .onChange(of: voiceID) { _, _ in sampler.stop() }
         .onDisappear { sampler.stop() }
     }

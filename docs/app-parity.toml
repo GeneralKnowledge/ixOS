@@ -55,3 +55,9 @@ app = "urdu-naturally"
 rule = "device-checks"
 wave = 5
 reason = "UN-3 (a failed save is an alert) is proved by its twin test only, as the phone can't make a save fail from the UI; UN-5 (pattern practice) gets a phone scenario after its first phone sitting"
+
+[[lag]]
+app = "device-lab"
+rule = "resume"
+status = "not-applicable"
+reason = "Its dashboard reports the phase for its lab services and its transfer test, not a hosted app's model; each hosted app follows its own host"
