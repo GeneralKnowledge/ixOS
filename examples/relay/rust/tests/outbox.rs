@@ -1,5 +1,5 @@
 //! The delivery outbox (Relay M1 stage 3): notes and files for a trusted
-//! device that is away wait, survive a relaunch, and arrive once and in
+//! device that is away (shown in its conversation, review step 4) wait, survive a relaunch, and arrive once and in
 //! order when it is back. Two Relay devices on one machine, over
 //! localhost.
 
@@ -84,14 +84,23 @@ fn trusted_pair(dir: &Path) -> (Arc<RelayCore>, Arc<RelayCore>, String) {
     (phone, laptop, on_laptop.endpoint_id)
 }
 
-/// What `core` received from trusted devices, oldest first.
+/// What `core` received from the laptop, oldest first: its conversation
+/// holds notes (as messages) and files (as attachments).
 fn received(core: &RelayCore) -> Vec<Item> {
-    core.transfers()
+    let Some(laptop) = core.devices().into_iter().next() else {
+        return Vec::new();
+    };
+    core.device_messages(&laptop.endpoint_id)
+        .unwrap()
         .into_iter()
-        .rev()
-        .filter(|t| t.direction == Direction::Received && t.peer_name == "laptop")
-        .filter(|t| t.status == TransferStatus::Done)
-        .map(|t| t.item)
+        .map(|m| match m.attachments.first() {
+            Some(a) => Item::File {
+                name: a.name.clone(),
+                size: a.size,
+                path: core.device_file(&laptop.endpoint_id, &a.id),
+            },
+            None => note(&m.body),
+        })
         .collect()
 }
 

@@ -39,7 +39,7 @@ mod hex;
 mod trust;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
@@ -956,7 +956,7 @@ impl RelayCore {
         let item = SavedItem::File {
             name: name.clone(),
             size,
-            file,
+            file: file.clone(),
         };
         self.trusted(&endpoint_id)?;
         let id = outbox::new_id();
@@ -978,8 +978,32 @@ impl RelayCore {
             })
             .await
             .unwrap_or_else(|e| Err(code::connection(e)))?;
-        self.queue(id, endpoint_id, item, outbox::Payload::files(&offer))
-            .await
+        // The conversation shows it as a message with one attachment,
+        // Queued until the delivery ends.
+        let delivery = hex::hex(&id);
+        let local = file.as_deref().map(Path::new);
+        let attachment = device_chat::files_attachment(&delivery, local, &offer.name, size)?;
+        let me = self.identity();
+        let message_id = device_chat::files_message_id(&delivery);
+        let log = self.peer_logs.get(&endpoint_id)?;
+        log.add_files(
+            chat_core::Message {
+                id: message_id.clone(),
+                author: me.name,
+                author_id: format!("relay:{}", me.device_id),
+                attachments: vec![attachment],
+                status: chat_core::MessageStatus::Queued,
+                ..chat_core::Message::default()
+            },
+            local,
+        )?;
+        let queued = self
+            .queue(id, endpoint_id, item, outbox::Payload::files(&offer))
+            .await;
+        if queued.is_err() && self.record.get().delivery(&delivery).is_none() {
+            let _ = log.set_status(&message_id, chat_core::MessageStatus::Failed);
+        }
+        queued
     }
 
     /// Stops a send to a trusted device that is still going, or takes it
@@ -1129,6 +1153,48 @@ impl CoreDevices {
     }
 }
 
+impl CoreDevices {
+    /// Adds what delivery `delivery` saved at `path` to `from`'s
+    /// conversation, once.
+    fn files_arrived(&self, from: &str, delivery: [u8; 16], path: &Path) -> Result<(), RelayError> {
+        let core = self.core.upgrade().ok_or(RelayError::Stopped {
+            kind: forge_app::ErrorKind::ShutDown,
+        })?;
+        let log = core.peer_logs.get(from)?;
+        let delivery = hex::hex(&delivery);
+        let id = device_chat::files_message_id(&delivery);
+        if log.get(&id).is_some() {
+            return Ok(());
+        }
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let size = code_send::items_in(&[path.to_path_buf()])
+            .map(|f| f.iter().map(|(_, _, n)| n).sum())
+            .unwrap_or(0);
+        let attachment = device_chat::files_attachment(&delivery, Some(path), &name, size)?;
+        let author = core
+            .record
+            .get()
+            .devices
+            .get(from)
+            .map(|d| d.name.clone())
+            .unwrap_or_default();
+        log.add_files(
+            chat_core::Message {
+                id,
+                author,
+                author_id: from.to_string(),
+                attachments: vec![attachment],
+                ..chat_core::Message::default()
+            },
+            Some(path),
+        )?;
+        Ok(())
+    }
+}
+
 impl device::DeviceInbound for CoreDevices {
     fn message(&self, from: &str, message: device_chat::PeerMessage) -> Result<(), RelayError> {
         let core = self.core.upgrade().ok_or(RelayError::Stopped {
@@ -1251,15 +1317,19 @@ impl device::DeviceInbound for CoreDevices {
             .unwrap_or_default()
     }
 
+    /// A note from a device on an older build: a message in its
+    /// conversation, `note-<delivery id>`, so a retry adds it once.
     fn note(&self, from: &str, delivery: [u8; 16], text: String) -> Result<(), RelayError> {
-        let text = model::clean_note(&text)?;
+        self.message(
+            from,
+            device_chat::PeerMessage {
+                id: format!("note-{}", hex::hex(&delivery)),
+                body: text,
+                reply_to: None,
+            },
+        )?;
         let from = from.to_string();
         self.command("device-note", move |r| {
-            if r.received_before(&from, &delivery) {
-                return Ok(());
-            }
-            let id = r.begin(&from, false, SavedItem::Note { text }, now_ms());
-            r.finish(id, SavedStatus::Done, None);
             r.remember_received(&from, &delivery, now_ms());
             Ok(())
         })
@@ -1290,6 +1360,12 @@ impl device::DeviceInbound for CoreDevices {
     fn finish_file(&self, id: u64, from: &str, delivery: [u8; 16], result: Result<String, String>) {
         if let Some(core) = self.core.upgrade() {
             lock(&core.progress).remove(&id);
+        }
+        if let Ok(path) = &result {
+            // The conversation shows it as a message with the saved file.
+            if let Err(err) = self.files_arrived(from, delivery, Path::new(path)) {
+                forge_runtime::logging::warn!("relay couldn't add files to a conversation: {err}");
+            }
         }
         let (status, file) = match result {
             Ok(path) => (SavedStatus::Done, Some(path)),

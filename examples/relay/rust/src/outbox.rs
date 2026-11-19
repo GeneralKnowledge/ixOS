@@ -215,9 +215,11 @@ impl Record {
 
     /// The pending delivery of the conversation message `message_id`.
     pub fn message_delivery(&self, message_id: &str) -> Option<&SavedDelivery> {
-        self.deliveries
-            .iter()
-            .find(|d| matches!(&d.payload, Payload::Message { id, .. } if id == message_id))
+        self.deliveries.iter().find(|d| match &d.payload {
+            Payload::Message { id, .. } => id == message_id,
+            Payload::Files { .. } => crate::device_chat::files_message_id(&d.id) == message_id,
+            Payload::Note { .. } => false,
+        })
     }
 
     /// The oldest item for `to`: the next to send.
@@ -615,6 +617,7 @@ impl RelayCore {
             .await;
         if matches!(ended, Ok(true)) {
             self.let_go(&d).await;
+            self.message_ended(&d, false);
             self.answer(
                 &d.id,
                 Err(RelayError::Stopped {
@@ -779,11 +782,13 @@ impl RelayCore {
         Ok((message, rx))
     }
 
-    /// A message delivery ended: its conversation shows it sent, or failed
-    /// (the person can send it again).
+    /// A message or files delivery ended: its conversation shows it sent,
+    /// or failed (the person can send a message again).
     fn message_ended(&self, d: &SavedDelivery, delivered: bool) {
-        let Payload::Message { id, .. } = &d.payload else {
-            return;
+        let id = match &d.payload {
+            Payload::Message { id, .. } => id.clone(),
+            Payload::Files { .. } => crate::device_chat::files_message_id(&d.id),
+            Payload::Note { .. } => return,
         };
         let status = if delivered {
             chat_core::MessageStatus::Sent
@@ -793,7 +798,7 @@ impl RelayCore {
         let set = self
             .peer_logs
             .get(&d.to)
-            .and_then(|log| log.set_status(id, status));
+            .and_then(|log| log.set_status(&id, status));
         if let Err(err) = set {
             log::warn!("relay couldn't mark a message: {err}");
         }

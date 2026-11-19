@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use relay_core::{CodeSend, Direction, Item, RelayCore, RelayServers, TransferStatus};
+use relay_core::{CodeSend, RelayCore, RelayServers};
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     forge_runtime::block_on(future)
@@ -75,17 +75,17 @@ fn trust_each_other(dir: &Path, phone: &RelayCore, laptop: &RelayCore) {
     block_on(laptop.trust_device(on_laptop.endpoint_id.clone())).unwrap();
 }
 
-/// Notes `core` received from the device called `from`, oldest first.
+/// Notes `core` received from the device called `from`, oldest first:
+/// they are messages in its conversation.
 fn notes_from(core: &RelayCore, from: &str) -> Vec<String> {
-    core.transfers()
+    let Some(device) = core.devices().into_iter().find(|d| d.name == from) else {
+        return Vec::new();
+    };
+    core.device_messages(&device.endpoint_id)
+        .unwrap()
         .into_iter()
-        .rev()
-        .filter(|t| t.direction == Direction::Received && t.peer_name == from)
-        .filter(|t| t.status == TransferStatus::Done)
-        .filter_map(|t| match t.item {
-            Item::Note { text } => Some(text),
-            _ => None,
-        })
+        .filter(|m| m.author_id == device.endpoint_id)
+        .map(|m| m.body)
         .collect()
 }
 

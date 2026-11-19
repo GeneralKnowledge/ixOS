@@ -214,22 +214,13 @@ fn messages_and_files_to_an_away_device_arrive_in_the_order_sent() {
     let laptop_id = phone.devices()[0].endpoint_id.clone();
     sees(&laptop, &phone);
     eventually("everything on the phone", || {
-        phone.device_messages(&laptop_id).unwrap().len() == 2
-            && phone
-                .transfers()
-                .iter()
-                .any(|t| t.status == relay_core::TransferStatus::Done && !t.peer_id.is_empty())
+        phone.device_messages(&laptop_id).unwrap().len() == 3
     });
     let messages = phone.device_messages(&laptop_id).unwrap();
-    let file_at = phone
-        .transfers()
-        .iter()
-        .find(|t| matches!(&t.item, relay_core::Item::File { name, .. } if name == "harbour.txt"))
-        .unwrap()
-        .at_ms;
     assert_eq!(messages[0].body, "before");
-    assert_eq!(messages[1].body, "after");
-    assert!(messages[0].sent_at <= file_at && file_at <= messages[1].sent_at);
+    assert_eq!(messages[1].attachments[0].name, "harbour.txt");
+    assert_eq!(messages[2].body, "after");
+    assert!(messages[0].sent_at < messages[1].sent_at && messages[1].sent_at < messages[2].sent_at);
     eventually("both delivered on the laptop", || {
         laptop
             .device_messages(&phone_id)
@@ -270,4 +261,85 @@ fn a_revoked_device_fails_a_waiting_message_and_a_retry_delivers_it_once() {
     let got = phone.device_messages(&laptop_id).unwrap();
     assert_eq!(got.len(), 1, "once");
     assert_eq!(got[0].body, "hello");
+}
+
+/// Files sent to a trusted device are a message with one attachment in
+/// both conversations, with the right size, and open from where they are:
+/// the file that was sent, the file and folder that were saved.
+#[test]
+fn files_to_a_device_are_attachments_in_both_conversations() {
+    let dir = tempfile::tempdir().unwrap();
+    let (phone, laptop, phone_id) = trusted_pair(dir.path());
+    let laptop_id = phone.devices()[0].endpoint_id.clone();
+    sees(&laptop, &phone);
+    let file = dir.path().join("harbour.jpg");
+    std::fs::write(&file, b"not really a photo").unwrap();
+    let folder = dir.path().join("trip");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("a.txt"), b"one").unwrap();
+    std::fs::write(folder.join("b.txt"), b"three").unwrap();
+    for path in [&file, &folder] {
+        block_on(
+            laptop.send_to_device(phone_id.clone(), vec![path.to_string_lossy().into_owned()]),
+        )
+        .unwrap();
+    }
+
+    eventually("both on the phone", || {
+        phone.device_messages(&laptop_id).unwrap().len() == 2
+    });
+    eventually("both delivered on the laptop", || {
+        let sent = laptop.device_messages(&phone_id).unwrap();
+        sent.len() == 2
+            && sent
+                .iter()
+                .all(|m| m.status == chat_core::MessageStatus::Sent)
+    });
+    let sent = laptop.device_messages(&phone_id).unwrap();
+    let got = phone.device_messages(&laptop_id).unwrap();
+    for (ours, theirs) in sent.iter().zip(&got) {
+        assert_eq!(ours.id, theirs.id, "one id on both sides");
+        assert_eq!(ours.attachments, theirs.attachments);
+        assert_eq!(theirs.author_id, laptop_id);
+    }
+    let (photo, trip) = (&got[0].attachments[0], &got[1].attachments[0]);
+    assert_eq!(
+        (photo.name.as_str(), photo.mime.as_str(), photo.size),
+        ("harbour.jpg", "image/jpeg", 18)
+    );
+    assert_eq!(
+        (trip.name.as_str(), trip.mime.as_str(), trip.size),
+        ("trip", "inode/directory", 8)
+    );
+
+    let saved = phone.device_file(&laptop_id, &photo.id).unwrap();
+    assert_eq!(std::fs::read(&saved).unwrap(), b"not really a photo");
+    assert!(Path::new(&phone.device_file(&laptop_id, &trip.id).unwrap())
+        .join("b.txt")
+        .is_file());
+    assert_eq!(
+        laptop.device_file(&phone_id, &photo.id).unwrap(),
+        file.to_string_lossy()
+    );
+}
+
+/// A note from a device on an older build is a message in its
+/// conversation, and a retry of it adds nothing.
+#[test]
+fn a_note_from_an_older_build_is_a_message() {
+    let dir = tempfile::tempdir().unwrap();
+    let (phone, laptop, phone_id) = trusted_pair(dir.path());
+    let laptop_id = phone.devices()[0].endpoint_id.clone();
+    sees(&laptop, &phone);
+    block_on(laptop.send_note_to_device(phone_id, "from the old build".into())).unwrap();
+    eventually("the note as a message", || {
+        phone.device_messages(&laptop_id).unwrap().len() == 1
+    });
+    let got = phone.device_messages(&laptop_id).unwrap();
+    assert_eq!(got[0].body, "from the old build");
+    assert!(got[0].id.starts_with("note-"));
+    assert!(!phone
+        .transfers()
+        .iter()
+        .any(|t| matches!(t.item, relay_core::Item::Note { .. })));
 }

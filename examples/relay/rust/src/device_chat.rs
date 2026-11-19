@@ -25,16 +25,23 @@
 //! - Messages and files to one device keep their order: the outbox sends
 //!   oldest first and stops at the first that waits, per device, so a
 //!   device that is away holds up only what is for it.
+//! - **Files are attachments.** Files sent to a device (Send Files) are a
+//!   message `file-<delivery id>` with one attachment, on both sides: a
+//!   file's attachment id is the SHA-256 of its bytes, so chat-core checks
+//!   what it opens; a folder's is derived from the delivery and its type
+//!   is [`FOLDER_MIME`]. The bytes travel by the outbox and iroh-blobs as
+//!   before; the log keeps where each attachment is on this device (the
+//!   saved file on the receiver, the file that was sent on the sender).
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use chat_core::{
-    ChatError, ChatRepo, Message, MessageStatus, OutgoingMessage, RemoteConversation, RemoteEvent,
-    RemoteStream,
+    Attachment, ChatError, ChatRepo, Message, MessageStatus, OutgoingMessage, RemoteConversation,
+    RemoteEvent, RemoteStream,
 };
 use forge_app::Document;
 use forge_net::CancelHandle;
@@ -55,6 +62,66 @@ pub fn conversation_device(conversation_id: &str) -> Option<&str> {
 }
 
 const PREFIX: &str = "device:";
+/// The type of a folder sent as one attachment.
+pub const FOLDER_MIME: &str = "inode/directory";
+
+/// The message id of the files in delivery `delivery` (hex), on both sides.
+pub(crate) fn files_message_id(delivery: &str) -> String {
+    format!("file-{delivery}")
+}
+
+/// The attachment of what delivery `delivery` (hex) carries: `file` is
+/// the one file it is, kept on this device; anything else (a folder, or
+/// several items, which arrive as a folder) is a folder. A file's id is
+/// its SHA-256, a folder's the SHA-256 of the delivery's id, the same on
+/// both sides.
+pub(crate) fn files_attachment(
+    delivery: &str,
+    file: Option<&Path>,
+    name: &str,
+    size: u64,
+) -> Result<Attachment, RelayError> {
+    let (id, mime) = if let Some(path) = file.filter(|p| p.is_file()) {
+        let id = forge_storage::files::sha256_file(path).map_err(|e| RelayError::File {
+            reason: e.to_string(),
+        })?;
+        (id, mime_for(name).to_string())
+    } else {
+        use sha2::Digest;
+        let digest = sha2::Sha256::digest(format!("relay-folder:{delivery}").as_bytes());
+        (crate::hex::hex(&digest), FOLDER_MIME.to_string())
+    };
+    Ok(Attachment {
+        id,
+        name: name.to_string(),
+        mime,
+        size,
+    })
+}
+
+/// A file's type from its name, for how Chats shows it.
+fn mime_for(name: &str) -> &'static str {
+    let ext = Path::new(name)
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "heic" => "image/heic",
+        "webp" => "image/webp",
+        "pdf" => "application/pdf",
+        "txt" | "md" => "text/plain",
+        "m4a" => "audio/mp4",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
+        "zip" => "application/zip",
+        _ => "application/octet-stream",
+    }
+}
 const LOG_VERSION: u32 = 1;
 /// How often a quiet stream wakes to see if it was cancelled.
 const QUIET: Duration = Duration::from_millis(250);
@@ -70,6 +137,9 @@ pub struct LogFile {
     /// The newest stamp given, so stamps only ever increase.
     #[serde(default)]
     pub last_at: i64,
+    /// Where each attachment is on this device, by attachment id.
+    #[serde(default)]
+    pub files: BTreeMap<String, String>,
 }
 
 /// One device conversation's messages on this device.
@@ -163,6 +233,25 @@ impl PeerLog {
         };
         lock(&self.listeners).retain(|l| l.send(changed.clone()).is_ok());
         Ok(())
+    }
+
+    /// Adds `message` (as [`add`](Self::add)) after keeping where its
+    /// attachment is on this device, when it is here.
+    pub fn add_files(&self, message: Message, path: Option<&Path>) -> Result<Message, RelayError> {
+        if let (Some(a), Some(path)) = (message.attachments.first(), path) {
+            let (id, path) = (a.id.clone(), path.to_string_lossy().into_owned());
+            lock(&self.doc).change(|log| {
+                log.files.insert(id, path);
+                Ok::<_, RelayError>(())
+            })?;
+        }
+        self.add(message)
+    }
+
+    /// Where attachment `id` is on this device, if it is still there.
+    pub fn file(&self, id: &str) -> Option<PathBuf> {
+        let path = PathBuf::from(lock(&self.doc).value().files.get(id)?);
+        path.exists().then_some(path)
     }
 
     /// Our messages still waiting in the outbox.
@@ -316,7 +405,7 @@ impl ChatRepo for PeerRepo {
         self.check(&message.conversation_id)?;
         if !message.attachments.is_empty() {
             return Err(ChatError::UnsupportedOnHost {
-                detail: "files go to a device from Send, not in a message yet".into(),
+                detail: "files go to a device from its Send Files".into(),
             });
         }
         // Handed to Relay's outbox, which delivers it: chat-core's own
@@ -351,6 +440,36 @@ impl ChatRepo for PeerRepo {
             cancel: cancel.clone(),
             quiet_for: Duration::ZERO,
         }))
+    }
+
+    /// Copies the attachment from where it is on this device; chat-core
+    /// checks the bytes against the id. A folder isn't one file: it opens
+    /// from its place in Files.
+    fn download_attachment(&self, id: &str, destination: &Path) -> Result<(), ChatError> {
+        let invalid = |reason: &str| ChatError::InvalidInput {
+            reason: reason.into(),
+        };
+        let path = self
+            .log
+            .file(id)
+            .ok_or_else(|| invalid("the file is no longer on this device"))?;
+        if path.is_dir() {
+            return Err(invalid("a folder opens from Files, not as one file"));
+        }
+        std::fs::copy(&path, destination).map_err(|err| ChatError::UnsupportedOnHost {
+            detail: format!("cannot copy {}: {err}", path.display()),
+        })?;
+        Ok(())
+    }
+}
+
+/// The `relay` command's and the app's side of device files.
+impl RelayCore {
+    /// Where attachment `attachment_id` of `endpoint_id`'s conversation is
+    /// on this device (a file or a folder), if it is still there.
+    pub fn device_file(&self, endpoint_id: &str, attachment_id: &str) -> Option<String> {
+        let log = self.peer_logs.get(endpoint_id).ok()?;
+        Some(log.file(attachment_id)?.to_string_lossy().into_owned())
     }
 }
 

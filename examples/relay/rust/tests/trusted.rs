@@ -7,8 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use relay_core::{
-    CodeSend, Direction, Item, NearbyDevice, PairingPolicy, Presence, RelayCore, RelayError,
-    TransferStatus,
+    CodeSend, Item, NearbyDevice, PairingPolicy, Presence, RelayCore, RelayError, TransferStatus,
 };
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
@@ -141,11 +140,13 @@ fn trusted_devices_send_notes_and_folders_without_a_code_and_survive_a_relaunch(
     assert!(laptop.devices()[0].nearby);
     let note = block_on(laptop.send_note_to_device(phone_id.clone(), "hi".into())).unwrap();
     assert_eq!(note.status, TransferStatus::Done);
-    eventually("the note on the phone", || !phone.transfers().is_empty());
-    let got = &phone.transfers()[0];
-    assert_eq!(got.direction, Direction::Received);
-    assert_eq!(got.peer_name, "laptop");
-    assert_eq!(got.item, Item::Note { text: "hi".into() });
+    // A note arrives as a message in the conversation, not in history.
+    eventually("the note on the phone", || {
+        !phone.device_messages(&laptop_id).unwrap().is_empty()
+    });
+    let got = &phone.device_messages(&laptop_id).unwrap()[0];
+    assert_eq!(got.author, "laptop");
+    assert_eq!(got.body, "hi");
 
     let trip = dir.path().join("Trip");
     std::fs::create_dir_all(trip.join("day 1")).unwrap();
