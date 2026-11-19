@@ -206,8 +206,8 @@ Modest by design: the milestone is "complete, not bigger". Reuben's order (revie
 |---|---|---|---|---|
 | 1 | `forgeFormToolbar(hasChanges:)` (#326, shown in the showcase's task form); the starter adopts it with the next ForgeKit release, because `forge init` apps use the published ForgeKit; the other sheets in C1's table follow, with a `form-toolbar` rule | ForgeUI + ForgeAppKit + starter, then apps | A real shared gap; gives new apps the right pattern | Linux CI, laptop build, short phone check of one form |
 | 2 | Starter typography on ForgeUI text roles (and a comment prompting an accent choice) | Template | New apps stop inheriting the problem | Template sync |
-| 3 | Parity blind spots: `forge-theme` and `root-loading` rules, wider `toned-text`, ForgeUI rules apply to Checklist; usage counts in the report as information | Check | Apps can't escape the checks by leaving ForgeUI out | Linux CI |
-| 4 | Move Checklist onto ForgeUI | App | Smallest app; a test of adoption | Laptop build |
+| 3 | Parity blind spots: `forge-theme` and `root-loading` rules, wider `toned-text` (green), `state-views` applies to every app on ForgeKit (all done with step 4; Device Lab and Weather listed for `forge-theme`); usage counts in the report as information (not yet) | Check | Apps can't escape the checks by leaving ForgeUI out | Linux CI |
+| 4 | Move Checklist onto ForgeUI: theme, state views, `forgeFormToolbar` on Rename (done with step 3) | App | Smallest app; a test of adoption | Laptop build |
 | 5 | Typography and A3–A5 (tones, `ForgeStatus`, `ForgeStateView.loading`) migrated as screens are touched: FieldKit and Pocket Library first | Apps | No mass rewrite | None extra |
 | 6 | `ForgeRename` and `ForgeNotice` | ForgeAppKit, ForgeUI | Worthwhile, not urgent enough to interrupt app work | Rename flows pass the phone in two apps; notice with the next Relay or Commonplace change |
 

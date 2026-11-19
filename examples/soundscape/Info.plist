@@ -15,9 +15,7 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Soundscape's Listen tab plays song takes from the take server on your computer.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Soundscape records the loops you layer into a project. Recordings stay on this phone.</string>
+	<string>Soundscape plays songs from the take server on your computer.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

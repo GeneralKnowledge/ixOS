@@ -1,7 +1,8 @@
 # Music sources: free catalogues next to your own music (plan)
 
-Reuben, 2026-11-17. This is the first expansion after the six music-player PRs (player, library, collection,
-offline, creation, removing Studio). It is a plan only, and no code exists for it yet.
+Reuben, 2026-11-17. Moved to the front on 2026-11-18: Reuben wants to test Soundscape with real, full-length
+music, and the generation work (takes, picks, timed lyrics) waits. **Jamendo is built** (below); Internet
+Archive and MusicBrainz come next.
 
 ## The idea
 
@@ -72,12 +73,107 @@ Everything plays through the same player and queue.
 - **Requests go through the app's Rust networking**, like the take server's. The rules (what the licence allows,
   building the credit line) are Rust and are tested on Linux.
 
+## Jamendo, as built
+
+- **Discover** (first row of Your Music) searches Jamendo, showing this week's popular tracks until you type.
+  Each result shows its artwork, artist, album, length and licence. Tap plays the results from there through
+  the same player and queue; Play Next and Add to Queue are on the long press.
+- **The client ID is Reuben's own**, typed once in Discover and kept in `listen.json` next to the take server's
+  address. Without one, Discover asks for it and the rest of Soundscape is unaffected.
+- **Add to Library** (the plus) keeps the track in `library.json` under `catalogue`, by its id `jamendo:<id>`,
+  with its rights as they were when added. From then on it is a track like any other: it joins its album and
+  artist, can be edited, favourited, put in playlists, and downloaded where Jamendo allows it
+  (`audiodownload_allowed`). Its screen shows the licence, the credit, whether offline and changes are
+  allowed, and a link to its Jamendo page. **Remove from Library** takes it out again.
+- **Rights**, in `rust/src/catalogue.rs`: the Creative Commons licence URL becomes a name (`CC BY-NC-SA 3.0`),
+  may adapt (no ND), non-commercial (NC), and the credit line. An unknown licence is never adaptable.
+- **The library no longer needs a take server.** It opens on your imported and Jamendo music; the take server
+  is an optional source in the Library's menu.
+
+**One change from the plan above:** saved catalogue tracks are kept in `library.json` (its `catalogue`
+section) rather than a store of their own. Every screen already looks tracks up in the library, so playlists,
+favourites, history, downloads and the queue work for Jamendo tracks with no separate resolver. Their rights
+live with the saved track, so they outlast any cache. Search results that are not added stay in memory only.
+
+Of the resolver tests above, these pass in `rust/tests/catalogue.rs`: adding to a playlist, restarting and
+finding it again, leaving search results without losing the playlist entry, and keeping the licence without
+asking Jamendo. Not done yet: a Jamendo track that has since been taken down is not marked unavailable in the library.
+
+**Checked live** from the laptop with Reuben's client ID (2026-11-18):
+
+- **Empty answers.** Jamendo sometimes answers "success" with no results to a search that finds tracks a
+  moment later (2, 0, 2, 2, 0, 2 results for the same request). Soundscape asks up to three times before it
+  shows "no results".
+- **Listed tracks with no file.** Some tracks it lists have no file: the stream answers 404, even for this week's
+  most popular track. The player then says "Jamendo has no playable file for this track right now", not a
+  network error. Tracks that do stream answer byte ranges (206, `audio/mpeg`), so seeking works.
+- **A wrong client ID** is HTTP 200 with `status: failed`, code 5; Soundscape reads the status, not the HTTP code.
+- **Licences.** Most tracks are CC BY-NC-ND (non-commercial, no changes), and downloading is allowed per track.
+- **Audio URLs** carry a `from=` token. Saved tracks keep the URL they were added with; if those turn out to
+  expire, the next step is fetching a fresh URL by id (`/tracks/?id=`) when a saved track plays.
+
+## Internet Archive, as built
+
+- **Discover** has a switch: Jamendo or Internet Archive. The Archive is searched for audio items (albums,
+  concerts, recordings), most downloaded first. Until you type, it shows this week's most downloaded net-label
+  releases. No key is needed.
+- **An item opens to its tracks**: Play, Shuffle, Add All to Library, and each track with play, Play Next, Add
+  to Queue and Add to Library, as in Jamendo's list.
+- **One track per piece of audio, in its best MP3.** An item often holds the same song as FLAC, Ogg and several
+  MP3s. Soundscape keeps one per original, preferring VBR MP3, then MP3, then the smaller MP3s; Ogg and FLAC
+  are left out because AVPlayer streams MP3 reliably. Tracks are ordered by their track number, then by file
+  name. A title missing from the tags comes from the file name, without its leading number.
+- **Ids** are `archive:<identifier>/<file>`, and streams are `archive.org/download/<identifier>/<file>`.
+- **Rights.** Each track carries the item's licence, or "Licence not stated" when the item has none, which is
+  common. Downloading is allowed unless the item is access-restricted (lending items). A dark or missing item
+  gives no tracks.
+- **In `rust/src/archive.rs`**, tested in `rust/tests/archive.rs` against canned answers in the Archive's shapes.
+  The live API hasn't been checked yet: this cloud session can't reach archive.org, so that check is for the
+  laptop.
+
+## MusicBrainz, as built
+
+MusicBrainz recognises songs; it serves no audio. On a song's page, **Identify Song** looks the song up by its
+title and artist (`/ws/2/recording`, JSON, no key) and lists what MusicBrainz knows, best first.
+
+- **Ranking.** MusicBrainz's own score counts for less than what Soundscape knows about the song: the same
+  title (or the same title without a bracketed note such as "(final)" or "(2011 Remaster)"), the same artist,
+  and a length within 5 seconds. A length far off counts against, and so does a live recording (said so in its
+  note, or released only on live albums) unless the song's own title says live. Matches from 80 out of 100 with
+  an agreeing length are marked **Likely**. Each match shows its note ("live, 1979-01-24: Berlin").
+- **The release.** Each match comes with the release it is best known from: official before anything else, an
+  album before a single or compilation, then the earliest. Its cover is the release group's front cover at the
+  Cover Art Archive.
+- **Nothing changes on a lookup.** The person picks a match, then **Link and Use Its Details** (title, artist,
+  album and track number, saved as the person's own changes so Edit can undo them) or **Link Only**. The cover
+  shows only when the song has no picture of its own.
+- **The same recording elsewhere.** A linked song keeps its MusicBrainz recording id (`library.json`,
+  `musicbrainz`). Songs from different sources linked to the same id list each other under **Also in Your
+  Library**. Merging them into one song with several sources comes with reconciliation
+  ([architecture.md](architecture.md)); linking never merges by itself.
+- **Manners.** Requests say who is asking in their User-Agent, as MusicBrainz requires, and go one at a time,
+  only when the person asks. Up to 25 recordings come back per lookup.
+- **Checked live (2026-11-19, from the laptop).**
+  - MusicBrainz is often busy for everyone: three 503s in a row, each with `Retry-After: 1`, then an answer. A
+    lookup now tries up to 4 times, waiting what it is asked (at most 3 seconds).
+  - Without a User-Agent it refuses with 403.
+  - `score` is a number. `length` can be missing. A release may have no `status`, a release group no
+    `primary-type`, and track numbers are text.
+  - The top three answers for a famous studio song, all scored 100, were concerts. That is why live recordings
+    count against a match.
+  - Cover Art Archive covers redirect twice (to archive.org), which URLSession follows.
+- **In `rust/src/musicbrainz.rs`**, tested in `rust/tests/musicbrainz.rs` against canned answers and the real
+  answer from that check (`rust/tests/data/`).
+
 ## Order of work
 
-1. Finish the six player PRs: player, library, collection, offline, creation, removing Studio.
-2. The track resolver, over the personal library only at first, with the tests above.
-3. Jamendo, with Reuben's free client ID.
-4. Internet Archive, as a second and independent source.
+1. ~~The track resolver~~ (the library is the lookup; above) and Jamendo: built.
+2. Internet Archive, as a second and independent source: built (above). Its file checksums (`sha1`, `md5`)
+   are not used yet; download verification comes with reconciliation.
+3. MusicBrainz, to recognise the same recording from different sources: built (above). Merging linked songs
+   into one comes with reconciliation ([architecture.md](architecture.md)).
+4. A small fixed test catalogue: short and long tracks, with and without artwork or tags, two recordings of one
+   work, several formats, and one track that may not be downloaded.
 5. Mixed playlists, and playback across all sources, tested together.
 
 Not now: more providers, recommendations, or extra infrastructure.

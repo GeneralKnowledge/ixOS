@@ -22,7 +22,7 @@ public struct ContentView: View {
         Group {
             switch model.phase {
             case .opening:
-                ProgressView()
+                ForgeStateView.loading()
             case .failed(let message, let canStartFresh):
                 OpenFailedView(message: message, canStartFresh: canStartFresh, model: model)
             case .open:

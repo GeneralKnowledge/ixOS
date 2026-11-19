@@ -93,7 +93,7 @@ struct ReceiveCodeSheet: View {
                 model.resetCodeReceive()
                 typing = true
             }
-            .interactiveDismissDisabled(model.isReceivingCode)
+            .forgeSwipeGuard(model.isReceivingCode)
         }
     }
 
@@ -141,7 +141,7 @@ struct ReceiveCodeSheet: View {
         case .received(let receipt):
             VStack(alignment: .leading, spacing: 6) {
                 Label("Received \(receipt.name)", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .forgeForeground(.success)
                 Text(Self.summary(receipt))
                     .font(.caption)
                     .foregroundStyle(.secondary)

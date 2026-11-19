@@ -162,7 +162,7 @@ struct DownloadsView: View {
             }
             .accessibilityIdentifier("downloads.confirmRemoveAll")
         } message: {
-            Text("The songs stay in your library and play from the take server.")
+            Text("The songs stay in your library and stream again when you play them.")
         }
         .overlay {
             if offline.tracks.isEmpty {

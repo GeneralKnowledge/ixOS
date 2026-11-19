@@ -17,6 +17,10 @@ struct YourMusicSection: View {
 
     var body: some View {
         Section("Your Music") {
+            NavigationLink(value: ListenRoute.discover) {
+                row("Discover", systemImage: "globe", tint: .blue, count: nil)
+            }
+            .accessibilityIdentifier("library.discover")
             NavigationLink(value: ListenRoute.favourites) {
                 row("Favourites", systemImage: "heart.fill", tint: .pink,
                     count: collection.favouriteTracks.count + collection.favouriteAlbums.count
@@ -31,6 +35,13 @@ struct YourMusicSection: View {
                 row("Recently Played", systemImage: "clock.fill", tint: .orange, count: nil)
             }
             .accessibilityIdentifier("library.recent")
+            let toPick = model.toPick.count
+            if toPick > 0 {
+                NavigationLink(value: ListenRoute.toPick) {
+                    row("To Pick", systemImage: "checkmark.circle.badge.questionmark", tint: .teal, count: toPick)
+                }
+                .accessibilityIdentifier("library.toPick")
+            }
             NavigationLink(value: ListenRoute.downloads) {
                 row("Downloaded", systemImage: "arrow.down.circle.fill", tint: .green,
                     count: Int(model.offline.downloaded))
@@ -398,6 +409,46 @@ struct PlaylistView: View {
 
     private func arrange(_ places: [UInt32]) {
         Task { if let d = await model.arrangePlaylist(id, places: places) { detail = d } }
+    }
+}
+
+/// Songs with several takes and nothing picked yet: each opens on its
+/// recordings, to rate, compare and choose one.
+struct ToPickView: View {
+    let model: ListenModel
+    let player: TakePlayer
+
+    @State private var details: String?
+
+    var body: some View {
+        let tracks = model.toPick
+        List {
+            Section {
+                ForEach(tracks) { track in
+                    TrackRow(model: model, player: player, track: track,
+                             showDetails: { details = track.id }) {
+                        details = track.id
+                    }
+                }
+            } footer: {
+                if !tracks.isEmpty {
+                    Text("Until you pick, the best rated (or newest) take plays. Your pick is saved on the take server.")
+                }
+            }
+        }
+        .miniPlayerClearance()
+        .navigationTitle("To Pick")
+        .navigationDestination(item: $details) { id in
+            TrackView(model: model, player: player, id: id)
+        }
+        .overlay {
+            if tracks.isEmpty {
+                ForgeStateView.empty(
+                    "All Picked", systemImage: "checkmark.circle",
+                    description: "Every song with more than one take has a pick."
+                )
+            }
+        }
     }
 }
 

@@ -5,10 +5,12 @@
 //! functions for the next. Each track plays one recording, normally its
 //! preferred one (the library decides which).
 
+use serde::{Deserialize, Serialize};
+
 use crate::library::Recording;
 
 /// What happens when a song ends.
-#[derive(uniffi::Enum, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(uniffi::Enum, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RepeatMode {
     /// Stop after the last song.
     #[default]
@@ -20,7 +22,7 @@ pub enum RepeatMode {
 }
 
 /// One track in the queue, with the recording that plays for it.
-#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct QueueTrack {
     pub track_id: String,
     pub title: String,
@@ -31,7 +33,7 @@ pub struct QueueTrack {
 }
 
 /// Songs to play, in the order they play.
-#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PlayQueue {
     /// Every song added, in the order it was added.
     pub tracks: Vec<QueueTrack>,

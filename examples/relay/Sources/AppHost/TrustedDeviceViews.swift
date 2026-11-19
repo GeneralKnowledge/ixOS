@@ -17,7 +17,7 @@ struct TrustBadge: View {
     var body: some View {
         Label("Trusted", systemImage: "checkmark.shield.fill")
             .font(.caption)
-            .foregroundStyle(.green)
+            .forgeForeground(.success)
     }
 }
 
