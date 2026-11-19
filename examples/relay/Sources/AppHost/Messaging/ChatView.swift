@@ -1101,6 +1101,9 @@ private struct MessageSearchSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var results: [ChatMessage] = []
+    /// The words `results` answer. Until they match `query`, the search is
+    /// still running: show a spinner, never "No Results".
+    @State private var resultsFor = ""
 
     var body: some View {
         NavigationStack {
@@ -1114,14 +1117,22 @@ private struct MessageSearchSheet: View {
             }
             .overlay {
                 if !query.isEmpty && results.isEmpty {
-                    ForgeStateView.noResults(for: query)
+                    if resultsFor == query {
+                        ForgeStateView.noResults(for: query)
+                    } else {
+                        ForgeStateView.loading()
+                    }
                 }
             }
             .searchable(text: $query, prompt: "Search messages")
             .task(id: query) {
                 try? await Task.sleep(for: .milliseconds(200))
                 guard !Task.isCancelled else { return }
-                results = await model.search(query, in: conversationId)
+                let found = await model.search(query, in: conversationId)
+                // A newer query replaced this one: its answer is stale.
+                guard !Task.isCancelled else { return }
+                results = found
+                resultsFor = query
             }
             .navigationTitle("Search")
             #if os(iOS)

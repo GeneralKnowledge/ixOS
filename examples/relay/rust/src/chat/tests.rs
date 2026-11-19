@@ -796,3 +796,19 @@ fn a_second_core_on_the_same_data_is_refused() {
     drop(first);
     assert!(ChatCore::with_memory_credentials(path).is_ok());
 }
+
+/// Shut down and dropped, a core frees its data folder at once: nothing
+/// (the lifecycle thread handling the shutdown) keeps it alive, so the
+/// next open on the same folder never finds it in use. Once flaky in CI.
+#[test]
+fn a_shut_down_core_frees_its_folder_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().to_string_lossy().into_owned();
+    for _ in 0..50 {
+        let core = ChatCore::with_memory_credentials(path.clone()).unwrap();
+        core.set_phase(AppPhase::Active);
+        core.shutdown();
+        drop(core);
+    }
+    assert!(ChatCore::with_memory_credentials(path).is_ok());
+}

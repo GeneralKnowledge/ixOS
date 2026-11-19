@@ -121,6 +121,10 @@ public final class ChatModel {
     public init(host: ForgeHost<ChatCore>, assistantEngine: AiModel? = nil) {
         self.host = host
         self.assistantEngine = assistantEngine
+        // Back from the background: Rust has reopened the connections and
+        // this model refreshes the list (`PhaseChanged`); Apple
+        // Intelligence may have been turned on meanwhile.
+        host.onResume(self) { [weak self] _ in self?.becameActive() }
     }
 
     /// A model with a host of its own.
@@ -223,7 +227,6 @@ public final class ChatModel {
             return
         }
         host.report(phase)
-        if phase == .active { becameActive() }
     }
 
     /// The app is on screen again: Apple Intelligence may have been turned
