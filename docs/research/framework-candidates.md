@@ -137,3 +137,18 @@ Reuben's review of PR B (2026-11-17) approved it. Two follow-ups are left for la
 - Pocket Library's retry test checks the request and the Rust search, not the button. A UI scenario that taps Try Again on a failed Find a Book search would cover the whole interaction.
 
 The `state-views` rule shows that the old view has gone, not that every state is the right one; the audit table above is the record of that.
+
+## Recurring bugs (2026-11-17)
+
+Reuben asked to look out for bugs that keep coming back. This comes from the friction log (A28 to A42), today's fixes and the phone results. Each kind is listed with where it has shown up and what now stops it.
+
+| Kind | Seen in | What stops it now |
+|---|---|---|
+| A search says "No Results" while it is still running, or a replaced search's late answer overwrites the newer one | Weather (fixed 2026-11-17), Pocket Library's Find a Book, Commonplace, Relay's chat list (each guarded by hand). **Still open until this PR:** Relay's search inside a chat and Checklist's search | Both fixed here by remembering which words the results answer, as Relay's chat list and Commonplace already do. No parity rule: a script can't tell a search from a list. `ForgeStateView`'s documentation and the [state-view audit](#pr-b-the-state-view-audit) say loading is never shown as empty; `ForgeLoad` is the shared shape for new searches |
+| Audio rules that only the phone shows | Soundscape's three Studio crashes (A38), the song player's lock screen (failed, then fixed by #306), Read Aloud's blank lock screen (fixed in #313), and Read Aloud not pausing for calls or unplugged headphones (found today, from the code) | The [Now Playing plan](now-playing.md): one helper with Soundscape's rules, which passed on the phone, and a Linux test of those rules |
+| Failures nobody sees | Alerts behind pushed screens (A33), dropped `try?` and empty catches (A34), alerts under sheets (A39) | Parity rules `alerts-on-top`, `errors-shown`, `alerts-over-sheets`. Nothing new found today |
+| Swift only the iPhone build catches | A28, Soundscape's `flatMap` (2026-11-16), AI Lab's capture (2026-11-17), and the published-ForgeKit Checklist job in #313 | Process: the combined Device Lab build compiles a PR's Swift before or straight after it merges. Model files compile on Linux in CI |
+| State gone stale after the app comes back from the background | Relay's send code (2026-11-15), Weather's My Location (2026-11-16), Relay's chats reconnecting, Commonplace's offline refresh (#311) | Fixed for every app in the same PR as this table: `ForgeHost.onResume`, with each app's model following it, and parity rule `resume` ([coming-back.md](coming-back.md)) |
+| A bar floating over a list hides its last rows | Soundscape's mini-player over a long album (seen on the phone; fixed by hand in #320). Commonplace's Undo banner over a pushed timeline (seen on the phone 2026-11-18); Weather's bottom bar checked and fine | Planned in [screen-space.md](screen-space.md): ForgeUI's `forgeBar` gives its height to every scroll view below it, `forgeBanner` is built on it, and rule `floating-bars` plus a "tap the last row" UI scenario keep it fixed |
+
+The first row's two fixes are in the same PR as the Now Playing plan. Their phone check: type a search in a Relay chat and in Checklist; while it runs, it shows a spinner, never "No Results".

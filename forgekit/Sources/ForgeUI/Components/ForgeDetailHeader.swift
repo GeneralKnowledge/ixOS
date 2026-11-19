@@ -90,42 +90,4 @@ extension ForgeDetailHeader where Accessory == EmptyView {
         self.init(title, subtitle: subtitle, systemImage: systemImage, tone: tone) { EmptyView() }
     }
 }
-
-extension View {
-    /// The Cancel and confirm buttons of a form in a sheet. The confirm
-    /// button turns into a spinner while `isWorking`, and the sheet can't be
-    /// swiped away meanwhile. Buttons get the identifiers `<id>.cancel` and
-    /// `<id>.confirm`.
-    ///
-    ///     .forgeFormToolbar(id: "taskForm", confirmTitle: "Add", canConfirm: model.canSave,
-    ///                       isWorking: model.isSaving, cancel: { dismiss() }, confirm: save)
-    public func forgeFormToolbar(
-        id: String,
-        confirmTitle: LocalizedStringKey = "Save",
-        canConfirm: Bool = true,
-        isWorking: Bool = false,
-        cancel: @escaping () -> Void,
-        confirm: @escaping () -> Void
-    ) -> some View {
-        toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel", action: cancel)
-                    .disabled(isWorking)
-                    .accessibilityIdentifier("\(id).cancel")
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                if isWorking {
-                    ProgressView()
-                        .accessibilityLabel(Text("Saving"))
-                        .accessibilityIdentifier("\(id).working")
-                } else {
-                    Button(action: confirm) { Text(confirmTitle).fontWeight(.semibold) }
-                        .disabled(!canConfirm)
-                        .accessibilityIdentifier("\(id).confirm")
-                }
-            }
-        }
-        .interactiveDismissDisabled(isWorking)
-    }
-}
 #endif

@@ -573,7 +573,7 @@ private struct DialogsPage: View {
             NavigationStack {
                 Form { ... }
                     .forgeFormToolbar(id: "taskForm", canConfirm: model.canSave,
-                                      isWorking: model.isSaving,
+                                      isWorking: model.isSaving, hasChanges: model.hasChanges,
                                       cancel: { dismiss() }, confirm: save)
             }
         }
@@ -630,7 +630,8 @@ private struct SampleSheet: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .forgeFormToolbar(id: "sheet", confirmTitle: "Add", canConfirm: !name.isEmpty, isWorking: saving, cancel: {
+            .forgeFormToolbar(id: "sheet", confirmTitle: "Add", canConfirm: !name.isEmpty, isWorking: saving,
+                              hasChanges: !name.isEmpty, cancel: {
                 finished("Sheet cancelled")
                 dismiss()
             }, confirm: {

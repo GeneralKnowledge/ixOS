@@ -198,22 +198,31 @@ public struct ForgeStateView: View {
     }
 
     @ViewBuilder
+    private func menuLabel(_ action: ForgeStateAction) -> some View {
+        if let systemImage = action.systemImage {
+            Label(action.title, systemImage: systemImage)
+                .labelStyle(.titleAndIcon)
+        } else {
+            Text(action.title)
+        }
+    }
+
+    @ViewBuilder
     private func actionButton(_ action: ForgeStateAction?, _ style: ForgeButtonStyle) -> some View {
         if let action {
             if let menu = action.menu {
                 Menu {
                     menu
                 } label: {
-                    if let systemImage = action.systemImage {
-                        Label(action.title, systemImage: systemImage)
-                    } else {
-                        Text(action.title)
-                    }
+                    // Drawn by ForgeUI like the state's plain buttons, so a
+                    // menu looks the same as a button beside it. The system's
+                    // prominent style on a menu left the icon in the accent
+                    // colour on an accent pill (invisible, but taking space)
+                    // and a paler pill (Relay, iOS 26.3, 2026-11-18).
+                    ForgeButtonChrome(label: menuLabel(action), kind: style.kind, expands: style.expands, isPressed: false)
                 }
-                // A menu takes the system's prominent button, tinted with
-                // the theme's accent: ForgeUI's button styles draw buttons,
-                // not menus.
-                .buttonStyle(.borderedProminent)
+                .menuStyle(.button)
+                .buttonStyle(.plain)
                 .accessibilityIdentifier(action.identifier)
             } else {
                 Button(action: action.action) { Text(action.title) }

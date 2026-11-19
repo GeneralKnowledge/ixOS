@@ -236,19 +236,31 @@ ForgeStateView.empty("Summaries Unavailable", systemImage: "sparkles", message: 
 
 The `state-views` parity rule keeps apps that use ForgeUI off `ContentUnavailableView` itself.
 
+### Bars over content
+
+Anything that floats over a scrolling screen, such as a mini-player or a banner, goes on with `.forgeBar`. It sits on the container (the `NavigationStack`, or a tab's content):
+
+```swift
+NavigationStack { … }
+    .forgeBar { if player.current != nil { MiniPlayer(player: player) } }
+```
+
+The bar measures itself and gives every scroll view below it that much room as a content margin. That includes screens pushed onto the stack, so a list's last row can always scroll clear of the bar. Don't use an `.overlay`, which leaves no room at all, or a `.safeAreaInset` on the stack, whose room didn't reach a pushed list on the iPhone. ForgeAppKit's `forgeBanner` is built on it. The reasons are in [screen-space.md](research/screen-space.md).
+
 ### Alerts, dialogs and sheets
 
-Use SwiftUI's `.alert`, `.confirmationDialog` and `.sheet` as they are; the theme tints them. For a form in a sheet, `forgeFormToolbar` adds Cancel and a confirm button that becomes a spinner while saving, and stops the sheet being swiped away meanwhile:
+Use SwiftUI's `.alert`, `.confirmationDialog` and `.sheet` as they are; the theme tints them. For a form in a sheet, `forgeFormToolbar` adds Cancel and a confirm button that becomes a spinner while saving. A swipe down can't close the sheet while it saves, or, with `hasChanges`, while it holds something the person would lose; Cancel still closes it on purpose:
 
 ```swift
 NavigationStack {
     Form { ... }
         .forgeFormToolbar(id: "taskForm", confirmTitle: "Add", canConfirm: model.canSave,
-                          isWorking: model.isSaving, cancel: { dismiss() }, confirm: save)
+                          isWorking: model.isSaving, hasChanges: model.hasChanges,
+                          cancel: { dismiss() }, confirm: save)
 }
 ```
 
-The buttons get the identifiers `taskForm.cancel` and `taskForm.confirm`.
+The buttons get the identifiers `taskForm.cancel` and `taskForm.confirm` (the spinner `taskForm.working`). Leave `hasChanges` out and only saving stops the swipe. Use it instead of writing the Cancel and spinner toolbar yourself.
 
 **Increase Contrast.** With Settings > Accessibility > Display & Text Size > Increase Contrast on, every theme's secondary and tertiary text, tone text and separators move 40% of the way toward primary text (`ForgePalette.increasedContrast`), so quieter text reaches WCAG AAA (7:1). Backgrounds and fills stay, so the app still looks like itself. Nothing to do in the app: the theme's colours switch by themselves.
 

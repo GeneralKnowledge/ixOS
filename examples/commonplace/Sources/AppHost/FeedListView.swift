@@ -20,7 +20,6 @@ struct FeedListView: View {
     /// The search `results` answer: "No Results" waits for the search of
     /// what is typed now instead of flashing on every keystroke.
     @State private var resultsFor: SearchKey?
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -45,14 +44,6 @@ struct FeedListView: View {
             .task { await model.refreshWhenBackOnline() }
             // Fresh articles on launch, without a pull.
             .task { await model.refreshIfStale() }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    Task {
-                        await model.refreshIfOffline()
-                        await model.refreshIfStale()
-                    }
-                }
-            }
             .navigationTitle("Commonplace")
             .navigationDestination(for: Route.self) { route in
                 switch route {

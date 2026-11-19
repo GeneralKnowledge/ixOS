@@ -71,6 +71,11 @@ pub struct ChatCore {
     /// Conversations with trusted devices (`crate::device_chat`), one
     /// client each, beside the server account's.
     devices: Mutex<DeviceChats>,
+    /// Held by the lifecycle thread while it applies a phase change, and
+    /// set to true by shutdown (`end`). Once shutdown returns, that thread
+    /// never takes the core again, so dropping the owner's last reference
+    /// frees the core and its data folder's lock at once.
+    lifecycle_gate: Arc<Mutex<bool>>,
 }
 
 /// The trusted devices' conversations: Relay's core, and a chat-core
@@ -868,6 +873,7 @@ impl ChatCore {
             _on_shutdown: Mutex::new(None),
             services,
             devices: Mutex::new(DeviceChats::default()),
+            lifecycle_gate: Arc::new(Mutex::new(false)),
         };
         if let Some(stored) = core.credentials.load()? {
             let session = core.open_session(&stored)?;
@@ -895,6 +901,7 @@ impl ChatCore {
             return;
         };
         let core: Weak<Self> = Arc::downgrade(self);
+        let gate = Arc::clone(&self.lifecycle_gate);
         std::thread::Builder::new()
             .name("chat-lifecycle".into())
             .spawn(move || {
@@ -902,10 +909,19 @@ impl ChatCore {
                     let forge_runtime::Delivery::Event(change) = delivery else {
                         continue;
                     };
-                    match core.upgrade() {
-                        Some(core) => core.apply(change),
-                        None => return,
+                    // Taking the core here keeps it, and its data folder's
+                    // lock, alive for as long as the change takes. Without
+                    // the gate that could outlast shutdown and the owner
+                    // dropping the core, so a core reopened at once on the
+                    // same folder was refused as `InUse` (seen in CI).
+                    let shut_down = gate.lock().unwrap_or_else(|p| p.into_inner());
+                    if *shut_down || change.to == Phase::Terminated {
+                        return;
                     }
+                    let Some(core) = core.upgrade() else { return };
+                    core.apply(change);
+                    drop(core);
+                    drop(shut_down);
                 }
             })
             .expect("a thread for the lifecycle");
@@ -939,6 +955,12 @@ impl ChatCore {
     /// Ends every stream and the chat's event stream. Sends in flight
     /// finish and are saved.
     fn end(&self) {
+        // Waits for a phase change the lifecycle thread is applying, and
+        // stops it taking the core again (`lifecycle_gate`).
+        *self
+            .lifecycle_gate
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = true;
         self.assistant.shutdown();
         if let Some(session) = self.lock().as_ref() {
             session.client.shutdown();

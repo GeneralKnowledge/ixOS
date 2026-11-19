@@ -15,7 +15,7 @@ public struct ContentView: View {
 
     public var body: some View {
         ForgeRoot(host) { core in
-            LibraryScreen(core: core, changes: host.changes)
+            LibraryScreen(core: core, host: host, changes: host.changes)
         }
         .forgeTheme(ForgeTheme(accent: .indigo))
     }
@@ -26,8 +26,10 @@ private struct LibraryScreen: View {
     @State private var model: LibraryModel
     let changes: UInt64
 
-    init(core: AppCore, changes: UInt64) {
-        _model = State(initialValue: LibraryModel(core: core))
+    init(core: AppCore, host: ForgeHost<AppCore>, changes: UInt64) {
+        let model = LibraryModel(core: core)
+        model.follow(host)
+        _model = State(initialValue: model)
         self.changes = changes
     }
 
