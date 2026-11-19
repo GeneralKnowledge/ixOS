@@ -28,6 +28,7 @@ mod code_send;
 mod code_session;
 mod device;
 pub mod device_chat;
+mod migrate;
 mod model;
 mod node;
 mod outbox;
@@ -193,6 +194,10 @@ impl RelayCore {
         let _ = std::fs::remove_dir_all(code_dir.join("send-store"));
         let key_dir = directory.path().to_path_buf();
         let peer_logs = device_chat::PeerLogs::new(directory.path().join("devices"));
+        // Notes become messages, once (review step 4).
+        if !record.value().notes_are_messages {
+            record.change(|r| migrate::run(r, &peer_logs))?;
+        }
         let store_dir = code_dir.join("store");
         let servers = record.value().devices.servers.clone();
         let state = State {

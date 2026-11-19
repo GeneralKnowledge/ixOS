@@ -86,10 +86,11 @@ pub(crate) fn files_attachment(
             reason: e.to_string(),
         })?;
         (id, mime_for(name).to_string())
+    } else if file.is_some_and(|p| !p.exists()) {
+        // The file that was sent is gone (its bytes wait in the store).
+        (derived_id(delivery), mime_for(name).to_string())
     } else {
-        use sha2::Digest;
-        let digest = sha2::Sha256::digest(format!("relay-folder:{delivery}").as_bytes());
-        (crate::hex::hex(&digest), FOLDER_MIME.to_string())
+        (derived_id(delivery), FOLDER_MIME.to_string())
     };
     Ok(Attachment {
         id,
@@ -97,6 +98,15 @@ pub(crate) fn files_attachment(
         mime,
         size,
     })
+}
+
+/// An attachment id for what has no bytes of its own here: the SHA-256
+/// of the delivery's id.
+fn derived_id(delivery: &str) -> String {
+    use sha2::Digest;
+    crate::hex::hex(&sha2::Sha256::digest(
+        format!("relay-folder:{delivery}").as_bytes(),
+    ))
 }
 
 /// A file's type from its name, for how Chats shows it.
@@ -232,6 +242,39 @@ impl PeerLog {
             })?
         };
         lock(&self.listeners).retain(|l| l.send(changed.clone()).is_ok());
+        Ok(())
+    }
+
+    /// Adds a message moved from elsewhere (the history, before notes
+    /// were messages), keeping its time, unless its id is here. It goes in
+    /// time order, and its change is stamped now, so catch-up after `since`
+    /// sees it.
+    pub fn import(&self, mut message: Message, path: Option<&Path>) -> Result<(), RelayError> {
+        let added = {
+            let mut doc = lock(&self.doc);
+            if doc.value().messages.iter().any(|m| m.id == message.id) {
+                return Ok(());
+            }
+            message.conversation_id = self.conversation_id.clone();
+            doc.change(|log| {
+                let at = now_ms().max(log.last_at + 1);
+                log.last_at = at;
+                message.updated_at = Some(at);
+                if let (Some(a), Some(path)) = (message.attachments.first(), path) {
+                    log.files
+                        .insert(a.id.clone(), path.to_string_lossy().into_owned());
+                }
+                let i = log
+                    .messages
+                    .iter()
+                    .position(|m| m.sent_at > message.sent_at)
+                    .unwrap_or(log.messages.len());
+                log.messages.insert(i, message.clone());
+                Ok::<_, RelayError>(())
+            })?;
+            message
+        };
+        lock(&self.listeners).retain(|l| l.send(added.clone()).is_ok());
         Ok(())
     }
 
