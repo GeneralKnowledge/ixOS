@@ -1,6 +1,6 @@
 # ixOS App Studio: specification and forge-lab audit
 
-Status: **proposal, not approved, nothing built.** Written 2026-11-19 from Reuben's App Studio message (project thread, 2026-11-19 08:59). Checked against ixOS `main` at `a4b3b4f` and forge-lab `b8d8bca` on its default branch `claude/project-thread-jt3hrz` (it has no `main`; pinned to ixOS `1291083`). Every claim about an outside project was checked on its own page on 2026-11-19 ([sources](#sources)).
+Status: **direction approved, implementation paused** (Reuben, 2026-11-19 09:08). Nothing is built. Decisions D1 to D5 are [answered](#decisions); forge-lab repairs G2 to G5 may go ahead as maintenance; M0 runs after the device-validation baseline; M1 is reconsidered at the 2026-12-15 freeze review ([next steps](#next-steps)). Written 2026-11-19 from Reuben's App Studio message (project thread, 2026-11-19 08:59). Checked against ixOS `main` at `a4b3b4f` and forge-lab `b8d8bca` on its default branch `claude/project-thread-jt3hrz` (it has no `main`; pinned to ixOS `1291083`). Every claim about an outside project was checked on its own page on 2026-11-19 ([sources](#sources)).
 
 App Studio is the idea that a person describes an app, an AI coding agent builds it as a real Forge project, and the app is built, tested and installed on the iPhone through the normal `forge` commands. This page specifies it, says where it collides with standing decisions, and audits what forge-lab already offers for Reuben's first milestone (M0: an agent can create, modify, build and test a Forge app through forge-lab).
 
@@ -8,7 +8,7 @@ App Studio is the idea that a person describes an app, an AI coding agent builds
 
 1. **M0 has already been done once, on 2026-11-07 and 2026-11-08.** A headless Claude Code agent created, built, installed, UI-tested and fixed Tipster through Forge MCP, unattended, and Reuben confirmed it worked. The next day the same agent built Murmur (a local microblogging app with SQLite, migrations and photos) over seven staged sessions, all passing, with about 19 minutes of phone time ([forge-lab docs/forge-mcp.md](https://github.com/GeneralKnowledge/forge-lab/blob/claude/project-thread-jt3hrz/docs/forge-mcp.md#first-tipster-run-on-cati-2026-11-07)). So App Studio's M0 is **re-qualifying** that loop after the 2026-11-15 move to forge-lab, not building it.
 2. **The loop has drifted since.** Of the 23 MCP tools, 20 work as they are on today's `forge`; `forge_ui_explore` and `forge_ui_focus` call removed commands (known, parked), and `forge_verify` with `run: true` passes `--run` and `--journal`, which `forge verify` no longer accepts, and `forge_device_status` breaks when the server is started with `--udid`. forge-lab pins an ixOS commit 291 commits behind `main`. Its own tests pass against current ixOS docs (42 of 42, run for this page), but those use a stub `forge`.
-3. **The phone is the real constraint, not the tooling.** All three free-team slots are in use (Device Lab, WebDriverAgent, the VPN app). The agent sandbox app (`org.forgemobile.agentlab`) needs a slot, and joining Device Lab is four hand edits to an app that ships a combined build. M0 needs a decision about where generated apps run ([decision D1](#open-decisions)).
+3. **The phone is the real constraint, not the tooling.** All three free-team slots are in use (Device Lab, WebDriverAgent, the VPN app). A generated app needs a slot, and joining Device Lab is four hand edits to an app that ships a combined build. Decided: generated apps borrow the VPN app's slot during an authorised studio session, with a preflight and a restore check ([D1](#decisions)). One correction found while writing that up: the VPN app itself uses `org.forgemobile.agentlab`, so generated apps need their own bundle id ([why](#the-phone-slot-and-recovery)).
 4. **App Studio collides with four standing decisions** (the tooling freeze, P6, the Nov 18 direction review and "expand existing apps before new ones"). The proposed fit: a **separate companion repository**, no ixOS code changes beyond bug fixes, and **M0 only until the 2026-12-15 freeze review** ([conflicts](#where-this-conflicts-with-standing-decisions)).
 5. **None of the four external tools is the engine.** Craft Anything is the closest match, but it is early alpha, drives Claude Code as its builder, and doesn't target iOS or SwiftUI. REA investigates software and builds nothing. The OpenHands CLI is unmaintained (its README says so) in favour of Agent Canvas. Aider has no MCP support. The coding agent that already passed M0 (Claude Code, headless) stays the reference backend, behind a small adapter so others can be tried ([assessments](#external-tools-checked)).
 
@@ -28,10 +28,10 @@ App Studio is the idea that a person describes an app, an AI coding agent builds
 | Standing decision | Where App Studio collides | Proposed fit |
 |---|---|---|
 | **Tooling freeze** (2026-11-11, [roadmap](../roadmap.md#tooling-freeze-and-reuse-rules)): `forge ui`, `forge device`, `forge crash` get bug fixes only until P1 to P4 are met; review on **2026-12-15** | Visual feedback (M2) wants explore, focus and screen comparison, which are frozen or parked | M0 and M1 use only existing commands. Anything M2 needs is listed now and raised **at the freeze review**, not before |
-| **Agent tooling deferred to P6 and moved to forge-lab** (2026-11-15) | App Studio is agent tooling by definition | It lives **outside ixOS**: a new companion repository (working name `app-studio`) that depends on forge-lab, or a folder in forge-lab until it earns its own repo ([D2](#open-decisions)). No ixOS crate, command or doc beyond this page |
+| **Agent tooling deferred to P6 and moved to forge-lab** (2026-11-15) | App Studio is agent tooling by definition | It lives **outside ixOS**: a new companion repository (working name `app-studio`) that depends on forge-lab, or a folder in forge-lab until it earns its own repo ([D2](#decisions)). No ixOS crate, command or doc beyond this page |
 | **Direction review** (2026-11-18): next milestone is making ixOS feel complete: real-device validation, then app parity, then completing existing apps. "Framework work must not substitute for product work" | App Studio is neither validation nor completing an existing app | Sequence it **after** the device-validation baseline. Until then, only this page and, if Reuben wants, one M0 re-qualification sitting, which doubles as a device-validation exercise of `forge run ios`, `forge ui` and `forge diagnose` |
 | **Expand existing apps before new ones** (2026-11-16) | App Studio's whole output is new apps | Generated apps are **experiments, not ixOS apps**: they live in the studio workspace, not `examples/`, and never join the parity check or the ledger. A good one becomes an ixOS app only by a normal PR with Reuben's go-ahead |
-| **Laptop sessions only run builds; code changes only in cloud PRs** | Fast SwiftUI fixes need the agent on the laptop (xtool there reports errors in a minute or two; macOS CI takes about 35) | The rule is about ixOS code. Generated apps aren't ixOS code, so a laptop agent editing **only the studio workspace** doesn't break it. Needs Reuben's confirmation ([D3](#open-decisions)) |
+| **Laptop sessions only run builds; code changes only in cloud PRs** | Fast SwiftUI fixes need the agent on the laptop (xtool there reports errors in a minute or two; macOS CI takes about 35) | The rule is about ixOS code. Generated apps aren't ixOS code, so a laptop agent editing **only the studio workspace** doesn't break it. Needs Reuben's confirmation ([D3](#decisions)) |
 | **One combined Device Lab build; never touch the GPU job; one build at a time** | An agent building repeatedly | Every build already goes through `forge queue`; the agent never builds Device Lab, and studio builds wait their turn. Studio sittings only when Reuben asks |
 
 ## Architecture
@@ -73,7 +73,8 @@ A generated app is a Forge project made by `forge init`, the same as a person's:
 | Configuration | `forge.toml` | The only place permissions, entitlements and background modes are declared. Info.plist, entitlements and `xtool.yml` come from it |
 | Tests | `rust/` tests, `uitests/*.toml`, `requirements.toml` | The brief's requirements become `requirements.toml` lines with a UI scenario each ([evidence.md](../evidence.md)) |
 | History | git, one commit per stage | The studio record links each commit to the stage and request that made it |
-| Bundle id | `org.forgemobile.agentlab` | Every generated app shares the sandbox id, so it never spends a new App ID; installing one replaces the previous one ([D1](#open-decisions)) |
+| Bundle id | `org.forgemobile.studio` | Every generated app shares one studio id, so it spends one App ID once and installing one replaces the previous one. Not `org.forgemobile.agentlab`: the VPN app uses that id ([D1](#the-phone-slot-and-recovery)) |
+| Provenance | `studio.toml` in the app folder | The ixOS commit and `forge --version` it was made and last built with, the forge-lab commit, the agent backend and model, and one line per stage (date, request, commit, result). A project can be reopened months later, upgraded to a newer ixOS like any app, and continued |
 
 The studio workspace is a git repository of its own (one folder per app), outside the ixOS checkout, pinned to an ixOS commit like forge-lab is.
 
@@ -83,14 +84,32 @@ Each stage has an input, an output, the forge-lab tools it may use and a gate. T
 
 | Stage | Input | Output | Tools | Gate |
 |---|---|---|---|---|
-| **1 Describe** | The person's brief; optional screenshots; optional reference app | `brief.md`: purpose, users, screens wanted, data, offline needs, **capabilities requested** (camera, location, notifications…) | None | The person confirms the brief and the capability list |
-| **2 Design** | Brief | `design.md`: screens and navigation, Rust data model and commands, persistence (with schema version), the ForgeUI components used, `requirements.toml` draft | MCP resources only (forge://docs, conventions, capabilities, limits) | The person approves (or the run is in "auto" mode, [D4](#open-decisions)) |
+| **0 Preflight** | Phone and laptop state | A preflight record: which apps fill the three slots, their bundle ids and builds, the VPN app's recovery steps saved, the queue free, the ixOS pin | `forge_device_status`, `forge_doctor` | Mandatory before any phone stage. Fails if Device Lab or WebDriverAgent would be touched, or if the slot to borrow isn't authorised for this session |
+| **1 Describe** | The person's brief; optional screenshots; optional reference app; or an existing project to extend ([three ways in](#three-ways-to-start)) | `brief.md`: purpose, users, screens wanted, data, offline needs, **capabilities requested** (camera, location, notifications…) | None | The person confirms the brief and the capability list |
+| **2 Design** | Brief | `design.md`: screens and navigation, Rust data model and commands, persistence (with schema version), the ForgeUI components used, `requirements.toml` draft | MCP resources only (forge://docs, conventions, capabilities, limits) | The person approves, always ([D4](#decisions)). A later change to capabilities, architecture or permissions goes back through this gate |
 | **3 Generate** | Design | The project: `forge_create_app`, Rust core, SwiftUI, `forge.toml` limited to the approved capabilities, Rust tests, UI tests | `forge_create_app`, `forge_inspect_app`, `forge_configure_app`, `forge_check` | `forge_check` (Rust and Swift twin) passes; `forge_inspect_app` has no convention errors |
 | **4 Build and test** | Project | An iOS build, Rust and model tests green, requirements proven on the Linux twin | `forge_build_ios`, `forge_check`, `forge_verify` (twin only) | `forge_build_ios` passes on the laptop |
 | **5 Preview** | Build | The app on the phone; screenshots and trees at default and largest text, light and dark; UI tests run; logs and crashes read | `forge_install_device` (needs `--allow install`), `forge_launch_app`, `forge_screenshot`, `forge_inspect_ui`, `forge_ui_audit`, `forge_ui_act`, `forge_run_ui_test`, `forge_read_logs`, `forge_read_crashes`, `forge_diagnose` | The person plugs in only when the build is ready; a phone stage is 15 to 20 minutes at most |
 | **6 Refine** | A request ("the timeline feels cramped", "add bookmarks") | Changes to the same project, a migration if the data changed, tests extended | Same as 3 to 5 | Same gates; a schema change needs a migration test with the previous version's data |
+| **7 Restore** | Preflight record | The phone back as it was: the studio app removed by the person, the VPN app reinstalled by cable from the VPN repo and its smoke test passing, Device Lab and WebDriverAgent untouched | `forge_device_status`, `forge_run_ui_test` (the VPN app's smoke test) | The session isn't complete until the slots match the preflight record |
 
 This is the Murmur run's shape, which worked: everything without the phone first (`forge-lab mcp --no-device`), then short phone stages resuming the same agent session.
+
+### Evidence decides, not the agent
+
+The agent fixes code; it doesn't judge whether the app works. A stage passes only on results it can't write itself: `forge` exit codes and `--json` results (build, tests, `forge verify`), UI test runs with their screenshots and trees under `.forge/runs/`, the capability diff, and, for anything on the phone, the person's own check. The agent's final message ("all done, it works") is a summary to read, never a pass. The studio record keeps the evidence path for every claim, and stays empty where nothing ran.
+
+### Three ways to start
+
+Reuben's longer-term aim (2026-11-19) is three ways into the same workflow, so App Studio is a development environment for his software, not a factory for throwaway apps:
+
+| Start | Stage 1 input | What changes |
+|---|---|---|
+| **From scratch** | A description | The stages above |
+| **From a reference** | An app or site to study | Stage 1 adds a study step (Craft Anything or REA, opt-in, clean-room by default, only on software he owns or may examine). The output is a description of design and behaviour, not code |
+| **From an existing project** | A Forge project he owns | Stage 3 skips `forge_create_app`; stage 0 records the project's current state; everything else is the same, including the capability gate. ixOS's own apps stay on the cloud PR workflow: extending one of them is a normal ixOS PR, not a studio session ([D3](#decisions)) |
+
+M0 and M1 cover "from scratch" only.
 
 ## Safety and permissions
 
@@ -98,10 +117,26 @@ The rule from the brief, "don't let an AI agent inject arbitrary capabilities in
 
 1. **Capabilities come only from `forge.toml`.** The agent may edit `forge.toml`, but App Studio diffs its `[ios.permissions]`, entitlements and background modes after every stage against the capability list the person approved in stage 1. Anything extra stops the run and asks. (forge-lab's `forge_configure_app` today regenerates and checks, but doesn't compare against an approved list: **gap G6**.)
 2. **No host or framework edits.** The agent's write scope is the app folder. It never edits ixOS, ForgeKit, forge-lab, Device Lab or `Generated/`. Enforced by the agent host's sandbox (Claude Code permission rules), checked after each stage with `git status` outside the app folder.
-3. **Installing is the person's** (forge-lab's tier 2): the server starts with `--allow install --bundle-id org.forgemobile.agentlab` only for a preview sitting the person asked for. Removing apps, pairing, Apple ID, signing and secrets stay out of reach (tier 3).
+3. **Installing is the person's** (forge-lab's tier 2): the server starts with `--allow install --bundle-id org.forgemobile.studio` only for a preview sitting the person authorised. Uninstalling apps, pairing, Apple ID, signing and secrets stay out of App Studio's reach (tier 3); the person removes an app on the phone.
 4. **Acceptance is the person's.** `forge verify --accept` already refuses inside an MCP server; App Studio never records a phone result it didn't see.
 5. **Reference tools are opt-in per brief**, run on software the person owns or may examine, in clean-room mode by default, and their output is study material, never copied code. Recreating a specific existing app's name, look or assets is out of scope.
 6. **Secrets** (API keys for a hosted model, Jamendo-style client ids) are never written into a generated app's repository; the app asks for them at run time like Soundscape does.
+7. **Write scope on the laptop** ([D3](#decisions)): the agent may edit generated apps and the studio workspace there. It never edits ixOS, Device Lab, or framework dependencies (the ixOS pin moves only by an approved update). ixOS development stays on the cloud PR workflow.
+
+### The phone slot and recovery
+
+All three free-team slots are in use: Device Lab, WebDriverAgent and the VPN app. Decided (D1): a studio session borrows the VPN app's slot, and only that one.
+
+**Correction found while incorporating D1:** the VPN app's `forge.toml` (GeneralKnowledge/VPN `apps/ios`, at `59376ae`) uses `bundle_id = "org.forgemobile.agentlab"`, the sandbox id this page first proposed for generated apps. Installing a generated app under that id would not free a slot cleanly: it would install *over* the VPN app as an upgrade, so the generated code would inherit the VPN app's data container and could reach its Keychain sign-in. Generated apps therefore use their own id, `org.forgemobile.studio` (one new App ID, once, then reused), and the VPN app is removed by the person, not overwritten.
+
+A session:
+
+1. **Before** (stage 0): record the slots; save the VPN app's recovery steps (the VPN repo checkout and commit, `forge run ios --project apps/ios`, sign-in details the person needs, its smoke test); confirm the session is authorised in Reuben's own words.
+2. **Swap**: Reuben deletes the VPN app on the phone. App Studio never uninstalls.
+3. **Studio stages** 5 and 6 install `org.forgemobile.studio` by cable.
+4. **After** (stage 7): Reuben deletes the studio app; the VPN app is reinstalled by cable and its smoke test passes; the slots match the record. Until then the session is not complete.
+
+Never touched: Device Lab and WebDriverAgent. App Studio never signs, never manages the Apple team, never uninstalls.
 
 ## Provider independence
 
@@ -154,7 +189,8 @@ Checked by building `forge` from ixOS `main` (`a4b3b4f`) and calling `--help` on
 
 | | Gap | Where it's fixed | Size |
 |---|---|---|---|
-| **G1** | **No phone slot** for `org.forgemobile.agentlab`: Device Lab, WebDriverAgent and the VPN app fill all three | A decision, not code ([D1](#open-decisions)) | — |
+| **G1** | **No phone slot**: Device Lab, WebDriverAgent and the VPN app fill all three, and the VPN app already uses `org.forgemobile.agentlab` | Decided: borrow the VPN slot with `org.forgemobile.studio`, preflight and restore ([D1](#the-phone-slot-and-recovery)) | — |
+| **G1b** | forge-lab's default sandbox id is `org.forgemobile.agentlab` (`SANDBOX_BUNDLE_ID`) | forge-lab: pass `--bundle-id org.forgemobile.studio` for studio runs, or change the default with a note | Small |
 | **G2** | `forge_verify` `run: true` calls removed flags | forge-lab: drop the option or rebuild run records in forge-lab from the parked code | Small |
 | **G3** | `--udid` passed to `forge device list` when the server has one (no such flag) | forge-lab: don't add it in `device_status` | Small |
 | **G4** | forge-lab pins ixOS `1291083`, 291 commits behind | forge-lab: bump the rev, run its tests, run one Linux-only create-check-build in a scratch folder | Small |
@@ -169,22 +205,32 @@ Nothing on this list needs a new `forge` command. G2 to G5 are forge-lab mainten
 
 | | Deliverable | Done when | Phone |
 |---|---|---|---|
-| **M0 Re-qualify the loop** | G2 to G5 fixed in forge-lab; one headless agent run on the laptop | A headless agent, through forge-lab tools only, creates a small app from a written prompt (a tip calculator again, or a new one Reuben picks), passes `forge_check` and `forge_build_ios` with `--no-device`, then in one phone stage of at most 20 minutes installs, launches, screenshots at largest text, runs its UI test and fixes one thing it found; then makes one requested change and checks it. Reuben opens the app and agrees it works | One sitting, needs D1 |
+| **M0 Re-qualify the loop** | G1b to G5 fixed in forge-lab; one headless agent run on the laptop | A headless agent, through forge-lab tools only, creates a **habit tracker** ([D5](#decisions)): several screens, persistent local storage, create, edit and complete actions, a simple history view, at least one UI test. It passes `forge_check` and `forge_build_ios` with `--no-device`; then, after the preflight, one phone stage of at most 20 minutes installs, launches, screenshots at largest text, runs the UI test and fixes one thing found from device evidence; then one requested change, checked again; then the restore. Passing is decided by the evidence and Reuben opening the app, not by the agent's report | One authorised sitting, VPN slot borrowed and restored |
 | **M1 App generation** | `studio` CLI with stages 1 to 4 and gates; capability check (G6); studio record (G8); brief and design templates | Three different briefs (a list-and-detail app, one with persistence and a migration, one asking for one permission) each produce a project that passes stage 4 without a person editing code; the permission one stops at the capability gate | None |
 | **M2 Visual feedback** | Stages 5 and 6 automated: screenshots and trees compared with the design, ForgeUI audit, refine loop | Two refine requests per app land with a passing UI test each. Anything here that needs frozen tooling (explore, focus, tree diffs) waits for the freeze review | Short sittings |
 | **M3 App Studio** | Persistent projects, conversational editing, a catalogue of generated apps, install management within the slot rules | A person with no agent knowledge describes an app, approves its brief and capabilities, and gets it on the phone; can come back a week later (after re-signing) and change it | As M2 |
 
-Sequencing: this page now. M0 only when Reuben asks, and not before the device-validation baseline from the Nov 18 review is done. M1 onward only after the 2026-12-15 freeze review decides on agent tooling.
+### Next steps
 
-## Open decisions
+Agreed with Reuben, 2026-11-19:
 
-| | Question | Options | Recommendation |
-|---|---|---|---|
-| **D1** | Where do generated apps run on the phone? | (a) One sandbox slot (`org.forgemobile.agentlab`), borrowed from the VPN app during studio sittings; each generated app replaces the previous one. (b) Remove WebDriverAgent instead (loses UI tests: no). (c) Host generated apps inside Device Lab under a Studio shelf (four hand edits per app, joins the combined build, and Device Lab would depend on outside folders) | **(a)**: it is what Tipster and Murmur did, spends no new App ID, and keeps generated code out of Device Lab. Reinstall the VPN app by cable after the sitting |
-| **D2** | Where does App Studio's code live? | A new repo, or a folder in forge-lab | **forge-lab folder first** (`studio/`), its own repo when it has a release of its own |
-| **D3** | May the agent edit the studio workspace on the laptop? | Yes (fast SwiftUI fixes), or cloud only (35-minute macOS CI per Swift error) | **Yes, studio workspace only**; ixOS code stays cloud-PR only |
-| **D4** | Does the person approve the design (stage 2) every time? | Always, or "auto" for small apps | **Always for M1**; revisit after three runs |
-| **D5** | Which app for M0? | Tip calculator again (comparable with 2026-11-07), or something new | **Something new and small** (for example a habit tracker with persistence) so the run tests today's starter, not a remembered answer |
+1. Merge this specification with D1 to D5 in. It sets the direction; it starts no implementation.
+2. Repair forge-lab G1b to G5 as maintenance, in forge-lab PRs. No new `forge` commands.
+3. Wait for the device-validation baseline (the 2026-11-18 direction review); App Studio doesn't compete with it.
+4. Run M0 again: the habit tracker, headless development, one controlled phone session, real evidence.
+5. Reconsider M1 at the 2026-12-15 freeze review: does the repeatable workflow deserve to become an App Studio product?
+
+## Decisions
+
+Answered by Reuben on 2026-11-19 (09:08).
+
+| | Question | Decision |
+|---|---|---|
+| **D1** | Where do generated apps run on the phone? | **Borrow the VPN app's slot, with safeguards**: save the VPN configuration and recovery steps first; remove the VPN app only for an explicitly authorised studio session; reinstall and test it before the session counts as complete; never remove Device Lab or WebDriverAgent; App Studio never manages signing or uninstalls apps. Phone-slot status is a mandatory preflight. Generated apps use `org.forgemobile.studio`, because the VPN app already uses `org.forgemobile.agentlab` ([details](#the-phone-slot-and-recovery)) |
+| **D2** | Where does App Studio's code live? | **`forge-lab/studio/`.** It owns the MCP integration and is already separate from ixOS. Its own repository when it has earned an independent release cycle |
+| **D3** | May the agent edit on the laptop? | **Yes, within bounds**: generated apps and the studio workspace only. No ixOS edits, no Device Lab edits, no framework dependency changes beyond approved updates. ixOS development stays on the cloud PR workflow |
+| **D4** | Does the person approve the design? | **Always, for M1.** No agent decides on its own that an app needs extra capabilities, a different architecture or new permissions. Revisit automatic approval after three genuinely different apps have passed the workflow |
+| **D5** | Which app for M0? | **A small habit tracker**: several screens, persistent local storage, create, edit and complete actions, a simple history view, at least one UI test. A better test than another tip calculator because it exercises app structure and persistence |
 
 ## Sources
 
