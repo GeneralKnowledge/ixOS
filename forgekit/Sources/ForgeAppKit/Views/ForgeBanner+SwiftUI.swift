@@ -4,7 +4,9 @@ import SwiftUI
 
 extension View {
     /// Shows the model's banner at the bottom of this view, above the home
-    /// indicator, as a safe-area inset so it never covers a list's last row. Its button's action goes to `perform`;
+    /// indicator. It floats with ForgeUI's `forgeBar`, which gives every
+    /// scroll view below (pushed screens too) room for it, so it never
+    /// covers a list's last row. Its button's action goes to `perform`;
     /// the banner goes after its duration, when its button is tapped, or
     /// when it is swiped down. VoiceOver announces it.
     ///
@@ -30,11 +32,13 @@ private struct ForgeBannerModifier<Action>: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // A safe-area inset, not an overlay: lists and scroll views
-            // under it get room to scroll their last row above the banner,
-            // and bottom bars stay where they are. Inside a TabView, attach
-            // it to each tab's content so it sits above the tab bar.
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            // A ForgeUI bar: every scroll view under it, on the stack's
+            // pushed screens too, gets room to scroll its last row above
+            // the banner. A safe-area inset on the stack didn't reach a
+            // pushed list (Commonplace's timeline, seen on the phone
+            // 2026-11-18). Inside a TabView, attach it to each tab's
+            // content so it sits above the tab bar.
+            .forgeBar {
                 if let shown = banner {
                     ForgeBannerView(banner: shown) {
                         if let button = shown.button {
@@ -111,6 +115,9 @@ private struct ForgeBannerView<Action>: View {
         )
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         .padding(.horizontal, theme.spacing.l)
+        // Room above for the shadow, which would otherwise fall on the
+        // last row: the bar's measured height includes this padding.
+        .padding(.top, theme.spacing.m)
         .padding(.bottom, theme.spacing.s)
         .gesture(
             DragGesture(minimumDistance: 12).onEnded { value in

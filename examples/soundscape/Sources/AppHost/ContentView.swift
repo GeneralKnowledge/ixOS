@@ -18,7 +18,7 @@ public struct ContentView: View {
     public var body: some View {
         ForgeRoot(host) { core in
             #if os(iOS)
-            ListenView(core: core)
+            ListenView(core: core, host: host)
             #else
             Text("Soundscape plays music on an iPhone.")
             #endif

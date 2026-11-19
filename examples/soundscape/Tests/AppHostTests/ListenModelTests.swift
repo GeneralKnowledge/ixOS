@@ -63,6 +63,26 @@ final class ListenModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .ready)
     }
 
+    /// Coming back from the background reloads the library through the
+    /// host, so picks made on the computer meanwhile show without a pull.
+    func testComingBackReloadsTheLibrary() async throws {
+        let host = makeTemporaryAppHost()
+        await host.start()
+        let model = ListenModel(core: try XCTUnwrap(host.core))
+        model.follow(host)
+        try await model.setServer("127.0.0.1:9")
+        XCTAssertEqual(model.phase, .loading)
+
+        host.report(.background)
+        host.report(.active)
+        for _ in 0..<500 where model.phase == .loading {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        // Nothing answers at that address: the reload ran and says so.
+        guard case .failed = model.phase else { return XCTFail("not reloaded: \(model.phase)") }
+        host.close()
+    }
+
     func testFavouritesAndPlaylists() async throws {
         let host = makeTemporaryAppHost()
         await host.start()

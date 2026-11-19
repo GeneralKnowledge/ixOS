@@ -13,7 +13,6 @@ struct BookSummarySheet: View {
     let bookTitle: String
     @State var state: BookSummaryState
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -35,10 +34,6 @@ struct BookSummarySheet: View {
             keepAwake(false)
         }
         .onChange(of: state.phase) { _, phase in keepAwake(phase == .working) }
-        // Stopped in the background: carry on from the saved progress.
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active, state.pausedInBackground { state.start() }
-        }
         .interactiveDismissDisabled(state.phase == .working)
     }
 

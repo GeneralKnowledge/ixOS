@@ -103,6 +103,19 @@ public final class ListenModel {
         }
     }
 
+    // MARK: The background
+
+    /// Follows the app's phases through `host`, for as long as this model
+    /// lives: each return from the background reloads the library, so picks
+    /// and stars made on the computer while the phone was away show
+    /// without a pull to refresh.
+    public func follow(_ host: ForgeHost<SoundscapeCore>) {
+        host.onResume(self) { [weak self] _ in
+            guard let self else { return }
+            Task { await self.loadLibrary() }
+        }
+    }
+
     // MARK: Library
 
     /// Asks the take server for its catalogue and keeps it. `fresh` makes

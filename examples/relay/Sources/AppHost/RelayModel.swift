@@ -46,6 +46,34 @@ public final class RelayModel {
         reload(announcing: false)
     }
 
+    // MARK: The background
+
+    /// Whether the app is in the background, where iOS ends Relay's port,
+    /// adverts and browsing. The devices screen closes them when this turns
+    /// true and opens them again when it turns false.
+    public private(set) var isAway = false
+    /// Counts returns from the background. An open send code is advertised
+    /// again on each, because iOS dropped the advert while the app was away
+    /// (for example while the person switched app to pass the code on).
+    public private(set) var returns = 0
+
+    /// Follows the app's phases through `host`, for as long as this model
+    /// lives.
+    public func follow(_ host: ForgeHost<RelayCore>) {
+        host.onBackground(self) { [weak self] in self?.wentAway() }
+        host.onResume(self) { [weak self] _ in self?.cameBack() }
+    }
+
+    func wentAway() {
+        isAway = true
+        stopListening()
+    }
+
+    func cameBack() {
+        isAway = false
+        returns &+= 1
+    }
+
     /// Re-reads Rust's published state. Cheap: no command is waited for.
     public func reload() {
         reload(announcing: true)
