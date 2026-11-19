@@ -200,7 +200,7 @@ impl RelayCore {
             inbox,
             published: Arc::clone(&published),
         };
-        Ok(Arc::new_cyclic(|me| Self {
+        let core = Arc::new_cyclic(|me| Self {
             rt: Runtime::with_directory("relay", directory, state),
             record: published,
             inbox: inbox_root,
@@ -227,7 +227,9 @@ impl RelayCore {
             peer_logs,
             chat_waker: Mutex::new(None),
             me: me.clone(),
-        }))
+        });
+        core.settle_messages();
+        Ok(core)
     }
 
     /// Saves what later code receives bring into `folder` (made if missing)

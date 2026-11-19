@@ -14,19 +14,17 @@
 //!   increasing, which is the order both sides show and the `since` cursor
 //!   catch-up reads by.
 //! - **The repo** ([`PeerRepo`]) is the conversation's `ChatRepo`. Posting a
-//!   message sends it over `relay/device/1` and, once the other device has
-//!   it, adds it to the log. A device that can't be reached is a network
-//!   error, so the message stays in chat-core's outbox and goes when the
-//!   device is reached: chat-core retries with its own backoff, and the
-//!   delivery scheduler ([`crate::outbox`]) wakes it at once when the
-//!   device is seen, connects here, or Relay comes to the foreground.
+//!   message adds it to the log as `Queued` and puts it in Relay's outbox
+//!   ([`crate::outbox`]), with the files for the same device, so chat-core's
+//!   own outbox only hands it over. The outbox sends it over
+//!   `relay/device/1` when the device is reached, and the log marks it
+//!   `Sent`, or `Failed` (sending it again queues it again).
 //! - **Exactly once.** The receiver adds a message to its log, then
 //!   answers. A message id it already has is answered without adding it
 //!   again, so a retry whose answer was lost never shows twice.
-//! - Messages to one device keep their order: chat-core's outbox sends
-//!   oldest first and stops at the first that waits, and each device has
-//!   its own client, so a device that is away holds up only its own
-//!   conversation.
+//! - Messages and files to one device keep their order: the outbox sends
+//!   oldest first and stops at the first that waits, per device, so a
+//!   device that is away holds up only what is for it.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -116,7 +114,8 @@ impl PeerLog {
     }
 
     /// Adds `message`, stamped now, unless one with its id is here: then
-    /// that one is returned and nothing changes.
+    /// that one is returned and nothing changes. It is `Sent` unless it is
+    /// one of ours `Queued` in the outbox.
     pub fn add(&self, mut message: Message) -> Result<Message, RelayError> {
         let added = {
             let mut doc = lock(&self.doc);
@@ -124,7 +123,9 @@ impl PeerLog {
                 return Ok(found.clone());
             }
             message.conversation_id = self.conversation_id.clone();
-            message.status = MessageStatus::Sent;
+            if message.status != MessageStatus::Queued {
+                message.status = MessageStatus::Sent;
+            }
             message.updated_at = None;
             doc.change(|log| {
                 let at = now_ms().max(log.last_at + 1);
@@ -137,6 +138,42 @@ impl PeerLog {
         };
         lock(&self.listeners).retain(|l| l.send(added.clone()).is_ok());
         Ok(added)
+    }
+
+    /// Moves one of our messages on: `Sent` once the device has it,
+    /// `Failed` when it can't be delivered, `Queued` when it is sent
+    /// again. Its change is stamped, so catch-up after `since` sees it.
+    pub fn set_status(&self, id: &str, status: MessageStatus) -> Result<(), RelayError> {
+        let changed = {
+            let mut doc = lock(&self.doc);
+            let Some(i) = doc.value().messages.iter().position(|m| m.id == id) else {
+                return Ok(());
+            };
+            if doc.value().messages[i].status == status {
+                return Ok(());
+            }
+            doc.change(|log| {
+                let at = now_ms().max(log.last_at + 1);
+                log.last_at = at;
+                let m = &mut log.messages[i];
+                m.status = status;
+                m.updated_at = Some(at);
+                Ok::<_, RelayError>(m.clone())
+            })?
+        };
+        lock(&self.listeners).retain(|l| l.send(changed.clone()).is_ok());
+        Ok(())
+    }
+
+    /// Our messages still waiting in the outbox.
+    pub fn queued(&self) -> Vec<Message> {
+        lock(&self.doc)
+            .value()
+            .messages
+            .iter()
+            .filter(|m| m.status == MessageStatus::Queued)
+            .cloned()
+            .collect()
     }
 
     fn listen(&self) -> mpsc::Receiver<Message> {
@@ -277,34 +314,27 @@ impl ChatRepo for PeerRepo {
 
     fn post_message(&self, message: &OutgoingMessage) -> Result<Message, ChatError> {
         self.check(&message.conversation_id)?;
-        if let Some(found) = self.log.get(&message.id) {
-            return Ok(found);
-        }
         if !message.attachments.is_empty() {
             return Err(ChatError::UnsupportedOnHost {
                 detail: "files go to a device from Send, not in a message yet".into(),
             });
         }
+        // Handed to Relay's outbox, which delivers it: chat-core's own
+        // outbox doesn't send it again.
         let relay = self.relay()?;
-        let outgoing = PeerMessage {
-            id: message.id.clone(),
-            body: message.body.clone(),
-            reply_to: message.reply_to.clone(),
-        };
-        forge_runtime::block_on(relay.deliver_message(&self.endpoint_id, outgoing))
-            .map_err(chat_error)?;
-        self.log
-            .add(Message {
+        let queued = forge_runtime::block_on(relay.queue_message(
+            &self.endpoint_id,
+            Message {
                 id: message.id.clone(),
                 author: message.author.clone(),
                 author_id: message.author_id.clone(),
                 body: message.body.clone(),
                 reply_to: message.reply_to.clone(),
                 ..Message::default()
-            })
-            .map_err(|e| ChatError::Protocol {
-                reason: e.to_string(),
-            })
+            },
+        ))
+        .map_err(chat_error)?;
+        Ok(queued.0)
     }
 
     fn open_stream(
@@ -355,36 +385,38 @@ impl RemoteStream for LogStream {
 }
 
 /// The `relay` command's side of device conversations. The app's
-/// messages go through chat-core's outbox instead (`ChatCore::use_relay`).
+/// messages reach the same outbox through chat-core (`ChatCore::use_relay`).
 impl RelayCore {
     /// The conversation with a trusted device, oldest first.
     pub fn device_messages(&self, endpoint_id: &str) -> Result<Vec<Message>, RelayError> {
         Ok(self.peer_logs.get(endpoint_id)?.since(None))
     }
 
-    /// Sends `text` to a trusted device's conversation now; an error when
-    /// it can't be reached (nothing waits).
+    /// Sends `text` to a trusted device's conversation, through the outbox,
+    /// and waits for the first attempt: the message comes back `Sent`, or
+    /// `Queued` when the device wasn't reached (it goes when it is). A
+    /// refusal is an error.
     pub async fn send_device_message(
         &self,
         endpoint_id: &str,
         text: String,
     ) -> Result<Message, RelayError> {
         let body = crate::model::clean_note(&text)?;
-        let id = crate::hex::hex(&crate::outbox::new_id());
-        let message = PeerMessage {
-            id: id.clone(),
-            body: body.clone(),
-            reply_to: None,
-        };
-        self.deliver_message(endpoint_id, message).await?;
         let me = self.identity();
-        self.peer_logs.get(endpoint_id)?.add(Message {
-            id,
+        let message = Message {
+            id: crate::hex::hex(&crate::outbox::new_id()),
             author: me.name,
             author_id: format!("relay:{}", me.device_id),
             body,
             ..Message::default()
-        })
+        };
+        let (queued, first) = self.queue_message(endpoint_id, message).await?;
+        first.await.unwrap_or(Ok(()))?;
+        Ok(self
+            .peer_logs
+            .get(endpoint_id)?
+            .get(&queued.id)
+            .unwrap_or(queued))
     }
 }
 
@@ -419,6 +451,35 @@ mod tests {
         let logs = PeerLogs::new(dir.path().to_path_buf());
         assert_eq!(logs.get("abc123").unwrap().since(None), vec![a, b]);
         assert!(logs.get("../x").is_err());
+    }
+
+    #[test]
+    fn a_queued_message_moves_on_with_a_new_stamp() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = PeerLogs::new(dir.path().to_path_buf());
+        let log = logs.get("abc123").unwrap();
+        let queued = log
+            .add(Message {
+                id: "q".into(),
+                body: "hi".into(),
+                status: MessageStatus::Queued,
+                ..Message::default()
+            })
+            .unwrap();
+        assert_eq!(queued.status, MessageStatus::Queued);
+        assert_eq!(log.queued().len(), 1);
+        let rx = log.listen();
+        log.set_status("q", MessageStatus::Sent).unwrap();
+        let sent = log.get("q").unwrap();
+        assert_eq!(sent.status, MessageStatus::Sent);
+        assert!(
+            sent.changed_at() > queued.sent_at,
+            "catch-up sees the change"
+        );
+        assert_eq!(log.since(Some(queued.sent_at)), vec![sent.clone()]);
+        assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![sent]);
+        assert!(log.queued().is_empty());
+        log.set_status("missing", MessageStatus::Sent).unwrap();
     }
 
     #[test]
