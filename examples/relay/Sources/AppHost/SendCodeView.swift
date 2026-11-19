@@ -138,7 +138,18 @@ struct SendCodeSheet: View {
                     .textSelection(.enabled)
                     .accessibilityLabel("Code \(code.replacingOccurrences(of: "-", with: " "))")
                     .accessibilityIdentifier("sendCode.code")
-                Text("\(name), \(RelayFormat.size(size)). Waiting for the receiver… Keep Relay open: others can only find this code while it's on screen.")
+                if let image = CodeQR.image(code) {
+                    Image(uiImage: image)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 200)
+                        .padding(8)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                        .accessibilityLabel("QR code for the code")
+                        .accessibilityIdentifier("sendCode.qr")
+                }
+                Text("\(name), \(RelayFormat.size(size)). Waiting for the receiver to type or scan the code… Keep Relay open: others can only find this code while it's on screen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Copy Code", systemImage: "doc.on.doc") {

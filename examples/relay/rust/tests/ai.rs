@@ -1,5 +1,5 @@
-//! Asking another device's language model over Relay (protocol 2): two
-//! devices on one machine, over localhost, with scripted models and a fake
+//! Asking a trusted device's language model over `relay/device/1`: devices
+//! on one machine, over localhost, with scripted models and a fake
 //! OpenAI-compatible server, as `relay serve-ai` and `relay ask` use them.
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -10,53 +10,95 @@ use std::time::{Duration, Instant};
 
 use forge_services::ai::openai::OpenAiServer;
 use forge_services::ai::{AiError, ChatRequest, Collect, LanguageModel, ScriptedModel, TextOut};
-use relay_core::{RelayCore, RelayError};
+use std::path::Path;
 
-fn device(dir: &tempfile::TempDir, name: &str) -> Arc<RelayCore> {
-    RelayCore::new(
-        dir.path().join(name).to_string_lossy().into_owned(),
-        name.into(),
+use relay_core::{CodeSend, NearbyDevice, RelayCore, RelayError};
+
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    forge_runtime::block_on(future)
+}
+
+fn device(dir: &Path, name: &str) -> Arc<RelayCore> {
+    let core = RelayCore::new(dir.join(name).to_string_lossy().into_owned(), name.into()).unwrap();
+    core.receive_into(
+        dir.join(name)
+            .join("Received")
+            .to_string_lossy()
+            .into_owned(),
     )
-    .unwrap()
+    .unwrap();
+    core
 }
 
 fn eventually(what: &str, check: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(15);
     while !check() {
         assert!(Instant::now() < deadline, "timed out waiting for {what}");
         std::thread::sleep(Duration::from_millis(20));
     }
 }
 
-/// A laptop that answers asks, and a phone paired with it. Returns the
-/// phone, the laptop, and the laptop's address.
+/// `from` sends a file to `to` with a word code, and both trust each other
+/// after it, as the pairing policy offers. Returns `from`'s endpoint id.
+fn trust(dir: &Path, from: &RelayCore, to: &RelayCore) -> String {
+    let file = dir.join("hello.txt");
+    std::fs::write(&file, b"hello").unwrap();
+    from.send_with_code(file.to_string_lossy().into_owned())
+        .unwrap();
+    eventually("a code", || {
+        matches!(from.code_send_status(), CodeSend::Waiting { .. })
+    });
+    let CodeSend::Waiting {
+        code,
+        port,
+        endpoint_id,
+        ..
+    } = from.code_send_status()
+    else {
+        unreachable!()
+    };
+    block_on(to.receive_with_code(code, vec![format!("127.0.0.1:{port}")], endpoint_id)).unwrap();
+    eventually("the send to end", || {
+        matches!(from.code_send_status(), CodeSend::Sent { .. })
+    });
+    eventually("the sender's trust offer", || from.trust_offer().is_some());
+    let on_to = to.trust_offer().expect("the receiver's trust offer");
+    let on_from = from.trust_offer().unwrap();
+    block_on(to.trust_device(on_to.endpoint_id.clone())).unwrap();
+    block_on(from.trust_device(on_from.endpoint_id)).unwrap();
+    on_to.endpoint_id
+}
+
+/// Tells `core` where `other` is, as Bonjour would.
+fn sees(core: &RelayCore, other: &RelayCore) {
+    let service = block_on(other.device_service()).unwrap();
+    core.devices_nearby(vec![NearbyDevice {
+        endpoint_id: service.endpoint_id,
+        addresses: vec![format!("127.0.0.1:{}", service.port)],
+    }]);
+}
+
+/// A laptop and a phone that trust each other, the phone knowing where the
+/// laptop is. Returns the phone, the laptop, and the laptop's endpoint id.
 fn paired(dir: &tempfile::TempDir) -> (Arc<RelayCore>, Arc<RelayCore>, String) {
-    let laptop = device(dir, "laptop");
-    let phone = device(dir, "phone");
-    let port = laptop.start_listening(0).unwrap();
-    let invitation = laptop.create_invitation(vec!["127.0.0.1".into()]).unwrap();
-    forge_runtime::block_on(phone.pair(invitation.code, None)).unwrap();
-    eventually("the laptop to keep the phone", || laptop.peers().len() == 1);
-    (phone, laptop, format!("127.0.0.1:{port}"))
+    let laptop = device(dir.path(), "laptop");
+    let phone = device(dir.path(), "phone");
+    let id = trust(dir.path(), &laptop, &phone);
+    sees(&phone, &laptop);
+    (phone, laptop, id)
 }
 
 fn ask(
     phone: &RelayCore,
-    laptop: &RelayCore,
-    at: &str,
+    laptop: &str,
     request: ChatRequest,
     out: &dyn TextOut,
 ) -> Result<Result<String, AiError>, RelayError> {
-    phone.ask(
-        &laptop.identity().device_id,
-        request,
-        vec![at.to_string()],
-        out,
-    )
+    phone.ask(laptop, request, out)
 }
 
 #[test]
-fn a_paired_device_answers_with_its_model() {
+fn a_trusted_device_answers_with_its_model() {
     let dir = tempfile::tempdir().unwrap();
     let (phone, laptop, at) = paired(&dir);
     let model = Arc::new(ScriptedModel::new(["The night train leaves at nine."]));
@@ -64,47 +106,24 @@ fn a_paired_device_answers_with_its_model() {
 
     let out = Collect::new();
     let request = ChatRequest::new("Be brief.", "When does the train leave?", 64);
-    let answer = ask(&phone, &laptop, &at, request.clone(), &out).unwrap();
+    let answer = ask(&phone, &at, request.clone(), &out).unwrap();
     assert_eq!(answer, Ok("scripted".to_string()));
     assert_eq!(out.text(), "The night train leaves at nine.");
     // The laptop's model got the request exactly as the phone sent it.
     assert_eq!(model.requests(), vec![request]);
-    // The phone now knows where the laptop is.
-    assert_eq!(phone.peers()[0].last_address.as_deref(), Some(at.as_str()));
 }
 
 #[test]
 fn a_device_without_a_model_declines() {
     let dir = tempfile::tempdir().unwrap();
     let (phone, laptop, at) = paired(&dir);
-    let err = ask(
-        &phone,
-        &laptop,
-        &at,
-        ChatRequest::new("", "Hi", 8),
-        &Collect::new(),
-    )
-    .unwrap_err();
+    let err = ask(&phone, &at, ChatRequest::new("", "Hi", 8), &Collect::new()).unwrap_err();
     assert!(matches!(err, RelayError::Declined { .. }), "{err:?}");
     // Asking stops when the model is taken away again.
     laptop.answer_asks(Some(Arc::new(ScriptedModel::new(["ok"]))));
-    assert!(ask(
-        &phone,
-        &laptop,
-        &at,
-        ChatRequest::new("", "Hi", 8),
-        &Collect::new()
-    )
-    .is_ok());
+    assert!(ask(&phone, &at, ChatRequest::new("", "Hi", 8), &Collect::new()).is_ok());
     laptop.answer_asks(None);
-    assert!(ask(
-        &phone,
-        &laptop,
-        &at,
-        ChatRequest::new("", "Hi", 8),
-        &Collect::new()
-    )
-    .is_err());
+    assert!(ask(&phone, &at, ChatRequest::new("", "Hi", 8), &Collect::new()).is_err());
 }
 
 #[test]
@@ -116,13 +135,7 @@ fn the_models_refusal_comes_back_as_a_refusal() {
             reason: "no".into(),
         },
     )]))));
-    let answer = ask(
-        &phone,
-        &laptop,
-        &at,
-        ChatRequest::new("", "Hi", 8),
-        &Collect::new(),
-    );
+    let answer = ask(&phone, &at, ChatRequest::new("", "Hi", 8), &Collect::new());
     assert_eq!(
         answer.unwrap(),
         Err(AiError::Refused {
@@ -177,14 +190,7 @@ fn stopping_stops_the_other_devices_model() {
         .listen(move |_| flag.store(true, Ordering::SeqCst))
         .stop_when(move || seen.load(Ordering::SeqCst));
     let started = Instant::now();
-    let answer = ask(
-        &phone,
-        &laptop,
-        &at,
-        ChatRequest::new("", "Go on", 400),
-        &out,
-    )
-    .unwrap();
+    let answer = ask(&phone, &at, ChatRequest::new("", "Go on", 400), &out).unwrap();
     assert_eq!(answer, Err(AiError::Stopped));
     assert!(
         started.elapsed() < Duration::from_secs(2),
@@ -200,22 +206,18 @@ fn stopping_stops_the_other_devices_model() {
 fn one_ask_at_a_time() {
     let dir = tempfile::tempdir().unwrap();
     let (phone, laptop, at) = paired(&dir);
-    let tablet = device(&dir, "tablet");
-    let invitation = laptop.create_invitation(vec!["127.0.0.1".into()]).unwrap();
-    forge_runtime::block_on(tablet.pair(invitation.code, None)).unwrap();
-    eventually("the laptop to keep the tablet", || {
-        laptop.peers().len() == 2
-    });
+    let tablet = device(dir.path(), "tablet");
+    trust(dir.path(), &laptop, &tablet);
+    sees(&tablet, &laptop);
     let slow = vec!["slow"; 40].join(" ");
     laptop.answer_asks(Some(Arc::new(
         ScriptedModel::new([slow]).pause(Duration::from_millis(20)),
     )));
     let first = std::thread::spawn({
-        let (phone, laptop, at) = (Arc::clone(&phone), Arc::clone(&laptop), at.clone());
+        let (phone, at) = (Arc::clone(&phone), at.clone());
         move || {
             ask(
                 &phone,
-                &laptop,
                 &at,
                 ChatRequest::new("", "First", 64),
                 &Collect::new(),
@@ -225,7 +227,6 @@ fn one_ask_at_a_time() {
     std::thread::sleep(Duration::from_millis(200));
     let second = ask(
         &tablet,
-        &laptop,
         &at,
         ChatRequest::new("", "Second", 8),
         &Collect::new(),
@@ -289,7 +290,7 @@ fn serve_ai_answers_with_an_openai_compatible_server() {
 
     let out = Collect::new();
     let request = ChatRequest::new("Be brief.", "When does the train leave?", 64);
-    let answer = ask(&phone, &laptop, &at, request, &out).unwrap();
+    let answer = ask(&phone, &at, request, &out).unwrap();
     assert_eq!(answer, Ok("qwen3:8b".to_string()));
     assert_eq!(out.text(), "Nine o'clock.");
     let sent: serde_json::Value = serde_json::from_str(&bodies.lock().unwrap()[0]).unwrap();

@@ -15,12 +15,6 @@ status = "keep"
 reason = "Device Lab is the test bed on the phone and hosts every app (decided 2026-11-15), so it links each app's crate"
 
 [[crossing]]
-from = "relay-core"
-to = "forge-devproto"
-reason = "Relay's encrypted channel (Noise XXpsk3 + CBOR) is the dev-connection protocol crate, which tools own"
-plan = "Removed when Relay's iroh transfer (#267) replaces the Noise channel; the channel does not move into forge-net (roadmap, wave 4)"
-
-[[crossing]]
 kind = "workspace"
 from = "good-dog-core"
 to = "root"

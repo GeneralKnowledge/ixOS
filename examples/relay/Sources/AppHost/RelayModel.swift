@@ -7,7 +7,7 @@ import Observation
 private let log = ForgeLog("Relay")
 
 /// What the screens show and the actions they take. It holds no rules:
-/// pairing, encryption, sending and the history are Relay's Rust core
+/// trust, encryption, sending and the history are Relay's Rust core
 /// (`rust/src/lib.rs`); this model asks it and shows what it says. Finding
 /// devices (Bonjour) is `RelayNetwork`, which hands this model addresses.
 /// Foundation and Observation only, so it compiles and tests on Linux.
@@ -15,25 +15,18 @@ private let log = ForgeLog("Relay")
 @MainActor
 public final class RelayModel {
     public private(set) var identity: Identity
-    /// Paired devices, by name.
-    public private(set) var peers: [Peer] = []
     /// Everything sent and received, newest first.
     public private(set) var transfers: [Transfer] = []
-    /// The port Relay listens on, while it does.
-    public private(set) var port: UInt16?
-    /// The open pairing code, while one is shown.
-    public private(set) var invitation: Invitation?
 
     /// Alerts the screens ask for: confirm, or a failure.
     public enum Action: Equatable, Sendable {
-        case forget(deviceID: String)
         case remove(transfer: UInt64)
         case revoke(endpointID: String)
         case forgetDevice(endpointID: String)
     }
 
     public var alert: ForgeAlert<Action>?
-    /// Haptics: success when something is done (paired, sent, or a file
+    /// Haptics: success when something is done (trusted, sent, or a file
     /// or note finished arriving), failure with the alert or message that
     /// says why.
     public private(set) var feedback = ForgeFeedback()
@@ -56,13 +49,11 @@ public final class RelayModel {
     /// plays its own (a code receive), so it isn't felt twice.
     private func reload(announcing: Bool) {
         identity = core.identity()
-        peers = core.peers()
         let previous = transfers
         transfers = core.transfers()
         if announcing, !isReceivingCode, let kind = Self.arrival(from: previous, to: transfers) {
             feedback.play(kind)
         }
-        port = core.listeningPort()
         devices = core.devices()
         policy = core.pairingPolicy()
         connectionMode = core.connectionMode()
@@ -105,106 +96,14 @@ public final class RelayModel {
         return kind
     }
 
-    public func transfers(with peer: Peer) -> [Transfer] {
-        transfers.filter { $0.peerId == peer.deviceId }
-    }
-
-    // MARK: Listening and pairing
-
-    /// Opens Relay's port for paired devices; returns it, or `nil` (logged:
-    /// the screen shows "not reachable" rather than an alert).
-    @discardableResult
-    public func startListening() -> UInt16? {
-        if let port = core.listeningPort() { return port }
-        do {
-            port = try core.startListening(port: 0)
-        } catch {
-            log.warn("listening failed: \(error)")
-            port = nil
-        }
-        return port
-    }
-
-    public func stopListening() {
-        core.stopListening()
-        port = nil
-    }
-
-    /// A pairing code for this device at `hosts` (its local addresses).
-    @discardableResult
-    public func makeInvitation(hosts: [String]) -> Invitation? {
-        startListening()
-        do {
-            invitation = try core.createInvitation(hosts: hosts)
-        } catch {
-            report(error)
-            invitation = nil
-        }
-        return invitation
-    }
-
-    public func cancelInvitation() {
-        core.cancelInvitation()
-        invitation = nil
-    }
-
-    /// Pairs with the device whose code was scanned or pasted. Throws, so
-    /// the scanner can keep going and say why.
-    public func pair(code: String) async throws -> Peer {
-        let peer = try await withRustCancellation { cancellation in
-            try await core.pair(code: code.trimmingCharacters(in: .whitespacesAndNewlines), cancellation: cancellation)
-        }
-        reload()
-        feedback.play(.success)
-        return peer
-    }
-
-    /// Called when this device's code was used: the other device paired.
-    public func invitationUsed() {
-        invitation = nil
-        reload()
-    }
-
-    public func askToForget(_ peer: Peer) {
-        alert = .confirm(
-            "Forget “\(peer.name)”?",
-            message: "It can't send to this device, or receive from it, until you pair again. Its history stays.",
-            confirm: "Forget Device",
-            action: .forget(deviceID: peer.deviceId),
-            identifier: "peers.confirmForget",
-            destructive: true
-        )
-    }
-
     public func rename(to name: String) async throws {
         try await core.renameDevice(name: name)
         reload()
     }
 
-    // MARK: Sending
-
-    /// Sends a note to `peer` at `addresses` (from Bonjour; empty means
-    /// where it was last reached). `false` (and an alert) if it failed.
-    @discardableResult
-    public func send(note: String, to peer: Peer, addresses: [String]) async -> Bool {
-        await sending { core, cancellation in
-            try await core.sendNote(deviceId: peer.deviceId, text: note, addresses: addresses, cancellation: cancellation)
-        }
-    }
-
-    /// Sends the file at `url`, which must stay until the transfer ends.
-    @discardableResult
-    public func send(file url: URL, to peer: Peer, addresses: [String]) async -> Bool {
-        await sending { core, cancellation in
-            try await core.sendFile(deviceId: peer.deviceId, path: url.path, addresses: addresses, cancellation: cancellation)
-        }
-    }
-
     /// Runs a confirmed action.
     public func handle(_ action: Action) async {
         switch action {
-        case .forget(let id):
-            await perform { try await $0.forgetPeer(deviceId: id) }
         case .remove(let id):
             await perform { try await $0.removeTransfer(id: id) }
         case .revoke(let id):
@@ -223,24 +122,6 @@ public final class RelayModel {
         log.warn("failed: \(error)")
         alert = .failure(error)
         feedback.play(.failure)
-    }
-
-    private func sending(_ send: (RelayCore, Cancellation) async throws -> Transfer) async -> Bool {
-        // The transfer appears in the history at once; show it.
-        reload()
-        do {
-            _ = try await withRustCancellation { cancellation in
-                try await send(core, cancellation)
-            }
-            reload()
-            feedback.play(.success)
-            return true
-        } catch {
-            reload()
-            if case RelayError.Stopped = error { return false }
-            report(error)
-            return false
-        }
     }
 
     private func perform(_ command: (RelayCore) async throws -> Void) async {
@@ -645,17 +526,14 @@ public final class RelayModel {
         case .EmptyNote: return "Write something to send."
         case .NoteTooLong(let max): return "Notes can be up to \(max) characters."
         case .FileTooLarge: return "Files can be up to 2 GB."
-        case .BadCode: return "That isn't a Relay pairing code."
-        case .CodeExpired: return "That pairing code has expired. Make a new one on the other device."
         case .WordCode(let reason): return reason.prefix(1).uppercased() + reason.dropFirst() + "."
-        case .UnknownPeer: return "This device isn't paired with that one any more."
+        case .UnknownPeer: return "This device doesn't trust that one any more."
         case .NotFound: return "That's no longer in the history."
         case .Unreachable: return "Can't reach the other device. Check that it has Relay open, on the same Wi-Fi."
-        case .Refused: return "The other device didn’t accept this one. Pair again, or send with a code."
+        case .Refused: return "The other device didn’t accept this one. Send with a code instead."
         case .Declined(let reason): return "The other device declined: \(reason)."
         case .Connection: return "The connection broke. Try again."
         case .File: return "The file couldn't be read or kept."
-        case .AlreadyListening: return "Relay is already open for other devices."
         case .InUse: return "Relay is open in another copy of the app."
         case .Corrupt: return "Relay's saved data couldn't be read."
         case .NewerData: return "Relay's data was saved by a newer version of the app."
@@ -667,12 +545,12 @@ public final class RelayModel {
     nonisolated public static func title(_ error: RelayError) -> String {
         switch error {
         case .EmptyName, .NameTooLong, .EmptyNote, .NoteTooLong, .FileTooLarge: return "Check the Details"
-        case .BadCode, .CodeExpired, .Refused: return "Couldn't Pair"
+        case .Refused: return "Not Accepted"
         case .WordCode: return "Check the Code"
         case .UnknownPeer, .NotFound: return "Not Found"
         case .Unreachable, .Connection, .Declined: return "Not Sent"
         case .File: return "File Problem"
-        case .AlreadyListening, .InUse: return "Already Open"
+        case .InUse: return "Already Open"
         case .Corrupt, .NewerData, .Storage: return "Couldn't Save"
         case .Stopped: return "Stopped"
         }
@@ -745,12 +623,6 @@ public enum RelayFormat {
         case .failed(let reason):
             return "Failed: \(reason)"
         }
-    }
-
-    /// The service name a device advertises: its id, so a browser can tell
-    /// which paired device it found.
-    public static func serviceName(for identity: Identity) -> String {
-        identity.deviceId
     }
 
     /// Where to reach a device found by Bonjour, as Rust takes it.

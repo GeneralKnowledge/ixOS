@@ -48,15 +48,13 @@ private struct RelayScreen: View {
 }
 
 #if os(iOS)
-/// Screen 1: paired devices (with whether each is nearby now) and the
-/// history. While it is on screen, Relay listens and advertises itself.
+/// Screen 1: trusted devices and the history. While it is on screen, Relay
+/// advertises its iroh endpoint for trusted devices and looks for them.
 struct DevicesView: View {
     @Bindable var model: RelayModel
     let changes: UInt64
 
     @State private var network = RelayNetwork()
-    @State private var showingCode = false
-    @State private var scanning = false
     @State private var receivingCode = false
     @State private var sendingCode = false
     @State private var renaming = false
@@ -68,32 +66,18 @@ struct DevicesView: View {
         NavigationStack {
             List {
                 if !model.trustedDevices.isEmpty {
-                    Section("Trusted Devices") {
+                    Section {
                         ForEach(model.trustedDevices) { device in
                             NavigationLink(value: TrustedRoute(endpointID: device.endpointId)) {
                                 TrustedDeviceRow(device: device)
                             }
                             .accessibilityIdentifier("devices.trusted")
                         }
+                    } header: {
+                        Text("Trusted Devices")
+                    } footer: {
+                        Text("“\(model.identity.name)” is open to trusted devices while Relay is on screen.")
                     }
-                }
-                Section {
-                    ForEach(model.peers) { peer in
-                        NavigationLink(value: peer.deviceId) {
-                            PeerRow(peer: peer, nearby: network.nearby.contains(peer.deviceId))
-                        }
-                        .accessibilityIdentifier("devices.peer")
-                        .swipeActions {
-                            Button("Forget", systemImage: "trash", role: .destructive) {
-                                model.askToForget(peer)
-                            }
-                            .accessibilityIdentifier("devices.forget")
-                        }
-                    }
-                } header: {
-                    Text("Paired Devices")
-                } footer: {
-                    Text(listeningNote)
                 }
                 if !model.revokedDevices.isEmpty {
                     Section("Revoked") {
@@ -116,30 +100,12 @@ struct DevicesView: View {
             }
             .overlay { emptyState }
             .navigationTitle("Relay")
-            .navigationDestination(for: String.self) { id in
-                if let peer = model.peers.first(where: { $0.deviceId == id }) {
-                    PeerView(model: model, network: network, peer: peer, preview: $preview)
-                } else {
-                    ForgeStateView.empty("Device Forgotten", systemImage: "iphone.slash")
-                }
-            }
             .navigationDestination(for: TrustedRoute.self) { route in
                 TrustedDeviceView(model: model, endpointID: route.endpointID, preview: $preview)
             }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button("Show My Code", systemImage: "qrcode") { showingCode = true }
-                            .accessibilityIdentifier("devices.showCode")
-                        Button("Scan a Code", systemImage: "qrcode.viewfinder") { scanning = true }
-                            .accessibilityIdentifier("devices.scan")
-                    } label: {
-                        Label("Pair a Device", systemImage: "plus")
-                    }
-                    .accessibilityIdentifier("devices.pair")
-                }
                 // Send and Receive work with anyone on this Wi-Fi, by word
-                // code; paired devices are reached from their own screen.
+                // code; trusted devices are reached from their own screen.
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button("Receive", systemImage: "arrow.down.circle") { receivingCode = true }
                         .labelStyle(.titleAndIcon)
@@ -156,12 +122,6 @@ struct DevicesView: View {
                     }
                     .accessibilityIdentifier("devices.rename")
                 }
-            }
-            .sheet(isPresented: $showingCode) {
-                ShowCodeSheet(model: model)
-            }
-            .sheet(isPresented: $scanning) {
-                ScanCodeSheet(model: model)
             }
             .sheet(isPresented: $receivingCode) {
                 ReceiveCodeSheet(model: model, network: network, preview: $preview)
@@ -220,23 +180,23 @@ struct DevicesView: View {
         // to forget a device, and an alert on the root showed behind it.
         // While a sheet is up, the sheet shows the alerts.
         .forgeAlert(Binding(
-            get: { showingCode || scanning || receivingCode || sendingCode ? nil : model.alert },
+            get: { receivingCode || sendingCode ? nil : model.alert },
             set: { model.alert = $0 }
         )) { action in Task { await model.handle(action) } }
         .onAppear(perform: open)
         .onDisappear(perform: close)
         .onChange(of: scenePhase) {
-            // iOS suspends the port in the background anyway.
+            // iOS suspends Bonjour in the background anyway.
             if scenePhase == .active { open() } else if scenePhase == .background { close() }
         }
     }
 
     private var isEmpty: Bool {
-        model.peers.isEmpty && model.devices.isEmpty && model.transfers.isEmpty
+        model.devices.isEmpty && model.transfers.isEmpty
     }
 
     private var anySheet: Bool {
-        showingCode || scanning || receivingCode || sendingCode
+        receivingCode || sendingCode
     }
 
     private var showingTrustOffer: Bool {
@@ -247,27 +207,17 @@ struct DevicesView: View {
         model.trustOffer.map { "Trust “\($0.name)”?" } ?? "Trust This Device?"
     }
 
-    private var listeningNote: String {
-        if model.port != nil {
-            return "“\(model.identity.name)” is open to paired devices on this Wi-Fi while Relay is on screen."
-        }
-        return "Relay can't open its port, so other devices can't reach this one."
-    }
-
     @ViewBuilder private var emptyState: some View {
         if isEmpty {
             ForgeStateView.empty(
                 "No Devices", systemImage: "arrow.left.arrow.right",
-                description: "Pair once by QR code, then send notes and files straight to the other device, encrypted. Both need Relay open on the same Wi-Fi.",
-                action: ForgeStateAction("Show My Code", identifier: "devices.showCodeFirst") { showingCode = true }
+                description: "Send something with a code once, then trust the other device to send notes and files straight to it, encrypted.",
+                action: ForgeStateAction("Send with a Code", identifier: "devices.sendFirst") { sendingCode = true }
             )
         }
     }
 
     private func open() {
-        if let port = model.startListening() {
-            network.start(name: RelayFormat.serviceName(for: model.identity), port: port)
-        }
         // Trusted devices reach this one on its iroh endpoint, found by
         // Bonjour (`d=1`); Rust keeps only the devices it trusts.
         network.watchDevices { [model] nearby in model.devicesNearby(nearby) }
@@ -280,8 +230,6 @@ struct DevicesView: View {
     private func close() {
         network.advertiseDevice(nil)
         network.stopWatchingDevices()
-        network.stop()
-        model.stopListening()
     }
 
     private func rename() {
@@ -289,25 +237,6 @@ struct DevicesView: View {
         Task {
             do { try await model.rename(to: name) } catch { model.report(error) }
         }
-    }
-}
-
-private struct PeerRow: View {
-    let peer: Peer
-    let nearby: Bool
-
-    var body: some View {
-        HStack {
-            Image(systemName: "iphone.gen3")
-                .foregroundStyle(nearby ? Color.accentColor : .secondary)
-            VStack(alignment: .leading) {
-                Text(peer.name)
-                Text(nearby ? "Nearby" : "Not seen on this network")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 

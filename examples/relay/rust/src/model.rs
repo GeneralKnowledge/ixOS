@@ -1,7 +1,6 @@
 //! The types Relay's API speaks in, and its errors.
 
 use forge_app::{DocumentError, ErrorKind, OpenError, Stopped};
-use forge_devproto::conn::ConnError;
 use forge_storage::FileStoreError;
 
 /// The longest device name, in characters.
@@ -17,24 +16,6 @@ pub struct Identity {
     /// Random, made once; 32 hex characters.
     pub device_id: String,
     pub name: String,
-}
-
-/// A device this one is paired with.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
-pub struct Peer {
-    pub device_id: String,
-    pub name: String,
-    pub paired_ms: i64,
-    /// Where it was last reached ("host:port"), a hint for next time.
-    pub last_address: Option<String>,
-}
-
-/// A QR code's worth of pairing: show `code` as a QR code (or text) on
-/// this device and scan it on the other. Valid once, until `expires_ms`.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
-pub struct Invitation {
-    pub code: String,
-    pub expires_ms: i64,
 }
 
 #[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,20 +80,16 @@ pub enum RelayError {
     NoteTooLong { max: u32 },
     #[error("files are at most 2 GB")]
     FileTooLarge,
-    #[error("that isn't a Relay pairing code")]
-    BadCode,
-    #[error("that pairing code has expired; make a new one")]
-    CodeExpired,
     /// A transfer code (`7-acid-tidy-rug`) that can't be right as typed.
     #[error("{reason}")]
     WordCode { reason: String },
-    #[error("not paired with {id}")]
+    #[error("{id} isn't a trusted device")]
     UnknownPeer { id: String },
     #[error("nothing with id {id}")]
     NotFound { id: u64 },
     #[error("can't reach the other device: {reason}")]
     Unreachable { reason: String },
-    #[error("the other device didn't accept the pairing or the connection")]
+    #[error("the other device didn't accept the connection")]
     Refused,
     #[error("the other device declined: {reason}")]
     Declined { reason: String },
@@ -120,8 +97,6 @@ pub enum RelayError {
     Connection { reason: String },
     #[error("the file can't be read or kept: {reason}")]
     File { reason: String },
-    #[error("Relay is already listening")]
-    AlreadyListening,
     #[error("Relay's data is open in another copy of the app")]
     InUse,
     #[error("Relay's saved data can't be read: {reason}")]
@@ -177,11 +152,8 @@ pub fn relay_error_kind(error: RelayError) -> ErrorKind {
         | RelayError::EmptyNote
         | RelayError::NoteTooLong { .. }
         | RelayError::FileTooLarge
-        | RelayError::BadCode
-        | RelayError::CodeExpired
         | RelayError::WordCode { .. }
-        | RelayError::File { .. }
-        | RelayError::AlreadyListening => ErrorKind::Invalid,
+        | RelayError::File { .. } => ErrorKind::Invalid,
         // The other device said no: pairing again (or asking its owner)
         // is the way on, not trying again.
         RelayError::Refused | RelayError::Declined { .. } => ErrorKind::Refused,
@@ -224,17 +196,6 @@ impl From<OpenError> for RelayError {
         match err {
             OpenError::InUse { .. } => Self::InUse,
             other => Self::Storage {
-                reason: other.to_string(),
-            },
-        }
-    }
-}
-
-impl From<ConnError> for RelayError {
-    fn from(err: ConnError) -> Self {
-        match err {
-            ConnError::Proto(forge_devproto::ProtoError::HandshakeFailed) => Self::Refused,
-            other => Self::Connection {
                 reason: other.to_string(),
             },
         }

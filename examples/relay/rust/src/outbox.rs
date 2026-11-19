@@ -39,11 +39,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
 use crate::code_send::Offer;
+use crate::hex::{hex, unhex};
 use crate::model::{RelayError, Transfer};
 use crate::record::{Record, SavedItem, SavedStatus};
 use crate::resolver::{self, Whereabouts};
 use crate::trust::{SavedDevice, SavedTrust};
-use crate::wire::{hex, unhex};
 use crate::{code, device, RelayCore};
 
 /// A pending item ends unsent after this long.
@@ -152,9 +152,7 @@ fn parse_hash(text: &str) -> Option<Hash> {
 }
 
 pub(crate) fn new_id() -> [u8; 16] {
-    forge_devproto::new_secret()[..16]
-        .try_into()
-        .expect("16 bytes")
+    crate::hex::random()[..16].try_into().expect("16 bytes")
 }
 
 pub(crate) fn tag_name(id: &str) -> String {

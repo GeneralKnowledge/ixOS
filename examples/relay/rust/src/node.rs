@@ -332,7 +332,7 @@ pub(crate) fn device_key(dir: &Path) -> Result<SecretKey, RelayError> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(file_error(e)),
     }
-    let bytes = forge_devproto::new_secret();
+    let bytes = crate::hex::random();
     std::fs::create_dir_all(dir).map_err(file_error)?;
     let temporary = dir.join(format!("{KEY_FILE}.new"));
     let mut options = std::fs::OpenOptions::new();
