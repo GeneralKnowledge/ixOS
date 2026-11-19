@@ -1,0 +1,221 @@
+# Calculator's answers to evidence/sequences.toml, recorded on Cati (iPhone 15 Pro Max, iOS 26.3.1)
+# on 2026-11-18 with run_sequences.py: pass a (16:21, 31 sums, stopped by the home screen) and
+# pass a2 (16:32, the last 8, --start-at digit-limit). One recording each: no second pass (Reuben).
+# `display` is the main display and `expression` the "Last Expression" line, every U+200E removed.
+# The raw display carries U+200E before each part ("\u200e-\u200e3", "\u200e(\u200e-\u200e5\u200e)"),
+# except "Undefined" and "Indeterminate", which have none.
+
+[[result]]
+name = "add"
+display = "12"
+expression = "7+5"
+pass = "a"
+
+[[result]]
+name = "subtract-below-zero"
+display = "-3"
+expression = "9-12"
+pass = "a"
+
+[[result]]
+name = "multiply"
+display = "42"
+expression = "6×7"
+pass = "a"
+
+[[result]]
+name = "divide-exact"
+display = "4"
+expression = "8÷2"
+pass = "a"
+
+[[result]]
+name = "divide-third"
+display = "0.33333333333"
+expression = "1÷3"
+pass = "a"
+
+[[result]]
+name = "divide-two-thirds"
+display = "0.66666666667"
+expression = "2÷3"
+pass = "a"
+
+[[result]]
+name = "divide-seventh"
+display = "0.14285714286"
+expression = "1÷7"
+pass = "a"
+
+[[result]]
+name = "point-one-plus-point-two"
+display = "0.3"
+expression = "0.1+0.2"
+pass = "a"
+
+[[result]]
+name = "point-without-zero"
+display = "0.5"
+pass = "a"
+
+[[result]]
+name = "trailing-zero"
+display = "3.0"
+pass = "a"
+
+[[result]]
+name = "double-point"
+display = "1.5"
+pass = "a"
+
+[[result]]
+name = "leading-zeros"
+display = "7"
+pass = "a"
+
+[[result]]
+name = "repeat-equals-add"
+display = "11"
+expression = "8+3"
+pass = "a"
+
+[[result]]
+name = "repeat-equals-multiply"
+display = "18"
+expression = "6×3"
+pass = "a"
+
+[[result]]
+name = "precedence"
+display = "14"
+expression = "2+3×4"
+pass = "a"
+
+[[result]]
+name = "precedence-reversed"
+display = "10"
+expression = "2×3+4"
+pass = "a"
+
+[[result]]
+name = "change-operator"
+display = "10"
+expression = "5×2"
+pass = "a"
+
+[[result]]
+name = "operator-first"
+display = "3"
+expression = "0+3"
+pass = "a"
+
+[[result]]
+name = "equals-alone"
+display = "0"
+pass = "a"
+
+[[result]]
+name = "chain-after-equals"
+display = "6"
+expression = "5+1"
+pass = "a"
+
+[[result]]
+name = "new-number-after-equals"
+display = "4"
+pass = "a"
+
+[[result]]
+name = "percent-alone"
+display = "50%"
+pass = "a"
+
+[[result]]
+name = "percent-of-sum"
+display = "220"
+expression = "200+10%"
+pass = "a"
+
+[[result]]
+name = "percent-in-product"
+display = "5"
+expression = "50×10%"
+pass = "a"
+
+[[result]]
+name = "negate"
+display = "(-5)"
+pass = "a"
+
+[[result]]
+name = "negate-twice"
+display = "5"
+pass = "a"
+
+[[result]]
+name = "negate-zero"
+display = "0"
+pass = "a"
+
+[[result]]
+name = "negate-then-add"
+display = "2"
+expression = "(-3)+5"
+pass = "a"
+
+[[result]]
+name = "divide-by-zero"
+display = "Undefined"
+pass = "a"
+
+[[result]]
+name = "zero-by-zero"
+display = "Indeterminate"
+pass = "a"
+
+[[result]]
+name = "thousands"
+display = "1,234,567"
+pass = "a"
+
+[[result]]
+name = "digit-limit"
+display = "123,456,789,123,456,789"
+pass = "a2"
+
+[[result]]
+name = "huge-product"
+display = "9.99999998e17"
+expression = "999,999,999×999,999,999"
+pass = "a2"
+
+[[result]]
+name = "tiny-quotient"
+display = "1.000000002e-18"
+expression = "0.000000001000000001÷999,999,999"
+pass = "a2"
+
+[[result]]
+name = "delete-digit"
+display = "12"
+pass = "a2"
+
+[[result]]
+name = "delete-only-digit"
+display = "0"
+pass = "a2"
+
+[[result]]
+name = "delete-after-result"
+display = "0"
+pass = "a2"
+
+[[result]]
+name = "delete-after-operator"
+display = "75"
+pass = "a2"
+
+[[result]]
+name = "delete-decimal-point"
+display = "46"
+pass = "a2"
