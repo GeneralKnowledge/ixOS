@@ -1,8 +1,9 @@
 @preconcurrency import SoundscapeFFI
 @preconcurrency import ForgeKit
+import ForgeAppKit
 import Foundation
 
-/// Rust's errors in the person's words. Foundation only, so it tests on
+/// Rust's errors in the person's words. No UI frameworks, so it tests on
 /// Linux.
 public enum SoundscapeErrors {
     nonisolated public static func describe(_ error: SoundscapeError) -> String {
