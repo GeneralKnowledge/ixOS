@@ -41,6 +41,7 @@ sketchbook-core = { path = "../../sketchbook/rust" }
 soundscape-core = { path = "../../soundscape/rust" }
 relay-core = { path = "../../relay/rust" }
 sums-core = { path = "../../sums/rust" }
+urdu-naturally-core = { path = "../../urdu-naturally/rust" }
 
 [dev-dependencies]
 tempfile = "3.14"

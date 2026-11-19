@@ -14,6 +14,7 @@ The products built with Forge. Each one is its own SwiftUI app on its own Rust c
 | [Sketchbook](sketchbook/README.md) | Drawing notebook with layers | [README](sketchbook/README.md) |
 | [Sums](sums/README.md) | A calculator rebuilt from the outside: the Calculator expedition's recreation, tested against answers recorded from the iPhone's own | [README](sums/README.md), [expedition](../docs/research/expeditions/calculator/profile.md), [reconstruction](../docs/research/expeditions/calculator/reconstruction.md) |
 | [Soundscape](soundscape/README.md) | Multi-track sound sketchpad | [README](soundscape/README.md) |
+| [Urdu, Naturally](urdu-naturally/README.md) | Conversational Pakistani Urdu, learnt by talking: 14 everyday conversations are the course, and the words come from them | [README](urdu-naturally/README.md), [plan](urdu-naturally/docs/plan.md), [content guidelines](urdu-naturally/docs/content-guidelines.md) |
 | [Pocket Library for Android](pocket-library-android/README.md) | Android, work in progress | [README](pocket-library-android/README.md) |
 
 Not apps, but kept here for now: [Device Lab](device-lab/README.md) (the test bed, a tool) and the [ForgeUI showcase](forgeui-showcase/README.md) (ForgeUI's gallery).

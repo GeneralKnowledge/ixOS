@@ -53,6 +53,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
 | soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
 | sums | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| urdu-naturally | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 5) | Yes | Yes | Yes |
 | weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (decision) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 
 ## Known lag
@@ -66,6 +67,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | relay | `device-checks` | missing | CH-12 (Chat's, now Relay's messaging: data held by a second core) is proved by its twin test only; the phone can't open a second core from the UI | 4 |
 | sketchbook | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
 | soundscape | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
+| urdu-naturally | `device-checks` | missing | UN-3 (a failed save is an alert) is proved by its twin test only, as the phone can't make a save fail from the UI; UN-5 (pattern practice) gets a phone scenario after its first phone sitting | 5 |
 
 ## Not applicable
 

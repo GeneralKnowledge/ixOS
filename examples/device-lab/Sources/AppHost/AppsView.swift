@@ -17,6 +17,7 @@ import SketchbookApp
 import SoundscapeApp
 import SoundscapeFFI
 import SumsApp
+import UrduNaturallyApp
 import SwiftUI
 import WeatherApp
 import WeatherFFI
@@ -85,7 +86,7 @@ struct AppsView: View {
 
 /// The apps the showcase runs, in the order the list shows them.
 enum EmbeddedApp: String, CaseIterable, Identifiable {
-    case weather, checklist, library, goodDog, commonplace, fieldKit, sketchbook, soundscape, relay, sums, forgeUI
+    case weather, checklist, library, goodDog, commonplace, fieldKit, sketchbook, soundscape, relay, sums, urdu, forgeUI
 
     /// The UserDefaults key of the app to open at launch.
     static let launchKey = "launchApp"
@@ -104,6 +105,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .soundscape: "Soundscape"
         case .relay: "Relay"
         case .sums: "Sums"
+        case .urdu: "Urdu, Naturally"
         case .forgeUI: "ForgeUI Showcase"
         }
     }
@@ -120,6 +122,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .soundscape: "Your music player: your own files, Jamendo and the Internet Archive, and songs from your computer, with playlists, downloads and lock-screen playback."
         case .sums: "A calculator rebuilt from the outside, to compare with the one on your iPhone."
         case .relay: "Messages through your chat server with an on-device assistant, and files, photos and folders straight to a nearby device."
+        case .urdu: "Conversational Pakistani Urdu, learnt by talking: everyday conversations with Ali, Ayesha, Omar and Khala, and the words that come up in them."
         case .forgeUI: "Every ForgeUI component, with example screens."
         }
     }
@@ -136,6 +139,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .soundscape: "waveform"
         case .relay: "arrow.left.arrow.right"
         case .sums: "plus.forwardslash.minus"
+        case .urdu: "bubble.left.and.text.bubble.right"
         case .forgeUI: "paintpalette"
         }
     }
@@ -153,6 +157,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .soundscape: SoundscapeApp.ContentView(host: EmbeddedApps.soundscape)
         case .relay: RelayApp.RelayRoot(host: EmbeddedApps.relay, chat: EmbeddedApps.chat)
         case .sums: SumsApp.ContentView(host: EmbeddedApps.sums)
+        case .urdu: UrduNaturallyApp.ContentView(host: EmbeddedApps.urdu)
         case .forgeUI: ShowcaseRoot()
         }
     }
@@ -202,7 +207,7 @@ private struct AppRow: View {
 /// What the embedded apps need for the life of the process.
 @MainActor
 public enum EmbeddedApps {
-    /// Weather, Good Dog, Checklist, Pocket Library, Commonplace, FieldKit, Sketchbook, Soundscape, Relay and Sums run on the application
+    /// Weather, Good Dog, Checklist, Pocket Library, Commonplace, FieldKit, Sketchbook, Soundscape, Relay, Sums and Urdu, Naturally run on the application
     /// runtime: each host owns its Rust core for the whole process, as in
     /// the standalone app, so closing the app doesn't close the core.
     static let weather = WeatherApp.makeAppHost()
@@ -215,6 +220,7 @@ public enum EmbeddedApps {
     static let soundscape = SoundscapeApp.makeAppHost()
     static let relay = RelayApp.makeAppHost()
     static let sums = SumsApp.makeAppHost()
+    static let urdu = UrduNaturallyApp.makeAppHost()
     /// One messaging core for the process (Relay's Chats), so its room connections and message
     /// notifications don't multiply each time the app opens.
     static let chat = RelayApp.RelayRoot.makeChatModel()
@@ -273,6 +279,7 @@ public enum EmbeddedApps {
             ForgeLifecycle.attach(soundscape)
             ForgeLifecycle.attach(relay)
             ForgeLifecycle.attach(sums)
+            ForgeLifecycle.attach(urdu)
             ForgeLifecycle.attach(chat.host)
         #endif
         library.attachToLifecycle()
