@@ -65,6 +65,7 @@ From [ixOS Experience Research](../experience/README.md) (#285 and its deep audi
 | Project | Where it was looked at | Disposition |
 |---|---|---|
 | [Offscan](https://github.com/bartoszpiech/offscan) (MIT) | [assessment](assessments/media/offscan.md) (2026-11-17, `7b8d682`) | **Borrow and Study:** pipeline and recipe design for roadmap item 18; not a dependency (SwiftData state, five days old) |
+| [Breezy Weather](https://github.com/breezy-weather/breezy-weather) (LGPL-3.0) | [Weather plan](../../../examples/weather/docs/breezy-counterpart-plan.md) (2026-11-19, `d91fcf4`) | **Study (proposed):** feature specification for Weather, written clean-room from each provider's own docs; no code, strings or artwork reused |
 
 ## Tooling
 
