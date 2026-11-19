@@ -28,7 +28,7 @@ A person walks both apps side by side with [walk.md](walk.md): about ten minutes
 2. **Walk** the steps in [walk.md](walk.md), doing each in NetNewsWire and then in Commonplace, and mark each Same, Different (one line on how) or Missing.
 3. **Record** the result: rows of [spec.md](spec.md) move from Expected to Seen with the date, differences become records in [gaps.toml](gaps.toml) (a finding about ixOS) or accepted differences in the spec, and what was reused goes in [patterns.toml](patterns.toml).
 
-Commonplace's own flows still run as UI tests on the phone when the cable is in (`forge ui run examples/commonplace/uitests/subscribe-and-read.toml`). Walking NetNewsWire with the explorer (`forge-lab explore --app com.ranchero.NetNewsWire-iOS --any-app`) still works, but it is frozen and not needed for this comparison.
+Commonplace's own flows still run as UI tests on the phone when the cable is in (`forge ui run examples/commonplace/uitests/subscribe-and-read.toml`). The explorer that once walked NetNewsWire is parked in forge-lab and has no command today; it is not needed for this comparison. Whether to bring it back is the open question in [the app-as-specification plan](../../../../docs/research/app-as-specification.md#the-decision-the-explorer).
 
 ## Limits
 
