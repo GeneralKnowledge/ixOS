@@ -841,3 +841,424 @@ fn waiting_for_the_network_without_the_service_returns_at_once() {
     let (core, _) = open_with(dir.path(), StaticClient::new());
     assert!(!block_on(core.wait_until_back_online(None)).unwrap());
 }
+
+// ---- Folders and OPML (C3) ----
+
+const FEEDER_STYLE: &str = include_str!("../fixtures/feeder-style.opml");
+
+fn empty_core(dir: &std::path::Path) -> Arc<AppCore> {
+    open_with(dir, StaticClient::new()).0
+}
+
+fn import_all(core: &AppCore, text: &str) -> OpmlImport {
+    let preview = core.preview_opml(text.into()).unwrap();
+    let all = preview.feeds.iter().map(|f| f.index).collect();
+    block_on(core.import_opml(text.into(), all)).unwrap()
+}
+
+fn folder_named(core: &AppCore, name: &str) -> Folder {
+    core.folders().into_iter().find(|f| f.name == name).unwrap()
+}
+
+fn feed_titled(core: &AppCore, title: &str) -> Feed {
+    core.feeds().into_iter().find(|f| f.title == title).unwrap()
+}
+
+#[test]
+fn an_opml_file_is_read_with_folders_options_and_filters() {
+    let doc = opml::parse(FEEDER_STYLE).unwrap();
+    let titles: Vec<_> = doc
+        .entries
+        .iter()
+        .map(|e| e.title.clone().unwrap())
+        .collect();
+    assert_eq!(
+        titles,
+        [
+            "Loose Feed",
+            "World & Politics",
+            "Gadgets",
+            "Listed Twice",
+            "Not a Web Address",
+            "Weird Notify"
+        ]
+    );
+    let world = &doc.entries[1];
+    assert_eq!(world.folder, ["News"]);
+    assert_eq!(
+        world.options,
+        opml::FeedOptions {
+            notify: Some(true),
+            full_text: Some(true)
+        }
+    );
+    // Feeder's other attributes are kept for export and named as not used.
+    assert_eq!(world.not_used, ["openArticlesWith", "alternateId"]);
+    assert_eq!(world.extras[0].namespace, opml::FEEDER_NS);
+    assert_eq!(world.extras[0].value, "reader");
+    assert_eq!(doc.entries[2].folder, ["News", "Tech"]);
+    assert_eq!(doc.entries[2].options.notify, Some(false));
+    // A value it can't read is named, not guessed.
+    assert_eq!(doc.entries[5].options.notify, None);
+    assert_eq!(doc.entries[5].not_used, ["notify"]);
+    // Patterns are trimmed text; the blank one is refused.
+    assert_eq!(doc.filters, ["giveaway", "sponsored"]);
+    assert_eq!(doc.rejected_filters, 1);
+    assert_eq!(doc.settings_not_used, ["pref_article_style", "pref_theme"]);
+}
+
+#[test]
+fn a_file_that_isnt_opml_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    for text in [
+        "",
+        "<html><body>hi</body></html>",
+        "<opml><body><outline",
+        "not xml at all",
+    ] {
+        assert!(
+            matches!(
+                core.preview_opml(text.into()),
+                Err(AppError::NotOpml { .. })
+            ),
+            "{text:?}"
+        );
+    }
+    let huge = format!("<opml><body>{}</body></opml>", " ".repeat(opml::MAX_BYTES));
+    assert!(matches!(
+        core.preview_opml(huge),
+        Err(AppError::NotOpml { .. })
+    ));
+    assert_eq!(
+        app_error_kind(AppError::NotOpml {
+            reason: String::new()
+        }),
+        forge_app::ErrorKind::Invalid
+    );
+}
+
+#[test]
+fn an_opml_file_cant_smuggle_in_entities_or_control_characters() {
+    let text = "<?xml version=\"1.0\"?><!DOCTYPE opml [<!ENTITY x \"EXPANDED\">]>\
+        <opml version=\"2.0\" xmlns:feeder=\"https://nononsenseapps.com/feeder\"><head>\
+        <feeder:blocked pattern=\"bad&#7;pattern\"/></head><body>\
+        <outline text=\"&x;\" xmlUrl=\"https://a.example/feed\"/></body></opml>";
+    // An entity beyond XML's own is an error, never expanded.
+    match opml::parse(text) {
+        Err(_) => {}
+        Ok(doc) => assert!(doc.entries.iter().all(|e| !e
+            .title
+            .clone()
+            .unwrap_or_default()
+            .contains("EXPANDED"))),
+    }
+    let text = "<opml version=\"2.0\" xmlns:feeder=\"https://nononsenseapps.com/feeder\"><head>\
+        <feeder:blocked pattern=\"bad&#7;pattern\"/></head><body>\
+        <outline text=\"Line&#10;Break\" xmlUrl=\"https://a.example/feed\"/></body></opml>";
+    let doc = opml::parse(text).unwrap();
+    assert_eq!(doc.filters, Vec::<String>::new());
+    assert_eq!(doc.rejected_filters, 1);
+    assert_eq!(doc.entries[0].title.as_deref(), Some("Line Break"));
+}
+
+#[test]
+fn the_preview_says_what_importing_would_do_and_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _) = open_with(
+        dir.path(),
+        StaticClient::new().route(
+            Method::Get,
+            "https://loose.example/feed.xml",
+            ok(rss(&[("a", "Alpha")]), None),
+        ),
+    );
+    let loose = block_on(core.add_feed("https://loose.example/feed.xml".into(), None)).unwrap();
+    let preview = core.preview_opml(FEEDER_STYLE.into()).unwrap();
+    let statuses: Vec<_> = preview.feeds.iter().map(|f| f.status.clone()).collect();
+    assert_eq!(
+        statuses,
+        [
+            OpmlFeedStatus::AlreadySubscribed { feed_id: loose.id },
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::ListedTwice,
+            OpmlFeedStatus::BadAddress,
+            OpmlFeedStatus::New,
+        ]
+    );
+    // feed:// means https://.
+    assert_eq!(preview.feeds[2].url, "https://gadgets.example/atom");
+    assert_eq!(
+        preview.folders,
+        ["News", "News / Tech", "Podcasts and Odd Things"]
+    );
+    assert_eq!(preview.filters, 2);
+    assert_eq!(preview.rejected_filters, 1);
+    assert_eq!(core.feeds().len(), 1);
+    assert!(core.folders().is_empty());
+}
+
+#[test]
+fn importing_adds_the_picked_feeds_in_their_folders() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    let preview = core.preview_opml(FEEDER_STYLE.into()).unwrap();
+    // Only World and Gadgets.
+    let done = block_on(core.import_opml(FEEDER_STYLE.into(), vec![1, 2])).unwrap();
+    assert_eq!(done.added, 2);
+    assert_eq!(done.folders_created, 2);
+    assert_eq!(done.filters_added, 2);
+    assert_eq!(preview.feeds.len(), 6);
+    let world = feed_titled(&core, "World & Politics");
+    let gadgets = feed_titled(&core, "Gadgets");
+    assert_eq!(world.folder_id, Some(folder_named(&core, "News").id));
+    assert_eq!(gadgets.folder_id, Some(folder_named(&core, "Tech").id));
+    assert!(world.notify && world.full_text);
+    assert!(!gadgets.notify && !gadgets.full_text);
+    let tech = folder_named(&core, "Tech");
+    assert_eq!(tech.parent_id, Some(folder_named(&core, "News").id));
+    assert_eq!(tech.depth, 1);
+    assert_eq!(folder_named(&core, "News").feed_count, 2);
+    // Skipped entries are counted, not added.
+    let skipped = block_on(core.import_opml(FEEDER_STYLE.into(), vec![3, 4])).unwrap();
+    assert_eq!(skipped.skipped, 1);
+    assert_eq!(skipped.already_subscribed, 1);
+    assert_eq!(skipped.added, 0);
+}
+
+#[test]
+fn importing_twice_adds_nothing_and_changes_nothing_the_library_has() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    let first = import_all(&core, FEEDER_STYLE);
+    assert_eq!(first.added, 4);
+    assert_eq!(first.skipped, 2);
+    // The person changes things after the import.
+    let world = feed_titled(&core, "World & Politics");
+    block_on(core.rename_feed(world.id, "My World".into())).unwrap();
+    block_on(core.move_feed(world.id, None)).unwrap();
+    block_on(core.set_feed_notify(world.id, false)).unwrap();
+    let before = core.feeds();
+    let names = |core: &AppCore| {
+        core.folders()
+            .into_iter()
+            .map(|f| (f.id, f.parent_id, f.name))
+            .collect::<Vec<_>>()
+    };
+    let folders_before = names(&core);
+    let second = import_all(&core, FEEDER_STYLE);
+    assert_eq!(second.added, 0);
+    assert_eq!(second.already_subscribed, 4);
+    assert_eq!(second.folders_created, 0);
+    assert_eq!(second.filters_added, 0);
+    // World keeps the person's name, place and option.
+    let world = feed_titled(&core, "My World");
+    assert_eq!(world.folder_id, None);
+    assert!(!world.notify);
+    assert_eq!(core.feeds(), before);
+    assert_eq!(core.feeds().len(), before.len());
+    assert_eq!(names(&core), folders_before);
+}
+
+#[test]
+fn an_export_imports_again_with_its_folders_settings_and_kept_attributes() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    import_all(&core, FEEDER_STYLE);
+    let exported = block_on(core.export_opml()).unwrap();
+    // Feeder's attribute Commonplace doesn't use goes back out as it came.
+    assert!(
+        exported.contains("feeder:openArticlesWith=\"reader\""),
+        "{exported}"
+    );
+    assert!(exported.contains("World &amp; Politics"));
+    // Into a fresh library, and out again: the same file.
+    let dir2 = tempfile::tempdir().unwrap();
+    let again = empty_core(dir2.path());
+    let done = import_all(&again, &exported);
+    assert_eq!(done.added, 4);
+    assert_eq!(done.skipped, 0);
+    let shape = |core: &AppCore| {
+        let folders = core.folders();
+        let mut feeds: Vec<_> = core
+            .feeds()
+            .into_iter()
+            .map(|f| {
+                let folder = f
+                    .folder_id
+                    .and_then(|id| folders.iter().find(|x| x.id == id))
+                    .map(|x| x.name.clone());
+                (f.title, f.url, folder, f.notify, f.full_text)
+            })
+            .collect();
+        feeds.sort();
+        let folders: Vec<_> = folders.into_iter().map(|f| (f.name, f.depth)).collect();
+        (feeds, folders)
+    };
+    assert_eq!(shape(&core), shape(&again));
+    assert_eq!(block_on(again.export_opml()).unwrap(), exported);
+}
+
+#[test]
+fn folders_are_made_renamed_and_deleted_without_losing_feeds() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    import_all(&core, FEEDER_STYLE);
+    let news = folder_named(&core, "News");
+    // Same name, any case: the existing folder.
+    assert_eq!(
+        block_on(core.create_folder("  news ".into(), None))
+            .unwrap()
+            .id,
+        news.id
+    );
+    let other = block_on(core.create_folder("Other".into(), None)).unwrap();
+    assert!(matches!(
+        block_on(core.create_folder("   ".into(), None)),
+        Err(AppError::InvalidInput { .. })
+    ));
+    assert!(matches!(
+        block_on(core.rename_folder(other.id, "NEWS".into())),
+        Err(AppError::InvalidInput { .. })
+    ));
+    block_on(core.rename_folder(other.id, "Reading".into())).unwrap();
+    // Deleting News moves World to the top and Tech (with Gadgets) up.
+    block_on(core.delete_folder(news.id)).unwrap();
+    assert_eq!(core.feeds().len(), 4);
+    assert_eq!(feed_titled(&core, "World & Politics").folder_id, None);
+    let tech = folder_named(&core, "Tech");
+    assert_eq!((tech.parent_id, tech.depth), (None, 0));
+    assert_eq!(feed_titled(&core, "Gadgets").folder_id, Some(tech.id));
+    assert!(matches!(
+        block_on(core.delete_folder(news.id)),
+        Err(AppError::NotFound)
+    ));
+    assert!(matches!(
+        block_on(core.move_feed(999, None)),
+        Err(AppError::NotFound)
+    ));
+    assert!(matches!(
+        block_on(core.move_feed(feed_titled(&core, "Gadgets").id, Some(news.id))),
+        Err(AppError::NotFound)
+    ));
+}
+
+#[test]
+fn a_folder_timeline_covers_the_folders_inside_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "https://world.example/rss",
+            ok(rss(&[("w", "World story")]), None),
+        )
+        .route(
+            Method::Get,
+            "https://gadgets.example/atom",
+            ok(rss(&[("g", "Gadget story")]), None),
+        )
+        .route(
+            Method::Get,
+            "https://loose.example/feed.xml",
+            ok(rss(&[("l", "Loose story")]), None),
+        )
+        .route(
+            Method::Get,
+            "https://weird.example/feed",
+            ok(rss(&[("x", "Weird story")]), None),
+        );
+    let (core, _) = open_with(dir.path(), http);
+    import_all(&core, FEEDER_STYLE);
+    let (report, notifying) = block_on(core.refresh_in(core.rt.lifetime(None))).unwrap();
+    assert_eq!(report.new_articles, 4);
+    // Gadgets said notify="false": its article doesn't count for the alert.
+    assert_eq!(notifying, 3);
+    let news = folder_named(&core, "News");
+    let titles = |t: Timeline| {
+        core.timeline(t)
+            .into_iter()
+            .map(|a| a.title)
+            .collect::<Vec<_>>()
+    };
+    let mut in_news = titles(Timeline::Folder { folder_id: news.id });
+    in_news.sort();
+    assert_eq!(in_news, ["Gadget story", "World story"]);
+    assert_eq!(
+        core.counts(Timeline::Folder { folder_id: news.id }).unread,
+        2
+    );
+    assert_eq!(folder_named(&core, "News").unread_count, 2);
+    // Mark the folder read: only its articles, and Undo brings them back.
+    let marked = block_on(core.mark_folder_read(news.id)).unwrap();
+    assert_eq!(marked.count, 2);
+    assert_eq!(core.counts(Timeline::Unread).unread, 2);
+    block_on(core.undo_mark_all_read(marked.undo_token)).unwrap();
+    assert_eq!(core.counts(Timeline::Unread).unread, 4);
+}
+
+#[test]
+fn folders_and_options_survive_a_relaunch() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let core = empty_core(dir.path());
+        import_all(&core, FEEDER_STYLE);
+        core.shutdown();
+    }
+    let core = empty_core(dir.path());
+    assert_eq!(core.folders().len(), 3);
+    assert!(!feed_titled(&core, "Gadgets").notify);
+    assert!(block_on(core.export_opml())
+        .unwrap()
+        .contains("commonplace:filter pattern=\"sponsored\""));
+}
+
+#[test]
+fn a_library_from_before_folders_opens_with_its_feeds_at_the_top() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        // The file as slice 2 left it: schema version 2, one feed.
+        let c =
+            forge_storage::rusqlite::Connection::open(dir.path().join("library.sqlite")).unwrap();
+        for step in &store::MIGRATIONS[..2] {
+            c.execute_batch(step).unwrap();
+        }
+        c.execute(
+            "INSERT INTO feeds (url, title, added_at_ms) VALUES ('https://old.example/feed', 'Old', 1)",
+            [],
+        )
+        .unwrap();
+        c.pragma_update(None, "user_version", 2).unwrap();
+    }
+    let core = empty_core(dir.path());
+    let old = feed_titled(&core, "Old");
+    assert_eq!(old.folder_id, None);
+    assert!(old.notify && !old.full_text);
+    assert!(core.folders().is_empty());
+    assert!(block_on(core.export_opml())
+        .unwrap()
+        .contains("xmlUrl=\"https://old.example/feed\""));
+}
+
+#[test]
+fn the_phone_checks_opml_fixture_previews_as_the_steps_say() {
+    let text = include_str!("../../docs/benchmark/fixtures/feeder-folders.opml")
+        .replace("HOST", "192.168.1.10:8765");
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    let preview = core.preview_opml(text).unwrap();
+    let statuses: Vec<_> = preview.feeds.iter().map(|f| f.status.clone()).collect();
+    assert_eq!(
+        statuses,
+        [
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::ListedTwice,
+            OpmlFeedStatus::BadAddress,
+        ]
+    );
+    assert_eq!(preview.folders, ["News", "News / Tech", "Odd Ones"]);
+    assert_eq!(preview.filters, 1);
+    assert_eq!(preview.settings_not_used, ["pref_theme"]);
+}

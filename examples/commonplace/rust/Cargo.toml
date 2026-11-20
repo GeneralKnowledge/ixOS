@@ -45,6 +45,8 @@ thiserror = "2.0"
 forge-reader = { path = "../../../crates/forge-reader" }
 # RSS, Atom and JSON Feed parsing. Pure Rust, so it cross-compiles for iOS.
 feed-rs = "2"
+# OPML import and export (the same quick-xml feed-rs uses).
+quick-xml = "0.42"
 
 [dev-dependencies]
 tempfile = "3.14"

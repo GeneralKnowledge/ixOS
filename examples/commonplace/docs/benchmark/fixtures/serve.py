@@ -10,6 +10,8 @@ Standard library only. Besides the files in this folder:
     /missing.xml   404
     /error.xml     500
     /redirect.xml  301 to /rss.xml
+    *.opml         with HOST replaced by the address the phone used, as a
+                   download (Safari saves it to Files for Import Subscriptions)
 
 Plain files get Last-Modified and answer If-Modified-Since with 304, so a
 second refresh shows each app's HTTP caching. Nothing is logged but the path.
@@ -50,6 +52,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         elif path.endswith(".py"):
             return self.send_error(404)
+        elif path.endswith(".opml") and os.path.isfile(os.path.join(HERE, os.path.basename(path))):
+            # Subscription lists name this server as the phone reached it.
+            with open(os.path.join(HERE, os.path.basename(path)), encoding="utf-8") as f:
+                body = f.read().replace("HOST", self.headers.get("Host", "localhost")).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/x-opml")
+            self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(path)}"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         return super().do_GET()
 
     def log_message(self, fmt, *args):

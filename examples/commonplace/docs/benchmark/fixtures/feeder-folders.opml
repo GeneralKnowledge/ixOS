@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- For the C3 phone check: OPML shaped like Feeder's export (from its public
+     2.5.0 notes, not copied from Feeder). serve.py puts the address the
+     phone used in place of the host placeholder. -->
+<opml version="2.0" xmlns:feeder="https://nononsenseapps.com/feeder">
+  <head>
+    <title>Feeder-style subscriptions</title>
+    <feeder:settings>
+      <feeder:setting key="pref_theme" value="night"/>
+      <feeder:blocked pattern="sponsored"/>
+    </feeder:settings>
+  </head>
+  <body>
+    <outline text="JSON Fixture" title="JSON Fixture" type="rss" xmlUrl="http://HOST/feed.json"/>
+    <outline text="News" title="News">
+      <outline text="Fixture Daily" title="Fixture Daily" type="rss" xmlUrl="http://HOST/rss.xml"
+               feeder:notify="true" feeder:fullTextByDefault="true" feeder:openArticlesWith="reader"/>
+      <outline text="Tech" title="Tech">
+        <outline text="Atom Fixture" title="Atom Fixture" type="rss" xmlUrl="http://HOST/atom.xml" feeder:notify="false"/>
+      </outline>
+    </outline>
+    <outline text="Odd Ones" title="Odd Ones">
+      <outline text="Fixture Daily Again" type="rss" xmlUrl="http://HOST/rss.xml/"/>
+      <outline text="Not a Web Address" type="rss" xmlUrl="ftp://HOST/feed"/>
+    </outline>
+  </body>
+</opml>

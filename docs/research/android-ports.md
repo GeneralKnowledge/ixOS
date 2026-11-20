@@ -81,7 +81,7 @@ Saved and bookmarked articles are not in Feeder's OPML, so they don't move. That
 
 ### Phases
 
-1. **C3: folders and OPML** (already Commonplace slice 3; **started 2026-11-20**): a folder hierarchy; OPML import with a preview and feed selection; OPML export; Feeder-compatible per-feed attributes; duplicate detection; a clear list of settings that were not carried over. Requirements Reuben set:
+1. **C3: folders and OPML** (already Commonplace slice 3; **built 2026-11-20**, Rust tested on Linux, Swift and the phone check waiting for the next combined Device Lab build): a folder hierarchy; OPML import with a preview and feed selection; OPML export; Feeder-compatible per-feed attributes; duplicate detection; a clear list of settings that were not carried over. Requirements Reuben set:
    - OPML is an **interchange format, not the internal model**. Commonplace keeps feed addresses, folders and its own settings in its SQLite library; OPML is read and written at the edge, and nothing inside depends on Feeder's attribute names.
    - Importing is **non-destructive**: importing the same OPML twice adds no duplicate subscriptions (feeds match by normalised address), and an import never removes or changes a feed the person already has, beyond filling in its folder when it has none.
    - **Round trip**: export from Feeder, import into Commonplace, export again, and the folders and supported settings are kept. Tested on Linux with our own fixtures, and once on the phone.

@@ -15,6 +15,8 @@ private let log = ForgeLog("Library")
 public final class LibraryModel {
     /// Every subscription, by title, as Rust last reported it.
     public private(set) var feeds: [Feed] = []
+    /// Every folder, as a tree: each followed by the folders inside it.
+    public private(set) var folders: [Folder] = []
     /// Moves whenever Rust's data changed, so views that read timelines
     /// (`timeline(_:)` asks Rust each time) draw again.
     public private(set) var version = 0
@@ -40,6 +42,7 @@ public final class LibraryModel {
     public init(core: AppCore) {
         self.core = core
         feeds = core.feeds()
+        folders = core.folders()
         settings = core.settings()
         newArticleAlerts = core.newArticleAlerts()
     }
@@ -47,6 +50,7 @@ public final class LibraryModel {
     /// Re-reads from Rust. Cheap: Rust hands over its published snapshot.
     public func reload() {
         feeds = core.feeds()
+        folders = core.folders()
         settings = core.settings()
         version += 1
     }
@@ -71,6 +75,20 @@ public final class LibraryModel {
 
     public func feed(id: Int64) -> Feed? {
         feeds.first { $0.id == id }
+    }
+
+    public func folder(id: Int64) -> Folder? {
+        folders.first { $0.id == id }
+    }
+
+    /// The feeds directly in a folder (at the top level with nil).
+    public func feeds(in folderID: Int64?) -> [Feed] {
+        feeds.filter { $0.folderId == folderID }
+    }
+
+    /// The folders directly in a folder (at the top level with nil).
+    public func folders(in folderID: Int64?) -> [Folder] {
+        folders.filter { $0.parentId == folderID }
     }
 
     /// Opens an article for reading (Rust marks it read). Nil, with the
@@ -164,6 +182,99 @@ public final class LibraryModel {
 
     public func rename(_ feed: Feed, to title: String) async {
         await perform { try await $0.renameFeed(feedId: feed.id, title: title) }
+    }
+
+    /// Whether a feed's new articles count for the new-articles notification.
+    public func setNotify(_ feed: Feed, _ notify: Bool) async {
+        await perform { try await $0.setFeedNotify(feedId: feed.id, notify: notify) }
+    }
+
+    // MARK: Folders
+
+    /// Makes a folder (or finds the one of that name already there).
+    @discardableResult
+    public func createFolder(named name: String, in parentID: Int64? = nil) async -> Folder? {
+        var made: Folder?
+        await perform { made = try await $0.createFolder(name: name, parentId: parentID) }
+        return made
+    }
+
+    public func rename(_ folder: Folder, to name: String) async {
+        await perform { try await $0.renameFolder(folderId: folder.id, name: name) }
+    }
+
+    /// Deletes a folder; its feeds and folders move up a level.
+    public func delete(_ folder: Folder) async {
+        await perform { try await $0.deleteFolder(folderId: folder.id) }
+    }
+
+    /// Puts a feed in a folder, or at the top level with nil.
+    public func move(_ feed: Feed, to folderID: Int64?) async {
+        await perform { try await $0.moveFeed(feedId: feed.id, folderId: folderID) }
+    }
+
+    /// Makes a folder and puts the feed in it.
+    public func move(_ feed: Feed, toNewFolder name: String) async {
+        guard let folder = await createFolder(named: name) else { return }
+        await move(feed, to: folder.id)
+    }
+
+    // MARK: Subscriptions in and out (OPML)
+
+    /// Reads an OPML file chosen in the document picker and says what
+    /// importing it would do. Nothing changes until `importSubscriptions`.
+    /// Nil, with the alert set, if it can't be read.
+    public func previewSubscriptions(at url: URL) -> OpmlDraft? {
+        #if canImport(Darwin)
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        #endif
+        do {
+            let data = try Data(contentsOf: url)
+            let text = String(decoding: data, as: UTF8.self)
+            return try previewSubscriptions(text: text)
+        } catch {
+            // Not the error itself: a parser message can quote the file.
+            log.warn("reading an OPML file failed")
+            alert = .failure(error)
+            return nil
+        }
+    }
+
+    /// The same, from the file's text.
+    public func previewSubscriptions(text: String) throws -> OpmlDraft {
+        OpmlDraft(contents: text, preview: try core.previewOpml(contents: text))
+    }
+
+    /// Imports the picked feeds of a previewed file, then fetches the new
+    /// ones. Nil, with the alert set, on failure.
+    public func importSubscriptions(_ draft: OpmlDraft, picked: Set<UInt32>) async -> OpmlImport? {
+        var done: OpmlImport?
+        let ok = await perform {
+            done = try await $0.importOpml(contents: draft.contents, selected: picked.sorted())
+        }
+        guard ok, let done else { return nil }
+        if done.added > 0 {
+            feedback.play(.success)
+            Task { await self.refresh() }
+        }
+        return done
+    }
+
+    /// Writes the subscriptions to an OPML file to share. Nil, with the
+    /// alert set, on failure.
+    public func exportSubscriptions() async -> URL? {
+        do {
+            let text = try await core.exportOpml()
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Commonplace Subscriptions.opml")
+            try Data(text.utf8).write(to: url, options: .atomic)
+            return url
+        } catch {
+            log.warn("exporting subscriptions failed: \(error)")
+            alert = .failure(error)
+            return nil
+        }
     }
 
     // MARK: Refresh
@@ -295,8 +406,26 @@ public final class LibraryModel {
     /// and offers Undo for a few seconds (a frequent, cheap action: undo
     /// rather than a confirmation, decided 2026-11-17).
     public func markAllRead(feedID: Int64?) async {
+        await markRead { try await $0.markAllRead(feedId: feedID) }
+    }
+
+    /// Marks a folder's articles read (and its folders'), with Undo.
+    public func markAllRead(folderID: Int64) async {
+        await markRead { try await $0.markFolderRead(folderId: folderID) }
+    }
+
+    /// Marks what a timeline shows read: its feed, its folder, or every feed.
+    public func markAllRead(in timeline: Timeline) async {
+        if case .folder(let folderID) = timeline {
+            await markAllRead(folderID: folderID)
+        } else {
+            await markAllRead(feedID: timeline.feedID)
+        }
+    }
+
+    private func markRead(_ command: (AppCore) async throws -> MarkedRead) async {
         var marked: MarkedRead?
-        let done = await perform { marked = try await $0.markAllRead(feedId: feedID) }
+        let done = await perform { marked = try await command($0) }
         guard done, let marked, marked.count > 0 else { return }
         feedback.play(.success)
         let what = marked.count == 1 ? "1 article" : "\(marked.count) articles"
@@ -347,6 +476,7 @@ public final class LibraryModel {
         switch error {
         case .AlreadySubscribed: return "Already Subscribed"
         case .NotAFeed: return "Not a Feed"
+        case .NotOpml: return "Not a Subscription List"
         case .Offline: return "You're Offline"
         case .Timeout: return "No Response"
         case .Http: return "The Site Had a Problem"
@@ -375,6 +505,7 @@ public final class LibraryModel {
         switch error {
         case .InvalidInput: return "That doesn't look like a web address. Check it and try again."
         case .NotFound: return "That's no longer in your library."
+        case .NotOpml: return "That file isn't an OPML subscription list, or it's too large to be one."
         case .AlreadySubscribed: return "You're already subscribed to this feed."
         case .NotAFeed: return "There's no RSS, Atom or JSON feed at that address."
         case .Http(let status): return "The site answered with an error (HTTP \(status))."
@@ -425,6 +556,19 @@ extension AppError: ForgeDescribedError {
     public var isCancellation: Bool {
         if case .Cancelled = self { return true }
         return false
+    }
+}
+
+/// An OPML file read but not imported yet: its text (imported as read)
+/// and what importing it would do.
+public struct OpmlDraft: Identifiable, Sendable {
+    public let id = UUID()
+    public let contents: String
+    public let preview: OpmlPreview
+
+    /// The feeds picked at first: the new ones.
+    public var picked: Set<UInt32> {
+        Set(preview.feeds.filter { $0.status == .new }.map(\.index))
     }
 }
 

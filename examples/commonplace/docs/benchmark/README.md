@@ -13,7 +13,7 @@
 | Interactions | Read and unread, bookmark (NetNewsWire calls it starring), mark all read, refresh | 1 (done) |
 | Persistence | SQLite on the device, survives relaunch | 1 (done) |
 | Reader | Article text, images and links, text size and font | 2 (done), on [ForgeReader](../../../../docs/forge-reader.md) |
-| Organise | Folders, OPML import and export | 3 |
+| Organise | Folders, OPML import and export (with Feeder's OPML as a second reference) | 3 (built; phone check pending) |
 | Search | Search saved articles (SQLite FTS5) | 2 (done) |
 | Settings | Timeline order, hide read, summaries, where links open, font | 2 (done) |
 | Web view | The original page and links inside the app | 2 (done; Show Original Page was in slice 1) |
