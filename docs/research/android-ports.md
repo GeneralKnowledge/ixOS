@@ -1,6 +1,6 @@
 # Open-source Android apps, answered by our own apps
 
-Plan, 19 November 2026. Reuben asked on 2026-11-19 to grow existing ixOS apps into iOS counterparts of established open-source Android apps, to show that ixOS can carry a real product, and perhaps later to offer a proper port to those projects' communities. Breezy Weather and our Weather app are planned in their own thread and are not covered here. This page plans the rest of his shortlist: OpenTracks, Feeder and AntennaPod in full, and Etar and Fossify Gallery briefly.
+Plan, 19 November 2026; approved by Reuben on 20 November 2026 (his decisions are under [Decisions](#decisions-20-november-2026)). Reuben asked on 2026-11-19 to grow existing ixOS apps into iOS counterparts of established open-source Android apps, to show that ixOS can carry a real product, and perhaps later to offer a proper port to those projects' communities. Breezy Weather and our Weather app are planned in their own thread and are not covered here. This page plans the rest of his shortlist: OpenTracks, Feeder and AntennaPod in full, and Etar and Fossify Gallery briefly.
 
 No code, builds or phone runs come from this page. Each phase below becomes its own PR when Reuben asks for it.
 
@@ -22,8 +22,8 @@ The rule behind the order: start where our app is closest to the reference and t
 
 ixOS and its apps are Apache-2.0. Code can move from an Apache-2.0 project into a GPL-3.0 one, but not the other way: copying GPL-3.0 code into Commonplace or Soundscape would make that app GPL-3.0. So:
 
-- **GPL-3.0 projects (Feeder, AntennaPod, Etar, Fossify): clean room.** We work from what the app does as a user sees it (running it, its website, documentation, changelogs and store listings) and from public format specifications (RSS, Atom, JSON Feed, OPML, the gPodder API, iCalendar). We copy none of its source code, strings, translations, icons, artwork or test fixtures. If someone reads the source to answer a question (what does this OPML attribute mean?), they write down the behaviour in our own words in the benchmark spec, and the code is written from the spec. This is how Commonplace was built against NetNewsWire, and it is the same here.
-- **Apache-2.0 (OpenTracks): reuse is allowed, with conditions.** We may translate an algorithm or take a test file, as long as the file carries the licence notice, we say what we changed, and any NOTICE text is kept. In practice little transfers, because OpenTracks is Android Java and we write Rust, but its recording rules and sample exports are useful. Each borrowed piece is listed in the app's README with its source commit.
+- **GPL-3.0 projects (Feeder, AntennaPod, Etar, Fossify): clean room.** We work from what the app does as a user sees it (running it, its website, documentation, changelogs and store listings) and from public format specifications (RSS, Atom, JSON Feed, OPML, the gPodder API, iCalendar). We copy none of its source code, strings, translations, icons, artwork or test fixtures. The evidence is observable behaviour, documentation and public format specifications. **We don't read Feeder's or AntennaPod's source** while working on the matching feature: restating source-derived explanations in our own words does not make an implementation clean room. If a question can't be answered from the running app, its documentation or a file it exports, the answer is to test the app (for example, export with a setting on and off and compare the files), not to read its code. This is how Commonplace was built against NetNewsWire, and it is the same here.
+- **Apache-2.0 (OpenTracks): reuse is allowed, with conditions** (approved 2026-11-20, subject to checking the exact licence at the source commit). We may translate an algorithm or take a test file, as long as the file carries the licence notice, we say what we changed, and any NOTICE text is kept. In practice little transfers, because OpenTracks is Android Java and we write Rust, but its recording rules and sample exports are useful. Each borrowed piece is listed in the app's README with its source commit.
 - **Interoperability is fine.** Reading and writing another app's export files and talking to the same sync servers is not copying code. File formats are not covered by the app's licence.
 - **Before any phase starts,** the licence is checked against the LICENSE file at the commit we look at, and recorded with the date and commit (as in the [external projects evaluation](external-projects/evaluation-framework.md)). The licences on this page come from Reuben's research and the projects' pages, not from reading each LICENSE file yet.
 
@@ -33,7 +33,13 @@ A note for later: a port the original project could adopt as its own iOS app wou
 
 - Our apps keep their own names, icons and looks. No Android project's name, logo, icon, colours or screenshots go into an app, its icon, its home-screen name or a store listing.
 - Plain factual statements are fine where they help a user: "imports OPML exported from Feeder", "reads OpenTracks GPX and KMZ files". Not "Feeder for iPhone".
-- Contacting maintainers, and anything that presents our work as a port of theirs, is Reuben's call. Nothing on this page assumes they have been asked.
+- Contacting maintainers is selective and never blocks development (Reuben, 2026-11-20). Reuben makes the contact; we introduce the work honestly: an independent native iOS app, no GPL source copied, their project credited as the product reference, compatible import and export, possible future collaboration. We don't ask for an endorsement. If a maintainer wants to adopt an iOS app officially, licensing and App Store distribution are discussed separately.
+
+| Project | When | Purpose |
+|---|---|---|
+| Feeder | After the C3 prototype | Confirm OPML interoperability and per-feed settings |
+| OpenTracks | Before borrowing any code | Attribution, compatibility, possible collaboration |
+| AntennaPod | Before P3 | Confirm gPodder interoperability, discuss the iOS counterpart |
 
 ### How we prove it
 
@@ -75,7 +81,12 @@ Saved and bookmarked articles are not in Feeder's OPML, so they don't move. That
 
 ### Phases
 
-1. **C3: folders and OPML** (already Commonplace slice 3): folders, OPML import with the pick list and Feeder's per-feed attributes, OPML export. Fixtures: OPML files we write ourselves, including the Feeder namespace, never files copied from Feeder's repository.
+1. **C3: folders and OPML** (already Commonplace slice 3; **started 2026-11-20**): a folder hierarchy; OPML import with a preview and feed selection; OPML export; Feeder-compatible per-feed attributes; duplicate detection; a clear list of settings that were not carried over. Requirements Reuben set:
+   - OPML is an **interchange format, not the internal model**. Commonplace keeps feed addresses, folders and its own settings in its SQLite library; OPML is read and written at the edge, and nothing inside depends on Feeder's attribute names.
+   - Importing is **non-destructive**: importing the same OPML twice adds no duplicate subscriptions (feeds match by normalised address), and an import never removes or changes a feed the person already has, beyond filling in its folder when it has none.
+   - **Round trip**: export from Feeder, import into Commonplace, export again, and the folders and supported settings are kept. Tested on Linux with our own fixtures, and once on the phone.
+   - Imported filters and patterns are **untrusted input**: validated, kept as plain text and never executed.
+   Fixtures are OPML files we write ourselves, including the Feeder namespace, never files copied from Feeder's repository.
 2. **C4: full articles**: fetch and extract the article from its page, per feed (the roadmap's "full article extraction"). The extractor is our own Rust, or a permissively licensed crate checked first in the external projects atlas.
 3. **C5: per-feed settings and filters**: notify, full text, how to open; block list; refresh only on Wi-Fi; keep only the last N articles per feed unless bookmarked.
 4. **C6: read aloud**: a third user for the speech pieces Pocket Library and Urdu Naturally use (the ForgeSpeech extraction already named as a candidate).
@@ -106,7 +117,7 @@ FieldKit records a trip as a GPS track with filtering rules in Rust, keeps runni
 
 This is the strongest proof of the three, because the formats are open and the licence lets us test against real exports.
 
-- **Import GPX 1.1 and KMZ/KML 2.3**, so a person moving from Android can bring their history. OpenTracks puts a random id (`opentracks:trackid`) in each export, so importing the same file twice is recognised and refused as a duplicate. Gadgetbridge sets the same id. GPX from OpenTracks has only the points with a GPS position, so indoor trips come through KMZ.
+- **Import GPX 1.1 and KMZ/KML 2.3**, so a person moving from Android can bring their history. The importer is **general-purpose and standards-based**, not one that only works with OpenTracks: plain GPX 1.1 and KML 2.3 come first, and OpenTracks' extras are read when present. Duplicates are found from three signals, never the exported id alone (some exports omit or change it): the source's id when present (OpenTracks writes `opentracks:trackid`, and Gadgetbridge sets the same), a fingerprint of the content (start time, point count and a hash of the rounded points), and the person's confirmation when a match is likely but not certain. FieldKit keeps the source id with the trip so its own export can write it back. GPX from OpenTracks has only the points with a GPS position, so indoor trips come through KMZ.
 - **Export** keeps GPX and GeoJSON and adds KMZ with the notes' photos, and writes OpenTracks' track id, so a FieldKit trip imported into OpenTracks is not duplicated either.
 - Sensor values (heart rate, cadence, power) are stored per fix and written into the exports in the way OpenTracks reads them. Which extension elements those are gets written into the benchmark spec from its export files.
 - Our Rust zip handling already exists (Pocket Library reads EPUB, which is a zip), so KMZ needs no new dependency.
@@ -116,7 +127,7 @@ This is the strongest proof of the three, because the formats are open and the l
 1. **T1: import and activity types**: GPX and KMZ import with duplicate detection; activity types; totals by type. Fixtures: exports made from OpenTracks on the emulator (Apache-2.0, attributed), plus our own.
 2. **T2: KML/KMZ export and automatic export** to a folder the person picks in Files.
 3. **T3: spoken announcements** every N minutes or kilometres, in the background, ducking other audio.
-4. **T4: Bluetooth LE heart rate**, the first sensor, as a native service following [native-services.md](../native-services.md): Swift owns CoreBluetooth, Rust owns the values and the rules. A ledger record ships in the same PR, and "iPhone: Yes" waits for a run with a real strap.
+4. **T4: Bluetooth LE heart rate**, the first sensor, not complete until tested with an actual compatible strap, as a native service following [native-services.md](../native-services.md): Swift owns CoreBluetooth, Rust owns the values and the rules. A ledger record ships in the same PR, and "iPhone: Yes" waits for a run with a real strap.
 5. **T5: the other sensors** (cycling speed and cadence, power, running) and indoor trips, only once T4 passes on the phone.
 
 Barometer altitude can ride along with T1 or T3; it is small.
@@ -129,9 +140,14 @@ Phone checks: T1 imports a file from Files and shows it on the map. T3 needs a s
 
 Soundscape already has most of what a podcast app needs underneath: a library with sources that the player does not care about, a queue that survives restarts, offline downloads with a Downloaded screen, a mini-player and Now Playing, lock-screen controls through the shared Now Playing helper, a sleep timer, and gapless playback. A podcast episode is one more kind of audio source. Pocket Library is about books; its only audio is Read Aloud, which is speech made on the phone, not files from the internet. Putting podcasts in Pocket Library would mean building a second player.
 
-The cost: Soundscape is being made into Reuben's personal music platform, and podcasts widen what it is. They would sit in their own section (a Podcasts screen beside Library, sharing the queue and player) rather than mixing episodes into songs. Reuben also said on 2026-11-18 that player features come before more sources, and Soundscape's latest work still waits for a phone sitting. So this port starts only after those checks pass, and its first phase is player work that music benefits from too.
+The cost: Soundscape is being made into Reuben's personal music platform, and podcasts widen what it is. Podcasts are a first-class section, never mixed into the music library (Reuben, 2026-11-20):
 
-Whether podcasts belong in Soundscape at all is Reuben's decision; this page recommends yes.
+- **Music**: albums, artists, tracks and playlists, as now.
+- **Podcasts**: subscriptions, shows and episodes.
+- **Shared player**: the queue, playback controls, downloads and the audio session.
+- **Shared history**, with separate music and podcast statistics. Reuben also said on 2026-11-18 that player features come before more sources, and Soundscape's latest work still waits for a phone sitting. So this port starts only after those checks pass, and its first phase, P0, must improve the music player on its own even if podcasts never ship. The music-player work stays the priority.
+
+Reuben approved podcasts in Soundscape on 2026-11-20.
 
 ### Gap against AntennaPod
 
@@ -190,11 +206,15 @@ Fossify Gallery's value on Android is a private, ad-free gallery over the phone'
 
 One phase at a time, each in its own PR, phone checks in the combined Device Lab sitting as usual.
 
-## Decisions for Reuben
+## Decisions (20 November 2026)
 
-- Podcasts in Soundscape (recommended) or not at all.
-- Whether and when to contact any of these projects' maintainers.
-- Whether Commonplace's C3 starts now, since it is already planned.
+Reuben approved the plan and the order, and made the three decisions:
+
+1. **Podcasts belong in Soundscape**, in their own Podcasts section with the shared player and queue; music and podcast libraries stay distinct. P0 improves the music player whether or not podcasts ship.
+2. **Contact the original maintainers selectively**, as in the table under [Names and branding](#names-and-branding). The conversations never block independent development.
+3. **Start Commonplace C3 now.** It is the first implementation PR. The rest of the roadmap stays documented here, with no parallel implementation work until C3 is finished and tested.
+
+Every phase is its own PR, with automated tests and a check on an actual iPhone wherever iOS behaviour matters. Linux tests alone don't advance a phase. Etar and Fossify Gallery stay excluded.
 
 ## Sources
 
