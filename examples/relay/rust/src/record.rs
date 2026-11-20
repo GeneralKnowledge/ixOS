@@ -43,6 +43,17 @@ pub struct Record {
     /// Notes have moved into conversations (`migrate`, review step 4).
     #[serde(default)]
     pub notes_are_messages: bool,
+    /// Saved data that couldn't be read when Relay opened, for the person
+    /// to hear about until they dismiss it (`store`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notice: Option<SavedNotice>,
+}
+
+/// What couldn't be read, in words, and where it is kept on this device.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct SavedNotice {
+    pub message: String,
+    pub kept: Vec<String>,
 }
 
 fn first_id() -> u64 {

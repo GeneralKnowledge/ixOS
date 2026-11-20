@@ -169,15 +169,13 @@ impl<'a> Conversations<'a> {
         self.changed
     }
 
-    pub fn get(&self, endpoint_id: &str, id: &str) -> Option<Message> {
-        store::message(self.c, &checked(endpoint_id).ok()?, id)
+    pub fn get(&self, endpoint_id: &str, id: &str) -> Result<Option<Message>, RelayError> {
+        store::message(self.c, &checked(endpoint_id)?, id)
     }
 
     /// Our messages to `endpoint_id` still waiting in the outbox.
-    pub fn queued(&self, endpoint_id: &str) -> Vec<Message> {
-        checked(endpoint_id)
-            .map(|conv| store::queued(self.c, &conv))
-            .unwrap_or_default()
+    pub fn queued(&self, endpoint_id: &str) -> Result<Vec<Message>, RelayError> {
+        store::queued(self.c, &checked(endpoint_id)?)
     }
 
     /// Adds `message` to `endpoint_id`'s conversation (see [`store::add`]).
@@ -246,23 +244,25 @@ impl PeerLog {
         &self.logs.store
     }
 
-    pub fn get(&self, id: &str) -> Option<Message> {
+    /// Reads fail rather than leave a message out: a damaged row is a
+    /// storage problem the person hears about, not a gap in the history.
+    pub fn get(&self, id: &str) -> Result<Option<Message>, RelayError> {
         self.store()
             .read(|c| store::message(c, &self.conversation_id, id))
     }
 
     /// Messages changed after `since` (all without it), oldest first.
-    pub fn since(&self, since: Option<i64>) -> Vec<Message> {
+    pub fn since(&self, since: Option<i64>) -> Result<Vec<Message>, RelayError> {
         self.store()
             .read(|c| store::since(c, &self.conversation_id, since))
     }
 
-    pub fn last(&self) -> Option<Message> {
+    pub fn last(&self) -> Result<Option<Message>, RelayError> {
         self.store().read(|c| store::last(c, &self.conversation_id))
     }
 
     /// Our messages still waiting in the outbox.
-    pub fn queued(&self) -> Vec<Message> {
+    pub fn queued(&self) -> Result<Vec<Message>, RelayError> {
         self.store()
             .read(|c| store::queued(c, &self.conversation_id))
     }
@@ -465,7 +465,7 @@ impl ChatRepo for PeerRepo {
             .get(&self.endpoint_id)
             .map(|d| d.name.clone())
             .unwrap_or_else(|| "Device".into());
-        let last = self.log.last();
+        let last = self.log.last().map_err(chat_error)?;
         Ok(vec![RemoteConversation {
             id: self.log.conversation_id.clone(),
             title,
@@ -482,7 +482,7 @@ impl ChatRepo for PeerRepo {
         since: Option<i64>,
     ) -> Result<Vec<Message>, ChatError> {
         self.check(conversation_id)?;
-        Ok(self.log.since(since))
+        self.log.since(since).map_err(chat_error)
     }
 
     fn post_message(&self, message: &OutgoingMessage) -> Result<Message, ChatError> {
@@ -596,7 +596,7 @@ impl RemoteStream for LogStream {
 impl RelayCore {
     /// The conversation with a trusted device, oldest first.
     pub fn device_messages(&self, endpoint_id: &str) -> Result<Vec<Message>, RelayError> {
-        Ok(self.peer_logs.get(endpoint_id)?.since(None))
+        self.peer_logs.get(endpoint_id)?.since(None)
     }
 
     /// Sends `text` to a trusted device's conversation, through the outbox,
@@ -622,7 +622,7 @@ impl RelayCore {
         Ok(self
             .peer_logs
             .get(endpoint_id)?
-            .get(&queued.id)
+            .get(&queued.id)?
             .unwrap_or(queued))
     }
 }
@@ -653,8 +653,8 @@ mod tests {
         assert_eq!(a.status, MessageStatus::Sent);
         let again = log.add(message("a")).unwrap();
         assert_eq!(again, a);
-        assert_eq!(log.since(None).len(), 2);
-        assert_eq!(log.since(Some(a.sent_at)), vec![b.clone()]);
+        assert_eq!(log.since(None).unwrap().len(), 2);
+        assert_eq!(log.since(Some(a.sent_at)).unwrap(), vec![b.clone()]);
         assert_eq!(rx.try_iter().count(), 2, "one event per new message");
         // Another device's stream hears nothing of it.
         assert!(logs.get("../x").is_err());
@@ -674,18 +674,18 @@ mod tests {
             })
             .unwrap();
         assert_eq!(queued.status, MessageStatus::Queued);
-        assert_eq!(log.queued().len(), 1);
+        assert_eq!(log.queued().unwrap().len(), 1);
         let rx = log.listen();
         log.set_status("q", MessageStatus::Sent).unwrap();
-        let sent = log.get("q").unwrap();
+        let sent = log.get("q").unwrap().unwrap();
         assert_eq!(sent.status, MessageStatus::Sent);
         assert!(
             sent.changed_at() > queued.sent_at,
             "catch-up sees the change"
         );
-        assert_eq!(log.since(Some(queued.sent_at)), vec![sent.clone()]);
+        assert_eq!(log.since(Some(queued.sent_at)).unwrap(), vec![sent.clone()]);
         assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![sent]);
-        assert!(log.queued().is_empty());
+        assert!(log.queued().unwrap().is_empty());
         log.set_status("missing", MessageStatus::Sent).unwrap();
     }
 

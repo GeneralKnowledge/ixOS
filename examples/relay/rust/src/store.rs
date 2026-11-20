@@ -121,11 +121,47 @@ pub(crate) enum Found {
     Nothing,
     /// The database, as saved.
     Saved,
-    /// The JSON files, moved in now.
-    Moved,
+    /// The JSON files, moved in now. `not_moved` are device conversations
+    /// that couldn't be read: left where they were, for the person to know.
+    Moved { not_moved: Vec<PathBuf> },
     /// What was saved couldn't be read; it was set aside at `kept`, and
     /// Relay starts again (the device key is kept).
     SetAside { kept: PathBuf, reason: String },
+}
+
+/// What the person should hear about how Relay's data was found, if
+/// anything: what couldn't be read, and where it is kept.
+pub(crate) fn notice(found: &Found) -> Option<crate::record::SavedNotice> {
+    let path = |p: &PathBuf| p.to_string_lossy().into_owned();
+    match found {
+        Found::SetAside { kept, .. } => Some(crate::record::SavedNotice {
+            message: "Relay's saved data couldn't be read, so it started again. This device \
+                      kept its identity, but its trusted devices and history need setting up \
+                      again. The old data is kept on this device."
+                .into(),
+            kept: vec![path(kept)],
+        }),
+        Found::Moved { not_moved } if !not_moved.is_empty() => {
+            let count = not_moved.len();
+            let which = if count == 1 {
+                "One device conversation".to_string()
+            } else {
+                format!("{count} device conversations")
+            };
+            Some(crate::record::SavedNotice {
+                message: format!(
+                    "Relay now keeps everything in one database. {which} couldn't be read, \
+                     so {} not moved in and won't show in Chats. {} kept on this device as \
+                     {} were.",
+                    if count == 1 { "it was" } else { "they were" },
+                    if count == 1 { "It is" } else { "They are" },
+                    if count == 1 { "it" } else { "they" },
+                ),
+                kept: not_moved.iter().map(path).collect(),
+            })
+        }
+        _ => None,
+    }
 }
 
 /// Relay's database.
@@ -160,7 +196,7 @@ impl Store {
             // after it): renamed now, so they are never read again.
             let json = dir.join(JSON_FILE);
             if json.exists() {
-                for (endpoint, _) in read_json_logs(&dir.join("devices")) {
+                for (endpoint, _) in read_json_logs(&dir.join("devices")).0 {
                     let file = dir.join("devices").join(endpoint).join("messages.json");
                     let _ = std::fs::rename(&file, file.with_extension(format!("json.{MIGRATED}")));
                 }
@@ -187,7 +223,7 @@ impl Store {
                 return Ok((store, None, Found::SetAside { kept, reason }));
             }
         };
-        let logs = read_json_logs(&dir.join("devices"));
+        let (logs, not_moved) = read_json_logs(&dir.join("devices"));
         store.write(|tx| {
             save(tx, &Record::default(), &record)?;
             for (endpoint, log) in &logs {
@@ -205,7 +241,7 @@ impl Store {
             "relay moved its record and {} device conversations into its database",
             logs.len()
         );
-        Ok((store, Some(record), Found::Moved))
+        Ok((store, Some(record), Found::Moved { not_moved }))
     }
 
     /// A store in memory, for tests.
@@ -267,19 +303,17 @@ fn rows<T: DeserializeOwned>(c: &Connection, table: &str) -> Result<Vec<T>, Rela
 /// place; a new one goes after the rest, as the lists only ever push to
 /// the end.
 pub(crate) fn save(c: &Connection, before: &Record, after: &Record) -> Result<(), RelayError> {
-    let shell = |r: &Record| {
-        let mut shell = Record {
-            devices: crate::trust::Devices {
-                list: Vec::new(),
-                ..r.devices.clone()
-            },
-            ..Record::default()
-        };
-        shell.device_id = r.device_id.clone();
-        shell.name = r.name.clone();
-        shell.next_id = r.next_id;
-        shell.notes_are_messages = r.notes_are_messages;
-        shell
+    // Everything but the lists, so a field added to the record later is
+    // saved without a change here.
+    let shell = |r: &Record| Record {
+        devices: crate::trust::Devices {
+            list: Vec::new(),
+            ..r.devices.clone()
+        },
+        transfers: Vec::new(),
+        deliveries: Vec::new(),
+        received_ids: Vec::new(),
+        ..r.clone()
     };
     let meta = shell(after);
     if meta != shell(before) || before == &Record::default() {
@@ -382,11 +416,11 @@ fn put_log(c: &Connection, conversation: &str, log: &LogFile) -> Result<(), Rela
 
 /// Every device conversation's JSON log under `dir`. One that can't be
 /// read is left where it is (and logged): its messages aren't moved.
-fn read_json_logs(dir: &Path) -> Vec<(String, LogFile)> {
+fn read_json_logs(dir: &Path) -> (Vec<(String, LogFile)>, Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
-    let mut logs = Vec::new();
+    let (mut logs, mut unreadable) = (Vec::new(), Vec::new());
     for entry in entries.flatten() {
         let endpoint = entry.file_name().to_string_lossy().into_owned();
         let file = entry.path().join("messages.json");
@@ -396,13 +430,17 @@ fn read_json_logs(dir: &Path) -> Vec<(String, LogFile)> {
         match JsonFile::<LogFile>::new(&file, crate::device_chat::LOG_VERSION).load() {
             Ok(Some(log)) => logs.push((endpoint, log)),
             Ok(None) => {}
-            Err(err) => forge_runtime::logging::warn!(
-                "relay couldn't read a device conversation to move it: {err}"
-            ),
+            Err(err) => {
+                forge_runtime::logging::warn!(
+                    "relay couldn't read a device conversation to move it: {err}"
+                );
+                unreadable.push(file);
+            }
         }
     }
     logs.sort_by(|a, b| a.0.cmp(&b.0));
-    logs
+    unreadable.sort();
+    (logs, unreadable)
 }
 
 /// Renames `path` aside, with the time, and returns where it went.
@@ -463,31 +501,46 @@ fn stamp(c: &Connection, conversation: &str) -> Result<i64, RelayError> {
     Ok(at)
 }
 
-fn messages(c: &Connection, sql: &str, args: &[&dyn rusqlite::ToSql]) -> Vec<Message> {
-    let Ok(mut statement) = c.prepare(sql) else {
-        return Vec::new();
-    };
-    let Ok(rows) = statement.query_map(args, |r| r.get::<_, String>(0)) else {
-        return Vec::new();
-    };
-    rows.flatten()
-        .filter_map(|body| parse::<Message>(&body).ok())
-        .collect()
+/// The messages a query finds. A query that fails, or a row that doesn't
+/// read as a message, is an error, never a message left out: history
+/// doesn't quietly lose a message.
+fn messages(
+    c: &Connection,
+    sql: &str,
+    args: &[&dyn rusqlite::ToSql],
+) -> Result<Vec<Message>, RelayError> {
+    let mut statement = c.prepare(sql)?;
+    let rows = statement.query_map(args, |r| r.get::<_, String>(0))?;
+    let mut out = Vec::new();
+    for body in rows {
+        out.push(parse::<Message>(&body?).map_err(|err| RelayError::Corrupt {
+            reason: format!("a saved message can't be read ({err})"),
+        })?);
+    }
+    Ok(out)
 }
 
 /// One message of a conversation.
-pub(crate) fn message(c: &Connection, conversation: &str, id: &str) -> Option<Message> {
-    messages(
+pub(crate) fn message(
+    c: &Connection,
+    conversation: &str,
+    id: &str,
+) -> Result<Option<Message>, RelayError> {
+    Ok(messages(
         c,
         "SELECT body FROM messages WHERE conversation = ?1 AND id = ?2",
         &[&conversation, &id],
-    )
-    .pop()
+    )?
+    .pop())
 }
 
 /// Messages changed after `since` (all without it), in the order shown
 /// (by time).
-pub(crate) fn since(c: &Connection, conversation: &str, since: Option<i64>) -> Vec<Message> {
+pub(crate) fn since(
+    c: &Connection,
+    conversation: &str,
+    since: Option<i64>,
+) -> Result<Vec<Message>, RelayError> {
     match since {
         None => messages(
             c,
@@ -504,17 +557,17 @@ pub(crate) fn since(c: &Connection, conversation: &str, since: Option<i64>) -> V
 }
 
 /// The newest message of a conversation.
-pub(crate) fn last(c: &Connection, conversation: &str) -> Option<Message> {
-    messages(
+pub(crate) fn last(c: &Connection, conversation: &str) -> Result<Option<Message>, RelayError> {
+    Ok(messages(
         c,
         "SELECT body FROM messages WHERE conversation = ?1 ORDER BY sent_at DESC, id DESC LIMIT 1",
         &[&conversation],
-    )
-    .pop()
+    )?
+    .pop())
 }
 
 /// Our messages still waiting in the outbox.
-pub(crate) fn queued(c: &Connection, conversation: &str) -> Vec<Message> {
+pub(crate) fn queued(c: &Connection, conversation: &str) -> Result<Vec<Message>, RelayError> {
     messages(
         c,
         "SELECT body FROM messages WHERE conversation = ?1 AND queued = 1 ORDER BY sent_at, id",
@@ -530,7 +583,7 @@ pub(crate) fn add(
     conversation: &str,
     mut message: Message,
 ) -> Result<(Message, bool), RelayError> {
-    if let Some(found) = self::message(c, conversation, &message.id) {
+    if let Some(found) = self::message(c, conversation, &message.id)? {
         return Ok((found, false));
     }
     message.conversation_id = conversation.to_string();
@@ -552,7 +605,7 @@ pub(crate) fn set_status(
     id: &str,
     status: MessageStatus,
 ) -> Result<Option<Message>, RelayError> {
-    let Some(mut m) = message(c, conversation, id) else {
+    let Some(mut m) = message(c, conversation, id)? else {
         return Ok(None);
     };
     if m.status == status {
@@ -573,7 +626,7 @@ pub(crate) fn import(
     mut message: Message,
     path: Option<&Path>,
 ) -> Result<Option<Message>, RelayError> {
-    if self::message(c, conversation, &message.id).is_some() {
+    if self::message(c, conversation, &message.id)?.is_some() {
         return Ok(None);
     }
     message.conversation_id = conversation.to_string();
@@ -692,7 +745,10 @@ mod tests {
         });
         assert!(failed.is_err());
         assert!(store.load().unwrap().is_none());
-        assert!(store.read(|c| since(c, &conversation, None)).is_empty());
+        assert!(store
+            .read(|c| since(c, &conversation, None))
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -708,16 +764,36 @@ mod tests {
         assert!(!added);
         assert_eq!(again, a);
         assert_eq!(
-            store.read(|c| since(c, &conv, None)),
+            store.read(|c| since(c, &conv, None)).unwrap(),
             vec![a.clone(), b.clone()]
         );
         assert_eq!(
-            store.read(|c| since(c, &conv, Some(a.sent_at))),
+            store.read(|c| since(c, &conv, Some(a.sent_at))).unwrap(),
             vec![b.clone()]
         );
-        assert_eq!(store.read(|c| last(c, &conv)), Some(b));
+        assert_eq!(store.read(|c| last(c, &conv)).unwrap(), Some(b));
         let other = device_conversation("other");
-        assert!(store.read(|c| since(c, &other, None)).is_empty());
+        assert!(store.read(|c| since(c, &other, None)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_damaged_message_is_an_error_not_a_gap() {
+        let store = Store::in_memory();
+        let conv = device_conversation("abc123");
+        store.write(|c| add(c, &conv, msg("a"))).unwrap();
+        store.write(|c| add(c, &conv, msg("b"))).unwrap();
+        store
+            .write(|c| {
+                c.execute("UPDATE messages SET body = '{' WHERE id = 'a'", [])?;
+                Ok(())
+            })
+            .unwrap();
+        let err = store.read(|c| since(c, &conv, None)).unwrap_err();
+        assert!(
+            matches!(&err, RelayError::Corrupt { reason } if reason.contains("saved message")),
+            "{err:?}"
+        );
+        assert!(store.read(|c| message(c, &conv, "a")).is_err());
     }
 
     fn msg(id: &str) -> Message {

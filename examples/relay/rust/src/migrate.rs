@@ -304,7 +304,7 @@ mod tests {
         };
         run(&mut record);
 
-        let got = logs.get(PHONE).unwrap().since(None);
+        let got = logs.get(PHONE).unwrap().since(None).unwrap();
         let shown: Vec<(&str, &str, MessageStatus, i64)> = got
             .iter()
             .map(|m| (m.id.as_str(), m.body.as_str(), m.status, m.sent_at))
@@ -375,11 +375,11 @@ mod tests {
         assert!(record.notes_are_messages);
 
         // Again (Relay ended before the record was saved): nothing changes.
-        let before = logs.get(PHONE).unwrap().since(None).len();
+        let before = logs.get(PHONE).unwrap().since(None).unwrap().len();
         let mut again = saved(dir.path());
         run(&mut again);
         assert_eq!(again, record);
-        assert_eq!(logs.get(PHONE).unwrap().since(None).len(), before);
+        assert_eq!(logs.get(PHONE).unwrap().since(None).unwrap().len(), before);
         let mut twice = record.clone();
         run(&mut twice);
         assert_eq!(twice, record);

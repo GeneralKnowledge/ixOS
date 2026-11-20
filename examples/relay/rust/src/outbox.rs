@@ -680,7 +680,7 @@ fn message_ended(
 /// saved together; this settles what an older build left.
 pub(crate) fn settle_messages(r: &Record, c: &mut Conversations<'_>) {
     for to in r.devices.listed().map(|d| d.endpoint_id.clone()) {
-        for m in c.queued(&to) {
+        for m in c.queued(&to).unwrap_or_default() {
             if r.message_delivery(&m.id).is_none() {
                 let _ = c.set_status(&to, &m.id, chat_core::MessageStatus::Failed);
             }
@@ -809,10 +809,10 @@ impl RelayCore {
             .rt
             .command("queue-message", move |state| {
                 state.change_with(|r, c| {
-                    let message = match c.get(&recipient, &message.id) {
+                    let message = match c.get(&recipient, &message.id)? {
                         Some(found) if found.status == MessageStatus::Failed => {
                             c.set_status(&recipient, &found.id, MessageStatus::Queued)?;
-                            c.get(&recipient, &found.id).unwrap_or(found)
+                            c.get(&recipient, &found.id)?.unwrap_or(found)
                         }
                         Some(found) => {
                             let _ = tx.send(Ok(()));

@@ -131,7 +131,7 @@ fn an_older_builds_files_move_in_once() {
     let history = core.transfers();
     assert_eq!(history.len(), 2);
     assert_eq!(history[1].direction, Direction::Received);
-    assert_eq!(core.saved_data_set_aside(), None);
+    assert_eq!(core.saved_data_notice(), None);
     let messages = vec![
         ("hello".to_string(), Sent),
         ("back".to_string(), Sent),
@@ -193,8 +193,14 @@ fn an_unreadable_record_is_set_aside_and_the_key_kept() {
         let _ = std::fs::remove_file(dir.path().join(extra));
     }
     let core = open(dir.path());
-    let kept = core.saved_data_set_aside().expect("it says where it went");
-    assert!(Path::new(&kept).exists(), "kept, not deleted");
+    let notice = core.saved_data_notice().expect("the person is told");
+    assert!(
+        notice.message.contains("started again"),
+        "{}",
+        notice.message
+    );
+    let kept = &notice.kept[0];
+    assert!(Path::new(kept).exists(), "kept, not deleted");
     assert!(core.devices().is_empty());
     assert_eq!(
         block_on(core.device_service()).unwrap().endpoint_id,
@@ -211,9 +217,15 @@ fn an_unreadable_record_is_set_aside_and_the_key_kept() {
     )
     .unwrap();
     let core = open(dir.path());
-    let kept = core.saved_data_set_aside().expect("it says where it went");
+    let kept = core.saved_data_notice().expect("the person is told").kept[0].clone();
     assert!(kept.contains("relay.json.unreadable"), "{kept}");
     assert!(Path::new(&kept).exists());
+    // Until they dismiss it, also after a relaunch.
+    close(core);
+    let core = open(dir.path());
+    assert!(core.saved_data_notice().is_some());
+    block_on(core.dismiss_saved_data_notice()).unwrap();
+    assert!(core.saved_data_notice().is_none());
     assert!(!core.identity().device_id.is_empty());
     close(core);
 }
@@ -231,4 +243,32 @@ fn a_record_from_a_newer_build_is_refused_not_replaced() {
         .expect("refused");
     assert_eq!(err, relay_core::RelayError::NewerData);
     assert!(dir.path().join("relay.json").exists(), "left as it was");
+}
+
+#[test]
+fn a_conversation_that_cant_be_read_is_kept_and_the_person_told() {
+    let dir = tempfile::tempdir().unwrap();
+    older_build(dir.path());
+    const TABLET: &str = "0f0e0d0c0b0a09080706050403020100f0e0d0c0b0a090807060504030201000";
+    let damaged = dir.path().join("devices").join(TABLET);
+    std::fs::create_dir_all(&damaged).unwrap();
+    std::fs::write(damaged.join("messages.json"), b"{ not json").unwrap();
+
+    let core = open(dir.path());
+    // The readable one moved; the damaged one stayed where it was.
+    assert_eq!(core.device_messages(PHONE).unwrap().len(), 3);
+    assert!(damaged.join("messages.json").exists());
+    let notice = core.saved_data_notice().expect("the person is told");
+    assert!(
+        notice
+            .message
+            .contains("One device conversation couldn't be read"),
+        "{}",
+        notice.message
+    );
+    assert_eq!(
+        notice.kept,
+        [damaged.join("messages.json").to_string_lossy().into_owned()]
+    );
+    close(core);
 }

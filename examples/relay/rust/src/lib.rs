@@ -181,9 +181,6 @@ pub struct RelayCore {
     outbox: outbox::Outbox,
     /// Each trusted device's conversation log (`device_chat`).
     peer_logs: device_chat::PeerLogs,
-    /// Where Relay's saved data went when it couldn't be read and Relay
-    /// started again (the device kept its key).
-    set_aside: Mutex<Option<String>>,
     /// Wakes a device conversation's outbox when the device is reached:
     /// set by the chat core that holds those conversations.
     chat_waker: Mutex<Option<ChatWaker>>,
@@ -242,6 +239,13 @@ impl RelayCore {
         // Sends kept their own store before one store served both.
         let _ = std::fs::remove_dir_all(code_dir.join("send-store"));
         let key_dir = directory.path().to_path_buf();
+        // What couldn't be read is said, not only logged.
+        if let Some(notice) = store::notice(&found) {
+            opening(&mut record, &mut |r, _| {
+                r.notice = Some(notice.clone());
+                Ok(())
+            })?;
+        }
         // Notes become messages, once (review step 4).
         if !record.notes_are_messages {
             opening(&mut record, &mut |r, c| migrate::run(r, c))?;
@@ -291,21 +295,32 @@ impl RelayCore {
             device_stops: Mutex::new(HashMap::new()),
             outbox: outbox::Outbox::default(),
             peer_logs,
-            set_aside: Mutex::new(None),
             chat_waker: Mutex::new(None),
             me: me.clone(),
         });
-        if let store::Found::SetAside { kept, .. } = &found {
-            *lock(&core.set_aside) = Some(kept.to_string_lossy().into_owned());
-        }
         Ok(core)
     }
 
-    /// Where Relay's saved data was set aside, when it couldn't be read
-    /// and Relay started again: the device kept its key (its identity),
-    /// but not its trusted devices or history. `None` normally.
-    pub fn saved_data_set_aside(&self) -> Option<String> {
-        lock(&self.set_aside).clone()
+    /// What Relay couldn't read of its saved data when it opened, and
+    /// where that is kept, for the app to show until the person dismisses
+    /// it. `None` normally.
+    pub fn saved_data_notice(&self) -> Option<SavedDataNotice> {
+        self.record.get().notice.clone().map(|n| SavedDataNotice {
+            message: n.message,
+            kept: n.kept,
+        })
+    }
+
+    /// The person has read the notice.
+    pub async fn dismiss_saved_data_notice(&self) -> Result<(), RelayError> {
+        self.rt
+            .command("dismiss-notice", |state| {
+                state.change(|r| {
+                    r.notice = None;
+                    Ok(())
+                })
+            })
+            .await
     }
 
     /// Saves what later code receives bring into `folder` (made if missing)
@@ -656,6 +671,14 @@ pub struct Device {
     pub route: Option<String>,
     /// Why Relay couldn't reach it the last time it tried, in words.
     pub problem: Option<String>,
+}
+
+/// Saved data Relay couldn't read when it opened: what happened, in words,
+/// and where it is kept on this device.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct SavedDataNotice {
+    pub message: String,
+    pub kept: Vec<String>,
 }
 
 /// A device a code transfer was just made with, which the person may
