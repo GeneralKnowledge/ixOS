@@ -1,18 +1,43 @@
 # Weather as an iOS counterpart to Breezy Weather: plan
 
-Status: proposal, 2026-11-19, waiting for Reuben's approval. Nothing here is built yet.
+Status: **approved by Reuben, 2026-11-20**, with the safeguards below. W1 is in progress.
 
 Breezy Weather ([breezy-weather/breezy-weather](https://github.com/breezy-weather/breezy-weather), Kotlin, Jetpack Compose, LGPL-3.0, looked at on commit `d91fcf4`, 2026-11-18) is the largest open-source weather app on Android: forecasts, nowcasting, air quality, pollen, alerts and normals from more than 50 sources. It has no iOS client. This plan grows our own Weather app until it covers Breezy's product on iOS, under our own name and design, so that it proves what ixOS can do and could later be offered to the open-source community as a proper iOS counterpart.
 
 It follows the roadmap rule of growing existing apps before adding new ones: Weather already has places, location, a cache, a Rust forecast client and a native look, so Breezy is treated as a **feature specification** for Weather, not as code to translate.
 
-## Decisions this plan asks for
+## Decisions (approved 2026-11-20)
 
 1. **Clean-room, not a code port** (recommended; [licence](#licence-lgpl-30)). We use Breezy's documentation and source list as a map of what exists, and write every source from the provider's own public API documentation. Weather stays MIT/Apache like the rest of ixOS.
 2. **Our name, our look.** It stays "Weather" in Device Lab. A public name comes only with phase W6 ([branding](#branding-and-trademarks)).
 3. **Key-free sources first**, then bring-your-own-key sources. We never ship or reuse anyone else's API keys.
 4. **Phase order** W1 to W6 below, one PR per phase, each ending in a short phone check in the next combined Device Lab build.
-5. **Contacting the Breezy maintainers** is Reuben's call. Recommended: before anything is published under a public name (W6), not before building.
+5. **Contacting the Breezy maintainers** before W6, explaining that this is an independent native iOS counterpart and offering to acknowledge the project. Their permission is not a prerequisite for an independently written client.
+
+Breezy may be acknowledged in research documentation as the inspiration and feature reference, never in a way that implies endorsement. Bring-your-own keys stay optional, are kept in the Keychain and are never logged.
+
+## Safeguards (Reuben, 2026-11-20)
+
+**A. Each kind of data keeps its own availability window.** Open-Meteo's forecast reaches 16 days, its air-quality forecast about 7 days, and pollen depends on the region (Europe) and the model. The report records, per kind of data, how far it reaches and where it is unavailable, and the screen shows each window on its own terms. Missing data is labelled as missing, never filled in, stretched or extrapolated.
+
+**B. Weather warnings are safety-critical data** (W2). Alerts carry their issue, start and expiry times, severity, urgency and certainty, and the area they cover; updated, cancelled and expired warnings are handled as such; stale data and an unreachable service are shown as such; "no active warnings" and "no warning data available" are never the same message. The WMO source is adopted only after its machine-readable endpoint has been checked. Notifications never imply guaranteed emergency delivery: iOS background refresh is opportunistic, and the app says so.
+
+**C. W6 release gate: Open-Meteo terms.** The free API is for non-commercial use (about 10,000 calls a day; ads and subscriptions count as commercial) and needs CC BY 4.0 attribution. A public release needs a confirmed usage arrangement. Weather stays independent of any single provider so this never becomes a long-term blocker.
+
+## W1 acceptance criteria
+
+W1 is about architecture and reliable data, not the number of metrics. Scope does not grow because the source architecture makes more features possible.
+
+- Existing Open-Meteo functionality keeps working.
+- Weather sources sit behind a clean Rust interface.
+- Several sources can contribute independently to one report.
+- A failed secondary request never destroys data that did arrive.
+- Cached data survives offline use.
+- Units are configurable and applied consistently.
+- Air quality and pollen are represented correctly, including regions where they are unavailable.
+- The forecast reaches 16 days where the source supports it.
+- Attribution is visible and correct.
+- Every new piece has automated tests and a phone check.
 
 ## How Breezy is built
 
@@ -121,11 +146,11 @@ Each phase is one PR with Linux checks green, then a short check in the next com
 | Phase | What lands | Phone check (what it proves) |
 |---|---|---|
 | **W1 Source model and the missing data** | Source trait, Open-Meteo split into forecast, air quality and pollen; merge, completion, sun and moon, units settings, 16 days; cache schema 3; new blocks: air quality, pollen, humidity and dew point, pressure, visibility, UV, sun, moon; source attribution | Edinburgh and one non-European city: blocks show, pollen says "not available" outside Europe, units switch, airplane mode keeps the cached blocks |
-| **W2 Alerts and nowcasting** | FPAS and WMO alerts, alerts block always first, alert details; precipitation in the next hour from Open-Meteo 15-minute data; a local notification for a new severe alert while the app is open or refreshing | A place with an active warning shows it first; next-hour rain chart appears only when rain is due |
+| **W2 Alerts and nowcasting** | FPAS alerts (WMO after its endpoint is checked), handled as safeguard B requires, alerts block always first, alert details; precipitation in the next hour from Open-Meteo 15-minute data; a local notification for a new severe alert while the app is open or refreshing | A place with an active warning shows it first; next-hour rain chart appears only when rain is due |
 | **W3 More sources and choice per place** | MET Norway, NWS, Bright Sky; per-place main source and per-feature sources with sensible defaults by country; bring-your-own-key sources (Met Office first), keys in the Keychain; NCEI normals | Switch a UK place between Open-Meteo and MET Norway; a key-needing source stays off until a key is pasted |
 | **W4 Charts and details** | Swift Charts hourly and daily charts, a details screen for every block, block order and hiding | Charts read correctly with VoiceOver and at the largest text size |
 | **W5 Widgets and background refresh** | WidgetKit widget (small and medium) in Device Lab's extension, background refresh feeding the widget and alert notifications | Widget on the home screen updates after a refresh. Uses one App ID from the free team's 10 a week |
-| **W6 Community release** | Decide name and icon, contact Breezy maintainers, choose distribution (needs a paid Apple team for TestFlight or the App Store, see the App Store release thread), Open-Meteo terms for that distribution, standalone app target | Decided with Reuben; not started without his go |
+| **W6 Community release** | Decide name and icon, contact Breezy maintainers, choose distribution (needs a paid Apple team for TestFlight or the App Store, see the App Store release thread), a confirmed Open-Meteo usage arrangement (safeguard C, a release gate), standalone app target | Decided with Reuben; not started without his go |
 
 W1 is the largest phase (about the size of the native redesign, #52); W2 to W4 are each smaller. W5 waits for the widget capability work and W6 is a decision, not a build.
 
@@ -163,4 +188,4 @@ This is a plan, not legal advice; a public release (W6) should get a short licen
 
 ## Next step
 
-With approval of the five decisions above, start W1 on a branch of its own.
+W1, as its own PR, against the acceptance criteria above.
