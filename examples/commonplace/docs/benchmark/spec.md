@@ -14,7 +14,7 @@ Each claim about NetNewsWire says where it comes from. **Expected** means it is 
 | S6 | Empty states (no feeds, nothing unread) | Expected | `ForgeStateView` on S1 and S2 | `feeds.addFirst` |
 | S7 | Search: a search field over every article, results as timeline rows | Expected | The feeds list's search field ("Search Articles"; SwiftUI gives it no identifier); results replace the lists | `search.article.<id>` |
 
-Differences already known and accepted: Commonplace has no Today timeline, says "bookmark" rather than "star", asks for no folder when adding (folders are slice 3), and has no article themes beyond the font and text size.
+Differences already known and accepted: Commonplace has no Today timeline, says "bookmark" rather than "star", asks for no folder when adding (a feed moves to a folder from its menu), shows a folder as its own screen rather than expanding it in place, and has no article themes beyond the font and text size.
 
 ## Flows
 
@@ -33,6 +33,9 @@ Each is a `forge ui run` file for Commonplace (in `examples/commonplace/uitests/
 | F9 | Change the timeline order and hide read articles; the timelines follow and the choice is kept | Expected | Rust test `settings_are_kept_and_shape_the_timelines`; a person's check |
 | F10 | Tap a link in an article; it opens in the app's browser (or Safari) | Expected | A person's check |
 | F11 | Larger text in the article; the text grows, the place is kept | Expected | A person's check |
+| F12 | Make a folder, move a feed into it; the folder's timeline shows its articles, and deleting the folder keeps the feed | Expected | Rust tests `folders_are_made_renamed_and_deleted_without_losing_feeds`, `a_folder_timeline_covers_the_folders_inside_it`; a person's check |
+| F13 | Import an OPML file: a preview first, folders kept, nothing duplicated on a second import | Expected | Rust tests `the_preview_says_what_importing_would_do_and_changes_nothing`, `importing_twice_adds_nothing_and_changes_nothing_the_library_has`; a person's check with `fixtures/feeder-folders.opml` |
+| F14 | Export OPML and import it elsewhere with the same folders | Expected | Rust test `an_export_imports_again_with_its_folders_settings_and_kept_attributes`; a person's check |
 
 ## States and edge cases
 

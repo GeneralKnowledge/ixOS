@@ -263,4 +263,84 @@ final class LibraryModelTests: XCTestCase {
         XCTAssertFalse(network.contains("handshake"), network)
         XCTAssertFalse(network.isEmpty)
     }
+
+    // MARK: Folders and OPML (C3)
+
+    private static let feederStyle = """
+        <?xml version="1.0"?>
+        <opml version="2.0" xmlns:feeder="https://nononsenseapps.com/feeder">
+          <head><feeder:settings><feeder:setting key="pref_theme" value="night"/>
+          <feeder:blocked pattern="sponsored"/></feeder:settings></head>
+          <body>
+            <outline text="News">
+              <outline text="World" type="rss" xmlUrl="https://world.example/rss"
+                       feeder:notify="false" feeder:openArticlesWith="reader"/>
+              <outline text="Tech"><outline text="Gadgets" type="rss" xmlUrl="https://gadgets.example/atom"/></outline>
+            </outline>
+            <outline text="Again" type="rss" xmlUrl="https://world.example/rss/"/>
+          </body>
+        </opml>
+        """
+
+    @MainActor
+    func testAnOPMLPreviewPicksOnlyNewFeedsAndNamesWhatIsNotCarried() async throws {
+        let (host, model) = try await open(try makeDirectory())
+        let draft = try model.previewSubscriptions(text: Self.feederStyle)
+        XCTAssertEqual(draft.preview.feeds.map(\.title), ["World", "Gadgets", "Again"])
+        XCTAssertEqual(draft.preview.feeds[2].status, .listedTwice)
+        XCTAssertEqual(draft.picked, [0, 1])
+        XCTAssertEqual(draft.preview.folders, ["News", "News / Tech"])
+        XCTAssertEqual(draft.preview.settingsNotUsed, ["pref_theme"])
+        XCTAssertEqual(draft.preview.feeds[0].notUsed, ["openArticlesWith"])
+        // A preview changes nothing.
+        XCTAssertEqual(model.feeds, [])
+        XCTAssertEqual(model.folders, [])
+        XCTAssertThrowsError(try model.previewSubscriptions(text: "<html></html>")) { error in
+            XCTAssertEqual(LibraryModel.title(error as! AppError), "Not a Subscription List")
+        }
+        host.close()
+    }
+
+    @MainActor
+    func testImportingTwiceAddsNothingAndFoldersHoldTheirFeeds() async throws {
+        let (host, model) = try await open(try makeDirectory())
+        let draft = try model.previewSubscriptions(text: Self.feederStyle)
+        let done = await model.importSubscriptions(draft, picked: draft.picked)
+        XCTAssertEqual(done?.added, 2)
+        XCTAssertEqual(done?.foldersCreated, 2)
+        let news = try XCTUnwrap(model.folders.first { $0.name == "News" })
+        XCTAssertEqual(model.folders(in: nil).map(\.name), ["News"])
+        XCTAssertEqual(model.folders(in: news.id).map(\.name), ["Tech"])
+        XCTAssertEqual(model.feeds(in: news.id).map(\.title), ["World"])
+        XCTAssertFalse(try XCTUnwrap(model.feeds.first { $0.title == "World" }).notify)
+        let again = await model.importSubscriptions(draft, picked: draft.picked)
+        XCTAssertEqual(again?.added, 0)
+        XCTAssertEqual(again?.alreadySubscribed, 2)
+        XCTAssertEqual(model.feeds.count, 2)
+        // Deleting a folder keeps its feeds.
+        await model.delete(news)
+        XCTAssertEqual(model.feeds.count, 2)
+        XCTAssertEqual(model.feeds(in: nil).map(\.title), ["World"])
+        host.close()
+    }
+
+    @MainActor
+    func testAnExportIsAnOPMLFileThatImportsAgain() async throws {
+        let (host, model) = try await open(try makeDirectory())
+        let draft = try model.previewSubscriptions(text: Self.feederStyle)
+        _ = await model.importSubscriptions(draft, picked: draft.picked)
+        let exported = await model.exportSubscriptions()
+        let url = try XCTUnwrap(exported)
+        XCTAssertEqual(url.pathExtension, "opml")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("feeder:openArticlesWith=\"reader\""), text)
+        host.close()
+
+        let (host2, fresh) = try await open(try makeDirectory())
+        let back = try fresh.previewSubscriptions(text: text)
+        XCTAssertEqual(back.picked.count, 2)
+        XCTAssertEqual(back.preview.folders, ["News", "News / Tech"])
+        XCTAssertEqual(back.preview.filters, 1)
+        host2.close()
+    }
 }

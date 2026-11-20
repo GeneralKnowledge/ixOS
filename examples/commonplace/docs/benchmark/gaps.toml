@@ -18,7 +18,7 @@ id = "html-to-reader-text"
 reference = "Shows the article's HTML as laid-out text with images and links"
 ixos_today = "Closed in slice 2 (2026-11-15): ForgeReader (crates/forge-reader, docs/forge-reader.md) turns the article's HTML into blocks with links and pictures, and its SwiftUI view lays them out. Pocket Library moved onto it in the same PR"
 workaround = "none now; feed.rs `paragraphs` remains only for row summaries and the search index"
-missing = "Nothing for slice 2. Readable-text extraction from the original web page (roadmap Tier 2) for feeds that send only a summary"
+missing = "Nothing for slice 2. Readable-text extraction from the original web page (roadmap Tier 2) for feeds that send only a summary: built in C4 (2026-11-20) with dom_smoothie"
 layer = "rust"
 cost = "large"
 blocks = false
@@ -166,3 +166,14 @@ layer = "swift"
 cost = "small"
 blocks = false
 second_use = "Any app with .searchable"
+
+[[gap]]
+id = "full-article-redirects"
+reference = "Fetches an article's own page for its full text"
+ixos_today = "Closed in C4 (2026-11-20): forge_net's Request::follow_redirects(false), honoured by ureq (max_redirects 0) and URLSession (redirect delegate)"
+workaround = "none now: full.rs follows redirects itself and checks each address before asking it"
+missing = "Nothing"
+layer = "rust"
+cost = "small"
+blocks = false
+second_use = "Soundscape podcasts (P1) will fetch untrusted episode and artwork addresses the same way"

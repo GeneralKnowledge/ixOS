@@ -265,6 +265,12 @@ fn the_host_installs_the_service_and_its_errors_map_to_net_errors() {
     assert_eq!(sent.method, "DELETE");
     assert_eq!(sent.timeout_ms, 5_000);
     assert_eq!(sent.headers[0].name, "X-Id");
+    assert!(sent.follow_redirects, "redirects are followed by default");
+    client
+        .send(&Request::get("https://example.com/x").follow_redirects(false))
+        .unwrap();
+    let sent = transport.seen.lock().unwrap()[1].clone();
+    assert!(!sent.follow_redirects, "the host is told not to follow");
 
     assert!(matches!(
         client.send(&Request::get("https://example.com/offline")),

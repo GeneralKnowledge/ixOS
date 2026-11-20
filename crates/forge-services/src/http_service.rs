@@ -37,6 +37,9 @@ macro_rules! __native_http {
                 /// Stop and fail with `Transport` once the response body
                 /// grows past this.
                 pub max_body_bytes: u64,
+                /// `false`: don't follow redirects; a 3xx answer is the
+                /// response (with its `Location` header).
+                pub follow_redirects: bool,
             }
 
             #[derive(::uniffi::Record, Clone, Debug, PartialEq, Eq)]
@@ -150,6 +153,7 @@ macro_rules! __native_http {
                     max_body_bytes,
                 } = request;
                 let timeout = request.timeout.unwrap_or($crate::http::DEFAULT_TIMEOUT);
+                let follow_redirects = request.follow_redirects;
                 HttpRequest {
                     id,
                     method: request.method.as_str().to_string(),
@@ -166,6 +170,7 @@ macro_rules! __native_http {
                     body_file: body_file.map(|p| p.to_string_lossy().into_owned()),
                     timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
                     max_body_bytes,
+                    follow_redirects,
                 }
             }
 

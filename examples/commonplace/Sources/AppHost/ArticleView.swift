@@ -5,13 +5,16 @@ import SwiftUI
 
 /// Screen 3: one article, on ForgeReader. Opening it marks it read (Rust
 /// does). The toolbar sets the text size and font, bookmarks it, marks it
-/// unread, shows the original page and shares its link.
+/// unread, loads the full article from its page, shows the original page
+/// and shares its link.
 struct ArticleView: View {
     let model: LibraryModel
     let articleID: Int64
     @State private var text: ForgeLoad<ArticleText> = .loading
     /// Moves to open the article again (Try Again).
     @State private var attempt = 0
+    /// Loading the full article from its page (Load Full Article).
+    @State private var loadingFull = ForgeSubmission()
     #if os(iOS)
         @State private var original: ForgeWebPage?
     #endif
@@ -35,6 +38,7 @@ struct ArticleView: View {
             // The article's own site opens in the sheet; links elsewhere go to Safari.
             .forgeWebSheet($original)
         #endif
+        .forgeAlert(failure: $loadingFull.failure)
         .task(id: OpenRequest(articleID: articleID, attempt: attempt)) {
             text = text.whileReloading
             text = await text.reloaded { try await model.openArticle(articleID) }
@@ -71,6 +75,13 @@ struct ArticleView: View {
                         Task { await model.setRead(summary, !summary.read) }
                     }
                     .accessibilityIdentifier("article.toggleRead")
+                    if summary.url != nil, text.value?.full == false {
+                        Button("Load Full Article", systemImage: "doc.richtext") {
+                            Task { await loadFull() }
+                        }
+                        .disabled(loadingFull.isWorking)
+                        .accessibilityIdentifier("article.loadFull")
+                    }
                     if let link = summary.url.flatMap(URL.init(string:)) {
                         #if os(iOS)
                             Button("Show Original Page", systemImage: "globe") {
@@ -88,6 +99,16 @@ struct ArticleView: View {
                 }
                 .accessibilityIdentifier("article.more")
             }
+        }
+    }
+}
+
+extension ArticleView {
+    /// Replaces the feed's text with the page's, or says why it couldn't.
+    private func loadFull() async {
+        var loaded: ArticleText?
+        if await loadingFull.run({ loaded = try await model.loadFullArticle(articleID) }), let loaded {
+            text = .loaded(loaded)
         }
     }
 }

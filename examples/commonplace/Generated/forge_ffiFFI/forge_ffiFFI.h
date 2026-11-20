@@ -487,9 +487,24 @@ int8_t uniffi_commonplace_core_fn_method_appcore_background_work_pending(uint64_
 RustBuffer uniffi_commonplace_core_fn_method_appcore_counts(uint64_t ptr, RustBuffer timeline, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_CREATE_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_CREATE_FOLDER
+uint64_t uniffi_commonplace_core_fn_method_appcore_create_folder(uint64_t ptr, RustBuffer name, RustBuffer parent_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_DELETE_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_DELETE_FOLDER
+uint64_t uniffi_commonplace_core_fn_method_appcore_delete_folder(uint64_t ptr, int64_t folder_id
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_EVENTS
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_EVENTS
 RustBuffer uniffi_commonplace_core_fn_method_appcore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_EXPORT_OPML
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_EXPORT_OPML
+uint64_t uniffi_commonplace_core_fn_method_appcore_export_opml(uint64_t ptr
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_FEEDS
@@ -497,14 +512,39 @@ RustBuffer uniffi_commonplace_core_fn_method_appcore_events(uint64_t ptr, RustCa
 RustBuffer uniffi_commonplace_core_fn_method_appcore_feeds(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_FOLDERS
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_FOLDERS
+RustBuffer uniffi_commonplace_core_fn_method_appcore_folders(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_IMPORT_OPML
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_IMPORT_OPML
+uint64_t uniffi_commonplace_core_fn_method_appcore_import_opml(uint64_t ptr, RustBuffer contents, RustBuffer selected
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_LAUNCH_REPORT
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_LAUNCH_REPORT
 RustBuffer uniffi_commonplace_core_fn_method_appcore_launch_report(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_LOAD_FULL_ARTICLE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_LOAD_FULL_ARTICLE
+uint64_t uniffi_commonplace_core_fn_method_appcore_load_full_article(uint64_t ptr, int64_t article_id, RustBuffer cancellation
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_MARK_ALL_READ
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_MARK_ALL_READ
 uint64_t uniffi_commonplace_core_fn_method_appcore_mark_all_read(uint64_t ptr, RustBuffer feed_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_MARK_FOLDER_READ
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_MARK_FOLDER_READ
+uint64_t uniffi_commonplace_core_fn_method_appcore_mark_folder_read(uint64_t ptr, int64_t folder_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_MOVE_FEED
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_MOVE_FEED
+uint64_t uniffi_commonplace_core_fn_method_appcore_move_feed(uint64_t ptr, int64_t feed_id, RustBuffer folder_id
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_NEW_ARTICLE_ALERTS
@@ -522,6 +562,11 @@ uint64_t uniffi_commonplace_core_fn_method_appcore_open_article(uint64_t ptr, in
 RustBuffer uniffi_commonplace_core_fn_method_appcore_phase(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_PREVIEW_OPML
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_PREVIEW_OPML
+RustBuffer uniffi_commonplace_core_fn_method_appcore_preview_opml(uint64_t ptr, RustBuffer contents, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_REFRESH
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_REFRESH
 uint64_t uniffi_commonplace_core_fn_method_appcore_refresh(uint64_t ptr, RustBuffer cancellation
@@ -537,6 +582,11 @@ uint64_t uniffi_commonplace_core_fn_method_appcore_remove_feed(uint64_t ptr, int
 uint64_t uniffi_commonplace_core_fn_method_appcore_rename_feed(uint64_t ptr, int64_t feed_id, RustBuffer title
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_RENAME_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_RENAME_FOLDER
+uint64_t uniffi_commonplace_core_fn_method_appcore_rename_folder(uint64_t ptr, int64_t folder_id, RustBuffer name
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_REVISION
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_REVISION
 uint64_t uniffi_commonplace_core_fn_method_appcore_revision(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -550,6 +600,16 @@ uint64_t uniffi_commonplace_core_fn_method_appcore_search(uint64_t ptr, RustBuff
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_BOOKMARKED
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_BOOKMARKED
 uint64_t uniffi_commonplace_core_fn_method_appcore_set_bookmarked(uint64_t ptr, int64_t article_id, int8_t bookmarked
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_FEED_FULL_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_FEED_FULL_TEXT
+uint64_t uniffi_commonplace_core_fn_method_appcore_set_feed_full_text(uint64_t ptr, int64_t feed_id, int8_t on
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_FEED_NOTIFY
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_FEED_NOTIFY
+uint64_t uniffi_commonplace_core_fn_method_appcore_set_feed_notify(uint64_t ptr, int64_t feed_id, int8_t notify
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_NEW_ARTICLE_ALERTS
@@ -1292,9 +1352,27 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_counts(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_CREATE_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_CREATE_FOLDER
+uint16_t uniffi_commonplace_core_checksum_method_appcore_create_folder(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_DELETE_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_DELETE_FOLDER
+uint16_t uniffi_commonplace_core_checksum_method_appcore_delete_folder(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_EVENTS
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_EVENTS
 uint16_t uniffi_commonplace_core_checksum_method_appcore_events(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_EXPORT_OPML
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_EXPORT_OPML
+uint16_t uniffi_commonplace_core_checksum_method_appcore_export_opml(void
     
 );
 #endif
@@ -1304,15 +1382,45 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_feeds(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_FOLDERS
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_FOLDERS
+uint16_t uniffi_commonplace_core_checksum_method_appcore_folders(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_IMPORT_OPML
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_IMPORT_OPML
+uint16_t uniffi_commonplace_core_checksum_method_appcore_import_opml(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_LAUNCH_REPORT
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_LAUNCH_REPORT
 uint16_t uniffi_commonplace_core_checksum_method_appcore_launch_report(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_LOAD_FULL_ARTICLE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_LOAD_FULL_ARTICLE
+uint16_t uniffi_commonplace_core_checksum_method_appcore_load_full_article(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_MARK_ALL_READ
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_MARK_ALL_READ
 uint16_t uniffi_commonplace_core_checksum_method_appcore_mark_all_read(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_MARK_FOLDER_READ
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_MARK_FOLDER_READ
+uint16_t uniffi_commonplace_core_checksum_method_appcore_mark_folder_read(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_MOVE_FEED
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_MOVE_FEED
+uint16_t uniffi_commonplace_core_checksum_method_appcore_move_feed(void
     
 );
 #endif
@@ -1334,6 +1442,12 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_phase(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_PREVIEW_OPML
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_PREVIEW_OPML
+uint16_t uniffi_commonplace_core_checksum_method_appcore_preview_opml(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_REFRESH
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_REFRESH
 uint16_t uniffi_commonplace_core_checksum_method_appcore_refresh(void
@@ -1352,6 +1466,12 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_rename_feed(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_RENAME_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_RENAME_FOLDER
+uint16_t uniffi_commonplace_core_checksum_method_appcore_rename_folder(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_REVISION
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_REVISION
 uint16_t uniffi_commonplace_core_checksum_method_appcore_revision(void
@@ -1367,6 +1487,18 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_search(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_BOOKMARKED
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_BOOKMARKED
 uint16_t uniffi_commonplace_core_checksum_method_appcore_set_bookmarked(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_FEED_FULL_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_FEED_FULL_TEXT
+uint16_t uniffi_commonplace_core_checksum_method_appcore_set_feed_full_text(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_FEED_NOTIFY
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_FEED_NOTIFY
+uint16_t uniffi_commonplace_core_checksum_method_appcore_set_feed_notify(void
     
 );
 #endif

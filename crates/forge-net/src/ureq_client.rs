@@ -127,16 +127,23 @@ impl UreqClient {
         let timeout = Some(request.timeout.unwrap_or(DEFAULT_TIMEOUT));
         // A macro, not a fn: ureq's config builder is generic over a sealed
         // scope trait that cannot be named here.
+        // With redirects off, ureq hands back the 3xx response itself.
+        let redirects = if request.follow_redirects {
+            self.agent.config().max_redirects()
+        } else {
+            0
+        };
         macro_rules! configure {
             ($config:expr) => {
                 if streaming {
                     $config
+                        .max_redirects(redirects)
                         .timeout_global(None)
                         .timeout_connect(timeout)
                         .timeout_recv_response(timeout)
                         .timeout_recv_body(None)
                 } else {
-                    $config.timeout_global(timeout)
+                    $config.max_redirects(redirects).timeout_global(timeout)
                 }
             };
         }
@@ -416,6 +423,62 @@ mod tests {
         // Local test servers must not go through a configured proxy.
         std::env::set_var("NO_PROXY", "127.0.0.1,localhost");
         std::env::set_var("no_proxy", "127.0.0.1,localhost");
+    }
+
+    /// A one-shot server answering 302 to `target`.
+    fn redirecting_to(target: &str) -> (String, thread::JoinHandle<String>) {
+        let response: &'static str = Box::leak(
+            format!(
+                "HTTP/1.1 302 Found\r\nLocation: {target}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .into_boxed_str(),
+        );
+        one_shot_server(response)
+    }
+
+    #[test]
+    fn redirects_are_followed_unless_the_request_says_not_to() {
+        no_proxy();
+        let client = UreqClient::new();
+        // Followed by default.
+        let (target, target_server) = one_shot_server(
+            "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nthere",
+        );
+        let (start, start_server) = redirecting_to(&format!("{target}/landed"));
+        let response = client.send(&Request::get(format!("{start}/a"))).unwrap();
+        assert_eq!(
+            (response.status, response.body.as_slice()),
+            (200, &b"there"[..])
+        );
+        start_server.join().unwrap();
+        assert!(target_server.join().unwrap().starts_with("GET /landed"));
+
+        // Not followed: the 302 comes back, buffered or streamed, and the
+        // target is never asked.
+        let target = TcpListener::bind("127.0.0.1:0").unwrap();
+        target.set_nonblocking(true).unwrap();
+        let target_url = format!("http://{}/landed", target.local_addr().unwrap());
+        let (start, start_server) = redirecting_to(&target_url);
+        let response = client
+            .send(&Request::get(format!("{start}/a")).follow_redirects(false))
+            .unwrap();
+        assert_eq!(response.status, 302);
+        assert_eq!(response.header("location"), Some(target_url.as_str()));
+        start_server.join().unwrap();
+        let (start, start_server) = redirecting_to(&target_url);
+        let streamed = client
+            .open_stream_cancellable(
+                &Request::get(format!("{start}/a")).follow_redirects(false),
+                &CancelHandle::new(),
+            )
+            .unwrap();
+        assert_eq!(streamed.status, 302);
+        drop(streamed);
+        start_server.join().unwrap();
+        assert!(
+            matches!(target.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock),
+            "the redirect target was contacted"
+        );
     }
 
     #[test]

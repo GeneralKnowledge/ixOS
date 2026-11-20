@@ -692,10 +692,27 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func counts(timeline: Timeline)  -> TimelineCounts
     
     /**
+     * Makes a folder in `parent_id` (at the top with nil), or returns the
+     * one of that name already there.
+     */
+    func createFolder(name: String, parentId: Int64?) async throws  -> Folder
+    
+    /**
+     * Deletes a folder; what it holds moves up a level. No feed is lost.
+     */
+    func deleteFolder(folderId: Int64) async throws 
+    
+    /**
      * The runtime's event stream: `Changed { revision }` after each
      * committed command, phase changes, and drops. Nil after shutdown.
      */
     func events()  -> RuntimeEvents?
+    
+    /**
+     * The library's subscriptions as OPML 2.0 text: folders, feeds, their
+     * options, and the filter patterns.
+     */
+    func exportOpml() async throws  -> String
     
     /**
      * Every subscription, by title.
@@ -703,15 +720,48 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func feeds()  -> [Feed]
     
     /**
+     * Every folder, as a tree (each followed by the folders inside it).
+     */
+    func folders()  -> [Folder]
+    
+    /**
+     * Imports the feeds at `selected` (indexes from `preview_opml`) and
+     * the file's filter patterns. Never duplicates or changes a
+     * subscription the library has (its name, folder and options stay
+     * as they are); feeds listed twice or with a bad
+     * address are skipped. New feeds get their articles with the next
+     * refresh.
+     */
+    func importOpml(contents: String, selected: [UInt32]) async throws  -> OpmlImport
+    
+    /**
      * What the runtime found at open (unfinished background work).
      */
     func launchReport()  -> LaunchReport
+    
+    /**
+     * Fetches one article's page now, saves its readable text and returns
+     * the article with it. On-screen work: `cancellation`, the background
+     * or shutdown stop it, and nothing is saved.
+     */
+    func loadFullArticle(articleId: Int64, cancellation: Cancellation?) async throws  -> ArticleText
     
     /**
      * Marks every article of one feed (or of every feed, with nil) read.
      * Returns how many changed, and a token for `undo_mark_all_read`.
      */
     func markAllRead(feedId: Int64?) async throws  -> MarkedRead
+    
+    /**
+     * Marks every article in a folder (and the folders inside it) read,
+     * with Undo like `mark_all_read`.
+     */
+    func markFolderRead(folderId: Int64) async throws  -> MarkedRead
+    
+    /**
+     * Puts a feed in a folder, or at the top with nil.
+     */
+    func moveFeed(feedId: Int64, folderId: Int64?) async throws 
     
     /**
      * Whether a background refresh that finds new articles shows a
@@ -728,6 +778,12 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * The phase last reported.
      */
     func phase()  -> AppPhase
+    
+    /**
+     * Reads an OPML file's text and says what importing it would do.
+     * Changes nothing.
+     */
+    func previewOpml(contents: String) throws  -> OpmlPreview
     
     /**
      * Fetches every feed (conditionally: unchanged feeds cost one small
@@ -748,6 +804,8 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      */
     func renameFeed(feedId: Int64, title: String) async throws 
     
+    func renameFolder(folderId: Int64, name: String) async throws 
+    
     /**
      * The last committed revision.
      */
@@ -761,6 +819,19 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func search(query: String) async throws  -> [ArticleSummary]
     
     func setBookmarked(articleId: Int64, bookmarked: Bool) async throws 
+    
+    /**
+     * Whether a feed's articles are fetched in full from their web pages
+     * (for feeds that send only a summary). Turning it on fetches its
+     * articles with the next refresh.
+     */
+    func setFeedFullText(feedId: Int64, on: Bool) async throws 
+    
+    /**
+     * Whether a feed's new articles count for the new-articles
+     * notification (when that is on at all).
+     */
+    func setFeedNotify(feedId: Int64, notify: Bool) async throws 
     
     /**
      * Turns those notifications on (asking for permission the first time;
@@ -965,6 +1036,45 @@ open func counts(timeline: Timeline) -> TimelineCounts  {
 }
     
     /**
+     * Makes a folder in `parent_id` (at the top with nil), or returns the
+     * one of that name already there.
+     */
+open func createFolder(name: String, parentId: Int64?)async throws  -> Folder  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_create_folder(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(name),FfiConverterOptionInt64.lower(parentId)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeFolder_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Deletes a folder; what it holds moves up a level. No feed is lost.
+     */
+open func deleteFolder(folderId: Int64)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_delete_folder(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(folderId)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
      * The runtime's event stream: `Changed { revision }` after each
      * committed command, phase changes, and drops. Nil after shutdown.
      */
@@ -975,6 +1085,26 @@ open func events() -> RuntimeEvents?  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * The library's subscriptions as OPML 2.0 text: folders, feeds, their
+     * options, and the filter patterns.
+     */
+open func exportOpml()async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_export_opml(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
 }
     
     /**
@@ -990,6 +1120,42 @@ open func feeds() -> [Feed]  {
 }
     
     /**
+     * Every folder, as a tree (each followed by the folders inside it).
+     */
+open func folders() -> [Folder]  {
+    return try!  FfiConverterSequenceTypeFolder.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_appcore_folders(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Imports the feeds at `selected` (indexes from `preview_opml`) and
+     * the file's filter patterns. Never duplicates or changes a
+     * subscription the library has (its name, folder and options stay
+     * as they are); feeds listed twice or with a bad
+     * address are skipped. New feeds get their articles with the next
+     * refresh.
+     */
+open func importOpml(contents: String, selected: [UInt32])async throws  -> OpmlImport  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_import_opml(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(contents),FfiConverterSequenceUInt32.lower(selected)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeOpmlImport_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
      * What the runtime found at open (unfinished background work).
      */
 open func launchReport() -> LaunchReport  {
@@ -999,6 +1165,27 @@ open func launchReport() -> LaunchReport  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Fetches one article's page now, saves its readable text and returns
+     * the article with it. On-screen work: `cancellation`, the background
+     * or shutdown stop it, and nothing is saved.
+     */
+open func loadFullArticle(articleId: Int64, cancellation: Cancellation?)async throws  -> ArticleText  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_load_full_article(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(articleId),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeArticleText_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
 }
     
     /**
@@ -1017,6 +1204,45 @@ open func markAllRead(feedId: Int64?)async throws  -> MarkedRead  {
             completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeMarkedRead_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Marks every article in a folder (and the folders inside it) read,
+     * with Undo like `mark_all_read`.
+     */
+open func markFolderRead(folderId: Int64)async throws  -> MarkedRead  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_mark_folder_read(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(folderId)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeMarkedRead_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Puts a feed in a folder, or at the top with nil.
+     */
+open func moveFeed(feedId: Int64, folderId: Int64?)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_move_feed(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(feedId),FfiConverterOptionInt64.lower(folderId)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
+            liftFunc: { $0 },
             errorHandler: FfiConverterTypeAppError_lift
         )
 }
@@ -1061,6 +1287,20 @@ open func phase() -> AppPhase  {
         uniffiCallStatus in
     uniffi_commonplace_core_fn_method_appcore_phase(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Reads an OPML file's text and says what importing it would do.
+     * Changes nothing.
+     */
+open func previewOpml(contents: String)throws  -> OpmlPreview  {
+    return try  FfiConverterTypeOpmlPreview_lift(try rustCallWithError(FfiConverterTypeAppError_lift) {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_appcore_preview_opml(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(contents),uniffiCallStatus
     )
 })
 }
@@ -1126,6 +1366,22 @@ open func renameFeed(feedId: Int64, title: String)async throws   {
         )
 }
     
+open func renameFolder(folderId: Int64, name: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_rename_folder(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(folderId),FfiConverterString.lower(name)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
     /**
      * The last committed revision.
      */
@@ -1165,6 +1421,47 @@ open func setBookmarked(articleId: Int64, bookmarked: Bool)async throws   {
             rustFutureFunc: {
                 uniffi_commonplace_core_fn_method_appcore_set_bookmarked(
                         self.uniffiCloneHandle(),FfiConverterInt64.lower(articleId),FfiConverterBool.lower(bookmarked)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Whether a feed's articles are fetched in full from their web pages
+     * (for feeds that send only a summary). Turning it on fetches its
+     * articles with the next refresh.
+     */
+open func setFeedFullText(feedId: Int64, on: Bool)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_set_feed_full_text(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(feedId),FfiConverterBool.lower(on)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Whether a feed's new articles count for the new-articles
+     * notification (when that is on at all).
+     */
+open func setFeedNotify(feedId: Int64, notify: Bool)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_set_feed_notify(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(feedId),FfiConverterBool.lower(notify)
                 )
             },
             pollFunc: ffi_commonplace_core_rust_future_poll_void,
@@ -4196,10 +4493,17 @@ public struct ArticleText: Equatable, Hashable {
     public var body: ReaderSection
     public var read: Bool
     public var bookmarked: Bool
+    /**
+     * The body is the full article from its web page, not the feed's text.
+     */
+    public var full: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: Int64, feedTitle: String, title: String, author: String?, url: String?, publishedAtMs: Int64, body: ReaderSection, read: Bool, bookmarked: Bool) {
+    public init(id: Int64, feedTitle: String, title: String, author: String?, url: String?, publishedAtMs: Int64, body: ReaderSection, read: Bool, bookmarked: Bool, 
+        /**
+         * The body is the full article from its web page, not the feed's text.
+         */full: Bool) {
         self.id = id
         self.feedTitle = feedTitle
         self.title = title
@@ -4209,6 +4513,7 @@ public struct ArticleText: Equatable, Hashable {
         self.body = body
         self.read = read
         self.bookmarked = bookmarked
+        self.full = full
     }
 
     
@@ -4235,7 +4540,8 @@ public struct FfiConverterTypeArticleText: FfiConverterRustBuffer {
                 publishedAtMs: FfiConverterInt64.read(from: &buf), 
                 body: FfiConverterTypeReaderSection.read(from: &buf), 
                 read: FfiConverterBool.read(from: &buf), 
-                bookmarked: FfiConverterBool.read(from: &buf)
+                bookmarked: FfiConverterBool.read(from: &buf), 
+                full: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -4249,6 +4555,7 @@ public struct FfiConverterTypeArticleText: FfiConverterRustBuffer {
         FfiConverterTypeReaderSection.write(value.body, into: &buf)
         FfiConverterBool.write(value.read, into: &buf)
         FfiConverterBool.write(value.bookmarked, into: &buf)
+        FfiConverterBool.write(value.full, into: &buf)
     }
 }
 
@@ -4584,6 +4891,19 @@ public struct Feed: Equatable, Hashable {
      * Why the last refresh failed, if it did. A diagnostic, not UI copy.
      */
     public var lastError: String?
+    /**
+     * The folder it is in, if any.
+     */
+    public var folderId: Int64?
+    /**
+     * Whether its new articles count for the new-articles notification.
+     */
+    public var notify: Bool
+    /**
+     * Whether its articles should be fetched in full from their pages.
+     * Kept (and carried through OPML) until full-article fetching exists.
+     */
+    public var fullText: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -4602,7 +4922,17 @@ public struct Feed: Equatable, Hashable {
          */refreshedAtMs: Int64?, 
         /**
          * Why the last refresh failed, if it did. A diagnostic, not UI copy.
-         */lastError: String?) {
+         */lastError: String?, 
+        /**
+         * The folder it is in, if any.
+         */folderId: Int64?, 
+        /**
+         * Whether its new articles count for the new-articles notification.
+         */notify: Bool, 
+        /**
+         * Whether its articles should be fetched in full from their pages.
+         * Kept (and carried through OPML) until full-article fetching exists.
+         */fullText: Bool) {
         self.id = id
         self.url = url
         self.title = title
@@ -4611,6 +4941,9 @@ public struct Feed: Equatable, Hashable {
         self.articleCount = articleCount
         self.refreshedAtMs = refreshedAtMs
         self.lastError = lastError
+        self.folderId = folderId
+        self.notify = notify
+        self.fullText = fullText
     }
 
     
@@ -4636,7 +4969,10 @@ public struct FfiConverterTypeFeed: FfiConverterRustBuffer {
                 unreadCount: FfiConverterUInt32.read(from: &buf), 
                 articleCount: FfiConverterUInt32.read(from: &buf), 
                 refreshedAtMs: FfiConverterOptionInt64.read(from: &buf), 
-                lastError: FfiConverterOptionString.read(from: &buf)
+                lastError: FfiConverterOptionString.read(from: &buf), 
+                folderId: FfiConverterOptionInt64.read(from: &buf), 
+                notify: FfiConverterBool.read(from: &buf), 
+                fullText: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -4649,6 +4985,9 @@ public struct FfiConverterTypeFeed: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.articleCount, into: &buf)
         FfiConverterOptionInt64.write(value.refreshedAtMs, into: &buf)
         FfiConverterOptionString.write(value.lastError, into: &buf)
+        FfiConverterOptionInt64.write(value.folderId, into: &buf)
+        FfiConverterBool.write(value.notify, into: &buf)
+        FfiConverterBool.write(value.fullText, into: &buf)
     }
 }
 
@@ -4726,6 +5065,91 @@ public func FfiConverterTypeFeedFailure_lift(_ buf: RustBuffer) throws -> FeedFa
 #endif
 public func FfiConverterTypeFeedFailure_lower(_ value: FeedFailure) -> RustBuffer {
     return FfiConverterTypeFeedFailure.lower(value)
+}
+
+
+/**
+ * A folder of feeds. Folders can hold folders.
+ */
+public struct Folder: Equatable, Hashable {
+    public var id: Int64
+    public var parentId: Int64?
+    public var name: String
+    /**
+     * How deep it is: 0 for a folder at the top.
+     */
+    public var depth: UInt32
+    /**
+     * Its feeds, including those in folders inside it.
+     */
+    public var feedCount: UInt32
+    public var unreadCount: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: Int64, parentId: Int64?, name: String, 
+        /**
+         * How deep it is: 0 for a folder at the top.
+         */depth: UInt32, 
+        /**
+         * Its feeds, including those in folders inside it.
+         */feedCount: UInt32, unreadCount: UInt32) {
+        self.id = id
+        self.parentId = parentId
+        self.name = name
+        self.depth = depth
+        self.feedCount = feedCount
+        self.unreadCount = unreadCount
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Folder: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFolder: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Folder {
+        return
+            try Folder(
+                id: FfiConverterInt64.read(from: &buf), 
+                parentId: FfiConverterOptionInt64.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                depth: FfiConverterUInt32.read(from: &buf), 
+                feedCount: FfiConverterUInt32.read(from: &buf), 
+                unreadCount: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Folder, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.id, into: &buf)
+        FfiConverterOptionInt64.write(value.parentId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterUInt32.write(value.depth, into: &buf)
+        FfiConverterUInt32.write(value.feedCount, into: &buf)
+        FfiConverterUInt32.write(value.unreadCount, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFolder_lift(_ buf: RustBuffer) throws -> Folder {
+    return try FfiConverterTypeFolder.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFolder_lower(_ value: Folder) -> RustBuffer {
+    return FfiConverterTypeFolder.lower(value)
 }
 
 
@@ -4807,6 +5231,11 @@ public struct HttpRequest: Equatable, Hashable {
      * grows past this.
      */
     public var maxBodyBytes: UInt64
+    /**
+     * `false`: don't follow redirects; a 3xx answer is the
+     * response (with its `Location` header).
+     */
+    public var followRedirects: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -4821,7 +5250,11 @@ public struct HttpRequest: Equatable, Hashable {
         /**
          * Stop and fail with `Transport` once the response body
          * grows past this.
-         */maxBodyBytes: UInt64) {
+         */maxBodyBytes: UInt64, 
+        /**
+         * `false`: don't follow redirects; a 3xx answer is the
+         * response (with its `Location` header).
+         */followRedirects: Bool) {
         self.id = id
         self.method = method
         self.url = url
@@ -4830,6 +5263,7 @@ public struct HttpRequest: Equatable, Hashable {
         self.bodyFile = bodyFile
         self.timeoutMs = timeoutMs
         self.maxBodyBytes = maxBodyBytes
+        self.followRedirects = followRedirects
     }
 
     
@@ -4855,7 +5289,8 @@ public struct FfiConverterTypeHttpRequest: FfiConverterRustBuffer {
                 body: FfiConverterData.read(from: &buf), 
                 bodyFile: FfiConverterOptionString.read(from: &buf), 
                 timeoutMs: FfiConverterUInt64.read(from: &buf), 
-                maxBodyBytes: FfiConverterUInt64.read(from: &buf)
+                maxBodyBytes: FfiConverterUInt64.read(from: &buf), 
+                followRedirects: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -4868,6 +5303,7 @@ public struct FfiConverterTypeHttpRequest: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.bodyFile, into: &buf)
         FfiConverterUInt64.write(value.timeoutMs, into: &buf)
         FfiConverterUInt64.write(value.maxBodyBytes, into: &buf)
+        FfiConverterBool.write(value.followRedirects, into: &buf)
     }
 }
 
@@ -5400,6 +5836,271 @@ public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResp
 
 
 /**
+ * One feed an OPML file lists, as the import screen shows it.
+ */
+public struct OpmlFeed: Equatable, Hashable {
+    /**
+     * Its place in the file: what `import_opml` is given to pick it.
+     */
+    public var index: UInt32
+    public var title: String
+    public var url: String
+    /**
+     * The folders it sits in, outermost first.
+     */
+    public var folder: [String]
+    public var status: OpmlFeedStatus
+    /**
+     * Settings it carries that Commonplace doesn't use (kept for export).
+     */
+    public var notUsed: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its place in the file: what `import_opml` is given to pick it.
+         */index: UInt32, title: String, url: String, 
+        /**
+         * The folders it sits in, outermost first.
+         */folder: [String], status: OpmlFeedStatus, 
+        /**
+         * Settings it carries that Commonplace doesn't use (kept for export).
+         */notUsed: [String]) {
+        self.index = index
+        self.title = title
+        self.url = url
+        self.folder = folder
+        self.status = status
+        self.notUsed = notUsed
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension OpmlFeed: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOpmlFeed: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OpmlFeed {
+        return
+            try OpmlFeed(
+                index: FfiConverterUInt32.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                url: FfiConverterString.read(from: &buf), 
+                folder: FfiConverterSequenceString.read(from: &buf), 
+                status: FfiConverterTypeOpmlFeedStatus.read(from: &buf), 
+                notUsed: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OpmlFeed, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.index, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterSequenceString.write(value.folder, into: &buf)
+        FfiConverterTypeOpmlFeedStatus.write(value.status, into: &buf)
+        FfiConverterSequenceString.write(value.notUsed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpmlFeed_lift(_ buf: RustBuffer) throws -> OpmlFeed {
+    return try FfiConverterTypeOpmlFeed.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpmlFeed_lower(_ value: OpmlFeed) -> RustBuffer {
+    return FfiConverterTypeOpmlFeed.lower(value)
+}
+
+
+/**
+ * What an import did.
+ */
+public struct OpmlImport: Equatable, Hashable {
+    /**
+     * New subscriptions (their articles arrive with the next refresh).
+     */
+    public var added: UInt32
+    /**
+     * Picked feeds already in the library, left exactly as they were.
+     */
+    public var alreadySubscribed: UInt32
+    public var foldersCreated: UInt32
+    public var filtersAdded: UInt32
+    /**
+     * Picked feeds that were listed twice or had a bad address.
+     */
+    public var skipped: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * New subscriptions (their articles arrive with the next refresh).
+         */added: UInt32, 
+        /**
+         * Picked feeds already in the library, left exactly as they were.
+         */alreadySubscribed: UInt32, foldersCreated: UInt32, filtersAdded: UInt32, 
+        /**
+         * Picked feeds that were listed twice or had a bad address.
+         */skipped: UInt32) {
+        self.added = added
+        self.alreadySubscribed = alreadySubscribed
+        self.foldersCreated = foldersCreated
+        self.filtersAdded = filtersAdded
+        self.skipped = skipped
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension OpmlImport: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOpmlImport: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OpmlImport {
+        return
+            try OpmlImport(
+                added: FfiConverterUInt32.read(from: &buf), 
+                alreadySubscribed: FfiConverterUInt32.read(from: &buf), 
+                foldersCreated: FfiConverterUInt32.read(from: &buf), 
+                filtersAdded: FfiConverterUInt32.read(from: &buf), 
+                skipped: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OpmlImport, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.added, into: &buf)
+        FfiConverterUInt32.write(value.alreadySubscribed, into: &buf)
+        FfiConverterUInt32.write(value.foldersCreated, into: &buf)
+        FfiConverterUInt32.write(value.filtersAdded, into: &buf)
+        FfiConverterUInt32.write(value.skipped, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpmlImport_lift(_ buf: RustBuffer) throws -> OpmlImport {
+    return try FfiConverterTypeOpmlImport.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpmlImport_lower(_ value: OpmlImport) -> RustBuffer {
+    return FfiConverterTypeOpmlImport.lower(value)
+}
+
+
+/**
+ * What an OPML file holds, before anything is imported.
+ */
+public struct OpmlPreview: Equatable, Hashable {
+    public var feeds: [OpmlFeed]
+    /**
+     * Folder paths in the file, "Outer / Inner".
+     */
+    public var folders: [String]
+    /**
+     * Filter patterns it holds that passed the checks, and those refused.
+     */
+    public var filters: UInt32
+    public var rejectedFilters: UInt32
+    /**
+     * Its global settings Commonplace doesn't carry over.
+     */
+    public var settingsNotUsed: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(feeds: [OpmlFeed], 
+        /**
+         * Folder paths in the file, "Outer / Inner".
+         */folders: [String], 
+        /**
+         * Filter patterns it holds that passed the checks, and those refused.
+         */filters: UInt32, rejectedFilters: UInt32, 
+        /**
+         * Its global settings Commonplace doesn't carry over.
+         */settingsNotUsed: [String]) {
+        self.feeds = feeds
+        self.folders = folders
+        self.filters = filters
+        self.rejectedFilters = rejectedFilters
+        self.settingsNotUsed = settingsNotUsed
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension OpmlPreview: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOpmlPreview: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OpmlPreview {
+        return
+            try OpmlPreview(
+                feeds: FfiConverterSequenceTypeOpmlFeed.read(from: &buf), 
+                folders: FfiConverterSequenceString.read(from: &buf), 
+                filters: FfiConverterUInt32.read(from: &buf), 
+                rejectedFilters: FfiConverterUInt32.read(from: &buf), 
+                settingsNotUsed: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OpmlPreview, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeOpmlFeed.write(value.feeds, into: &buf)
+        FfiConverterSequenceString.write(value.folders, into: &buf)
+        FfiConverterUInt32.write(value.filters, into: &buf)
+        FfiConverterUInt32.write(value.rejectedFilters, into: &buf)
+        FfiConverterSequenceString.write(value.settingsNotUsed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpmlPreview_lift(_ buf: RustBuffer) throws -> OpmlPreview {
+    return try FfiConverterTypeOpmlPreview.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpmlPreview_lower(_ value: OpmlPreview) -> RustBuffer {
+    return FfiConverterTypeOpmlPreview.lower(value)
+}
+
+
+/**
  * One `name=value` pair of a URL query, decoded.
  */
 public struct QueryItem: Equatable, Hashable {
@@ -5773,17 +6474,25 @@ public struct RefreshReport: Equatable, Hashable {
     public var unchanged: UInt32
     public var newArticles: UInt32
     public var failures: [FeedFailure]
+    /**
+     * Full articles fetched from their pages, for feeds that want them.
+     */
+    public var fullArticles: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(feeds: UInt32, 
         /**
          * Feeds the server said had not changed (HTTP 304).
-         */unchanged: UInt32, newArticles: UInt32, failures: [FeedFailure]) {
+         */unchanged: UInt32, newArticles: UInt32, failures: [FeedFailure], 
+        /**
+         * Full articles fetched from their pages, for feeds that want them.
+         */fullArticles: UInt32) {
         self.feeds = feeds
         self.unchanged = unchanged
         self.newArticles = newArticles
         self.failures = failures
+        self.fullArticles = fullArticles
     }
 
     
@@ -5805,7 +6514,8 @@ public struct FfiConverterTypeRefreshReport: FfiConverterRustBuffer {
                 feeds: FfiConverterUInt32.read(from: &buf), 
                 unchanged: FfiConverterUInt32.read(from: &buf), 
                 newArticles: FfiConverterUInt32.read(from: &buf), 
-                failures: FfiConverterSequenceTypeFeedFailure.read(from: &buf)
+                failures: FfiConverterSequenceTypeFeedFailure.read(from: &buf), 
+                fullArticles: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -5814,6 +6524,7 @@ public struct FfiConverterTypeRefreshReport: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.unchanged, into: &buf)
         FfiConverterUInt32.write(value.newArticles, into: &buf)
         FfiConverterSequenceTypeFeedFailure.write(value.failures, into: &buf)
+        FfiConverterUInt32.write(value.fullArticles, into: &buf)
     }
 }
 
@@ -6052,6 +6763,17 @@ enum AppError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case NotFound
     /**
+     * The article's page has no text to read (a video, a sign-in page,
+     * something too large), or isn't a web page.
+     */
+    case NoReadableText(reason: String
+    )
+    /**
+     * A file that isn't OPML (or is too large to be a subscription list).
+     */
+    case NotOpml(reason: String
+    )
+    /**
      * Already subscribed to this address.
      */
     case AlreadySubscribed(feedId: Int64
@@ -6112,32 +6834,38 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
             reason: try FfiConverterString.read(from: &buf)
             )
         case 2: return .NotFound
-        case 3: return .AlreadySubscribed(
+        case 3: return .NoReadableText(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .NotOpml(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .AlreadySubscribed(
             feedId: try FfiConverterInt64.read(from: &buf)
             )
-        case 4: return .NotAFeed(
+        case 6: return .NotAFeed(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .Http(
+        case 7: return .Http(
             status: try FfiConverterUInt16.read(from: &buf)
             )
-        case 6: return .Storage(
+        case 8: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 7: return .InUse
-        case 8: return .Offline(
+        case 9: return .InUse
+        case 10: return .Offline(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 9: return .Certificate(
+        case 11: return .Certificate(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 10: return .Timeout
-        case 11: return .Network(
+        case 12: return .Timeout
+        case 13: return .Network(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 12: return .Cancelled
-        case 13: return .Interrupted
-        case 14: return .ShutDown
+        case 14: return .Cancelled
+        case 15: return .Interrupted
+        case 16: return .ShutDown
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6159,59 +6887,69 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case let .AlreadySubscribed(feedId):
+        case let .NoReadableText(reason):
             writeInt(&buf, Int32(3))
-            FfiConverterInt64.write(feedId, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
             
         
-        case let .NotAFeed(reason):
+        case let .NotOpml(reason):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Http(status):
+        case let .AlreadySubscribed(feedId):
             writeInt(&buf, Int32(5))
-            FfiConverterUInt16.write(status, into: &buf)
+            FfiConverterInt64.write(feedId, into: &buf)
             
         
-        case let .Storage(reason):
+        case let .NotAFeed(reason):
             writeInt(&buf, Int32(6))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .InUse:
+        case let .Http(status):
             writeInt(&buf, Int32(7))
+            FfiConverterUInt16.write(status, into: &buf)
+            
         
-        
-        case let .Offline(reason):
+        case let .Storage(reason):
             writeInt(&buf, Int32(8))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Certificate(reason):
+        case .InUse:
             writeInt(&buf, Int32(9))
+        
+        
+        case let .Offline(reason):
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .Timeout:
-            writeInt(&buf, Int32(10))
-        
-        
-        case let .Network(reason):
+        case let .Certificate(reason):
             writeInt(&buf, Int32(11))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .Cancelled:
+        case .Timeout:
             writeInt(&buf, Int32(12))
         
         
-        case .Interrupted:
+        case let .Network(reason):
             writeInt(&buf, Int32(13))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(14))
+        
+        
+        case .Interrupted:
+            writeInt(&buf, Int32(15))
         
         
         case .ShutDown:
-            writeInt(&buf, Int32(14))
+            writeInt(&buf, Int32(16))
         
         }
     }
@@ -7160,6 +7898,104 @@ public func FfiConverterTypeOfflineReason_lower(_ value: OfflineReason) -> RustB
 
 
 /**
+ * What importing one listed feed would do.
+ */
+
+public enum OpmlFeedStatus: Equatable, Hashable {
+    
+    /**
+     * Subscribed to on import.
+     */
+    case new
+    /**
+     * Already in the library: left exactly as it is.
+     */
+    case alreadySubscribed(feedId: Int64
+    )
+    /**
+     * Listed earlier in the same file.
+     */
+    case listedTwice
+    /**
+     * Not a web address Commonplace can fetch.
+     */
+    case badAddress
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension OpmlFeedStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOpmlFeedStatus: FfiConverterRustBuffer {
+    typealias SwiftType = OpmlFeedStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OpmlFeedStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .new
+        
+        case 2: return .alreadySubscribed(feedId: try FfiConverterInt64.read(from: &buf)
+        )
+        
+        case 3: return .listedTwice
+        
+        case 4: return .badAddress
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: OpmlFeedStatus, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .new:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .alreadySubscribed(feedId):
+            writeInt(&buf, Int32(2))
+            FfiConverterInt64.write(feedId, into: &buf)
+            
+        
+        case .listedTwice:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .badAddress:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpmlFeedStatus_lift(_ buf: RustBuffer) throws -> OpmlFeedStatus {
+    return try FfiConverterTypeOpmlFeedStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpmlFeedStatus_lower(_ value: OpmlFeedStatus) -> RustBuffer {
+    return FfiConverterTypeOpmlFeedStatus.lower(value)
+}
+
+
+
+/**
  * The same states on every platform.
  */
 
@@ -7574,6 +8410,11 @@ public enum Timeline: Equatable, Hashable {
     case bookmarked
     case feed(feedId: Int64
     )
+    /**
+     * Every feed in a folder, and in the folders inside it.
+     */
+    case folder(folderId: Int64
+    )
 
 
 
@@ -7604,6 +8445,9 @@ public struct FfiConverterTypeTimeline: FfiConverterRustBuffer {
         case 4: return .feed(feedId: try FfiConverterInt64.read(from: &buf)
         )
         
+        case 5: return .folder(folderId: try FfiConverterInt64.read(from: &buf)
+        )
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -7627,6 +8471,11 @@ public struct FfiConverterTypeTimeline: FfiConverterRustBuffer {
         case let .feed(feedId):
             writeInt(&buf, Int32(4))
             FfiConverterInt64.write(feedId, into: &buf)
+            
+        
+        case let .folder(folderId):
+            writeInt(&buf, Int32(5))
+            FfiConverterInt64.write(folderId, into: &buf)
             
         }
     }
@@ -7819,6 +8668,31 @@ fileprivate struct FfiConverterOptionTypeOfflineReason: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt32]
+
+    public static func write(_ value: [UInt32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt32.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt32] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt32]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt32.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -7919,6 +8793,31 @@ fileprivate struct FfiConverterSequenceTypeFeedFailure: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFolder: FfiConverterRustBuffer {
+    typealias SwiftType = [Folder]
+
+    public static func write(_ value: [Folder], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFolder.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Folder] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Folder]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFolder.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHttpHeader: FfiConverterRustBuffer {
     typealias SwiftType = [HttpHeader]
 
@@ -7986,6 +8885,31 @@ fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRus
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeNotificationCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeOpmlFeed: FfiConverterRustBuffer {
+    typealias SwiftType = [OpmlFeed]
+
+    public static func write(_ value: [OpmlFeed], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeOpmlFeed.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [OpmlFeed] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [OpmlFeed]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeOpmlFeed.read(from: &buf))
         }
         return seq
     }
@@ -8499,16 +9423,40 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_counts() != 33442) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_create_folder() != 60882) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_delete_folder() != 27352) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_events() != 2896) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_export_opml() != 7503) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_feeds() != 27839) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_folders() != 49351) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_import_opml() != 24904) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_launch_report() != 61151) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_load_full_article() != 7926) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_mark_all_read() != 49254) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_mark_folder_read() != 50271) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_move_feed() != 20436) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_new_article_alerts() != 12825) {
@@ -8520,6 +9468,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_phase() != 17381) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_preview_opml() != 11928) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_refresh() != 17773) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -8529,6 +9480,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_rename_feed() != 56233) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_rename_folder() != 60400) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_revision() != 2945) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -8536,6 +9490,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_set_bookmarked() != 19311) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_set_feed_full_text() != 21013) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_set_feed_notify() != 34918) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_set_new_article_alerts() != 55465) {

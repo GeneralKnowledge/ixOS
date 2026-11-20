@@ -19,6 +19,26 @@ pub struct Feed {
     pub refreshed_at_ms: Option<i64>,
     /// Why the last refresh failed, if it did. A diagnostic, not UI copy.
     pub last_error: Option<String>,
+    /// The folder it is in, if any.
+    pub folder_id: Option<i64>,
+    /// Whether its new articles count for the new-articles notification.
+    pub notify: bool,
+    /// Whether its articles should be fetched in full from their pages.
+    /// Kept (and carried through OPML) until full-article fetching exists.
+    pub full_text: bool,
+}
+
+/// A folder of feeds. Folders can hold folders.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct Folder {
+    pub id: i64,
+    pub parent_id: Option<i64>,
+    pub name: String,
+    /// How deep it is: 0 for a folder at the top.
+    pub depth: u32,
+    /// Its feeds, including those in folders inside it.
+    pub feed_count: u32,
+    pub unread_count: u32,
 }
 
 /// One article in a timeline: what a row shows.
@@ -53,6 +73,8 @@ pub struct ArticleText {
     pub body: crate::ReaderSection,
     pub read: bool,
     pub bookmarked: bool,
+    /// The body is the full article from its web page, not the feed's text.
+    pub full: bool,
 }
 
 /// The person's choices, kept in the library.
@@ -87,7 +109,66 @@ pub enum Timeline {
     All,
     Unread,
     Bookmarked,
-    Feed { feed_id: i64 },
+    Feed {
+        feed_id: i64,
+    },
+    /// Every feed in a folder, and in the folders inside it.
+    Folder {
+        folder_id: i64,
+    },
+}
+
+/// One feed an OPML file lists, as the import screen shows it.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct OpmlFeed {
+    /// Its place in the file: what `import_opml` is given to pick it.
+    pub index: u32,
+    pub title: String,
+    pub url: String,
+    /// The folders it sits in, outermost first.
+    pub folder: Vec<String>,
+    pub status: OpmlFeedStatus,
+    /// Settings it carries that Commonplace doesn't use (kept for export).
+    pub not_used: Vec<String>,
+}
+
+/// What importing one listed feed would do.
+#[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
+pub enum OpmlFeedStatus {
+    /// Subscribed to on import.
+    New,
+    /// Already in the library: left exactly as it is.
+    AlreadySubscribed { feed_id: i64 },
+    /// Listed earlier in the same file.
+    ListedTwice,
+    /// Not a web address Commonplace can fetch.
+    BadAddress,
+}
+
+/// What an OPML file holds, before anything is imported.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct OpmlPreview {
+    pub feeds: Vec<OpmlFeed>,
+    /// Folder paths in the file, "Outer / Inner".
+    pub folders: Vec<String>,
+    /// Filter patterns it holds that passed the checks, and those refused.
+    pub filters: u32,
+    pub rejected_filters: u32,
+    /// Its global settings Commonplace doesn't carry over.
+    pub settings_not_used: Vec<String>,
+}
+
+/// What an import did.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct OpmlImport {
+    /// New subscriptions (their articles arrive with the next refresh).
+    pub added: u32,
+    /// Picked feeds already in the library, left exactly as they were.
+    pub already_subscribed: u32,
+    pub folders_created: u32,
+    pub filters_added: u32,
+    /// Picked feeds that were listed twice or had a bad address.
+    pub skipped: u32,
 }
 
 /// A feed that could not be refreshed.
@@ -106,6 +187,8 @@ pub struct RefreshReport {
     pub unchanged: u32,
     pub new_articles: u32,
     pub failures: Vec<FeedFailure>,
+    /// Full articles fetched from their pages, for feeds that want them.
+    pub full_articles: u32,
 }
 
 /// Every error the API returns. `reason` fields are diagnostics, not UI copy.
@@ -115,6 +198,13 @@ pub enum AppError {
     InvalidInput { reason: String },
     #[error("not found")]
     NotFound,
+    /// The article's page has no text to read (a video, a sign-in page,
+    /// something too large), or isn't a web page.
+    #[error("no readable text: {reason}")]
+    NoReadableText { reason: String },
+    /// A file that isn't OPML (or is too large to be a subscription list).
+    #[error("not OPML: {reason}")]
+    NotOpml { reason: String },
     /// Already subscribed to this address.
     #[error("already subscribed")]
     AlreadySubscribed { feed_id: i64 },
@@ -200,6 +290,8 @@ impl AppError {
         match self {
             Self::InvalidInput { .. } => "invalid-input",
             Self::NotFound => "not-found",
+            Self::NotOpml { .. } => "not-opml",
+            Self::NoReadableText { .. } => "no-readable-text",
             Self::AlreadySubscribed { .. } => "already-subscribed",
             Self::NotAFeed { .. } => "not-a-feed",
             Self::Http { .. } => "http",
@@ -220,7 +312,10 @@ impl AppError {
 #[uniffi::export]
 pub fn app_error_kind(error: AppError) -> ErrorKind {
     match error {
-        AppError::InvalidInput { .. } | AppError::NotAFeed { .. } => ErrorKind::Invalid,
+        AppError::InvalidInput { .. }
+        | AppError::NotAFeed { .. }
+        | AppError::NotOpml { .. }
+        | AppError::NoReadableText { .. } => ErrorKind::Invalid,
         AppError::NotFound => ErrorKind::NotFound,
         AppError::AlreadySubscribed { .. } => ErrorKind::Invalid,
         AppError::Storage { .. } => ErrorKind::Internal,
