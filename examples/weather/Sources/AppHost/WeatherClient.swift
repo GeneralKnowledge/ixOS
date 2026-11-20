@@ -113,6 +113,11 @@ public final class WeatherClient: @unchecked Sendable {
         try bridged { try app.removeSavedPlace(place: place) }
     }
 
+    /// A stored value in `units` ("12°", "18 mph"), formatted by Rust.
+    public func format(_ quantity: Quantity, units: UnitSettings) -> String {
+        formatQuantity(quantity: quantity, units: units)
+    }
+
     /// Why the saved places could not be read, if they could not. While
     /// set, every change to them is refused, so nothing writes over them.
     public var savedPlacesProblem: SavedDataProblem? { app.savedPlacesProblem() }

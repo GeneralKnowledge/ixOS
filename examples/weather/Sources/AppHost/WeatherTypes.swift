@@ -44,6 +44,8 @@ public typealias PollenOverview = WeatherFFI.PollenOverview
 public typealias PollenSpeciesNow = WeatherFFI.PollenSpeciesNow
 public typealias MoonPhase = WeatherFFI.MoonPhase
 public typealias MoonPhaseName = WeatherFFI.MoonPhaseName
+public typealias PollenGap = WeatherFFI.PollenGap
+public typealias SavedDataProblem = WeatherFFI.SavedDataProblem
 
 extension Place {
     /// A place for a device location fix. Rust only needs the coordinate;

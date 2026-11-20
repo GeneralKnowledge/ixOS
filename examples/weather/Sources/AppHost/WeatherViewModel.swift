@@ -482,6 +482,6 @@ public final class WeatherViewModel {
 
     /// A stored value in the person's units ("12°", "18 mph").
     public func format(_ quantity: Quantity) -> String {
-        formatQuantity(quantity: quantity, units: units)
+        client.format(quantity, units: units)
     }
 }
