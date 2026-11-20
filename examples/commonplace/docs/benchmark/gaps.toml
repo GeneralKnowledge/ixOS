@@ -170,9 +170,9 @@ second_use = "Any app with .searchable"
 [[gap]]
 id = "full-article-redirects"
 reference = "Fetches an article's own page for its full text"
-ixos_today = "forge-net's transports (URLSession, ureq) follow redirects internally; a request can't ask them not to"
-workaround = "full.rs refuses local and private destinations before the first request and refuses any redirect answer that reaches it, but a public page that redirects to a local address is still fetched"
-missing = "A forge_net request option to not follow redirects (URLSession task delegate, ureq max_redirects), so the app follows each hop itself after checking it"
+ixos_today = "Closed in C4 (2026-11-20): forge_net's Request::follow_redirects(false), honoured by ureq (max_redirects 0) and URLSession (redirect delegate)"
+workaround = "none now: full.rs follows redirects itself and checks each address before asking it"
+missing = "Nothing"
 layer = "rust"
 cost = "small"
 blocks = false

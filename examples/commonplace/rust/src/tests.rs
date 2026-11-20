@@ -61,6 +61,11 @@ fn fake_lookup(host: &str, _port: u16) -> std::io::Result<Vec<std::net::IpAddr>>
         // An iPhone on an IPv6-only network gets NAT64 addresses.
         "nat64.example" => &["64:ff9b::5db8:d70e"],
         "nat64-private.example" => &["64:ff9b::c0a8:0101"],
+        "laptop.tail1234.ts.net" => &["100.72.135.124"],
+        "nas.local" => &["192.168.1.20"],
+        // A home-network name that points at the device itself.
+        "self.local" => &["127.0.0.1"],
+        "metadata.local" => &["169.254.169.254"],
         _ => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -1691,36 +1696,193 @@ fn a_page_that_trickles_in_stops_at_the_deadline() {
     assert!(started.elapsed() < std::time::Duration::from_secs(5));
 }
 
+fn moved(status: u16, to: &str) -> Result<Response, NetError> {
+    let mut response = Response::new(status, Vec::new());
+    response.headers.push(forge_net::Header {
+        name: "Location".into(),
+        value: to.into(),
+    });
+    Ok(response)
+}
+
+fn fetch_page(http: &StaticClient, url: &str, feed: Option<&str>) -> Result<String, AppError> {
+    full::fetch_article(
+        http,
+        url,
+        feed,
+        &full::Policy::new(fake_lookup),
+        &forge_net::CancelHandle::new(),
+    )
+}
+
 #[test]
-fn a_redirect_answer_is_refused_not_followed() {
+fn redirects_are_followed_one_checked_hop_at_a_time() {
+    // Every kind of redirect, two hops, a relative Location: followed, and
+    // the transport was never asked to follow anything itself.
     for status in [301, 302, 303, 307, 308] {
-        let mut moved = Response::new(status, Vec::new());
-        moved.headers.push(forge_net::Header {
-            name: "Location".into(),
-            value: "http://127.0.0.1/admin".into(),
-        });
         let http = StaticClient::new()
-            .route(Method::Get, "https://fixtures.example/moved", Ok(moved))
             .route(
                 Method::Get,
-                "http://127.0.0.1/admin",
-                page(article_page("Inside", "router")),
+                "https://fixtures.example/old",
+                moved(status, "https://public.example/middle"),
+            )
+            .route(
+                Method::Get,
+                "https://public.example/middle",
+                moved(status, "/final?x=1"),
+            )
+            .route(
+                Method::Get,
+                "https://public.example/final?x=1",
+                page(article_page("Moved", "heron")),
             );
-        let result = full::fetch_article(
-            &http,
-            "https://fixtures.example/moved",
-            None,
-            &full::Policy::new(fake_lookup),
-            &forge_net::CancelHandle::new(),
-        );
+        let html = fetch_page(&http, "https://fixtures.example/old", None).unwrap();
+        assert!(html.contains("heron story goes on"), "{status}");
+        // Relative links resolve against the page that answered.
         assert!(
-            matches!(result, Err(AppError::Http { status: s }) if s == status),
-            "{status}: {result:?}"
+            html.contains("https://public.example/pics/heron.jpg"),
+            "{status}"
         );
+        let asked = http.received();
+        assert_eq!(asked.len(), 3, "{status}");
+        assert!(asked.iter().all(|r| !r.follow_redirects), "{status}");
+    }
+}
+
+#[test]
+fn a_redirect_to_a_local_address_is_refused_before_it_is_asked() {
+    for target in [
+        "http://127.0.0.1/admin",
+        "http://192.168.1.1/",
+        "http://169.254.169.254/latest/meta-data",
+        "http://[::1]:8080/",
+        "http://router.local/",
+        "https://sneaky.example/",
+        "file:///etc/passwd",
+    ] {
+        let http = StaticClient::new()
+            .route(
+                Method::Get,
+                "https://fixtures.example/a",
+                moved(302, "https://public.example/b"),
+            )
+            .route(Method::Get, "https://public.example/b", moved(307, target))
+            .route(Method::Get, target, page(article_page("Inside", "router")));
+        let result = fetch_page(&http, "https://fixtures.example/a", None);
+        assert!(
+            matches!(result, Err(AppError::NoReadableText { .. })),
+            "{target}: {result:?}"
+        );
+        let asked: Vec<_> = http.received().into_iter().map(|r| r.url).collect();
         assert_eq!(
-            http.received().len(),
-            1,
-            "{status}: the redirect was followed"
+            asked,
+            ["https://fixtures.example/a", "https://public.example/b"],
+            "{target}"
         );
     }
+}
+
+#[test]
+fn redirect_loops_and_long_chains_stop() {
+    // a -> b -> a
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "https://fixtures.example/a",
+            moved(302, "https://fixtures.example/b"),
+        )
+        .route(
+            Method::Get,
+            "https://fixtures.example/b",
+            moved(302, "https://fixtures.example/a"),
+        );
+    let result = fetch_page(&http, "https://fixtures.example/a", None);
+    assert!(
+        matches!(&result, Err(AppError::NoReadableText { reason }) if reason.contains("loop")),
+        "{result:?}"
+    );
+    assert_eq!(http.received().len(), 2);
+
+    // A page that redirects to itself.
+    let http =
+        StaticClient::new().route(Method::Get, "https://fixtures.example/a", moved(301, "/a"));
+    assert!(fetch_page(&http, "https://fixtures.example/a", None).is_err());
+    assert_eq!(http.received().len(), 1);
+
+    // A chain longer than the limit, every address different.
+    let mut http = StaticClient::new();
+    for hop in 0..10 {
+        http = http.route(
+            Method::Get,
+            format!("https://fixtures.example/{hop}"),
+            moved(302, &format!("/{}", hop + 1)),
+        );
+    }
+    let result = fetch_page(&http, "https://fixtures.example/0", None);
+    assert!(
+        matches!(&result, Err(AppError::NoReadableText { reason }) if reason.contains("too many")),
+        "{result:?}"
+    );
+    assert_eq!(http.received().len(), full::MAX_REDIRECTS + 1);
+
+    // A redirect with nowhere to go is the site's error.
+    let http = StaticClient::new().route(
+        Method::Get,
+        "https://fixtures.example/a",
+        Ok(Response::new(302, Vec::new())),
+    );
+    assert!(matches!(
+        fetch_page(&http, "https://fixtures.example/a", None),
+        Err(AppError::Http { status: 302 })
+    ));
+}
+
+#[test]
+fn a_home_feed_reaches_only_its_own_origin_and_never_this_device() {
+    let lookup = fake_lookup;
+    // Only a feed on a local network gets the exception.
+    assert!(full::HomeFeed::of("http://192.168.1.5/feed.xml", lookup).is_some());
+    assert!(full::HomeFeed::of("http://nas.local/feed.xml", lookup).is_some());
+    assert!(full::HomeFeed::of("https://sneaky.example/feed.xml", lookup).is_some());
+    assert!(full::HomeFeed::of("https://fixtures.example/feed.xml", lookup).is_none());
+    let allowed = |url: &str, feed: &str| full::check_destination(url, Some(feed), lookup);
+    // Same scheme, host and port only.
+    let nas = "http://nas.local/feed.xml";
+    assert!(allowed("http://nas.local/posts/1", nas).is_ok());
+    assert!(allowed("http://nas.local:8080/posts/1", nas).is_err());
+    assert!(allowed("https://nas.local/posts/1", nas).is_err());
+    assert!(allowed("http://printer.local/", nas).is_err());
+    // Still looked up and checked: never this device, link-local or
+    // metadata addresses, even at the feed's own origin.
+    for feed in [
+        "http://self.local/feed.xml",
+        "http://metadata.local/feed.xml",
+        "http://127.0.0.1:8080/feed.xml",
+        "http://localhost/feed.xml",
+        "http://[fe80::1]/feed.xml",
+    ] {
+        let page = feed.replace("feed.xml", "posts/1");
+        assert!(allowed(&page, feed).is_err(), "{page}");
+    }
+    // A public feed's articles get no exception, even on its own host.
+    assert!(allowed(
+        "https://fixtures.example/a",
+        "https://fixtures.example/feed.xml"
+    )
+    .is_ok());
+    assert!(allowed("http://10.0.0.1/a", "https://fixtures.example/feed.xml").is_err());
+    // A home feed's redirect to elsewhere on the network is checked too.
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "http://nas.local/posts/1",
+            moved(302, "http://192.168.1.1/admin"),
+        )
+        .route(
+            Method::Get,
+            "http://192.168.1.1/admin",
+            page(article_page("Inside", "router")),
+        );
+    assert!(fetch_page(&http, "http://nas.local/posts/1", Some(nas)).is_err());
+    assert_eq!(http.received().len(), 1);
 }

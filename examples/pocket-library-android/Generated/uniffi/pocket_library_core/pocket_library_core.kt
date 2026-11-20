@@ -7641,6 +7641,12 @@ data class HttpRequest (
      * grows past this.
      */
     var `maxBodyBytes`: kotlin.ULong
+    , 
+    /**
+     * `false`: don't follow redirects; a 3xx answer is the
+     * response (with its `Location` header).
+     */
+    var `followRedirects`: kotlin.Boolean
     
 ){
     
@@ -7665,6 +7671,7 @@ public object FfiConverterTypeHttpRequest: FfiConverterRustBuffer<HttpRequest> {
             FfiConverterOptionalString.read(buf),
             FfiConverterULong.read(buf),
             FfiConverterULong.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -7676,7 +7683,8 @@ public object FfiConverterTypeHttpRequest: FfiConverterRustBuffer<HttpRequest> {
             FfiConverterByteArray.allocationSize(value.`body`) +
             FfiConverterOptionalString.allocationSize(value.`bodyFile`) +
             FfiConverterULong.allocationSize(value.`timeoutMs`) +
-            FfiConverterULong.allocationSize(value.`maxBodyBytes`)
+            FfiConverterULong.allocationSize(value.`maxBodyBytes`) +
+            FfiConverterBoolean.allocationSize(value.`followRedirects`)
     )
 
     override fun write(value: HttpRequest, buf: ByteBuffer) {
@@ -7688,6 +7696,7 @@ public object FfiConverterTypeHttpRequest: FfiConverterRustBuffer<HttpRequest> {
             FfiConverterOptionalString.write(value.`bodyFile`, buf)
             FfiConverterULong.write(value.`timeoutMs`, buf)
             FfiConverterULong.write(value.`maxBodyBytes`, buf)
+            FfiConverterBoolean.write(value.`followRedirects`, buf)
     }
 }
 

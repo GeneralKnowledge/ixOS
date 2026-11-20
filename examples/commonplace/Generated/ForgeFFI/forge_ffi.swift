@@ -5231,6 +5231,11 @@ public struct HttpRequest: Equatable, Hashable {
      * grows past this.
      */
     public var maxBodyBytes: UInt64
+    /**
+     * `false`: don't follow redirects; a 3xx answer is the
+     * response (with its `Location` header).
+     */
+    public var followRedirects: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -5245,7 +5250,11 @@ public struct HttpRequest: Equatable, Hashable {
         /**
          * Stop and fail with `Transport` once the response body
          * grows past this.
-         */maxBodyBytes: UInt64) {
+         */maxBodyBytes: UInt64, 
+        /**
+         * `false`: don't follow redirects; a 3xx answer is the
+         * response (with its `Location` header).
+         */followRedirects: Bool) {
         self.id = id
         self.method = method
         self.url = url
@@ -5254,6 +5263,7 @@ public struct HttpRequest: Equatable, Hashable {
         self.bodyFile = bodyFile
         self.timeoutMs = timeoutMs
         self.maxBodyBytes = maxBodyBytes
+        self.followRedirects = followRedirects
     }
 
     
@@ -5279,7 +5289,8 @@ public struct FfiConverterTypeHttpRequest: FfiConverterRustBuffer {
                 body: FfiConverterData.read(from: &buf), 
                 bodyFile: FfiConverterOptionString.read(from: &buf), 
                 timeoutMs: FfiConverterUInt64.read(from: &buf), 
-                maxBodyBytes: FfiConverterUInt64.read(from: &buf)
+                maxBodyBytes: FfiConverterUInt64.read(from: &buf), 
+                followRedirects: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -5292,6 +5303,7 @@ public struct FfiConverterTypeHttpRequest: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.bodyFile, into: &buf)
         FfiConverterUInt64.write(value.timeoutMs, into: &buf)
         FfiConverterUInt64.write(value.maxBodyBytes, into: &buf)
+        FfiConverterBool.write(value.followRedirects, into: &buf)
     }
 }
 
