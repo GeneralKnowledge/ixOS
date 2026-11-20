@@ -50,11 +50,22 @@ public final class WeatherClient: @unchecked Sendable {
     public var savedPlaces: [Place] { app.savedPlaces() }
 
     /// What to show for `report` at `date`: sky, summary sentence, hourly
-    /// strip with sunrise and sunset, and the days ahead. Worked out in Rust.
+    /// strip with sunrise and sunset, the days ahead, air quality, pollen,
+    /// the moon and the credits. Worked out in Rust.
     public func overview(
-        of report: WeatherReport, at date: Date = Date(), windUnit: WindUnit = .kilometresPerHour
+        of report: WeatherReport, at date: Date = Date(), units: UnitSettings = defaultUnits(regionCode: nil)
     ) -> WeatherOverview {
-        weatherOverview(report: report, nowUnix: Int64(date.timeIntervalSince1970), windUnit: windUnit)
+        weatherOverview(report: report, nowUnix: Int64(date.timeIntervalSince1970), units: units)
+    }
+
+    /// The person's units, or the usual ones for `regionCode` until they choose.
+    public func units(regionCode: String?) -> UnitSettings {
+        app.units(regionCode: regionCode)
+    }
+
+    /// Saves the person's units.
+    public func setUnits(_ units: UnitSettings) throws {
+        try bridged { try app.setUnits(units: units) }
     }
 
     public var isRefreshing: Bool { app.activeRefresh() != nil }

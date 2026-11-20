@@ -4,10 +4,16 @@ A SwiftUI weather app in the style of the iPhone's own: a page per place
 ("My Location", then the cities you save) that you swipe between, each over a
 drawn sky that matches the conditions, with a big current temperature, a
 summary sentence over the hourly strip (sunrise and sunset included), a
-10-day forecast with temperature range bars, and detail tiles. Data comes
-from [Open-Meteo](https://open-meteo.com) (no API key). It is ixOS's own
-design built from native SwiftUI parts, not a copy of Apple's app or its
-assets.
+16-day forecast with temperature range bars, air quality and pollen, and
+detail tiles (feels like, wind, humidity and dew point, precipitation, UV,
+visibility, pressure, sun, moon). Data comes from
+[Open-Meteo](https://open-meteo.com) (no API key). It is ixOS's own design
+built from native SwiftUI parts, not a copy of Apple's app or its assets.
+
+Weather is growing into an iOS counterpart of the Android app Breezy
+Weather, written independently from each provider's documentation:
+[plan](docs/breezy-counterpart-plan.md). Phase W1 (sources, air quality,
+pollen, units) is in.
 
 Where Counter exercises the FFI *contract* (async commands, events,
 cancellation, lifecycle), Weather exercises the FFI *type mapping* and real I/O:
@@ -21,6 +27,9 @@ cancellation, lifecycle), Weather exercises the FFI *type mapping* and real I/O:
 | Offline fallback: a cached report marked `.cached(ageSeconds:problem:)` instead of an error | `app.rs` cache (one report per place), `WeatherPage.staleNotice` |
 | Screen logic in Rust: sky scene, the summary sentence, the hourly strip with sunrise/sunset, past hours and days dropped from cached reports, the shared temperature scale | `rust/src/weather/overview.rs` (`weather_overview`) |
 | Saved places: add, remove, reorder, persisted atomically | `rust/src/weather/places.rs` |
+| Several sources, one report: forecast, air quality and pollen asked in parallel, each section with its own state (live, kept with a reason, not available here, unavailable) | `rust/src/weather/sources/`, `merge.rs` |
+| Display units chosen by the person, applied to every value through one Rust formatter | `rust/src/weather/units.rs` (`format_quantity`) |
+| Air quality index bands, the moon's phase | `indices.rs`, `astro.rs` |
 | Location stays in Swift: CoreLocation one-shot fix, when-in-use permission, city search fallback | `Sources/WeatherBridge/LocationProvider.swift` |
 
 ```
@@ -38,8 +47,17 @@ WeatherView (pager, ForecastPage, LocationsView, SkyBackground) → WeatherViewM
   worker finishes in the background and its response is thrown away (it never
   touches the cache). Swift forwards task cancellation explicitly, because
   UniFFI does not.
+- **Sources.** Each kind of data comes from a `Source` of its own
+  (`sources/mod.rs`), written from that provider's documentation. A refresh
+  asks them in parallel. The forecast is the report's base; air quality and
+  pollen are sections merged in (`merge.rs`): what arrived is `Live`, a
+  source with nothing for the place is `NotAvailableHere` (pollen outside
+  Europe), a failed fetch keeps earlier data as `Cached` with the problem or
+  else says `Unavailable` with it. Nothing is filled in or extended: air
+  quality reaches 7 days, the forecast 16, and the page shows each on its own
+  terms.
 - **Cache.** The newest report per place (up to 16), written atomically (`forge_storage::write_atomic`)
-  after every live refresh. A failed refresh for a network reason falls back to
+  after every refresh that brought something new (schema 3; schemas 1 and 2 are still read). A failed refresh for a network reason falls back to
   it when it is for a place within 5 km and younger than 24 h. A 4xx is never
   masked: it means the request is wrong. Corrupt cache files are ignored.
 - **What a page shows** is worked out in Rust by `weather_overview(report,
@@ -52,10 +70,14 @@ WeatherView (pager, ForecastPage, LocationsView, SkyBackground) → WeatherViewM
   assets, no third-party UI code.
 - **My Location** is named by the platform's reverse geocoder (CoreLocation)
   and is never saved; the cities you add are.
-- **Units** are fixed (°C, km/h, mm) and encoded in field names; wind is
-  shown in mph where the locale uses it (US, UK). Times are the
+- **Units.** Reports store metric values, encoded in field names. The
+  person's units (temperature, wind, precipitation, pressure, distance, air
+  quality index) are saved by Rust, default to the region's usual ones, and
+  every value on screen goes through `format_quantity`. Times are the
   place's local time as ISO strings, so the UI never converts through the
   device's time zone.
+- **Credits.** Every source on a page is credited at its foot, as CC BY 4.0
+  and Copernicus ask.
 - **Bindings.** The app owns its Rust crate (`rust/`), so its committed
   `Generated/` holds only the Weather API; `scripts/check-app-crates.sh`
   checks it for drift.
@@ -88,7 +110,11 @@ and the Xcode target reads through `INFOPLIST_FILE` ([docs/app-config.md](../../
 - iOS only: there is no Compose host for Weather yet. The Rust side is ready
   for one; Android HTTPS works once the host calls `ForgeAndroid.init` (see
   [docs/android-setup.md](../../docs/android-setup.md#https-certificate-verification)).
-- The forecast is fixed at 48 hours and 10 days, in °C.
+- The hourly strip covers 48 hours; days go to 16, air quality to 7.
+- Pollen shows grains per cubic metre per species, without levels (low,
+  high): no single official scale was found to cite yet.
+- Only Open-Meteo so far; more sources, alerts and nowcasting are W2 and W3
+  of the plan.
 - Only the page on screen refreshes (Rust runs one refresh at a time); the
   others show their cached report until you swipe to them.
 - No radar map, unlike Apple's app.

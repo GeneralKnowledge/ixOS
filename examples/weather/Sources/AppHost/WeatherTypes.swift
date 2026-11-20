@@ -24,6 +24,26 @@ public typealias WeatherOverview = WeatherFFI.WeatherOverview
 public typealias TimelineEntry = WeatherFFI.TimelineEntry
 public typealias SkyScene = WeatherFFI.SkyScene
 public typealias WindUnit = WeatherFFI.WindUnit
+public typealias TemperatureUnit = WeatherFFI.TemperatureUnit
+public typealias PrecipitationUnit = WeatherFFI.PrecipitationUnit
+public typealias PressureUnit = WeatherFFI.PressureUnit
+public typealias DistanceUnit = WeatherFFI.DistanceUnit
+public typealias AirQualityScale = WeatherFFI.AirQualityScale
+public typealias UnitSettings = WeatherFFI.UnitSettings
+public typealias Quantity = WeatherFFI.Quantity
+public typealias SourceCredit = WeatherFFI.SourceCredit
+public typealias SectionState = WeatherFFI.SectionState
+public typealias AirQualityHour = WeatherFFI.AirQualityHour
+public typealias AirQualitySection = WeatherFFI.AirQualitySection
+public typealias AirQualityOverview = WeatherFFI.AirQualityOverview
+public typealias AirQualityDay = WeatherFFI.AirQualityDay
+public typealias AqiReading = WeatherFFI.AqiReading
+public typealias PollenSpecies = WeatherFFI.PollenSpecies
+public typealias PollenSection = WeatherFFI.PollenSection
+public typealias PollenOverview = WeatherFFI.PollenOverview
+public typealias PollenSpeciesNow = WeatherFFI.PollenSpeciesNow
+public typealias MoonPhase = WeatherFFI.MoonPhase
+public typealias MoonPhaseName = WeatherFFI.MoonPhaseName
 
 extension Place {
     /// A place for a device location fix. Rust only needs the coordinate;

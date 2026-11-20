@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use super::app::ForgeWeatherApp;
 use super::error::WeatherError;
-use super::open_meteo;
+use super::sources::open_meteo;
 use super::types::{Place, PlaceSource};
 use crate::signal::lock;
 

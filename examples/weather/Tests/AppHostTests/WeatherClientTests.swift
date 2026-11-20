@@ -26,7 +26,8 @@ final class WeatherClientTests: XCTestCase {
         let client = try WeatherClient(
             storageDirectory: try makeDirectory(),
             configuration: WeatherConfig(
-                forecastBaseUrl: baseURL, geocodingBaseUrl: baseURL, requestTimeoutMs: timeoutMs))
+                forecastBaseUrl: baseURL, geocodingBaseUrl: baseURL, airQualityBaseUrl: baseURL,
+                requestTimeoutMs: timeoutMs))
         addTeardownBlock { client.shutdown() }
         return client
     }

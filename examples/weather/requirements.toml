@@ -48,3 +48,20 @@ twin = [
     "WeatherClientTests.testShutdownRefusesNewWork",
 ]
 device = ["uitests/add-a-place.toml"]
+
+[[requirement]]
+id = "WX-5"
+statement = "A report is put together from independent sources: the forecast, air quality and pollen are asked separately; data that arrived is kept when another source fails; a failed section keeps its earlier data with the reason or says it is unavailable; a place outside a source's coverage says so instead of showing zero; each section shows only the hours its source covers; cached sections survive a relaunch and offline use; every source is credited on the page."
+twin = [
+    "WeatherViewModelTests.testALoadFailureShowsAMessageAndTryAgainLoads",
+]
+device = ["uitests/sections-and-units.toml"]
+
+[[requirement]]
+id = "WX-6"
+statement = "Units (temperature, wind, precipitation, pressure, distance, air quality index) default to the region's usual ones, can be changed, apply to every value on every page at once, and are kept after a relaunch."
+twin = [
+    "WeatherViewModelTests.testUnitsAreSavedAndUsedForEveryValue",
+    "WeatherViewModelTests.testFormatting",
+]
+device = ["uitests/sections-and-units.toml"]

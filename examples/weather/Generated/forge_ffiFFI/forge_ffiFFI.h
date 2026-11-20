@@ -730,6 +730,16 @@ RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_save_place(uint64_t ptr
 RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_saved_places(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_SET_UNITS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_SET_UNITS
+void uniffi_weather_core_fn_method_forgeweatherapp_set_units(uint64_t ptr, RustBuffer units, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_UNITS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_METHOD_FORGEWEATHERAPP_UNITS
+RustBuffer uniffi_weather_core_fn_method_forgeweatherapp_units(uint64_t ptr, RustBuffer region_code, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_WEATHEROPERATION
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_CLONE_WEATHEROPERATION
 uint64_t uniffi_weather_core_fn_clone_weatheroperation(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -824,7 +834,17 @@ RustBuffer uniffi_weather_core_fn_func_weather_error_kind(RustBuffer error, Rust
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_WEATHER_OVERVIEW
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_WEATHER_OVERVIEW
-RustBuffer uniffi_weather_core_fn_func_weather_overview(RustBuffer report, int64_t now_unix, RustBuffer wind_unit, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_weather_core_fn_func_weather_overview(RustBuffer report, int64_t now_unix, RustBuffer units, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_DEFAULT_UNITS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_DEFAULT_UNITS
+RustBuffer uniffi_weather_core_fn_func_default_units(RustBuffer region_code, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_FORMAT_QUANTITY
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_FN_FUNC_FORMAT_QUANTITY
+RustBuffer uniffi_weather_core_fn_func_format_quantity(RustBuffer quantity, RustBuffer units, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_WEATHER_CORE_RUSTBUFFER_ALLOC
@@ -1153,6 +1173,18 @@ uint16_t uniffi_weather_core_checksum_func_weather_overview(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_DEFAULT_UNITS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_DEFAULT_UNITS
+uint16_t uniffi_weather_core_checksum_func_default_units(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_FORMAT_QUANTITY
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_FUNC_FORMAT_QUANTITY
+uint16_t uniffi_weather_core_checksum_func_format_quantity(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
 uint16_t uniffi_weather_core_checksum_method_localnotifier_schedule(void
@@ -1390,6 +1422,18 @@ uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_save_place(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SAVED_PLACES
 #define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SAVED_PLACES
 uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_saved_places(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SET_UNITS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_SET_UNITS
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_set_units(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_UNITS
+#define UNIFFI_FFIDEF_UNIFFI_WEATHER_CORE_CHECKSUM_METHOD_FORGEWEATHERAPP_UNITS
+uint16_t uniffi_weather_core_checksum_method_forgeweatherapp_units(void
     
 );
 #endif
