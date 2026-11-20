@@ -242,6 +242,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uniffi",
+ "url",
 ]
 
 [[package]]

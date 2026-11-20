@@ -43,9 +43,32 @@ fn open_with(dir: &std::path::Path, http: StaticClient) -> (Arc<AppCore>, Arc<St
     let core = AppCore::open(
         dir.to_string_lossy().into_owned(),
         Arc::clone(&http) as Arc<dyn HttpClient>,
+        fake_lookup,
     )
     .unwrap();
     (core, http)
+}
+
+/// Host names as the tests' made-up internet resolves them (there is no
+/// network in tests). `fixtures.example` is an ordinary public site.
+fn fake_lookup(host: &str, _port: u16) -> std::io::Result<Vec<std::net::IpAddr>> {
+    let ips: &[&str] = match host {
+        "fixtures.example" | "public.example" => &["93.184.215.14"],
+        // A public name that points into the home network.
+        "sneaky.example" => &["192.168.1.1"],
+        // Public and private at once: refused, as the private one may be used.
+        "mixed.example" => &["93.184.215.14", "10.0.0.7"],
+        // An iPhone on an IPv6-only network gets NAT64 addresses.
+        "nat64.example" => &["64:ff9b::5db8:d70e"],
+        "nat64-private.example" => &["64:ff9b::c0a8:0101"],
+        _ => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no such host",
+            ))
+        }
+    };
+    Ok(ips.iter().map(|ip| ip.parse().unwrap()).collect())
 }
 
 fn subscribed(dir: &std::path::Path) -> (Arc<AppCore>, Feed) {
@@ -1443,4 +1466,261 @@ fn one_article_can_be_loaded_in_full_on_demand_and_stays_full() {
     drop(core);
     let core = empty_core(dir.path());
     assert!(block_on(core.open_article(alpha.id)).unwrap().full);
+}
+
+#[test]
+fn full_articles_are_never_fetched_from_this_device_or_its_networks() {
+    let allowed = |url: &str, feed: Option<&str>| full::check_destination(url, feed, fake_lookup);
+    let feed = Some("https://fixtures.example/feed.xml");
+    for url in [
+        "https://fixtures.example/a",
+        "https://public.example:8443/a",
+        "https://93.184.215.14/a",
+        "https://nat64.example/a",
+    ] {
+        assert!(allowed(url, feed).is_ok(), "{url} should be allowed");
+    }
+    for url in [
+        "http://127.0.0.1/a",
+        "http://127.1/a",
+        // Spellings of 127.0.0.1 that some parsers read differently: the
+        // address is parsed (and then requested) the way browsers do.
+        "http://0x7f.1/a",
+        "http://2130706433/a",
+        "http://0177.0.0.1/a",
+        "http://[::1]/a",
+        "http://0.0.0.0/a",
+        "http://localhost:8080/a",
+        "http://shop.localhost/a",
+        "http://10.1.2.3/a",
+        "http://172.16.0.1/a",
+        "http://192.168.1.1/a",
+        // Cloud metadata services live on link-local addresses.
+        "http://169.254.169.254/latest/meta-data",
+        // Tailscale (carrier-grade NAT) and its MagicDNS names.
+        "http://100.72.135.124:8642/a",
+        "http://laptop.tail1234.ts.net/a",
+        "http://[::ffff:192.168.0.1]/a",
+        "http://[fd00::1]/a",
+        "http://[fe80::1]/a",
+        "http://printer.local/a",
+        "http://router.lan/a",
+        "http://nas.home.arpa/a",
+        "http://intranet/a",
+        // Public names that resolve inside: checked after the lookup.
+        "https://sneaky.example/a",
+        "https://mixed.example/a",
+        "https://nat64-private.example/a",
+    ] {
+        assert!(
+            matches!(allowed(url, feed), Err(AppError::NoReadableText { .. })),
+            "{url} should be refused: {:?}",
+            allowed(url, feed).map(|u| u.to_string())
+        );
+    }
+    // Not web pages at all, or carrying credentials.
+    for url in [
+        "file:///etc/passwd",
+        "ftp://fixtures.example/a",
+        "javascript:alert(1)",
+        "https://user:secret@fixtures.example/a",
+    ] {
+        assert!(allowed(url, feed).is_err(), "{url}");
+    }
+    // A name that doesn't resolve fails like the network, not as refused.
+    assert!(matches!(
+        allowed("https://nowhere.example/a", feed),
+        Err(AppError::Network { .. })
+    ));
+    // A feed the person subscribed to on their own network may link its
+    // own articles there, and only there.
+    let home = Some("http://192.168.1.5/feed.xml");
+    assert!(allowed("http://192.168.1.5/posts/1", home).is_ok());
+    assert!(allowed("http://192.168.1.6/posts/1", home).is_err());
+    let tailnet = Some("http://laptop.tail1234.ts.net:8642/feed.xml");
+    assert!(allowed("http://laptop.tail1234.ts.net:8642/a", tailnet).is_ok());
+    assert!(allowed("http://other.tail1234.ts.net/a", tailnet).is_err());
+}
+
+#[test]
+fn a_full_article_on_a_local_address_is_refused_before_any_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let feed = r#"<?xml version="1.0"?><rss version="2.0"><channel><title>T</title>
+        <item><guid>a</guid><title>Inside</title><link>http://192.168.1.1/admin</link><description>x</description></item>
+        </channel></rss>"#;
+    let http = StaticClient::new()
+        .route(Method::Get, URL, ok(feed.as_bytes().to_vec(), None))
+        .route(
+            Method::Get,
+            "http://192.168.1.1/admin",
+            page(article_page("Inside", "router")),
+        );
+    let (core, http) = open_with(dir.path(), http);
+    let added = block_on(core.add_feed(URL.into(), None)).unwrap();
+    block_on(core.set_feed_full_text(added.id, true)).unwrap();
+    assert_eq!(block_on(core.refresh(None)).unwrap().full_articles, 0);
+    let inside = core.timeline(Timeline::All)[0].id;
+    assert!(matches!(
+        block_on(core.load_full_article(inside, None)),
+        Err(AppError::NoReadableText { .. })
+    ));
+    assert!(
+        http.received().iter().all(|r| !r.url.contains("192.168")),
+        "a request reached the local address"
+    );
+}
+
+/// A transport whose page body never ends, or trickles, counting what
+/// was read from it.
+struct Endless {
+    content_length: Option<u64>,
+    /// Bytes per read, and how long each read takes.
+    chunk: usize,
+    pause: std::time::Duration,
+    read: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+struct EndlessBody {
+    chunk: usize,
+    pause: std::time::Duration,
+    read: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl std::io::Read for EndlessBody {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        std::thread::sleep(self.pause);
+        let n = self.chunk.min(buf.len());
+        buf[..n].fill(b'a');
+        self.read.fetch_add(n, std::sync::atomic::Ordering::SeqCst);
+        Ok(n)
+    }
+}
+
+impl HttpClient for Endless {
+    fn send(&self, _: &forge_net::Request) -> Result<Response, NetError> {
+        panic!("pages are read as a stream, never buffered whole")
+    }
+
+    fn open_stream(
+        &self,
+        _: &forge_net::Request,
+    ) -> Result<forge_net::StreamingResponse, NetError> {
+        let mut headers = vec![forge_net::Header {
+            name: "Content-Type".into(),
+            value: "text/html".into(),
+        }];
+        if let Some(length) = self.content_length {
+            headers.push(forge_net::Header {
+                name: "Content-Length".into(),
+                value: length.to_string(),
+            });
+        }
+        Ok(forge_net::StreamingResponse {
+            status: 200,
+            headers,
+            body: Box::new(EndlessBody {
+                chunk: self.chunk,
+                pause: self.pause,
+                read: Arc::clone(&self.read),
+            }),
+        })
+    }
+}
+
+fn endless(content_length: Option<u64>, chunk: usize, pause_ms: u64) -> Endless {
+    Endless {
+        content_length,
+        chunk,
+        pause: std::time::Duration::from_millis(pause_ms),
+        read: Arc::default(),
+    }
+}
+
+#[test]
+fn a_page_that_never_ends_stops_at_the_size_limit_while_downloading() {
+    let policy = full::Policy {
+        max_bytes: 64 * 1024,
+        ..full::Policy::new(fake_lookup)
+    };
+    let http = endless(None, 4096, 0);
+    let result = full::fetch_article(
+        &http,
+        "https://fixtures.example/huge",
+        None,
+        &policy,
+        &forge_net::CancelHandle::new(),
+    );
+    assert!(
+        matches!(&result, Err(AppError::NoReadableText { reason }) if reason == "page too large"),
+        "{result:?}"
+    );
+    // Reading stopped one chunk past the limit, not at the end of the body.
+    let read = http.read.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(read <= 64 * 1024 + 4096, "read {read} bytes");
+
+    // A page that says up front it is too large isn't read at all.
+    let http = endless(Some(10 * 1024 * 1024 * 1024), 4096, 0);
+    let result = full::fetch_article(
+        &http,
+        "https://fixtures.example/huge",
+        None,
+        &full::Policy::new(fake_lookup),
+        &forge_net::CancelHandle::new(),
+    );
+    assert!(matches!(result, Err(AppError::NoReadableText { .. })));
+    assert_eq!(http.read.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_page_that_trickles_in_stops_at_the_deadline() {
+    let policy = full::Policy {
+        timeout: std::time::Duration::from_millis(300),
+        ..full::Policy::new(fake_lookup)
+    };
+    // One byte every 20 ms: never too large, never idle, never finished.
+    let http = endless(None, 1, 20);
+    let started = std::time::Instant::now();
+    let result = full::fetch_article(
+        &http,
+        "https://fixtures.example/slow",
+        None,
+        &policy,
+        &forge_net::CancelHandle::new(),
+    );
+    assert!(matches!(result, Err(AppError::Timeout)), "{result:?}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+}
+
+#[test]
+fn a_redirect_answer_is_refused_not_followed() {
+    for status in [301, 302, 303, 307, 308] {
+        let mut moved = Response::new(status, Vec::new());
+        moved.headers.push(forge_net::Header {
+            name: "Location".into(),
+            value: "http://127.0.0.1/admin".into(),
+        });
+        let http = StaticClient::new()
+            .route(Method::Get, "https://fixtures.example/moved", Ok(moved))
+            .route(
+                Method::Get,
+                "http://127.0.0.1/admin",
+                page(article_page("Inside", "router")),
+            );
+        let result = full::fetch_article(
+            &http,
+            "https://fixtures.example/moved",
+            None,
+            &full::Policy::new(fake_lookup),
+            &forge_net::CancelHandle::new(),
+        );
+        assert!(
+            matches!(result, Err(AppError::Http { status: s }) if s == status),
+            "{status}: {result:?}"
+        );
+        assert_eq!(
+            http.received().len(),
+            1,
+            "{status}: the redirect was followed"
+        );
+    }
 }

@@ -166,3 +166,14 @@ layer = "swift"
 cost = "small"
 blocks = false
 second_use = "Any app with .searchable"
+
+[[gap]]
+id = "full-article-redirects"
+reference = "Fetches an article's own page for its full text"
+ixos_today = "forge-net's transports (URLSession, ureq) follow redirects internally; a request can't ask them not to"
+workaround = "full.rs refuses local and private destinations before the first request and refuses any redirect answer that reaches it, but a public page that redirects to a local address is still fetched"
+missing = "A forge_net request option to not follow redirects (URLSession task delegate, ureq max_redirects), so the app follows each hop itself after checking it"
+layer = "rust"
+cost = "small"
+blocks = false
+second_use = "Soundscape podcasts (P1) will fetch untrusted episode and artwork addresses the same way"

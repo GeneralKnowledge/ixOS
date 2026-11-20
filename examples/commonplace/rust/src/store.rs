@@ -694,23 +694,29 @@ impl Store {
 
     /// Up to `limit` articles of feeds that want full articles and haven't
     /// been tried, newest first: their ids and addresses.
-    pub fn full_articles_wanted(&self, limit: u32) -> Result<Vec<(i64, String)>, AppError> {
+    /// Each with its page's address and its feed's.
+    pub fn full_articles_wanted(&self, limit: u32) -> Result<Vec<(i64, String, String)>, AppError> {
         let mut q = self.db.connection().prepare(
-            "SELECT a.id, a.url FROM articles a JOIN feeds f ON f.id = a.feed_id
+            "SELECT a.id, a.url, f.url FROM articles a JOIN feeds f ON f.id = a.feed_id
              WHERE f.full_text = 1 AND a.full_status IS NULL AND a.url IS NOT NULL
              ORDER BY a.published_at_ms DESC, a.id DESC LIMIT ?1",
         )?;
         let rows = q
-            .query_map([limit], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .query_map([limit], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
-    /// The address of one article's page.
-    pub fn article_url(&self, id: i64) -> Result<Option<String>, AppError> {
+    /// The address of one article's page, and of its feed.
+    pub fn article_url(&self, id: i64) -> Result<(Option<String>, String), AppError> {
         self.db
             .connection()
-            .query_row("SELECT url FROM articles WHERE id = ?1", [id], |r| r.get(0))
+            .query_row(
+                "SELECT a.url, f.url FROM articles a JOIN feeds f ON f.id = a.feed_id
+                 WHERE a.id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .optional()?
             .ok_or(AppError::NotFound)
     }

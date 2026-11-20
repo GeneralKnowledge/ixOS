@@ -128,6 +128,8 @@ pub struct AppCore {
     http: Arc<dyn HttpClient>,
     storage_directory: PathBuf,
     searcher: Arc<Searcher>,
+    /// How full-article pages are fetched (the resolver is a fake in tests).
+    pages: full::Policy,
     /// Set by `new`: tells the refresh log whether URLSession or ureq ran.
     transport: std::sync::OnceLock<Arc<native::http::PreferInstalled>>,
 }
@@ -144,7 +146,7 @@ impl AppCore {
             Arc::new(UreqClient::new()),
             |c| c,
         ));
-        let core = Self::open(storage_directory, http.clone())?;
+        let core = Self::open(storage_directory, http.clone(), full::system_lookup)?;
         // Only for the log line saying which transport fetched the feeds.
         let _ = core.transport.set(http);
         core.register_background_refresh();
@@ -368,21 +370,22 @@ impl AppCore {
         article_id: i64,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<ArticleText, AppError> {
-        let url = self
+        let (url, feed_url) = self
             .rt
             .command("article-url", move |state| {
                 state.store.article_url(article_id)
             })
-            .await?
-            .ok_or_else(|| AppError::NoReadableText {
-                reason: "the article has no address".into(),
-            })?;
+            .await?;
+        let url = url.ok_or_else(|| AppError::NoReadableText {
+            reason: "the article has no address".into(),
+        })?;
         let http = Arc::clone(&self.http);
+        let pages = self.pages;
         let work = self.rt.foreground(cancellation.as_deref());
         let html = self
             .rt
             .run("fetch-full-article", work, move |cancel| {
-                full::fetch_article(&*http, &url, cancel)
+                full::fetch_article(&*http, &url, Some(&feed_url), &pages, cancel)
             })
             .await?;
         self.rt
@@ -547,15 +550,16 @@ impl AppCore {
             }
         };
         let http = Arc::clone(&self.http);
+        let pages = self.pages;
         let fetched = self
             .rt
             .run("fetch-full-articles", work, move |cancel| {
                 let mut results = Vec::with_capacity(wanted.len());
-                for (id, url) in wanted {
+                for (id, url, feed_url) in wanted {
                     if cancel.is_cancelled() {
                         break;
                     }
-                    let result = full::fetch_article(&*http, &url, cancel);
+                    let result = full::fetch_article(&*http, &url, Some(&feed_url), &pages, cancel);
                     if cancel.is_cancelled() {
                         break;
                     }
@@ -1086,8 +1090,13 @@ pub struct TimelineCounts {
 }
 
 impl AppCore {
-    /// Opens the core with `http` for its requests (a test double in tests).
-    fn open(storage_directory: String, http: Arc<dyn HttpClient>) -> Result<Arc<Self>, AppError> {
+    /// Opens the core with `http` for its requests and `lookup` for the
+    /// host names of full-article pages (test doubles in tests).
+    fn open(
+        storage_directory: String,
+        http: Arc<dyn HttpClient>,
+        lookup: full::Lookup,
+    ) -> Result<Arc<Self>, AppError> {
         forge_runtime::logging::init();
         if storage_directory.is_empty() {
             return Err(AppError::InvalidInput {
@@ -1119,6 +1128,7 @@ impl AppCore {
             http,
             storage_directory,
             searcher,
+            pages: full::Policy::new(lookup),
             transport: std::sync::OnceLock::new(),
         }))
     }
