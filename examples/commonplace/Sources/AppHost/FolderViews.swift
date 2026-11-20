@@ -70,6 +70,12 @@ struct LibraryRows: View {
                 ) {
                     Task { await model.setNotify(feed, !feed.notify) }
                 }
+                Button(
+                    feed.fullText ? "Use the Feed's Text" : "Fetch Full Articles",
+                    systemImage: feed.fullText ? "doc.plaintext" : "doc.richtext"
+                ) {
+                    Task { await model.setFullText(feed, !feed.fullText) }
+                }
                 Button("Mark All as Read", systemImage: "checkmark.circle") {
                     Task { await model.markAllRead(feedID: feed.id) }
                 }

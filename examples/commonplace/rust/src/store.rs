@@ -79,6 +79,12 @@ pub(crate) const MIGRATIONS: &[&str] = &[
         added_at_ms INTEGER NOT NULL
     );
 ",
+    "
+    -- Full articles (C4): the readable part of the article's page, and what
+    -- fetching it did: NULL (not tried), 'ok', or the kind of failure.
+    ALTER TABLE articles ADD COLUMN full_html TEXT;
+    ALTER TABLE articles ADD COLUMN full_status TEXT;
+",
 ];
 
 /// The most results a search returns.
@@ -521,7 +527,8 @@ impl Store {
             .connection()
             .query_row(
                 "SELECT a.id, COALESCE(f.custom_title, f.title), a.title, a.author, a.url,
-                        a.published_at_ms, a.html, a.read, a.bookmarked
+                        a.published_at_ms, COALESCE(a.full_html, a.html), a.read, a.bookmarked,
+                        a.full_html IS NOT NULL
                  FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE a.id = ?1",
                 [id],
                 |r| {
@@ -546,6 +553,7 @@ impl Store {
                         },
                         read: r.get(7)?,
                         bookmarked: r.get(8)?,
+                        full: r.get(9)?,
                     })
                 },
             )
@@ -663,6 +671,87 @@ impl Store {
                 return Err(AppError::NotFound);
             }
             Ok(())
+        })
+    }
+
+    /// Whether a feed's articles are fetched in full from their pages.
+    /// Turning it on leaves its existing articles to be fetched next time.
+    pub fn set_feed_full_text(&mut self, feed: i64, on: bool) -> Result<(), AppError> {
+        self.db.transaction(|tx| {
+            if tx.execute("UPDATE feeds SET full_text = ?2 WHERE id = ?1", params![feed, on])? == 0 {
+                return Err(AppError::NotFound);
+            }
+            if on {
+                // Failures get another try now the person asked again.
+                tx.execute(
+                    "UPDATE articles SET full_status = NULL WHERE feed_id = ?1 AND full_html IS NULL",
+                    [feed],
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Up to `limit` articles of feeds that want full articles and haven't
+    /// been tried, newest first: their ids and addresses.
+    pub fn full_articles_wanted(&self, limit: u32) -> Result<Vec<(i64, String)>, AppError> {
+        let mut q = self.db.connection().prepare(
+            "SELECT a.id, a.url FROM articles a JOIN feeds f ON f.id = a.feed_id
+             WHERE f.full_text = 1 AND a.full_status IS NULL AND a.url IS NOT NULL
+             ORDER BY a.published_at_ms DESC, a.id DESC LIMIT ?1",
+        )?;
+        let rows = q
+            .query_map([limit], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// The address of one article's page.
+    pub fn article_url(&self, id: i64) -> Result<Option<String>, AppError> {
+        self.db
+            .connection()
+            .query_row("SELECT url FROM articles WHERE id = ?1", [id], |r| r.get(0))
+            .optional()?
+            .ok_or(AppError::NotFound)
+    }
+
+    /// Saves what fetching full articles did: the article's text (also put
+    /// in the search index), or the kind of failure, so it isn't tried
+    /// again on every refresh. Articles deleted since are skipped. Returns
+    /// how many were saved in full.
+    pub fn save_full_articles(
+        &mut self,
+        results: &[(i64, Result<String, AppError>)],
+    ) -> Result<u32, AppError> {
+        self.db.transaction(|tx| {
+            let mut saved = 0;
+            for (id, result) in results {
+                match result {
+                    Ok(html) => {
+                        let title: Option<String> = tx
+                            .query_row("SELECT title FROM articles WHERE id = ?1", [id], |r| {
+                                r.get(0)
+                            })
+                            .optional()?;
+                        let Some(title) = title else { continue };
+                        tx.execute(
+                            "UPDATE articles SET full_html = ?2, full_status = 'ok' WHERE id = ?1",
+                            params![id, html],
+                        )?;
+                        index_article(tx, *id, &title, html)?;
+                        saved += 1;
+                    }
+                    // Stopped before it finished: tried again next time.
+                    Err(AppError::Cancelled | AppError::Interrupted | AppError::ShutDown) => {}
+                    Err(e) => {
+                        tx.execute(
+                            "UPDATE articles SET full_status = ?2 WHERE id = ?1",
+                            params![id, e.problem()],
+                        )?;
+                    }
+                }
+            }
+            Ok(saved)
         })
     }
 

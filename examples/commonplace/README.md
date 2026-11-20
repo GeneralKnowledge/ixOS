@@ -10,6 +10,8 @@ It is also the first **replication benchmark** for ixOS: its behaviour is benchm
 
 **Slice 3 (C3, now):** folders and OPML, with Feeder (an open-source Android reader) as the reference for what a moving reader brings along ([ports plan](../../docs/research/android-ports.md)). Folders hold feeds and folders, each with a timeline of everything inside it and Mark All as Read; a feed moves to a folder from its menu, and can be left out of the new-articles notification. **Import Subscriptions** reads an OPML file into a preview that changes nothing: new feeds start picked, feeds already subscribed are left exactly as they are, a feed listed twice or with a bad address can't be picked, and settings Commonplace doesn't use are named. Feeder's per-feed `notify` and `fullTextByDefault` are carried over; its other per-feed attributes are kept and written back on export; its block-list patterns are kept as plain text (filters arrive in C5) and never run. **Export Subscriptions** writes OPML 2.0 that any reader imports. OPML is only read and written at the edge (`rust/src/opml.rs`); the library keeps its own model in SQLite.
 
+**Slice 4 (C4):** full articles. A feed's menu has **Fetch Full Articles**: each refresh then fetches up to 10 of its articles' web pages and keeps their readable text (found by `dom_smoothie`, a Rust port of Readability), which the reader shows in place of the feed's summary and search indexes. A page that has no article, fails or isn't a web page leaves the feed's text and isn't tried again unless the switch is turned off and on. Any article's More menu has **Load Full Article** to fetch one now. Nothing in a page runs (`rust/src/full.rs`).
+
 ## Run it
 
 From this directory:

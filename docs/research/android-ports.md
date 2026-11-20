@@ -20,7 +20,7 @@ The rule behind the order: start where our app is closest to the reference and t
 
 ### Licence
 
-ixOS and its apps are Apache-2.0. Code can move from an Apache-2.0 project into a GPL-3.0 one, but not the other way: copying GPL-3.0 code into Commonplace or Soundscape would make that app GPL-3.0. So:
+ixOS and its apps are dual-licensed MIT OR Apache-2.0. Code can move from a permissively licensed project into a GPL-3.0 one, but not the other way: copying GPL-3.0 code into Commonplace or Soundscape would make that app GPL-3.0. So:
 
 - **GPL-3.0 projects (Feeder, AntennaPod, Etar, Fossify): clean room.** We work from what the app does as a user sees it (running it, its website, documentation, changelogs and store listings) and from public format specifications (RSS, Atom, JSON Feed, OPML, the gPodder API, iCalendar). We copy none of its source code, strings, translations, icons, artwork or test fixtures. The evidence is observable behaviour, documentation and public format specifications. **We don't read Feeder's or AntennaPod's source** while working on the matching feature: restating source-derived explanations in our own words does not make an implementation clean room. If a question can't be answered from the running app, its documentation or a file it exports, the answer is to test the app (for example, export with a setting on and off and compare the files), not to read its code. This is how Commonplace was built against NetNewsWire, and it is the same here.
 - **Apache-2.0 (OpenTracks): reuse is allowed, with conditions** (approved 2026-11-20, subject to checking the exact licence at the source commit). We may translate an algorithm or take a test file, as long as the file carries the licence notice, we say what we changed, and any NOTICE text is kept. In practice little transfers, because OpenTracks is Android Java and we write Rust, but its recording rules and sample exports are useful. Each borrowed piece is listed in the app's README with its source commit.
@@ -87,7 +87,7 @@ Saved and bookmarked articles are not in Feeder's OPML, so they don't move. That
    - **Round trip**: export from Feeder, import into Commonplace, export again, and the folders and supported settings are kept. Tested on Linux with our own fixtures, and once on the phone.
    - Imported filters and patterns are **untrusted input**: validated, kept as plain text and never executed.
    Fixtures are OPML files we write ourselves, including the Feeder namespace, never files copied from Feeder's repository.
-2. **C4: full articles**: fetch and extract the article from its page, per feed (the roadmap's "full article extraction"). The extractor is our own Rust, or a permissively licensed crate checked first in the external projects atlas.
+2. **C4: full articles** (**built 2026-11-20**): fetch and extract the article from its page, per feed (the roadmap's "full article extraction"), and Load Full Article for one article. The extractor is `dom_smoothie` (MIT), [assessed](external-projects/assessments/reading/dom-smoothie.md) before it went in.
 3. **C5: per-feed settings and filters**: notify, full text, how to open; block list; refresh only on Wi-Fi; keep only the last N articles per feed unless bookmarked.
 4. **C6: read aloud**: a third user for the speech pieces Pocket Library and Urdu Naturally use (the ForgeSpeech extraction already named as a candidate).
 

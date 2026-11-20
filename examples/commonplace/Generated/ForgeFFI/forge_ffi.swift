@@ -740,6 +740,13 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func launchReport()  -> LaunchReport
     
     /**
+     * Fetches one article's page now, saves its readable text and returns
+     * the article with it. On-screen work: `cancellation`, the background
+     * or shutdown stop it, and nothing is saved.
+     */
+    func loadFullArticle(articleId: Int64, cancellation: Cancellation?) async throws  -> ArticleText
+    
+    /**
      * Marks every article of one feed (or of every feed, with nil) read.
      * Returns how many changed, and a token for `undo_mark_all_read`.
      */
@@ -812,6 +819,13 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func search(query: String) async throws  -> [ArticleSummary]
     
     func setBookmarked(articleId: Int64, bookmarked: Bool) async throws 
+    
+    /**
+     * Whether a feed's articles are fetched in full from their web pages
+     * (for feeds that send only a summary). Turning it on fetches its
+     * articles with the next refresh.
+     */
+    func setFeedFullText(feedId: Int64, on: Bool) async throws 
     
     /**
      * Whether a feed's new articles count for the new-articles
@@ -1154,6 +1168,27 @@ open func launchReport() -> LaunchReport  {
 }
     
     /**
+     * Fetches one article's page now, saves its readable text and returns
+     * the article with it. On-screen work: `cancellation`, the background
+     * or shutdown stop it, and nothing is saved.
+     */
+open func loadFullArticle(articleId: Int64, cancellation: Cancellation?)async throws  -> ArticleText  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_load_full_article(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(articleId),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeArticleText_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
      * Marks every article of one feed (or of every feed, with nil) read.
      * Returns how many changed, and a token for `undo_mark_all_read`.
      */
@@ -1386,6 +1421,27 @@ open func setBookmarked(articleId: Int64, bookmarked: Bool)async throws   {
             rustFutureFunc: {
                 uniffi_commonplace_core_fn_method_appcore_set_bookmarked(
                         self.uniffiCloneHandle(),FfiConverterInt64.lower(articleId),FfiConverterBool.lower(bookmarked)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Whether a feed's articles are fetched in full from their web pages
+     * (for feeds that send only a summary). Turning it on fetches its
+     * articles with the next refresh.
+     */
+open func setFeedFullText(feedId: Int64, on: Bool)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_set_feed_full_text(
+                        self.uniffiCloneHandle(),FfiConverterInt64.lower(feedId),FfiConverterBool.lower(on)
                 )
             },
             pollFunc: ffi_commonplace_core_rust_future_poll_void,
@@ -4437,10 +4493,17 @@ public struct ArticleText: Equatable, Hashable {
     public var body: ReaderSection
     public var read: Bool
     public var bookmarked: Bool
+    /**
+     * The body is the full article from its web page, not the feed's text.
+     */
+    public var full: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: Int64, feedTitle: String, title: String, author: String?, url: String?, publishedAtMs: Int64, body: ReaderSection, read: Bool, bookmarked: Bool) {
+    public init(id: Int64, feedTitle: String, title: String, author: String?, url: String?, publishedAtMs: Int64, body: ReaderSection, read: Bool, bookmarked: Bool, 
+        /**
+         * The body is the full article from its web page, not the feed's text.
+         */full: Bool) {
         self.id = id
         self.feedTitle = feedTitle
         self.title = title
@@ -4450,6 +4513,7 @@ public struct ArticleText: Equatable, Hashable {
         self.body = body
         self.read = read
         self.bookmarked = bookmarked
+        self.full = full
     }
 
     
@@ -4476,7 +4540,8 @@ public struct FfiConverterTypeArticleText: FfiConverterRustBuffer {
                 publishedAtMs: FfiConverterInt64.read(from: &buf), 
                 body: FfiConverterTypeReaderSection.read(from: &buf), 
                 read: FfiConverterBool.read(from: &buf), 
-                bookmarked: FfiConverterBool.read(from: &buf)
+                bookmarked: FfiConverterBool.read(from: &buf), 
+                full: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -4490,6 +4555,7 @@ public struct FfiConverterTypeArticleText: FfiConverterRustBuffer {
         FfiConverterTypeReaderSection.write(value.body, into: &buf)
         FfiConverterBool.write(value.read, into: &buf)
         FfiConverterBool.write(value.bookmarked, into: &buf)
+        FfiConverterBool.write(value.full, into: &buf)
     }
 }
 
@@ -6396,17 +6462,25 @@ public struct RefreshReport: Equatable, Hashable {
     public var unchanged: UInt32
     public var newArticles: UInt32
     public var failures: [FeedFailure]
+    /**
+     * Full articles fetched from their pages, for feeds that want them.
+     */
+    public var fullArticles: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(feeds: UInt32, 
         /**
          * Feeds the server said had not changed (HTTP 304).
-         */unchanged: UInt32, newArticles: UInt32, failures: [FeedFailure]) {
+         */unchanged: UInt32, newArticles: UInt32, failures: [FeedFailure], 
+        /**
+         * Full articles fetched from their pages, for feeds that want them.
+         */fullArticles: UInt32) {
         self.feeds = feeds
         self.unchanged = unchanged
         self.newArticles = newArticles
         self.failures = failures
+        self.fullArticles = fullArticles
     }
 
     
@@ -6428,7 +6502,8 @@ public struct FfiConverterTypeRefreshReport: FfiConverterRustBuffer {
                 feeds: FfiConverterUInt32.read(from: &buf), 
                 unchanged: FfiConverterUInt32.read(from: &buf), 
                 newArticles: FfiConverterUInt32.read(from: &buf), 
-                failures: FfiConverterSequenceTypeFeedFailure.read(from: &buf)
+                failures: FfiConverterSequenceTypeFeedFailure.read(from: &buf), 
+                fullArticles: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -6437,6 +6512,7 @@ public struct FfiConverterTypeRefreshReport: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.unchanged, into: &buf)
         FfiConverterUInt32.write(value.newArticles, into: &buf)
         FfiConverterSequenceTypeFeedFailure.write(value.failures, into: &buf)
+        FfiConverterUInt32.write(value.fullArticles, into: &buf)
     }
 }
 
@@ -6675,6 +6751,12 @@ enum AppError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case NotFound
     /**
+     * The article's page has no text to read (a video, a sign-in page,
+     * something too large), or isn't a web page.
+     */
+    case NoReadableText(reason: String
+    )
+    /**
      * A file that isn't OPML (or is too large to be a subscription list).
      */
     case NotOpml(reason: String
@@ -6740,35 +6822,38 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
             reason: try FfiConverterString.read(from: &buf)
             )
         case 2: return .NotFound
-        case 3: return .NotOpml(
+        case 3: return .NoReadableText(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 4: return .AlreadySubscribed(
+        case 4: return .NotOpml(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .AlreadySubscribed(
             feedId: try FfiConverterInt64.read(from: &buf)
             )
-        case 5: return .NotAFeed(
+        case 6: return .NotAFeed(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 6: return .Http(
+        case 7: return .Http(
             status: try FfiConverterUInt16.read(from: &buf)
             )
-        case 7: return .Storage(
+        case 8: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 8: return .InUse
-        case 9: return .Offline(
+        case 9: return .InUse
+        case 10: return .Offline(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 10: return .Certificate(
+        case 11: return .Certificate(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 11: return .Timeout
-        case 12: return .Network(
+        case 12: return .Timeout
+        case 13: return .Network(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 13: return .Cancelled
-        case 14: return .Interrupted
-        case 15: return .ShutDown
+        case 14: return .Cancelled
+        case 15: return .Interrupted
+        case 16: return .ShutDown
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6790,64 +6875,69 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case let .NotOpml(reason):
+        case let .NoReadableText(reason):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .AlreadySubscribed(feedId):
+        case let .NotOpml(reason):
             writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .AlreadySubscribed(feedId):
+            writeInt(&buf, Int32(5))
             FfiConverterInt64.write(feedId, into: &buf)
             
         
         case let .NotAFeed(reason):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .Http(status):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
             FfiConverterUInt16.write(status, into: &buf)
             
         
         case let .Storage(reason):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .InUse:
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(9))
         
         
         case let .Offline(reason):
-            writeInt(&buf, Int32(9))
-            FfiConverterString.write(reason, into: &buf)
-            
-        
-        case let .Certificate(reason):
             writeInt(&buf, Int32(10))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .Timeout:
+        case let .Certificate(reason):
             writeInt(&buf, Int32(11))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Timeout:
+            writeInt(&buf, Int32(12))
         
         
         case let .Network(reason):
-            writeInt(&buf, Int32(12))
+            writeInt(&buf, Int32(13))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .Cancelled:
-            writeInt(&buf, Int32(13))
-        
-        
-        case .Interrupted:
             writeInt(&buf, Int32(14))
         
         
-        case .ShutDown:
+        case .Interrupted:
             writeInt(&buf, Int32(15))
+        
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(16))
         
         }
     }
@@ -9345,6 +9435,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_launch_report() != 61151) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_load_full_article() != 7926) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_mark_all_read() != 49254) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9385,6 +9478,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_set_bookmarked() != 19311) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_set_feed_full_text() != 21013) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_set_feed_notify() != 34918) {

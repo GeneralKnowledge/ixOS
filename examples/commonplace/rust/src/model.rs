@@ -73,6 +73,8 @@ pub struct ArticleText {
     pub body: crate::ReaderSection,
     pub read: bool,
     pub bookmarked: bool,
+    /// The body is the full article from its web page, not the feed's text.
+    pub full: bool,
 }
 
 /// The person's choices, kept in the library.
@@ -185,6 +187,8 @@ pub struct RefreshReport {
     pub unchanged: u32,
     pub new_articles: u32,
     pub failures: Vec<FeedFailure>,
+    /// Full articles fetched from their pages, for feeds that want them.
+    pub full_articles: u32,
 }
 
 /// Every error the API returns. `reason` fields are diagnostics, not UI copy.
@@ -194,6 +198,10 @@ pub enum AppError {
     InvalidInput { reason: String },
     #[error("not found")]
     NotFound,
+    /// The article's page has no text to read (a video, a sign-in page,
+    /// something too large), or isn't a web page.
+    #[error("no readable text: {reason}")]
+    NoReadableText { reason: String },
     /// A file that isn't OPML (or is too large to be a subscription list).
     #[error("not OPML: {reason}")]
     NotOpml { reason: String },
@@ -283,6 +291,7 @@ impl AppError {
             Self::InvalidInput { .. } => "invalid-input",
             Self::NotFound => "not-found",
             Self::NotOpml { .. } => "not-opml",
+            Self::NoReadableText { .. } => "no-readable-text",
             Self::AlreadySubscribed { .. } => "already-subscribed",
             Self::NotAFeed { .. } => "not-a-feed",
             Self::Http { .. } => "http",
@@ -303,9 +312,10 @@ impl AppError {
 #[uniffi::export]
 pub fn app_error_kind(error: AppError) -> ErrorKind {
     match error {
-        AppError::InvalidInput { .. } | AppError::NotAFeed { .. } | AppError::NotOpml { .. } => {
-            ErrorKind::Invalid
-        }
+        AppError::InvalidInput { .. }
+        | AppError::NotAFeed { .. }
+        | AppError::NotOpml { .. }
+        | AppError::NoReadableText { .. } => ErrorKind::Invalid,
         AppError::NotFound => ErrorKind::NotFound,
         AppError::AlreadySubscribed { .. } => ErrorKind::Invalid,
         AppError::Storage { .. } => ErrorKind::Internal,

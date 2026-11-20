@@ -189,7 +189,8 @@ fn refresh_adds_new_articles_and_keeps_read_and_bookmarks() {
             feeds: 1,
             unchanged: 0,
             new_articles: 1,
-            failures: vec![]
+            failures: vec![],
+            full_articles: 0,
         }
     );
     // The validators from the first fetch were sent.
@@ -1261,4 +1262,185 @@ fn the_phone_checks_opml_fixture_previews_as_the_steps_say() {
     assert_eq!(preview.folders, ["News", "News / Tech", "Odd Ones"]);
     assert_eq!(preview.filters, 1);
     assert_eq!(preview.settings_not_used, ["pref_theme"]);
+}
+
+// ---- Full articles (C4) ----
+
+/// A web page like a blog's: navigation, a sidebar and a footer around one
+/// article of several paragraphs.
+fn article_page(title: &str, word: &str) -> Vec<u8> {
+    let paragraph = format!(
+        "<p>The {word} story goes on for a while, with enough sentences to read like a real article. \
+         It has commas, full stops and several clauses, which is what a readability score looks for. \
+         A second sentence adds more of the same, so the paragraph is long enough to count.</p>"
+    );
+    format!(
+        "<!DOCTYPE html><html><head><title>{title} | Example Blog</title></head><body>\
+         <nav><a href=\"/\">Home</a> <a href=\"/about\">About</a> <a href=\"/shop\">Shop</a></nav>\
+         <aside class=\"sidebar\"><p>Subscribe to our newsletter!</p><a href=\"/ad\">Buy now</a></aside>\
+         <article><h1>{title}</h1>{p}{p}{p}<p><img src=\"/pics/{word}.jpg\" alt=\"A picture\"></p>{p}</article>\
+         <footer>Copyright Example Blog. <a href=\"/privacy\">Privacy</a></footer></body></html>",
+        p = paragraph
+    )
+    .into_bytes()
+}
+
+fn page(body: Vec<u8>) -> Result<Response, NetError> {
+    let mut response = Response::new(200, body);
+    response.headers.push(forge_net::Header {
+        name: "Content-Type".into(),
+        value: "text/html; charset=utf-8".into(),
+    });
+    Ok(response)
+}
+
+#[test]
+fn the_readable_part_of_a_page_is_kept_and_the_rest_left_out() {
+    let html = full::extract(
+        &String::from_utf8(article_page("Moss", "walrus")).unwrap(),
+        "https://fixtures.example/a",
+    )
+    .unwrap();
+    assert!(html.contains("walrus story goes on"), "{html}");
+    assert!(!html.contains("newsletter"), "{html}");
+    assert!(!html.contains("Privacy"), "{html}");
+    // Relative pictures resolve against the page.
+    assert!(
+        html.contains("https://fixtures.example/pics/walrus.jpg"),
+        "{html}"
+    );
+    // ForgeReader lays it out as blocks, picture included.
+    let blocks = forge_reader::blocks_from_html(
+        &html,
+        &mut forge_reader::WebResources::new(Some("https://fixtures.example/a")),
+    );
+    assert!(blocks.len() >= 4, "{blocks:?}");
+    assert!(matches!(
+        full::extract(
+            "<html><body><nav>Home</nav></body></html>",
+            "https://fixtures.example/a"
+        ),
+        Err(AppError::NoReadableText { .. })
+    ));
+}
+
+fn full_text_library(dir: &std::path::Path, http: StaticClient) -> (Arc<AppCore>, Feed) {
+    let http = http.route(
+        Method::Get,
+        URL,
+        ok(rss(&[("a", "Alpha"), ("b", "Beta")]), None),
+    );
+    let (core, _) = open_with(dir, http);
+    let feed = block_on(core.add_feed(URL.into(), None)).unwrap();
+    (core, feed)
+}
+
+#[test]
+fn a_feed_that_wants_full_articles_gets_them_with_the_refresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "https://fixtures.example/a",
+            page(article_page("Alpha", "walrus")),
+        )
+        .route(
+            Method::Get,
+            "https://fixtures.example/b",
+            Ok(Response::new(404, Vec::new())),
+        );
+    let (core, feed) = full_text_library(dir.path(), http);
+    // Off by default: a refresh fetches no pages.
+    let report = block_on(core.refresh(None)).unwrap();
+    assert_eq!(report.full_articles, 0);
+    block_on(core.set_feed_full_text(feed.id, true)).unwrap();
+    assert!(core.feeds()[0].full_text);
+    let report = block_on(core.refresh(None)).unwrap();
+    assert_eq!(report.full_articles, 1);
+    let alpha = core
+        .timeline(Timeline::All)
+        .into_iter()
+        .find(|a| a.title == "Alpha")
+        .unwrap();
+    let beta = core
+        .timeline(Timeline::All)
+        .into_iter()
+        .find(|a| a.title == "Beta")
+        .unwrap();
+    let text = block_on(core.open_article(alpha.id)).unwrap();
+    assert!(text.full);
+    // The page's text is searchable too.
+    assert_eq!(
+        block_on(core.search("walrus".into()))
+            .unwrap()
+            .into_iter()
+            .map(|a| a.id)
+            .collect::<Vec<_>>(),
+        [alpha.id]
+    );
+    // Beta's page failed: it keeps the feed's text and isn't tried again.
+    let text = block_on(core.open_article(beta.id)).unwrap();
+    assert!(!text.full);
+    assert!(!text.body.blocks.is_empty());
+    assert_eq!(block_on(core.refresh(None)).unwrap().full_articles, 0);
+    // Asking again (turning it off and on) gives the failure another try.
+    block_on(core.set_feed_full_text(feed.id, false)).unwrap();
+    block_on(core.set_feed_full_text(feed.id, true)).unwrap();
+    assert_eq!(block_on(core.refresh(None)).unwrap().full_articles, 0);
+}
+
+#[test]
+fn one_article_can_be_loaded_in_full_on_demand_and_stays_full() {
+    let dir = tempfile::tempdir().unwrap();
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "https://fixtures.example/a",
+            page(article_page("Alpha", "otter")),
+        )
+        .route(
+            Method::Get,
+            "https://fixtures.example/b",
+            Ok({
+                let mut r = Response::new(200, b"%PDF-1.7".to_vec());
+                r.headers.push(forge_net::Header {
+                    name: "Content-Type".into(),
+                    value: "application/pdf".into(),
+                });
+                r
+            }),
+        );
+    let (core, _) = full_text_library(dir.path(), http);
+    let alpha = core
+        .timeline(Timeline::All)
+        .into_iter()
+        .find(|a| a.title == "Alpha")
+        .unwrap();
+    let beta = core
+        .timeline(Timeline::All)
+        .into_iter()
+        .find(|a| a.title == "Beta")
+        .unwrap();
+    let text = block_on(core.load_full_article(alpha.id, None)).unwrap();
+    assert!(text.full);
+    assert!(matches!(
+        block_on(core.load_full_article(beta.id, None)),
+        Err(AppError::NoReadableText { .. })
+    ));
+    assert!(matches!(
+        block_on(core.load_full_article(999, None)),
+        Err(AppError::NotFound)
+    ));
+    assert_eq!(
+        app_error_kind(AppError::NoReadableText {
+            reason: String::new()
+        }),
+        forge_app::ErrorKind::Invalid
+    );
+    // A refresh that updates the article's feed text keeps the full text.
+    block_on(core.refresh(None)).unwrap();
+    core.shutdown();
+    drop(core);
+    let core = empty_core(dir.path());
+    assert!(block_on(core.open_article(alpha.id)).unwrap().full);
 }

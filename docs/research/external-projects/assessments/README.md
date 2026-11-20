@@ -10,7 +10,7 @@ Part of the [External Projects Atlas](../README.md). One file per evidence-backe
 | On-device AI | [ai/](ai/) | [FluidAudio](ai/fluidaudio.md): Watch |
 | Accessibility and interaction quality | [accessibility/](accessibility/) | [a11y-check](accessibility/a11y-check.md): Adopt as a CI tool |
 | Images, documents and media | [media/](media/) | [Offscan](media/offscan.md): Borrow and Study |
-| Reading and personal libraries | [reading/](reading/) | None yet |
+| Reading and personal libraries | [reading/](reading/) | [dom_smoothie](reading/dom-smoothie.md): Adopt (Commonplace) |
 | Maps and fieldwork | [fieldwork/](fieldwork/) | None yet |
 | Automation and system integration | [automation/](automation/) | None yet |
 | Developer tooling and testing | [developer-tooling/](developer-tooling/) | None yet |

@@ -35,6 +35,7 @@ use forge_net::{CancelHandle, HttpClient, Request, UreqClient};
 use forge_runtime::now_ms;
 
 mod feed;
+mod full;
 mod model;
 mod opml;
 mod store;
@@ -76,6 +77,8 @@ forge_runtime::log_export!();
 
 /// How long one feed may take to answer.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+/// The most full articles one refresh fetches; the rest wait for the next.
+const FULL_ARTICLES_PER_REFRESH: u32 = 10;
 
 /// What the command thread owns: the database, and where it publishes.
 struct State {
@@ -337,7 +340,59 @@ impl AppCore {
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<RefreshReport, AppError> {
         let work = self.rt.foreground(cancellation.as_deref());
-        Ok(self.refresh_in(work).await?.0)
+        let (mut report, _) = self.refresh_in(work).await?;
+        report.full_articles = self
+            .fetch_full_articles(self.rt.foreground(cancellation.as_deref()))
+            .await;
+        Ok(report)
+    }
+
+    /// Whether a feed's articles are fetched in full from their web pages
+    /// (for feeds that send only a summary). Turning it on fetches its
+    /// articles with the next refresh.
+    pub async fn set_feed_full_text(&self, feed_id: i64, on: bool) -> Result<(), AppError> {
+        self.rt
+            .command("set-feed-full-text", move |state| {
+                state.store.set_feed_full_text(feed_id, on)?;
+                state.publish();
+                Ok(())
+            })
+            .await
+    }
+
+    /// Fetches one article's page now, saves its readable text and returns
+    /// the article with it. On-screen work: `cancellation`, the background
+    /// or shutdown stop it, and nothing is saved.
+    pub async fn load_full_article(
+        &self,
+        article_id: i64,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<ArticleText, AppError> {
+        let url = self
+            .rt
+            .command("article-url", move |state| {
+                state.store.article_url(article_id)
+            })
+            .await?
+            .ok_or_else(|| AppError::NoReadableText {
+                reason: "the article has no address".into(),
+            })?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        let html = self
+            .rt
+            .run("fetch-full-article", work, move |cancel| {
+                full::fetch_article(&*http, &url, cancel)
+            })
+            .await?;
+        self.rt
+            .command("save-full-article", move |state| {
+                state.store.save_full_articles(&[(article_id, Ok(html))])?;
+                let text = state.store.article_text(article_id)?;
+                state.publish();
+                Ok(text)
+            })
+            .await
     }
 
     /// Waits until the network comes back after being unavailable, so the
@@ -426,6 +481,7 @@ impl AppCore {
             unchanged: 0,
             new_articles: 0,
             failures: Vec::new(),
+            full_articles: 0,
         };
         let mut apply = Vec::with_capacity(fetched.len());
         for (source, result) in fetched {
@@ -471,6 +527,59 @@ impl AppCore {
         Ok((report, notifying))
     }
 
+    /// Fetches full articles for feeds that want them, a few per refresh,
+    /// and saves each one's text or why it failed. Never fails the refresh:
+    /// stopping it keeps what was fetched, and the rest wait for next time.
+    /// Returns how many were saved.
+    async fn fetch_full_articles(&self, work: Work) -> u32 {
+        let wanted = match self
+            .rt
+            .command("full-articles-wanted", |state| {
+                state.store.full_articles_wanted(FULL_ARTICLES_PER_REFRESH)
+            })
+            .await
+        {
+            Ok(wanted) if !wanted.is_empty() => wanted,
+            Ok(_) => return 0,
+            Err(e) => {
+                forge_runtime::logging::warn!("full articles not listed: {}", e.kind());
+                return 0;
+            }
+        };
+        let http = Arc::clone(&self.http);
+        let fetched = self
+            .rt
+            .run("fetch-full-articles", work, move |cancel| {
+                let mut results = Vec::with_capacity(wanted.len());
+                for (id, url) in wanted {
+                    if cancel.is_cancelled() {
+                        break;
+                    }
+                    let result = full::fetch_article(&*http, &url, cancel);
+                    if cancel.is_cancelled() {
+                        break;
+                    }
+                    results.push((id, result));
+                }
+                Ok::<_, AppError>(results)
+            })
+            .await
+            .unwrap_or_default();
+        let tried = fetched.len();
+        let saved = self
+            .rt
+            .command("save-full-articles", move |state| {
+                let saved = state.store.save_full_articles(&fetched)?;
+                state.publish();
+                Ok::<_, AppError>(saved)
+            })
+            .await
+            .unwrap_or(0);
+        // Counts only: addresses are the person's.
+        forge_runtime::logging::info!("full articles: {saved} of {tried} fetched");
+        saved
+    }
+
     /// Asks iOS to refresh the feeds in the background about hourly, while
     /// the app is closed. Does nothing where the host has no background
     /// tasks (Linux tests, an app without the service installed).
@@ -497,6 +606,8 @@ impl AppCore {
                     match core.refresh_in(work).await {
                         Ok((_, notifying)) => {
                             core.announce_new_articles(notifying).await;
+                            core.fetch_full_articles(core.rt.lifetime(Some(&*cancellation)))
+                                .await;
                             true
                         }
                         Err(_) => false,

@@ -184,6 +184,28 @@ public final class LibraryModel {
         await perform { try await $0.renameFeed(feedId: feed.id, title: title) }
     }
 
+    /// Whether a feed's articles are fetched in full from their web pages.
+    /// Turning it on fetches them with a refresh, started now.
+    public func setFullText(_ feed: Feed, _ on: Bool) async {
+        guard await perform({ try await $0.setFeedFullText(feedId: feed.id, on: on) }) else { return }
+        if on { Task { await self.refresh() } }
+    }
+
+    /// Fetches one article's page now and returns the article with its
+    /// readable text. Throws, so the article screen can say why there.
+    public func loadFullArticle(_ articleID: Int64) async throws -> ArticleText {
+        do {
+            let text = try await withRustCancellation { cancellation in
+                try await core.loadFullArticle(articleId: articleID, cancellation: cancellation)
+            }
+            reload()
+            return text
+        } catch {
+            log.warn("loading a full article failed: \(error)")
+            throw error
+        }
+    }
+
     /// Whether a feed's new articles count for the new-articles notification.
     public func setNotify(_ feed: Feed, _ notify: Bool) async {
         await perform { try await $0.setFeedNotify(feedId: feed.id, notify: notify) }
@@ -477,6 +499,7 @@ public final class LibraryModel {
         case .AlreadySubscribed: return "Already Subscribed"
         case .NotAFeed: return "Not a Feed"
         case .NotOpml: return "Not a Subscription List"
+        case .NoReadableText: return "No Article Found"
         case .Offline: return "You're Offline"
         case .Timeout: return "No Response"
         case .Http: return "The Site Had a Problem"
@@ -506,6 +529,7 @@ public final class LibraryModel {
         case .InvalidInput: return "That doesn't look like a web address. Check it and try again."
         case .NotFound: return "That's no longer in your library."
         case .NotOpml: return "That file isn't an OPML subscription list, or it's too large to be one."
+        case .NoReadableText: return "The article's page has no text Commonplace can read. Open it in the browser instead."
         case .AlreadySubscribed: return "You're already subscribed to this feed."
         case .NotAFeed: return "There's no RSS, Atom or JSON feed at that address."
         case .Http(let status): return "The site answered with an error (HTTP \(status))."

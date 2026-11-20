@@ -47,6 +47,9 @@ forge-reader = { path = "../../../crates/forge-reader" }
 feed-rs = "2"
 # OPML import and export (the same quick-xml feed-rs uses).
 quick-xml = "0.42"
+# Full articles (C4): the readable part of a web page, a Readability.js port
+# on html5ever (MIT; assessment in docs/research/external-projects/assessments/reading/dom-smoothie.md).
+dom_smoothie = { version = "0.19", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.14"
