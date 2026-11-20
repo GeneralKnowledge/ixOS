@@ -7,10 +7,10 @@
 //! server conversation, this device does for itself:
 //!
 //! - **The log** ([`PeerLog`]) is the conversation's truth on this device:
-//!   every message sent to the device and received from it, saved in
-//!   `devices/<endpoint id>/messages.json`. chat-core's store is a cache of
-//!   it, as it is of a server, so a damaged store that chat-core sets aside
-//!   loses nothing. The log stamps each message as it enters, strictly
+//!   every message sent to the device and received from it, rows of
+//!   Relay's database (`store`), saved in the same transaction as the
+//!   delivery they go with. chat-core's store is a cache of it, as it is of
+//!   a server, so a damaged store that chat-core sets aside loses nothing. The log stamps each message as it enters, strictly
 //!   increasing, which is the order both sides show and the `since` cursor
 //!   catch-up reads by.
 //! - **The repo** ([`PeerRepo`]) is the conversation's `ChatRepo`. Posting a
@@ -42,12 +42,14 @@ use chat_core::{
     Attachment, ChatError, ChatRepo, Message, MessageStatus, OutgoingMessage, RemoteConversation,
     RemoteEvent, RemoteStream,
 };
-use forge_app::Document;
 use forge_net::CancelHandle;
-use forge_runtime::{lock, now_ms};
+use forge_runtime::lock;
 use serde::{Deserialize, Serialize};
 
+use forge_storage::rusqlite::Connection;
+
 use crate::model::RelayError;
+use crate::store::{self, Store};
 use crate::RelayCore;
 
 /// The conversation id of the trusted device `endpoint_id`.
@@ -110,7 +112,8 @@ fn mime_for(name: &str) -> &'static str {
         _ => "application/octet-stream",
     }
 }
-const LOG_VERSION: u32 = 1;
+/// The JSON logs' version, before they moved into the database.
+pub(crate) const LOG_VERSION: u32 = 1;
 /// How often a quiet stream wakes to see if it was cancelled.
 const QUIET: Duration = Duration::from_millis(250);
 /// How often a quiet stream says it is still there.
@@ -133,145 +136,163 @@ pub struct LogFile {
     pub files: BTreeMap<String, String>,
 }
 
-/// One device conversation's messages on this device.
+/// Device conversation `endpoint_id`'s id, if `endpoint_id` can be one
+/// (endpoint ids are hex; anything else never names a conversation).
+fn checked(endpoint_id: &str) -> Result<String, RelayError> {
+    if endpoint_id.is_empty() || !endpoint_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(RelayError::UnknownPeer {
+            id: endpoint_id.into(),
+        });
+    }
+    Ok(device_conversation(endpoint_id))
+}
+
+/// Changes to device conversations inside one transaction of Relay's
+/// database ([`crate::State::change_with`]): they are saved with the
+/// record's change, or not at all, and listeners hear of them once the
+/// transaction is committed.
+pub(crate) struct Conversations<'a> {
+    c: &'a Connection,
+    changed: Vec<(String, Message)>,
+}
+
+impl<'a> Conversations<'a> {
+    pub fn new(c: &'a Connection) -> Self {
+        Self {
+            c,
+            changed: Vec::new(),
+        }
+    }
+
+    /// What changed, by device, for the listeners.
+    pub fn changed(self) -> Vec<(String, Message)> {
+        self.changed
+    }
+
+    pub fn get(&self, endpoint_id: &str, id: &str) -> Option<Message> {
+        store::message(self.c, &checked(endpoint_id).ok()?, id)
+    }
+
+    /// Our messages to `endpoint_id` still waiting in the outbox.
+    pub fn queued(&self, endpoint_id: &str) -> Vec<Message> {
+        checked(endpoint_id)
+            .map(|conv| store::queued(self.c, &conv))
+            .unwrap_or_default()
+    }
+
+    /// Adds `message` to `endpoint_id`'s conversation (see [`store::add`]).
+    pub fn add(&mut self, endpoint_id: &str, message: Message) -> Result<Message, RelayError> {
+        let (message, added) = store::add(self.c, &checked(endpoint_id)?, message)?;
+        if added {
+            self.changed
+                .push((endpoint_id.to_string(), message.clone()));
+        }
+        Ok(message)
+    }
+
+    /// Adds `message` after keeping where its attachment is on this
+    /// device, when it is here.
+    pub fn add_files(
+        &mut self,
+        endpoint_id: &str,
+        message: Message,
+        path: Option<&Path>,
+    ) -> Result<Message, RelayError> {
+        if let (Some(a), Some(path)) = (message.attachments.first(), path) {
+            store::set_file(self.c, &checked(endpoint_id)?, &a.id, path)?;
+        }
+        self.add(endpoint_id, message)
+    }
+
+    /// Moves one of our messages on (see [`store::set_status`]).
+    pub fn set_status(
+        &mut self,
+        endpoint_id: &str,
+        id: &str,
+        status: MessageStatus,
+    ) -> Result<(), RelayError> {
+        if let Some(m) = store::set_status(self.c, &checked(endpoint_id)?, id, status)? {
+            self.changed.push((endpoint_id.to_string(), m));
+        }
+        Ok(())
+    }
+
+    /// Adds a message moved from elsewhere (see [`store::import`]).
+    pub fn import(
+        &mut self,
+        endpoint_id: &str,
+        message: Message,
+        path: Option<&Path>,
+    ) -> Result<(), RelayError> {
+        if let Some(m) = store::import(self.c, &checked(endpoint_id)?, message, path)? {
+            self.changed.push((endpoint_id.to_string(), m));
+        }
+        Ok(())
+    }
+}
+
+/// One device conversation on this device: its messages are rows of
+/// Relay's database, read by query.
 pub struct PeerLog {
     conversation_id: String,
+    endpoint_id: String,
+    /// `devices/<endpoint id>`: copies of files we send ([`Self::keep`]).
     dir: PathBuf,
-    doc: Mutex<Document<LogFile>>,
-    listeners: Mutex<Vec<mpsc::Sender<Message>>>,
+    logs: Arc<PeerLogsInner>,
 }
 
 impl PeerLog {
-    fn open(dir: PathBuf, endpoint_id: &str) -> Result<Self, RelayError> {
-        std::fs::create_dir_all(&dir).map_err(crate::node::file_error)?;
-        Ok(Self {
-            conversation_id: device_conversation(endpoint_id),
-            dir: dir.clone(),
-            doc: Mutex::new(Document::open(dir.join("messages.json"), LOG_VERSION)?),
-            listeners: Mutex::new(Vec::new()),
-        })
+    fn store(&self) -> &Store {
+        &self.logs.store
     }
 
     pub fn get(&self, id: &str) -> Option<Message> {
-        lock(&self.doc)
-            .value()
-            .messages
-            .iter()
-            .find(|m| m.id == id)
-            .cloned()
+        self.store()
+            .read(|c| store::message(c, &self.conversation_id, id))
     }
 
     /// Messages changed after `since` (all without it), oldest first.
     pub fn since(&self, since: Option<i64>) -> Vec<Message> {
-        lock(&self.doc)
-            .value()
-            .messages
-            .iter()
-            .filter(|m| since.is_none_or(|s| m.changed_at() > s))
-            .cloned()
-            .collect()
+        self.store()
+            .read(|c| store::since(c, &self.conversation_id, since))
     }
 
     pub fn last(&self) -> Option<Message> {
-        lock(&self.doc).value().messages.last().cloned()
+        self.store().read(|c| store::last(c, &self.conversation_id))
+    }
+
+    /// Our messages still waiting in the outbox.
+    pub fn queued(&self) -> Vec<Message> {
+        self.store()
+            .read(|c| store::queued(c, &self.conversation_id))
+    }
+
+    /// Changes this conversation in a transaction of its own.
+    fn change<T>(
+        &self,
+        edit: impl FnOnce(&mut Conversations<'_>) -> Result<T, RelayError>,
+    ) -> Result<T, RelayError> {
+        let (value, changed) = self.store().write(|c| {
+            let mut conversations = Conversations::new(c);
+            let value = edit(&mut conversations)?;
+            Ok((value, conversations.changed()))
+        })?;
+        self.logs.notify(changed);
+        Ok(value)
     }
 
     /// Adds `message`, stamped now, unless one with its id is here: then
     /// that one is returned and nothing changes. It is `Sent` unless it is
     /// one of ours `Queued` in the outbox.
-    pub fn add(&self, mut message: Message) -> Result<Message, RelayError> {
-        let added = {
-            let mut doc = lock(&self.doc);
-            if let Some(found) = doc.value().messages.iter().find(|m| m.id == message.id) {
-                return Ok(found.clone());
-            }
-            message.conversation_id = self.conversation_id.clone();
-            if message.status != MessageStatus::Queued {
-                message.status = MessageStatus::Sent;
-            }
-            message.updated_at = None;
-            doc.change(|log| {
-                let at = now_ms().max(log.last_at + 1);
-                log.last_at = at;
-                message.sent_at = at;
-                log.messages.push(message.clone());
-                Ok::<_, RelayError>(())
-            })?;
-            message
-        };
-        lock(&self.listeners).retain(|l| l.send(added.clone()).is_ok());
-        Ok(added)
+    pub fn add(&self, message: Message) -> Result<Message, RelayError> {
+        self.change(|c| c.add(&self.endpoint_id, message))
     }
 
     /// Moves one of our messages on: `Sent` once the device has it,
     /// `Failed` when it can't be delivered, `Queued` when it is sent
     /// again. Its change is stamped, so catch-up after `since` sees it.
     pub fn set_status(&self, id: &str, status: MessageStatus) -> Result<(), RelayError> {
-        let changed = {
-            let mut doc = lock(&self.doc);
-            let Some(i) = doc.value().messages.iter().position(|m| m.id == id) else {
-                return Ok(());
-            };
-            if doc.value().messages[i].status == status {
-                return Ok(());
-            }
-            doc.change(|log| {
-                let at = now_ms().max(log.last_at + 1);
-                log.last_at = at;
-                let m = &mut log.messages[i];
-                m.status = status;
-                m.updated_at = Some(at);
-                Ok::<_, RelayError>(m.clone())
-            })?
-        };
-        lock(&self.listeners).retain(|l| l.send(changed.clone()).is_ok());
-        Ok(())
-    }
-
-    /// Adds a message moved from elsewhere (the history, before notes
-    /// were messages), keeping its time, unless its id is here. It goes in
-    /// time order, and its change is stamped now, so catch-up after `since`
-    /// sees it.
-    pub fn import(&self, mut message: Message, path: Option<&Path>) -> Result<(), RelayError> {
-        let added = {
-            let mut doc = lock(&self.doc);
-            if doc.value().messages.iter().any(|m| m.id == message.id) {
-                return Ok(());
-            }
-            message.conversation_id = self.conversation_id.clone();
-            doc.change(|log| {
-                let at = now_ms().max(log.last_at + 1);
-                log.last_at = at;
-                message.updated_at = Some(at);
-                if let (Some(a), Some(path)) = (message.attachments.first(), path) {
-                    log.files
-                        .insert(a.id.clone(), path.to_string_lossy().into_owned());
-                }
-                let i = log
-                    .messages
-                    .iter()
-                    .position(|m| m.sent_at > message.sent_at)
-                    .unwrap_or(log.messages.len());
-                log.messages.insert(i, message.clone());
-                Ok::<_, RelayError>(())
-            })?;
-            message
-        };
-        lock(&self.listeners).retain(|l| l.send(added.clone()).is_ok());
-        Ok(())
-    }
-
-    /// Adds `message` (as [`add`](Self::add)) after keeping where its
-    /// attachment is on this device, when it is here.
-    pub fn add_files(&self, message: Message, path: Option<&Path>) -> Result<Message, RelayError> {
-        if let (Some(a), Some(path)) = (message.attachments.first(), path) {
-            let (id, path) = (a.id.clone(), path.to_string_lossy().into_owned());
-            lock(&self.doc).change(|log| {
-                log.files.insert(id, path);
-                Ok::<_, RelayError>(())
-            })?;
-        }
-        self.add(message)
+        self.change(|c| c.set_status(&self.endpoint_id, id, status))
     }
 
     /// A copy of a file we send, kept with the conversation so it still
@@ -296,56 +317,73 @@ impl PeerLog {
 
     /// Where attachment `id` is on this device, if it is still there.
     pub fn file(&self, id: &str) -> Option<PathBuf> {
-        let path = PathBuf::from(lock(&self.doc).value().files.get(id)?);
+        let path = self
+            .store()
+            .read(|c| store::file(c, &self.conversation_id, id))?;
         path.exists().then_some(path)
-    }
-
-    /// Our messages still waiting in the outbox.
-    pub fn queued(&self) -> Vec<Message> {
-        lock(&self.doc)
-            .value()
-            .messages
-            .iter()
-            .filter(|m| m.status == MessageStatus::Queued)
-            .cloned()
-            .collect()
     }
 
     fn listen(&self) -> mpsc::Receiver<Message> {
         let (tx, rx) = mpsc::channel();
-        lock(&self.listeners).push(tx);
+        lock(&self.logs.listeners)
+            .entry(self.endpoint_id.clone())
+            .or_default()
+            .push(tx);
         rx
     }
 }
 
-/// The logs of every device conversation, opened on first use.
-pub(crate) struct PeerLogs {
+struct PeerLogsInner {
     dir: PathBuf,
-    open: Mutex<HashMap<String, Arc<PeerLog>>>,
+    store: Arc<Store>,
+    /// Open streams, by device.
+    listeners: Mutex<HashMap<String, Vec<mpsc::Sender<Message>>>>,
+}
+
+impl PeerLogsInner {
+    fn notify(&self, changed: Vec<(String, Message)>) {
+        if changed.is_empty() {
+            return;
+        }
+        let mut listeners = lock(&self.listeners);
+        for (endpoint_id, message) in changed {
+            if let Some(list) = listeners.get_mut(&endpoint_id) {
+                list.retain(|l| l.send(message.clone()).is_ok());
+            }
+        }
+    }
+}
+
+/// Every device conversation, in Relay's database.
+#[derive(Clone)]
+pub(crate) struct PeerLogs {
+    inner: Arc<PeerLogsInner>,
 }
 
 impl PeerLogs {
-    pub fn new(dir: PathBuf) -> Self {
+    /// Conversations in `store`; copies of files we send go in `dir`.
+    pub fn new(dir: PathBuf, store: Arc<Store>) -> Self {
         Self {
-            dir,
-            open: Mutex::new(HashMap::new()),
+            inner: Arc::new(PeerLogsInner {
+                dir,
+                store,
+                listeners: Mutex::new(HashMap::new()),
+            }),
         }
     }
 
-    pub fn get(&self, endpoint_id: &str) -> Result<Arc<PeerLog>, RelayError> {
-        let mut open = lock(&self.open);
-        if let Some(log) = open.get(endpoint_id) {
-            return Ok(Arc::clone(log));
-        }
-        // Endpoint ids are hex; anything else never names a folder.
-        if endpoint_id.is_empty() || !endpoint_id.chars().all(|c| c.is_ascii_alphanumeric()) {
-            return Err(RelayError::UnknownPeer {
-                id: endpoint_id.into(),
-            });
-        }
-        let log = Arc::new(PeerLog::open(self.dir.join(endpoint_id), endpoint_id)?);
-        open.insert(endpoint_id.to_string(), Arc::clone(&log));
-        Ok(log)
+    pub fn get(&self, endpoint_id: &str) -> Result<PeerLog, RelayError> {
+        Ok(PeerLog {
+            conversation_id: checked(endpoint_id)?,
+            endpoint_id: endpoint_id.to_string(),
+            dir: self.inner.dir.join(endpoint_id),
+            logs: Arc::clone(&self.inner),
+        })
+    }
+
+    /// Tells open streams what a committed transaction changed.
+    pub fn notify(&self, changed: Vec<(String, Message)>) {
+        self.inner.notify(changed);
     }
 }
 
@@ -361,7 +399,7 @@ pub(crate) struct PeerMessage {
 pub struct PeerRepo {
     relay: Weak<RelayCore>,
     endpoint_id: String,
-    log: Arc<PeerLog>,
+    log: PeerLog,
 }
 
 impl PeerRepo {
@@ -593,10 +631,14 @@ impl RelayCore {
 mod tests {
     use super::*;
 
+    fn logs(dir: &Path) -> PeerLogs {
+        PeerLogs::new(dir.to_path_buf(), Arc::new(Store::in_memory()))
+    }
+
     #[test]
     fn the_log_stamps_in_order_and_adds_each_id_once() {
         let dir = tempfile::tempdir().unwrap();
-        let logs = PeerLogs::new(dir.path().to_path_buf());
+        let logs = logs(dir.path());
         let log = logs.get("abc123").unwrap();
         let rx = log.listen();
         let message = |id: &str| Message {
@@ -614,18 +656,14 @@ mod tests {
         assert_eq!(log.since(None).len(), 2);
         assert_eq!(log.since(Some(a.sent_at)), vec![b.clone()]);
         assert_eq!(rx.try_iter().count(), 2, "one event per new message");
-
-        // It is all there after a relaunch.
-        drop(logs);
-        let logs = PeerLogs::new(dir.path().to_path_buf());
-        assert_eq!(logs.get("abc123").unwrap().since(None), vec![a, b]);
+        // Another device's stream hears nothing of it.
         assert!(logs.get("../x").is_err());
     }
 
     #[test]
     fn a_queued_message_moves_on_with_a_new_stamp() {
         let dir = tempfile::tempdir().unwrap();
-        let logs = PeerLogs::new(dir.path().to_path_buf());
+        let logs = logs(dir.path());
         let log = logs.get("abc123").unwrap();
         let queued = log
             .add(Message {

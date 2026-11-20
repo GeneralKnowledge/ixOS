@@ -1,5 +1,7 @@
 //! What Relay saves: this device's identity, its trusted devices, what
-//! waits for them, and the history of what went across. One JSON document.
+//! waits for them, and the history of what went across. A value in memory,
+//! saved as rows of Relay's database (`store`); older builds saved it as one
+//! JSON document, `relay.json`, read once to move it in (`VERSION`).
 //! Devices paired the old way (QR code, TCP) were kept with their secrets
 //! under `peers`; that field is no longer read, so the next save drops it.
 

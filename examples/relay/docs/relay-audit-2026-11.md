@@ -147,6 +147,13 @@ One PR, no new features. Each fix ships with its test.
 
 ### 3. P3: one database
 
+Built on `claude/relay-sqlite` (stacked on #344): `store.rs`. One part
+differs from the plan below. chat-core still keeps its own store of
+device conversations, as a cache that it can rebuild through `PeerRepo`,
+the same way it caches a server. Relay's database is the truth, and
+nothing depends on the cache. Removing the cache would mean changing
+chat-core, so that waits until it is needed.
+
 - SQLite (forge-storage) holds devices, deliveries, received ids, the
   history and device conversations (messages and attachment locations),
   with the four transactions above.

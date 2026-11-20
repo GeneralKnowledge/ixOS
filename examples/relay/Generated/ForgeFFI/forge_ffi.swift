@@ -5182,6 +5182,13 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func revokeDevice(endpointId: String) async throws 
     
     /**
+     * Where Relay's saved data was set aside, when it couldn't be read
+     * and Relay started again: the device kept its key (its identity),
+     * but not its trusted devices or history. `None` normally.
+     */
+    func savedDataSetAside()  -> String?
+    
+    /**
      * Starts sending several files and folders as one transfer with a new
      * word code, like `send_with_code`. The receiver gets them in one
      * folder named "N items"; two items with the same name are refused.
@@ -5748,6 +5755,20 @@ open func revokeDevice(endpointId: String)async throws   {
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeRelayError_lift
         )
+}
+    
+    /**
+     * Where Relay's saved data was set aside, when it couldn't be read
+     * and Relay started again: the device kept its key (its identity),
+     * but not its trusted devices or history. `None` normally.
+     */
+open func savedDataSetAside() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_saved_data_set_aside(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -14198,6 +14219,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_revoke_device() != 64705) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_saved_data_set_aside() != 31844) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_send_paths_with_code() != 4107) {

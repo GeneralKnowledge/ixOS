@@ -632,6 +632,11 @@ uint64_t uniffi_relay_core_fn_method_relaycore_revision(uint64_t ptr, RustCallSt
 uint64_t uniffi_relay_core_fn_method_relaycore_revoke_device(uint64_t ptr, RustBuffer endpoint_id
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SAVED_DATA_SET_ASIDE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SAVED_DATA_SET_ASIDE
+RustBuffer uniffi_relay_core_fn_method_relaycore_saved_data_set_aside(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_PATHS_WITH_CODE
 void uniffi_relay_core_fn_method_relaycore_send_paths_with_code(uint64_t ptr, RustBuffer paths, RustCallStatus *_Nonnull out_status
@@ -2045,6 +2050,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_revision(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_REVOKE_DEVICE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_REVOKE_DEVICE
 uint16_t uniffi_relay_core_checksum_method_relaycore_revoke_device(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SAVED_DATA_SET_ASIDE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SAVED_DATA_SET_ASIDE
+uint16_t uniffi_relay_core_checksum_method_relaycore_saved_data_set_aside(void
     
 );
 #endif
