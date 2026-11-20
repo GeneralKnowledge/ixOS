@@ -209,8 +209,10 @@ pub enum SectionState {
         age_seconds: u64,
         problem: Option<FetchProblem>,
     },
-    /// The source answered, and has no data for this place (pollen outside
-    /// Europe). Not an error, and never filled in.
+    /// The source answered, and has no data for this place right now. Not
+    /// an error, and never filled in. For pollen this covers both "outside
+    /// the model's area" and "nothing forecast now" (the source sends the
+    /// same empty answer); `PollenOverview::gap` tells them apart.
     NotAvailableHere,
     /// There is no data to show: the fetch failed with `problem` and nothing
     /// usable was kept, or (`None`) it was never fetched or what was fetched
@@ -524,8 +526,10 @@ pub struct PollenSpeciesNow {
 pub enum PollenGap {
     /// The place is outside the area the pollen model covers (Europe).
     OutsideModelArea,
-    /// The place is inside it, and the model has no pollen in its forecast
-    /// right now: it forecasts pollen only during the pollen season.
+    /// The place is inside it, and the source has no pollen forecast right
+    /// now. Its documentation says pollen is forecast during the pollen
+    /// season, but the empty answer itself doesn't say why, so the page
+    /// words this neutrally.
     NothingForecastNow,
 }
 

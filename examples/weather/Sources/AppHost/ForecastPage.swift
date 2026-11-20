@@ -601,7 +601,7 @@ private struct PollenCard: View {
                     overview.state, what: "Pollen",
                     notHere: overview.gap == .outsideModelArea
                         ? "Pollen forecasts cover Europe only, so there's none for this place."
-                        : "No pollen in the forecast right now. Pollen is forecast here during the pollen season.")
+                        : "No pollen forecast available right now. Pollen forecasts here run during the pollen season.")
                 {
                     Text(message).font(.subheadline)
                         .accessibilityIdentifier("forecast.pollen.message")

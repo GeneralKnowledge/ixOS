@@ -8091,8 +8091,10 @@ public enum PollenGap: Equatable, Hashable {
      */
     case outsideModelArea
     /**
-     * The place is inside it, and the model has no pollen in its forecast
-     * right now: it forecasts pollen only during the pollen season.
+     * The place is inside it, and the source has no pollen forecast right
+     * now. Its documentation says pollen is forecast during the pollen
+     * season, but the empty answer itself doesn't say why, so the page
+     * words this neutrally.
      */
     case nothingForecastNow
 
@@ -8686,8 +8688,10 @@ public enum SectionState: Equatable, Hashable {
     case cached(ageSeconds: UInt64, problem: FetchProblem?
     )
     /**
-     * The source answered, and has no data for this place (pollen outside
-     * Europe). Not an error, and never filled in.
+     * The source answered, and has no data for this place right now. Not
+     * an error, and never filled in. For pollen this covers both "outside
+     * the model's area" and "nothing forecast now" (the source sends the
+     * same empty answer); `PollenOverview::gap` tells them apart.
      */
     case notAvailableHere
     /**
