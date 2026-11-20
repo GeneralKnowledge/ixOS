@@ -488,10 +488,11 @@ private struct DetailsGrid: View {
 
 /// The section's message when it has nothing to show, or nil when it has
 /// data. "Not available here" and "couldn't load" are never the same line.
-private func sectionMessage(_ state: SectionState, what: String) -> String? {
+/// `notHere` says why a source can have nothing for a place.
+private func sectionMessage(_ state: SectionState, what: String, notHere: String? = nil) -> String? {
     switch state {
     case .live, .cached: return nil
-    case .notAvailableHere: return "\(what) isn't available for this place."
+    case .notAvailableHere: return notHere ?? "\(what) isn't available for this place."
     case let .unavailable(problem):
         guard let problem else { return "No \(what.lowercased()) data yet." }
         return "Couldn't load \(what.lowercased()): \(WeatherFormat.problem(problem))."
@@ -594,7 +595,11 @@ private struct PollenCard: View {
     var body: some View {
         Card("Pollen", systemImage: "leaf.fill", palette: palette) {
             VStack(alignment: .leading, spacing: 8) {
-                if let message = sectionMessage(overview.state, what: "Pollen") {
+                // Open-Meteo: Europe only, during the pollen season.
+                if let message = sectionMessage(
+                    overview.state, what: "Pollen",
+                    notHere: "No pollen data for this place right now. It covers Europe during the pollen season.")
+                {
                     Text(message).font(.subheadline)
                         .accessibilityIdentifier("forecast.pollen.message")
                 } else if overview.species.isEmpty {

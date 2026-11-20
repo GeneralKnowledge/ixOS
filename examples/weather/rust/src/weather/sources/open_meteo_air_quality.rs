@@ -4,7 +4,8 @@
 //! the Copernicus Atmosphere Monitoring Service, credited as both ask.
 //!
 //! The air-quality forecast reaches up to 7 days, shorter than the weather
-//! forecast, and pollen exists only where CAMS models it: each hour is
+//! forecast, and pollen exists only in Europe during the pollen season (4
+//! days ahead), so outside either it is "not available here": each hour is
 //! decoded as sent and nothing is extended or invented. Values the API
 //! leaves `null` stay missing.
 
