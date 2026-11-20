@@ -6,6 +6,8 @@ import ForgeUI
 /// timings and device readings of each run (AiLabModel, rust/src/ai_lab.rs).
 struct AiLabView: View {
     @Bindable var model: AiLabModel
+    /// Spike: the backends llama.cpp finds on this phone (AiLabLlama.swift).
+    @State private var llamaBackends = LlamaProbe.describe()
 
     private var s: AiLabSnapshot { model.snapshot }
 
@@ -44,6 +46,8 @@ struct AiLabView: View {
                 Text(reason).font(.footnote).foregroundStyle(.secondary)
             }
             LabeledContent("Context", value: "\(s.model.contextTokens) tokens")
+            LabeledContent("llama.cpp", value: llamaBackends)
+                .accessibilityIdentifier("aiLab.llamaBackends")
             Button("Check Again", systemImage: "arrow.clockwise") { model.refreshModel() }
                 .accessibilityIdentifier("aiLab.checkModel")
         } footer: {
