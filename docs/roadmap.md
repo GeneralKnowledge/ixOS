@@ -129,7 +129,7 @@ Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust 
 | P5 | Developer experience: `forge init` on ForgeUI, component docs, feature templates | After the foundation |
 | P6 | Autonomous-agent tooling expansion (M6, general device control) | **Moved out** to the [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project (2026-11-15). Device, build and diagnostics stay here as supporting infrastructure |
 
-No Android work and no cross-platform components until the iOS experience is right.
+No cross-platform components until the iOS experience is right. Android runs as a capped side track (below): one milestone at a time, never ahead of the iOS gates.
 
 Native capabilities (web view, documents, media, background tasks, identity, system integration such as universal links, share extensions and App Intents, offline data, maps, charts) are planned in [native-capability-roadmap.md](native-capability-roadmap.md): ixOS wraps Apple's frameworks rather than replacing them, proves each wrapper in the services check app and on an iPhone, and judges usability in real apps (Pocket Library, Chat, and a feed reader benchmarked against NetNewsWire as the reader's second consumer). Its first tier is `forge-services` work and runs alongside P1 and P2.
 
@@ -137,25 +137,27 @@ Native capabilities (web view, documents, media, background tasks, identity, sys
 
 ### Android — Work in progress
 
-Decided 2026-11-07: ixOS focuses on **iOS**. Android is paused as work in progress:
+Decided 2026-11-07: ixOS focuses on **iOS**. Decided 2026-11-20 (Reuben): Android moves forward as a **capped side track**, following Pocket Library only.
 
-- The Android code stays: `examples/pocket-library-android`, `templates/android-app`, `forge init --platform android`, `forge build android` and the `ForgeAndroid` HTTPS init in `forge-runtime`.
-- It keeps building. The Android CI job runs when Android or shared Rust code changes, so shared changes that break it are still caught.
-- It gets no new features. New capabilities (native services, Chat milestones, the demo sequence) are built and proven on iOS only, and the [capability ledger](capability-ledger.md) tracks iOS only.
-- It has not been validated on a physical Android phone, and none of the `forge-services` interfaces has an Android implementation.
+- iOS comes first. One Android milestone is in progress at a time, and iPhone sittings and the [Apps first](#apps-first-prove-complete-then-extract) gates always go before it.
+- Only Pocket Library gets an Android version (`examples/pocket-library-android`). No other app is ported, and new capabilities are still designed and proven on iOS first.
+- Apps first holds on Android too: the Kotlin host, the ForgeAppKit counterparts, the theme and the service adapters live inside the Android app until a second Android app needs them.
+- Results come from an emulator in CI. Nothing has run on a physical Android phone, and the [capability ledger](capability-ledger.md) tracks iOS only.
+- `templates/android-app`, `forge init --platform android`, `forge build android` and the `ForgeAndroid` HTTPS init stay and keep building.
 
-Rust interfaces stay platform-neutral, so Android implementations can be added when the work resumes. Contributions that keep Android building are welcome; larger Android work should wait until this section changes.
+**Android parity plan** (detailed plan agreed 2026-11-20, [doc](https://claude.ai/artifact/X6StvqebB5T4Fa34bDPohC)). Parity means Pocket Library on Android meets the same requirements (PL-1 to PL-10) as on iOS, as Compose instrumented tests on the CI emulator. Rust stays the one shared core; Android's interface is Jetpack Compose with Material 3, with no shared UI code. One PR per milestone; each starts when the one before has merged with its requirements green.
 
-**Android parity plan** (agreed 2026-11-14, Reuben). Rust stays the one shared core; Android's interface is Jetpack Compose with Material 3, with no shared UI code. Every stage runs on the emulator; a physical phone only at the end.
-
-| Stage | Work | Size | Status |
-|---|---|---|---|
-| 0 | Pocket Library's own Rust core under a minimal Compose app (add, open, delete), a Kotlin `ForgeHost`, a Compose UI test by `screen.element` ids on a CI emulator ([examples/pocket-library-android](../examples/pocket-library-android/README.md)) | 3 to 5 days | **In progress** (started early, alongside P2 to P4) |
-| 1 | One token file generating ForgeUI's Swift and Kotlin tokens; ForgeUI Compose 0.1 and an Android showcase | 1.5 to 2 weeks | After P4 |
-| 2 | ForgeAppKit's model types and their Compose views in Kotlin | About 1 week | After P4 |
-| 3 | Android adapters for the native services; an "emulator" column in the ledger | 1 to 2 weeks | After P4 |
-| 4 | The whole of Pocket Library on Android, meeting its requirements on the emulator | 2 to 3 weeks | After P4 |
-| 5 | `forge run android --emulator` and logcat (device tooling stays frozen) | Small | After P4 |
+| Milestone | Work | Requirements | Size | Status |
+|---|---|---|---|---|
+| Stage 0 | Pocket Library's own Rust core under a minimal Compose app (add, open, delete), a Kotlin `ForgeHost`, a Compose UI test on a CI emulator | | 3 to 5 days | **Done** (#183) |
+| A1 | App structure (typed navigation, process lifecycle), Kotlin counterparts of ForgeAppKit's failure, alert, load, submission and field errors, error text for every error | PL-4, PL-10 | 1 week | **In progress** |
+| A2 | One token source generating ForgeUI's Swift tokens (unchanged) and a Kotlin theme | | 1 to 1.5 weeks | Planned |
+| A3 | The complete library: full book form, edit, progress, search, filter and sort, start fresh | PL-1, PL-2, PL-3, PL-5, PL-6 | 1.5 weeks | Planned |
+| A4 | Android `http` service adapter and the catalogue | PL-7, PL-8 | 1.5 weeks | Planned |
+| A5 | EPUB reader and read aloud (`TextToSpeech`) | PL-9 | 2 weeks | Planned |
+| A6 | Background work (WorkManager), settings, backups | PL-1 after process death | 1 week | Planned |
+| A7 | AI summaries shown as unavailable (no on-device model on the emulator) | | 2 to 3 days | Planned |
+| A8 | `forge run android --emulator` and logcat | | 2 to 3 days | Planned |
 
 ### Tooling freeze and reuse rules
 

@@ -1,6 +1,6 @@
 # Android setup (Linux)
 
-> **Work in progress.** ixOS is focusing on iOS for now. Android keeps building in CI but gets no new features, has not been validated on a physical phone, and has none of the `forge-services` native services. See the [roadmap](roadmap.md#android--work-in-progress).
+> **Work in progress.** ixOS is focusing on iOS. Android moves forward only as a capped side track, Pocket Library's parity plan; it has not been validated on a physical phone and has none of the `forge-services` native services yet. See the [roadmap](roadmap.md#android--work-in-progress).
 
 Forge Mobile Android apps use **Rust `cdylib` + UniFFI Kotlin + Jetpack Compose**, built from the app's own Rust crate (`rust/`, or a thin crate that links the iOS app's core, as `examples/pocket-library-android` does).
 
