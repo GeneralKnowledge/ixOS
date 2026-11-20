@@ -187,7 +187,7 @@ Chosen by Reuben (D6, 2026-11-19 09:16) because it tests both sources on the sam
 **Boundaries** (Reuben's, plus what follows from them):
 
 1. No proprietary backend, no streaming, no protected audio, no extracted assets (artwork, icons, fonts, the logo). The recreation uses invented fixture data and its own artwork.
-2. **Web, through REA:** passive observation of the web player in a browser where Reuben is signed in: page structure, screenshots and network *metadata* (which requests a view makes, their timing and shape), to learn behaviour. No replaying or calling Spotify's API, no scraping, no tools that decompile or patch the player's scripts. Spotify's terms restrict reverse engineering of the service, so the study stays at what a user's own browser shows, and Reuben decides whether network metadata is in bounds before X1 starts ([open point](#open-points-before-x1)).
+2. **Web, through REA:** passive observation of the web player in a browser where Reuben is signed in: page structure, screenshots and network *metadata* (which requests a view makes, their timing and shape), to learn behaviour. No replaying or calling Spotify's API, no scraping, no tools that decompile or patch the player's scripts. Spotify's terms restrict reverse engineering of the service, so the study stays at what a user's own browser shows. **Network metadata is in bounds** (Reuben, 2026-11-20): request URLs, timing and, opt-in, the structural shape of JSON responses (`--include-json-body-shapes`), never values, bodies, tokens or cookies.
 3. **iPhone, through `forge ui --any-app`:** Spotify is added to the person's policy at **observe** first (read the tree, screenshots, scroll). Opening items and switching views needs **operate**, his call; **full** is never used on a real account. Changing a sort or filter may sync to his account; the run puts each one back as it found it and records that it did.
 4. **His library is personal data.** Screenshots and trees show his playlists and listening. They stay out of the ixOS repository: raw evidence goes in project files, and what the repository gets is redacted (titles replaced) or described in words.
 5. REA runs where his signed-in browser is: his own computer (decided 09:43). A cloud session has no access to his account; X0 stays cloud-only.
@@ -196,7 +196,7 @@ Chosen by Reuben (D6, 2026-11-19 09:16) because it tests both sources on the sam
 
 - ~~Is Spotify installed on the phone?~~ **Yes** (Reuben, 2026-11-19 09:43).
 - ~~Which machine runs REA?~~ **His computer or the server** (09:43). REA's passive browser observation attaches to an existing, signed-in Chrome-family browser, and the server (the Ubuntu laptop) is headless and runs his GPU job. So the web part runs on **his own computer**, where he signs in to the web player himself; App Studio never handles his Spotify password. The server keeps doing what it does now: builds, `forge ui` on the phone over USB, and the queue.
-- **Still open:** is network metadata from the web player in bounds, or only page structure and screenshots? Until he says, X1 plans for structure and screenshots only.
+- ~~Is network metadata in bounds?~~ **Yes** (Reuben, 2026-11-20 11:55): metadata and response shapes only, as in boundary 2.
 
 ## Safety and permissions
 
