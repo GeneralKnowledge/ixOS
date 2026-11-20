@@ -13,6 +13,7 @@ on:
       - "examples/pocket-library/rust/**"
       - "templates/android-app/**"
       - "templates/android-rust/**"
+      - "forgekit/Sources/ForgeUI/Tokens/**"
       - "scripts/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -23,6 +24,7 @@ on:
       - "examples/*-android/**"
       - "templates/android-app/**"
       - "scripts/*android*"
+      - "forgekit/Sources/ForgeUI/Tokens/**"
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
@@ -189,3 +191,11 @@ jobs:
           path: |
             examples/pocket-library-android/app/build/reports/
             examples/pocket-library-android/app/build/outputs/androidTest-results/
+      # The theme screenshots (light, dark, 200% text), for a person to look at.
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pocket-library-android-screenshots
+          path: examples/pocket-library-android/app/build/outputs/connected_android_test_additional_output/
+          if-no-files-found: warn
