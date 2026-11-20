@@ -174,12 +174,31 @@ chat-core, so that waits until it is needed.
   upgrade (same key), backup restore (new identity), reinstall, a lost
   phone, revocation.
 
-### 5. The whole experience, proven
+### 5. The whole experience, proven ("Relay 1.0 foundations")
 
-- One acceptance run on the iPhone and Linux: add a device, message both
-  ways, send a photo and a folder, go offline and come back, reconnect
-  after a network change, revoke.
-- It becomes the regression check before every Relay release.
+Reuben, 2026-11-20: finish the foundations (one identity, one network,
+one delivery system) and prove them together before My Devices. Nothing
+new starts first. The acceptance run, on the iPhone and Linux, then
+across more than two devices:
+
+1. Upgrade: install over existing Relay data. Trusted devices,
+   conversations and history are all still there (P3), and the laptop
+   still trusts the iPhone without pairing again (P4).
+2. Pair a new device with a word code, typed and scanned.
+3. Messages and files both ways: a message, a photo, a message, in
+   order; a folder.
+4. Interrupt a large transfer (stop the receiver, or change network) and
+   check it recovers and arrives once.
+5. Revoke a device while its transfer runs: the file isn't saved (#344).
+6. The Keychain identity survives a restart, and isn't carried to a new
+   phone by a backup taken after the update (P4).
+7. Private and Hybrid on their own: in Private, a device reachable only
+   through the relay isn't reached, and nothing connects (#344); in
+   Hybrid it is reached.
+8. Both the Relay app on its own and Relay inside Device Lab.
+
+Each check is recorded on its own, a failure included. The run becomes
+the regression check before every Relay release.
 
 ### 6. P5: My Devices
 
