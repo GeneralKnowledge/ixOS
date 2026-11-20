@@ -328,11 +328,37 @@ async fn bind(
 /// a secure store (the iOS Keychain).
 pub(crate) const KEY_ACCOUNT: &str = "relay.device-key";
 
+/// Whether this platform keeps the device key only in the host's secure
+/// store: the iPhone, whose data folder travels in backups.
+const KEY_NEEDS_SECURE_STORE: bool = cfg!(target_os = "ios");
+
 /// This device's key: from the host's secure store when it has installed
 /// one (the iPhone's Keychain), else from `dir/device.key`.
 fn load_key(dir: &Path) -> Result<SecretKey, RelayError> {
-    match crate::native::NativeServices::installed() {
-        Ok(services) => device_key_in(services.secure_store.as_ref(), dir),
+    let services = crate::native::NativeServices::installed();
+    key_from(
+        services.as_ref().map(|s| s.secure_store.as_ref()),
+        KEY_NEEDS_SECURE_STORE,
+        dir,
+    )
+}
+
+/// The key from `store` if the host installed one. Without one, the file
+/// on a platform that allows it, and an error on one that doesn't (the
+/// iPhone): falling back to a file there would put the identity back where
+/// backups copy it, so Relay doesn't start its endpoint instead.
+fn key_from(
+    store: Result<&dyn crate::native::SecureStore, &crate::native::NativeServiceError>,
+    needs_secure_store: bool,
+    dir: &Path,
+) -> Result<SecretKey, RelayError> {
+    match store {
+        Ok(store) => device_key_in(store, dir),
+        Err(e) if needs_secure_store => Err(RelayError::Storage {
+            reason: format!(
+                "the Keychain isn't available ({e}), and Relay keeps this device's key only there"
+            ),
+        }),
         Err(_) => device_key(dir),
     }
 }
@@ -701,6 +727,28 @@ mod tests {
             b"short",
             "left for the person to see"
         );
+    }
+
+    #[test]
+    fn without_a_secure_store_the_iphone_refuses_and_linux_uses_the_file() {
+        let not_installed = NativeServiceError::NotInstalled {
+            service: "core".into(),
+        };
+        // The iPhone: no Keychain means no endpoint, and no file is made.
+        let phone = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            key_from(Err(&not_installed), true, phone.path()),
+            Err(RelayError::Storage { .. })
+        ));
+        assert!(!phone.path().join(KEY_FILE).exists());
+        // Linux: the 0600 file, as always.
+        let linux = tempfile::tempdir().unwrap();
+        let key = key_from(Err(&not_installed), false, linux.path()).unwrap();
+        assert_eq!(device_key(linux.path()).unwrap().public(), key.public());
+        // With a store, both use it.
+        let keychain = MemorySecureStore::default();
+        let a = key_from(Ok(&keychain), true, phone.path()).unwrap();
+        assert_eq!(in_store(&keychain).unwrap(), a.to_bytes());
     }
 
     #[test]
