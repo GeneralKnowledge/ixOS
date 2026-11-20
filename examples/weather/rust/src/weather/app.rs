@@ -37,8 +37,9 @@
 //!   refresh, so every saved place has something to show at launch. It is
 //!   disposable: unreadable cache files are ignored, and cache write failures
 //!   never fail a refresh.
-//! * Saved places (see `places.rs`) are a separate small file; they are
-//!   state the user made, so failing to write them is an error.
+//! * Saved places (see `places.rs`) are a forge-app `Document`: state the
+//!   user made, so failing to write them is an error, and a file that can't
+//!   be read is never written over.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
@@ -54,8 +55,8 @@ use super::error::WeatherError;
 use super::merge;
 use super::sources::{self, open_meteo, open_meteo_air_quality, Sources};
 use super::types::{
-    Coordinate, FetchProblem, Freshness, Place, RefreshPhase, SectionState, UnitSettings,
-    WeatherConfig, WeatherReport,
+    Coordinate, FetchProblem, Freshness, Place, RefreshPhase, SectionState, WeatherConfig,
+    WeatherReport,
 };
 use crate::signal::{lock, Completion};
 
@@ -88,13 +89,11 @@ pub(crate) struct Shared {
     client: Arc<dyn HttpClient>,
     settings: Settings,
     sources: Sources,
-    pub(crate) units_path: Option<PathBuf>,
-    pub(crate) units: Mutex<Option<UnitSettings>>,
+    pub(crate) units: Mutex<super::units::UnitsStore>,
     cache_path: Option<PathBuf>,
     /// Newest first, at most one per place.
     cache: Mutex<Vec<WeatherReport>>,
-    pub(crate) places_path: Option<PathBuf>,
-    pub(crate) places: Mutex<Vec<Place>>,
+    pub(crate) places: Mutex<super::places::PlacesStore>,
     active: Mutex<Option<Arc<RefreshState>>>,
     next_id: AtomicU64,
 }
@@ -368,27 +367,16 @@ impl ForgeWeatherApp {
             .as_ref()
             .map(|dir| dir.join(CACHE_FILENAME));
         let cache = cache_path.as_deref().map(load_cache).unwrap_or_default();
-        let places_path = storage_directory
-            .as_ref()
-            .map(|dir| dir.join(super::places::PLACES_FILENAME));
-        let places = places_path
-            .as_deref()
-            .map(super::places::load_places)
-            .unwrap_or_default();
-        let units_path = storage_directory
-            .as_ref()
-            .map(|dir| dir.join(super::units::UNITS_FILENAME));
-        let units = units_path.as_deref().and_then(super::units::load_units);
+        let places = super::places::open_places(storage_directory.as_deref());
+        let units = super::units::open_units(storage_directory.as_deref());
         Ok(Self {
             shared: Arc::new(Shared {
                 client,
                 settings,
                 sources,
-                units_path,
                 units: Mutex::new(units),
                 cache_path,
                 cache: Mutex::new(cache),
-                places_path,
                 places: Mutex::new(places),
                 active: Mutex::new(None),
                 next_id: AtomicU64::new(0),

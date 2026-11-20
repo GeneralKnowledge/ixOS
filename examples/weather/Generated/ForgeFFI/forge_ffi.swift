@@ -782,13 +782,30 @@ public protocol ForgeWeatherAppProtocol: AnyObject, Sendable {
     func savePlace(place: Place) throws  -> [Place]
     
     /**
-     * The saved places, in the user's order.
+     * The saved places, in the user's order. Empty when they could not be
+     * read: [`Self::saved_places_problem`] says so.
      */
     func savedPlaces()  -> [Place]
     
     /**
+     * Why the saved places could not be read, if they could not. Until it
+     * is resolved every change is refused, so nothing overwrites them.
+     */
+    func savedPlacesProblem()  -> SavedDataProblem?
+    
+    /**
+     * After the person chose to start a new list because the old one
+     * can't be read: sets the unreadable file aside (kept next to it,
+     * renamed) and starts an empty list. Refused for a file from a newer
+     * version, which is never touched. Returns the new (empty) list.
+     */
+    func startNewSavedPlaces() throws  -> [Place]
+    
+    /**
      * Saves the person's units. A failed write is an error and changes
-     * nothing.
+     * nothing. If the saved units could not be read, choosing new ones
+     * sets that file aside (kept) first; a file from a newer version of
+     * the app is never written over, so the change is refused.
      */
     func setUnits(units: UnitSettings) throws 
     
@@ -1132,7 +1149,8 @@ open func savePlace(place: Place)throws  -> [Place]  {
 }
     
     /**
-     * The saved places, in the user's order.
+     * The saved places, in the user's order. Empty when they could not be
+     * read: [`Self::saved_places_problem`] says so.
      */
 open func savedPlaces() -> [Place]  {
     return try!  FfiConverterSequenceTypePlace.lift(try! rustCall() {
@@ -1144,8 +1162,38 @@ open func savedPlaces() -> [Place]  {
 }
     
     /**
+     * Why the saved places could not be read, if they could not. Until it
+     * is resolved every change is refused, so nothing overwrites them.
+     */
+open func savedPlacesProblem() -> SavedDataProblem?  {
+    return try!  FfiConverterOptionTypeSavedDataProblem.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_forgeweatherapp_saved_places_problem(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * After the person chose to start a new list because the old one
+     * can't be read: sets the unreadable file aside (kept next to it,
+     * renamed) and starts an empty list. Refused for a file from a newer
+     * version, which is never touched. Returns the new (empty) list.
+     */
+open func startNewSavedPlaces()throws  -> [Place]  {
+    return try  FfiConverterSequenceTypePlace.lift(try rustCallWithError(FfiConverterTypeWeatherError_lift) {
+        uniffiCallStatus in
+    uniffi_weather_core_fn_method_forgeweatherapp_start_new_saved_places(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Saves the person's units. A failed write is an error and changes
-     * nothing.
+     * nothing. If the saved units could not be read, choosing new ones
+     * sets that file aside (kept) first; a file from a newer version of
+     * the app is never written over, so the change is refused.
      */
 open func setUnits(units: UnitSettings)throws   {try rustCallWithError(FfiConverterTypeWeatherError_lift) {
         uniffiCallStatus in
@@ -5549,6 +5597,10 @@ public func FfiConverterTypePollenHour_lower(_ value: PollenHour) -> RustBuffer 
 
 public struct PollenOverview: Equatable, Hashable {
     public var state: SectionState
+    /**
+     * Set when `state` is `NotAvailableHere`.
+     */
+    public var gap: PollenGap?
     public var source: SourceCredit?
     /**
      * Species the source reports here, highest today first. Empty when the
@@ -5559,12 +5611,16 @@ public struct PollenOverview: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(state: SectionState, source: SourceCredit?, 
+    public init(state: SectionState, 
+        /**
+         * Set when `state` is `NotAvailableHere`.
+         */gap: PollenGap?, source: SourceCredit?, 
         /**
          * Species the source reports here, highest today first. Empty when the
          * state has no data.
          */species: [PollenSpeciesNow], coversUntil: String?) {
         self.state = state
+        self.gap = gap
         self.source = source
         self.species = species
         self.coversUntil = coversUntil
@@ -5587,6 +5643,7 @@ public struct FfiConverterTypePollenOverview: FfiConverterRustBuffer {
         return
             try PollenOverview(
                 state: FfiConverterTypeSectionState.read(from: &buf), 
+                gap: FfiConverterOptionTypePollenGap.read(from: &buf), 
                 source: FfiConverterOptionTypeSourceCredit.read(from: &buf), 
                 species: FfiConverterSequenceTypePollenSpeciesNow.read(from: &buf), 
                 coversUntil: FfiConverterOptionString.read(from: &buf)
@@ -5595,6 +5652,7 @@ public struct FfiConverterTypePollenOverview: FfiConverterRustBuffer {
 
     public static func write(_ value: PollenOverview, into buf: inout [UInt8]) {
         FfiConverterTypeSectionState.write(value.state, into: &buf)
+        FfiConverterOptionTypePollenGap.write(value.gap, into: &buf)
         FfiConverterOptionTypeSourceCredit.write(value.source, into: &buf)
         FfiConverterSequenceTypePollenSpeciesNow.write(value.species, into: &buf)
         FfiConverterOptionString.write(value.coversUntil, into: &buf)
@@ -8022,6 +8080,83 @@ public func FfiConverterTypePlaceSource_lower(_ value: PlaceSource) -> RustBuffe
 
 
 /**
+ * Why the pollen source had nothing for a place. The source sends the
+ * same empty answer for both, so this is told apart by where the place is.
+ */
+
+public enum PollenGap: Equatable, Hashable {
+    
+    /**
+     * The place is outside the area the pollen model covers (Europe).
+     */
+    case outsideModelArea
+    /**
+     * The place is inside it, and the model has no pollen in its forecast
+     * right now: it forecasts pollen only during the pollen season.
+     */
+    case nothingForecastNow
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PollenGap: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePollenGap: FfiConverterRustBuffer {
+    typealias SwiftType = PollenGap
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PollenGap {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .outsideModelArea
+        
+        case 2: return .nothingForecastNow
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PollenGap, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .outsideModelArea:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .nothingForecastNow:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePollenGap_lift(_ buf: RustBuffer) throws -> PollenGap {
+    return try FfiConverterTypePollenGap.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePollenGap_lower(_ value: PollenGap) -> RustBuffer {
+    return FfiConverterTypePollenGap.lower(value)
+}
+
+
+
+/**
  * Pollen species the sources report.
  */
 
@@ -8439,6 +8574,95 @@ public func FfiConverterTypeRefreshPhase_lift(_ buf: RustBuffer) throws -> Refre
 #endif
 public func FfiConverterTypeRefreshPhase_lower(_ value: RefreshPhase) -> RustBuffer {
     return FfiConverterTypeRefreshPhase.lower(value)
+}
+
+
+
+/**
+ * Why saved data (the saved places) could not be read. It is left
+ * exactly as it is.
+ */
+
+public enum SavedDataProblem: Equatable, Hashable {
+    
+    /**
+     * The file is damaged. The person can start again; the old file is
+     * kept, renamed, next to the new one.
+     */
+    case unreadable
+    /**
+     * A newer version of the app wrote it. Updating the app opens it;
+     * nothing is ever written over it.
+     */
+    case fromNewerVersion
+    /**
+     * The file could not be read or written (storage full, permissions).
+     * Trying again later may work.
+     */
+    case couldNotOpen
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SavedDataProblem: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedDataProblem: FfiConverterRustBuffer {
+    typealias SwiftType = SavedDataProblem
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedDataProblem {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .unreadable
+        
+        case 2: return .fromNewerVersion
+        
+        case 3: return .couldNotOpen
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SavedDataProblem, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .unreadable:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .fromNewerVersion:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .couldNotOpen:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedDataProblem_lift(_ buf: RustBuffer) throws -> SavedDataProblem {
+    return try FfiConverterTypeSavedDataProblem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedDataProblem_lower(_ value: SavedDataProblem) -> RustBuffer {
+    return FfiConverterTypeSavedDataProblem.lower(value)
 }
 
 
@@ -9136,6 +9360,18 @@ enum WeatherError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      * Another Weather core already has this data folder open.
      */
     case InUse
+    /**
+     * The saved data can't be read. It is left as it is; nothing is
+     * written over it until the person chooses to start again.
+     */
+    case SavedDataUnreadable(reason: String
+    )
+    /**
+     * The saved data was written by a newer version of the app. It is
+     * never written over.
+     */
+    case SavedDataNewer(found: UInt32, supported: UInt32
+    )
     case Internal(reason: String
     )
 
@@ -9194,7 +9430,14 @@ public struct FfiConverterTypeWeatherError: FfiConverterRustBuffer {
         case 10: return .Cancelled
         case 11: return .ShutDown
         case 12: return .InUse
-        case 13: return .Internal(
+        case 13: return .SavedDataUnreadable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 14: return .SavedDataNewer(
+            found: try FfiConverterUInt32.read(from: &buf), 
+            supported: try FfiConverterUInt32.read(from: &buf)
+            )
+        case 15: return .Internal(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -9265,8 +9508,19 @@ public struct FfiConverterTypeWeatherError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(12))
         
         
-        case let .Internal(reason):
+        case let .SavedDataUnreadable(reason):
             writeInt(&buf, Int32(13))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .SavedDataNewer(found,supported):
+            writeInt(&buf, Int32(14))
+            FfiConverterUInt32.write(found, into: &buf)
+            FfiConverterUInt32.write(supported, into: &buf)
+            
+        
+        case let .Internal(reason):
+            writeInt(&buf, Int32(15))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -9843,6 +10097,54 @@ fileprivate struct FfiConverterOptionTypeIntensity: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeIntensity.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePollenGap: FfiConverterRustBuffer {
+    typealias SwiftType = PollenGap?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePollenGap.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePollenGap.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeSavedDataProblem: FfiConverterRustBuffer {
+    typealias SwiftType = SavedDataProblem?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSavedDataProblem.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSavedDataProblem.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -10714,10 +11016,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_weather_core_checksum_method_forgeweatherapp_save_place() != 23199) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_weather_core_checksum_method_forgeweatherapp_saved_places() != 675) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_saved_places() != 57076) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_weather_core_checksum_method_forgeweatherapp_set_units() != 53212) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_saved_places_problem() != 26973) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_start_new_saved_places() != 50619) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_set_units() != 62217) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_weather_core_checksum_method_forgeweatherapp_units() != 14502) {

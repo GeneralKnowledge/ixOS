@@ -113,6 +113,17 @@ public final class WeatherClient: @unchecked Sendable {
         try bridged { try app.removeSavedPlace(place: place) }
     }
 
+    /// Why the saved places could not be read, if they could not. While
+    /// set, every change to them is refused, so nothing writes over them.
+    public var savedPlacesProblem: SavedDataProblem? { app.savedPlacesProblem() }
+
+    /// The person chose to start a new list because the old one can't be
+    /// read: Rust sets the old file aside (kept) and starts an empty list.
+    @discardableResult
+    public func startNewSavedPlaces() throws -> [Place] {
+        try bridged { try app.startNewSavedPlaces() }
+    }
+
     /// Moves a saved place from one index to another. Returns the new list.
     @discardableResult
     public func moveSaved(from: Int, to: Int) throws -> [Place] {

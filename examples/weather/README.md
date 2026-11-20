@@ -26,7 +26,7 @@ cancellation, lifecycle), Weather exercises the FFI *type mapping* and real I/O:
 | Error paths: offline, timeout, HTTP status (with the API's reason), bad JSON, invalid input | `WeatherError` (Rust) → `WeatherClientError` (Swift) |
 | Offline fallback: a cached report marked `.cached(ageSeconds:problem:)` instead of an error | `app.rs` cache (one report per place), `WeatherPage.staleNotice` |
 | Screen logic in Rust: sky scene, the summary sentence, the hourly strip with sunrise/sunset, past hours and days dropped from cached reports, the shared temperature scale | `rust/src/weather/overview.rs` (`weather_overview`) |
-| Saved places: add, remove, reorder, persisted atomically | `rust/src/weather/places.rs` |
+| Saved places: add, remove, reorder, kept in a forge-app `Document` (a damaged file is never written over; a newer one is never touched) | `rust/src/weather/places.rs` |
 | Several sources, one report: forecast, air quality and pollen asked in parallel, each section with its own state (live, kept with a reason, not available here, unavailable) | `rust/src/weather/sources/`, `merge.rs` |
 | Display units chosen by the person, applied to every value through one Rust formatter | `rust/src/weather/units.rs` (`format_quantity`) |
 | Air quality index bands, the moon's phase | `indices.rs`, `astro.rs` |

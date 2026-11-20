@@ -67,6 +67,8 @@ public final class WeatherViewModel {
     /// Why removing or reordering a saved place failed; the places list
     /// shows it, and clears it when dismissed.
     public var placesError: String?
+    /// Why the saved places couldn't be read (they are left untouched).
+    public private(set) var placesProblem: SavedDataProblem?
 
     public let client: WeatherClient
     /// The person's display units; every value on the page uses them.
@@ -137,6 +139,7 @@ public final class WeatherViewModel {
             myLocation.place = cached.place
             myLocation.report = cached
         }
+        placesProblem = client.savedPlacesProblem
         pages = [myLocation] + client.savedPlaces.map { place in
             var page = WeatherPage.saved(place)
             page.report = client.cachedReport(for: place)
@@ -347,6 +350,17 @@ public final class WeatherViewModel {
             rebuildPages(saved: try client.moveSaved(from: from, to: to))
         } catch {
             placesError = Self.message(error, doing: "move the place")
+        }
+    }
+
+    /// After the person agreed: sets the unreadable list aside (kept) and
+    /// starts a new, empty one.
+    public func startNewSavedPlaces() {
+        do {
+            rebuildPages(saved: try client.startNewSavedPlaces())
+            placesProblem = client.savedPlacesProblem
+        } catch {
+            placesError = Self.message(error, doing: "start a new list")
         }
     }
 

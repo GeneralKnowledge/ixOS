@@ -175,10 +175,14 @@ fn main() {
         .collect();
 
     let cache = serde_json::json!({ "schema_version": 3, "reports": reports });
-    let saved = serde_json::json!({ "schema_version": 1, "places": places });
+    let saved = serde_json::json!({ "schema_version": 1, "data": { "places": places } });
     let dir = std::path::Path::new(&dir);
     std::fs::write(dir.join("forge-weather-cache-v1.json"), cache.to_string()).unwrap();
-    std::fs::write(dir.join("forge-weather-places-v1.json"), saved.to_string()).unwrap();
+    std::fs::write(
+        dir.join("forge-weather-saved-places.json"),
+        saved.to_string(),
+    )
+    .unwrap();
     for r in &reports {
         let o = weather_core::weather_overview(
             r.clone(),

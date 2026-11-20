@@ -314,6 +314,21 @@ impl Default for PollenSection {
     }
 }
 
+/// Why saved data (the saved places) could not be read. It is left
+/// exactly as it is.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SavedDataProblem {
+    /// The file is damaged. The person can start again; the old file is
+    /// kept, renamed, next to the new one.
+    Unreadable,
+    /// A newer version of the app wrote it. Updating the app opens it;
+    /// nothing is ever written over it.
+    FromNewerVersion,
+    /// The file could not be read or written (storage full, permissions).
+    /// Trying again later may work.
+    CouldNotOpen,
+}
+
 /// The full payload of one refresh.
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WeatherReport {
@@ -503,9 +518,22 @@ pub struct PollenSpeciesNow {
     pub today_max_grains_per_m3: f64,
 }
 
+/// Why the pollen source had nothing for a place. The source sends the
+/// same empty answer for both, so this is told apart by where the place is.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PollenGap {
+    /// The place is outside the area the pollen model covers (Europe).
+    OutsideModelArea,
+    /// The place is inside it, and the model has no pollen in its forecast
+    /// right now: it forecasts pollen only during the pollen season.
+    NothingForecastNow,
+}
+
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
 pub struct PollenOverview {
     pub state: SectionState,
+    /// Set when `state` is `NotAvailableHere`.
+    pub gap: Option<PollenGap>,
     pub source: Option<SourceCredit>,
     /// Species the source reports here, highest today first. Empty when the
     /// state has no data.

@@ -65,3 +65,12 @@ twin = [
     "WeatherViewModelTests.testFormatting",
 ]
 device = ["uitests/sections-and-units.toml"]
+
+[[requirement]]
+id = "WX-7"
+statement = "Saved places and chosen units are the person's data: a failed write changes nothing, a file that can't be read is never written over (places stay untouched until the person chooses to start a new list, which keeps the old file), and a file from a newer version of the app is never touched."
+twin = [
+    "WeatherViewModelTests.testUnreadableSavedPlacesAreKeptUntilThePersonStartsANewList",
+]
+# On the phone: places saved before this build still show after installing it.
+device = ["uitests/add-a-place.toml"]

@@ -595,10 +595,13 @@ private struct PollenCard: View {
     var body: some View {
         Card("Pollen", systemImage: "leaf.fill", palette: palette) {
             VStack(alignment: .leading, spacing: 8) {
-                // Open-Meteo: Europe only, during the pollen season.
+                // Rust tells "outside the model's area" from "nothing
+                // forecast now"; the source sends the same empty answer.
                 if let message = sectionMessage(
                     overview.state, what: "Pollen",
-                    notHere: "No pollen data for this place right now. It covers Europe during the pollen season.")
+                    notHere: overview.gap == .outsideModelArea
+                        ? "Pollen forecasts cover Europe only, so there's none for this place."
+                        : "No pollen in the forecast right now. Pollen is forecast here during the pollen season.")
                 {
                     Text(message).font(.subheadline)
                         .accessibilityIdentifier("forecast.pollen.message")

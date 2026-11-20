@@ -11,6 +11,10 @@ struct LocationsView: View {
         NavigationStack {
             List {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if let problem = model.placesProblem {
+                        SavedPlacesProblemRow(problem: problem) { model.startNewSavedPlaces() }
+                            .listRowSeparator(.hidden)
+                    }
                     places
                     NavigationLink("Units") { UnitsView(model: model) }
                         .accessibilityIdentifier("places.units")
@@ -165,5 +169,40 @@ private struct PlaceCard: View {
             return WeatherFormat.localClock(utcOffsetSeconds: report.utcOffsetSeconds)
         }
         return page.place?.subtitle ?? ""
+    }
+}
+
+/// Saved places that couldn't be read: say so, and (only for a damaged
+/// file) offer to start a new list. The old file is always kept.
+private struct SavedPlacesProblemRow: View {
+    let problem: SavedDataProblem
+    let startNew: () -> Void
+    @State private var confirming = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch problem {
+            case .unreadable:
+                Text("Your saved places can't be read, so they aren't shown. They've been kept as they are.")
+                Button("Start a New List") { confirming = true }
+                    .accessibilityIdentifier("places.startNew")
+            case .fromNewerVersion:
+                Text("Your saved places were saved by a newer version of Weather. Update the app to see them.")
+            case .couldNotOpen:
+                Text("Your saved places couldn't be opened just now. Try again later.")
+            }
+        }
+        .font(.subheadline)
+        .accessibilityIdentifier("places.problem")
+        .confirmationDialog(
+            "Start a new list of places?", isPresented: $confirming, titleVisibility: .visible
+        ) {
+            Button("Start a New List") { startNew() }
+                .accessibilityIdentifier("places.startNew.confirm")
+            Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier("places.startNew.cancel")
+        } message: {
+            Text("The old list is kept on this device, set aside, in case it can be recovered.")
+        }
     }
 }

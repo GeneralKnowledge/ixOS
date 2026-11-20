@@ -6,9 +6,9 @@
 use super::astro::moon_phase;
 use super::indices::{aqi_reading, hour_reading};
 use super::types::{
-    AirQualityDay, AirQualityOverview, AirQualityScale, DailyForecast, HourlyPoint, PollenOverview,
-    PollenSpeciesNow, SectionState, SkyScene, SourceCredit, TimelineEntry, UnitSettings,
-    WeatherCondition, WeatherOverview, WeatherReport,
+    AirQualityDay, AirQualityOverview, AirQualityScale, Coordinate, DailyForecast, HourlyPoint,
+    PollenGap, PollenOverview, PollenSpeciesNow, SectionState, SkyScene, SourceCredit,
+    TimelineEntry, UnitSettings, WeatherCondition, WeatherOverview, WeatherReport,
 };
 use super::units::speed;
 
@@ -185,11 +185,25 @@ fn pollen(report: &WeatherReport, current_hour: &str, local_date: &str) -> Polle
         b.today_max_grains_per_m3
             .total_cmp(&a.today_max_grains_per_m3)
     });
+    let state = past_end(&section.state, ahead.is_empty());
     PollenOverview {
-        state: past_end(&section.state, ahead.is_empty()),
+        gap: (state == SectionState::NotAvailableHere).then(|| pollen_gap(report.place.coordinate)),
+        state,
         source: section.source.clone(),
         species,
         covers_until: ahead.last().map(|h| h.time.clone()),
+    }
+}
+
+/// The area of the European pollen model (CAMS European regional air
+/// quality ensemble: 25° W to 45° E, 30° N to 72° N), which Open-Meteo's
+/// pollen comes from ("only available in Europe during pollen season").
+fn pollen_gap(c: Coordinate) -> PollenGap {
+    let inside = (30.0..=72.0).contains(&c.latitude) && (-25.0..=45.0).contains(&c.longitude);
+    if inside {
+        PollenGap::NothingForecastNow
+    } else {
+        PollenGap::OutsideModelArea
     }
 }
 
@@ -750,6 +764,24 @@ mod tests {
         assert!(o.air_quality.days.is_empty());
         assert_eq!(o.pollen.state, SectionState::NotAvailableHere);
         assert!(o.pollen.species.is_empty());
+        // Paris is inside the pollen model's area: nothing forecast now.
+        assert_eq!(o.pollen.gap, Some(PollenGap::NothingForecastNow));
+    }
+
+    #[test]
+    fn no_pollen_outside_the_model_area_says_so() {
+        let mut r = with_sections();
+        r.pollen.state = SectionState::NotAvailableHere;
+        r.pollen.hours.clear();
+        r.place.coordinate = Coordinate {
+            latitude: 40.71,
+            longitude: -74.01,
+        };
+        let o = weather_overview(r, PARIS_EVENING, crate::default_units(None));
+        assert_eq!(o.pollen.gap, Some(PollenGap::OutsideModelArea));
+        // With data there is no gap.
+        let o = weather_overview(with_sections(), PARIS_EVENING, crate::default_units(None));
+        assert_eq!(o.pollen.gap, None);
     }
 
     #[test]

@@ -157,6 +157,37 @@ final class WeatherViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testUnreadableSavedPlacesAreKeptUntilThePersonStartsANewList() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("forge-weather-vm-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let file = url.appendingPathComponent("forge-weather-saved-places.json")
+        try Data("{ damaged".utf8).write(to: file)
+        let client = try WeatherClient(
+            storageDirectory: url.path,
+            configuration: WeatherConfig(
+                forecastBaseUrl: "http://127.0.0.1:9", geocodingBaseUrl: "http://127.0.0.1:9",
+                airQualityBaseUrl: "http://127.0.0.1:9", requestTimeoutMs: 5_000))
+        let model = WeatherViewModel(client: client, location: FakeLocation(result: .failure(.denied)))
+        await model.start()
+        XCTAssertEqual(model.placesProblem, .unreadable)
+        XCTAssertThrowsError(
+            try client.save(
+                Place(
+                    name: "Prague", region: nil, country: nil, countryCode: nil,
+                    coordinate: Coordinate(latitude: 50.09, longitude: 14.42), timezone: nil,
+                    population: nil, source: .search(geocodingId: nil)))
+        ) { XCTAssertEqual($0 as? WeatherClientError, .savedDataUnreadable) }
+        XCTAssertEqual(try Data(contentsOf: file), Data("{ damaged".utf8), "never written over")
+
+        model.startNewSavedPlaces()
+        XCTAssertNil(model.placesProblem)
+        XCTAssertNil(model.placesError)
+        model.close()
+    }
+
+    @MainActor
     func testMyLocationIsFoundAgainAfterAWhileAway() async throws {
         let here = LocationReading(
             coordinate: Coordinate(latitude: 55.9, longitude: -3.64), placeName: "Bathgate")

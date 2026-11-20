@@ -2,11 +2,15 @@
 //! [`UnitSettings`] apply only when showing them, and every value on the
 //! page goes through [`format_quantity`], so a unit is never applied in one
 //! place and forgotten in another. The choice is saved in its own small
-//! file; until the person picks, units follow the region.
+//! file (a forge-app [`Document`]); until the person picks, units follow the
+//! region. A file this build can't read is never silently replaced: units
+//! follow the region until the person picks again, which sets the damaged
+//! file aside (kept, renamed); a file from a newer version is never written
+//! over.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use forge_app::{Document, DocumentError};
 
 use super::app::ForgeWeatherApp;
 use super::error::WeatherError;
@@ -16,8 +20,8 @@ use super::types::{
 };
 use crate::signal::lock;
 
-pub(crate) const UNITS_FILENAME: &str = "forge-weather-units-v1.json";
-const UNITS_SCHEMA_VERSION: u32 = 1;
+pub(crate) const UNITS_FILENAME: &str = "forge-weather-units.json";
+const UNITS_VERSION: u32 = 1;
 
 const KM_PER_MILE: f64 = 1.609_344;
 const KMH_PER_KNOT: f64 = 1.852;
@@ -25,18 +29,37 @@ const MM_PER_INCH: f64 = 25.4;
 const HPA_PER_INHG: f64 = 33.863_886_666_7;
 const METRES_PER_MILE: f64 = 1_609.344;
 
-#[derive(Serialize, Deserialize)]
-struct UnitsEnvelope {
-    schema_version: u32,
-    units: UnitSettings,
+/// Where the chosen units are.
+pub(crate) enum UnitsStore {
+    /// No data folder: kept in memory only.
+    Memory(Option<UnitSettings>),
+    Saved(Document<Option<UnitSettings>>),
+    /// The file could not be opened; it is left alone.
+    Failed {
+        path: PathBuf,
+        error: DocumentError,
+    },
 }
 
-pub(crate) fn load_units(path: &Path) -> Option<UnitSettings> {
-    std::fs::read(path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<UnitsEnvelope>(&bytes).ok())
-        .filter(|e| e.schema_version == UNITS_SCHEMA_VERSION)
-        .map(|e| e.units)
+impl UnitsStore {
+    fn chosen(&self) -> Option<UnitSettings> {
+        match self {
+            UnitsStore::Memory(units) => *units,
+            UnitsStore::Saved(doc) => *doc.value(),
+            UnitsStore::Failed { .. } => None,
+        }
+    }
+}
+
+pub(crate) fn open_units(directory: Option<&Path>) -> UnitsStore {
+    let Some(directory) = directory else {
+        return UnitsStore::Memory(None);
+    };
+    let path = directory.join(UNITS_FILENAME);
+    match Document::open(&path, UNITS_VERSION) {
+        Ok(doc) => UnitsStore::Saved(doc),
+        Err(error) => UnitsStore::Failed { path, error },
+    }
 }
 
 /// The usual units for a region (ISO 3166-1 alpha-2, e.g. "GB"): imperial
@@ -149,32 +172,37 @@ impl ForgeWeatherApp {
     /// The person's units, or the usual ones for `region_code` if they have
     /// not chosen.
     pub fn units(&self, region_code: Option<String>) -> UnitSettings {
-        lock(&self.shared.units).unwrap_or_else(|| default_units(region_code))
+        lock(&self.shared.units)
+            .chosen()
+            .unwrap_or_else(|| default_units(region_code))
     }
 
     /// Saves the person's units. A failed write is an error and changes
-    /// nothing.
+    /// nothing. If the saved units could not be read, choosing new ones
+    /// sets that file aside (kept) first; a file from a newer version of
+    /// the app is never written over, so the change is refused.
     pub fn set_units(&self, units: UnitSettings) -> Result<(), WeatherError> {
         if self.is_shut_down() {
             return Err(WeatherError::ShutDown);
         }
-        let mut current = lock(&self.shared.units);
-        if let Some(path) = &self.shared.units_path {
-            let json = serde_json::to_vec(&UnitsEnvelope {
-                schema_version: UNITS_SCHEMA_VERSION,
-                units,
-            })
-            .map_err(|e| WeatherError::Internal {
-                reason: format!("could not encode units: {e}"),
-            })?;
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
+        let mut store = lock(&self.shared.units);
+        match &mut *store {
+            UnitsStore::Memory(current) => *current = Some(units),
+            UnitsStore::Saved(doc) => doc.replace(Some(units))?,
+            UnitsStore::Failed { path, error } => {
+                if !error.can_start_fresh() {
+                    return Err(WeatherError::from(error.clone()));
+                }
+                let (mut doc, _kept) = Document::start_fresh(
+                    path.clone(),
+                    UNITS_VERSION,
+                    None,
+                    forge_runtime::now_ms(),
+                )?;
+                doc.replace(Some(units))?;
+                *store = UnitsStore::Saved(doc);
             }
-            forge_storage::write_atomic(path, &json).map_err(|e| WeatherError::Internal {
-                reason: format!("could not save units: {e}"),
-            })?;
         }
-        *current = Some(units);
         Ok(())
     }
 }
@@ -265,5 +293,41 @@ mod tests {
         }
         let app = ForgeWeatherApp::new(path).unwrap();
         assert_eq!(app.units(Some("FR".into())), us, "kept after relaunch");
+    }
+
+    #[test]
+    fn damaged_or_newer_units_are_never_silently_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(UNITS_FILENAME);
+        let path = dir.path().to_str().unwrap().to_string();
+        let us = default_units(Some("US".into()));
+
+        // Newer: units follow the region, and the file is never written over.
+        let newer = br#"{"schema_version":2,"data":{"temperature":"Kelvin"}}"#;
+        std::fs::write(&file, newer).unwrap();
+        let app = ForgeWeatherApp::new(path.clone()).unwrap();
+        assert_eq!(app.units(Some("FR".into())), metric());
+        assert!(matches!(
+            app.set_units(us),
+            Err(WeatherError::SavedDataNewer { found: 2, .. })
+        ));
+        assert_eq!(std::fs::read(&file).unwrap(), newer);
+        app.shutdown();
+        drop(app);
+
+        // Damaged: region units until the person picks; picking keeps the
+        // damaged file, set aside.
+        std::fs::write(&file, b"garbage").unwrap();
+        let app = ForgeWeatherApp::new(path).unwrap();
+        assert_eq!(app.units(Some("FR".into())), metric());
+        assert_eq!(std::fs::read(&file).unwrap(), b"garbage", "not on open");
+        app.set_units(us).unwrap();
+        assert_eq!(app.units(Some("FR".into())), us);
+        let kept = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains("unreadable"))
+            .count();
+        assert_eq!(kept, 1);
     }
 }
