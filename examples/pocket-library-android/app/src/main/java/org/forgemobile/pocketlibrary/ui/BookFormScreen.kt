@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.forgemobile.pocketlibrary.ErrorText
 import org.forgemobile.pocketlibrary.LibraryModel
@@ -90,7 +91,9 @@ internal fun BookFormScreen(model: LibraryModel, onDone: () -> Unit) {
     val isSaving by saving.isWorking.collectAsState()
     val failure by saving.failure.collectAsState()
     var errors by remember { mutableStateOf(ForgeFieldErrors()) }
-    val scope = rememberCoroutineScope()
+    // Navigation and screen state change on the main thread. The composition's own dispatcher
+    // may resume in place after a Rust call (it does in Compose UI tests), on a pool thread.
+    val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
 
     fun save() {
         errors = text.localErrors()

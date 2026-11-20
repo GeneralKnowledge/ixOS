@@ -47,6 +47,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import org.forgemobile.pocketlibrary.LibraryModel
@@ -167,7 +168,9 @@ private fun BookDetailScreen(model: LibraryModel, id: ULong, onClose: () -> Unit
     val books by model.books.collectAsState()
     val book = books.firstOrNull { it.id == id }
     var alert by remember { mutableStateOf<ForgeAlert<DetailAction>?>(null) }
-    val scope = rememberCoroutineScope()
+    // Navigation and screen state change on the main thread. The composition's own dispatcher
+    // may resume in place after a Rust call (it does in Compose UI tests), on a pool thread.
+    val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     Scaffold(
         topBar = {
             TopAppBar(
