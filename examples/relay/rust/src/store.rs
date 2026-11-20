@@ -776,6 +776,74 @@ mod tests {
         assert!(store.read(|c| since(c, &other, None)).unwrap().is_empty());
     }
 
+    /// An older build's record and one conversation, as it saved them.
+    fn older_build(dir: &Path) -> Record {
+        let mut record = Record {
+            device_id: "me".into(),
+            name: "laptop".into(),
+            notes_are_messages: true,
+            ..Record::default()
+        };
+        record.devices.trust("phone", "Phone", 1);
+        record.deliveries = vec![delivery("a")];
+        JsonFile::<Record>::new(dir.join(JSON_FILE), crate::record::VERSION)
+            .save(&record)
+            .unwrap();
+        let log = LogFile {
+            messages: vec![msg("m1"), msg("m2")],
+            last_at: 2,
+            ..LogFile::default()
+        };
+        let file = dir.join("devices").join("phone").join("messages.json");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        JsonFile::<LogFile>::new(file, crate::device_chat::LOG_VERSION)
+            .save(&log)
+            .unwrap();
+        record
+    }
+
+    #[test]
+    fn a_move_interrupted_half_way_is_done_again_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let record = older_build(dir.path());
+        // Relay ends in the middle of the move: the record and part of the
+        // conversation written, nothing committed.
+        {
+            let (db, _) = Database::open(dir.path().join(DB_FILE), MIGRATIONS).unwrap();
+            let store = Store { db: Mutex::new(db) };
+            let conv = device_conversation("phone");
+            let ended: Result<(), RelayError> = store.write(|c| {
+                save(c, &Record::default(), &record)?;
+                insert_message(c, &conv, &msg("m1"))?;
+                Err(RelayError::Stopped {
+                    kind: forge_app::ErrorKind::ShutDown,
+                })
+            });
+            assert!(ended.is_err());
+        }
+        assert!(
+            dir.path().join(JSON_FILE).exists(),
+            "the files are untouched"
+        );
+
+        // The next open moves everything, once.
+        let (store, saved, found) = Store::open(dir.path()).unwrap();
+        assert_eq!(found, Found::Moved { not_moved: vec![] });
+        assert_eq!(saved.as_ref(), Some(&record));
+        let conv = device_conversation("phone");
+        let ids: Vec<String> = store
+            .read(|c| since(c, &conv, None))
+            .unwrap()
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(ids, ["m1", "m2"]);
+        drop(store);
+        let (_, again, found) = Store::open(dir.path()).unwrap();
+        assert_eq!(found, Found::Saved);
+        assert_eq!(again, Some(record));
+    }
+
     #[test]
     fn a_damaged_message_is_an_error_not_a_gap() {
         let store = Store::in_memory();
