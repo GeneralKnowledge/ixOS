@@ -33,7 +33,7 @@ A note for later: a port the original project could adopt as its own iOS app wou
 
 - Our apps keep their own names, icons and looks. No Android project's name, logo, icon, colours or screenshots go into an app, its icon, its home-screen name or a store listing.
 - Plain factual statements are fine where they help a user: "imports OPML exported from Feeder", "reads OpenTracks GPX and KMZ files". Not "Feeder for iPhone".
-- Contacting maintainers is selective and never blocks development (Reuben, 2026-11-20). Reuben makes the contact; we introduce the work honestly: an independent native iOS app, no GPL source copied, their project credited as the product reference, compatible import and export, possible future collaboration. We don't ask for an endorsement. If a maintainer wants to adopt an iOS app officially, licensing and App Store distribution are discussed separately.
+- **Maintainers are not contacted for now** (Reuben, 2026-11-20 07:38): we build first, and contact them later only if an app gets close to something worth showing. When that happens it is selective and never blocks development. Reuben makes the contact; we introduce the work honestly: an independent native iOS app, no GPL source copied, their project credited as the product reference, compatible import and export, possible future collaboration. We don't ask for an endorsement. If a maintainer wants to adopt an iOS app officially, licensing and App Store distribution are discussed separately.
 
 | Project | When | Purpose |
 |---|---|---|
@@ -211,7 +211,7 @@ One phase at a time, each in its own PR, phone checks in the combined Device Lab
 Reuben approved the plan and the order, and made the three decisions:
 
 1. **Podcasts belong in Soundscape**, in their own Podcasts section with the shared player and queue; music and podcast libraries stay distinct. P0 improves the music player whether or not podcasts ship.
-2. **Contact the original maintainers selectively**, as in the table under [Names and branding](#names-and-branding). The conversations never block independent development.
+2. **Don't contact the original maintainers yet.** Build first; if an app gets close to something worth showing, contact them selectively as in the table under [Names and branding](#names-and-branding), without blocking development.
 3. **Start Commonplace C3 now.** It is the first implementation PR. The rest of the roadmap stays documented here, with no parallel implementation work until C3 is finished and tested.
 
 Every phase is its own PR, with automated tests and a check on an actual iPhone wherever iOS behaviour matters. Linux tests alone don't advance a phase. Etar and Fossify Gallery stay excluded.
