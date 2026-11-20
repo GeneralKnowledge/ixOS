@@ -5,9 +5,12 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -25,9 +28,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Stage 0's end-to-end check on an emulator: add a book, open it, delete it. Controls are found
- * by the iOS app's identifiers (`screen.element`), never by position. The app starts on
- * throwaway data, so the person's own library is never touched.
+ * Pocket Library's requirements on an emulator, named by their ids in
+ * examples/pocket-library/requirements.toml. Controls are found by the iOS app's identifiers
+ * (`screen.element`), never by position. Each test launches on an empty throwaway library, so
+ * the person's own library is never touched and tests don't see each other's books.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -48,23 +52,25 @@ class LibraryFlowTest {
         val intent = Intent(context, MainActivity::class.java)
             .putExtra(ForgeEnvironment.TEMPORARY_DATA_EXTRA, true)
         scenario = ActivityScenario.launch(intent)
+        awaitEmptyLibrary()
     }
 
     @After
     fun finish() = scenario.close()
 
-    @Test
-    fun addOpenAndDeleteABook() {
-        // The core opens off the main thread; a failure to open shows `open.error`.
+    /** The core opens off the main thread; a failure to open shows `open.error`. */
+    private fun awaitEmptyLibrary() {
         compose.waitUntilAtLeastOneExists(hasTestTag("library.empty") or hasTestTag("open.error"), 20_000)
         val failure = compose.onAllNodes(hasTestTag("open.error")).fetchSemanticsNodes().firstOrNull()
         if (failure != null) {
             val text = failure.config.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }
             throw AssertionError("The library didn't open: $text")
         }
+    }
 
+    @Test
+    fun addOpenAndDeleteABook() {
         compose.onNodeWithTag("library.add.manual").performClick()
-        compose.onNodeWithTag("bookForm.save").assertIsNotEnabled()
         compose.onNodeWithTag("bookForm.title").performTextInput("A Wizard of Earthsea")
         compose.onNodeWithTag("bookForm.author").performTextInput("Ursula K. Le Guin")
         compose.onNodeWithTag("bookForm.save").assertIsEnabled().performClick()
@@ -79,6 +85,40 @@ class LibraryFlowTest {
         compose.onNodeWithTag("bookDetail.delete").performClick()
         compose.onNodeWithTag("bookDetail.delete.confirm").performClick()
 
+        compose.waitUntilExactlyOneExists(hasTestTag("library.empty"), 5_000)
+    }
+
+    /** PL-10: the New Book form takes a typed title, enables Add, and Cancel leaves without saving. */
+    @Test
+    fun pl10_newBookFormEnablesAddAndCancelSavesNothing() {
+        compose.onNodeWithTag("library.empty.add").performClick()
+        compose.onNodeWithTag("bookForm.save").assertIsNotEnabled()
+        compose.onNodeWithTag("bookForm.title").performTextInput("Hello from Forge")
+        compose.onNodeWithTag("bookForm.title").assert(hasText("Hello from Forge"))
+        compose.onNodeWithTag("bookForm.save").assertIsEnabled()
+
+        compose.onNodeWithTag("bookForm.cancel").performClick()
+        compose.waitUntilDoesNotExist(hasTestTag("bookForm.title"), 5_000)
+        compose.onNodeWithTag("library.empty").assertIsDisplayed()
+    }
+
+    /** PL-4: invalid details are refused in plain language under the field, and change nothing. */
+    @Test
+    fun pl4_invalidDetailsAreRefusedAndChangeNothing() {
+        compose.onNodeWithTag("library.empty.add").performClick()
+        compose.onNodeWithTag("bookForm.title").performTextInput("Short Book")
+        compose.onNodeWithTag("bookForm.currentPage").performTextInput("50")
+        compose.onNodeWithTag("bookForm.totalPages").performTextInput("10")
+        compose.onNodeWithTag("bookForm.save").performClick()
+
+        val message = hasTestTag("bookForm.currentPage.error") and
+            hasContentDescription("Error: The current page is past the last page (10).")
+        compose.waitUntilExactlyOneExists(message, 5_000)
+        // The form stays open with what was typed.
+        compose.onNodeWithTag("bookForm.save").assertIsEnabled()
+        compose.onNodeWithTag("bookForm.title").assert(hasText("Short Book"))
+
+        compose.onNodeWithTag("bookForm.cancel").performClick()
         compose.waitUntilExactlyOneExists(hasTestTag("library.empty"), 5_000)
     }
 }

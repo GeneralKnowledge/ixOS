@@ -5,7 +5,7 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 ## What Forge is and isn't
 
 - It makes Apple's frameworks productive from Linux. It does not replace SwiftUI, and it is not a cross-platform UI layer or a game engine.
-- iOS is the focus. Android is work in progress: keep it building, add no Android features ([roadmap](docs/roadmap.md#android--work-in-progress)).
+- iOS is the focus. Android is a capped side track: only Pocket Library, one milestone of the parity plan at a time, never ahead of iOS work; keep the rest of Android building and add nothing else ([roadmap](docs/roadmap.md#android--work-in-progress)).
 - Linux first. Write instructions for Linux with xtool; macOS and Xcode are optional extras, never assumed.
 - Human first, agent optional. Every step of developing an app works from the `forge` CLI for a person with no AI agent, MCP server or API key ([human-workflow.md](docs/human-workflow.md)). Agents get the same commands, plus `forge agent setup`. The MCP server, the explorer, run records and the live dev connection live in the separate [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project.
 
