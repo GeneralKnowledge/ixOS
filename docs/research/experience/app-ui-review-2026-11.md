@@ -117,7 +117,7 @@ Where an existing ForgeKit piece fits, and what looks unfinished.
 1. **App icons, all apps.** The most visible unfinished thing, and no code. One 1024 px PNG per app in `forge.toml`. The images need Reuben's eye. Device Lab's icon is the one he sees every day.
 2. **`ForgeNotice`, `ForgeRename` and share-file in ForgeKit**, one PR each, each moving its apps and adding a parity rule. They land after the ForgeKit 0.7 release and go into 0.8.
 3. **Swipe actions get a menu twin**, the 7 screens, with a parity rule (a file with `.swipeActions` and no `.contextMenu` fails unless listed). *Built as ForgeUI's `forgeRowActions` (one list of buttons, given as swipe actions and as a long-press menu): the 7 screens plus Device Lab's transfers and the showcase's tasks, with the `row-actions` rule.*
-4. **Good Dog's My Dog header and goal rows** onto `ForgeDetailHeader` and `ForgeRow`: the first real users of both.
+4. **Good Dog's My Dog header and goal rows** onto `ForgeDetailHeader` and `ForgeRow`: the first real users of both. *Done: My Dog opens with `ForgeDetailHeader` (name, life stage, the focus as a badge) and its goal rows are `ForgeRow`s with a warning badge for Paused or Set Aside.*
 5. **Text roles screen by screen** as each screen is touched, as decided in #325. No sweep.
 6. **Relay's Settings tab** goes to the Relay thread as a finding for its next pass.
 

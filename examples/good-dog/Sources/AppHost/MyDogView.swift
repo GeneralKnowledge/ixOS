@@ -45,32 +45,31 @@ struct MyDogView: View {
             List {
                 if let dog = model.dog {
                     Section {
-                        LabeledContent("Age", value: dog.lifeStage.title)
+                        ForgeDetailHeader(dog.name, subtitle: dog.lifeStage.title, systemImage: "pawprint.fill") {
+                            ForgeBadge(dog.goal.title, systemImage: "scope", tone: .accent)
+                        }
+                        .listRowBackground(Color.clear)
+                        .accessibilityIdentifier("dog.header")
+                    }
+                    Section {
                         LabeledContent("Time most days", value: dog.dailyTime.title)
-                        LabeledContent("Focus", value: dog.goal.title)
                         LabeledContent("Experience", value: dog.experience.title)
-                    } header: {
-                        Text(dog.name)
                     }
                 }
                 if model.dog != nil, !model.pathways.isEmpty {
                     Section {
                         ForEach(model.goals) { goal in
                             NavigationLink(value: GoalRoute(goalId: goal.id)) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(goal.title).font(.headline)
-                                    Text(goal.status == .finished
-                                         ? goal.status.title
-                                         : "Stage \(goal.stageNumber) of \(goal.stageCount): \(goal.stageTitle)")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
+                                ForgeRow(
+                                    goal.title,
+                                    subtitle: goal.status == .finished
+                                        ? goal.status.title
+                                        : String(localized: "Stage \(goal.stageNumber) of \(goal.stageCount): \(goal.stageTitle)")
+                                ) {
                                     if goal.status == .paused || goal.status == .setAside {
-                                        Text(goal.status.title)
-                                            .font(.footnote)
-                                            .forgeForeground(.warning)
+                                        ForgeBadge(goal.status.title, tone: .warning)
                                     }
                                 }
-                                .accessibilityElement(children: .combine)
                             }
                             .accessibilityIdentifier("dog.goal.\(goal.pathwayId)")
                         }
