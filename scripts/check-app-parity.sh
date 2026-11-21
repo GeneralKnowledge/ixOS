@@ -662,11 +662,12 @@ SMALL_FONT = re.compile(r"\.font\(\.(footnote|callout|caption)\)")
 QUIET_COLOUR = re.compile(r"\.foregroundStyle\(\.secondary\)|\.forgeForeground\(")
 
 
-def swift_code_mask(text):
+def swift_code_mask(text, keep_strings=False):
     """`text` with comments blanked and string-literal contents replaced by
     `x`, the same length and with the same line breaks, so parentheses and
     `//` inside a string ("(\\(reason))", a URL) don't count as code.
-    Interpolated code inside a string stays code."""
+    Interpolated code inside a string stays code. With `keep_strings`, only
+    comments are blanked."""
     out = list(text)
     stack = []  # "s" (string), "m" (multi-line string) or an int (paren depth inside \( ... ))
     i, n = 0, len(text)
@@ -704,13 +705,23 @@ def swift_code_mask(text):
                 i += 1
             continue
         if text.startswith("/*", i):
-            while i < n and not text.startswith("*/", i):
-                if text[i] != "\n":
-                    out[i] = " "
-                i += 1
-            for k in range(i, min(i + 2, n)):
-                out[k] = " "
-            i += 2
+            # Swift block comments nest.
+            depth = 0
+            while i < n:
+                if text.startswith("/*", i):
+                    depth += 1
+                    out[i] = out[i + 1] = " "
+                    i += 2
+                elif text.startswith("*/", i):
+                    depth -= 1
+                    out[i] = out[i + 1] = " "
+                    i += 2
+                    if depth == 0:
+                        break
+                else:
+                    if text[i] != "\n":
+                        out[i] = " "
+                    i += 1
             continue
         if text.startswith('"""', i):
             stack.append("m")
@@ -728,12 +739,15 @@ def swift_code_mask(text):
                 else:
                     stack[-1] -= 1
         i += 1
+    if keep_strings:
+        return "".join(t if o == "x" else o for t, o in zip(text, out))
     return "".join(out)
 
 
-def call_and_chain(text, code, start):
-    """For a call whose `(` is at `start` in `code` (the masked `text`):
-    its arguments (from `text`, strings intact) and the modifiers chained
+def call_and_chain(plain, code, start):
+    """For a call whose `(` is at `start` in `code` (the source with strings
+    and comments masked): its arguments from `plain` (comments blanked,
+    strings intact) and the modifiers chained
     after its closing parenthesis, one per following line starting with `.`."""
     depth = 0
     for j in range(start, len(code)):
@@ -745,7 +759,7 @@ def call_and_chain(text, code, start):
                 break
     else:
         return "", ""
-    args = text[start + 1 : j]
+    args = plain[start + 1 : j]
     rest = code[j + 1 :].split("\n")
     chain = [rest[0]]
     for line in rest[1:]:
@@ -760,8 +774,9 @@ def rule_notices(app):
     for path in swift_sources(app):
         text = read(path)
         code = swift_code_mask(text)
+        plain = swift_code_mask(text, keep_strings=True)
         for m in re.finditer(r"\bLabel\(", code):
-            args, chain = call_and_chain(text, code, m.end() - 1)
+            args, chain = call_and_chain(plain, code, m.end() - 1)
             if PROBLEM_SYMBOL.search(args) and SMALL_FONT.search(chain) and QUIET_COLOUR.search(chain):
                 bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
     if bad:
