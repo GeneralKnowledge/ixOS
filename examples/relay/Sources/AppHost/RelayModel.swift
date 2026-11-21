@@ -301,6 +301,40 @@ public final class RelayModel {
         await perform { try await $0.setReceivesFrom(endpointId: device.endpointId, on: on) }
     }
 
+    /// Whether `device` speaks for your devices here: what it lists is
+    /// offered to you, and what it revoked is revoked here, saying so.
+    public func setIntroduces(_ on: Bool, for device: Device) async {
+        await perform { try await $0.setIntroduces(endpointId: device.endpointId, on: on) }
+    }
+
+    /// Whether `device` may see which devices this one trusts.
+    public func setSeesDevices(_ on: Bool, for device: Device) async {
+        await perform { try await $0.setSeesDevices(endpointId: device.endpointId, on: on) }
+    }
+
+    /// Asks an introducer for its devices now. Returns what changed, in
+    /// words, or nil when it failed (the failure is shown as an alert).
+    public func syncDevices(with device: Device) async -> String? {
+        var said: String?
+        await perform { core in
+            let synced = try await core.syncDevices(endpointId: device.endpointId)
+            said = Self.synced(synced, from: device.name)
+        }
+        refreshTrustOffer()
+        return said
+    }
+
+    public static func synced(_ synced: DevicesSynced, from name: String) -> String {
+        var parts: [String] = []
+        if synced.offered > 0 {
+            parts.append(synced.offered == 1 ? "1 device to trust" : "\(synced.offered) devices to trust")
+        }
+        if synced.revoked > 0 {
+            parts.append(synced.revoked == 1 ? "1 device revoked" : "\(synced.revoked) devices revoked")
+        }
+        return parts.isEmpty ? "Nothing new from \(name)." : "From \(name): " + parts.joined(separator: ", ") + "."
+    }
+
     public func setPolicy(_ policy: PairingPolicy) async {
         await perform { try await $0.setPairingPolicy(policy: policy) }
     }

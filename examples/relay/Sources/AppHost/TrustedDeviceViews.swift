@@ -58,7 +58,8 @@ struct RevokedDeviceRow: View {
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
-                Text("Revoked: can't send here without a code")
+                Text(device.revokedBy.map { "Revoked by \($0): can't send here without a code" }
+                     ?? "Revoked: can't send here without a code")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -228,6 +229,8 @@ struct TrustedDeviceView: View {
     @State private var sending = false
     @State private var pickingFiles = false
     @State private var asking = false
+    @State private var syncing = false
+    @State private var synced: String?
 
     /// "iPhone or iPad", "Linux", "Mac": the platform Rust reports, in
     /// words.
@@ -310,6 +313,41 @@ struct TrustedDeviceView: View {
                 Text(device.receivesFrom
                      ? "\(device.name) can send messages and files here without a code."
                      : "\(device.name) is still trusted, but what it sends here is declined.")
+            }
+            Section {
+                Toggle("Introduces Devices", isOn: Binding(
+                    get: { device.introduces },
+                    set: { on in Task { await model.setIntroduces(on, for: device) } }
+                ))
+                .accessibilityIdentifier("trusted.introduces")
+                Toggle("Can See My Devices", isOn: Binding(
+                    get: { device.seesDevices },
+                    set: { on in Task { await model.setSeesDevices(on, for: device) } }
+                ))
+                .accessibilityIdentifier("trusted.seesDevices")
+                if device.introduces {
+                    Button {
+                        Task {
+                            syncing = true
+                            synced = await model.syncDevices(with: device)
+                            syncing = false
+                        }
+                    } label: {
+                        Label(syncing ? "Asking…" : "Check Its Devices Now", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .disabled(syncing)
+                    .accessibilityIdentifier("trusted.syncDevices")
+                }
+                if let introducer = device.introducedBy {
+                    LabeledContent("Introduced By", value: introducer)
+                        .accessibilityIdentifier("trusted.introducedBy")
+                }
+            } header: {
+                Text("Your Devices")
+            } footer: {
+                Text(synced ?? (device.introduces
+                     ? "Devices \(device.name) trusts are offered here for you to trust, and devices it revokes are revoked here too."
+                     : "Turn on for your own devices, so you pair and revoke once. Both devices need it on: Introduces here, Can See My Devices there."))
             }
         }
         .navigationTitle(device.name)
