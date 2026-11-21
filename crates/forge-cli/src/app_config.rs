@@ -82,6 +82,17 @@ pub struct IosSection {
     /// Generated/Localization/<lang>.lproj (docs/localization.md).
     #[serde(default)]
     pub string_catalogs: Vec<String>,
+    /// Files or folders inside the app copied as they are to the root of the
+    /// app bundle (xtool's `resources`), such as an embedded Python's
+    /// standard library. Usually made by the `prepare` script.
+    #[serde(default)]
+    pub resources: Vec<String>,
+    /// A script inside the app that `forge build ios`, `forge run ios` and
+    /// `forge publish ios` run from the app's folder before building, such
+    /// as one that downloads a prebuilt framework. It must succeed and be
+    /// quick when there is nothing to do.
+    #[serde(default)]
+    pub prepare: Option<String>,
     /// Permission prompt texts: friendly name (or raw NS…UsageDescription key) → text.
     #[serde(default)]
     pub permissions: BTreeMap<String, String>,
@@ -598,18 +609,23 @@ fn render_xtool_yml(cfg: &ForgeConfig, has_entitlements: bool) -> String {
         let _ = writeln!(out, "iconPath: {icon}");
     }
     let ios = ios(cfg);
-    if !ios.string_catalogs.is_empty() {
+    if !ios.string_catalogs.is_empty() || !ios.resources.is_empty() {
         let _ = writeln!(
             out,
-            "# Compiled from [ios] string_catalogs; xtool copies each folder to the bundle root."
+            "# [ios] string_catalogs (compiled) and [ios] resources; xtool copies each to the bundle root."
         );
         let _ = writeln!(out, "resources:");
-        for language in &ios.languages {
-            let _ = writeln!(
-                out,
-                "  - {}/{language}.lproj",
-                crate::string_catalog::OUTPUT_DIR
-            );
+        if !ios.string_catalogs.is_empty() {
+            for language in &ios.languages {
+                let _ = writeln!(
+                    out,
+                    "  - {}/{language}.lproj",
+                    crate::string_catalog::OUTPUT_DIR
+                );
+            }
+        }
+        for resource in &ios.resources {
+            let _ = writeln!(out, "  - {resource}");
         }
     }
     out
@@ -903,6 +919,20 @@ pub fn validate(cfg: &ForgeConfig) -> Result<(), String> {
             return Err(format!(
                 "[ios] string_catalogs: two catalogs are named {}; each file name is a table and must be unique",
                 catalog_table(catalog)
+            ));
+        }
+    }
+    for resource in &ios.resources {
+        if !is_safe_relative_path(resource) {
+            return Err(format!(
+                "[ios] resources: \"{resource}\" must be a path inside the app, such as \"Generated/Python/python\""
+            ));
+        }
+    }
+    if let Some(prepare) = &ios.prepare {
+        if !is_safe_relative_path(prepare) {
+            return Err(format!(
+                "[ios] prepare: \"{prepare}\" must be a script inside the app, such as \"scripts/prepare.sh\""
             ));
         }
     }
@@ -1771,6 +1801,18 @@ LSApplicationQueriesSchemes = ["maps"]
             let err = ForgeConfig::parse(&toml).unwrap_err();
             assert!(err.contains(want), "{app} => {err}");
         }
+    }
+
+    #[test]
+    fn resources_and_prepare_must_stay_inside_the_app() {
+        let e = cfg("[ios]\nresources = [\"../python\"]\n").unwrap_err();
+        assert!(e.contains("[ios] resources"), "{e}");
+        let e = cfg("[ios]\nprepare = \"/bin/prepare.sh\"\n").unwrap_err();
+        assert!(e.contains("[ios] prepare"), "{e}");
+        assert!(cfg(
+            "[ios]\nprepare = \"scripts/prepare.sh\"\nresources = [\"Generated/Python/python\"]\n"
+        )
+        .is_ok());
     }
 
     #[test]

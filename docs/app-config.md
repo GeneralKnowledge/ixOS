@@ -89,6 +89,8 @@ When `minimum_ios` changes, Forge rewrites the `.iOS(...)` entry in `Package.swi
 | `background_tasks` | `BGTaskSchedulerPermittedIdentifiers` | Background task identifiers for the `background` native service ([native-services.md](native-services.md#background-tasks-background)), such as `["org.example.app.refresh"]`. Also adds the `fetch` and `processing` background modes. Works on a free team. |
 | `languages` | `CFBundleDevelopmentRegion`, `CFBundleLocalizations` | The app's languages, development language first, such as `["en", "es"]` ([localization.md](localization.md)). |
 | `string_catalogs` | `xtool.yml` `resources` | String Catalogs (`.xcstrings`) inside the app. Forge compiles them into `Generated/Localization/<language>.lproj` on Linux; needs `languages`. |
+| `resources` | `xtool.yml` `resources` | Files or folders inside the app copied as they are to the root of the app bundle, such as an embedded interpreter's standard library (Device Lab's `Generated/Python/python`). |
+| `prepare` | (runs) | A script inside the app that `forge build ios`, `forge run ios` and `forge publish ios` run from the app's folder before the Rust build, for example to download a prebuilt framework that `Package.swift` and `resources` name (Device Lab's `scripts/prepare-python.sh`). It must exit at once when there is nothing to do. |
 | `info` | any Info.plist key | Strings, booleans, numbers, arrays and tables. Keys that Forge sets elsewhere are refused (set them in one place), as are `CFBundleIdentifier`, `CFBundleExecutable`, `MinimumOSVersion` and `UIDeviceFamily`. |
 
 ### `[ios.permissions]`: permission prompts
