@@ -26,7 +26,8 @@ pub(crate) const MAX_SEARCH_RESULTS: u32 = 10;
 pub(crate) const MAX_QUERY_CHARS: usize = 100;
 
 const CURRENT_FIELDS: &str = "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,pressure_msl,visibility,cloud_cover,uv_index";
-const HOURLY_FIELDS: &str = "temperature_2m,precipitation_probability,weather_code,wind_gusts_10m";
+const HOURLY_FIELDS: &str =
+    "temperature_2m,precipitation_probability,weather_code,wind_gusts_10m,pressure_msl,uv_index";
 const DAILY_FIELDS: &str = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset,uv_index_max";
 
 pub(crate) fn validate_coordinate(c: Coordinate) -> Result<(), WeatherError> {
@@ -151,6 +152,10 @@ struct HourlyJson {
     weather_code: Vec<Option<f64>>,
     #[serde(default)]
     wind_gusts_10m: Vec<Option<f64>>,
+    #[serde(default)]
+    pressure_msl: Vec<Option<f64>>,
+    #[serde(default)]
+    uv_index: Vec<Option<f64>>,
 }
 
 #[derive(Deserialize)]
@@ -335,6 +340,8 @@ pub(crate) fn decode_forecast(
                 condition: condition(at(&h.weather_code, i)),
                 is_day: is_day_at(time),
                 wind_gusts_kmh: at(&h.wind_gusts_10m, i),
+                pressure_msl_hpa: at(&h.pressure_msl, i).filter(|v| v.is_finite()),
+                uv_index: at(&h.uv_index, i).filter(|v| v.is_finite() && *v >= 0.0),
             })
         })
         .take(HOURLY_POINTS)
@@ -509,7 +516,7 @@ mod tests {
         for part in [
             "current=temperature_2m,",
             "dew_point_2m,pressure_msl,visibility,cloud_cover,uv_index",
-            "hourly=temperature_2m,precipitation_probability,weather_code,wind_gusts_10m",
+            "hourly=temperature_2m,precipitation_probability,weather_code,wind_gusts_10m,pressure_msl,uv_index",
             "daily=weather_code,",
             "timezone=auto",
             "forecast_days=16",

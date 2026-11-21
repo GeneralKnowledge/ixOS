@@ -56,6 +56,8 @@ public struct WeatherView: View {
             .sheet(isPresented: $showingLocations) {
                 LocationsView(model: model, isPresented: $showingLocations)
                     .environment(\.weatherUnits, model.units)
+                    // White text over the sky, like the pages.
+                    .environment(\.colorScheme, .dark)
             }
             .task { await model.start() }
             .onChange(of: model.selection) { _, _ in model.pageDidAppear() }
