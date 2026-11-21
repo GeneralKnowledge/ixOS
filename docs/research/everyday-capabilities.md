@@ -286,6 +286,8 @@ Six phases, one PR stream at a time, each carried by an app feature that is alre
 
 This changes Forge's distribution model, not only where generated files go, so it starts with an investigation and becomes an implementation commitment only when that answers the questions below.
 
+The investigation is [one-native-services-route.md](one-native-services-route.md) (2026-11-21): yes, with one crate and one ForgeKit product per service instead of Cargo features.
+
 - **Investigate first:** whether optional UniFFI services can sit behind Cargo features of `forge-native` without bloating the core (binary size and the Swift a disabled service still needs); how an app selects services (Cargo features plus imports, and how that stays in step with `forge.toml` permissions, review P1); whether ForgeNative can ship each adapter so an outside app needs no ixOS checkout (SwiftPM has no per-feature compilation, so an unused adapter must still compile and link without its Rust symbols); how the copying route retires app by app without breaking any app mid-way; and whether the result is a clean release boundary for ForgeKit. Output: a short design note and a yes or no.
 - **Objective:** an app adds a service by enabling a Cargo feature of `forge-native` and importing ForgeNative; nothing is copied into `Generated/`.
 - **Scope:** optional services become features of `forge-native` with adapters in ForgeNative; a parity rule `forge-native`; apps move in waves (Soundscape and Weather, whose needs are small, first); the copying in `generate-bindings.sh` is removed when the last app moves. Platform limits (`MIN_REPEAT_SECONDS`) move to adapters in the same PR as notifications.
