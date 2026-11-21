@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use relay_core::{CodeSend, Direction, Item, RelayCore, RelayServers, TransferStatus};
+use relay_core::{CodeSend, RelayCore, RelayServers};
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     forge_runtime::block_on(future)
@@ -75,17 +75,17 @@ fn trust_each_other(dir: &Path, phone: &RelayCore, laptop: &RelayCore) {
     block_on(laptop.trust_device(on_laptop.endpoint_id.clone())).unwrap();
 }
 
-/// Notes `core` received from the device called `from`, oldest first.
+/// Notes `core` received from the device called `from`, oldest first:
+/// they are messages in its conversation.
 fn notes_from(core: &RelayCore, from: &str) -> Vec<String> {
-    core.transfers()
+    let Some(device) = core.devices().into_iter().find(|d| d.name == from) else {
+        return Vec::new();
+    };
+    core.device_messages(&device.endpoint_id)
+        .unwrap()
         .into_iter()
-        .rev()
-        .filter(|t| t.direction == Direction::Received && t.peer_name == from)
-        .filter(|t| t.status == TransferStatus::Done)
-        .filter_map(|t| match t.item {
-            Item::Note { text } => Some(text),
-            _ => None,
-        })
+        .filter(|m| m.author_id == device.endpoint_id)
+        .map(|m| m.body)
         .collect()
 }
 
@@ -177,7 +177,7 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
 
     // The phone has never seen it on a network (no Bonjour, no address it
     // reached it at), and still finds it.
-    block_on(phone.send_note_to_device(laptop_id, "found by key".into())).unwrap();
+    block_on(phone.send_note_as_older_build(laptop_id, "found by key".into())).unwrap();
     eventually("the note", || {
         notes_from(&laptop, "phone") == ["found by key"]
     });

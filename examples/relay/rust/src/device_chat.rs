@@ -14,29 +14,33 @@
 //!   increasing, which is the order both sides show and the `since` cursor
 //!   catch-up reads by.
 //! - **The repo** ([`PeerRepo`]) is the conversation's `ChatRepo`. Posting a
-//!   message sends it over `relay/device/1` and, once the other device has
-//!   it, adds it to the log. A device that can't be reached is a network
-//!   error, so the message stays in chat-core's outbox and goes when the
-//!   device is reached: chat-core retries with its own backoff, and the
-//!   delivery scheduler ([`crate::outbox`]) wakes it at once when the
-//!   device is seen, connects here, or Relay comes to the foreground.
+//!   message adds it to the log as `Queued` and puts it in Relay's outbox
+//!   ([`crate::outbox`]), with the files for the same device, so chat-core's
+//!   own outbox only hands it over. The outbox sends it over
+//!   `relay/device/1` when the device is reached, and the log marks it
+//!   `Sent`, or `Failed` (sending it again queues it again).
 //! - **Exactly once.** The receiver adds a message to its log, then
 //!   answers. A message id it already has is answered without adding it
 //!   again, so a retry whose answer was lost never shows twice.
-//! - Messages to one device keep their order: chat-core's outbox sends
-//!   oldest first and stops at the first that waits, and each device has
-//!   its own client, so a device that is away holds up only its own
-//!   conversation.
+//! - Messages and files to one device keep their order: the outbox sends
+//!   oldest first and stops at the first that waits, per device, so a
+//!   device that is away holds up only what is for it.
+//! - **Files are attachments.** Files sent to a device (Send Files) are a
+//!   message `file-<delivery id>` with one attachment, on both sides,
+//!   whose id is the BLAKE3 hash of what was sent (a folder's collection,
+//!   typed [`FOLDER_MIME`]), the hash iroh-blobs verified it by. The bytes travel by the outbox and iroh-blobs as
+//!   before; the log keeps where each attachment is on this device (the
+//!   saved file on the receiver, the file that was sent on the sender).
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use chat_core::{
-    ChatError, ChatRepo, Message, MessageStatus, OutgoingMessage, RemoteConversation, RemoteEvent,
-    RemoteStream,
+    Attachment, ChatError, ChatRepo, Message, MessageStatus, OutgoingMessage, RemoteConversation,
+    RemoteEvent, RemoteStream,
 };
 use forge_app::Document;
 use forge_net::CancelHandle;
@@ -57,11 +61,63 @@ pub fn conversation_device(conversation_id: &str) -> Option<&str> {
 }
 
 const PREFIX: &str = "device:";
+/// The type of a folder sent as one attachment.
+pub const FOLDER_MIME: &str = "inode/directory";
+
+/// The message id of the files in delivery `delivery` (hex), on both sides.
+pub(crate) fn files_message_id(delivery: &str) -> String {
+    format!("file-{delivery}")
+}
+
+/// The attachment of a files delivery whose content has BLAKE3 hash
+/// `content` (hex; a folder's is its collection's): the hash is its id,
+/// the same on both sides whether or not the file is still here, and
+/// nothing needs reading to make it. A folder (several items arrive as
+/// one) has type [`FOLDER_MIME`].
+pub(crate) fn files_attachment(content: &str, folder: bool, name: &str, size: u64) -> Attachment {
+    Attachment {
+        id: content.to_string(),
+        name: name.to_string(),
+        mime: if folder {
+            FOLDER_MIME.to_string()
+        } else {
+            mime_for(name).to_string()
+        },
+        size,
+    }
+}
+
+/// A file's type from its name, for how Chats shows it.
+fn mime_for(name: &str) -> &'static str {
+    let ext = Path::new(name)
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "heic" => "image/heic",
+        "webp" => "image/webp",
+        "pdf" => "application/pdf",
+        "txt" | "md" => "text/plain",
+        "m4a" => "audio/mp4",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
+        "zip" => "application/zip",
+        _ => "application/octet-stream",
+    }
+}
 const LOG_VERSION: u32 = 1;
 /// How often a quiet stream wakes to see if it was cancelled.
 const QUIET: Duration = Duration::from_millis(250);
 /// How often a quiet stream says it is still there.
 const HEARTBEAT: Duration = Duration::from_secs(15);
+/// The largest file we send that the conversation keeps a copy of: what
+/// chat-core keeps of an attachment.
+const KEEP_UP_TO: u64 = chat_core::MAX_ATTACHMENT_BYTES;
 /// Longest message id accepted from another device.
 pub(crate) const MAX_ID_CHARS: usize = 100;
 
@@ -72,11 +128,15 @@ pub struct LogFile {
     /// The newest stamp given, so stamps only ever increase.
     #[serde(default)]
     pub last_at: i64,
+    /// Where each attachment is on this device, by attachment id.
+    #[serde(default)]
+    pub files: BTreeMap<String, String>,
 }
 
 /// One device conversation's messages on this device.
 pub struct PeerLog {
     conversation_id: String,
+    dir: PathBuf,
     doc: Mutex<Document<LogFile>>,
     listeners: Mutex<Vec<mpsc::Sender<Message>>>,
 }
@@ -86,6 +146,7 @@ impl PeerLog {
         std::fs::create_dir_all(&dir).map_err(crate::node::file_error)?;
         Ok(Self {
             conversation_id: device_conversation(endpoint_id),
+            dir: dir.clone(),
             doc: Mutex::new(Document::open(dir.join("messages.json"), LOG_VERSION)?),
             listeners: Mutex::new(Vec::new()),
         })
@@ -116,7 +177,8 @@ impl PeerLog {
     }
 
     /// Adds `message`, stamped now, unless one with its id is here: then
-    /// that one is returned and nothing changes.
+    /// that one is returned and nothing changes. It is `Sent` unless it is
+    /// one of ours `Queued` in the outbox.
     pub fn add(&self, mut message: Message) -> Result<Message, RelayError> {
         let added = {
             let mut doc = lock(&self.doc);
@@ -124,7 +186,9 @@ impl PeerLog {
                 return Ok(found.clone());
             }
             message.conversation_id = self.conversation_id.clone();
-            message.status = MessageStatus::Sent;
+            if message.status != MessageStatus::Queued {
+                message.status = MessageStatus::Sent;
+            }
             message.updated_at = None;
             doc.change(|log| {
                 let at = now_ms().max(log.last_at + 1);
@@ -137,6 +201,114 @@ impl PeerLog {
         };
         lock(&self.listeners).retain(|l| l.send(added.clone()).is_ok());
         Ok(added)
+    }
+
+    /// Moves one of our messages on: `Sent` once the device has it,
+    /// `Failed` when it can't be delivered, `Queued` when it is sent
+    /// again. Its change is stamped, so catch-up after `since` sees it.
+    pub fn set_status(&self, id: &str, status: MessageStatus) -> Result<(), RelayError> {
+        let changed = {
+            let mut doc = lock(&self.doc);
+            let Some(i) = doc.value().messages.iter().position(|m| m.id == id) else {
+                return Ok(());
+            };
+            if doc.value().messages[i].status == status {
+                return Ok(());
+            }
+            doc.change(|log| {
+                let at = now_ms().max(log.last_at + 1);
+                log.last_at = at;
+                let m = &mut log.messages[i];
+                m.status = status;
+                m.updated_at = Some(at);
+                Ok::<_, RelayError>(m.clone())
+            })?
+        };
+        lock(&self.listeners).retain(|l| l.send(changed.clone()).is_ok());
+        Ok(())
+    }
+
+    /// Adds a message moved from elsewhere (the history, before notes
+    /// were messages), keeping its time, unless its id is here. It goes in
+    /// time order, and its change is stamped now, so catch-up after `since`
+    /// sees it.
+    pub fn import(&self, mut message: Message, path: Option<&Path>) -> Result<(), RelayError> {
+        let added = {
+            let mut doc = lock(&self.doc);
+            if doc.value().messages.iter().any(|m| m.id == message.id) {
+                return Ok(());
+            }
+            message.conversation_id = self.conversation_id.clone();
+            doc.change(|log| {
+                let at = now_ms().max(log.last_at + 1);
+                log.last_at = at;
+                message.updated_at = Some(at);
+                if let (Some(a), Some(path)) = (message.attachments.first(), path) {
+                    log.files
+                        .insert(a.id.clone(), path.to_string_lossy().into_owned());
+                }
+                let i = log
+                    .messages
+                    .iter()
+                    .position(|m| m.sent_at > message.sent_at)
+                    .unwrap_or(log.messages.len());
+                log.messages.insert(i, message.clone());
+                Ok::<_, RelayError>(())
+            })?;
+            message
+        };
+        lock(&self.listeners).retain(|l| l.send(added.clone()).is_ok());
+        Ok(())
+    }
+
+    /// Adds `message` (as [`add`](Self::add)) after keeping where its
+    /// attachment is on this device, when it is here.
+    pub fn add_files(&self, message: Message, path: Option<&Path>) -> Result<Message, RelayError> {
+        if let (Some(a), Some(path)) = (message.attachments.first(), path) {
+            let (id, path) = (a.id.clone(), path.to_string_lossy().into_owned());
+            lock(&self.doc).change(|log| {
+                log.files.insert(id, path);
+                Ok::<_, RelayError>(())
+            })?;
+        }
+        self.add(message)
+    }
+
+    /// A copy of a file we send, kept with the conversation so it still
+    /// opens here after the picked file is gone (as chat-core keeps what
+    /// it sends). Only up to [`KEEP_UP_TO`]; a larger file is opened where
+    /// it was, while it is there.
+    pub fn keep(&self, file: &Path, id: &str) -> Option<PathBuf> {
+        let size = std::fs::metadata(file).ok()?.len();
+        if size > KEEP_UP_TO || !chat_core::is_attachment_id(id) {
+            return None;
+        }
+        let kept = self.dir.join("files").join(id);
+        if kept.exists() {
+            return Some(kept);
+        }
+        std::fs::create_dir_all(kept.parent()?).ok()?;
+        let partial = kept.with_extension("partial");
+        std::fs::copy(file, &partial).ok()?;
+        std::fs::rename(&partial, &kept).ok()?;
+        Some(kept)
+    }
+
+    /// Where attachment `id` is on this device, if it is still there.
+    pub fn file(&self, id: &str) -> Option<PathBuf> {
+        let path = PathBuf::from(lock(&self.doc).value().files.get(id)?);
+        path.exists().then_some(path)
+    }
+
+    /// Our messages still waiting in the outbox.
+    pub fn queued(&self) -> Vec<Message> {
+        lock(&self.doc)
+            .value()
+            .messages
+            .iter()
+            .filter(|m| m.status == MessageStatus::Queued)
+            .cloned()
+            .collect()
     }
 
     fn listen(&self) -> mpsc::Receiver<Message> {
@@ -277,34 +449,27 @@ impl ChatRepo for PeerRepo {
 
     fn post_message(&self, message: &OutgoingMessage) -> Result<Message, ChatError> {
         self.check(&message.conversation_id)?;
-        if let Some(found) = self.log.get(&message.id) {
-            return Ok(found);
-        }
         if !message.attachments.is_empty() {
             return Err(ChatError::UnsupportedOnHost {
-                detail: "files go to a device from Send, not in a message yet".into(),
+                detail: "files go to a device from its Send Files".into(),
             });
         }
+        // Handed to Relay's outbox, which delivers it: chat-core's own
+        // outbox doesn't send it again.
         let relay = self.relay()?;
-        let outgoing = PeerMessage {
-            id: message.id.clone(),
-            body: message.body.clone(),
-            reply_to: message.reply_to.clone(),
-        };
-        forge_runtime::block_on(relay.deliver_message(&self.endpoint_id, outgoing))
-            .map_err(chat_error)?;
-        self.log
-            .add(Message {
+        let queued = forge_runtime::block_on(relay.queue_message(
+            &self.endpoint_id,
+            Message {
                 id: message.id.clone(),
                 author: message.author.clone(),
                 author_id: message.author_id.clone(),
                 body: message.body.clone(),
                 reply_to: message.reply_to.clone(),
                 ..Message::default()
-            })
-            .map_err(|e| ChatError::Protocol {
-                reason: e.to_string(),
-            })
+            },
+        ))
+        .map_err(chat_error)?;
+        Ok(queued.0)
     }
 
     fn open_stream(
@@ -321,6 +486,40 @@ impl ChatRepo for PeerRepo {
             cancel: cancel.clone(),
             quiet_for: Duration::ZERO,
         }))
+    }
+
+    /// A device attachment opens from where it is on this device
+    /// (`ChatCore::attachment_file` finds it), so a download is asked for
+    /// only when it is gone: there is nowhere else to get it from yet.
+    fn download_attachment(&self, _id: &str, _destination: &Path) -> Result<(), ChatError> {
+        Err(ChatError::InvalidInput {
+            reason: "the file is no longer on this device".into(),
+        })
+    }
+}
+
+/// The `relay` command's and the app's side of device files.
+impl RelayCore {
+    /// Where attachment `attachment_id` of `endpoint_id`'s conversation is
+    /// on this device (a file or a folder), if it is still there.
+    pub fn device_file(&self, endpoint_id: &str, attachment_id: &str) -> Option<String> {
+        let log = self.peer_logs.get(endpoint_id).ok()?;
+        Some(log.file(attachment_id)?.to_string_lossy().into_owned())
+    }
+
+    /// [`device_file`](Self::device_file) in whichever listed device's
+    /// conversation has it.
+    pub fn device_attachment(&self, attachment_id: &str) -> Option<String> {
+        let listed: Vec<String> = self
+            .record
+            .get()
+            .devices
+            .listed()
+            .map(|d| d.endpoint_id.clone())
+            .collect();
+        listed
+            .iter()
+            .find_map(|id| self.device_file(id, attachment_id))
     }
 }
 
@@ -355,36 +554,38 @@ impl RemoteStream for LogStream {
 }
 
 /// The `relay` command's side of device conversations. The app's
-/// messages go through chat-core's outbox instead (`ChatCore::use_relay`).
+/// messages reach the same outbox through chat-core (`ChatCore::use_relay`).
 impl RelayCore {
     /// The conversation with a trusted device, oldest first.
     pub fn device_messages(&self, endpoint_id: &str) -> Result<Vec<Message>, RelayError> {
         Ok(self.peer_logs.get(endpoint_id)?.since(None))
     }
 
-    /// Sends `text` to a trusted device's conversation now; an error when
-    /// it can't be reached (nothing waits).
+    /// Sends `text` to a trusted device's conversation, through the outbox,
+    /// and waits for the first attempt: the message comes back `Sent`, or
+    /// `Queued` when the device wasn't reached (it goes when it is). A
+    /// refusal is an error.
     pub async fn send_device_message(
         &self,
         endpoint_id: &str,
         text: String,
     ) -> Result<Message, RelayError> {
         let body = crate::model::clean_note(&text)?;
-        let id = crate::hex::hex(&crate::outbox::new_id());
-        let message = PeerMessage {
-            id: id.clone(),
-            body: body.clone(),
-            reply_to: None,
-        };
-        self.deliver_message(endpoint_id, message).await?;
         let me = self.identity();
-        self.peer_logs.get(endpoint_id)?.add(Message {
-            id,
+        let message = Message {
+            id: crate::hex::hex(&crate::outbox::new_id()),
             author: me.name,
             author_id: format!("relay:{}", me.device_id),
             body,
             ..Message::default()
-        })
+        };
+        let (queued, first) = self.queue_message(endpoint_id, message).await?;
+        first.await.unwrap_or(Ok(()))?;
+        Ok(self
+            .peer_logs
+            .get(endpoint_id)?
+            .get(&queued.id)
+            .unwrap_or(queued))
     }
 }
 
@@ -419,6 +620,35 @@ mod tests {
         let logs = PeerLogs::new(dir.path().to_path_buf());
         assert_eq!(logs.get("abc123").unwrap().since(None), vec![a, b]);
         assert!(logs.get("../x").is_err());
+    }
+
+    #[test]
+    fn a_queued_message_moves_on_with_a_new_stamp() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = PeerLogs::new(dir.path().to_path_buf());
+        let log = logs.get("abc123").unwrap();
+        let queued = log
+            .add(Message {
+                id: "q".into(),
+                body: "hi".into(),
+                status: MessageStatus::Queued,
+                ..Message::default()
+            })
+            .unwrap();
+        assert_eq!(queued.status, MessageStatus::Queued);
+        assert_eq!(log.queued().len(), 1);
+        let rx = log.listen();
+        log.set_status("q", MessageStatus::Sent).unwrap();
+        let sent = log.get("q").unwrap();
+        assert_eq!(sent.status, MessageStatus::Sent);
+        assert!(
+            sent.changed_at() > queued.sent_at,
+            "catch-up sees the change"
+        );
+        assert_eq!(log.since(Some(queued.sent_at)), vec![sent.clone()]);
+        assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![sent]);
+        assert!(log.queued().is_empty());
+        log.set_status("missing", MessageStatus::Sent).unwrap();
     }
 
     #[test]

@@ -1,5 +1,5 @@
 //! The delivery outbox (Relay M1 stage 3): notes and files for a trusted
-//! device that is away wait, survive a relaunch, and arrive once and in
+//! device that is away (shown in its conversation, review step 4) wait, survive a relaunch, and arrive once and in
 //! order when it is back. Two Relay devices on one machine, over
 //! localhost.
 
@@ -84,14 +84,23 @@ fn trusted_pair(dir: &Path) -> (Arc<RelayCore>, Arc<RelayCore>, String) {
     (phone, laptop, on_laptop.endpoint_id)
 }
 
-/// What `core` received from trusted devices, oldest first.
+/// What `core` received from the laptop, oldest first: its conversation
+/// holds notes (as messages) and files (as attachments).
 fn received(core: &RelayCore) -> Vec<Item> {
-    core.transfers()
+    let Some(laptop) = core.devices().into_iter().next() else {
+        return Vec::new();
+    };
+    core.device_messages(&laptop.endpoint_id)
+        .unwrap()
         .into_iter()
-        .rev()
-        .filter(|t| t.direction == Direction::Received && t.peer_name == "laptop")
-        .filter(|t| t.status == TransferStatus::Done)
-        .map(|t| t.item)
+        .map(|m| match m.attachments.first() {
+            Some(a) => Item::File {
+                name: a.name.clone(),
+                size: a.size,
+                path: core.device_file(&laptop.endpoint_id, &a.id),
+            },
+            None => note(&m.body),
+        })
         .collect()
 }
 
@@ -108,7 +117,7 @@ fn items_for_a_device_that_is_away_survive_a_relaunch_and_arrive_once_in_order()
     drop(phone);
     std::thread::sleep(Duration::from_millis(500));
 
-    let first = block_on(laptop.send_note_to_device(phone_id.clone(), "one".into())).unwrap();
+    let first = block_on(laptop.send_note_as_older_build(phone_id.clone(), "one".into())).unwrap();
     assert_eq!(first.status, TransferStatus::Waiting);
     let photo = dir.path().join("photo.jpg");
     std::fs::write(&photo, b"a photo").unwrap();
@@ -119,7 +128,7 @@ fn items_for_a_device_that_is_away_survive_a_relaunch_and_arrive_once_in_order()
     assert_eq!(file.status, TransferStatus::Waiting);
     // The original can go: the outbox copied it.
     std::fs::remove_file(&photo).unwrap();
-    let last = block_on(laptop.send_note_to_device(phone_id.clone(), "two".into())).unwrap();
+    let last = block_on(laptop.send_note_as_older_build(phone_id.clone(), "two".into())).unwrap();
     assert_eq!(last.status, TransferStatus::Waiting);
 
     // Relay closes on the laptop and opens again: all three still wait.
@@ -177,7 +186,7 @@ fn a_retry_after_a_lost_answer_is_not_received_twice() {
     // The phone saves the item, but the laptop doesn't hear it did, and
     // tries again a second later.
     laptop.lose_next_answers(1);
-    let sent = block_on(laptop.send_note_to_device(phone_id.clone(), "once".into())).unwrap();
+    let sent = block_on(laptop.send_note_as_older_build(phone_id.clone(), "once".into())).unwrap();
     assert_eq!(sent.status, TransferStatus::Waiting);
     eventually("the note done on the laptop", all_done);
     laptop.lose_next_answers(1);
@@ -204,8 +213,9 @@ fn a_waiting_item_can_be_cancelled_and_a_revoked_device_ends_the_rest() {
     let dir = tempfile::tempdir().unwrap();
     let (phone, laptop, phone_id) = trusted_pair(dir.path());
     drop(phone);
-    let cancelled = block_on(laptop.send_note_to_device(phone_id.clone(), "no".into())).unwrap();
-    let kept = block_on(laptop.send_note_to_device(phone_id.clone(), "yes".into())).unwrap();
+    let cancelled =
+        block_on(laptop.send_note_as_older_build(phone_id.clone(), "no".into())).unwrap();
+    let kept = block_on(laptop.send_note_as_older_build(phone_id.clone(), "yes".into())).unwrap();
     laptop.cancel_transfer(cancelled.id);
     let status = |id: u64| {
         laptop

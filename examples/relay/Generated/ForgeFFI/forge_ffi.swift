@@ -2633,7 +2633,9 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     /**
      * The local file of an attachment, if it is on this iPhone already
      * (sent from here, or fetched before). Its name is the attachment id,
-     * without an extension.
+     * without an extension. An attachment in a device conversation is
+     * where Relay keeps it: the saved file or folder (a folder opens in
+     * Files).
      */
     func attachmentFile(attachmentId: String)  -> String?
     
@@ -3006,7 +3008,9 @@ open func assistant() -> AssistantCore  {
     /**
      * The local file of an attachment, if it is on this iPhone already
      * (sent from here, or fetched before). Its name is the attachment id,
-     * without an extension.
+     * without an extension. An attachment in a device conversation is
+     * where Relay keeps it: the saved file or folder (a folder opens in
+     * Files).
      */
 open func attachmentFile(attachmentId: String) -> String?  {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
@@ -5178,13 +5182,6 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func revokeDevice(endpointId: String) async throws 
     
     /**
-     * Sends a note to a trusted device, with no code. It waits in the
-     * outbox until the device is reached: the transfer comes back Done,
-     * or Waiting when the device wasn't reached. A refusal is an error.
-     */
-    func sendNoteToDevice(endpointId: String, text: String) async throws  -> Transfer
-    
-    /**
      * Starts sending several files and folders as one transfer with a new
      * word code, like `send_with_code`. The receiver gets them in one
      * folder named "N items"; two items with the same name are refused.
@@ -5735,27 +5732,6 @@ open func revokeDevice(endpointId: String)async throws   {
             completeFunc: ffi_relay_core_rust_future_complete_void,
             freeFunc: ffi_relay_core_rust_future_free_void,
             liftFunc: { $0 },
-            errorHandler: FfiConverterTypeRelayError_lift
-        )
-}
-    
-    /**
-     * Sends a note to a trusted device, with no code. It waits in the
-     * outbox until the device is reached: the transfer comes back Done,
-     * or Waiting when the device wasn't reached. A refusal is an error.
-     */
-open func sendNoteToDevice(endpointId: String, text: String)async throws  -> Transfer  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_relay_core_fn_method_relaycore_send_note_to_device(
-                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterString.lower(text)
-                )
-            },
-            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeTransfer_lift,
             errorHandler: FfiConverterTypeRelayError_lift
         )
 }
@@ -13814,6 +13790,18 @@ public func chatMessageLink(conversationId: String, messageId: String) -> String
 })
 }
 /**
+ * The conversation in Chats of the trusted device `endpoint_id` (its
+ * device screen's Message button opens it).
+ */
+public func deviceConversationId(endpointId: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_device_conversation_id(
+        FfiConverterString.lower(endpointId),uniffiCallStatus
+    )
+})
+}
+/**
  * The delivery state of `message` in `conversation`: `Read` once another
  * account's read cursor has passed one of our sent messages. Only
  * meaningful for our own messages.
@@ -14032,6 +14020,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_func_chat_message_link() != 46272) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_func_device_conversation_id() != 5838) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_func_chat_delivery() != 64205) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14167,9 +14158,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_revoke_device() != 64705) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_send_note_to_device() != 51989) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_relay_core_checksum_method_relaycore_send_paths_with_code() != 4107) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14218,7 +14206,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_chatcore_assistant() != 43466) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_chatcore_attachment_file() != 40445) {
+    if (uniffi_relay_core_checksum_method_chatcore_attachment_file() != 14718) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_background_time_expired() != 36868) {

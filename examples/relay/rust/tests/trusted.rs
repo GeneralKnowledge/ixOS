@@ -7,8 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use relay_core::{
-    CodeSend, Direction, Item, NearbyDevice, PairingPolicy, Presence, RelayCore, RelayError,
-    TransferStatus,
+    CodeSend, Item, NearbyDevice, PairingPolicy, Presence, RelayCore, RelayError, TransferStatus,
 };
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
@@ -139,13 +138,15 @@ fn trusted_devices_send_notes_and_folders_without_a_code_and_survive_a_relaunch(
 
     sees(&laptop, &phone);
     assert!(laptop.devices()[0].nearby);
-    let note = block_on(laptop.send_note_to_device(phone_id.clone(), "hi".into())).unwrap();
+    let note = block_on(laptop.send_note_as_older_build(phone_id.clone(), "hi".into())).unwrap();
     assert_eq!(note.status, TransferStatus::Done);
-    eventually("the note on the phone", || !phone.transfers().is_empty());
-    let got = &phone.transfers()[0];
-    assert_eq!(got.direction, Direction::Received);
-    assert_eq!(got.peer_name, "laptop");
-    assert_eq!(got.item, Item::Note { text: "hi".into() });
+    // A note arrives as a message in the conversation, not in history.
+    eventually("the note on the phone", || {
+        !phone.device_messages(&laptop_id).unwrap().is_empty()
+    });
+    let got = &phone.device_messages(&laptop_id).unwrap()[0];
+    assert_eq!(got.author, "laptop");
+    assert_eq!(got.body, "hi");
 
     let trip = dir.path().join("Trip");
     std::fs::create_dir_all(trip.join("day 1")).unwrap();
@@ -173,7 +174,7 @@ fn trusted_devices_send_notes_and_folders_without_a_code_and_survive_a_relaunch(
     );
     // The other way too.
     sees(&phone, &laptop);
-    block_on(phone.send_note_to_device(laptop_id, "back".into())).unwrap();
+    block_on(phone.send_note_as_older_build(laptop_id, "back".into())).unwrap();
 }
 
 #[test]
@@ -186,7 +187,7 @@ fn a_revoked_device_is_refused_and_codes_never_restore_it() {
 
     // Its trusted connection is refused.
     sees(&laptop, &phone);
-    let refused = block_on(laptop.send_note_to_device(phone_id.clone(), "hi".into()));
+    let refused = block_on(laptop.send_note_as_older_build(phone_id.clone(), "hi".into()));
     assert_eq!(refused.unwrap_err(), RelayError::Refused);
     assert!(phone
         .transfers()
@@ -201,12 +202,12 @@ fn a_revoked_device_is_refused_and_codes_never_restore_it() {
     let receipt = code_transfer(&laptop, &phone, &file);
     assert_eq!(std::fs::read(&receipt.path).unwrap(), b"again");
     assert!(phone.trust_offer().is_none());
-    let refused = block_on(laptop.send_note_to_device(phone_id.clone(), "hi".into()));
+    let refused = block_on(laptop.send_note_as_older_build(phone_id.clone(), "hi".into()));
     assert_eq!(refused.unwrap_err(), RelayError::Refused);
 
     // Only the person trusts it again.
     block_on(phone.trust_device(laptop_id)).unwrap();
-    block_on(laptop.send_note_to_device(phone_id, "hi".into())).unwrap();
+    block_on(laptop.send_note_as_older_build(phone_id, "hi".into())).unwrap();
 }
 
 #[test]
@@ -216,7 +217,7 @@ fn pair_automatically_trusts_a_forgotten_device_again() {
     block_on(phone.forget_device(laptop_id.clone())).unwrap();
     assert!(phone.devices().is_empty());
     sees(&laptop, &phone);
-    let refused = block_on(laptop.send_note_to_device(phone_id.clone(), "hi".into()));
+    let refused = block_on(laptop.send_note_as_older_build(phone_id.clone(), "hi".into()));
     assert_eq!(refused.unwrap_err(), RelayError::Refused);
 
     block_on(phone.set_pairing_policy(PairingPolicy::PairAutomatically)).unwrap();
@@ -228,7 +229,7 @@ fn pair_automatically_trusts_a_forgotten_device_again() {
         "trusted again without asking"
     );
     assert!(phone.devices()[0].trusted);
-    block_on(laptop.send_note_to_device(phone_id, "hi".into())).unwrap();
+    block_on(laptop.send_note_as_older_build(phone_id, "hi".into())).unwrap();
 }
 
 #[test]
@@ -237,7 +238,7 @@ fn a_device_that_may_not_send_here_is_declined() {
     let (phone, laptop, phone_id, laptop_id) = trusted_pair(dir.path());
     block_on(phone.set_receives_from(laptop_id, false)).unwrap();
     sees(&laptop, &phone);
-    let declined = block_on(laptop.send_note_to_device(phone_id, "hi".into()));
+    let declined = block_on(laptop.send_note_as_older_build(phone_id, "hi".into()));
     assert!(
         matches!(declined, Err(RelayError::Declined { .. })),
         "{declined:?}"
@@ -252,7 +253,7 @@ fn only_trusted_devices_can_be_sent_to() {
     let phone_id = sees(&laptop, &phone);
     // The laptop never trusted the phone.
     assert!(matches!(
-        block_on(laptop.send_note_to_device(phone_id, "hi".into())),
+        block_on(laptop.send_note_as_older_build(phone_id, "hi".into())),
         Err(RelayError::UnknownPeer { .. })
     ));
 }

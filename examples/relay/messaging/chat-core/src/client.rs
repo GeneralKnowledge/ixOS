@@ -572,7 +572,8 @@ impl ChatClient {
                     ChatError::invalid(format!("no message with id {message_id:?}"))
                 })?;
             match message.status {
-                MessageStatus::Sent => return Ok(message),
+                // Sent, or its repo's own queue has it.
+                MessageStatus::Sent | MessageStatus::Queued => return Ok(message),
                 MessageStatus::Sending if state.in_flight.contains(message_id) => {
                     return Err(ChatError::invalid(format!(
                         "message {message_id:?} is already being sent"
@@ -697,6 +698,11 @@ impl ChatClient {
                 })?;
             if !self.inner.config.is_own(&message) {
                 return Err(ChatError::invalid("only your own messages can be deleted"));
+            }
+            if message.status == MessageStatus::Queued {
+                return Err(ChatError::invalid(
+                    "the message is waiting to be delivered; delete it once it's sent",
+                ));
             }
             if message.status != MessageStatus::Sent {
                 if state.in_flight.contains(message_id) {
@@ -1203,7 +1209,11 @@ impl Inner {
         let mut newest = None;
         let mut unread_added = 0u32;
         for mut message in messages {
-            message.status = MessageStatus::Sent;
+            // A server's messages are sent; a repo with its own queue
+            // also says which of ours it still holds, or couldn't deliver.
+            if message.status == MessageStatus::Sending {
+                message.status = MessageStatus::Sent;
+            }
             newest = newest.max(Some(message.changed_at()));
             match state.snapshot.upsert_message(message.clone()) {
                 Upsert::Inserted => {
@@ -1222,7 +1232,7 @@ impl Inner {
                 Upsert::StatusChanged => self.emit(ChatEvent::MessageStatusChanged {
                     conversation_id: message.conversation_id,
                     id: message.id,
-                    status: MessageStatus::Sent,
+                    status: message.status,
                 }),
                 // Same id, same status, different content: edited, deleted
                 // or reacted to (or the server time replaced ours).
@@ -1419,14 +1429,17 @@ impl Inner {
         let shut_down = state.shut_down;
         match result {
             Ok(mut stored) => {
-                stored.status = MessageStatus::Sent;
+                // `Queued`: the repo delivers it from its own queue.
+                if stored.status != MessageStatus::Queued {
+                    stored.status = MessageStatus::Sent;
+                }
                 let outcome = state.snapshot.upsert_message(stored.clone());
                 if !shut_down {
                     match outcome {
                         Upsert::StatusChanged => self.emit(ChatEvent::MessageStatusChanged {
                             conversation_id: stored.conversation_id.clone(),
                             id: stored.id.clone(),
-                            status: MessageStatus::Sent,
+                            status: stored.status,
                         }),
                         Upsert::Updated => self.emit(ChatEvent::MessageUpdated(stored.clone())),
                         Upsert::Inserted => self.emit(ChatEvent::MessageReceived(stored.clone())),

@@ -19,7 +19,7 @@ can be a Linux machine running the `relay` command, so one iPhone is enough.
 
 ## Where it is
 
-The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay-reliable-delivery.md). Ideas beyond it are in [relay-future-directions.md](docs/relay-future-directions.md). A review of the product and architecture (2026-11-18): [relay-review-2026-11.md](docs/relay-review-2026-11.md).
+The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay-reliable-delivery.md). Ideas beyond it are in [relay-future-directions.md](docs/relay-future-directions.md). A review of the product and architecture (2026-11-18): [relay-review-2026-11.md](docs/relay-review-2026-11.md); a code audit from identity to persistence, with the prioritised plan (2026-11-19): [relay-audit-2026-11.md](docs/relay-audit-2026-11.md).
 
 | Step | What | State |
 |---|---|---|
@@ -32,6 +32,7 @@ The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay
 | M2 PR 5 | Device discovery and status: each trusted device shows as nearby (Bonjour sees it), reachable (a trusted connection worked either way in the last five minutes) or offline, with when it was last reached, kept across launches (`presence.rs`); `relay/device/1` gains `StatusAsk` / `Status` (name, platform, what it offers; read-only, the device's own claim, grants nothing); "About This Device" on a device's screen with Ask Again; `relay devices` shows presence, `relay status <device>` asks ([brief](docs/relay-m1-m2-brief.md#5-device-discovery-and-status)) | Rust and the command tested on Linux (two cores over localhost); the screens compiled for iOS, not yet tried on a phone. Not yet: the Nearby / Connections / Activity screens, which follow |
 | Review P4 | The device key in the iPhone Keychain, "this device only" (the host's secure store from `ForgeServices.install()`, account `relay.device-key`), so it never leaves the phone in a backup and a restored phone is a new device to trust again; an older install's `device.key` moves in unchanged (trusted devices keep working), is read back, then the file is removed; a Keychain that can't be read stops the endpoint rather than making a new identity. Linux keeps the 0600 `device.key` ([review](docs/relay-review-2026-11.md#4-device-identity-and-the-keychain)) | Tested on Linux with an in-memory Keychain (fresh install, upgrade, backup restored on a new phone, a stray file, an unreadable or forgetful Keychain, a damaged key); compiled for iOS; not yet tried on a phone |
 | R3 | Resume, background transfers, a share extension (costs an App ID) | Later, within M1 and the plan's milestones |
+| Review step 4 | Unified delivery ([plan](docs/relay-unified-delivery.md)): text to a trusted device is a message in its conversation in Chats (notes are gone; one from an older build arrives as a message), files sent to it are an attachment there (a folder opens in Files), and Relay's outbox is the one queue for both, so they keep their order. Notes already sent or received move into their device's conversation once, on the first open. The device's screen has Message and Send Files; History keeps word-code transfers and file deliveries | Rust and the command tested on Linux (order, relaunch, a lost answer, revocation, the migration from a saved record); the Swift model tested on Linux, the screens not yet compiled or tried on a phone |
 | AI A1 | Ask a trusted device's language model (over `relay/device/1` since review step 3): `relay serve-ai` answers with an OpenAI-compatible server, `relay ask` asks from a terminal ([forge-ai-plan.md](../../docs/forge-ai-plan.md)) | Done in Rust and the command, tested on Linux; the app gets it with the AI Lab (A2) |
 
 ## How it works
@@ -42,8 +43,11 @@ The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay
   and fetches over iroh with a PAKE keyed by the code.
 - **Trusted devices** (`trust.rs`, `device.rs`): after a code transfer, both
   sides may trust each other by iroh endpoint id. Trusted devices talk over
-  `relay/device/1` on iroh: notes, files and folders (iroh-blobs), status,
-  messages and AI asks, as CBOR messages.
+  `relay/device/1` on iroh: messages, files and folders (iroh-blobs),
+  status and AI asks, as CBOR messages.
+- **One queue per device** (`outbox.rs`, `device_chat.rs`): messages and
+  files for a trusted device wait in Relay's outbox, are sent oldest first
+  and received once; both show in the device's conversation in Chats.
 - **Files** are kept only if their hash matches what the sender announced.
 - **Rust owns iroh; Swift owns Bonjour.** The app advertises Rust's iroh
   port and passes the addresses it browses to Rust.
@@ -59,7 +63,8 @@ $R send ~/Pictures/Trip notes.txt    # files and folders; prints a word code and
 $R receive <code>                     # finds the sender with mDNS on this network
 $R receive-code <code> <host:port> <endpoint-id>   # without mDNS
 $R devices                            # trusted and revoked devices
-$R send <device> --note "Hi"          # to a trusted device, no code
+$R send <device> --text "Hi"          # a message to a trusted device, no code
+$R messages <device>                  # its conversation
 $R send <device> ~/Pictures/Trip      # files and folders, no code
 $R revoke <device>                    # or forget / trust
 $R policy automatic                   # codes-only | ask | automatic
@@ -110,7 +115,7 @@ cargo test --manifest-path examples/relay/rust/Cargo.toml
 | `Sources/AppHost/RelayModel.swift` | The screens' model: asks the core, trusts, sends, keeps alerts. Foundation only, tested with two cores over localhost |
 | `Sources/AppHost/RelayNetwork.swift` | Bonjour (`_forgerelay._udp`): advertises code senders and this device's iroh port, finds code senders and trusted devices, resolves them to `host:port` |
 | `Sources/AppHost/ContentView.swift` | Trusted devices and the history; advertises this device while on screen |
-| `Sources/AppHost/TrustedDeviceViews.swift` | Trusted devices: the trust look, one device's screen (send a note or files, Can Send to This Device, revoke, forget), revoked devices with Trust Again, and the pairing policy |
+| `Sources/AppHost/TrustedDeviceViews.swift` | Trusted devices: the trust look, one device's screen (Message, which opens its conversation in Chats, Send Files, Can Send to This Device, revoke, forget), revoked devices with Trust Again, and the pairing policy |
 | `Sources/AppHost/CodeQR.swift` | A word code as a QR code (Core Image) for Send, and the scanner (VisionKit) for Receive |
 
 `forge.toml` lists `bonjour_services = ["_forgerelay._udp"]` (iOS refuses

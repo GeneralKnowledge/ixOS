@@ -16,8 +16,18 @@ extension ChatModel {
     /// (sent from here, or opened before), without fetching it. For
     /// thumbnails of documents, which aren't downloaded until opened.
     public func storedFile(for attachment: ChatAttachment) -> URL? {
-        guard let path = core?.attachmentFile(attachmentId: attachment.id) else { return nil }
+        guard !attachment.isFolder, let path = core?.attachmentFile(attachmentId: attachment.id) else { return nil }
         return try? AttachmentFiles.namedCopy(of: URL(fileURLWithPath: path), for: attachment)
+    }
+
+    /// A folder a trusted device sent (or this iPhone sent it), in the
+    /// Files app: Quick Look can't show a folder. Nil if it is gone.
+    public func folderURL(for attachment: ChatAttachment) -> URL? {
+        guard attachment.isFolder, let path = core?.attachmentFile(attachmentId: attachment.id) else {
+            return nil
+        }
+        let file = URL(fileURLWithPath: path, isDirectory: true).absoluteString
+        return URL(string: file.replacingOccurrences(of: "file://", with: "shareddocuments://"))
     }
 
     /// A file for Quick Look and the share sheet: the attachment under its
@@ -162,6 +172,7 @@ enum AttachmentFiles {
 
     /// An SF Symbol for a document's type.
     static func symbol(for mime: String) -> String {
+        if mime == ChatAttachment.folderMime { return "folder" }
         if mime == "application/pdf" { return "doc.richtext" }
         if mime.hasPrefix("text/") { return "doc.text" }
         if mime.hasPrefix("audio/") { return "waveform" }
@@ -175,6 +186,13 @@ enum AttachmentFiles {
 extension ChatAttachment {
     /// A voice message (or any audio file): played inline in its bubble.
     var isAudio: Bool { mime.hasPrefix("audio/") }
+
+    /// The type of a folder sent to or from a trusted device as one
+    /// attachment (rust/src/device_chat.rs, `FOLDER_MIME`).
+    static let folderMime = "inode/directory"
+
+    /// A folder: it opens in the Files app.
+    var isFolder: Bool { mime == Self.folderMime }
 }
 
 extension ChatMessage {

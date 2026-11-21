@@ -38,6 +38,9 @@ pub struct Record {
     /// twice (`outbox`).
     #[serde(default)]
     pub received_ids: Vec<ReceivedId>,
+    /// Notes have moved into conversations (`migrate`, review step 4).
+    #[serde(default)]
+    pub notes_are_messages: bool,
 }
 
 fn first_id() -> u64 {

@@ -440,12 +440,16 @@ impl ChatCore {
 
     /// The local file of an attachment, if it is on this iPhone already
     /// (sent from here, or fetched before). Its name is the attachment id,
-    /// without an extension.
+    /// without an extension. An attachment in a device conversation is
+    /// where Relay keeps it: the saved file or folder (a folder opens in
+    /// Files).
     pub fn attachment_file(&self, attachment_id: String) -> Option<String> {
-        self.client()
-            .ok()?
-            .attachment_file(&attachment_id)
-            .map(|p| p.to_string_lossy().into_owned())
+        let server = self.client().ok().and_then(|client| {
+            client
+                .attachment_file(&attachment_id)
+                .map(|p| p.to_string_lossy().into_owned())
+        });
+        server.or_else(|| self.relay()?.device_attachment(&attachment_id))
     }
 
     /// The local file of an attachment, downloading it first if needed (and
@@ -670,6 +674,13 @@ pub const MESSAGE_NOTIFICATION: &str = "chat.message";
 #[uniffi::export]
 pub fn chat_message_link(conversation_id: String, message_id: String) -> String {
     alerts::message_link(&conversation_id, &message_id)
+}
+
+/// The conversation in Chats of the trusted device `endpoint_id` (its
+/// device screen's Message button opens it).
+#[uniffi::export]
+pub fn device_conversation_id(endpoint_id: String) -> String {
+    crate::device_chat::device_conversation(&endpoint_id)
 }
 
 /// The file whose presence turns the app lock on.

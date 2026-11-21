@@ -6,8 +6,9 @@
 //! relay listen                       take what trusted devices send, and
 //!                                    send them what waits for them
 //! relay devices                      trusted and revoked devices (on iroh)
-//! relay send <device> (--note TEXT | --text TEXT | PATH...) [--to host:port]
-//!                                    send to a trusted device, no code
+//! relay send <device> (--text TEXT | PATH...) [--to host:port]
+//!                                    send to a trusted device, no code:
+//!                                    text is a message in its conversation
 //! relay revoke <device>              stop trusting a device, for good
 //! relay forget <device>              take a device off the list
 //! relay trust <device>               trust a revoked device again
@@ -68,7 +69,7 @@ use relay_core::{
 };
 
 const USAGE: &str = "usage: relay listen | devices | send PATH... | receive <code> | \
-send <device> (--note TEXT | --text TEXT | PATH...) [--to host:port] | \
+send <device> (--text TEXT | PATH...) [--to host:port] | \
 messages <device> | status <device> | revoke <device> | forget <device> | \
 trust <device> | policy [codes-only | ask | automatic] | \
 connections [local | private | any] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
@@ -545,8 +546,9 @@ fn offer_trust(core: &RelayCore) -> Result<(), String> {
     Ok(())
 }
 
-/// `send <device> (--note TEXT | PATH...) [--to host:port]`: to a trusted
-/// device, found with mDNS unless `--to` says where.
+/// `send <device> (--text TEXT | PATH...) [--to host:port]`: to a trusted
+/// device, found with mDNS unless `--to` says where. Text is a message in
+/// its conversation (`--note` is the older name for `--text`).
 fn send_to_device(core: &RelayCore, args: &[String]) -> Result<String, String> {
     let mut args = args.to_vec();
     let to = take_flag(&mut args, "--to")?;
@@ -566,21 +568,26 @@ fn send_to_device(core: &RelayCore, args: &[String]) -> Result<String, String> {
             addresses,
         }]);
     }
-    if let Some(text) = text {
-        if note.is_some() || !paths.is_empty() {
+    if let Some(text) = text.or(note) {
+        if !paths.is_empty() {
             return Err(USAGE.into());
         }
-        block_on(core.send_device_message(&device.endpoint_id, text)).map_err(|e| e.to_string())?;
-        return Ok(format!("to {}: message sent\n", device.name));
+        let message = block_on(core.send_device_message(&device.endpoint_id, text))
+            .map_err(|e| e.to_string())?;
+        let how = match message.status {
+            chat_core::MessageStatus::Sent => "message delivered".to_string(),
+            _ => format!(
+                "message waiting: it goes when {} is reached, while relay listen runs",
+                device.name
+            ),
+        };
+        return Ok(format!("to {}: {how}\n", device.name));
     }
-    let transfer = match (note, paths) {
-        (Some(text), []) => block_on(core.send_note_to_device(device.endpoint_id, text)),
-        (None, paths) if !paths.is_empty() => {
-            block_on(core.send_to_device(device.endpoint_id, paths.to_vec()))
-        }
-        _ => return Err(USAGE.into()),
+    if paths.is_empty() {
+        return Err(USAGE.into());
     }
-    .map_err(|e| e.to_string())?;
+    let transfer = block_on(core.send_to_device(device.endpoint_id, paths.to_vec()))
+        .map_err(|e| e.to_string())?;
     Ok(format!("{}\n", describe(&transfer)))
 }
 
