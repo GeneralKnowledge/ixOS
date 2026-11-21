@@ -1,6 +1,6 @@
 # ForgeUI: the ixOS design system
 
-ForgeUI gives a SwiftUI app a consistent, accessible look without inventing one: theme tokens for colour, spacing and corners in light and dark, styles for SwiftUI's own buttons, fields and group boxes, and a small set of components for the things every app draws (form fields with validation, cards, settings rows, badges, empty and error states, headers).
+ForgeUI gives a SwiftUI app a consistent, accessible look without inventing one: theme tokens for colour, spacing and corners in light and dark, styles for SwiftUI's own buttons, fields and group boxes, and a small set of components for the things every app draws (form fields with validation, cards, settings rows, badges, notices, empty and error states, headers).
 
 It is not a replacement for SwiftUI. You still write `List`, `Form`, `NavigationStack`, `Toggle`, `.sheet` and `.searchable`; ForgeUI styles them and fills the gaps. Wherever ForgeUI has nothing to offer, plain SwiftUI is the answer, and the two mix freely on the same screen.
 
@@ -201,6 +201,25 @@ ForgeDetailHeader(book.title, subtitle: book.author, systemImage: "book.closed.f
 ```
 
 Inside a `List`, `Section("Account")` already gives the right header; `ForgeSectionHeader` is for screens built from cards.
+
+### Notices
+
+When something is wrong but the screen still works (offline, the map can't update, the server refused the account), say so inside the screen with `ForgeNotice`: what is wrong, what still works, and at most one action.
+
+```swift
+ForgeNotice("Offline. Messages you send now go out when you're back.",
+            systemImage: "wifi.slash",
+            action: ForgeStateAction("Reconnect", identifier: "chat.reconnect") { reconnect() })
+ForgeNotice("The map can't be updated right now. Recording carries on.", systemImage: "map")
+ForgeNotice(model.refreshProblem, systemImage: "exclamationmark.icloud")   // a reason from Rust, as written
+```
+
+- The tone defaults to `.warning`. Use `.info` for news that needs nothing from the person ("Connecting…", "2 messages are waiting") and `.danger` only when something was lost.
+- Put it where the problem is: at the top of a list, above the cards, or in `.safeAreaInset(edge: .top)` over a conversation. In a `List`, give it a row of its own with `.listRowInsets(EdgeInsets())` and `.listRowBackground(Color.clear)`.
+- When the screen has nothing to show at all, it is a failed state (`ForgeStateView.failed`), not a notice. A status line in a toolbar or a row ("Updated 10:42") is neither: use `ForgeStatus` or plain text.
+- An app with its own surfaces (Weather's sky cards) hides the tinted background with `.forgeNoticeBackground(.hidden)`; the notice then draws in the colours around it.
+
+The `notices` [parity rule](app-parity.md) catches the hand-built version: a `Label` with a problem symbol made small and grey or toned.
 
 ### Empty, loading and error states
 

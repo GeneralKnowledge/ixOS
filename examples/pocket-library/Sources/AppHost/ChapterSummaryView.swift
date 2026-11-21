@@ -108,12 +108,10 @@ struct ChapterSummarySheet: View {
                 .textSelection(.enabled)
                 .accessibilityIdentifier("summary.text")
             if synopsis.skippedPassages > 0 {
-                Label(
+                ForgeNotice(
                     "Apple Intelligence declined to read \(synopsis.skippedPassages == 1 ? "a passage" : "\(synopsis.skippedPassages) passages") of this chapter, so the summary may leave something out.",
-                    systemImage: "exclamationmark.triangle"
+                    systemImage: "exclamationmark.triangle", tone: .info
                 )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
             }
             Text(footer(synopsis))
                 .font(.footnote)

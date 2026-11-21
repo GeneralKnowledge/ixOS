@@ -41,21 +41,17 @@ struct RecordingView: View {
     private func stats(_ trip: TripSummary) -> some View {
         VStack(spacing: 12) {
             if failedReads >= 3 {
-                Label("The map can't be updated right now. Recording carries on.", systemImage: "map")
-                    .font(.footnote)
-                    .forgeForeground(.warning)
+                ForgeNotice("The map can't be updated right now. Recording carries on.", systemImage: "map")
                     .accessibilityIdentifier("recording.mapProblem")
             }
             if let problem = model.locationProblem {
-                HStack {
-                    Label(problem, systemImage: "location.slash")
-                        .font(.footnote)
-                    if !model.permission.allowsUse {
-                        Button("Allow") { Task { await model.requestPermission() } }
-                            .accessibilityIdentifier("recording.allowLocation")
-                    }
-                }
-                .forgeForeground(.warning)
+                ForgeNotice(
+                    problem, systemImage: "location.slash",
+                    action: model.permission.allowsUse
+                        ? nil
+                        : ForgeStateAction("Allow", identifier: "recording.allowLocation") {
+                            Task { await model.requestPermission() }
+                        })
             }
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 HStack {

@@ -653,6 +653,137 @@ def rule_floating_bars(app):
     return True, ""
 
 
+# A notice in a screen that still works ("offline", "the map can't update")
+# is ForgeUI's ForgeNotice. Built by hand, it is a Label with a problem
+# symbol, made small and grey or toned: each app picked its own size,
+# colour and place for the same message (app UI review, November 2026).
+PROBLEM_SYMBOL = re.compile(r'systemImage:\s*"(exclamationmark|wifi|[^"]*\.slash\b|[^"]*\.badge\.exclamationmark|[^"]*exclamationmark\.(triangle|circle|icloud))[^"]*"')
+SMALL_FONT = re.compile(r"\.font\(\.(footnote|callout|caption)\)")
+QUIET_COLOUR = re.compile(r"\.foregroundStyle\(\.secondary\)|\.forgeForeground\(")
+
+
+def swift_code_mask(text, keep_strings=False):
+    """`text` with comments blanked and string-literal contents replaced by
+    `x`, the same length and with the same line breaks, so parentheses and
+    `//` inside a string ("(\\(reason))", a URL) don't count as code.
+    Interpolated code inside a string stays code. With `keep_strings`, only
+    comments are blanked."""
+    out = list(text)
+    stack = []  # "s" (string), "m" (multi-line string) or an int (paren depth inside \( ... ))
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        top = stack[-1] if stack else None
+        if top in ("s", "m"):
+            if c == "\\" and i + 1 < n and text[i + 1] == "(":
+                out[i] = out[i + 1] = "x"
+                stack.append(0)
+                i += 2
+                continue
+            if c == "\\":
+                out[i] = "x"
+                if i + 1 < n and text[i + 1] != "\n":
+                    out[i + 1] = "x"
+                i += 2
+                continue
+            if top == "m" and text.startswith('"""', i):
+                stack.pop()
+                i += 3
+                continue
+            if top == "s" and c == '"':
+                stack.pop()
+                i += 1
+                continue
+            if c != "\n":
+                out[i] = "x"
+            i += 1
+            continue
+        # code (top level or inside an interpolation)
+        if text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                out[i] = " "
+                i += 1
+            continue
+        if text.startswith("/*", i):
+            # Swift block comments nest.
+            depth = 0
+            while i < n:
+                if text.startswith("/*", i):
+                    depth += 1
+                    out[i] = out[i + 1] = " "
+                    i += 2
+                elif text.startswith("*/", i):
+                    depth -= 1
+                    out[i] = out[i + 1] = " "
+                    i += 2
+                    if depth == 0:
+                        break
+                else:
+                    if text[i] != "\n":
+                        out[i] = " "
+                    i += 1
+            continue
+        if text.startswith('"""', i):
+            stack.append("m")
+            i += 3
+            continue
+        if c == '"':
+            stack.append("s")
+        elif isinstance(top, int):
+            if c == "(":
+                stack[-1] += 1
+            elif c == ")":
+                if top == 0:
+                    stack.pop()
+                    out[i] = "x"
+                else:
+                    stack[-1] -= 1
+        i += 1
+    if keep_strings:
+        return "".join(t if o == "x" else o for t, o in zip(text, out))
+    return "".join(out)
+
+
+def call_and_chain(plain, code, start):
+    """For a call whose `(` is at `start` in `code` (the source with strings
+    and comments masked): its arguments from `plain` (comments blanked,
+    strings intact) and the modifiers chained
+    after its closing parenthesis, one per following line starting with `.`."""
+    depth = 0
+    for j in range(start, len(code)):
+        if code[j] == "(":
+            depth += 1
+        elif code[j] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+    else:
+        return "", ""
+    args = plain[start + 1 : j]
+    rest = code[j + 1 :].split("\n")
+    chain = [rest[0]]
+    for line in rest[1:]:
+        if not line.strip().startswith("."):
+            break
+        chain.append(line)
+    return args, "\n".join(chain)
+
+
+def rule_notices(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        plain = swift_code_mask(text, keep_strings=True)
+        for m in re.finditer(r"\bLabel\(", code):
+            args, chain = call_and_chain(plain, code, m.end() - 1)
+            if PROBLEM_SYMBOL.search(args) and SMALL_FONT.search(chain) and QUIET_COLOUR.search(chain):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "builds a notice by hand; use ForgeUI's ForgeNotice: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -670,6 +801,7 @@ RULES = [
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
+    ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),

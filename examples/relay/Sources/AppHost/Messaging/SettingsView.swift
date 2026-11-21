@@ -1,4 +1,5 @@
 @preconcurrency import RelayFFI
+import ForgeUI
 import SwiftUI
 
 /// The Settings tab: the account, the server, muted conversations, and
@@ -35,11 +36,12 @@ struct SettingsView: View {
             }
             if let problem = model.accountProblem {
                 Section {
-                    Label(
-                        "The server no longer accepts this account. Sign out and create a new one.",
+                    ForgeNotice(
+                        "The server no longer accepts this account (\(problem)). Sign out and create a new one.",
                         systemImage: "person.crop.circle.badge.exclamationmark"
                     )
-                    Text(problem).font(.footnote).foregroundStyle(.secondary)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                 }
             }
             #if os(iOS)
