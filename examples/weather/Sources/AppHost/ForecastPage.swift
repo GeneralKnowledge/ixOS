@@ -28,39 +28,28 @@ struct ForecastPage: View {
                 // line while its contents slide away beneath it.
                 VStack(spacing: 0) {
                     PlaceTitle(page: page, report: report)
-                    ScrollView {
-                        VStack(spacing: 12) {
-                            Header(report: report, overview: overview)
-                                .opacity(1 - min(max(scrolled / 120, 0), 1))
-                            if let message = model.notice(for: page) {
-                                Notice(text: message, systemImage: noticeSymbol(report), palette: palette)
+                    ScrollView(.vertical) {
+                        PageCards(
+                            page: page, report: report, overview: overview, palette: palette, model: model,
+                            headerOpacity: headerOpacity)
+                            .onGeometryChange(for: CGFloat.self) { proxy in
+                                -proxy.frame(in: NamedCoordinateSpace.named(forecastScrollSpace)).minY
+                            } action: { offset in
+                                scrolled = offset
                             }
-                            if !overview.timeline.isEmpty || !overview.summary.isEmpty {
-                                HourlyCard(overview: overview, palette: palette)
-                            }
-                            if !overview.days.isEmpty {
-                                DailyCard(overview: overview, current: report.current.temperatureC, palette: palette)
-                            }
-                            AirQualityCard(overview: overview.airQuality, palette: palette)
-                            PollenCard(overview: overview.pollen, palette: palette)
-                            DetailsSection(details: overview.details, palette: palette)
-                            Footer(credits: overview.credits)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 24)
-                        .frame(maxWidth: 640)
-                        .frame(maxWidth: .infinity)
-                        .onGeometryChange(for: CGFloat.self) { -$0.frame(in: .scrollView).minY } action: {
-                            scrolled = $0
-                        }
                     }
+                    .coordinateSpace(NamedCoordinateSpace.named(forecastScrollSpace))
                     .scrollIndicators(.hidden)
                     .refreshable { await model.refresh(page.id).value }
                     .environment(\.cardPinTop, condensedHeight)
                     .overlay(alignment: .top) {
                         CondensedHeader(report: report, overview: overview)
-                            .opacity(min(max((scrolled - 90) / 40, 0), 1))
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { condensedHeight = $0 }
+                            .opacity(condensedOpacity)
+                            .onGeometryChange(for: CGFloat.self) { proxy in
+                                proxy.size.height
+                            } action: { height in
+                                condensedHeight = height
+                            }
                     }
                 }
             } else if page.isRefreshing {
@@ -79,10 +68,58 @@ struct ForecastPage: View {
     }
 }
 
+/// The page's scroll view, which cards measure against to pin their titles.
+private let forecastScrollSpace = "forecast.scroll"
+
 extension ForecastPage {
+    /// The big header fades over the first 120 points of scrolling.
+    fileprivate var headerOpacity: Double {
+        1 - min(max(Double(scrolled) / 120, 0), 1)
+    }
+
+    /// The short line fades in as the big header finishes fading.
+    fileprivate var condensedOpacity: Double {
+        min(max((Double(scrolled) - 90) / 40, 0), 1)
+    }
+
+}
+
+/// Everything that scrolls: the big header, then the cards.
+private struct PageCards: View {
+    let page: WeatherPage
+    let report: WeatherReport
+    let overview: WeatherOverview
+    let palette: SkyPalette
+    @Bindable var model: WeatherViewModel
+    let headerOpacity: Double
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Header(report: report, overview: overview)
+                .opacity(headerOpacity)
+            if let message = model.notice(for: page) {
+                Notice(text: message, systemImage: noticeSymbol, palette: palette)
+            }
+            if !overview.timeline.isEmpty || !overview.summary.isEmpty {
+                HourlyCard(overview: overview, palette: palette)
+            }
+            if !overview.days.isEmpty {
+                DailyCard(overview: overview, current: report.current.temperatureC, palette: palette)
+            }
+            AirQualityCard(overview: overview.airQuality, palette: palette)
+            PollenCard(overview: overview.pollen, palette: palette)
+            DetailsSection(details: overview.details, palette: palette)
+            Footer(credits: overview.credits)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 24)
+        .frame(maxWidth: 640)
+        .frame(maxWidth: .infinity)
+    }
+
     /// Wi-Fi for a failed refresh or an offline fallback, a crossed-out
     /// arrow when "My Location" couldn't be found, a clock for an old report.
-    fileprivate func noticeSymbol(_ report: WeatherReport) -> String {
+    private var noticeSymbol: String {
         if page.errorMessage != nil || report.isOfflineFallback { return "wifi.slash" }
         if page.isMyLocation, model.locationMessage != nil { return "location.slash" }
         return "clock"
@@ -238,7 +275,11 @@ private struct Card<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             if let title {
                 titleView(title)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { titleHeight = $0 }
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        titleHeight = height
+                    }
                     .offset(y: pushed)
                     .zIndex(1)
             }
@@ -254,9 +295,11 @@ private struct Card<Content: View>: View {
                 .padding(.top, pushed)
         }
         .mask { RoundedRectangle(cornerRadius: 20, style: .continuous).padding(.top, pushed) }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .scrollView) } action: {
-            top = $0.minY
-            height = $0.height
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: NamedCoordinateSpace.named(forecastScrollSpace))
+        } action: { frame in
+            top = frame.minY
+            height = frame.height
         }
     }
 
