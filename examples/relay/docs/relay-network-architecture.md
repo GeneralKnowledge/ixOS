@@ -79,8 +79,8 @@ Everything else is a use of these:
 
 Written from the code on main, where all of the 1.0 foundations are
 merged, so this part doesn't go stale. The PR numbers say which PR added
-each piece. Phone proof of the whole set is the 1.0 acceptance run, not
-yet done.
+each piece. The 1.0 acceptance run passed on the iPhone and Linux on
+2026-11-21 ([results](relay-audit-2026-11.md#results-2026-11-21)).
 
 | Part of the layer | Today | Where |
 |---|---|---|
@@ -170,10 +170,9 @@ One of Relay's defining traits.
   relay); what's missing is making Hybrid work without the person
   understanding them, while the privacy controls stay clear.
 
-That points to Hybrid as the default with Relay's servers on. Today
-"Use Relay's Servers" is off by default and Private never uses a relay
-(decided 2026-11-19); changing the default is Reuben's call when N2
-starts.
+That points to Hybrid as the default with Relay's servers on. Reuben
+chose that when N2 started (2026-11-21); Private still never uses a relay
+(decided 2026-11-19). The plan is [relay-away-from-home.md](relay-away-from-home.md).
 
 ## Security claims, precisely
 
@@ -207,7 +206,7 @@ them. The stages after them are named N1 to N9 so they don't collide.
 |---|---|---|
 | M1, M2 | Reliable Trusted-Device Delivery, Personal Device Network | As defined; with #353 and the 1.0 acceptance run, the proven device foundation ([audit, step 5](relay-audit-2026-11.md)) |
 | N1 | My Devices | A person's identity across devices; trust and revoke once. Step 1, the introducer, is on main; next is a signed device list |
-| N2 | Away from home | Secure communication beyond the home network, without manual networking |
+| N2 | Away from home | Secure communication beyond the home network, without manual networking. Chosen next on 2026-11-21; plan: [relay-away-from-home.md](relay-away-from-home.md) |
 | N3 | The encrypted mailbox | Somewhere things wait while a device is away: its own security, retention and availability questions ([review, refinement 3](relay-review-2026-11.md)) |
 | N4 | One messaging security model | The chat server path on Relay's identities and encryption |
 | N5 | Capabilities and permissions | Devices offer services safely, each behind its own right |
