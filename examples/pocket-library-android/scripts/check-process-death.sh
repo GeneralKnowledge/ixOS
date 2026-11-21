@@ -33,6 +33,7 @@ relaunch_keeping_data() {
 
 echo "1. A throwaway library whose sample-book import waits 90 s before it starts (long enough that a slow runner still kills it first)"
 adb shell am force-stop "$PKG"
+launched=$(date +%s)
 adb shell am start -W -n "$ACTIVITY" \
     --ez forge.temporaryData true --ez pocketLibrary.sampleBook true --ei pocketLibrary.holdImportSeconds 90 >/dev/null
 sleep 6
@@ -47,6 +48,12 @@ sleep 2
 before=$(pid)
 if [ -z "$before" ]; then
     echo "FAIL: the app's process ended on its own before the test could end it" >&2
+    exit 1
+fi
+# The import can't have started yet: it waits 90 s from after the launch. A runner slower than
+# that would make this run prove nothing, so it fails rather than passing by accident.
+if [ $(( $(date +%s) - launched )) -ge 85 ]; then
+    echo "FAIL: too slow to end the process before the import starts, so this run proves nothing" >&2
     exit 1
 fi
 adb shell am kill "$PKG"
