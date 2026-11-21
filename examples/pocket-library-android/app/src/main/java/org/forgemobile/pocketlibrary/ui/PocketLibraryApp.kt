@@ -25,6 +25,8 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -81,6 +83,12 @@ private data object LibraryRoute
 
 @Serializable
 private data object NewBookRoute
+
+@Serializable
+private data object CatalogueRoute
+
+@Serializable
+private data object SettingsRoute
 
 /** Rust's book ids are unsigned; navigation arguments are signed, so the bits are kept. */
 @Serializable
@@ -153,6 +161,8 @@ private fun Screens(model: LibraryModel) {
             LibraryScreen(
                 model,
                 onAdd = { nav.navigate(NewBookRoute) { launchSingleTop = true } },
+                onFind = { nav.navigate(CatalogueRoute) { launchSingleTop = true } },
+                onSettings = { nav.navigate(SettingsRoute) { launchSingleTop = true } },
                 onOpen = { nav.navigate(BookRoute(it.toLong())) { launchSingleTop = true } },
             )
         }
@@ -166,6 +176,20 @@ private fun Screens(model: LibraryModel) {
                 },
                 onCancel = { nav.popBackStack() },
             )
+        }
+        composable<CatalogueRoute> {
+            CatalogueScreen(
+                model,
+                // An added book opens in place of the search, as on the iPhone.
+                onOpen = { book ->
+                    nav.navigate(BookRoute(book.id.toLong())) { popUpTo<CatalogueRoute> { inclusive = true } }
+                },
+                onManual = { nav.navigate(NewBookRoute) { popUpTo<CatalogueRoute> { inclusive = true } } },
+                onCancel = { nav.popBackStack() },
+            )
+        }
+        composable<SettingsRoute> {
+            SettingsScreen(model, onClose = { nav.popBackStack() })
         }
         composable<EditBookRoute> { entry ->
             val id = entry.toRoute<EditBookRoute>().bookId
@@ -191,7 +215,13 @@ private fun Screens(model: LibraryModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LibraryScreen(model: LibraryModel, onAdd: () -> Unit, onOpen: (ULong) -> Unit) {
+private fun LibraryScreen(
+    model: LibraryModel,
+    onAdd: () -> Unit,
+    onFind: () -> Unit,
+    onSettings: () -> Unit,
+    onOpen: (ULong) -> Unit,
+) {
     val all by model.all.collectAsState()
     val books by model.books.collectAsState()
     val search by model.searchText.collectAsState()
@@ -202,8 +232,13 @@ private fun LibraryScreen(model: LibraryModel, onAdd: () -> Unit, onOpen: (ULong
                 title = { Text("Library") },
                 actions = {
                     FilterAndSortMenu(model)
-                    IconButton(onClick = onAdd, modifier = Modifier.testTag("library.add.manual")) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add Book")
+                    IconButton(onClick = onSettings, modifier = Modifier.testTag("library.settings")) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    }
+                    AddMenu(model, tag = "library.add", onAdd = onAdd, onFind = onFind) { open ->
+                        IconButton(onClick = open, modifier = Modifier.testTag("library.add")) {
+                            Icon(Icons.Filled.Add, contentDescription = "Add Book")
+                        }
                     }
                 },
             )
@@ -217,7 +252,9 @@ private fun LibraryScreen(model: LibraryModel, onAdd: () -> Unit, onOpen: (ULong
                     "Add the books you're reading, have read, or want to read.",
                     tag = "library.empty",
                 ) {
-                    Button(onClick = onAdd, modifier = Modifier.testTag("library.empty.add")) { Text("Add Book") }
+                    AddMenu(model, tag = "library.empty.add", onAdd = onAdd, onFind = onFind) { open ->
+                        Button(onClick = open, modifier = Modifier.testTag("library.empty.add")) { Text("Add Book") }
+                    }
                 }
                 books.isEmpty() && search.isEmpty() -> {
                     val label = filter?.let(LibraryModel::statusLabel) ?: ""
@@ -235,6 +272,51 @@ private fun LibraryScreen(model: LibraryModel, onAdd: () -> Unit, onOpen: (ULong
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The ways to add a book, for the toolbar and the empty library: [button] opens the menu. With
+ * online search off, the catalogue choice is disabled and says why (PL-7).
+ */
+@Composable
+private fun AddMenu(
+    model: LibraryModel,
+    tag: String,
+    onAdd: () -> Unit,
+    onFind: () -> Unit,
+    button: @Composable (open: () -> Unit) -> Unit,
+) {
+    val settings by model.settings.collectAsState()
+    var open by remember { mutableStateOf(false) }
+    Box {
+        button { open = true }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.testTag("$tag.menu")) {
+            DropdownMenuItem(
+                text = {
+                    Column {
+                        Text("Search Online Catalogue")
+                        if (!settings.catalogueEnabled) {
+                            Text(
+                                "Online search is off in Settings",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.testTag("library.add.catalogue.off"),
+                            )
+                        }
+                    }
+                },
+                onClick = { open = false; onFind() },
+                enabled = settings.catalogueEnabled,
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                modifier = Modifier.testTag("library.add.catalogue"),
+            )
+            DropdownMenuItem(
+                text = { Text("Enter Details") },
+                onClick = { open = false; onAdd() },
+                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                modifier = Modifier.testTag("library.add.manual"),
+            )
         }
     }
 }

@@ -7,11 +7,12 @@ requirements (PL-1 to PL-10 in [requirements.toml](../pocket-library/requirement
 
 Done: stage 0 (the shared core, the Kotlin host, add, open, delete), A1 (typed navigation,
 the process lifecycle, Kotlin counterparts of ForgeAppKit's patterns, the iPhone app's error
-text), A2 (ForgeUI's tokens and look) and A3 (the complete library: the full book form and
+text), A2 (ForgeUI's tokens and look), A3 (the complete library: the full book form and
 editing, progress, status and rating on a book's screen, search, filter and sort, and starting
-an unreadable library fresh). Requirements met on the emulator: **PL-1** to **PL-6** and
-**PL-10**. Everything else in [Pocket Library](../pocket-library/README.md) (catalogue, EPUB,
-reader, read aloud, settings, backups, statistics) is iOS only for now.
+an unreadable library fresh) and A4 (the online catalogue through Android's own HTTP stack,
+with its on/off setting). Requirements met on the emulator: **PL-1** to **PL-8** and
+**PL-10**. Everything else in [Pocket Library](../pocket-library/README.md) (EPUB, reader, read
+aloud, the rest of Settings, backups, statistics) is iOS only for now.
 
 ```
 PocketLibraryApp (Compose, Material 3, Navigation) → LibraryModel → ForgeHost (host/ForgeHost.kt)
@@ -37,6 +38,11 @@ PocketLibraryApp (Compose, Material 3, Navigation) → LibraryModel → ForgeHos
   iOS too), so this one links it into the library Android loads. Its one export,
   `setAsideUnreadableLibrary` (`uniffi.forge_ffi`), stands in for `Library.open_fresh` (below):
   `LibraryOpener` calls it and then opens the library as usual.
+- `host/ForgeHttpTransport.kt` is Rust's HTTP transport on Android (the counterpart of the
+  `URLSession` one, `ForgeServices+Http.swift`): `HttpURLConnection`, so requests get Android's
+  proxy settings, trust store and network security config. The app installs it at launch with
+  `installNativeHttp`; before that, and in JVM tests that don't install it, Rust uses its own
+  `ureq` client. Not like iOS yet: no HTTP/3, and `PATCH` only where the platform allows it.
 - `host/ForgeHost.kt` is the Android counterpart of ForgeKit's `ForgeHost`: it opens the core
   off the main thread, checks the runtime contract version, reports the lifecycle and re-reads
   when Rust announces a change. It stays in this app until a second Android app needs it.
@@ -58,7 +64,7 @@ FORGE_ANDROID_ABIS=x86_64 ./scripts/package-android-library.sh examples/pocket-l
 
 cd examples/pocket-library-android
 ./gradlew :app:installDebug                 # on a running emulator
-./gradlew :app:connectedDebugAndroidTest    # Compose UI tests: PL-1 to PL-6, PL-10, screenshots
+./gradlew :app:connectedDebugAndroidTest    # Compose UI tests: PL-1 to PL-8, PL-10, screenshots
 ```
 
 JVM unit tests run the host and model against the real core, with no emulator:
@@ -70,7 +76,8 @@ cd examples/pocket-library-android && ./gradlew :app:testDebugUnitTest
 
 The UI tests start the app with the `forge.temporaryData` extra, the Android form of iOS's
 `-ForgeTemporaryData`: each launch gets an empty, throwaway library, so your own books are never
-touched. `forge.keepTestData` (iOS `-ForgeKeepTestData`) keeps the last launch's throwaway
+touched. The catalogue tests install a stand-in transport in place of `ForgeHttpTransport`, so
+they need no network and see every request Rust sends and every one it stops. `forge.keepTestData` (iOS `-ForgeKeepTestData`) keeps the last launch's throwaway
 library, for a relaunch that checks something was saved, and `pocketLibrary.unreadableTestData`
 (iOS `-PocketLibraryUnreadableTestData`) starts it as a file that isn't a library, to reach
 Start Fresh. UI tests are named by requirement (`pl4_...`); a requirement counts as met on Android

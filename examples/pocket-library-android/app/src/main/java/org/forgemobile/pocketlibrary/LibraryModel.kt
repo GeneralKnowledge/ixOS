@@ -7,6 +7,9 @@ package org.forgemobile.pocketlibrary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,9 +23,13 @@ import org.forgemobile.pocketlibrary.host.ForgeHost
 import org.forgemobile.pocketlibrary.kit.ForgeFailure
 import org.forgemobile.pocketlibrary.kit.ForgeLoad
 import uniffi.forge_app.AppPhase
+import uniffi.forge_app.Cancellation
 import uniffi.forge_app.LaunchReport
 import uniffi.forge_app.RuntimeEvents
 import uniffi.pocket_library_core.Book
+import uniffi.pocket_library_core.CatalogueBook
+import uniffi.pocket_library_core.ImportedBook
+import uniffi.pocket_library_core.LibrarySettings
 import uniffi.pocket_library_core.BookInput
 import uniffi.pocket_library_core.LibraryException
 import uniffi.pocket_library_core.LibraryQuery
@@ -55,6 +62,7 @@ class LibraryModel(
     private val _searchText = MutableStateFlow("")
     private val _statusFilter = MutableStateFlow<ReadingStatus?>(null)
     private val _sort = MutableStateFlow(LibrarySort.RECENTLY_ADDED)
+    private val _settings = MutableStateFlow(DEFAULT_SETTINGS)
 
     /** Every book, newest first: what a book's screen reads, whatever the list shows. */
     val all: StateFlow<List<Book>> = _all.asStateFlow()
@@ -68,6 +76,9 @@ class LibraryModel(
     val statusFilter: StateFlow<ReadingStatus?> = _statusFilter.asStateFlow()
 
     val sort: StateFlow<LibrarySort> = _sort.asStateFlow()
+
+    /** The library's settings, as Rust last saved them. */
+    val settings: StateFlow<LibrarySettings> = _settings.asStateFlow()
 
     /** Opening the library: loading, open, or why it couldn't open (with Try Again). */
     val opening: StateFlow<ForgeLoad<Unit>> = host.status
@@ -91,7 +102,13 @@ class LibraryModel(
             var wasReady = false
             host.status.collect { status ->
                 val ready = status == ForgeHost.Status.Ready
-                if (ready && !wasReady) library?.let { _sort.value = it.settings().defaultSort; reload() }
+                if (ready && !wasReady) {
+                    library?.let {
+                        _settings.value = it.settings()
+                        _sort.value = _settings.value.defaultSort
+                        reload()
+                    }
+                }
                 wasReady = ready
             }
         }
@@ -175,6 +192,30 @@ class LibraryModel(
         run { it.deleteBook(id) }
     }
 
+    suspend fun updateSettings(settings: LibrarySettings) {
+        _settings.value = run { it.updateSettings(settings) }
+    }
+
+    /** Switches online search on or off (Settings' Online Catalogue). */
+    suspend fun setCatalogueEnabled(enabled: Boolean) = updateSettings(_settings.value.copy(catalogueEnabled = enabled))
+
+    /**
+     * Searches the online catalogue. Cancelling the calling coroutine (leaving the screen, or a
+     * newer search) stops the Rust search and its request. With online search off, Rust refuses
+     * before any request: `CatalogueDisabled`.
+     */
+    suspend fun searchCatalogue(query: String): List<CatalogueBook> {
+        val core = library ?: throw LibraryException.ShutDown()
+        return withRustCancellation { cancellation ->
+            withContext(RUST_CALLS) { core.searchCatalogue(query, cancellation) }
+        }
+    }
+
+    /** Adds a catalogue book with its cover and description. Cancelling stops it; nothing is added. */
+    suspend fun importFromCatalogue(key: String): ImportedBook = run { core ->
+        withRustCancellation { core.importFromCatalogue(key, it) }
+    }
+
     companion object {
         /**
          * Where the model awaits Rust's async calls. UniFFI resumes the Kotlin coroutine from
@@ -183,6 +224,26 @@ class LibraryModel(
          * always posts the resume.
          */
         val RUST_CALLS = Dispatchers.Default
+
+        /** Until the library opens: as a new library starts. */
+        val DEFAULT_SETTINGS = LibrarySettings(defaultSort = LibrarySort.RECENTLY_ADDED, catalogueEnabled = true)
+
+        /**
+         * Runs [body] with a Rust `Cancellation` that is cancelled when the calling coroutine is
+         * (ForgeKit's `withRustCancellation`). Rust then stops the work, and tells the host to
+         * stop its request.
+         */
+        suspend fun <T> withRustCancellation(body: suspend (Cancellation) -> T): T {
+            val cancellation = Cancellation()
+            try {
+                // Already cancelled: Rust refuses before it starts.
+                if (!currentCoroutineContext().isActive) cancellation.cancel()
+                return body(cancellation)
+            } catch (e: CancellationException) {
+                cancellation.cancel()
+                throw e
+            }
+        }
 
         val ALL_BOOKS = LibraryQuery(text = "", status = null, sort = LibrarySort.RECENTLY_ADDED)
 
