@@ -176,6 +176,52 @@ impl PythonLab {
     }
 
     fn write(&self, path: &str, content: &str) -> ToolOutcome {
+        self.store(path, content, "Wrote")
+    }
+
+    /// `edit_file`: replaces `old` with `new`. `old` must match exactly
+    /// once; a match that differs only in spaces at line ends is taken too;
+    /// otherwise the error shows the most similar lines (Aider's "did you
+    /// mean").
+    fn edit(&self, path: &str, old: &str, new: &str) -> ToolOutcome {
+        let full = match self.full(path) {
+            Ok(full) => full,
+            Err(err) => return ToolOutcome::failed(err),
+        };
+        let Ok(text) = fs::read_to_string(&full) else {
+            return ToolOutcome::failed(format!(
+                "{path} does not exist. Use write_file to create it."
+            ));
+        };
+        if old.is_empty() {
+            return ToolOutcome::failed(
+                "old is empty. Copy the exact lines to replace from read_file (without the line numbers)."
+                    .to_string(),
+            );
+        }
+        let edited = match text.matches(old).count() {
+            1 => text.replacen(old, new, 1),
+            0 => match replace_lines_loosely(&text, old, new) {
+                Some(edited) => edited,
+                None => {
+                    let hint = similar_lines(&text, old)
+                        .map(|lines| format!(" Did you mean these lines?\n{lines}"))
+                        .unwrap_or_default();
+                    return ToolOutcome::failed(format!(
+                        "old does not match {path} exactly.{hint}\nCopy the lines exactly from read_file, without the line numbers."
+                    ));
+                }
+            },
+            count => {
+                return ToolOutcome::failed(format!(
+                    "old matches {count} places in {path}. Include more lines around it so it matches once."
+                ))
+            }
+        };
+        self.store(path, &edited, "Edited")
+    }
+
+    fn store(&self, path: &str, content: &str, verb: &str) -> ToolOutcome {
         let full = match self.full(path) {
             Ok(full) => full,
             Err(err) => return ToolOutcome::failed(err),
@@ -201,7 +247,7 @@ impl PythonLab {
         if !path.ends_with(".py") {
             return ToolOutcome {
                 ok: true,
-                text: format!("Wrote {path} ({lines} lines)."),
+                text: format!("{verb} {path} ({lines} lines)."),
                 evidence: vec![Evidence::Wrote {
                     path: path.into(),
                     syntax_ok: true,
@@ -216,10 +262,10 @@ impl PythonLab {
         ToolOutcome {
             ok: syntax_ok,
             text: if syntax_ok {
-                format!("Wrote {path} ({lines} lines). Syntax OK.")
+                format!("{verb} {path} ({lines} lines). Syntax OK.")
             } else {
                 format!(
-                    "Wrote {path} ({lines} lines), but Python can't parse it:\n{}",
+                    "{verb} {path} ({lines} lines), but Python can't parse it:\n{}",
                     problem.trim()
                 )
             },
@@ -342,6 +388,15 @@ impl Environment for PythonLab {
                 "create or replace a file; always send the whole file",
             ),
             ToolSpec::new(
+                "edit_file",
+                &[
+                    ("path", ArgKind::Path),
+                    ("old", ArgKind::Text),
+                    ("new", ArgKind::Text),
+                ],
+                "replace the exact lines old with new; old must match once",
+            ),
+            ToolSpec::new(
                 "run_python",
                 &[("path", ArgKind::Path)],
                 "run a Python file and see what it prints",
@@ -354,8 +409,35 @@ impl Environment for PythonLab {
         ]
     }
 
+    /// The project map: each file with its size and, for Python files, its
+    /// top-level functions (with their arguments) and classes (with their
+    /// methods), from Python's own `ast` (Aider's repository map, small).
+    /// Falls back to the file list if Python can't run.
     fn overview(&self) -> String {
-        self.list().text
+        let files = self.files();
+        if files.is_empty() || !files.iter().any(|(path, _)| path.ends_with(".py")) {
+            return self.list().text;
+        }
+        let entries: Vec<(String, String, u64)> = files
+            .iter()
+            .map(|(path, bytes)| {
+                (
+                    path.clone(),
+                    self.root.join(path).display().to_string(),
+                    *bytes,
+                )
+            })
+            .collect();
+        let script = MAP_SCRIPT.replace(
+            "__FILES__",
+            &serde_json::to_string(&entries).unwrap_or_else(|_| "[]".into()),
+        );
+        let (outcome, _) = self.run_script(script);
+        let map = self.clean(&outcome.output);
+        if !outcome.ok || map.trim().is_empty() {
+            return self.list().text;
+        }
+        super::prompt::cut(map.trim(), MAP_MAX_CHARS)
     }
 
     fn execute(&self, call: &ToolCall) -> ToolOutcome {
@@ -363,6 +445,7 @@ impl Environment for PythonLab {
             "list_files" => self.list(),
             "read_file" => self.read(call.arg("path")),
             "write_file" => self.write(call.arg("path"), call.arg("content")),
+            "edit_file" => self.edit(call.arg("path"), call.arg("old"), call.arg("new")),
             "run_python" => self.run_python(call.arg("path")),
             "run_tests" => self.run_tests(),
             other => ToolOutcome::failed(format!("There is no tool called {other:?}.")),
@@ -422,6 +505,92 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) {
     }
 }
 
+/// Replaces the lines of `old` in `text` when they match apart from spaces
+/// at line ends, and only once.
+fn replace_lines_loosely(text: &str, old: &str, new: &str) -> Option<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let want: Vec<&str> = old.lines().map(str::trim_end).collect();
+    if want.is_empty() || want.len() > lines.len() {
+        return None;
+    }
+    let found: Vec<usize> = (0..=lines.len() - want.len())
+        .filter(|&i| {
+            lines[i..i + want.len()]
+                .iter()
+                .zip(&want)
+                .all(|(a, b)| a.trim_end() == *b)
+        })
+        .collect();
+    let [at] = found[..] else { return None };
+    let mut out: Vec<String> = lines[..at].iter().map(|l| l.to_string()).collect();
+    out.extend(new.lines().map(str::to_string));
+    out.extend(lines[at + want.len()..].iter().map(|l| l.to_string()));
+    let mut joined = out.join("\n");
+    if text.ends_with('\n') {
+        joined.push('\n');
+    }
+    Some(joined)
+}
+
+/// The run of lines in `text` most like `old`, numbered, when it is close
+/// enough to be worth showing.
+fn similar_lines(text: &str, old: &str) -> Option<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let want: Vec<&str> = old.lines().collect();
+    if lines.is_empty() || want.is_empty() {
+        return None;
+    }
+    let size = want.len().min(lines.len());
+    let (best, score) = (0..=lines.len() - size)
+        .map(|i| {
+            let score: f64 = lines[i..i + size]
+                .iter()
+                .zip(&want)
+                .map(|(a, b)| similarity(a.trim(), b.trim()))
+                .sum::<f64>()
+                / size as f64;
+            (i, score)
+        })
+        .fold(
+            (0, -1.0),
+            |best, next| if next.1 > best.1 { next } else { best },
+        );
+    if score < 0.5 {
+        return None;
+    }
+    Some(
+        lines[best..best + size]
+            .iter()
+            .enumerate()
+            .map(|(i, line)| format!("{:>3}| {line}", best + i + 1))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
+/// 0 to 1: twice the longest common subsequence over the total length.
+fn similarity(a: &str, b: &str) -> f64 {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    if a.is_empty() && b.is_empty() {
+        return 1.0;
+    }
+    let mut row = vec![0usize; b.len() + 1];
+    for x in &a {
+        let mut diagonal = 0;
+        for (j, y) in b.iter().enumerate() {
+            let above = row[j + 1];
+            row[j + 1] = if x == y {
+                diagonal + 1
+            } else {
+                row[j + 1].max(row[j])
+            };
+            diagonal = above;
+        }
+    }
+    2.0 * row[b.len()] as f64 / (a.len() + b.len()) as f64
+}
+
 fn numbered(text: &str) -> String {
     if text.is_empty() {
         return "(empty file)".into();
@@ -445,6 +614,39 @@ fn syntax_script(path: &Path) -> String {
         py_str(&path.display().to_string())
     )
 }
+
+/// The project map's longest length, in characters.
+const MAP_MAX_CHARS: usize = 1_500;
+
+/// Prints one line per file: `path (bytes)` and its definitions.
+const MAP_SCRIPT: &str = r#"
+import ast
+def _harness_map(files):
+    for shown, full, size in files:
+        line = f'{shown} ({size} bytes)'
+        if shown.endswith('.py'):
+            try:
+                with open(full, encoding='utf-8') as f:
+                    tree = ast.parse(f.read())
+            except SyntaxError as e:
+                print(f'{line}: Python cannot parse it (line {e.lineno})')
+                continue
+            except Exception:
+                print(line)
+                continue
+            found = []
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    found.append(f'def {node.name}({ast.unparse(node.args)})')
+                elif isinstance(node, ast.ClassDef):
+                    methods = [n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+                    found.append(f'class {node.name}' + (f' ({", ".join(methods)})' if methods else ''))
+            if found:
+                line += ': ' + '; '.join(found)
+        print(line)
+_harness_map(__FILES__)
+del _harness_map
+"#;
 
 /// The guard: audit hooks installed once per interpreter, active only while
 /// a harness run sets `state['active']`. A guard rail for a model's

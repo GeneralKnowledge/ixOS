@@ -114,10 +114,16 @@ final class LlamaCppModel: AiModel, @unchecked Sendable {
             case .user: role = "user"
             case .assistant: role = "assistant"
             }
-            text += "<|im_start|>\(role)\n\(message.content)<|im_end|>\n"
+            // Earlier answers keep the empty thinking block the answer was
+            // written after, so each prompt continues the one before it and
+            // llama.cpp's saved state can be reused (LlamaRuntime).
+            let thinking = message.role == .assistant ? Self.noThinking : ""
+            text += "<|im_start|>\(role)\n\(thinking)\(message.content)<|im_end|>\n"
         }
-        return text + "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+        return text + "<|im_start|>assistant\n" + noThinking
     }
+
+    static let noThinking = "<think>\n\n</think>\n\n"
 }
 
 /// Bonsai Harness drives the same model with a grammar: every answer must
@@ -143,6 +149,21 @@ final class LlamaRuntime: @unchecked Sendable {
     private var path: String?
     private var model: OpaquePointer?
     private var context: OpaquePointer?
+    /// The tokens whose keys and values are in the context now, in order.
+    /// A prompt that starts with them reads only the rest: a harness turn
+    /// repeats the instructions and the history before it, so only the
+    /// newest step is new (each turn used to re-read the whole prompt).
+    private var cached: [llama_token] = []
+    /// The context saved just after the last grammar prompt was read, with
+    /// that prompt's tokens. Bonsai is built on Qwen3.5, whose linear
+    /// attention layers keep a running state that can't be cut back to an
+    /// earlier position, so the live cache can only be reused when a new
+    /// prompt continues it exactly. A harness turn continues the previous
+    /// turn's prompt (that prompt, the answer, the result), so restoring
+    /// this saved state reads only the newest step.
+    private var checkpoint: (tokens: [llama_token], state: [UInt8])?
+    /// How many of the last prompt's tokens came from the cache.
+    private(set) var lastReusedTokens = 0
     /// How long the last load took, for the screen.
     private(set) var lastLoadSeconds: Double?
 
@@ -172,17 +193,36 @@ final class LlamaRuntime: @unchecked Sendable {
         }
 
         var tokens = try Self.tokenize(prompt, vocab: vocab)
+        guard !tokens.isEmpty else {
+            throw AiModelError.Engine(reason: "The prompt is empty.")
+        }
         let window = Int(llama_n_ctx(context))
         guard tokens.count + maxTokens <= window else {
             throw AiModelError.ContextTooLong(
                 reason: "\(tokens.count) prompt tokens + \(maxTokens) answer tokens is over \(window).")
         }
 
-        // Each answer starts fresh: AI Lab's runs are independent.
-        llama_memory_clear(llama_get_memory(context), true)
+        // Keep the part of the context this prompt starts with and read
+        // only the rest. The answer is the same as reading it all again
+        // (the same tokens at the same positions); at least one token is
+        // always read, for the logits of the first answer token.
+        let memory = llama_get_memory(context)
+        var start = min(Self.commonPrefix(cached, tokens), tokens.count - 1)
+        let saved = checkpoint.map { $0.tokens.count < tokens.count && tokens.starts(with: $0.tokens) } ?? false
+        if start > 0, start >= (saved ? checkpoint!.tokens.count : 0),
+            llama_memory_seq_rm(memory, 0, llama_pos(start), -1)
+        {
+            // Plain attention: cut the live cache back to the shared start.
+        } else if saved, let checkpoint, restoreLocked(context, checkpoint.state) {
+            start = checkpoint.tokens.count
+        } else {
+            llama_memory_clear(memory, true)
+            start = 0
+        }
+        cached = Array(tokens[0..<start])
+        lastReusedTokens = start
 
         // Read the prompt in batches, checking for Stop between them.
-        var start = 0
         while start < tokens.count {
             if sink.isStopped() || Task.isCancelled { return }
             let end = min(start + Self.batchSize, tokens.count)
@@ -190,10 +230,15 @@ final class LlamaRuntime: @unchecked Sendable {
                 llama_decode(context, llama_batch_get_one(buffer.baseAddress, Int32(buffer.count)))
             }
             guard status == 0 else {
+                forgetCacheLocked(context)
                 throw AiModelError.Engine(reason: "llama_decode failed reading the prompt (\(status)).")
             }
+            cached += tokens[start..<end]
             start = end
         }
+        // Harness turns (the ones with a grammar) continue each other: save
+        // the state at the end of this prompt for the next turn.
+        if grammar != nil { saveCheckpointLocked(context, tokens: tokens) }
         tokens.removeAll()
 
         let sampler = Self.sampler(temperature: temperature)
@@ -232,8 +277,10 @@ final class LlamaRuntime: @unchecked Sendable {
                 llama_decode(context, llama_batch_get_one(pointer, 1))
             }
             guard status == 0 else {
+                forgetCacheLocked(context)
                 throw AiModelError.Engine(reason: "llama_decode failed while answering (\(status)).")
             }
+            cached.append(token)
         }
         if !pending.isEmpty {
             _ = sink.push(text: String(decoding: pending, as: UTF8.self))
@@ -279,7 +326,50 @@ final class LlamaRuntime: @unchecked Sendable {
         return (model, context)
     }
 
+    /// After a failed decode the context's contents are unknown: start the
+    /// next prompt from nothing.
+    private func forgetCacheLocked(_ context: OpaquePointer) {
+        llama_memory_clear(llama_get_memory(context), true)
+        cached.removeAll()
+    }
+
+    private func saveCheckpointLocked(_ context: OpaquePointer, tokens: [llama_token]) {
+        checkpoint = nil
+        let size = llama_state_seq_get_size(context, 0)
+        guard size > 0 else { return }
+        var state = [UInt8](repeating: 0, count: size)
+        let written = state.withUnsafeMutableBufferPointer { buffer in
+            llama_state_seq_get_data(context, buffer.baseAddress, size, 0)
+        }
+        guard written == size else { return }
+        checkpoint = (tokens, state)
+    }
+
+    /// Puts a saved state back as sequence 0; false (and an empty context)
+    /// when llama.cpp refuses it.
+    private func restoreLocked(_ context: OpaquePointer, _ state: [UInt8]) -> Bool {
+        llama_memory_clear(llama_get_memory(context), true)
+        let read = state.withUnsafeBufferPointer { buffer in
+            llama_state_seq_set_data(context, buffer.baseAddress, buffer.count, 0)
+        }
+        if read == 0 {
+            llama_memory_clear(llama_get_memory(context), true)
+            return false
+        }
+        return true
+    }
+
+    /// How many tokens `a` and `b` share at the start.
+    static func commonPrefix(_ a: [llama_token], _ b: [llama_token]) -> Int {
+        var count = 0
+        let limit = min(a.count, b.count)
+        while count < limit, a[count] == b[count] { count += 1 }
+        return count
+    }
+
     private func freeLocked() {
+        cached.removeAll()
+        checkpoint = nil
         if let context { llama_free(context) }
         if let model { llama_model_free(model) }
         context = nil

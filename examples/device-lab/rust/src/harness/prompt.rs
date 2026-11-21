@@ -23,7 +23,9 @@ pub fn instructions(tools: &[ToolSpec]) -> String {
     }
     text += "\nRules:\n\
              - Paths are relative to the project, like \"app.py\".\n\
-             - write_file replaces the whole file, so always send the complete file.\n\
+             - write_file replaces the whole file, so always send the complete file. To change a few \
+             lines of a file that exists, use edit_file: old is the exact current lines (copied from \
+             read_file, without the line numbers), new is what replaces them.\n\
              - Tests use unittest, in files named test_*.py. run_tests runs them all.\n\
              - Read every result. When something fails, fix the cause, then run it again.\n\
              - Call finish only when a result shows the task is done. The harness checks the \

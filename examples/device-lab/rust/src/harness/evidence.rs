@@ -158,7 +158,10 @@ const AVERAGE_PY: &str = "def average(numbers):\n    \"\"\"The mean of a list of
 
 const TEST_AVERAGE_PY: &str = "import unittest\n\nfrom average import average\n\n\nclass AverageTest(unittest.TestCase):\n    def test_three_numbers(self):\n        self.assertEqual(average([2, 4, 6]), 4)\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n";
 
-/// H1's ladder (docs/bonsai-harness-plan.md).
+const INVENTORY_PY: &str = "stock = {\"apples\": 3, \"pears\": 0, \"plums\": 5}\n\n\ndef report(stock):\n    lines = []\n    for name, count in stock.items():\n        lines.append(name + \": \" + count)\n    return lines\n\n\nfor line in report(stock):\n    print(line)\n";
+
+/// The ladder (docs/bonsai-harness-plan.md): T1 to T3 are H1's, T4 and
+/// T5 are H2's.
 pub fn ladder() -> Vec<LadderTask> {
     vec![
         LadderTask {
@@ -199,6 +202,45 @@ pub fn ladder() -> Vec<LadderTask> {
                 Criterion::FileUnchanged {
                     path: "test_average.py".into(),
                     content: TEST_AVERAGE_PY.into(),
+                },
+            ],
+        },
+        LadderTask {
+            id: "t4-two-modules",
+            title: "T4 Two modules",
+            request: "Write shapes.py with rectangle_area(width, height) and circle_area(radius) \
+                      (use math.pi), and main.py that imports shapes and prints the area of a 3 by 5 \
+                      rectangle and of a circle of radius 2, each rounded to 2 decimals. Then run main.py.",
+            seed: vec![],
+            criteria: vec![
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "15".into(),
+                },
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "12.57".into(),
+                },
+            ],
+        },
+        LadderTask {
+            id: "t5-fix-from-traceback",
+            title: "T5 Fix from a traceback",
+            request: "Run inventory.py. It crashes. Fix the bug so it prints each item and its count, \
+                      like \"apples: 3\". There are no tests: the traceback is your guide. Change only \
+                      what is broken.",
+            seed: vec![SeedFile {
+                path: "inventory.py",
+                content: INVENTORY_PY,
+            }],
+            criteria: vec![
+                Criterion::RunPrints {
+                    path: "inventory.py".into(),
+                    text: "apples: 3".into(),
+                },
+                Criterion::RunPrints {
+                    path: "inventory.py".into(),
+                    text: "plums: 5".into(),
                 },
             ],
         },
@@ -292,6 +334,57 @@ pub fn script(task_id: &str) -> Vec<String> {
             ),
             answer("Check the fix.", "run_tests", &[]),
             finish("average divides by the count; the test passes."),
+        ],
+        "t4-two-modules" => vec![
+            answer(
+                "Write the module.",
+                "write_file",
+                &[
+                    ("path", "shapes.py"),
+                    (
+                        "content",
+                        "import math\n\n\ndef rectangle_area(width, height):\n    return width * height\n\n\ndef circle_area(radius):\n    return math.pi * radius ** 2\n",
+                    ),
+                ],
+            ),
+            answer(
+                "Write the program that uses it.",
+                "write_file",
+                &[
+                    ("path", "main.py"),
+                    (
+                        "content",
+                        "import shapes\n\nprint(\"Rectangle:\", round(shapes.rectangle_area(3, 5), 2))\nprint(\"Circle:\", round(shapes.circle_area(2), 2))\n",
+                    ),
+                ],
+            ),
+            answer("Run it.", "run_python", &[("path", "main.py")]),
+            finish("main.py prints both areas."),
+        ],
+        // The first edit copies the line wrongly (single quotes), to show
+        // the "did you mean" answer; the second copies it exactly.
+        "t5-fix-from-traceback" => vec![
+            answer("See the crash.", "run_python", &[("path", "inventory.py")]),
+            answer(
+                "Convert the count to text.",
+                "edit_file",
+                &[
+                    ("path", "inventory.py"),
+                    ("old", "        lines.append(name + ': ' + count)\n"),
+                    ("new", "        lines.append(name + ': ' + str(count))\n"),
+                ],
+            ),
+            answer(
+                "Copy the line exactly.",
+                "edit_file",
+                &[
+                    ("path", "inventory.py"),
+                    ("old", "        lines.append(name + \": \" + count)\n"),
+                    ("new", "        lines.append(name + \": \" + str(count))\n"),
+                ],
+            ),
+            answer("Run it again.", "run_python", &[("path", "inventory.py")]),
+            finish("count is converted with str(); every item prints."),
         ],
         _ => vec![],
     }

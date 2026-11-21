@@ -161,6 +161,8 @@ pub fn example(tool: &ToolSpec) -> String {
             (_, "content", _) => "…the whole file…",
             (_, _, ArgKind::Path) => "name.py",
             (_, "summary", _) => "what you did",
+            (_, "old", _) => "    return a - b\\n",
+            (_, "new", _) => "    return a + b\\n",
             _ => "…",
         };
         text += &format!(", \"{}\": \"{}\"", arg.name, value);

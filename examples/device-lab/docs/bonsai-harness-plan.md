@@ -170,9 +170,16 @@ Python Lab's "Standard library check" prints 22 of 22; AI Lab with Bonsai 4B ans
 
 The sitting starts with Scripted T1, T2 and T3 (all three must complete, T1's probe shows both blocked), then the same tasks on the 4B. Also in the sitting: Stop during a model turn and during an endless Python loop; writing `../escape.py` is refused; T1 in airplane mode.
 
-### H2: a reliable model interface
+### H2: a reliable model interface (built in #357, 2026-11-21)
 
-`edit_file` with exact matching and Aider-style "did you mean" errors; the project map from `ast`; reusing llama.cpp's cache for the shared start of the prompt (each turn now re-reads the whole prompt, seconds on the phone); the raw block format if T1 to T3 showed escaping failures; limits tuned from the H1 transcripts. Ladder: T4 two modules, one importing the other; T5 fix a bug from a traceback with no tests.
+Started after the H1 sitting: all of T1 to T3 passed, so the escaping-proof raw block format isn't needed, and the 9B's model turns grew from 13 s to 57 s as its history grew, so speed came first.
+
+- **Reusing the prompt (`AiLabLlama.swift`).** Each turn's prompt continues the previous one (instructions, task, every earlier step), so only the newest step is new. Bonsai is built on Qwen3.5, whose linear-attention layers keep a running state that can't be cut back to an earlier position, so the runtime saves the context's state (`llama_state_seq_get_data`) just after each harness prompt is read and restores it when the next prompt starts with the same tokens; with plain attention it cuts the live cache back instead (`llama_memory_seq_rm`). Earlier answers now keep the empty thinking block they were written after, so the prompts really do continue each other. Anything that doesn't match reads the whole prompt as before. A Rust test checks that while the history fits, each turn's messages start with the previous turn's. To measure on the phone: model time per step against the H1 transcripts.
+- **`edit_file`** (path, old, new): `old` must match exactly once; a match that differs only in spaces at line ends is taken; no match answers with the most similar lines, numbered ("Did you mean these lines?"); several matches ask for more lines around it. The syntax check runs after the edit, as after a write.
+- **The project map:** the task's "Project files now" lists each file with its size and, for Python files, its top-level functions with their arguments and classes with their methods, from Python's `ast` (a file Python can't parse says so, with the line), cut to 1,500 characters. It is made once, when the task starts, so the prompt's start stays the same.
+- **Ladder:** T4 two modules (`shapes.py` imported by `main.py`, which must print 15 and 12.57); T5 fix a crash from its traceback with no tests (`inventory.py` concatenates a number to text; done when it prints `apples: 3` and `plums: 5`). Both have Scripted answers; Scripted T5 first copies the line wrongly to show the "did you mean" answer.
+
+Phone sitting: Scripted T1 to T5, then T4 and T5 on the 4B and the 9B, comparing model time per step with H1's.
 
 ### H4: planning and multi-task orchestration
 

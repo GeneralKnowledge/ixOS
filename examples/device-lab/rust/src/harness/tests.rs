@@ -622,6 +622,18 @@ fn the_history_shrinks_to_fit_the_budget_oldest_first() {
         100_000,
     );
     assert_eq!(full.len(), 2 + 16);
+    // While everything fits, each turn's prompt continues the previous
+    // one, so llama.cpp can reuse its saved state and read only the new
+    // step (AiLabLlama.swift).
+    let earlier = prompt::messages(
+        system,
+        "Task",
+        &[Criterion::WorkRuns],
+        "",
+        &history[..14],
+        100_000,
+    );
+    assert_eq!(&full[..earlier.len()], &earlier[..]);
     let tight = prompt::messages(system, "Task", &[Criterion::WorkRuns], "", &history, 1_000);
     let total: usize = tight
         .iter()
@@ -692,6 +704,16 @@ fn the_scripted_model_completes_every_ladder_task() {
         if task.id == "t3-one-fix" {
             assert!(snapshot.steps[0].result.contains("Not done yet"));
         }
+        if task.id == "t5-fix-from-traceback" {
+            assert!(snapshot.steps[0].result.contains("TypeError"));
+            let missed = &snapshot.steps[1].result;
+            assert!(missed.contains("Did you mean"), "{missed}");
+            assert!(
+                missed.contains("  7|         lines.append(name + \": \" + count)"),
+                "{missed}"
+            );
+            assert!(snapshot.steps[2].result.starts_with("Edited inventory.py"));
+        }
         if task.id == "t2-one-test" {
             // The screen shortens the test file; the transcript keeps it.
             assert!(snapshot.steps[1].call.contains("characters)"));
@@ -704,4 +726,88 @@ fn the_scripted_model_completes_every_ladder_task() {
             parse(&text, &lab_tools()).unwrap_or_else(|e| panic!("{text}: {e:?}"));
         }
     }
+}
+
+fn edit(lab: &PythonLab, path: &str, old: &str, new: &str) -> ToolOutcome {
+    let text = format!(
+        "{{\"thought\": \"Edit.\", \"tool\": \"edit_file\", \"path\": {}, \"old\": {}, \"new\": {}}}",
+        serde_json::to_string(path).unwrap(),
+        serde_json::to_string(old).unwrap(),
+        serde_json::to_string(new).unwrap()
+    );
+    lab.execute(&call(&text))
+}
+
+#[test]
+fn edit_file_replaces_one_exact_match_and_explains_a_miss() {
+    if !has_python() {
+        return;
+    }
+    let (_dir, lab) = seeded("t3-one-fix");
+    // Exact, once.
+    let done = edit(&lab, "average.py", "(len(numbers) + 1)", "len(numbers)");
+    assert!(done.ok, "{}", done.text);
+    assert!(done
+        .text
+        .starts_with("Edited average.py (3 lines). Syntax OK."));
+    assert!(lab
+        .read_text("average.py")
+        .unwrap()
+        .contains("return sum(numbers) / len(numbers)\n"));
+    // Trailing spaces in old are forgiven.
+    let loose = edit(
+        &lab,
+        "average.py",
+        "    return sum(numbers) / len(numbers)   \n",
+        "    return sum(numbers) / max(len(numbers), 1)\n",
+    );
+    assert!(loose.ok, "{}", loose.text);
+    assert!(lab
+        .read_text("average.py")
+        .unwrap()
+        .ends_with("max(len(numbers), 1)\n"));
+    // A near miss shows the closest lines.
+    let miss = edit(&lab, "average.py", "    return sum(nums) / len(nums)", "x");
+    assert!(!miss.ok);
+    assert!(miss.text.contains("Did you mean"), "{}", miss.text);
+    assert!(
+        miss.text.contains("  3|     return sum(numbers)"),
+        "{}",
+        miss.text
+    );
+    // More than one match.
+    let twice = edit(&lab, "average.py", "numbers", "values");
+    assert!(!twice.ok);
+    assert!(twice.text.contains("matches"), "{}", twice.text);
+    // A missing file, and an edit that breaks the syntax is reported.
+    assert!(!edit(&lab, "nope.py", "a", "b").ok);
+    let broken = edit(
+        &lab,
+        "average.py",
+        "def average(numbers):",
+        "def average(numbers)",
+    );
+    assert!(!broken.ok);
+    assert!(broken.text.contains("can't parse"), "{}", broken.text);
+}
+
+#[test]
+fn the_project_map_lists_definitions_from_ast() {
+    if !has_python() {
+        return;
+    }
+    let (_dir, lab) = seeded("t3-one-fix");
+    let map = lab.overview();
+    assert!(
+        map.contains("average.py (108 bytes): def average(numbers)"),
+        "{map}"
+    );
+    assert!(
+        map.contains("test_average.py (216 bytes): class AverageTest (test_three_numbers)"),
+        "{map}"
+    );
+    std::fs::write(lab.root().join("broken.py"), "def f(:\n").unwrap();
+    assert!(lab
+        .overview()
+        .contains("broken.py (8 bytes): Python cannot parse it (line 1)"));
 }
