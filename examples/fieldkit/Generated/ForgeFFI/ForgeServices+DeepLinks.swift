@@ -31,7 +31,7 @@ public final class ForgeDeepLinks: ObservableObject {
         do {
             link = try parseDeepLink(url: url.absoluteString)
         } catch {
-            print("[forge] ignoring deep link \(url.absoluteString): \(error)")
+            forgeServicesWarn("ignoring a deep link with scheme \(url.scheme ?? "none")")
             return false
         }
         latest = link

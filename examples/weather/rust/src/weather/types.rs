@@ -139,6 +139,11 @@ pub struct HourlyPoint {
     pub is_day: bool,
     #[serde(default)]
     pub wind_gusts_kmh: Option<f64>,
+    /// Pressure reduced to mean sea level.
+    #[serde(default)]
+    pub pressure_msl_hpa: Option<f64>,
+    #[serde(default)]
+    pub uv_index: Option<f64>,
 }
 
 fn default_true() -> bool {
@@ -506,6 +511,12 @@ pub struct AirQualityOverview {
     pub index: Option<AqiReading>,
     /// This hour's concentrations.
     pub now: Option<AirQualityHour>,
+    /// Where this hour's index sits on the scale's six bands, 0 to 1, for
+    /// a marker on a colour bar.
+    pub scale_position: Option<f64>,
+    /// "Similar to yesterday at this time." when the source has yesterday's
+    /// reading for this hour.
+    pub comparison: Option<String>,
     /// Today onward, only days with data. Shorter than the weather forecast.
     pub days: Vec<AirQualityDay>,
     /// The last local hour the source covers, ISO 8601 without offset.
@@ -539,9 +550,13 @@ pub struct PollenOverview {
     /// Set when `state` is `NotAvailableHere`.
     pub gap: Option<PollenGap>,
     pub source: Option<SourceCredit>,
-    /// Species the source reports here, highest today first. Empty when the
-    /// state has no data.
+    /// Species with pollen in the air today, highest first. Species the
+    /// source reports as zero all day are left out.
     pub species: Vec<PollenSpeciesNow>,
+    /// One line for the card: "No pollen in the air right now." or
+    /// "Birch is highest today, up to 12 grains per cubic metre." Empty
+    /// when the state has no data.
+    pub summary: String,
     pub covers_until: Option<String>,
 }
 
@@ -615,4 +630,126 @@ pub struct WeatherOverview {
     pub daylight_minutes: Option<u32>,
     /// Every source on the page, forecast first, once each.
     pub credits: Vec<SourceCredit>,
+    /// The detail cards: each value with its one-line explanation.
+    pub details: WeatherDetails,
+}
+
+/// WHO UV index bands.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UvLevel {
+    Low,
+    Moderate,
+    High,
+    VeryHigh,
+    Extreme,
+}
+
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PressureTrend {
+    Rising,
+    Steady,
+    Falling,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct FeelsLikeDetail {
+    pub celsius: f64,
+    /// "Wind makes it feel colder."
+    pub note: String,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct WindDetail {
+    pub speed_kmh: f64,
+    pub gusts_kmh: Option<f64>,
+    /// Where the wind comes from, degrees clockwise from north.
+    pub direction_deg: Option<u16>,
+    /// "60° ENE".
+    pub direction: Option<String>,
+    pub note: String,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct HumidityDetail {
+    pub percent: u8,
+    pub dew_point_c: Option<f64>,
+    pub note: String,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct PrecipitationDetail {
+    pub today_mm: f64,
+    /// "Next expected is 4 mm on Tue."
+    pub note: String,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct UvDetail {
+    /// Now, or today's peak when the source has no reading for now.
+    pub index: f64,
+    pub level: UvLevel,
+    /// "Low", "Very high".
+    pub label: String,
+    /// 0 to 1 along the 0 to 11+ scale, for a marker.
+    pub scale_position: f64,
+    /// "Low for the rest of the day."
+    pub note: String,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct VisibilityDetail {
+    pub metres: f64,
+    pub note: String,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct PressureDetail {
+    pub hpa: f64,
+    /// Over the next three hours, when the forecast has hourly pressure.
+    pub trend: Option<PressureTrend>,
+    /// 0 to 1 between 960 and 1060 hPa, for a dial.
+    pub scale_position: f64,
+    pub note: String,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct SunDetail {
+    /// Today's, local "HH:MM". `None` in polar day or night.
+    pub sunrise: Option<String>,
+    pub sunset: Option<String>,
+    /// True when the next of the two is the sunset (the sun is up).
+    pub next_is_sunset: bool,
+    /// How far the sun is through today's daylight, 0 to 1; `None` while
+    /// it is down.
+    pub progress: Option<f64>,
+    /// "Sunrise: 08:04." or "Sunset: 15:57." (the other of the two), with
+    /// the day's length.
+    pub note: String,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct MoonDetail {
+    pub phase: MoonPhase,
+    /// Local "HH:MM" today, `None` on a day the moon doesn't rise or set.
+    pub moonrise: Option<String>,
+    pub moonset: Option<String>,
+    /// Local days until the next full moon (0 = today).
+    pub days_to_full_moon: u32,
+    /// "Next full moon in 3 days."
+    pub note: String,
+}
+
+/// Every detail card the report has data for; a card whose value the
+/// source didn't send is `None` and not shown.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct WeatherDetails {
+    pub feels_like: Option<FeelsLikeDetail>,
+    pub wind: Option<WindDetail>,
+    pub humidity: Option<HumidityDetail>,
+    pub precipitation: Option<PrecipitationDetail>,
+    pub uv: Option<UvDetail>,
+    pub visibility: Option<VisibilityDetail>,
+    pub pressure: Option<PressureDetail>,
+    pub sun: Option<SunDetail>,
+    pub moon: MoonDetail,
 }

@@ -14,16 +14,27 @@ struct LocationsView: View {
                     if let problem = model.placesProblem {
                         SavedPlacesProblemRow(problem: problem) { model.startNewSavedPlaces() }
                             .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                     }
                     places
                     NavigationLink("Units") { UnitsView(model: model) }
                         .accessibilityIdentifier("places.units")
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 } else {
                     results
                 }
             }
             .listStyle(.plain)
+            // The list sits on the sky of the page on screen, darkened a
+            // little so the cards and white text stand out, not on black.
+            .scrollContentBackground(.hidden)
+            .background {
+                let overview = model.selectedPage?.overview
+                SkyBackground(scene: overview?.scene ?? .cloudy, isDay: overview?.isDay ?? true, animated: false)
+                    .overlay(Color.black.opacity(0.28))
+                    .ignoresSafeArea()
+            }
             .navigationTitle("Weather")
             .searchable(text: $query, prompt: "Search for a city")
             .onSubmit(of: .search) { model.search(query) }
@@ -71,6 +82,7 @@ struct LocationsView: View {
             .accessibilityIdentifier(page.isMyLocation ? "places.card.here" : "places.card.\(page.place?.name ?? "place")")
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+            .listRowBackground(Color.clear)
             .deleteDisabled(page.isMyLocation)
             .moveDisabled(page.isMyLocation)
         }
@@ -112,6 +124,7 @@ struct LocationsView: View {
             .buttonStyle(.plain)
             .accessibilityHint("Adds \(place.name) to your places")
             .accessibilityIdentifier("places.result.\(place.name)")
+            .listRowBackground(Color.clear)
         }
     }
 }

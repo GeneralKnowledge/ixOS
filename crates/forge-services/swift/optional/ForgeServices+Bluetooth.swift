@@ -85,7 +85,7 @@ extension ForgeServices {
         /// for the system's answer.
         func requestAccess() async {
             guard Self.hasUsageDescription else {
-                print("[forge] Bluetooth permission: add [ios.permissions] bluetooth to forge.toml first")
+                forgeServicesWarn("Bluetooth permission: add [ios.permissions] bluetooth to forge.toml first")
                 return
             }
             for _ in 0..<3 where CBManager.authorization == .notDetermined {
@@ -100,7 +100,7 @@ extension ForgeServices {
 
         private func ensureCentral() {
             guard Self.hasUsageDescription else {
-                print("[forge] Bluetooth: add [ios.permissions] bluetooth to forge.toml first")
+                forgeServicesWarn("Bluetooth: add [ios.permissions] bluetooth to forge.toml first")
                 return
             }
             let create = {

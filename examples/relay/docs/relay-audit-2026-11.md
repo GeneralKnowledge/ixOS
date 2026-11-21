@@ -207,6 +207,29 @@ across more than two devices:
 Each check is recorded on its own, a failure included. The run becomes
 the regression check before every Relay release.
 
+#### Results, 2026-11-21
+
+Device Lab 1.29921164 on the iPhone 15 Pro Max, `relay` from main
+(c03f4d8f) on the laptop, plus two more `relay` devices on the laptop.
+
+| Check | Result |
+|---|---|
+| 1. Upgrade | Passed on both sides: trust, conversations and history kept; the laptop's JSON moved into `relay.db` once |
+| 2. Pair a new device | Passed with a typed code; scanning not run |
+| 3. Messages and files both ways | Passed: message, ePub, photo, message, and a folder, in order, once each |
+| 4. Interrupted transfer | Passed: 500 MB, Wi-Fi off at 135 MB, resumed from there, verified, once |
+| 5. Revoke during a transfer | Passed (not saved), but the download ran to the end first: fixed in #362 |
+| 6. Identity survives a restart | Passed; the backup-to-a-new-phone part not run |
+| 7. Private and Hybrid | Passed: on 5G without Tailscale, Hybrid went through the relay and Private waited |
+| 8. Relay in Device Lab | Passed; the standalone Relay app not run (no free app slot) |
+| My Devices, step 1 | Passed: offered once, revoked once (#354) |
+
+Other findings, fixed in #362: on one Wi-Fi the route read "Direct,
+internet" over the home's public IPv6; the alert when an introducer
+refused to share its devices was titled "Not Sent" (now "Couldn't Check
+Its Devices", set where Check Its Devices Now fails); `relay messages`
+printed attachments as empty lines.
+
 ### 6. P5: My Devices
 
 The introducer, then the signed device list, with the review's authority

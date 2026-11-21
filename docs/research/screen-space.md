@@ -69,6 +69,10 @@ iOS 26 has a slot for exactly this: `.tabViewBottomAccessory`, the bar Music sho
 
 Reuben asked for the banner fix straight away, so it went into the same PR as this plan, without the spike first. ForgeUI's `forgeBar` (content margins, as above) and `forgeBanner` are built on it, and the banner reserves room above itself for its shadow. The phone look at Commonplace's last article doubles as the spike. If it passes, Soundscape's mini-player, rule `floating-bars` and the UI scenario follow. If the margins don't reach the pushed list, the fallback above applies.
 
+## Soundscape moved (2026-11-21)
+
+Reuben said the framework work had been neglected, so Soundscape's mini-player moved onto `forgeBar` without waiting for the banner's phone look. Its hand-made clearance (the bar's measured height in the environment, and a clear inset on each of 13 screens) is gone. Rule `floating-bars` now fails an app that measures a bar in an overlay or pads its screens with clear space. One phone sitting checks both users: Commonplace's last article clears the Undo banner, and in Soundscape, with a song playing, a long album's last song scrolls clear of the mini-player. If the album's last song hides, content margins don't reach pushed screens and the fallback above applies to both.
+
 ## Order and size
 
 1. **Spike in the ForgeUI showcase:** one screen, one phone look of about 5 minutes. It decides between content margins and the fallback, and whether to use the iOS 26 accessory.

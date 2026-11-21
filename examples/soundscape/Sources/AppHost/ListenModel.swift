@@ -211,6 +211,21 @@ public final class ListenModel {
         }
     }
 
+    /// One search for everything, the catalogues' part: Jamendo and the
+    /// Internet Archive together, each with its results or its problem.
+    /// Cancelled with the screen, or when the search changes.
+    public func searchCatalogues(_ query: String) async -> Result<CatalogueSearch, ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.searchCatalogues(query: query, cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("catalogue search failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
     /// An Internet Archive item's playable tracks, in order.
     public func archiveTracks(_ item: ArchiveItem) async -> Result<[CatalogueTrack], ListenFailure> {
         do {

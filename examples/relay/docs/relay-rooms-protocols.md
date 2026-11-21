@@ -1,5 +1,8 @@
 # Relay rooms: which existing chat protocol to build on
 
+How this fits the rest of Relay: [relay-network-architecture.md](relay-network-architecture.md)
+(one secure communication layer; 2026-11-21).
+
 2026-11-14. A supporting specification under the canonical
 [Relay platform plan](relay-platform-plan.md) (milestones M4 and M5),
 with [relay-transfer-plan.md](relay-transfer-plan.md).

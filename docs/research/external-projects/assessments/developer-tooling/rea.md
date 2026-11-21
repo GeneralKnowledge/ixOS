@@ -89,4 +89,4 @@ Reopen when: REA adds an iOS device layer, its Apple plist and Mach-O tools work
 
 ## Next step
 
-X1 as planned in [App Studio](../../../app-studio.md#x1-spotify-library), after M0: REA on Reuben's computer with his signed-in browser (structure, accessibility tree and screenshots; request metadata only if he says so), `forge ui --any-app` on the phone. Before that, optional and small: run `inspect-artifact` and `project-apple-application-graph` on a real Device Lab IPA from the laptop's last build to confirm the stand-in result.
+X1 as planned in [App Studio](../../../app-studio.md#x1-spotify-library), after M0: REA on Reuben's computer with his signed-in browser (structure, accessibility tree, screenshots and request metadata, which he allowed on 2026-11-20; never values), `forge ui --any-app` on the phone. Before that, optional and small: run `inspect-artifact` and `project-apple-application-graph` on a real Device Lab IPA from the laptop's last build to confirm the stand-in result.

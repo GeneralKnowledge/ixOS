@@ -24,6 +24,7 @@ pub mod musicbrainz;
 pub mod offline;
 pub mod playback;
 pub mod queue;
+pub mod search;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -58,6 +59,7 @@ use offline::{OfflineFile, Progress};
 use playback::PlaybackFile;
 pub use playback::SavedPlayback;
 pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
+pub use search::CatalogueSearch;
 
 uniffi::setup_scaffolding!();
 
@@ -764,6 +766,34 @@ impl SoundscapeCore {
         self.rt
             .run("archive-search", work, move |cancel| {
                 archive::search(http.as_ref(), &query, cancel)
+            })
+            .await
+    }
+
+    /// One search for everything, the catalogues' part: Jamendo and the
+    /// Internet Archive asked together for `query`, each with its own
+    /// results or its own problem, leaving out Jamendo tracks already in
+    /// the library (`search_library` shows those). Nothing for an empty
+    /// query. On-screen work.
+    pub async fn search_catalogues(
+        &self,
+        query: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<CatalogueSearch, SoundscapeError> {
+        let client_id = self.jamendo_client_id();
+        let library = Arc::clone(&self.library);
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("search-catalogues", work, move |cancel| {
+                let file = library.get();
+                search::search_catalogues(
+                    http.as_ref(),
+                    client_id.as_deref(),
+                    &query,
+                    &|id| file.has_track(id),
+                    cancel,
+                )
             })
             .await
     }

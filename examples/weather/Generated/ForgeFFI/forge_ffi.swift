@@ -3599,6 +3599,16 @@ public struct AirQualityOverview: Equatable, Hashable {
      */
     public var now: AirQualityHour?
     /**
+     * Where this hour's index sits on the scale's six bands, 0 to 1, for
+     * a marker on a colour bar.
+     */
+    public var scalePosition: Double?
+    /**
+     * "Similar to yesterday at this time." when the source has yesterday's
+     * reading for this hour.
+     */
+    public var comparison: String?
+    /**
      * Today onward, only days with data. Shorter than the weather forecast.
      */
     public var days: [AirQualityDay]
@@ -3617,6 +3627,14 @@ public struct AirQualityOverview: Equatable, Hashable {
          * This hour's concentrations.
          */now: AirQualityHour?, 
         /**
+         * Where this hour's index sits on the scale's six bands, 0 to 1, for
+         * a marker on a colour bar.
+         */scalePosition: Double?, 
+        /**
+         * "Similar to yesterday at this time." when the source has yesterday's
+         * reading for this hour.
+         */comparison: String?, 
+        /**
          * Today onward, only days with data. Shorter than the weather forecast.
          */days: [AirQualityDay], 
         /**
@@ -3626,6 +3644,8 @@ public struct AirQualityOverview: Equatable, Hashable {
         self.source = source
         self.index = index
         self.now = now
+        self.scalePosition = scalePosition
+        self.comparison = comparison
         self.days = days
         self.coversUntil = coversUntil
     }
@@ -3650,6 +3670,8 @@ public struct FfiConverterTypeAirQualityOverview: FfiConverterRustBuffer {
                 source: FfiConverterOptionTypeSourceCredit.read(from: &buf), 
                 index: FfiConverterOptionTypeAqiReading.read(from: &buf), 
                 now: FfiConverterOptionTypeAirQualityHour.read(from: &buf), 
+                scalePosition: FfiConverterOptionDouble.read(from: &buf), 
+                comparison: FfiConverterOptionString.read(from: &buf), 
                 days: FfiConverterSequenceTypeAirQualityDay.read(from: &buf), 
                 coversUntil: FfiConverterOptionString.read(from: &buf)
         )
@@ -3660,6 +3682,8 @@ public struct FfiConverterTypeAirQualityOverview: FfiConverterRustBuffer {
         FfiConverterOptionTypeSourceCredit.write(value.source, into: &buf)
         FfiConverterOptionTypeAqiReading.write(value.index, into: &buf)
         FfiConverterOptionTypeAirQualityHour.write(value.now, into: &buf)
+        FfiConverterOptionDouble.write(value.scalePosition, into: &buf)
+        FfiConverterOptionString.write(value.comparison, into: &buf)
         FfiConverterSequenceTypeAirQualityDay.write(value.days, into: &buf)
         FfiConverterOptionString.write(value.coversUntil, into: &buf)
     }
@@ -4365,6 +4389,66 @@ public func FfiConverterTypeDeviceFix_lower(_ value: DeviceFix) -> RustBuffer {
 }
 
 
+public struct FeelsLikeDetail: Equatable, Hashable {
+    public var celsius: Double
+    /**
+     * "Wind makes it feel colder."
+     */
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(celsius: Double, 
+        /**
+         * "Wind makes it feel colder."
+         */note: String) {
+        self.celsius = celsius
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FeelsLikeDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFeelsLikeDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FeelsLikeDetail {
+        return
+            try FeelsLikeDetail(
+                celsius: FfiConverterDouble.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FeelsLikeDetail, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.celsius, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeelsLikeDetail_lift(_ buf: RustBuffer) throws -> FeelsLikeDetail {
+    return try FfiConverterTypeFeelsLikeDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeelsLikeDetail_lower(_ value: FeelsLikeDetail) -> RustBuffer {
+    return FfiConverterTypeFeelsLikeDetail.lower(value)
+}
+
+
 /**
  * Where the top of the device points.
  */
@@ -4463,6 +4547,11 @@ public struct HourlyPoint: Equatable, Hashable {
      */
     public var isDay: Bool
     public var windGustsKmh: Double?
+    /**
+     * Pressure reduced to mean sea level.
+     */
+    public var pressureMslHpa: Double?
+    public var uvIndex: Double?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -4472,13 +4561,18 @@ public struct HourlyPoint: Equatable, Hashable {
          */time: String, temperatureC: Double, precipitationProbabilityPct: UInt8?, condition: WeatherCondition, 
         /**
          * Between that day's sunrise and sunset (true when they are unknown).
-         */isDay: Bool, windGustsKmh: Double?) {
+         */isDay: Bool, windGustsKmh: Double?, 
+        /**
+         * Pressure reduced to mean sea level.
+         */pressureMslHpa: Double?, uvIndex: Double?) {
         self.time = time
         self.temperatureC = temperatureC
         self.precipitationProbabilityPct = precipitationProbabilityPct
         self.condition = condition
         self.isDay = isDay
         self.windGustsKmh = windGustsKmh
+        self.pressureMslHpa = pressureMslHpa
+        self.uvIndex = uvIndex
     }
 
     
@@ -4502,7 +4596,9 @@ public struct FfiConverterTypeHourlyPoint: FfiConverterRustBuffer {
                 precipitationProbabilityPct: FfiConverterOptionUInt8.read(from: &buf), 
                 condition: FfiConverterTypeWeatherCondition.read(from: &buf), 
                 isDay: FfiConverterBool.read(from: &buf), 
-                windGustsKmh: FfiConverterOptionDouble.read(from: &buf)
+                windGustsKmh: FfiConverterOptionDouble.read(from: &buf), 
+                pressureMslHpa: FfiConverterOptionDouble.read(from: &buf), 
+                uvIndex: FfiConverterOptionDouble.read(from: &buf)
         )
     }
 
@@ -4513,6 +4609,8 @@ public struct FfiConverterTypeHourlyPoint: FfiConverterRustBuffer {
         FfiConverterTypeWeatherCondition.write(value.condition, into: &buf)
         FfiConverterBool.write(value.isDay, into: &buf)
         FfiConverterOptionDouble.write(value.windGustsKmh, into: &buf)
+        FfiConverterOptionDouble.write(value.pressureMslHpa, into: &buf)
+        FfiConverterOptionDouble.write(value.uvIndex, into: &buf)
     }
 }
 
@@ -4814,6 +4912,64 @@ public func FfiConverterTypeHttpStreamHead_lift(_ buf: RustBuffer) throws -> Htt
 #endif
 public func FfiConverterTypeHttpStreamHead_lower(_ value: HttpStreamHead) -> RustBuffer {
     return FfiConverterTypeHttpStreamHead.lower(value)
+}
+
+
+public struct HumidityDetail: Equatable, Hashable {
+    public var percent: UInt8
+    public var dewPointC: Double?
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(percent: UInt8, dewPointC: Double?, note: String) {
+        self.percent = percent
+        self.dewPointC = dewPointC
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HumidityDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHumidityDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HumidityDetail {
+        return
+            try HumidityDetail(
+                percent: FfiConverterUInt8.read(from: &buf), 
+                dewPointC: FfiConverterOptionDouble.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HumidityDetail, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.percent, into: &buf)
+        FfiConverterOptionDouble.write(value.dewPointC, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHumidityDetail_lift(_ buf: RustBuffer) throws -> HumidityDetail {
+    return try FfiConverterTypeHumidityDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHumidityDetail_lower(_ value: HumidityDetail) -> RustBuffer {
+    return FfiConverterTypeHumidityDetail.lower(value)
 }
 
 
@@ -5144,6 +5300,90 @@ public func FfiConverterTypeLocationOptions_lift(_ buf: RustBuffer) throws -> Lo
 #endif
 public func FfiConverterTypeLocationOptions_lower(_ value: LocationOptions) -> RustBuffer {
     return FfiConverterTypeLocationOptions.lower(value)
+}
+
+
+public struct MoonDetail: Equatable, Hashable {
+    public var phase: MoonPhase
+    /**
+     * Local "HH:MM" today, `None` on a day the moon doesn't rise or set.
+     */
+    public var moonrise: String?
+    public var moonset: String?
+    /**
+     * Local days until the next full moon (0 = today).
+     */
+    public var daysToFullMoon: UInt32
+    /**
+     * "Next full moon in 3 days."
+     */
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(phase: MoonPhase, 
+        /**
+         * Local "HH:MM" today, `None` on a day the moon doesn't rise or set.
+         */moonrise: String?, moonset: String?, 
+        /**
+         * Local days until the next full moon (0 = today).
+         */daysToFullMoon: UInt32, 
+        /**
+         * "Next full moon in 3 days."
+         */note: String) {
+        self.phase = phase
+        self.moonrise = moonrise
+        self.moonset = moonset
+        self.daysToFullMoon = daysToFullMoon
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MoonDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMoonDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MoonDetail {
+        return
+            try MoonDetail(
+                phase: FfiConverterTypeMoonPhase.read(from: &buf), 
+                moonrise: FfiConverterOptionString.read(from: &buf), 
+                moonset: FfiConverterOptionString.read(from: &buf), 
+                daysToFullMoon: FfiConverterUInt32.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MoonDetail, into buf: inout [UInt8]) {
+        FfiConverterTypeMoonPhase.write(value.phase, into: &buf)
+        FfiConverterOptionString.write(value.moonrise, into: &buf)
+        FfiConverterOptionString.write(value.moonset, into: &buf)
+        FfiConverterUInt32.write(value.daysToFullMoon, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMoonDetail_lift(_ buf: RustBuffer) throws -> MoonDetail {
+    return try FfiConverterTypeMoonDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMoonDetail_lower(_ value: MoonDetail) -> RustBuffer {
+    return FfiConverterTypeMoonDetail.lower(value)
 }
 
 
@@ -5615,10 +5855,16 @@ public struct PollenOverview: Equatable, Hashable {
     public var gap: PollenGap?
     public var source: SourceCredit?
     /**
-     * Species the source reports here, highest today first. Empty when the
-     * state has no data.
+     * Species with pollen in the air today, highest first. Species the
+     * source reports as zero all day are left out.
      */
     public var species: [PollenSpeciesNow]
+    /**
+     * One line for the card: "No pollen in the air right now." or
+     * "Birch is highest today, up to 12 grains per cubic metre." Empty
+     * when the state has no data.
+     */
+    public var summary: String
     public var coversUntil: String?
 
     // Default memberwise initializers are never public by default, so we
@@ -5628,13 +5874,19 @@ public struct PollenOverview: Equatable, Hashable {
          * Set when `state` is `NotAvailableHere`.
          */gap: PollenGap?, source: SourceCredit?, 
         /**
-         * Species the source reports here, highest today first. Empty when the
-         * state has no data.
-         */species: [PollenSpeciesNow], coversUntil: String?) {
+         * Species with pollen in the air today, highest first. Species the
+         * source reports as zero all day are left out.
+         */species: [PollenSpeciesNow], 
+        /**
+         * One line for the card: "No pollen in the air right now." or
+         * "Birch is highest today, up to 12 grains per cubic metre." Empty
+         * when the state has no data.
+         */summary: String, coversUntil: String?) {
         self.state = state
         self.gap = gap
         self.source = source
         self.species = species
+        self.summary = summary
         self.coversUntil = coversUntil
     }
 
@@ -5658,6 +5910,7 @@ public struct FfiConverterTypePollenOverview: FfiConverterRustBuffer {
                 gap: FfiConverterOptionTypePollenGap.read(from: &buf), 
                 source: FfiConverterOptionTypeSourceCredit.read(from: &buf), 
                 species: FfiConverterSequenceTypePollenSpeciesNow.read(from: &buf), 
+                summary: FfiConverterString.read(from: &buf), 
                 coversUntil: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -5667,6 +5920,7 @@ public struct FfiConverterTypePollenOverview: FfiConverterRustBuffer {
         FfiConverterOptionTypePollenGap.write(value.gap, into: &buf)
         FfiConverterOptionTypeSourceCredit.write(value.source, into: &buf)
         FfiConverterSequenceTypePollenSpeciesNow.write(value.species, into: &buf)
+        FfiConverterString.write(value.summary, into: &buf)
         FfiConverterOptionString.write(value.coversUntil, into: &buf)
     }
 }
@@ -5867,6 +6121,140 @@ public func FfiConverterTypePollenSpeciesNow_lower(_ value: PollenSpeciesNow) ->
 }
 
 
+public struct PrecipitationDetail: Equatable, Hashable {
+    public var todayMm: Double
+    /**
+     * "Next expected is 4 mm on Tue."
+     */
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(todayMm: Double, 
+        /**
+         * "Next expected is 4 mm on Tue."
+         */note: String) {
+        self.todayMm = todayMm
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PrecipitationDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePrecipitationDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PrecipitationDetail {
+        return
+            try PrecipitationDetail(
+                todayMm: FfiConverterDouble.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PrecipitationDetail, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.todayMm, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePrecipitationDetail_lift(_ buf: RustBuffer) throws -> PrecipitationDetail {
+    return try FfiConverterTypePrecipitationDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePrecipitationDetail_lower(_ value: PrecipitationDetail) -> RustBuffer {
+    return FfiConverterTypePrecipitationDetail.lower(value)
+}
+
+
+public struct PressureDetail: Equatable, Hashable {
+    public var hpa: Double
+    /**
+     * Over the next three hours, when the forecast has hourly pressure.
+     */
+    public var trend: PressureTrend?
+    /**
+     * 0 to 1 between 960 and 1060 hPa, for a dial.
+     */
+    public var scalePosition: Double
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(hpa: Double, 
+        /**
+         * Over the next three hours, when the forecast has hourly pressure.
+         */trend: PressureTrend?, 
+        /**
+         * 0 to 1 between 960 and 1060 hPa, for a dial.
+         */scalePosition: Double, note: String) {
+        self.hpa = hpa
+        self.trend = trend
+        self.scalePosition = scalePosition
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PressureDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePressureDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PressureDetail {
+        return
+            try PressureDetail(
+                hpa: FfiConverterDouble.read(from: &buf), 
+                trend: FfiConverterOptionTypePressureTrend.read(from: &buf), 
+                scalePosition: FfiConverterDouble.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PressureDetail, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.hpa, into: &buf)
+        FfiConverterOptionTypePressureTrend.write(value.trend, into: &buf)
+        FfiConverterDouble.write(value.scalePosition, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePressureDetail_lift(_ buf: RustBuffer) throws -> PressureDetail {
+    return try FfiConverterTypePressureDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePressureDetail_lower(_ value: PressureDetail) -> RustBuffer {
+    return FfiConverterTypePressureDetail.lower(value)
+}
+
+
 /**
  * One `name=value` pair of a URL query, decoded.
  */
@@ -6008,6 +6396,100 @@ public func FfiConverterTypeSourceCredit_lower(_ value: SourceCredit) -> RustBuf
 }
 
 
+public struct SunDetail: Equatable, Hashable {
+    /**
+     * Today's, local "HH:MM". `None` in polar day or night.
+     */
+    public var sunrise: String?
+    public var sunset: String?
+    /**
+     * True when the next of the two is the sunset (the sun is up).
+     */
+    public var nextIsSunset: Bool
+    /**
+     * How far the sun is through today's daylight, 0 to 1; `None` while
+     * it is down.
+     */
+    public var progress: Double?
+    /**
+     * "Sunrise: 08:04." or "Sunset: 15:57." (the other of the two), with
+     * the day's length.
+     */
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Today's, local "HH:MM". `None` in polar day or night.
+         */sunrise: String?, sunset: String?, 
+        /**
+         * True when the next of the two is the sunset (the sun is up).
+         */nextIsSunset: Bool, 
+        /**
+         * How far the sun is through today's daylight, 0 to 1; `None` while
+         * it is down.
+         */progress: Double?, 
+        /**
+         * "Sunrise: 08:04." or "Sunset: 15:57." (the other of the two), with
+         * the day's length.
+         */note: String) {
+        self.sunrise = sunrise
+        self.sunset = sunset
+        self.nextIsSunset = nextIsSunset
+        self.progress = progress
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SunDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSunDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SunDetail {
+        return
+            try SunDetail(
+                sunrise: FfiConverterOptionString.read(from: &buf), 
+                sunset: FfiConverterOptionString.read(from: &buf), 
+                nextIsSunset: FfiConverterBool.read(from: &buf), 
+                progress: FfiConverterOptionDouble.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SunDetail, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.sunrise, into: &buf)
+        FfiConverterOptionString.write(value.sunset, into: &buf)
+        FfiConverterBool.write(value.nextIsSunset, into: &buf)
+        FfiConverterOptionDouble.write(value.progress, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSunDetail_lift(_ buf: RustBuffer) throws -> SunDetail {
+    return try FfiConverterTypeSunDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSunDetail_lower(_ value: SunDetail) -> RustBuffer {
+    return FfiConverterTypeSunDetail.lower(value)
+}
+
+
 /**
  * The person's display units. Reports always store metric values; these
  * apply only when showing them, everywhere through [`crate::format_quantity`].
@@ -6079,6 +6561,150 @@ public func FfiConverterTypeUnitSettings_lift(_ buf: RustBuffer) throws -> UnitS
 #endif
 public func FfiConverterTypeUnitSettings_lower(_ value: UnitSettings) -> RustBuffer {
     return FfiConverterTypeUnitSettings.lower(value)
+}
+
+
+public struct UvDetail: Equatable, Hashable {
+    /**
+     * Now, or today's peak when the source has no reading for now.
+     */
+    public var index: Double
+    public var level: UvLevel
+    /**
+     * "Low", "Very high".
+     */
+    public var label: String
+    /**
+     * 0 to 1 along the 0 to 11+ scale, for a marker.
+     */
+    public var scalePosition: Double
+    /**
+     * "Low for the rest of the day."
+     */
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Now, or today's peak when the source has no reading for now.
+         */index: Double, level: UvLevel, 
+        /**
+         * "Low", "Very high".
+         */label: String, 
+        /**
+         * 0 to 1 along the 0 to 11+ scale, for a marker.
+         */scalePosition: Double, 
+        /**
+         * "Low for the rest of the day."
+         */note: String) {
+        self.index = index
+        self.level = level
+        self.label = label
+        self.scalePosition = scalePosition
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension UvDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeUvDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UvDetail {
+        return
+            try UvDetail(
+                index: FfiConverterDouble.read(from: &buf), 
+                level: FfiConverterTypeUvLevel.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                scalePosition: FfiConverterDouble.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: UvDetail, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.index, into: &buf)
+        FfiConverterTypeUvLevel.write(value.level, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterDouble.write(value.scalePosition, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUvDetail_lift(_ buf: RustBuffer) throws -> UvDetail {
+    return try FfiConverterTypeUvDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUvDetail_lower(_ value: UvDetail) -> RustBuffer {
+    return FfiConverterTypeUvDetail.lower(value)
+}
+
+
+public struct VisibilityDetail: Equatable, Hashable {
+    public var metres: Double
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(metres: Double, note: String) {
+        self.metres = metres
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension VisibilityDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVisibilityDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VisibilityDetail {
+        return
+            try VisibilityDetail(
+                metres: FfiConverterDouble.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: VisibilityDetail, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.metres, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVisibilityDetail_lift(_ buf: RustBuffer) throws -> VisibilityDetail {
+    return try FfiConverterTypeVisibilityDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVisibilityDetail_lower(_ value: VisibilityDetail) -> RustBuffer {
+    return FfiConverterTypeVisibilityDetail.lower(value)
 }
 
 
@@ -6183,6 +6809,92 @@ public func FfiConverterTypeWeatherConfig_lower(_ value: WeatherConfig) -> RustB
 
 
 /**
+ * Every detail card the report has data for; a card whose value the
+ * source didn't send is `None` and not shown.
+ */
+public struct WeatherDetails: Equatable, Hashable {
+    public var feelsLike: FeelsLikeDetail?
+    public var wind: WindDetail?
+    public var humidity: HumidityDetail?
+    public var precipitation: PrecipitationDetail?
+    public var uv: UvDetail?
+    public var visibility: VisibilityDetail?
+    public var pressure: PressureDetail?
+    public var sun: SunDetail?
+    public var moon: MoonDetail
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(feelsLike: FeelsLikeDetail?, wind: WindDetail?, humidity: HumidityDetail?, precipitation: PrecipitationDetail?, uv: UvDetail?, visibility: VisibilityDetail?, pressure: PressureDetail?, sun: SunDetail?, moon: MoonDetail) {
+        self.feelsLike = feelsLike
+        self.wind = wind
+        self.humidity = humidity
+        self.precipitation = precipitation
+        self.uv = uv
+        self.visibility = visibility
+        self.pressure = pressure
+        self.sun = sun
+        self.moon = moon
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WeatherDetails: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWeatherDetails: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WeatherDetails {
+        return
+            try WeatherDetails(
+                feelsLike: FfiConverterOptionTypeFeelsLikeDetail.read(from: &buf), 
+                wind: FfiConverterOptionTypeWindDetail.read(from: &buf), 
+                humidity: FfiConverterOptionTypeHumidityDetail.read(from: &buf), 
+                precipitation: FfiConverterOptionTypePrecipitationDetail.read(from: &buf), 
+                uv: FfiConverterOptionTypeUvDetail.read(from: &buf), 
+                visibility: FfiConverterOptionTypeVisibilityDetail.read(from: &buf), 
+                pressure: FfiConverterOptionTypePressureDetail.read(from: &buf), 
+                sun: FfiConverterOptionTypeSunDetail.read(from: &buf), 
+                moon: FfiConverterTypeMoonDetail.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WeatherDetails, into buf: inout [UInt8]) {
+        FfiConverterOptionTypeFeelsLikeDetail.write(value.feelsLike, into: &buf)
+        FfiConverterOptionTypeWindDetail.write(value.wind, into: &buf)
+        FfiConverterOptionTypeHumidityDetail.write(value.humidity, into: &buf)
+        FfiConverterOptionTypePrecipitationDetail.write(value.precipitation, into: &buf)
+        FfiConverterOptionTypeUvDetail.write(value.uv, into: &buf)
+        FfiConverterOptionTypeVisibilityDetail.write(value.visibility, into: &buf)
+        FfiConverterOptionTypePressureDetail.write(value.pressure, into: &buf)
+        FfiConverterOptionTypeSunDetail.write(value.sun, into: &buf)
+        FfiConverterTypeMoonDetail.write(value.moon, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWeatherDetails_lift(_ buf: RustBuffer) throws -> WeatherDetails {
+    return try FfiConverterTypeWeatherDetails.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWeatherDetails_lower(_ value: WeatherDetails) -> RustBuffer {
+    return FfiConverterTypeWeatherDetails.lower(value)
+}
+
+
+/**
  * What the screen shows for a report, worked out for a given moment by
  * [`crate::weather_overview`]. A cached report gets the same treatment:
  * hours and days already past at the place are left out.
@@ -6229,6 +6941,10 @@ public struct WeatherOverview: Equatable, Hashable {
      * Every source on the page, forecast first, once each.
      */
     public var credits: [SourceCredit]
+    /**
+     * The detail cards: each value with its one-line explanation.
+     */
+    public var details: WeatherDetails
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6259,7 +6975,10 @@ public struct WeatherOverview: Equatable, Hashable {
          */daylightMinutes: UInt32?, 
         /**
          * Every source on the page, forecast first, once each.
-         */credits: [SourceCredit]) {
+         */credits: [SourceCredit], 
+        /**
+         * The detail cards: each value with its one-line explanation.
+         */details: WeatherDetails) {
         self.scene = scene
         self.isDay = isDay
         self.summary = summary
@@ -6274,6 +6993,7 @@ public struct WeatherOverview: Equatable, Hashable {
         self.moon = moon
         self.daylightMinutes = daylightMinutes
         self.credits = credits
+        self.details = details
     }
 
     
@@ -6305,7 +7025,8 @@ public struct FfiConverterTypeWeatherOverview: FfiConverterRustBuffer {
                 pollen: FfiConverterTypePollenOverview.read(from: &buf), 
                 moon: FfiConverterTypeMoonPhase.read(from: &buf), 
                 daylightMinutes: FfiConverterOptionUInt32.read(from: &buf), 
-                credits: FfiConverterSequenceTypeSourceCredit.read(from: &buf)
+                credits: FfiConverterSequenceTypeSourceCredit.read(from: &buf), 
+                details: FfiConverterTypeWeatherDetails.read(from: &buf)
         )
     }
 
@@ -6324,6 +7045,7 @@ public struct FfiConverterTypeWeatherOverview: FfiConverterRustBuffer {
         FfiConverterTypeMoonPhase.write(value.moon, into: &buf)
         FfiConverterOptionUInt32.write(value.daylightMinutes, into: &buf)
         FfiConverterSequenceTypeSourceCredit.write(value.credits, into: &buf)
+        FfiConverterTypeWeatherDetails.write(value.details, into: &buf)
     }
 }
 
@@ -6555,6 +7277,84 @@ public func FfiConverterTypeWind_lift(_ buf: RustBuffer) throws -> Wind {
 #endif
 public func FfiConverterTypeWind_lower(_ value: Wind) -> RustBuffer {
     return FfiConverterTypeWind.lower(value)
+}
+
+
+public struct WindDetail: Equatable, Hashable {
+    public var speedKmh: Double
+    public var gustsKmh: Double?
+    /**
+     * Where the wind comes from, degrees clockwise from north.
+     */
+    public var directionDeg: UInt16?
+    /**
+     * "60° ENE".
+     */
+    public var direction: String?
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(speedKmh: Double, gustsKmh: Double?, 
+        /**
+         * Where the wind comes from, degrees clockwise from north.
+         */directionDeg: UInt16?, 
+        /**
+         * "60° ENE".
+         */direction: String?, note: String) {
+        self.speedKmh = speedKmh
+        self.gustsKmh = gustsKmh
+        self.directionDeg = directionDeg
+        self.direction = direction
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WindDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWindDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WindDetail {
+        return
+            try WindDetail(
+                speedKmh: FfiConverterDouble.read(from: &buf), 
+                gustsKmh: FfiConverterOptionDouble.read(from: &buf), 
+                directionDeg: FfiConverterOptionUInt16.read(from: &buf), 
+                direction: FfiConverterOptionString.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WindDetail, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.speedKmh, into: &buf)
+        FfiConverterOptionDouble.write(value.gustsKmh, into: &buf)
+        FfiConverterOptionUInt16.write(value.directionDeg, into: &buf)
+        FfiConverterOptionString.write(value.direction, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWindDetail_lift(_ buf: RustBuffer) throws -> WindDetail {
+    return try FfiConverterTypeWindDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWindDetail_lower(_ value: WindDetail) -> RustBuffer {
+    return FfiConverterTypeWindDetail.lower(value)
 }
 
 
@@ -8334,6 +9134,79 @@ public func FfiConverterTypePrecipitationUnit_lower(_ value: PrecipitationUnit) 
 
 
 
+public enum PressureTrend: Equatable, Hashable {
+    
+    case rising
+    case steady
+    case falling
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PressureTrend: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePressureTrend: FfiConverterRustBuffer {
+    typealias SwiftType = PressureTrend
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PressureTrend {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .rising
+        
+        case 2: return .steady
+        
+        case 3: return .falling
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PressureTrend, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .rising:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .steady:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .falling:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePressureTrend_lift(_ buf: RustBuffer) throws -> PressureTrend {
+    return try FfiConverterTypePressureTrend.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePressureTrend_lower(_ value: PressureTrend) -> RustBuffer {
+    return FfiConverterTypePressureTrend.lower(value)
+}
+
+
+
+
 public enum PressureUnit: Equatable, Hashable {
     
     case hectopascals
@@ -9141,6 +10014,96 @@ public func FfiConverterTypeTimelineEntry_lift(_ buf: RustBuffer) throws -> Time
 #endif
 public func FfiConverterTypeTimelineEntry_lower(_ value: TimelineEntry) -> RustBuffer {
     return FfiConverterTypeTimelineEntry.lower(value)
+}
+
+
+
+/**
+ * WHO UV index bands.
+ */
+
+public enum UvLevel: Equatable, Hashable {
+    
+    case low
+    case moderate
+    case high
+    case veryHigh
+    case extreme
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension UvLevel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeUvLevel: FfiConverterRustBuffer {
+    typealias SwiftType = UvLevel
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UvLevel {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .low
+        
+        case 2: return .moderate
+        
+        case 3: return .high
+        
+        case 4: return .veryHigh
+        
+        case 5: return .extreme
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: UvLevel, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .low:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .moderate:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .high:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .veryHigh:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .extreme:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUvLevel_lift(_ buf: RustBuffer) throws -> UvLevel {
+    return try FfiConverterTypeUvLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUvLevel_lower(_ value: UvLevel) -> RustBuffer {
+    return FfiConverterTypeUvLevel.lower(value)
 }
 
 
@@ -9977,6 +10940,54 @@ fileprivate struct FfiConverterOptionTypeDailyForecast: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeFeelsLikeDetail: FfiConverterRustBuffer {
+    typealias SwiftType = FeelsLikeDetail?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFeelsLikeDetail.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFeelsLikeDetail.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHumidityDetail: FfiConverterRustBuffer {
+    typealias SwiftType = HumidityDetail?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHumidityDetail.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHumidityDetail.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeLocationFix: FfiConverterRustBuffer {
     typealias SwiftType = LocationFix?
 
@@ -10001,6 +11012,54 @@ fileprivate struct FfiConverterOptionTypeLocationFix: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypePrecipitationDetail: FfiConverterRustBuffer {
+    typealias SwiftType = PrecipitationDetail?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePrecipitationDetail.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePrecipitationDetail.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePressureDetail: FfiConverterRustBuffer {
+    typealias SwiftType = PressureDetail?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePressureDetail.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePressureDetail.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeSourceCredit: FfiConverterRustBuffer {
     typealias SwiftType = SourceCredit?
 
@@ -10017,6 +11076,78 @@ fileprivate struct FfiConverterOptionTypeSourceCredit: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeSourceCredit.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeSunDetail: FfiConverterRustBuffer {
+    typealias SwiftType = SunDetail?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSunDetail.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSunDetail.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeUvDetail: FfiConverterRustBuffer {
+    typealias SwiftType = UvDetail?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeUvDetail.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeUvDetail.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeVisibilityDetail: FfiConverterRustBuffer {
+    typealias SwiftType = VisibilityDetail?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeVisibilityDetail.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeVisibilityDetail.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -10065,6 +11196,30 @@ fileprivate struct FfiConverterOptionTypeWind: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeWind.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeWindDetail: FfiConverterRustBuffer {
+    typealias SwiftType = WindDetail?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeWindDetail.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeWindDetail.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -10137,6 +11292,30 @@ fileprivate struct FfiConverterOptionTypePollenGap: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypePollenGap.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePressureTrend: FfiConverterRustBuffer {
+    typealias SwiftType = PressureTrend?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePressureTrend.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePressureTrend.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }

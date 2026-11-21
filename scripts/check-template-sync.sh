@@ -75,10 +75,37 @@ if [[ -n "$dylibs" ]]; then
   status=1
 fi
 
+# `forge init` outside the checkout pins new apps to the ForgeKit release in
+# forge-release.toml while the checkout's forge-app is that version. So
+# forgekit/ must not change after a release unless forge-app's version moves
+# on too (then `forge init` uses the checkout's forgekit/ until the next
+# release), or new apps get an older ForgeKit than the starter they copy
+# (half-baked audit H19).
+release_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' "$ROOT/forge-release.toml")"
+release_rev="$(sed -n 's/^ixos_rev = "\([0-9a-f]*\)"$/\1/p' "$ROOT/forge-release.toml")"
+app_version="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' "$ROOT/crates/forge-app/Cargo.toml" | head -n 1)"
+if [[ "$app_version" == "$release_version" ]]; then
+  # CI clones shallowly: fetch just the release commit to compare against.
+  git -C "$ROOT" cat-file -e "${release_rev}^{commit}" 2>/dev/null \
+    || git -C "$ROOT" fetch -q --no-tags --depth=1 origin "$release_rev" 2>/dev/null || true
+  if ! git -C "$ROOT" cat-file -e "${release_rev}^{commit}" 2>/dev/null; then
+    echo "error: can't find ixOS ${release_rev:0:12} (forge-release.toml) to compare forgekit/ with" >&2
+    status=1
+  elif ! git -C "$ROOT" diff --quiet "$release_rev" -- forgekit/Sources forgekit/Package.swift; then
+    echo "error: forgekit/ changed since ForgeKit $release_version was released, but forge-app is still $app_version, so forge init would pin new apps to the old ForgeKit. Bump forge-app's version in crates/forge-app/Cargo.toml (docs/builds.md)" >&2
+    status=1
+  fi
+fi
+
 if [[ $status -eq 0 ]]; then
   echo "[forge] No framework crate declares a dylib target (iOS builds on Linux link)."
   echo "[forge] Starter crates use uniffi ${workspace_uniffi}, like the workspace."
   echo "[forge] Android hosts use rustls-platform-verifier ${lock_version}, matching Cargo.lock."
   echo "[forge] Native services interface v${rust_services} in Rust and Swift."
+  if [[ "$app_version" == "$release_version" ]]; then
+    echo "[forge] forgekit/ is unchanged since ForgeKit $release_version."
+  else
+    echo "[forge] forge-app $app_version is unreleased: forge init uses the checkout's forgekit/ (release: $release_version)."
+  fi
 fi
 exit $status

@@ -110,4 +110,4 @@ This is about releasing the framework, not your app.
 
 ### ForgeKit (and ForgeUI)
 
-ForgeKit, including ForgeUI, is released from `forgekit/` by `scripts/forgekit.sh release` and tagged with `crates/forge-app`'s version. That version is the framework version: a release that changes only ForgeUI still bumps it, because the script refuses to reuse a tag ([ADR 002](adr/002-forgeui-in-forgekit.md)). Then update `forge-release.toml` so `forge init` pins new apps to it.
+ForgeKit, including ForgeUI, is released from `forgekit/` by `scripts/forgekit.sh release` and tagged with `crates/forge-app`'s version. That version is the framework version: a release that changes only ForgeUI still bumps it, because the script refuses to reuse a tag ([ADR 002](adr/002-forgeui-in-forgekit.md)). Then update `forge-release.toml` so `forge init` pins new apps to it. Between releases, `scripts/check-template-sync.sh` fails when `forgekit/` has changed since the release while forge-app still has the released version: bump the version in the PR that changes ForgeKit, and `forge init` uses the checkout's `forgekit/` until the next release.

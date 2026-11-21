@@ -5,6 +5,7 @@
 
 mod app;
 mod astro;
+mod details;
 mod error;
 mod indices;
 mod location;
