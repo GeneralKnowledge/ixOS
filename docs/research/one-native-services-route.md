@@ -41,7 +41,7 @@ There are two routes to the same services ([native-services.md](../native-servic
 
 **5. Is the result a clean ForgeKit release boundary?** Yes.
 - Each wave that adds products is a ForgeKit minor release (0.8, 0.9, and so on).
-- The new drift check in `check-template-sync.sh` (#363) stops a release falling behind `forgekit/` again.
+- The new drift check in `check-template-sync.sh` (#363) fails while forge-app's version equals the released one and `forgekit/` has changed since that release. So a change to ForgeKit has to bump the version, and the bump is the reminder to release. It doesn't stop a bumped version going unreleased.
 
 ## The plan
 
@@ -68,7 +68,8 @@ There are two routes to the same services ([native-services.md](../native-servic
   - Commonplace (background, connectivity);
   - Pocket Library (ai);
   - Relay (audio, biometrics, ai, background);
-  - Device Lab (bluetooth, motion, device status, transfers).
+  - Device Lab (bluetooth, motion, device status, transfers);
+  - Checklist, Sketchbook, Sums and Urdu Naturally, which use only the core services and move to `ForgeNative` alone.
 - After that, the macro and the copying are removed.
 - **Rule:** `forge-native`, with each wave deleting its lag entries.
 

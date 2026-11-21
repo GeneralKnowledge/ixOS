@@ -615,8 +615,10 @@ def closure_after(lines, i):
     return " ".join(out)
 
 
-BOTTOM_OVERLAY = re.compile(r"\.overlay\(alignment: \.bottom\)")
-BOTTOM_INSET = re.compile(r"\.safeAreaInset\(edge: \.bottom\b")
+# Matched against a line and the two after it, so arguments split over
+# lines are found too.
+BOTTOM_OVERLAY = re.compile(r"\.overlay\(\s*alignment:\s*\.bottom\s*\)")
+BOTTOM_INSET = re.compile(r"\.safeAreaInset\(\s*edge:\s*\.bottom\b")
 
 
 def rule_floating_bars(app):
@@ -624,9 +626,12 @@ def rule_floating_bars(app):
     for path in swift_sources(app):
         lines = [l.split("//", 1)[0] for l in read(path).splitlines()]
         for i, line in enumerate(lines):
-            if BOTTOM_OVERLAY.search(line) and "onGeometryChange" in closure_after(lines, i):
+            if ".overlay(" not in line and ".safeAreaInset(" not in line:
+                continue
+            head = " ".join(lines[i : i + 3])
+            if BOTTOM_OVERLAY.search(head) and "onGeometryChange" in closure_after(lines, i):
                 bad.append(f"{path.name}:{i + 1}")
-            elif BOTTOM_INSET.search(line) and "Color.clear" in closure_after(lines, i):
+            elif BOTTOM_INSET.search(head) and "Color.clear" in closure_after(lines, i):
                 bad.append(f"{path.name}:{i + 1}")
     if bad:
         return False, "floats a bar by hand; use ForgeUI's forgeBar: " + ", ".join(bad)
