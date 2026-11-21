@@ -245,6 +245,8 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
                     if (again is CancellationException) throw again
                 }
             }
+            // A newer load started meanwhile: this failure no longer applies.
+            if (load != session.loads) return
             // Reading aloud was handing over to this chapter: it stops rather than hang.
             if (readAloud.state.value != ReadAloud.State.STOPPED && readAloud.block.value == null) readAloud.stop()
             if (contents == null || chapter == null) openError = ForgeFailure.from(e) else alert = ForgeAlert.failure(e)
