@@ -88,7 +88,7 @@ struct DevicesView: View {
         // to forget a device, and an alert on the root showed behind it.
         // While a sheet is up, the sheet shows the alerts.
         .forgeAlert(Binding(
-            get: { receivingCode || sendingCode ? nil : model.alert },
+            get: { anySheet ? nil : model.alert },
             set: { model.alert = $0 }
         )) { action in Task { await model.handle(action) } }
         .onAppear(perform: open)
@@ -233,8 +233,9 @@ struct DevicesView: View {
         model.devices.isEmpty && model.transfers.isEmpty
     }
 
+    /// Alerts and offers wait while any sheet is up, the rename sheet too.
     private var anySheet: Bool {
-        receivingCode || sendingCode
+        receivingCode || sendingCode || renaming
     }
 
     private var showingTrustOffer: Bool {

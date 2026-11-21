@@ -88,6 +88,8 @@ struct ForgeRenameSheet: View {
                 Section {
                     TextField("Name", text: $name)
                         .focused($focused)
+                        // What is saving is what the field shows.
+                        .disabled(saving)
                         .submitLabel(.done)
                         .onSubmit(confirm)
                         .onChange(of: name) { refusal = nil }
