@@ -78,6 +78,42 @@ pub struct SavedDevice {
     /// The route of the last connection with it, either way.
     #[serde(default)]
     pub route: Option<RouteKind>,
+    /// Whether this device introduces devices here (My Devices, step 1):
+    /// the devices it trusts are offered to the person, and the ones it
+    /// revokes are revoked here. Off until the person turns it on.
+    #[serde(default)]
+    pub introduces: bool,
+    /// Whether it may see the devices trusted here, so this device can
+    /// introduce them to it. Off until the person turns it on: trust alone
+    /// never shares the list.
+    #[serde(default)]
+    pub sees_devices: bool,
+    /// The introducer that recommended it, when the person trusted it from
+    /// that recommendation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub introduced_by: Option<String>,
+    /// The introducer that revoked it here, when it wasn't the person: the
+    /// person can see it, and trust it again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revoked_by: Option<String>,
+}
+
+/// What an introducer says about its devices (My Devices, step 1).
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct DeviceList {
+    /// The devices it trusts: endpoint id and the name it knows them by.
+    pub trusted: Vec<(String, String)>,
+    /// The devices it has revoked.
+    pub revoked: Vec<String>,
+}
+
+/// What an introducer's list did here.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Introduced {
+    /// Devices to offer the person: endpoint id and name.
+    pub offers: Vec<(String, String)>,
+    /// Devices revoked here because the introducer revoked them.
+    pub revoked: Vec<String>,
 }
 
 fn yes() -> bool {
@@ -150,6 +186,10 @@ impl Devices {
                 d.since_ms = now_ms;
                 d.receives_from = true;
                 d.may_ask = false;
+                d.introduces = false;
+                d.sees_devices = false;
+                d.introduced_by = None;
+                d.revoked_by = None;
                 if !name.is_empty() {
                     d.name = name.into();
                 }
@@ -167,8 +207,107 @@ impl Devices {
                 offers: Vec::new(),
                 told: Vec::new(),
                 route: None,
+                introduces: false,
+                sees_devices: false,
+                introduced_by: None,
+                revoked_by: None,
             }),
         }
+    }
+
+    /// Trusts a device the person accepted from `introducer`'s
+    /// recommendation, and remembers who recommended it.
+    pub fn trust_introduced(
+        &mut self,
+        endpoint_id: &str,
+        name: &str,
+        introducer: &str,
+        now_ms: i64,
+    ) {
+        self.trust(endpoint_id, name, now_ms);
+        if let Some(d) = self.get_mut(endpoint_id) {
+            d.introduced_by = Some(introducer.to_string());
+        }
+    }
+
+    /// Whether the device introduces devices here. Only for a trusted
+    /// device; returns false otherwise.
+    pub fn set_introduces(&mut self, endpoint_id: &str, on: bool) -> bool {
+        match self.get_mut(endpoint_id) {
+            Some(d) if d.trust == SavedTrust::Trusted => {
+                d.introduces = on;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether the device may see the devices trusted here. Only for a
+    /// trusted device; returns false otherwise.
+    pub fn set_sees_devices(&mut self, endpoint_id: &str, on: bool) -> bool {
+        match self.get_mut(endpoint_id) {
+            Some(d) if d.trust == SavedTrust::Trusted => {
+                d.sees_devices = on;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The list this device gives `asker`: the devices trusted and revoked
+    /// here, without the asker itself.
+    pub fn list_for(&self, asker: &str) -> DeviceList {
+        let mut list = DeviceList::default();
+        for d in self.list.iter().filter(|d| d.endpoint_id != asker) {
+            match d.trust {
+                SavedTrust::Trusted => list.trusted.push((d.endpoint_id.clone(), d.name.clone())),
+                SavedTrust::Revoked => list.revoked.push(d.endpoint_id.clone()),
+                SavedTrust::Forgotten => {}
+            }
+        }
+        list
+    }
+
+    /// Applies `list` from `introducer` (My Devices, step 1). Its word
+    /// counts only while it is trusted here and introduces devices.
+    /// Devices it trusts that aren't trusted here are offered, never
+    /// trusted by themselves: a recommendation, which the person decides.
+    /// A device revoked here is never offered again. Devices it revoked
+    /// are revoked here, marked with who did it, so the person can see and
+    /// undo it; it can't revoke itself or this device (`me`).
+    pub fn introduced(&mut self, introducer: &str, me: &str, list: &DeviceList) -> Introduced {
+        let mut done = Introduced::default();
+        if !self
+            .get(introducer)
+            .is_some_and(|d| d.trust == SavedTrust::Trusted && d.introduces)
+        {
+            return done;
+        }
+        for id in &list.revoked {
+            if id == introducer || id == me {
+                continue;
+            }
+            if let Some(d) = self.get_mut(id) {
+                if d.trust == SavedTrust::Trusted {
+                    d.trust = SavedTrust::Revoked;
+                    d.addresses.clear();
+                    d.revoked_by = Some(introducer.to_string());
+                    done.revoked.push(id.clone());
+                }
+            }
+        }
+        for (id, name) in &list.trusted {
+            if id == me || id == introducer {
+                continue;
+            }
+            match self.standing(id) {
+                Some(SavedTrust::Trusted) | Some(SavedTrust::Revoked) => {}
+                None | Some(SavedTrust::Forgotten) => {
+                    done.offers.push((id.clone(), name.clone()));
+                }
+            }
+        }
+        done
     }
 
     /// Applies the pairing policy after a code transfer. Returns what it
@@ -187,6 +326,7 @@ impl Devices {
             Some(d) => {
                 d.trust = SavedTrust::Revoked;
                 d.addresses.clear();
+                d.revoked_by = None;
                 true
             }
             None => false,
@@ -281,6 +421,44 @@ impl Devices {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_introducer_offers_and_revokes_but_never_trusts_or_unseats_itself() {
+        let mut devices = Devices::default();
+        devices.trust("laptop", "Laptop", 1);
+        devices.trust("tablet", "Tablet", 1);
+        let list = DeviceList {
+            trusted: vec![
+                ("new".into(), "New".into()),
+                ("me".into(), "Me".into()),
+                ("tablet".into(), "Tablet".into()),
+            ],
+            revoked: vec!["laptop".into(), "me".into(), "tablet".into()],
+        };
+        // Not an introducer yet: its word counts for nothing.
+        assert_eq!(
+            devices.introduced("laptop", "me", &list),
+            Introduced::default()
+        );
+        assert!(devices.set_introduces("laptop", true));
+        let done = devices.introduced("laptop", "me", &list);
+        assert_eq!(done.offers, [("new".to_string(), "New".to_string())]);
+        assert_eq!(done.revoked, ["tablet"]);
+        assert_eq!(devices.standing("laptop"), Some(SavedTrust::Trusted));
+        assert_eq!(devices.standing("new"), None, "offered, not trusted");
+        let tablet = devices.get("tablet").unwrap();
+        assert_eq!(tablet.revoked_by.as_deref(), Some("laptop"));
+        // A revoked device isn't offered again.
+        let list = DeviceList {
+            trusted: vec![("tablet".into(), "Tablet".into())],
+            revoked: vec![],
+        };
+        assert!(devices.introduced("laptop", "me", &list).offers.is_empty());
+        // The list given to a device leaves that device out.
+        let given = devices.list_for("tablet");
+        assert!(given.trusted.iter().all(|(id, _)| id != "tablet"));
+        assert!(!given.revoked.contains(&"tablet".to_string()));
+    }
     use super::*;
     use AfterCode::*;
     use PairingPolicy::*;
