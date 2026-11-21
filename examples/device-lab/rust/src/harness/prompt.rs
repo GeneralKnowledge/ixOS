@@ -322,7 +322,20 @@ pub fn transcript(project: &str, task: &[Entry]) -> String {
             .map(|r| format!(" ({r})"))
             .unwrap_or_default(),
     );
+    // The model's whole answers, file contents included: the screen
+    // shortens them, the transcript is the evidence.
+    let answers: std::collections::HashMap<u32, &str> = task
+        .iter()
+        .filter_map(|entry| match entry {
+            Entry::Answer { step, text, .. } => Some((*step, text.as_str())),
+            _ => None,
+        })
+        .collect();
     for step in steps(task) {
+        let call = answers
+            .get(&step.index)
+            .copied()
+            .unwrap_or(step.call.as_str());
         text += &format!(
             "\n## Step {} · {} ({} ms model, {} ms tool)\n\n{}\n\n```\n{}\n```\n",
             step.index,
@@ -334,7 +347,7 @@ pub fn transcript(project: &str, task: &[Entry]) -> String {
             } else {
                 format!("Thought: {}", step.thought)
             },
-            step.call
+            call
         );
         if !step.result.is_empty() {
             text += &format!("\nResult:\n\n```\n{}\n```\n", step.result);

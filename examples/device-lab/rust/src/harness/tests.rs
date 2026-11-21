@@ -692,6 +692,11 @@ fn the_scripted_model_completes_every_ladder_task() {
         if task.id == "t3-one-fix" {
             assert!(snapshot.steps[0].result.contains("Not done yet"));
         }
+        if task.id == "t2-one-test" {
+            // The screen shortens the test file; the transcript keeps it.
+            assert!(snapshot.steps[1].call.contains("characters)"));
+            assert!(h.transcript().contains("self.assertEqual(add(2, 3), 5)"));
+        }
     }
     // Every scripted answer parses against the tools it will meet.
     for task in ladder() {
