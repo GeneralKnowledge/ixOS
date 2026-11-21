@@ -658,3 +658,45 @@ fn the_instructions_show_every_tool_in_the_grammars_shape() {
         assert!(parse(&example, &tools).is_ok(), "{example}");
     }
 }
+
+#[test]
+fn the_scripted_model_completes_every_ladder_task() {
+    if !has_python() {
+        return;
+    }
+    for task in ladder() {
+        // Outside the temporary folder, which the guard allows writes to.
+        let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let h = harness(&dir);
+        h.start_ladder_scripted(task.id.into()).unwrap();
+        let snapshot = wait(&h);
+        let record = snapshot.task.unwrap();
+        assert_eq!(
+            record.status,
+            TaskStatus::Completed,
+            "{}: {:?}",
+            task.id,
+            snapshot.steps
+        );
+        assert_eq!(record.model_id, SCRIPTED_MODEL_ID);
+        if task.id == "t1-hello" {
+            let probe = &snapshot.steps[1].result;
+            assert!(!probe.contains("ALLOWED"), "{probe}");
+            assert!(
+                probe.contains("write outside the project blocked"),
+                "{probe}"
+            );
+            assert!(probe.contains("network blocked"), "{probe}");
+            assert!(!dir.path().join("escape.txt").exists());
+        }
+        if task.id == "t3-one-fix" {
+            assert!(snapshot.steps[0].result.contains("Not done yet"));
+        }
+    }
+    // Every scripted answer parses against the tools it will meet.
+    for task in ladder() {
+        for text in super::evidence::script(task.id) {
+            parse(&text, &lab_tools()).unwrap_or_else(|e| panic!("{text}: {e:?}"));
+        }
+    }
+}

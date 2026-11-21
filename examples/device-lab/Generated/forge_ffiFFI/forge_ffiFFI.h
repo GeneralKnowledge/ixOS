@@ -779,6 +779,11 @@ void uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(uint64_t ptr, uint64_
 void uniffi_forge_ffi_fn_method_bonsaiharness_start_ladder(uint64_t ptr, uint64_t model, RustBuffer task_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_LADDER_SCRIPTED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_LADDER_SCRIPTED
+void uniffi_forge_ffi_fn_method_bonsaiharness_start_ladder_scripted(uint64_t ptr, RustBuffer task_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_STOP
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_STOP
 void uniffi_forge_ffi_fn_method_bonsaiharness_stop(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -1916,6 +1921,12 @@ uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_LADDER
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_LADDER
 uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_LADDER_SCRIPTED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_LADDER_SCRIPTED
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder_scripted(void
     
 );
 #endif

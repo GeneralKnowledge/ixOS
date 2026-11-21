@@ -27,7 +27,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use forge_runtime::{lock, logging, now_ms};
-use forge_services::ai::{AiError, ChatRequest, Collect, ModelInfo, TextOut};
+use forge_services::ai::{
+    AiError, ChatRequest, Collect, LanguageModel, ModelInfo, ScriptedModel, TextOut,
+};
 
 use crate::native::ai::{AiModelError, AiModelInfo, AiRequest, TextSink};
 use calls::{parse, with_finish, ToolCall, FINISH};
@@ -102,6 +104,44 @@ pub trait Brain: Send + Sync {
         grammar: Option<&str>,
         out: Arc<dyn TextOut>,
     ) -> Result<(), AiError>;
+}
+
+/// The Scripted model: replays a ladder task's known-good answers
+/// (`evidence::script`), a little slowly so the screen can follow.
+struct ScriptBrain(ScriptedModel);
+
+/// The id the Scripted model records with each task.
+pub const SCRIPTED_MODEL_ID: &str = "scripted";
+
+impl ScriptBrain {
+    fn new(answers: Vec<String>) -> Self {
+        Self(
+            ScriptedModel::new(answers)
+                .info(ModelInfo {
+                    id: SCRIPTED_MODEL_ID.into(),
+                    name: "Scripted".into(),
+                    available: true,
+                    unavailable_reason: None,
+                    context_tokens: 8_192,
+                })
+                .pause(Duration::from_millis(400)),
+        )
+    }
+}
+
+impl Brain for ScriptBrain {
+    fn describe(&self) -> ModelInfo {
+        self.0.describe()
+    }
+
+    fn generate(
+        &self,
+        request: ChatRequest,
+        _grammar: Option<&str>,
+        out: Arc<dyn TextOut>,
+    ) -> Result<(), AiError> {
+        self.0.generate(request, out)
+    }
 }
 
 struct HostBrain(Arc<dyn HarnessModel>);
@@ -328,6 +368,17 @@ impl BonsaiHarness {
             .find(|t| t.id == task_id)
             .ok_or(HarnessError::UnknownTask { id: task_id })?;
         self.start(Arc::new(HostBrain(model)), task)
+    }
+
+    /// Runs a ladder task with the Scripted model: known-good answers
+    /// instead of a real model, to prove the tools, guard, evidence checks
+    /// and journal on this device apart from any model.
+    pub fn start_ladder_scripted(&self, task_id: String) -> Result<(), HarnessError> {
+        let task = evidence::ladder()
+            .into_iter()
+            .find(|t| t.id == task_id)
+            .ok_or(HarnessError::UnknownTask { id: task_id })?;
+        self.start(Arc::new(ScriptBrain::new(evidence::script(task.id))), task)
     }
 
     /// Starts a task in the person's own words, in the scratch project

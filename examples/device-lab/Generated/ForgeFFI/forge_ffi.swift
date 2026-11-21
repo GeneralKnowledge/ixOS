@@ -1676,6 +1676,13 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
     func startLadder(model: HarnessModel, taskId: String) throws 
     
     /**
+     * Runs a ladder task with the Scripted model: known-good answers
+     * instead of a real model, to prove the tools, guard, evidence checks
+     * and journal on this device apart from any model.
+     */
+    func startLadderScripted(taskId: String) throws 
+    
+    /**
      * Stops the model at its next token, or the Python run at its next
      * instruction; the task ends Stopped.
      */
@@ -1823,6 +1830,20 @@ open func startLadder(model: HarnessModel, taskId: String)throws   {try rustCall
     uniffi_forge_ffi_fn_method_bonsaiharness_start_ladder(
             self.uniffiCloneHandle(),
         FfiConverterTypeHarnessModel_lower(model),
+        FfiConverterString.lower(taskId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Runs a ladder task with the Scripted model: known-good answers
+     * instead of a real model, to prove the tools, guard, evidence checks
+     * and journal on this device apart from any model.
+     */
+open func startLadderScripted(taskId: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_start_ladder_scripted(
+            self.uniffiCloneHandle(),
         FfiConverterString.lower(taskId),uniffiCallStatus
     )
 }
@@ -14445,6 +14466,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder() != 34402) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder_scripted() != 32607) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_stop() != 60454) {

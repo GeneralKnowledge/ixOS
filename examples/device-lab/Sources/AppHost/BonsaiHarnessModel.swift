@@ -16,8 +16,14 @@ public final class BonsaiHarnessModel {
     public private(set) var error: String?
     /// The person's own task.
     public var request = ""
-    /// Which model runs the task (a `LlamaModelFile` id).
+    /// Which model runs the task: a `LlamaModelFile` id, or
+    /// `scriptedID` for the known-good answers that test the harness itself.
     public var modelID: String = LlamaModelFile.catalogue[0].id
+
+    /// The Scripted model: replays a ladder task's known-good answers, to
+    /// prove the tools, guard and journal on this phone apart from Bonsai.
+    public static let scriptedID = "scripted"
+    public var isScripted: Bool { modelID == Self.scriptedID }
 
     @ObservationIgnored private let harness: BonsaiHarness?
     @ObservationIgnored private var models: [String: LlamaCppModel] = [:]
@@ -43,8 +49,8 @@ public final class BonsaiHarnessModel {
     /// Copies Rust's snapshot four times a second until the calling task is
     /// cancelled (attach with `.task`).
     public func follow() async {
-        if let first = downloadedModels.first, !downloadedModels.contains(where: { $0.id == modelID }) {
-            modelID = first.id
+        if !isScripted, !downloadedModels.contains(where: { $0.id == modelID }) {
+            modelID = downloadedModels.first?.id ?? Self.scriptedID
         }
         if snapshot?.task == nil, let harness {
             // Show the last task of the scratch project after a relaunch
@@ -67,6 +73,10 @@ public final class BonsaiHarnessModel {
     }
 
     public func run(_ task: HarnessTask) {
+        if isScripted, let harness {
+            attempt { try harness.startLadderScripted(taskId: task.id) }
+            return
+        }
         perform { harness, model in
             try harness.startLadder(model: model, taskId: task.id)
         }
@@ -99,8 +109,12 @@ public final class BonsaiHarnessModel {
         }
         let model = models[file.id] ?? LlamaCppModel(file: file)
         models[file.id] = model
+        attempt { try start(harness, model) }
+    }
+
+    private func attempt(_ start: () throws -> Void) {
         do {
-            try start(harness, model)
+            try start()
             error = nil
         } catch let failure as HarnessError {
             error = failure.message

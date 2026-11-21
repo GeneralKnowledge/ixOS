@@ -42,18 +42,23 @@ struct BonsaiHarnessView: View {
 
     private var modelSection: some View {
         Section {
+            Picker("Model", selection: $model.modelID) {
+                ForEach(model.downloadedModels) { file in
+                    Text(file.name).tag(file.id)
+                }
+                Text("Scripted (tests the harness)").tag(BonsaiHarnessModel.scriptedID)
+            }
+            .disabled(model.isRunning)
+            .accessibilityIdentifier("harness.model")
             if model.downloadedModels.isEmpty {
-                Text("Download a Bonsai model first, in Tools, Bonsai on iPhone.")
+                Text("Download a Bonsai model in Tools, Bonsai on iPhone, to let Bonsai do the tasks.")
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("harness.noModel")
-            } else {
-                Picker("Model", selection: $model.modelID) {
-                    ForEach(model.downloadedModels) { file in
-                        Text(file.name).tag(file.id)
-                    }
-                }
-                .disabled(model.isRunning)
-                .accessibilityIdentifier("harness.model")
+            }
+            if model.isScripted {
+                Text("Scripted replays known-good answers for the ladder tasks, so a run proves the tools, the guard and the evidence checks on this phone without a model.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         } header: {
             Text("Model")
@@ -77,14 +82,13 @@ struct BonsaiHarnessView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                .disabled(model.downloadedModels.isEmpty)
                 .accessibilityIdentifier("harness.task.\(task.id)")
             }
             TextField("Your own task", text: $model.request, axis: .vertical)
                 .lineLimit(2...5)
                 .accessibilityIdentifier("harness.request")
             Button("Run My Task", systemImage: "play.fill") { model.runRequest() }
-                .disabled(model.downloadedModels.isEmpty || model.request.isEmpty)
+                .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.runRequest")
         } header: {
             Text("Tasks")

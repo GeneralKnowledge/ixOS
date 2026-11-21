@@ -160,6 +160,7 @@ Python Lab's "Standard library check" prints 22 of 22; AI Lab with Bonsai 4B ans
 - **Verifier:** acceptance criteria against evidence; `finish` without evidence goes back to work.
 - **Python Lab adapter:** `list_files`, `read_file`, `write_file` (with the syntax check), `run_python`, `run_tests`, the wrapper and the guard.
 - **Screen:** Tools ▸ **Bonsai Harness**: pick the model, pick a ladder task or type one, watch each step and the task's status, Stop, copy the transcript, read the project's files.
+- **Scripted model** (from Terrarium's self-test): a model choice that replays known-good answers for T1 to T3, so the sitting first proves the tools, guard, evidence checks and journal on the phone with no model involved. Scripted T1 starts with a probe that tries a write outside the project and a network connection; both must print `blocked`.
 
 | Task | Acceptance (from evidence) |
 |---|---|
@@ -167,7 +168,7 @@ Python Lab's "Standard library check" prints 22 of 22; AI Lab with Bonsai 4B ans
 | T2 One file, one test: "Write mathutil.py with add(a, b) and test_mathutil.py with a unittest test for it, then run the tests." | tests pass (at least 1) |
 | T3 One fix: the project has `average.py` with a bug and a failing test. "Run the tests and fix the bug." | tests pass, `test_average.py` unchanged |
 
-Also in the sitting: Stop during a model turn and during an endless Python loop; writing `../escape.py` is refused; T1 in airplane mode.
+The sitting starts with Scripted T1, T2 and T3 (all three must complete, T1's probe shows both blocked), then the same tasks on the 4B. Also in the sitting: Stop during a model turn and during an endless Python loop; writing `../escape.py` is refused; T1 in airplane mode.
 
 ### H2: a reliable model interface
 

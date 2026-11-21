@@ -204,3 +204,95 @@ pub fn ladder() -> Vec<LadderTask> {
         },
     ]
 }
+
+/// One answer of a known-good run: the JSON a model would write.
+fn answer(thought: &str, tool: &str, args: &[(&str, &str)]) -> String {
+    let mut text = format!(
+        "{{\"thought\": {}, \"tool\": {}",
+        serde_json::to_string(thought).unwrap_or_default(),
+        serde_json::to_string(tool).unwrap_or_default()
+    );
+    for (name, value) in args {
+        text.push_str(&format!(
+            ", {}: {}",
+            serde_json::to_string(name).unwrap_or_default(),
+            serde_json::to_string(value).unwrap_or_default()
+        ));
+    }
+    text.push('}');
+    text
+}
+
+/// A probe the scripted T1 runs first: on the phone it shows the guard
+/// blocking a write outside the project and a network connection.
+const GUARD_PROBE: &str = "import socket\n\nattempts = [\n    (\"write outside the project\", lambda: open(\"../escape.txt\", \"w\")),\n    (\"network\", lambda: socket.create_connection((\"example.com\", 80), 2)),\n]\nfor name, attempt in attempts:\n    try:\n        attempt()\n        print(name, \"ALLOWED\")\n    except Exception as error:\n        print(name, \"blocked:\", type(error).__name__)\n";
+
+/// The answers of a known-good run of a ladder task, for the Scripted
+/// model: it proves the tools, the guard, the evidence checks and the
+/// journal on the phone apart from any real model (an idea from
+/// Terrarium's self-test). T3 claims done too early once, to show the
+/// harness sending it back.
+pub fn script(task_id: &str) -> Vec<String> {
+    let finish = |summary: &str| answer("Done.", super::calls::FINISH, &[("summary", summary)]);
+    match task_id {
+        "t1-hello" => vec![
+            answer(
+                "Check the guard first.",
+                "write_file",
+                &[("path", "probe.py"), ("content", GUARD_PROBE)],
+            ),
+            answer("Run the probe.", "run_python", &[("path", "probe.py")]),
+            answer(
+                "Write the program.",
+                "write_file",
+                &[
+                    ("path", "hello.py"),
+                    ("content", "print(\"Hello from Bonsai\")\n"),
+                ],
+            ),
+            answer("Run it.", "run_python", &[("path", "hello.py")]),
+            finish("hello.py prints Hello from Bonsai."),
+        ],
+        "t2-one-test" => vec![
+            answer(
+                "Write the function.",
+                "write_file",
+                &[
+                    ("path", "mathutil.py"),
+                    ("content", "def add(a, b):\n    return a + b\n"),
+                ],
+            ),
+            answer(
+                "Write its test.",
+                "write_file",
+                &[
+                    ("path", "test_mathutil.py"),
+                    (
+                        "content",
+                        "import unittest\n\nfrom mathutil import add\n\n\nclass AddTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n",
+                    ),
+                ],
+            ),
+            answer("Run the tests.", "run_tests", &[]),
+            finish("add and its test pass."),
+        ],
+        "t3-one-fix" => vec![
+            finish("Fixed the bug."),
+            answer("See what fails.", "run_tests", &[]),
+            answer(
+                "Divide by the count.",
+                "write_file",
+                &[
+                    ("path", "average.py"),
+                    (
+                        "content",
+                        "def average(numbers):\n    \"\"\"The mean of a list of numbers.\"\"\"\n    return sum(numbers) / len(numbers)\n",
+                    ),
+                ],
+            ),
+            answer("Check the fix.", "run_tests", &[]),
+            finish("average divides by the count; the test passes."),
+        ],
+        _ => vec![],
+    }
+}
