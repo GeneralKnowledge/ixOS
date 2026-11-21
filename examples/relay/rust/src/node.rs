@@ -389,7 +389,7 @@ pub(crate) fn device_key_in(
         None => {
             let key: [u8; 32] = match std::fs::read(&file) {
                 Ok(bytes) => bytes.try_into().map_err(|_| unreadable(KEY_FILE))?,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => forge_devproto::new_secret(),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => crate::hex::random(),
                 Err(e) => return Err(file_error(e)),
             };
             store
