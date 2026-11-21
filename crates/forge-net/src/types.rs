@@ -46,7 +46,10 @@ pub struct Request {
     /// Whether the transport follows redirects itself (the default). With
     /// `false` a 3xx answer comes back as the response, `Location` header
     /// included, so the caller can check where it points before asking
-    /// there: for addresses that came from untrusted content.
+    /// there: for addresses that came from untrusted content. One exception:
+    /// the Android transport (`HttpURLConnection`) streams a request's body
+    /// and can't send it again, so a request with a body gets its 3xx back
+    /// even when this is `true`.
     pub follow_redirects: bool,
 }
 

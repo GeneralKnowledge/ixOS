@@ -6,3 +6,6 @@ bundleID: org.forgemobile.devicelab
 product: AppHostXtool
 infoPath: Info.plist
 iconPath: Resources/AppIcon.png
+# [ios] string_catalogs (compiled) and [ios] resources; xtool copies each to the bundle root.
+resources:
+  - Generated/Python/python

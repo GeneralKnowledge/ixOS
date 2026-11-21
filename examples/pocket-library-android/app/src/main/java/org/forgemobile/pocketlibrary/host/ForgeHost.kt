@@ -12,6 +12,7 @@
 package org.forgemobile.pocketlibrary.host
 
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,13 +61,25 @@ data class ForgeEnvironment(val dataDirectory: String, val cachesDirectory: Stri
         const val TEMPORARY_DATA_EXTRA = "forge.temporaryData"
 
         /**
-         * `<files>/<app>/data` and `<cache>/<app>`, or, with [temporary], an empty folder under
-         * the cache that each launch starts afresh.
+         * With [TEMPORARY_DATA_EXTRA], keeps the last launch's throwaway data instead of
+         * emptying it: a relaunch that checks something was saved. iOS's `-ForgeKeepTestData`.
          */
-        fun standard(app: String, files: File, cache: File, temporary: Boolean): ForgeEnvironment {
+        const val KEEP_TEST_DATA_EXTRA = "forge.keepTestData"
+
+        /**
+         * `<files>/<app>/data` and `<cache>/<app>`, or, with [temporary], a folder under the
+         * cache that each launch empties unless it [keep]s it.
+         */
+        fun standard(
+            app: String,
+            files: File,
+            cache: File,
+            temporary: Boolean,
+            keep: Boolean = false,
+        ): ForgeEnvironment {
             if (temporary) {
                 val base = File(cache, "forge-test-$app")
-                base.deleteRecursively()
+                if (!keep) base.deleteRecursively()
                 return make(File(base, "data"), File(base, "caches"))
             }
             return make(File(File(files, app), "data"), File(cache, app))
@@ -127,6 +140,8 @@ class ForgeHost<Core : ForgeCore>(
     var core: Core? = null
         private set
 
+    /** Read by the listener's pool thread too: it tells a closed stream from a broken one. */
+    @Volatile
     private var stream: RuntimeEvents? = null
     private var listener: Job? = null
     private var opening = false
@@ -152,6 +167,10 @@ class ForgeHost<Core : ForgeCore>(
             }
             val opened = try {
                 withContext(io) { open(environment()) }
+            } catch (e: CancellationException) {
+                // Whoever started it went away; that isn't a failure to open. Start again later.
+                _status.value = Status.Closed
+                throw e
             } catch (e: Exception) {
                 _status.value = Status.Failed(e.message ?: "The app's data couldn't be opened ($e).", e)
                 return
@@ -182,12 +201,16 @@ class ForgeHost<Core : ForgeCore>(
 
     /** Ends the event loop and shuts the core down. Committed work is already on disk. */
     fun close() {
-        stream?.cancel()
+        val events = stream
+        // Cleared first, so a listener that finds the stream freed knows it was closed.
+        stream = null
+        events?.cancel()
         listener?.cancel()
         core?.shutdown()
         core?.close()
-        stream?.close()
-        stream = null
+        // Freed now, not when the listener ends: the stream keeps the runtime, and with it the
+        // data folder's lock, until it is freed, and a reopen must find the folder free.
+        events?.close()
         listener = null
         core = null
         _status.value = Status.Closed
@@ -204,7 +227,12 @@ class ForgeHost<Core : ForgeCore>(
         // from Rust's waker, and a dispatcher that resumes in place re-enters Rust there.
         listener = scope.launch(io) {
             while (true) {
-                val event = events.next() ?: break
+                val event = try {
+                    events.next()
+                } catch (e: IllegalStateException) {
+                    // close() freed the stream between two reads; anything else is a real error.
+                    if (stream !== events) break else throw e
+                } ?: break
                 when (event) {
                     is RuntimeEvent.Changed -> {
                         revision = event.revision
