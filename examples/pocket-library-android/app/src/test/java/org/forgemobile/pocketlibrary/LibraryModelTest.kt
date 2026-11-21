@@ -281,4 +281,82 @@ class LibraryModelTest {
         assertEquals("https://example.com/c.jpg", edited.coverUrl)
         assertEquals("Piranesi by S. Clarke is on my reading list.", LibraryModel.shareText(edited))
     }
+
+    /** Settings' default order is saved, the list follows it at once, and a relaunch keeps it. */
+    @Test
+    fun theDefaultSortIsSavedAndFollowed() = runBlocking {
+        model.add(input("Beloved", "Toni Morrison"))
+        model.add(input("Atonement", "Ian McEwan"))
+        model.setDefaultSort(LibrarySort.TITLE)
+        assertEquals(LibrarySort.TITLE, model.sort.value)
+        assertEquals(listOf("Atonement", "Beloved"), model.books.value.map { it.title })
+
+        relaunch()
+        withTimeout(5_000) { model.settings.first { it.defaultSort == LibrarySort.TITLE } }
+        assertEquals(LibrarySort.TITLE, model.sort.value)
+    }
+
+    /**
+     * A backup restores the library as it was (after an erase), and storage counts what the
+     * library holds. A file that isn't a backup is refused and changes nothing.
+     */
+    @Test
+    fun aBackupRestoresTheLibraryAfterAnErase() = runBlocking {
+        // The sample goes only into an empty library.
+        model.addSampleBook(File(root, "Sample Book.epub"))
+        model.add(input("Middlemarch", "George Eliot"))
+        model.setCatalogueEnabled(false)
+        val stored = model.storageInfo()!!
+        assertEquals(2u, stored.books)
+        assertEquals(1u, stored.savedBooks)
+
+        val backup = File(root, "copy.zip")
+        File(model.backupLibrary()).copyTo(backup)
+
+        model.eraseLibrary()
+        model.setCatalogueEnabled(true)
+        assertTrue(model.all.value.isEmpty())
+        assertEquals(0u, model.storageInfo()!!.savedBooks)
+
+        val notABackup = File(root, "notes.zip").apply { writeText("not a backup") }
+        assertTrue(runCatching { model.restoreLibrary(notABackup.path) }.exceptionOrNull() is LibraryException)
+        assertTrue(model.all.value.isEmpty())
+
+        assertEquals(2u, model.restoreLibrary(backup.path))
+        assertEquals(setOf("Middlemarch", "The Lighthouse Keeper"), model.all.value.map { it.title }.toSet())
+        assertEquals(1u, model.storageInfo()!!.savedBooks)
+        // The backup's settings come back with it.
+        assertFalse(model.settings.value.catalogueEnabled)
+        assertTrue(model.all.value.single { it.title == "The Lighthouse Keeper" }.canRead)
+    }
+
+    /** A spreadsheet export reads back in; unreadable rows are skipped and listed by line. */
+    @Test
+    fun aSpreadsheetExportImportsBack() = runBlocking {
+        model.add(input("Middlemarch", "George Eliot"))
+        val csv = File(root, "books.csv")
+        File(model.exportBooksCsv()).copyTo(csv)
+        model.eraseLibrary()
+
+        val summary = model.importBooksCsv(csv.path)
+        assertEquals(1u, summary.added)
+        assertTrue(summary.skipped.isEmpty())
+        assertEquals("George Eliot", model.all.value.single().author)
+        assertEquals("1 book added", org.forgemobile.pocketlibrary.ui.importSummary(summary).title)
+
+        val rows = File(root, "rows.csv").apply { writeText("Title,Author\nDune,Frank Herbert\n,Nobody\n") }
+        val mixed = model.importBooksCsv(rows.path)
+        assertEquals(1u, mixed.added)
+        assertEquals(1, mixed.skipped.size)
+        val alert = org.forgemobile.pocketlibrary.ui.importSummary(mixed)
+        assertEquals("1 book added", alert.title)
+        assertTrue(alert.message!!.startsWith("1 rows skipped:\nLine 3"))
+    }
+
+    /** A library that closed normally wasn't cut short. */
+    @Test
+    fun aNormalCloseIsNotCutShort() = runBlocking {
+        relaunch()
+        assertFalse(model.lastRunWasCutShort)
+    }
 }
