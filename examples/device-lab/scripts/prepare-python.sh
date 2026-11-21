@@ -31,16 +31,16 @@ BUNDLE_PREFIX="org.forgemobile.devicelab.python"
 
 app_dir="${FORGE_APP_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 out="$app_dir/Generated/Python"
-# What this script makes: a new version or a changed script starts over.
-stamp_want="$VERSION $(sha256sum "$0" 2>/dev/null | cut -c1-16 || shasum -a 256 "$0" | cut -c1-16)"
-if [[ -f "$out/.prepared" && "$(cat "$out/.prepared")" == "$stamp_want" ]]; then
-  exit 0
-fi
-
 sha256() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1
   else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
+
+# What this script makes: a new version or a changed script starts over.
+stamp_want="$VERSION $(sha256 "$0" | cut -c1-16)"
+if [[ -f "$out/.prepared" && "$(cat "$out/.prepared")" == "$stamp_want" ]]; then
+  exit 0
+fi
 
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/forge/downloads"
 tarball="$cache/python-${VERSION}-iOS-XCframework.tar.gz"
