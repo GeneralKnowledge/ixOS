@@ -15,9 +15,25 @@ each one says what already does it and what would prove it.
 > communication, permissions and reliable exchange. Applications,
 > services and other participants build on top of that layer.
 
+Its promise, in three parts:
+
+- **Connect securely.** Find devices and people, make authenticated
+  connections, and handle connectivity without the person seeing it.
+- **Exchange reliably.** Messages, files and later other structured
+  information, even when the other side isn't there yet.
+- **Stay in control.** Explicit trust, permissions, revocation, privacy
+  and ownership.
+
 The goal is not to build a personal computing network or a social
 platform. It is to make Relay exceptionally good at securely connecting
-things, and let the larger ideas grow out of that.
+things, and let the larger ideas grow out of that. The architecture
+stays deliberately smaller than the list of things it might support.
+
+**Setup is an acceptance criterion for all Relay work,** not one
+stage's feature: a person sees devices, people and conversations, and
+Relay deals with the networking underneath. Work that is
+cryptographically right but needs the person to understand networking
+hasn't met the promise.
 
 **The test for every idea:** does it need a new underlying capability,
 or can it be built from what Relay already provides? If it can, build it
@@ -38,7 +54,9 @@ interoperates, such as MLS or Nostr.
 3. **Secure communication.** Encrypted connections, authenticated peers,
    group encryption, explicit permissions.
 4. **Reliable exchange.** Messages, files and attachments, later
-   structured requests, with retries, offline queues and deduplication.
+   structured requests: durable queues, retries after interruption,
+   stable ids, deduplication by the receiver, order where the protocol
+   needs it, and explicit completion and failure.
 5. **Persistence.** Conversations, identities, pending deliveries and
    task state survive restarts and network interruptions.
 6. **Authorisation.** Trust admits; it grants nothing else. Every device,
@@ -71,7 +89,7 @@ yet done.
 | Trust and revocation | A trusted-device list; revoked is refused for good until the person trusts again | `trust.rs` |
 | Authorisation | Separate rights per device, never implied by trust: "may send here" (`receives_from`), "may ask" (`may_ask`, #344) | `trust.rs` |
 | Secure communication | iroh's encrypted, authenticated connections; one protocol (ALPN) per job: word codes, device messages, files | `node.rs`, `device.rs` |
-| Reliable exchange | One outbox for messages and files: they wait, retry and arrive once, in order (#340); files resumable and verified (iroh-blobs) | `outbox.rs` |
+| Reliable exchange | One durable outbox for messages and files (#340): retried after an interruption, with stable ids the receiver uses to drop duplicates, in order per device, ending Done or Failed; files resumable and verified (iroh-blobs). Not exactly-once under every failure: duplicates are dropped by id, not prevented | `outbox.rs` |
 | Persistence | One SQLite database, changed in transactions (#347) | `store.rs` |
 | Connectivity | Bonjour nearby; private networks (Tailscale); Relay's relay and lookup (pkarr) in Hybrid only; Private never uses the servers | `resolver.rs`, `presence.rs` |
 | Servers | relay.avedeus.ovh (forwards encrypted connections) and lookup.avedeus.ovh (publishes only the relay address) | Hetzner |
@@ -106,6 +124,19 @@ Where each one stops:
 No new transport abstraction, crypto framework or messaging engine comes
 in unless one of these hits a concrete limit.
 
+**For every new requirement, before building:**
+
+1. Does an existing library or protocol already solve it?
+2. Can it work with Relay's identity and trust model?
+3. Does it bring a second source of truth?
+4. What does it add to run and operate?
+5. Is building it ourselves genuinely necessary?
+
+The aim is the smallest combination that gives Relay the properties it
+needs, not every interesting technology. This applies in particular to
+MLS for groups, Nostr for interoperability, existing secure messaging
+protocols, service discovery and remote access, and task queues.
+
 ## The biggest gap: two messaging systems
 
 Relay holds two messaging systems today:
@@ -124,7 +155,7 @@ frozen when Chat merged in was right at the time
 stronger: **all communication uses one security model, even when it is
 delivered different ways.** The plan keeps the messaging engine
 (chat-core) and its screens, and moves the server path onto Relay's
-identities and encryption, stage N3 below.
+identities and encryption, stage N4 below.
 
 ## Easy setup
 
@@ -156,25 +187,33 @@ Relay's claims are kept separate:
 | Availability | Devices still reach each other when a server is down, where the route allows (nearby, Tailscale) |
 | User authority | Revoking a device removes its access, including a transfer in progress (#344) |
 
-The chat server path makes none of these claims until N3.
+The chat server path makes none of these claims until N4.
 
 ## The stages after 1.0
 
-Named N1 to N8, because M1 and M2 already mean reliable delivery and the
-personal network in the existing docs and PRs. Each stage follows the
-layer, not a product.
+These stages describe possible dependencies and a useful order for
+exploration, not a commitment to build every stage. Each one must justify
+itself through practical use, or through evidence of a limit in the
+existing layer.
+
+M1 and M2 keep their definitions and acceptance criteria
+([Reliable Trusted-Device Delivery](relay-reliable-delivery.md) and the
+Personal Device Network in the [M1/M2 brief](relay-m1-m2-brief.md)); the
+1.0 acceptance run proves them together on the phone, it doesn't replace
+them. The stages after them are named N1 to N9 so they don't collide.
 
 | Stage | Focus | Purpose |
 |---|---|---|
-| 1.0 | #353 and the phone acceptance run | Prove the device foundation ([audit, step 5](relay-audit-2026-11.md)) |
+| M1, M2 | Reliable Trusted-Device Delivery, Personal Device Network | As defined; with #353 and the 1.0 acceptance run, the proven device foundation ([audit, step 5](relay-audit-2026-11.md)) |
 | N1 | My Devices | A person's identity across devices; trust and revoke once |
-| N2 | Away from home and the mailbox | Secure communication that works without manual networking; work waits while a device is away |
-| N3 | One messaging security model | The chat server path on Relay's identities and encryption |
-| N4 | Capabilities and permissions | Devices offer services safely, each behind its own right |
-| N5 | The first capability | Sites, or transcription on the laptop: proof that new functions come from the layer |
-| N6 | Groups and people | Rooms and Spaces on MLS, people beyond your own devices |
-| N7 | Continuity and cooperation | Sync, handover, tasks (Workshop) |
-| N8 | Federation and other participants | Nostr interoperability; AI agents with restricted rights, last |
+| N2 | Away from home | Secure communication beyond the home network, without manual networking |
+| N3 | The encrypted mailbox | Somewhere things wait while a device is away: its own security, retention and availability questions ([review, refinement 3](relay-review-2026-11.md)) |
+| N4 | One messaging security model | The chat server path on Relay's identities and encryption |
+| N5 | Capabilities and permissions | Devices offer services safely, each behind its own right |
+| N6 | The first capability | Sites, or transcription on the laptop: proof that new functions come from the layer |
+| N7 | Groups and people | Rooms and Spaces on MLS, people beyond your own devices |
+| N8 | Continuity and cooperation | Sync, handover, tasks (Workshop) |
+| N9 | Federation and other participants | Nostr interoperability; AI agents with restricted rights, last |
 
 Not started yet, on purpose: Social, Computing and Workshop.
 
@@ -182,21 +221,21 @@ Not started yet, on purpose: Social, Computing and Workshop.
 
 | Earlier | Now |
 |---|---|
-| M1 Reliable Delivery, M2 Personal Network ([future directions](relay-future-directions.md)) | 1.0 |
-| M3 Universal Exchange | N7 |
-| M4 People and Rooms | N1 (a person's identity), N6 (rooms and groups) |
-| M5 Capabilities and Extensions | N4 (the model), N8 (outside developers) |
-| M6 Distributed Intelligence | N7 (tasks), N8 (agents) |
-| M7 Private Service Network | N4, N5 |
-| M8 Open Network Ecosystem | N8 |
-| Computing M3 to M9 ([relay-computing.md](relay-computing.md)) | N4, N5, N7, N8 |
+| M1 Reliable Delivery, M2 Personal Network ([future directions](relay-future-directions.md)) | Kept as M1 and M2 |
+| M3 Universal Exchange | N8 |
+| M4 People and Rooms | N1 (a person's identity), N7 (rooms and groups) |
+| M5 Capabilities and Extensions | N5 (the model), N9 (outside developers) |
+| M6 Distributed Intelligence | N8 (tasks), N9 (agents) |
+| M7 Private Service Network | N5, N6 |
+| M8 Open Network Ecosystem | N9 |
+| Computing M3 to M9 ([relay-computing.md](relay-computing.md)) | N5, N6, N8, N9 |
 | Social S1 ([relay-social.md](relay-social.md)) | N1 |
-| Social S2 to S8 | N6, N8 |
-| Rooms on Nostr ([relay-rooms-protocols.md](relay-rooms-protocols.md)) | N6 |
-| Foundations R0 to R7 ([study](relay-foundations-study.md)) | Research behind N4 to N7 |
-| Review P5 My Devices, P6 mailbox ([review](relay-review-2026-11.md)) | N1, N2 |
-| Sites over Relay (parked, [audit](relay-audit-2026-11.md)) | N5 |
-| Chat's server mode ([relay-chat-merge.md](relay-chat-merge.md)) | N3 |
+| Social S2 to S8 | N7, N9 |
+| Rooms on Nostr ([relay-rooms-protocols.md](relay-rooms-protocols.md)) | N7 |
+| Foundations R0 to R7 ([study](relay-foundations-study.md)) | Research behind N5 to N8 |
+| Review P5 My Devices, P6 mailbox ([review](relay-review-2026-11.md)) | N1, N3 |
+| Sites over Relay (parked, [audit](relay-audit-2026-11.md)) | N6 |
+| Chat's server mode ([relay-chat-merge.md](relay-chat-merge.md)) | N4 |
 
 ## Research underneath
 
@@ -222,4 +261,4 @@ Design explorations that refer back here:
   applications and the earlier milestones.
 - [relay-audit-2026-11.md](relay-audit-2026-11.md): the 1.0 plan and Sites
   over Relay.
-- [messaging.md](messaging.md): the chat server path that N3 moves.
+- [messaging.md](messaging.md): the chat server path that N4 moves.
