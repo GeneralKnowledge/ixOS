@@ -266,7 +266,11 @@ private fun Footer(text: String) {
 /** A label and its value on one line (SwiftUI's LabeledContent). */
 @Composable
 private fun Value(label: String, value: String, tag: String) {
-    Row(Modifier.fillMaxWidth().testTag(tag).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    // One element for TalkBack ("Books, 1") and for tests, which find the value by the row's tag.
+    Row(
+        Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}.testTag(tag).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

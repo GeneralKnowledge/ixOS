@@ -69,6 +69,12 @@ if [ "$(pid)" = "$before" ]; then
     echo "FAIL: the app's process ($before) is still running" >&2
     exit 1
 fi
+# A stall between the check above and the kill could let the import start first; then this run
+# would prove nothing, so it fails.
+if [ $(( $(date +%s) - launched )) -ge 88 ]; then
+    echo "FAIL: the process ended too close to when the import starts, so this run proves nothing" >&2
+    exit 1
+fi
 echo "   process $before ended"
 
 echo "3. Open the app again on the same throwaway library: the import finishes"

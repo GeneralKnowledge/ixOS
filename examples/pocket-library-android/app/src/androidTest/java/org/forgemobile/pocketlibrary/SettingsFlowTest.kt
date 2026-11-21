@@ -155,7 +155,8 @@ class SettingsFlowTest {
     }
 
     private suspend fun runImport(file: File): ListenableWorker.Result =
-        TestListenableWorkerBuilder<EpubImportWorker>(context)
+        // The worker finds the app through its context, so it gets the application, as WorkManager gives it.
+        TestListenableWorkerBuilder<EpubImportWorker>(context.applicationContext)
             .setInputData(workDataOf(EpubImportWorker.PATH to file.path, EpubImportWorker.TEMPORARY to true))
             .build()
             .doWork()
