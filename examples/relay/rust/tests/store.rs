@@ -16,7 +16,11 @@ fn block_on<F: std::future::Future>(future: F) -> F::Output {
 fn open(dir: &Path) -> Arc<RelayCore> {
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
-        match RelayCore::new(dir.to_string_lossy().into_owned(), "laptop".into()) {
+        match RelayCore::with_default_servers(
+            dir.to_string_lossy().into_owned(),
+            "laptop".into(),
+            relay_core::RelayServers::default(),
+        ) {
             Ok(core) => return core,
             Err(err) => {
                 assert!(Instant::now() < deadline, "couldn't open Relay: {err}");
@@ -256,9 +260,13 @@ fn a_record_from_a_newer_build_is_refused_not_replaced() {
         br#"{ "schema_version": 9, "data": {} }"#,
     )
     .unwrap();
-    let err = RelayCore::new(dir.path().to_string_lossy().into_owned(), "laptop".into())
-        .err()
-        .expect("refused");
+    let err = RelayCore::with_default_servers(
+        dir.path().to_string_lossy().into_owned(),
+        "laptop".into(),
+        relay_core::RelayServers::default(),
+    )
+    .err()
+    .expect("refused");
     assert_eq!(err, relay_core::RelayError::NewerData);
     assert!(dir.path().join("relay.json").exists(), "left as it was");
 }

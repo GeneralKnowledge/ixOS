@@ -96,7 +96,16 @@ pub(crate) struct Node {
     /// end the other.
     pub device_allowed: Allowed,
     router: Router,
+    /// The servers the endpoint uses now (`use_servers` changes them).
+    servers: Mutex<RelayServers>,
+    /// When they last changed: a relay set moments ago is still
+    /// connecting, not down.
+    servers_since: Mutex<std::time::Instant>,
 }
+
+/// How long a newly set relay is given to connect before it counts as
+/// down.
+const RELAY_GRACE: std::time::Duration = std::time::Duration::from_secs(15);
 
 impl Node {
     /// Opens the store in `store_dir` and binds the endpoint with the key
@@ -146,7 +155,74 @@ impl Node {
             allowed,
             device_allowed,
             router,
+            servers: Mutex::new(servers.clone()),
+            servers_since: Mutex::new(std::time::Instant::now()),
         })
+    }
+
+    /// Changes the servers the running endpoint uses, at once: the relay
+    /// is swapped, and the lookup server is published to (and asked) or
+    /// not. Nothing waits for the next time Relay opens.
+    pub async fn use_servers(&self, next: RelayServers) {
+        let before = std::mem::replace(&mut *forge_runtime::lock(&self.servers), next.clone());
+        if before != next {
+            *forge_runtime::lock(&self.servers_since) = std::time::Instant::now();
+        }
+        if before.relay() != next.relay() {
+            if let Some(url) = before.relay() {
+                self.endpoint.remove_relay(&url).await;
+            }
+            if let Some(url) = next.relay() {
+                self.endpoint
+                    .insert_relay(url.clone(), Arc::new(url.into()))
+                    .await;
+            }
+        }
+        if before.lookup() != next.lookup() {
+            let Ok(lookup) = self.endpoint.address_lookup() else {
+                return;
+            };
+            lookup.clear();
+            if let Some(url) = next.lookup() {
+                use iroh::address_lookup::AddressLookupBuilder;
+                match (
+                    publisher(url.clone()).into_address_lookup(&self.endpoint),
+                    resolver(url).into_address_lookup(&self.endpoint),
+                ) {
+                    (Ok(p), Ok(r)) => {
+                        lookup.add(p);
+                        lookup.add(r);
+                    }
+                    (Err(e), _) | (_, Err(e)) => {
+                        log::warn!("relay node: couldn't use the lookup server: {e}")
+                    }
+                }
+            }
+        }
+        log::info!(
+            "relay node: servers now relay {}, lookup {}",
+            if next.relay().is_some() { "on" } else { "off" },
+            if next.lookup().is_some() { "on" } else { "off" }
+        );
+    }
+
+    /// Whether the relay answers, from iroh's view of its home relay.
+    pub fn relay_health(&self) -> crate::resolver::ServerHealth {
+        use crate::resolver::ServerHealth;
+        use iroh::Watcher;
+        if forge_runtime::lock(&self.servers).relay().is_none() {
+            return ServerHealth::Off;
+        }
+        let statuses = self.endpoint.home_relay_status().get();
+        if statuses.iter().any(|s| s.is_connected()) {
+            return ServerHealth::Reachable;
+        }
+        let failed = statuses.iter().any(|s| s.last_error().is_some());
+        if !failed && forge_runtime::lock(&self.servers_since).elapsed() < RELAY_GRACE {
+            ServerHealth::Connecting
+        } else {
+            ServerHealth::Unreachable
+        }
     }
 
     pub fn id(&self) -> EndpointId {
@@ -189,9 +265,13 @@ pub(crate) struct NodeCell {
     key_dir: PathBuf,
     store_dir: PathBuf,
     devices: Arc<dyn DeviceInbound>,
-    /// Relay's servers, as they were when the node started (a change takes
-    /// effect the next time Relay opens).
-    servers: RelayServers,
+    /// Relay's servers in the current mode: what the node starts with, and
+    /// what it is told when they change.
+    servers: Mutex<RelayServers>,
+    /// Held while the node starts and while servers change, so a change
+    /// never lands between reading the servers and the node existing, and
+    /// two changes never interleave their relay swaps.
+    gate: tokio::sync::Mutex<()>,
     cell: OnceCell<Arc<Node>>,
 }
 
@@ -206,7 +286,8 @@ impl NodeCell {
             key_dir,
             store_dir,
             devices,
-            servers,
+            servers: Mutex::new(servers),
+            gate: tokio::sync::Mutex::new(()),
             cell: OnceCell::new(),
         }
     }
@@ -216,18 +297,35 @@ impl NodeCell {
         self.cell.get().cloned()
     }
 
+    /// The servers to use from now on, in the current mode, read by
+    /// `latest` once no other change or start is in progress (so the
+    /// newest saved choice wins); a running node changes over at once.
+    /// `None` from `latest` (Relay is closing) changes nothing.
+    pub async fn use_servers(&self, latest: impl FnOnce() -> Option<RelayServers>) {
+        let _gate = self.gate.lock().await;
+        let Some(servers) = latest() else {
+            return;
+        };
+        *forge_runtime::lock(&self.servers) = servers.clone();
+        if let Some(node) = self.started() {
+            node.use_servers(servers).await;
+        }
+    }
+
     /// The running node. Call on Relay's runtime (`TOKIO`).
     pub async fn get(&self) -> Result<Arc<Node>, RelayError> {
         self.cell
             .get_or_try_init(|| async {
+                let _gate = self.gate.lock().await;
                 let link = NodeLink::default();
+                let servers = forge_runtime::lock(&self.servers).clone();
                 let node = Arc::new(
                     Node::start(
                         &self.key_dir,
                         &self.store_dir,
                         Arc::clone(&self.devices),
                         Arc::clone(&link),
-                        &self.servers,
+                        &servers,
                     )
                     .await?,
                 );
@@ -247,6 +345,20 @@ impl Drop for NodeCell {
     }
 }
 
+/// Publishing to the lookup server `url`: it gets the relay and any
+/// public address, never home-network or Tailscale ones (`publishable`).
+fn publisher(url: url::Url) -> iroh::address_lookup::pkarr::PkarrPublisherBuilder {
+    use iroh::endpoint_info::AddrFilter;
+    iroh::address_lookup::pkarr::PkarrPublisher::builder(url).addr_filter(AddrFilter::new(|a| {
+        std::borrow::Cow::Owned(crate::resolver::publishable(a))
+    }))
+}
+
+/// Finding devices by key at the lookup server `url`.
+fn resolver(url: url::Url) -> iroh::address_lookup::pkarr::PkarrResolverBuilder {
+    iroh::address_lookup::pkarr::PkarrResolver::builder(url)
+}
+
 /// Binds the endpoint on the port it had last time, if it is free, else
 /// on any port, and remembers the port.
 async fn bind(
@@ -254,25 +366,22 @@ async fn bind(
     key_dir: &Path,
     servers: &RelayServers,
 ) -> Result<Endpoint, RelayError> {
-    use iroh::address_lookup::pkarr::{PkarrPublisher, PkarrResolver};
-    use iroh::endpoint_info::AddrFilter;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
     let relay = servers.relay();
     let lookup = servers.lookup();
     let builder = || {
         let mut b = Endpoint::builder(presets::Minimal).secret_key(key.clone());
-        b = match &relay {
-            Some(url) => b.relay_mode(RelayMode::Custom(iroh::RelayMap::from(url.clone()))),
-            None => b.relay_mode(RelayMode::Disabled),
-        };
+        // Always with the relay transport, its map empty when no relay is
+        // set: Disabled would leave no transport to add one to later, and
+        // a relay set while running must work at once (N2).
+        b = b.relay_mode(RelayMode::Custom(match &relay {
+            Some(url) => iroh::RelayMap::from(url.clone()),
+            None => iroh::RelayMap::empty(),
+        }));
         if let Some(url) = &lookup {
-            // Our own server: it gets the relay and any public address,
-            // never home-network or Tailscale ones (`publishable`).
-            b =
-                b.address_lookup(PkarrPublisher::builder(url.clone()).addr_filter(
-                    AddrFilter::new(|a| std::borrow::Cow::Owned(crate::resolver::publishable(a))),
-                ))
-                .address_lookup(PkarrResolver::builder(url.clone()));
+            b = b
+                .address_lookup(publisher(url.clone()))
+                .address_lookup(resolver(url.clone()));
         }
         b
     };

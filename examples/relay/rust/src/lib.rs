@@ -36,7 +36,7 @@ mod presence;
 mod record;
 mod resolver;
 mod store;
-pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind};
+pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind, ServerHealth};
 mod hex;
 mod trust;
 
@@ -193,13 +193,40 @@ impl RelayCore {
     /// the directory so no second core can write to it. The first open
     /// makes this device's identity, named `device_name` (the person can
     /// rename it).
+    ///
+    /// Relay's own servers are on unless the person chose otherwise (N2).
     #[uniffi::constructor]
     pub fn new(data_directory: String, device_name: String) -> Result<Arc<Self>, RelayError> {
+        Self::with_default_servers(data_directory, device_name, own_relay_servers())
+    }
+
+    /// `new` for tests and previews: a device that never chose gets no
+    /// servers, so nothing reaches the real ones.
+    #[uniffi::constructor]
+    pub fn without_default_servers(
+        data_directory: String,
+        device_name: String,
+    ) -> Result<Arc<Self>, RelayError> {
+        Self::with_default_servers(data_directory, device_name, RelayServers::default())
+    }
+}
+
+impl RelayCore {
+    /// `new`, with `default_servers` as the servers a device that never
+    /// chose gets. Tests pass none, so they never reach the real servers.
+    pub fn with_default_servers(
+        data_directory: String,
+        device_name: String,
+        default_servers: RelayServers,
+    ) -> Result<Arc<Self>, RelayError> {
         forge_runtime::logging::init();
         let directory = DataDirectory::open(&data_directory)?;
         // One database (P3); the JSON files move into it on the first open.
         let (store, saved, found) = store::Store::open(directory.path())?;
         let store = Arc::new(store);
+        // Whether this folder held Relay before: a fresh install hears
+        // nothing about the servers being on.
+        let existed = saved.is_some();
         let mut record = saved.unwrap_or_default();
         // Each change at open is a transaction of its own.
         let opening = |record: &mut Record,
@@ -260,6 +287,23 @@ impl RelayCore {
                 Ok(())
             })?;
         }
+        // Away from home (N2): Relay's servers on, unless the person chose
+        // otherwise (another mode, or servers of their own). Applied once;
+        // an upgrade that turns them on says so.
+        if !record.devices.servers_settled {
+            let turn_on = record.devices.mode == ConnectionMode::Hybrid
+                && record.devices.servers == RelayServers::default()
+                && default_servers != RelayServers::default();
+            let used_before = existed;
+            opening(&mut record, &mut |r, _| {
+                if turn_on {
+                    r.devices.servers = default_servers.clone();
+                    r.away_notice = used_before;
+                }
+                r.devices.servers_settled = true;
+                Ok(())
+            })?;
+        }
         // A message the conversation shows queued that the outbox doesn't
         // hold (saved by a build before one transaction held both) failed,
         // so the person can send it again.
@@ -309,6 +353,32 @@ impl RelayCore {
             me: me.clone(),
         });
         Ok(core)
+    }
+}
+
+#[uniffi::export]
+impl RelayCore {
+    /// Relay's servers were turned on by an upgrade (N2): what to tell the
+    /// person, once, until they dismiss it. `None` normally.
+    pub fn away_from_home_notice(&self) -> Option<String> {
+        self.record.get().away_notice.then(|| {
+            "Relay now reaches your devices away from home through its servers. What your \
+             devices send each other stays encrypted end to end. You can change this in \
+             Settings, under Connections."
+                .to_string()
+        })
+    }
+
+    /// The person has read the away-from-home notice.
+    pub async fn dismiss_away_from_home_notice(&self) -> Result<(), RelayError> {
+        self.rt
+            .command("dismiss-away-notice", |state| {
+                state.change(|r| {
+                    r.away_notice = false;
+                    Ok(())
+                })
+            })
+            .await
     }
 
     /// What Relay couldn't read of its saved data when it opened, and
@@ -840,6 +910,10 @@ impl RelayCore {
             .ok_or_else(|| RelayError::UnknownPeer {
                 id: endpoint_id.clone(),
             })?;
+        // This device's own networks are known before dialling, so an
+        // address on one of them counts as the local network.
+        let node = self.node().await?;
+        self.watch_network(&node);
         let Some((addr, _)) = self.dial(&saved) else {
             return Err(RelayError::Unreachable {
                 reason: self.problem_of(&endpoint_id).unwrap_or_default(),
@@ -908,17 +982,7 @@ impl RelayCore {
                 })
             })
             .await?;
-        if let (Some(node), Some(url)) = (self.node.started(), self.servers().relay()) {
-            code::TOKIO.spawn(async move {
-                if mode == ConnectionMode::Hybrid {
-                    node.endpoint
-                        .insert_relay(url.clone(), Arc::new(url.into()))
-                        .await;
-                } else {
-                    node.endpoint.remove_relay(&url).await;
-                }
-            });
-        }
+        self.apply_servers().await;
         self.deliver_waiting();
         Ok(())
     }
@@ -928,7 +992,25 @@ impl RelayCore {
         self.record.get().devices.servers.clone()
     }
 
-    /// Sets Relay's servers. They are used from the next time Relay opens.
+    /// Whether Relay's relay answers now: `Off` when none is in use (none
+    /// set, or Connections isn't Everywhere), `Connecting` before Relay is
+    /// open to devices or just after a change.
+    pub fn server_health(&self) -> ServerHealth {
+        if self
+            .servers()
+            .in_mode(self.connection_mode())
+            .relay()
+            .is_none()
+        {
+            return ServerHealth::Off;
+        }
+        match self.node.started() {
+            Some(node) => node.relay_health(),
+            None => ServerHealth::Connecting,
+        }
+    }
+
+    /// Sets Relay's servers, used at once.
     pub async fn set_servers(&self, servers: RelayServers) -> Result<(), RelayError> {
         let clean = RelayServers {
             relay_url: servers.relay_url.filter(|u| !u.trim().is_empty()),
@@ -941,10 +1023,14 @@ impl RelayCore {
             .command("servers", move |state| {
                 state.change(|r| {
                     r.devices.servers = clean;
+                    r.devices.servers_settled = true;
                     Ok(())
                 })
             })
-            .await
+            .await?;
+        self.apply_servers().await;
+        self.deliver_waiting();
+        Ok(())
     }
 
     /// The network changed (another Wi-Fi, Wi-Fi to mobile data): Relay
@@ -1139,6 +1225,10 @@ impl RelayCore {
                 reason: format!("{} isn't set to introduce devices here", saved.name),
             });
         }
+        // This device's own networks are known before dialling, so an
+        // address on one of them counts as the local network.
+        let node = self.node().await?;
+        self.watch_network(&node);
         let Some((addr, _)) = self.dial(&saved) else {
             return Err(RelayError::Unreachable {
                 reason: self.problem_of(&endpoint_id).unwrap_or_default(),
@@ -1308,6 +1398,18 @@ impl RelayCore {
     }
 }
 
+/// For the command line, where several terminals can answer one offer.
+impl RelayCore {
+    /// Not Now to the offer for `endpoint_id` only, if it still waits:
+    /// another terminal may have answered it already.
+    pub fn dismiss_trust_offer_for(&self, endpoint_id: &str) {
+        let mut offers = lock(&self.trust_offers);
+        if let Some(at) = offers.iter().position(|o| o.endpoint_id == endpoint_id) {
+            offers.remove(at);
+        }
+    }
+}
+
 /// What a device on an older build does to send a note (a `DeviceMsg::Note`
 /// through the outbox), for the tests of how this build receives one. Not
 /// for the app: text to a trusted device is a message in its conversation.
@@ -1451,6 +1553,23 @@ impl RelayCore {
         if let Err(err) = decided {
             forge_runtime::logging::warn!("relay couldn't apply the pairing policy: {err}")
         }
+    }
+
+    /// The endpoint uses the servers the current mode allows, from now on.
+    async fn apply_servers(&self) {
+        let node = Arc::clone(&self.node);
+        let me = self.me.clone();
+        // The servers are read once the node's gate is held, so the latest
+        // saved choice is the one applied, whatever order changes land in.
+        let _ = code::TOKIO
+            .spawn(async move {
+                node.use_servers(move || {
+                    me.upgrade()
+                        .map(|core| core.servers().in_mode(core.connection_mode()))
+                })
+                .await
+            })
+            .await;
     }
 
     /// Asks the introducer `endpoint_id` for its list in the background;

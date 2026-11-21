@@ -50,6 +50,10 @@ pub struct Record {
     /// to hear about until they dismiss it (`store`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notice: Option<SavedNotice>,
+    /// An upgrade turned Relay's servers on (N2): said once, until the
+    /// person dismisses it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub away_notice: bool,
 }
 
 /// What couldn't be read, in words, and where it is kept on this device.

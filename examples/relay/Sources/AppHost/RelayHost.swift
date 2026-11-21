@@ -36,7 +36,10 @@ public func makeAppHost() -> ForgeHost<RelayCore> {
 /// A host on a fresh temporary folder, for tests.
 @MainActor
 public func makeTemporaryAppHost() -> ForgeHost<RelayCore> {
-    ForgeHost(environment: { try ForgeEnvironment.temporary() }) { try openCore($0, name: "Test Device") }
+    ForgeHost(environment: { try ForgeEnvironment.temporary() }) {
+        // Offline: a test never reaches Relay's real servers.
+        try RelayCore.withoutDefaultServers(dataDirectory: $0.dataDirectory, deviceName: "Test Device")
+    }
 }
 
 private func openCore(_ environment: ForgeEnvironment, name: String, receivedFiles: URL? = nil) throws -> RelayCore {

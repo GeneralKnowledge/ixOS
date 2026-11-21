@@ -574,7 +574,11 @@ impl RelayCore {
         match result {
             Ok(sent) => Outcome::Delivered(sent),
             Err(RelayError::Unreachable { .. } | RelayError::Connection { .. }) => {
-                self.problem(&saved.endpoint_id, resolver::no_answer(&saved.name, &plan));
+                let servers_down = self.server_health() == resolver::ServerHealth::Unreachable;
+                self.problem(
+                    &saved.endpoint_id,
+                    resolver::no_answer(&saved.name, &plan, servers_down),
+                );
                 Outcome::Retry
             }
             Err(err @ RelayError::Stopped { .. }) => Outcome::Ended("Cancelled".into(), err),

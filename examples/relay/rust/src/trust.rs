@@ -157,9 +157,13 @@ pub struct Devices {
     /// Which routes trusted devices are reached by (M2 PR 6).
     #[serde(default)]
     pub mode: ConnectionMode,
-    /// Relay's own servers (M2 PR 7); none until they are set.
+    /// Relay's own servers (M2 PR 7). On by default since N2.
     #[serde(default)]
     pub servers: RelayServers,
+    /// The servers were set by the person, or the N2 default was applied
+    /// once: Relay never changes them by itself again.
+    #[serde(default)]
+    pub servers_settled: bool,
     #[serde(default)]
     pub list: Vec<SavedDevice>,
 }

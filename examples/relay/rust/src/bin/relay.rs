@@ -14,7 +14,7 @@
 //! relay trust <device>               trust a revoked device again
 //! relay policy [codes-only | ask | automatic]
 //!                                    what happens after a code transfer
-//! relay connections [local | private | any]
+//! relay connections [everywhere | private | this-network]
 //!                                    which routes reach trusted devices
 //! relay servers [--own] [--relay URL] [--lookup URL] [--none]
 //!                                    Relay's own relay and lookup server
@@ -22,6 +22,9 @@
 //!                                    to anyone on this network (the phone
 //!                                    can scan the code's QR)
 //! relay receive <code>               receive what someone sends with a code
+//! relay status                       this device: Connections, servers,
+//!                                    and whether they answer
+//! relay status <device>              ask a trusted device about itself
 //! relay history                      what went across, newest first
 //! relay name [NEW]                   this machine's name in Relay
 //! relay serve-ai --upstream URL [--model M]
@@ -51,29 +54,29 @@
 //! device; the command asks on the terminal.
 //!
 //! While `relay listen` runs, it owns the data folder. From another terminal,
-//! `send <device>`, `devices`, `revoke`, `forget`, `trust`, `policy`, `connections`,
-//! and `history` go to the listener over `relay.sock` in the data
+//! the other commands go to the listener over `relay.sock` in the data
 //! folder (0600) and print what it answers, so listening and sending work
-//! at the same time.
+//! at the same time. Word-code transfers run there too, and their trust
+//! question is asked in the terminal that started them.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use forge_services::ai::{ChatMessage, ChatRequest, Collect, LanguageModel};
 use relay_core::{
-    word_code_number, CodeSend, Direction, Item, NearbySender, RelayCore, RelayError,
-    TransferStatus, CODE_SERVICE_TYPE,
+    word_code_number, CodeSend, ConnectionMode, Direction, Item, NearbySender, RelayCore,
+    RelayError, ServerHealth, TransferStatus, CODE_SERVICE_TYPE,
 };
 
 const USAGE: &str = "usage: relay listen | devices | send PATH... | receive <code> | \
 send <device> (--text TEXT | PATH...) [--to host:port] | \
-messages <device> | status <device> | revoke <device> | forget <device> | \
+messages <device> | status [<device>] | revoke <device> | forget <device> | \
 trust <device> | asks <device> on|off | introduces <device> on|off | \
 sees-devices <device> on|off | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
-connections [local | private | any] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
+connections [everywhere | private | this-network] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] | \
 ask <device> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
@@ -120,14 +123,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         "listen" => listen(&core, rest),
         // `send <device> ...` to a trusted device is `shared`; otherwise the
         // arguments are files and folders to send with a word code.
-        "send" => match rest.first() {
-            Some(_) => send_code(&core, rest).and_then(|()| offer_trust(&core)),
-            None => Err(USAGE.into()),
-        },
-        "receive" => match rest {
-            [code] => receive_code(&core, code).and_then(|()| offer_trust(&core)),
-            _ => Err(USAGE.into()),
-        },
+        "send" | "receive" => code_transfer(&core, command, rest, &Terminal),
         "serve-ai" => serve_ai(&core, rest),
         "ask" => ask(&core, rest),
         // Receiving from a given address, without mDNS.
@@ -150,7 +146,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         // Older names for `send PATH...`.
-        "send-code" if !rest.is_empty() => send_code(&core, rest),
+        "send-code" if !rest.is_empty() => send_code(&core, rest, &Terminal),
         "name" => match rest.first() {
             Some(name) => block_on(core.rename_device(name.clone())).map_err(|e| e.to_string()),
             None => {
@@ -280,6 +276,51 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             out += &format!("Connections: {}\n", mode_name(core.connection_mode()));
             Ok(())
         }
+        // This device: how it is reached, and whether the servers answer.
+        "status" if rest.is_empty() => (|| {
+            let service = block_on(core.device_service()).map_err(|e| e.to_string())?;
+            out += &format!("{}  {}\n", core.identity().name, service.endpoint_id);
+            out += &format!("Connections: {}\n", mode_name(core.connection_mode()));
+            let s = core.servers();
+            out += &format!(
+                "Servers: relay {}, lookup {}\n",
+                s.relay_url.as_deref().unwrap_or("none"),
+                s.lookup_url.as_deref().unwrap_or("none")
+            );
+            // A process that just opened Relay gives the relay a moment.
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let mut health = core.server_health();
+            while health == ServerHealth::Connecting && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(200));
+                health = core.server_health();
+            }
+            out += match health {
+                ServerHealth::Off if core.connection_mode() == ConnectionMode::Hybrid => {
+                    "Relay's servers: no relay set\n"
+                }
+                ServerHealth::Off => "Relay's servers: never used in this mode\n",
+                ServerHealth::Connecting => "Relay's servers: still connecting\n",
+                ServerHealth::Reachable => "Relay's servers: the relay answers\n",
+                ServerHealth::Unreachable => "Relay's servers: the relay can't be reached\n",
+            };
+            // The lookup server is used in Everywhere, relay or not.
+            if core.connection_mode() == ConnectionMode::Hybrid && s.lookup_url.is_some() {
+                let published = if s.relay_url.is_some() {
+                    "the relay's address"
+                } else {
+                    "public addresses only"
+                };
+                out += &format!(
+                    "The lookup server has, signed by this device's key: {published}. \
+                     Home and Tailscale addresses go only to trusted devices.\n"
+                );
+            }
+            out += &format!(
+                "Addresses for trusted devices: {}\n",
+                service.addresses.join(", ")
+            );
+            Ok(())
+        })(),
         // Asks a trusted device about itself (its platform and offers).
         "status" => (|| {
             let who = rest.first().ok_or(USAGE)?;
@@ -391,7 +432,7 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                         .map_err(|e| e.to_string())?;
                     out += &format!("Trusted {} ({}).\n", offer.name, offer.endpoint_id);
                 } else {
-                    core.dismiss_trust_offer();
+                    core.dismiss_trust_offer_for(&offer.endpoint_id);
                     out += &format!(
                         "{} introduces {} ({}).\n",
                         device.name, offer.name, offer.endpoint_id
@@ -427,9 +468,10 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             }
             Some(name) => {
                 let mode = match name {
-                    "local" => relay_core::ConnectionMode::Local,
+                    // The app's words (N2), and the older ones.
+                    "this-network" | "local" => relay_core::ConnectionMode::Local,
                     "private" => relay_core::ConnectionMode::Private,
-                    "any" => relay_core::ConnectionMode::Hybrid,
+                    "everywhere" | "any" => relay_core::ConnectionMode::Hybrid,
                     _ => return Some(Err(USAGE.into())),
                 };
                 block_on(core.set_connection_mode(mode)).map_err(|e| e.to_string())
@@ -457,7 +499,7 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 }
             }
             block_on(core.set_servers(servers)).map_err(|e| e.to_string())?;
-            out += "Saved. Relay uses them from the next time it starts.\n";
+            out += "Saved, and in use now.\n";
             Ok(())
         })(),
         "history" => {
@@ -505,23 +547,135 @@ mod control {
         Ok(())
     }
 
-    fn answer(core: &RelayCore, stream: UnixStream) {
+    /// One line each way, as JSON. The listener says lines and asks
+    /// questions while a command runs (a word-code transfer), then sends
+    /// `Done`; the other process prints, answers, and ends with it.
+    #[derive(serde::Serialize, serde::Deserialize)]
+    enum Wire {
+        Say(String),
+        Ask(String),
+        /// Nothing to say: only checks the asking process is still there.
+        Tick,
+        Done(Result<String, String>),
+    }
+
+    /// What a `relay` process asks the listener: its arguments, and the
+    /// folder it runs in, so relative paths mean what they mean there.
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Request {
+        args: Vec<String>,
+        cwd: Option<std::path::PathBuf>,
+    }
+
+    /// `args` with each relative path that names something in `cwd` made
+    /// absolute: a device name, and the values of `--to`, `--text` and
+    /// `--note`, stay as they are.
+    fn resolve(core: &RelayCore, cwd: Option<&std::path::Path>, args: Vec<String>) -> Vec<String> {
+        let Some(cwd) = cwd else {
+            return args;
+        };
+        if args.first().map(String::as_str) != Some("send") {
+            return args;
+        }
+        let mut out = Vec::with_capacity(args.len());
+        let mut takes_value = false;
+        for (i, arg) in args.into_iter().enumerate() {
+            let keep = i == 0
+                || takes_value
+                || arg.starts_with("--")
+                || (i == 1 && super::find_device(core, &arg).is_some())
+                || std::path::Path::new(&arg).is_absolute()
+                || !cwd.join(&arg).exists();
+            takes_value = matches!(arg.as_str(), "--to" | "--text" | "--note");
+            out.push(if keep {
+                arg
+            } else {
+                cwd.join(&arg).to_string_lossy().into_owned()
+            });
+        }
+        out
+    }
+
+    fn send(stream: &UnixStream, wire: &Wire) -> std::io::Result<()> {
+        let line = serde_json::to_string(wire).map_err(std::io::Error::other)? + "\n";
+        let mut stream = stream;
+        stream.write_all(line.as_bytes())
+    }
+
+    /// The asking process's terminal, over the socket.
+    struct Remote {
+        stream: UnixStream,
+        reader: std::sync::Mutex<BufReader<UnixStream>>,
+        /// Set once a write fails: the asking process has gone.
+        gone: std::sync::atomic::AtomicBool,
+    }
+
+    impl Remote {
+        fn send(&self, wire: &Wire) -> bool {
+            let ok = send(&self.stream, wire).is_ok();
+            if !ok {
+                self.gone.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            ok
+        }
+    }
+
+    impl super::Io for Remote {
+        fn say(&self, line: &str) {
+            self.send(&Wire::Say(line.to_string()));
+        }
+
+        fn alive(&self) -> bool {
+            !self.gone.load(std::sync::atomic::Ordering::SeqCst) && self.send(&Wire::Tick)
+        }
+
+        fn ask(&self, question: &str) -> Option<String> {
+            if !self.send(&Wire::Ask(question.to_string())) {
+                return None;
+            }
+            let mut line = String::new();
+            forge_runtime::lock(&self.reader)
+                .read_line(&mut line)
+                .ok()?;
+            serde_json::from_str::<Option<String>>(&line).ok()?
+        }
+    }
+
+    fn answer(core: &Arc<RelayCore>, stream: UnixStream) {
+        let Ok(reading) = stream.try_clone() else {
+            return;
+        };
+        let mut reader = BufReader::new(reading);
         let mut line = String::new();
-        if BufReader::new(&stream).read_line(&mut line).is_err() {
+        if reader.read_line(&mut line).is_err() {
             return;
         }
-        let reply = match serde_json::from_str::<Vec<String>>(&line) {
-            Ok(args) => match args.split_first() {
-                Some((command, rest)) => {
-                    super::shared(core, command, rest).unwrap_or_else(|| Err(busy(command)))
+        let reply = match serde_json::from_str::<Request>(&line) {
+            Ok(request) => {
+                match resolve(core, request.cwd.as_deref(), request.args).split_first() {
+                    Some((command, rest)) => match super::shared(core, command, rest) {
+                        Some(reply) => reply,
+                        // A word-code transfer runs here, talking to the
+                        // other process's terminal.
+                        None if matches!(command.as_str(), "send" | "receive") => {
+                            let Ok(talking) = stream.try_clone() else {
+                                return;
+                            };
+                            let io = Remote {
+                                stream: talking,
+                                reader: std::sync::Mutex::new(reader),
+                                gone: Default::default(),
+                            };
+                            super::code_transfer(core, command, rest, &io).map(|()| String::new())
+                        }
+                        None => Err(busy(command)),
+                    },
+                    None => Err(super::USAGE.into()),
                 }
-                None => Err(super::USAGE.into()),
-            },
+            }
             Err(_) => Err("a garbled command".into()),
         };
-        let reply = serde_json::to_string(&reply.map_err(|e| e.to_string()))
-            .unwrap_or_else(|_| "null".into());
-        let _ = (&stream).write_all(reply.as_bytes());
+        let _ = send(&stream, &Wire::Done(reply));
     }
 
     fn busy(command: &str) -> String {
@@ -533,21 +687,38 @@ mod control {
         let command = args.first().map(String::as_str).unwrap_or("");
         let mut stream = UnixStream::connect(path())
             .map_err(|_| "Relay's data is in use by another relay process".to_string())?;
-        let line = serde_json::to_string(args).map_err(|e| e.to_string())? + "\n";
+        let request = Request {
+            args: args.to_vec(),
+            cwd: std::env::current_dir().ok(),
+        };
+        let line = serde_json::to_string(&request).map_err(|e| e.to_string())? + "\n";
         stream
             .write_all(line.as_bytes())
             .map_err(|e| e.to_string())?;
-        let mut reply = String::new();
-        BufReader::new(stream)
-            .read_line(&mut reply)
-            .map_err(|e| e.to_string())?;
-        match serde_json::from_str::<Result<String, String>>(&reply) {
-            Ok(Ok(out)) => {
-                print!("{out}");
-                Ok(())
+        let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
+        loop {
+            let mut line = String::new();
+            let read = reader.read_line(&mut line).map_err(|e| e.to_string())?;
+            if read == 0 {
+                return Err(busy(command));
             }
-            Ok(Err(problem)) => Err(problem),
-            Err(_) => Err(busy(command)),
+            match serde_json::from_str::<Wire>(&line) {
+                Ok(Wire::Say(said)) => println!("{said}"),
+                Ok(Wire::Tick) => {}
+                Ok(Wire::Ask(question)) => {
+                    let answer = super::Io::ask(&super::Terminal, &question);
+                    let line = serde_json::to_string(&answer).map_err(|e| e.to_string())? + "\n";
+                    stream
+                        .write_all(line.as_bytes())
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(Wire::Done(Ok(out))) => {
+                    print!("{out}");
+                    return Ok(());
+                }
+                Ok(Wire::Done(Err(problem))) => return Err(problem),
+                Err(_) => return Err(busy(command)),
+            }
         }
     }
 }
@@ -574,8 +745,8 @@ fn listen(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
     println!("To trust a new device, send it something with a word code first.");
     match control::serve(core.clone()) {
         Ok(()) => println!(
-            "Waiting. Ctrl-C to stop. In another terminal, `relay send <device> ...`, \
-             `devices`, `revoke`, `policy` and `history` use this listener."
+            "Waiting. Ctrl-C to stop. In another terminal, other `relay` commands \
+             (word codes too) use this listener."
         ),
         Err(err) => println!("Waiting. Ctrl-C to stop. (Other terminals can't use it: {err}.)"),
     }
@@ -597,18 +768,16 @@ fn listen(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
 }
 
 #[cfg(feature = "cli")]
-fn print_qr(code: &str) {
+fn qr(code: &str) -> String {
     use qrcode::render::unicode::Dense1x2;
     match qrcode::QrCode::new(code.as_bytes()) {
-        Ok(qr) => println!(
-            "{}",
-            qr.render::<Dense1x2>()
-                .dark_color(Dense1x2::Light)
-                .light_color(Dense1x2::Dark)
-                .quiet_zone(true)
-                .build()
-        ),
-        Err(err) => println!("(no QR code: {err})"),
+        Ok(qr) => qr
+            .render::<Dense1x2>()
+            .dark_color(Dense1x2::Light)
+            .light_color(Dense1x2::Dark)
+            .quiet_zone(true)
+            .build(),
+        Err(err) => format!("(no QR code: {err})"),
     }
 }
 
@@ -624,10 +793,12 @@ fn policy_name(policy: relay_core::PairingPolicy) -> &'static str {
 
 fn mode_name(mode: relay_core::ConnectionMode) -> &'static str {
     match mode {
-        relay_core::ConnectionMode::Local => "local (the same network only)",
-        relay_core::ConnectionMode::Private => "private (the same network, then Tailscale)",
+        relay_core::ConnectionMode::Local => "this-network (the same Wi-Fi or wired network only)",
+        relay_core::ConnectionMode::Private => {
+            "private (the same network or a private one such as Tailscale; no servers)"
+        }
         relay_core::ConnectionMode::Hybrid => {
-            "any (the same network, Tailscale, then the internet)"
+            "everywhere (the same network, Tailscale, the internet, then the relay)"
         }
     }
 }
@@ -638,10 +809,59 @@ fn find_device(core: &RelayCore, who: &str) -> Option<relay_core::Device> {
         .find(|d| d.endpoint_id == who || d.name.eq_ignore_ascii_case(who))
 }
 
-/// After a code transfer, asks on the terminal whether to trust the other
-/// device, when the pairing policy offers it.
-fn offer_trust(core: &RelayCore) -> Result<(), String> {
-    use std::io::{BufRead, IsTerminal, Write};
+/// Where a word-code transfer talks to the person: this terminal, or the
+/// terminal of a `relay` process whose command `relay listen` runs
+/// (`control`), so code transfers work while it listens.
+trait Io: Send + Sync {
+    fn say(&self, line: &str);
+    /// The person's answer to `question`, or `None` when nobody can
+    /// answer (not a terminal).
+    fn ask(&self, question: &str) -> Option<String>;
+    /// Whether whoever started the transfer is still there: a `relay`
+    /// process that ended takes its transfer with it.
+    fn alive(&self) -> bool {
+        true
+    }
+}
+
+struct Terminal;
+
+impl Io for Terminal {
+    fn say(&self, line: &str) {
+        println!("{line}");
+    }
+
+    fn ask(&self, question: &str) -> Option<String> {
+        use std::io::{BufRead, IsTerminal, Write};
+        if !std::io::stdin().is_terminal() {
+            return None;
+        }
+        print!("{question} ");
+        let _ = std::io::stdout().flush();
+        let mut answer = String::new();
+        std::io::stdin().lock().read_line(&mut answer).ok()?;
+        Some(answer)
+    }
+}
+
+/// `send PATH...` or `receive <code>`, then the trust offer.
+fn code_transfer(
+    core: &Arc<RelayCore>,
+    command: &str,
+    rest: &[String],
+    io: &dyn Io,
+) -> Result<(), String> {
+    match (command, rest) {
+        ("send", [_, ..]) => send_code(core, rest, io)?,
+        ("receive", [code]) => receive_code(core, code, io)?,
+        _ => return Err(USAGE.into()),
+    }
+    offer_trust(core, io)
+}
+
+/// After a code transfer, asks whether to trust the other device, when
+/// the pairing policy offers it.
+fn offer_trust(core: &RelayCore, io: &dyn Io) -> Result<(), String> {
     let Some(offer) = core.trust_offer() else {
         return Ok(());
     };
@@ -650,19 +870,17 @@ fn offer_trust(core: &RelayCore) -> Result<(), String> {
     } else {
         format!("\"{}\"", offer.name)
     };
-    if !std::io::stdin().is_terminal() {
-        println!("Trust {name}? Not asked: this isn't a terminal.");
+    let Some(answer) = io.ask(&format!(
+        "Trust {name}? You'll be able to send to each other without a code. [y/N]"
+    )) else {
+        io.say(&format!("Trust {name}? Not asked: this isn't a terminal."));
         return Ok(());
-    }
-    print!("Trust {name}? You'll be able to send to each other without a code. [y/N] ");
-    let _ = std::io::stdout().flush();
-    let mut answer = String::new();
-    let _ = std::io::stdin().lock().read_line(&mut answer);
+    };
     if answer.trim().eq_ignore_ascii_case("y") {
         block_on(core.trust_device(offer.endpoint_id)).map_err(|e| e.to_string())?;
-        println!("Trusted. `relay devices` lists it.");
+        io.say("Trusted. `relay devices` lists it.");
     } else {
-        core.dismiss_trust_offer();
+        core.dismiss_trust_offer_for(&offer.endpoint_id);
     }
     Ok(())
 }
@@ -772,22 +990,45 @@ fn find_device_addresses(endpoint_id: &str) -> Result<Vec<String>, String> {
     Ok(found)
 }
 
+/// Held by the terminal whose word-code send or receive is running.
+static SEND_OWNER: Mutex<()> = Mutex::new(());
+static RECEIVE_OWNER: Mutex<()> = Mutex::new(());
+
+/// Takes `owner` unless another terminal holds it.
+fn own(owner: &Mutex<()>) -> Option<std::sync::MutexGuard<'_, ()>> {
+    match owner.try_lock() {
+        Ok(guard) => Some(guard),
+        Err(std::sync::TryLockError::Poisoned(p)) => Some(p.into_inner()),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+    }
+}
+
 /// Sends `paths` with a word code: advertises the code with mDNS while it
 /// is open, tells the core which numbers other senders nearby use, and
 /// prints what happens until the receiver has everything.
-fn send_code(core: &Arc<RelayCore>, paths: &[String]) -> Result<(), String> {
-    core.send_paths_with_code(paths.to_vec())
-        .map_err(|e| e.to_string())?;
+fn send_code(core: &Arc<RelayCore>, paths: &[String], io: &dyn Io) -> Result<(), String> {
+    // One terminal owns the send from start to end, so its status and a
+    // cancel when it closes are never another terminal's send.
+    let _owner = own(&SEND_OWNER).ok_or("already sending")?;
+    // The daemon first: a send started without it would run unadvertised.
     let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
+    if let Err(err) = core.send_paths_with_code(paths.to_vec()) {
+        let _ = mdns.shutdown();
+        return Err(err.to_string());
+    }
     let done = Arc::new(AtomicBool::new(false));
     let watcher = watch_senders(Arc::clone(core), Arc::clone(&done));
     let mut advertised: Option<String> = None;
     let mut last = CodeSend::Idle;
     let result = loop {
+        if !io.alive() {
+            core.cancel_code_send();
+            break Err("the terminal that started it closed".into());
+        }
         let now = core.code_send_status();
         if now != last {
             match &now {
-                CodeSend::Preparing { name, .. } => println!("Getting {name} ready..."),
+                CodeSend::Preparing { name, .. } => io.say(&format!("Getting {name} ready...")),
                 CodeSend::Waiting {
                     code,
                     number,
@@ -798,7 +1039,7 @@ fn send_code(core: &Arc<RelayCore>, paths: &[String]) -> Result<(), String> {
                     note,
                 } => {
                     if let Some(note) = note {
-                        println!("{note}");
+                        io.say(note);
                     }
                     if let Some(old) = advertised.take() {
                         let _ = mdns.unregister(&old);
@@ -807,21 +1048,23 @@ fn send_code(core: &Arc<RelayCore>, paths: &[String]) -> Result<(), String> {
                         Ok(full) => advertised = Some(full),
                         Err(err) => eprintln!("relay: couldn't advertise the code: {err}"),
                     }
-                    println!("{name}, {size} bytes. On the other device: relay receive {code}");
-                    println!("or scan this with Relay on the phone:\n");
-                    print_qr(code);
-                    println!("\nCode: {code}");
+                    io.say(&format!(
+                        "{name}, {size} bytes. On the other device: relay receive {code}"
+                    ));
+                    io.say("or scan this with Relay on the phone:\n");
+                    io.say(&qr(code));
+                    io.say(&format!("\nCode: {code}"));
                 }
-                CodeSend::Sending { .. } => println!("Sending..."),
+                CodeSend::Sending { .. } => io.say("Sending..."),
                 CodeSend::Sent {
                     size,
                     seconds,
                     megabytes_per_second,
                     ..
                 } => {
-                    println!(
+                    io.say(&format!(
                         "Sent {size} bytes in {seconds:.1}s at {megabytes_per_second:.1} MB/s."
-                    );
+                    ));
                     break Ok(());
                 }
                 CodeSend::Failed { reason } => break Err(reason.clone()),
@@ -931,36 +1174,43 @@ fn watch_senders(core: Arc<RelayCore>, done: Arc<AtomicBool>) -> std::thread::Jo
 /// Finds the sender advertising `code`'s number on this network and
 /// receives from it. Two senders with that number is an error, never a
 /// guess.
-fn receive_code(core: &Arc<RelayCore>, code: &str) -> Result<(), String> {
+fn receive_code(core: &Arc<RelayCore>, code: &str, io: &dyn Io) -> Result<(), String> {
+    // As with sends: a refused receive never cancels the running one.
+    let _owner = own(&RECEIVE_OWNER).ok_or("already receiving")?;
     let number = word_code_number(code.to_string()).map_err(|e| e.to_string())?;
     let (id, addresses) = find_sender(number)?;
-    let done = Arc::new(AtomicBool::new(false));
-    let progress = {
+    let receiving = {
         let core = Arc::clone(core);
-        let done = Arc::clone(&done);
-        std::thread::spawn(move || {
-            let mut last = Instant::now();
-            while !done.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(200));
-                if last.elapsed() < Duration::from_secs(2) {
-                    continue;
-                }
-                last = Instant::now();
-                if let Some(size) = core.code_receive_size() {
-                    let percent = size.done * 100 / size.total.max(1);
-                    println!("{percent}% ({} of {} bytes)", size.done, size.total);
-                }
-            }
-        })
+        let code = code.to_string();
+        std::thread::spawn(move || block_on(core.receive_with_code(code, addresses, id)))
     };
-    let got = block_on(core.receive_with_code(code.to_string(), addresses, id));
-    done.store(true, Ordering::SeqCst);
-    let _ = progress.join();
-    let got = got.map_err(|e| e.to_string())?;
-    println!(
+    // Progress every two seconds, said here, where `io` lives.
+    let mut last = Instant::now();
+    while !receiving.is_finished() {
+        std::thread::sleep(Duration::from_millis(200));
+        if !io.alive() {
+            core.cancel_code_receive();
+        }
+        if last.elapsed() < Duration::from_secs(2) {
+            continue;
+        }
+        last = Instant::now();
+        if let Some(size) = core.code_receive_size() {
+            let percent = size.done * 100 / size.total.max(1);
+            io.say(&format!(
+                "{percent}% ({} of {} bytes)",
+                size.done, size.total
+            ));
+        }
+    }
+    let got = receiving
+        .join()
+        .map_err(|_| "the receive ended unexpectedly".to_string())?
+        .map_err(|e| e.to_string())?;
+    io.say(&format!(
         "Received {} ({} bytes, {} already here) in {:.1}s at {:.1} MB/s: {}",
         got.name, got.size, got.resumed_from, got.seconds, got.megabytes_per_second, got.path
-    );
+    ));
     Ok(())
 }
 
