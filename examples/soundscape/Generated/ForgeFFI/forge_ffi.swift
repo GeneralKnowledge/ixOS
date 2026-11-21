@@ -2412,6 +2412,15 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func searchArchive(query: String, cancellation: Cancellation?) async throws  -> [ArchiveItem]
     
     /**
+     * One search for everything, the catalogues' part: Jamendo and the
+     * Internet Archive asked together for `query`, each with its own
+     * results or its own problem, leaving out Jamendo tracks already in
+     * the library (`search_library` shows those). Nothing for an empty
+     * query. On-screen work.
+     */
+    func searchCatalogues(query: String, cancellation: Cancellation?) async throws  -> CatalogueSearch
+    
+    /**
      * Jamendo tracks matching `query`, or this week's most popular when it
      * is empty. On-screen work.
      */
@@ -3385,6 +3394,29 @@ open func searchArchive(query: String, cancellation: Cancellation?)async throws 
 }
     
     /**
+     * One search for everything, the catalogues' part: Jamendo and the
+     * Internet Archive asked together for `query`, each with its own
+     * results or its own problem, leaving out Jamendo tracks already in
+     * the library (`search_library` shows those). Nothing for an empty
+     * query. On-screen work.
+     */
+open func searchCatalogues(query: String, cancellation: Cancellation?)async throws  -> CatalogueSearch  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_search_catalogues(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeCatalogueSearch_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Jamendo tracks matching `query`, or this week's most popular when it
      * is empty. On-screen work.
      */
@@ -3852,6 +3884,91 @@ public func FfiConverterTypeArchiveItem_lift(_ buf: RustBuffer) throws -> Archiv
 #endif
 public func FfiConverterTypeArchiveItem_lower(_ value: ArchiveItem) -> RustBuffer {
     return FfiConverterTypeArchiveItem.lower(value)
+}
+
+
+/**
+ * What the catalogues found for one search.
+ */
+public struct CatalogueSearch: Equatable, Hashable {
+    /**
+     * Jamendo tracks not already in the library, best first.
+     */
+    public var jamendo: [CatalogueTrack]
+    /**
+     * Why Jamendo has no results to show, if it couldn't be asked or
+     * failed ("add your Jamendo client ID in Discover first").
+     */
+    public var jamendoProblem: String?
+    /**
+     * Internet Archive items (albums, concerts), most downloaded first.
+     */
+    public var archive: [ArchiveItem]
+    public var archiveProblem: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Jamendo tracks not already in the library, best first.
+         */jamendo: [CatalogueTrack], 
+        /**
+         * Why Jamendo has no results to show, if it couldn't be asked or
+         * failed ("add your Jamendo client ID in Discover first").
+         */jamendoProblem: String?, 
+        /**
+         * Internet Archive items (albums, concerts), most downloaded first.
+         */archive: [ArchiveItem], archiveProblem: String?) {
+        self.jamendo = jamendo
+        self.jamendoProblem = jamendoProblem
+        self.archive = archive
+        self.archiveProblem = archiveProblem
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CatalogueSearch: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCatalogueSearch: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CatalogueSearch {
+        return
+            try CatalogueSearch(
+                jamendo: FfiConverterSequenceTypeCatalogueTrack.read(from: &buf), 
+                jamendoProblem: FfiConverterOptionString.read(from: &buf), 
+                archive: FfiConverterSequenceTypeArchiveItem.read(from: &buf), 
+                archiveProblem: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CatalogueSearch, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeCatalogueTrack.write(value.jamendo, into: &buf)
+        FfiConverterOptionString.write(value.jamendoProblem, into: &buf)
+        FfiConverterSequenceTypeArchiveItem.write(value.archive, into: &buf)
+        FfiConverterOptionString.write(value.archiveProblem, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCatalogueSearch_lift(_ buf: RustBuffer) throws -> CatalogueSearch {
+    return try FfiConverterTypeCatalogueSearch.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCatalogueSearch_lower(_ value: CatalogueSearch) -> RustBuffer {
+    return FfiConverterTypeCatalogueSearch.lower(value)
 }
 
 
@@ -10864,6 +10981,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_search_archive() != 25802) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_search_catalogues() != 25552) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_search_jamendo() != 56603) {

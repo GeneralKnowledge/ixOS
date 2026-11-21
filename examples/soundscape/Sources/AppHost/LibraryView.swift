@@ -23,6 +23,9 @@ struct LibraryHome: View {
     @AppStorage("library.shelf") private var shelf: Shelf = .songs
     @State private var search = ""
     @State private var details: String?
+    /// The catalogues' answer to `query`, once it arrives.
+    @State private var catalogues: CatalogueSearch?
+    @State private var cataloguesProblem: String?
 
     private var library: Library { model.library }
     private var query: String { search.trimmingCharacters(in: .whitespaces) }
@@ -55,10 +58,24 @@ struct LibraryHome: View {
                 }
             } else {
                 results(model.search(query))
+                catalogueResults
             }
         }
         .listStyle(.insetGrouped)
-        .searchable(text: $search, prompt: "Artists, albums and songs")
+        .searchable(text: $search, prompt: "Your music, Jamendo and the Archive")
+        .task(id: query) {
+            catalogues = nil
+            cataloguesProblem = nil
+            guard !query.isEmpty else { return }
+            // Wait for typing to pause before asking the catalogues.
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            switch await model.searchCatalogues(query) {
+            case .success(let found): catalogues = found
+            case .failure(let failure):
+                if !failure.stopped { cataloguesProblem = failure.message }
+            }
+        }
         .refreshable { await model.loadLibrary(fresh: true) }
         .navigationDestination(item: $details) { id in
             TrackView(model: model, player: player, id: id)
@@ -74,7 +91,7 @@ struct LibraryHome: View {
                     "No Music Yet", systemImage: "music.note.list",
                     description: "Find music in Discover, import your own files, or add a take server."
                 )
-            } else if !query.isEmpty && model.search(query).isEmpty {
+            } else if !query.isEmpty && model.search(query).isEmpty && catalogues?.isEmpty == true {
                 ForgeStateView.noResults(for: query)
             }
         }
@@ -144,6 +161,81 @@ struct LibraryHome: View {
 
 extension LibrarySearch {
     var isEmpty: Bool { artists.isEmpty && albums.isEmpty && tracks.isEmpty }
+}
+
+extension CatalogueSearch {
+    /// Nothing found and nothing to explain.
+    var isEmpty: Bool {
+        jamendo.isEmpty && archive.isEmpty && jamendoProblem == nil && archiveProblem == nil
+    }
+}
+
+extension LibraryHome {
+    /// Under the library's own results: what Jamendo and the Internet
+    /// Archive found, each in its own section, or why not.
+    @ViewBuilder fileprivate var catalogueResults: some View {
+        if let found = catalogues {
+            if !found.jamendo.isEmpty || found.jamendoProblem != nil {
+                Section {
+                    ForEach(Array(found.jamendo.enumerated()), id: \.element.id) { index, track in
+                        CatalogueRow(model: model, player: player, track: track) {
+                            player.play(model.queue(found.jamendo), from: index)
+                        }
+                    }
+                } header: {
+                    Text("From Jamendo")
+                } footer: {
+                    if let problem = found.jamendoProblem {
+                        Text(SoundscapeErrors.sentence(problem))
+                            .accessibilityIdentifier("search.jamendoProblem")
+                    }
+                }
+            }
+            if !found.archive.isEmpty || found.archiveProblem != nil {
+                Section {
+                    ForEach(found.archive, id: \.identifier) { item in
+                        NavigationLink(value: ListenRoute.archiveItem(item)) {
+                            ArchiveItemRow(item: item)
+                        }
+                        .accessibilityIdentifier("search.archiveItem")
+                    }
+                } header: {
+                    Text("From the Internet Archive")
+                } footer: {
+                    if let problem = found.archiveProblem {
+                        Text(SoundscapeErrors.sentence(problem))
+                            .accessibilityIdentifier("search.archiveProblem")
+                    }
+                }
+            }
+            if !found.jamendo.isEmpty || !found.archive.isEmpty {
+                Section {
+                    NavigationLink(value: ListenRoute.discover) {
+                        Label("More in Discover", systemImage: "sparkle.magnifyingglass")
+                    }
+                    .accessibilityIdentifier("search.discover")
+                }
+            }
+        } else if let cataloguesProblem {
+            Section {
+                Label(cataloguesProblem, systemImage: "exclamationmark.icloud")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("search.catalogueProblem")
+            }
+        } else {
+            Section {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Searching Jamendo and the Internet Archive")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("search.catalogueSearching")
+            }
+        }
+    }
 }
 
 // MARK: Rows
