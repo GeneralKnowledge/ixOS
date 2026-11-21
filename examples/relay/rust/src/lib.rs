@@ -1398,6 +1398,18 @@ impl RelayCore {
     }
 }
 
+/// For the command line, where several terminals can answer one offer.
+impl RelayCore {
+    /// Not Now to the offer for `endpoint_id` only, if it still waits:
+    /// another terminal may have answered it already.
+    pub fn dismiss_trust_offer_for(&self, endpoint_id: &str) {
+        let mut offers = lock(&self.trust_offers);
+        if let Some(at) = offers.iter().position(|o| o.endpoint_id == endpoint_id) {
+            offers.remove(at);
+        }
+    }
+}
+
 /// What a device on an older build does to send a note (a `DeviceMsg::Note`
 /// through the outbox), for the tests of how this build receives one. Not
 /// for the app: text to a trusted device is a message in its conversation.
