@@ -218,6 +218,20 @@ decided in step 2.
 The mailbox comes only once direct delivery and My Devices are
 dependable.
 
+### Parked: sites over Relay (Reuben, 2026-11-21)
+
+A website that only your Relay devices can open, never the normal
+internet. The site listens only on its host's localhost, and a new
+`relay/web/1` channel carries HTTP to it over the existing iroh
+connection. It needs a separate `web` right per device, never implied by
+trust, and revoking a device cuts it off. Computers view it through
+`relay web <device>` (a local address for any browser). The iPhone
+views it in Relay's own web view, whose requests Rust fetches over iroh.
+The iPhone can also host a folder as a site, but only while Relay is open
+(iOS suspends it otherwise, which is the behaviour he wants). It is a new
+feature, so it waits for the Relay 1.0 foundations like everything else
+here.
+
 ## What not to change
 
 - **Word codes** are for devices that aren't trusted, and they stay as
