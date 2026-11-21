@@ -41,11 +41,13 @@ What's missing is the default and the setup:
 ### 1. The servers on by default
 
 - New installs: Relay's servers on, mode Hybrid.
-- Upgrades: on as well, unless the person chose otherwise before. A
-  person who turned the servers off, or picked Private or This Network
-  Only, keeps that choice. To know who chose, the record gains
-  `servers_chosen`; anyone who never touched the switch is treated as
-  not having chosen.
+- Upgrades: on as well, unless the person chose otherwise before: a
+  person in Private or This Network Only, or with servers of their own,
+  keeps that. The record gains `servers_settled`, set once the default
+  has been applied or the person sets the servers, so Relay never changes
+  them by itself again. Older builds didn't record a choice, so someone
+  who turned the servers off there looks the same as someone who never
+  touched them; the notice tells them where to turn them off again.
 - An upgrade that turns them on says so once, in the same way as the saved-data
   notice: "Relay now reaches your devices away from home through its
   servers. What you send stays encrypted end to end. Settings →
