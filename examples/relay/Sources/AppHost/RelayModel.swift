@@ -316,9 +316,20 @@ public final class RelayModel {
     /// words, or nil when it failed (the failure is shown as an alert).
     public func syncDevices(with device: Device) async -> String? {
         var said: String?
-        await perform { core in
+        do {
             let synced = try await core.syncDevices(endpointId: device.endpointId)
             said = Self.synced(synced, from: device.name)
+            reload()
+            feedback.play(.success)
+        } catch {
+            // Nothing was being sent, so not the usual "Not Sent".
+            log.warn("failed: \(error)")
+            alert = .failure(ForgeFailure(
+                title: "Couldn't Check Its Devices",
+                message: (error as? RelayError).map(Self.describe) ?? error.localizedDescription,
+                isRetryable: false
+            ))
+            feedback.play(.failure)
         }
         refreshTrustOffer()
         return said

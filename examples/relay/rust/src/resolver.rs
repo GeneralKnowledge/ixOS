@@ -99,7 +99,7 @@ pub(crate) fn publishable(addrs: &[iroh::TransportAddr]) -> Vec<iroh::TransportA
         .iter()
         .filter(|a| match a {
             iroh::TransportAddr::Ip(addr) => {
-                kind_of(addr) == RouteKind::Internet && !from_hardware(addr)
+                address_kind(addr) == RouteKind::Internet && !from_hardware(addr)
             }
             _ => false,
         })
@@ -119,8 +119,18 @@ fn from_hardware(addr: &SocketAddr) -> bool {
     }
 }
 
-/// The kind of route `addr` is on.
+/// The kind of route `addr` is on, from here: a public IPv6 address in
+/// one of this device's own /64 networks is the same Wi-Fi or LAN, so the
+/// local network.
 pub(crate) fn kind_of(addr: &SocketAddr) -> RouteKind {
+    match (address_kind(addr), addr.ip()) {
+        (RouteKind::Internet, IpAddr::V6(ip)) if on_my_network(ip) => RouteKind::Local,
+        (kind, _) => kind,
+    }
+}
+
+/// The kind of network `addr` belongs to, wherever it is seen from.
+fn address_kind(addr: &SocketAddr) -> RouteKind {
     match addr.ip() {
         IpAddr::V4(ip) => kind_v4(ip),
         IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
@@ -170,6 +180,56 @@ fn kind_v6(ip: Ipv6Addr) -> RouteKind {
     } else {
         RouteKind::Internet
     }
+}
+
+/// The /64 networks of this device's own global IPv6 addresses (the first
+/// four segments), per endpoint, so a device on the same Wi-Fi reached by
+/// its public IPv6 address counts as the local network, not the internet.
+/// Several endpoints can run in one process (tests, the CLI's devices);
+/// an address is local when it is on any of their current networks.
+static MY_V6_NETWORKS: std::sync::RwLock<std::collections::BTreeMap<String, Vec<[u16; 4]>>> =
+    std::sync::RwLock::new(std::collections::BTreeMap::new());
+
+/// Records the current addresses of the endpoint `owner` (when it starts
+/// and whenever they change), replacing what it had: a network it left
+/// stops counting as local.
+pub(crate) fn learn_own_addresses<'a>(
+    owner: &str,
+    addrs: impl IntoIterator<Item = &'a SocketAddr>,
+) {
+    let mut networks: Vec<[u16; 4]> = addrs
+        .into_iter()
+        .filter_map(|a| match a.ip() {
+            IpAddr::V6(ip)
+                if ip.to_ipv4_mapped().is_none() && (ip.segments()[0] & 0xe000) == 0x2000 =>
+            {
+                let s = ip.segments();
+                Some([s[0], s[1], s[2], s[3]])
+            }
+            _ => None,
+        })
+        .collect();
+    networks.sort_unstable();
+    networks.dedup();
+    if let Ok(mut mine) = MY_V6_NETWORKS.write() {
+        mine.insert(owner.to_string(), networks);
+    }
+}
+
+/// The endpoint `owner` has closed: its networks no longer count.
+pub(crate) fn forget_own_addresses(owner: &str) {
+    if let Ok(mut mine) = MY_V6_NETWORKS.write() {
+        mine.remove(owner);
+    }
+}
+
+fn on_my_network(ip: Ipv6Addr) -> bool {
+    let s = ip.segments();
+    let network = [s[0], s[1], s[2], s[3]];
+    MY_V6_NETWORKS
+        .read()
+        .map(|mine| mine.values().any(|n| n.contains(&network)))
+        .unwrap_or(false)
 }
 
 /// Whether this device should tell others about `addr`: not loopback, and
@@ -417,6 +477,37 @@ mod tests {
 
     fn sa(s: &str) -> SocketAddr {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn a_public_ipv6_address_on_my_own_network_is_the_local_network() {
+        // Found on the phone, 2026-11-21: on one Wi-Fi the route showed as
+        // "Direct, internet" over the home's public IPv6 addresses.
+        let other = sa("[2a00:23c4:11ec:7502:1c2b:3d4e:5f60:7182]:4000");
+        assert_eq!(kind_of(&other), RouteKind::Internet);
+        learn_own_addresses(
+            "test-a",
+            [&sa("[2a00:23c4:11ec:7502:9a2c:bcff:fe73:2b93]:46787")],
+        );
+        assert_eq!(kind_of(&other), RouteKind::Local);
+        assert_eq!(
+            kind_of(&sa("[2a00:23c4:11ec:7503::1]:4000")),
+            RouteKind::Internet,
+            "a neighbouring /64 is not this network"
+        );
+        assert!(ConnectionMode::Private.allows(kind_of(&other)));
+        // Another endpoint on the same network keeps it local when the
+        // first moves on; once neither is there, it is the internet again.
+        learn_own_addresses("test-b", [&sa("[2a00:23c4:11ec:7502::b]:4000")]);
+        learn_own_addresses("test-a", [&sa("[2a00:23c4:11ec:7503::a]:4000")]);
+        assert_eq!(kind_of(&other), RouteKind::Local);
+        forget_own_addresses("test-b");
+        assert_eq!(
+            kind_of(&other),
+            RouteKind::Internet,
+            "a network left behind"
+        );
+        forget_own_addresses("test-a");
     }
 
     #[test]
