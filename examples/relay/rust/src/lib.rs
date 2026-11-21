@@ -974,17 +974,7 @@ impl RelayCore {
                 })
             })
             .await?;
-        if let (Some(node), Some(url)) = (self.node.started(), self.servers().relay()) {
-            code::TOKIO.spawn(async move {
-                if mode == ConnectionMode::Hybrid {
-                    node.endpoint
-                        .insert_relay(url.clone(), Arc::new(url.into()))
-                        .await;
-                } else {
-                    node.endpoint.remove_relay(&url).await;
-                }
-            });
-        }
+        self.apply_servers().await;
         self.deliver_waiting();
         Ok(())
     }
@@ -994,7 +984,7 @@ impl RelayCore {
         self.record.get().devices.servers.clone()
     }
 
-    /// Sets Relay's servers. They are used from the next time Relay opens.
+    /// Sets Relay's servers, used at once.
     pub async fn set_servers(&self, servers: RelayServers) -> Result<(), RelayError> {
         let clean = RelayServers {
             relay_url: servers.relay_url.filter(|u| !u.trim().is_empty()),
@@ -1011,7 +1001,10 @@ impl RelayCore {
                     Ok(())
                 })
             })
-            .await
+            .await?;
+        self.apply_servers().await;
+        self.deliver_waiting();
+        Ok(())
     }
 
     /// The network changed (another Wi-Fi, Wi-Fi to mobile data): Relay
@@ -1518,6 +1511,15 @@ impl RelayCore {
         if let Err(err) = decided {
             forge_runtime::logging::warn!("relay couldn't apply the pairing policy: {err}")
         }
+    }
+
+    /// The endpoint uses the servers the current mode allows, from now on.
+    async fn apply_servers(&self) {
+        let servers = self.servers().in_mode(self.connection_mode());
+        let node = Arc::clone(&self.node);
+        let _ = code::TOKIO
+            .spawn(async move { node.use_servers(servers).await })
+            .await;
     }
 
     /// Asks the introducer `endpoint_id` for its list in the background;

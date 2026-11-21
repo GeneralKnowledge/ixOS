@@ -111,9 +111,12 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
         lookup_url: Some(server.pkarr_url().to_string()),
     };
     let dir = tempfile::tempdir().unwrap();
-    // Set the servers, then open Relay again: they apply from the next open.
-    for name in ["phone", "laptop"] {
-        let core = device(dir.path(), name);
+    let phone = device(dir.path(), "phone");
+    let laptop = device(dir.path(), "laptop");
+    // Both already running when the servers are set: they apply at once,
+    // without opening Relay again (N2).
+    for core in [&phone, &laptop] {
+        block_on(core.device_service()).unwrap();
         assert!(block_on(core.set_servers(RelayServers {
             relay_url: Some("not a url".into()),
             lookup_url: None,
@@ -122,9 +125,6 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
         block_on(core.set_servers(servers.clone())).unwrap();
         assert_eq!(core.servers(), servers);
     }
-    std::thread::sleep(Duration::from_millis(500));
-    let phone = device(dir.path(), "phone");
-    let laptop = device(dir.path(), "laptop");
     trust_each_other(dir.path(), &phone, &laptop);
     let laptop_id = phone
         .devices()
@@ -213,16 +213,14 @@ fn in_private_a_device_found_only_through_the_servers_is_not_reached() {
         lookup_url: Some(server.pkarr_url().to_string()),
     };
     let dir = tempfile::tempdir().unwrap();
-    for name in ["phone", "laptop"] {
-        let core = device(dir.path(), name);
-        block_on(core.set_servers(servers.clone())).unwrap();
-        if name == "phone" {
-            block_on(core.set_connection_mode(ConnectionMode::Private)).unwrap();
-        }
-    }
-    std::thread::sleep(Duration::from_millis(500));
     let phone = device(dir.path(), "phone");
     let laptop = device(dir.path(), "laptop");
+    // Set while running, as in the test above.
+    for core in [&phone, &laptop] {
+        block_on(core.device_service()).unwrap();
+        block_on(core.set_servers(servers.clone())).unwrap();
+    }
+    block_on(phone.set_connection_mode(ConnectionMode::Private)).unwrap();
     trust_each_other(dir.path(), &phone, &laptop);
     let laptop_id = phone
         .devices()
@@ -252,4 +250,11 @@ fn in_private_a_device_found_only_through_the_servers_is_not_reached() {
         notes_from(&laptop, "phone").is_empty(),
         "nothing went by relay"
     );
+
+    // Back to Everywhere: the waiting note goes at once, without opening
+    // Relay again.
+    block_on(phone.set_connection_mode(ConnectionMode::Hybrid)).unwrap();
+    eventually("the note, once allowed", || {
+        notes_from(&laptop, "phone") == ["not by relay"]
+    });
 }
