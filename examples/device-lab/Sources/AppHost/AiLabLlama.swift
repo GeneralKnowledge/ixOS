@@ -99,7 +99,7 @@ final class LlamaCppModel: AiModel, @unchecked Sendable {
         }
         try LlamaRuntime.shared.generate(
             path: path, prompt: Self.chatML(request.messages), maxTokens: Int(request.maxTokens),
-            temperature: Float(request.temperature), sink: sink)
+            temperature: Float(request.temperature), grammar: nil, sink: sink)
     }
 
     /// Qwen3.5's chat format (Bonsai is built on Qwen3.5), with thinking
@@ -117,6 +117,19 @@ final class LlamaCppModel: AiModel, @unchecked Sendable {
             text += "<|im_start|>\(role)\n\(message.content)<|im_end|>\n"
         }
         return text + "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    }
+}
+
+/// Bonsai Harness drives the same model with a grammar: every answer must
+/// be one tool call of the shapes Rust allows (rust/src/harness/calls.rs).
+extension LlamaCppModel: HarnessModel {
+    func generate(request: AiRequest, grammar: String?, sink: TextSink) async throws {
+        guard let path = file.localURL?.path, file.isDownloaded else {
+            throw AiModelError.Unavailable(reason: "Download the model first.")
+        }
+        try LlamaRuntime.shared.generate(
+            path: path, prompt: Self.chatML(request.messages), maxTokens: Int(request.maxTokens),
+            temperature: Float(request.temperature), grammar: grammar, sink: sink)
     }
 }
 
@@ -146,8 +159,10 @@ final class LlamaRuntime: @unchecked Sendable {
         if path == nil || path == self.path { freeLocked() }
     }
 
+    /// With a `grammar` (GBNF), the answer is greedy and follows it.
     func generate(
-        path: String, prompt: String, maxTokens: Int, temperature: Float, sink: TextSink
+        path: String, prompt: String, maxTokens: Int, temperature: Float, grammar: String?,
+        sink: TextSink
     ) throws {
         lock.lock()
         defer { lock.unlock() }
@@ -183,12 +198,25 @@ final class LlamaRuntime: @unchecked Sendable {
 
         let sampler = Self.sampler(temperature: temperature)
         defer { llama_sampler_free(sampler) }
+        var constraint: UnsafeMutablePointer<llama_sampler>?
+        if let grammar {
+            guard let parsed = llama_sampler_init_grammar(vocab, grammar, "root") else {
+                throw AiModelError.Engine(reason: "llama.cpp could not read the answer's grammar.")
+            }
+            constraint = parsed
+        }
+        defer { if let constraint { llama_sampler_free(constraint) } }
 
         // One push per token, so AI Lab's pieces per second is tokens per
         // second. Bytes wait until they form whole UTF-8 characters.
         var pending: [UInt8] = []
         for _ in 0..<maxTokens {
-            var token = llama_sampler_sample(sampler, context, -1)
+            var token =
+                if let constraint {
+                    Self.constrainedGreedy(context: context, vocab: vocab, grammar: constraint)
+                } else {
+                    llama_sampler_sample(sampler, context, -1)
+                }
             if llama_vocab_is_eog(vocab, token) { break }
             pending += Self.piece(token, vocab: vocab)
             if let text = String(bytes: pending, encoding: .utf8) {
@@ -271,6 +299,50 @@ final class LlamaRuntime: @unchecked Sendable {
             llama_sampler_chain_add(chain, llama_sampler_init_dist(UInt32.random(in: 0...UInt32.max)))
         }
         return chain
+    }
+
+    /// The most likely token the grammar allows. Most tokens are allowed
+    /// anyway, so the best one is checked alone first and the whole
+    /// vocabulary only when it isn't (llama.cpp's own sampler does the
+    /// same): with ~150k tokens, filtering every step would cost much of
+    /// the phone's speed.
+    private static func constrainedGreedy(
+        context: OpaquePointer, vocab: OpaquePointer, grammar: UnsafeMutablePointer<llama_sampler>
+    ) -> llama_token {
+        let count = Int(llama_vocab_n_tokens(vocab))
+        guard count > 0, let logits = llama_get_logits_ith(context, -1) else {
+            return llama_vocab_eos(vocab)
+        }
+        var best = 0
+        for index in 1..<count where logits[index] > logits[best] { best = index }
+        var single = llama_token_data(id: llama_token(best), logit: logits[best], p: 0)
+        let allowed = withUnsafeMutablePointer(to: &single) { pointer -> Bool in
+            var array = llama_token_data_array(data: pointer, size: 1, selected: -1, sorted: false)
+            llama_sampler_apply(grammar, &array)
+            return pointer.pointee.logit.isFinite
+        }
+        var token = llama_token(best)
+        if !allowed {
+            var candidates = (0..<count).map {
+                llama_token_data(id: llama_token($0), logit: logits[$0], p: 0)
+            }
+            let pick = candidates.withUnsafeMutableBufferPointer { buffer -> llama_token? in
+                var array = llama_token_data_array(
+                    data: buffer.baseAddress, size: buffer.count, selected: -1, sorted: false)
+                llama_sampler_apply(grammar, &array)
+                var pick = 0
+                for index in 1..<buffer.count where buffer[index].logit > buffer[pick].logit {
+                    pick = index
+                }
+                return buffer[pick].logit.isFinite ? buffer[pick].id : nil
+            }
+            // Nothing allowed (shouldn't happen): end the answer rather than
+            // feed the grammar a token it rejects, which aborts llama.cpp.
+            guard let pick else { return llama_vocab_eos(vocab) }
+            token = pick
+        }
+        llama_sampler_accept(grammar, token)
+        return token
     }
 
     private static func tokenize(_ text: String, vocab: OpaquePointer) throws -> [llama_token] {

@@ -243,6 +243,32 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HARNESS_MODEL_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HARNESS_MODEL_METHOD0
+typedef void (*UniffiCallbackInterfaceHarnessModelMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HARNESS_MODEL_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HARNESS_MODEL_METHOD1
+typedef void (*UniffiCallbackInterfaceHarnessModelMethod1)(uint64_t, RustBuffer, RustBuffer, uint64_t, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PYTHON_HOST_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PYTHON_HOST_METHOD0
+typedef void (*UniffiCallbackInterfacePythonHostMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PYTHON_HOST_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PYTHON_HOST_METHOD1
+typedef void (*UniffiCallbackInterfacePythonHostMethod1)(uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
 typedef void (*UniffiCallbackInterfaceLocalNotifierMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
@@ -469,6 +495,26 @@ typedef void (*UniffiCallbackInterfaceTransferSessionMethod3)(uint64_t, RustBuff
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HARNESS_MODEL
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HARNESS_MODEL
+typedef struct UniffiVTableCallbackInterfaceHarnessModel {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceHarnessModelMethod0 _Nonnull describe;
+    UniffiCallbackInterfaceHarnessModelMethod1 _Nonnull generate;
+} UniffiVTableCallbackInterfaceHarnessModel;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PYTHON_HOST
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PYTHON_HOST
+typedef struct UniffiVTableCallbackInterfacePythonHost {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfacePythonHostMethod0 _Nonnull run;
+    UniffiCallbackInterfacePythonHostMethod1 _Nonnull interrupt;
+} UniffiVTableCallbackInterfacePythonHost;
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
@@ -686,6 +732,111 @@ int8_t uniffi_forge_ffi_fn_method_ailab_stop_requested(uint64_t ptr, RustCallSta
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_UPDATE_EXTERNAL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AILAB_UPDATE_EXTERNAL
 void uniffi_forge_ffi_fn_method_ailab_update_external(uint64_t ptr, RustBuffer so_far, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_BONSAIHARNESS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_BONSAIHARNESS
+uint64_t uniffi_forge_ffi_fn_clone_bonsaiharness(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_BONSAIHARNESS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_BONSAIHARNESS
+void uniffi_forge_ffi_fn_free_bonsaiharness(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_BONSAIHARNESS_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_BONSAIHARNESS_NEW
+uint64_t uniffi_forge_ffi_fn_constructor_bonsaiharness_new(uint64_t python, RustBuffer projects_folder, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_FILES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_FILES
+RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_files(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_LADDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_LADDER
+RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_ladder(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_OPEN_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_OPEN_PROJECT
+void uniffi_forge_ffi_fn_method_bonsaiharness_open_project(uint64_t ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SNAPSHOT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SNAPSHOT
+RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_snapshot(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM
+void uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(uint64_t ptr, uint64_t model, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_LADDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_LADDER
+void uniffi_forge_ffi_fn_method_bonsaiharness_start_ladder(uint64_t ptr, uint64_t model, RustBuffer task_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_STOP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_STOP
+void uniffi_forge_ffi_fn_method_bonsaiharness_stop(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_TRANSCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_TRANSCRIPT
+RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_transcript(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_HARNESSMODEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_HARNESSMODEL
+uint64_t uniffi_forge_ffi_fn_clone_harnessmodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_HARNESSMODEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_HARNESSMODEL
+void uniffi_forge_ffi_fn_free_harnessmodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_HARNESSMODEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_HARNESSMODEL
+void uniffi_forge_ffi_fn_init_callback_vtable_harnessmodel(const UniffiVTableCallbackInterfaceHarnessModel* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_HARNESSMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_HARNESSMODEL_DESCRIBE
+RustBuffer uniffi_forge_ffi_fn_method_harnessmodel_describe(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_HARNESSMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_HARNESSMODEL_GENERATE
+uint64_t uniffi_forge_ffi_fn_method_harnessmodel_generate(uint64_t ptr, RustBuffer request, RustBuffer grammar, uint64_t sink
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_PYTHONHOST
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_PYTHONHOST
+uint64_t uniffi_forge_ffi_fn_clone_pythonhost(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_PYTHONHOST
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_PYTHONHOST
+void uniffi_forge_ffi_fn_free_pythonhost(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_PYTHONHOST
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_PYTHONHOST
+void uniffi_forge_ffi_fn_init_callback_vtable_pythonhost(const UniffiVTableCallbackInterfacePythonHost* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_PYTHONHOST_RUN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_PYTHONHOST_RUN
+uint64_t uniffi_forge_ffi_fn_method_pythonhost_run(uint64_t ptr, RustBuffer code
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_PYTHONHOST_INTERRUPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_PYTHONHOST_INTERRUPT
+void uniffi_forge_ffi_fn_method_pythonhost_interrupt(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_LOCALNOTIFIER
@@ -1732,6 +1883,78 @@ uint16_t uniffi_forge_ffi_checksum_method_ailab_update_external(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_FILES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_FILES
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_files(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_LADDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_LADDER
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_ladder(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_OPEN_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_OPEN_PROJECT
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_open_project(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_SNAPSHOT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_SNAPSHOT
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_snapshot(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_LADDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_LADDER
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_STOP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_STOP
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_stop(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_TRANSCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_TRANSCRIPT
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_transcript(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_HARNESSMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_HARNESSMODEL_DESCRIBE
+uint16_t uniffi_forge_ffi_checksum_method_harnessmodel_describe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_HARNESSMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_HARNESSMODEL_GENERATE
+uint16_t uniffi_forge_ffi_checksum_method_harnessmodel_generate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_PYTHONHOST_RUN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_PYTHONHOST_RUN
+uint16_t uniffi_forge_ffi_checksum_method_pythonhost_run(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_PYTHONHOST_INTERRUPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_PYTHONHOST_INTERRUPT
+uint16_t uniffi_forge_ffi_checksum_method_pythonhost_interrupt(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
 uint16_t uniffi_forge_ffi_checksum_method_localnotifier_schedule(void
@@ -2011,6 +2234,12 @@ uint16_t uniffi_forge_ffi_checksum_constructor_devicelab_new(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_AILAB_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_AILAB_NEW
 uint16_t uniffi_forge_ffi_checksum_constructor_ailab_new(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_BONSAIHARNESS_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_BONSAIHARNESS_NEW
+uint16_t uniffi_forge_ffi_checksum_constructor_bonsaiharness_new(void
     
 );
 #endif

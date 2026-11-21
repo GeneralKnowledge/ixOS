@@ -11,6 +11,7 @@ struct ToolsView: View {
         lab: AiLab(model: ForgeAppleModel()), structured: AiLabStructured.run)
     @State private var llamaLab = LlamaLabModel()
     @State private var pythonLab = PythonLabModel.live()
+    @State private var harness = BonsaiHarnessModel.live()
 
     var body: some View {
         List {
@@ -83,6 +84,16 @@ struct ToolsView: View {
                 .accessibilityIdentifier("tools.pythonLab")
             } footer: {
                 Text("Write a Python script and run it on this phone with CPython.")
+            }
+            Section {
+                NavigationLink {
+                    BonsaiHarnessView(model: harness)
+                } label: {
+                    Label("Bonsai Harness", systemImage: "hammer")
+                }
+                .accessibilityIdentifier("tools.bonsaiHarness")
+            } footer: {
+                Text("Give Bonsai a Python task: it writes, runs and fixes the code on this phone, and the harness checks the result.")
             }
             Section {
                 NavigationLink {

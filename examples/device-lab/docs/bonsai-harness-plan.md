@@ -1,6 +1,6 @@
 # Bonsai Harness: a local agent that completes projects, proven in Python Lab
 
-Status: **direction set by Reuben** (2026-11-21): AI Lab's defining goal is an on-device agent. Bonsai Harness is the product; Python Lab is the first environment it works in. Shaped by a study of Pi, mini-swe-agent, Aider, Cline and OpenHands (below). The first slice (H1 to H3, thin) follows in the PR that adds this plan; nothing has run on the phone yet.
+Status: **direction set by Reuben** (2026-11-21): AI Lab's defining goal is an on-device agent. Bonsai Harness is the product; Python Lab is the first environment it works in. Shaped by a study of Pi, mini-swe-agent, Aider, Cline and OpenHands (below). The first slice (H1 to H3, thin) is built in the PR that adds this plan (#357); its Rust is tested on Linux against python3, its Swift is not compiled yet, and nothing has run on the phone yet.
 
 ## The goal
 

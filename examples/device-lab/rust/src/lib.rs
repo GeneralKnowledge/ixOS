@@ -15,6 +15,7 @@
 
 pub mod ai_lab;
 pub mod crash_test;
+pub mod harness;
 pub mod logs;
 pub mod power;
 pub mod stats;
