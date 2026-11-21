@@ -328,6 +328,20 @@ impl RelayServers {
     }
 }
 
+/// Whether Relay's servers answer now (N2), for the Connections screen,
+/// `relay status` and the reason a device can't be reached.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ServerHealth {
+    /// No relay in use: none set, or Connections isn't Everywhere.
+    Off,
+    /// Set moments ago, or Relay isn't open to devices yet.
+    Connecting,
+    /// Connected to the relay.
+    Reachable,
+    /// The relay doesn't answer.
+    Unreachable,
+}
+
 /// What Relay knows about where a trusted device might be.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Whereabouts<'a> {
@@ -431,16 +445,35 @@ fn known_ways(kinds: &[RouteKind]) -> String {
     }
 }
 
+/// The Connections choice as the app names it (N2).
 fn mode_words(mode: ConnectionMode) -> &'static str {
     match mode {
-        ConnectionMode::Local => "Local network only",
-        ConnectionMode::Private => "Local and private networks",
-        ConnectionMode::Hybrid => "Any route",
+        ConnectionMode::Local => "This Network Only",
+        ConnectionMode::Private => "Private Networks",
+        ConnectionMode::Hybrid => "Everywhere",
     }
 }
 
 /// Why a device that had addresses to try didn't answer, in words.
-pub(crate) fn no_answer(name: &str, plan: &Plan) -> String {
+/// `servers_down`: Relay's relay doesn't answer either, so only the
+/// local and private routes were really tried.
+pub(crate) fn no_answer(name: &str, plan: &Plan, servers_down: bool) -> String {
+    if servers_down {
+        let near: Vec<RouteKind> = plan
+            .kinds
+            .iter()
+            .copied()
+            .filter(|k| matches!(k, RouteKind::Local | RouteKind::Private))
+            .collect();
+        let tried = if near.is_empty() {
+            String::new()
+        } else {
+            format!(" {name} didn't answer {} either.", known_ways(&near))
+        };
+        return format!(
+            "Relay's servers can't be reached right now, so {name} can't be reached away from this network.{tried} Relay tries again when the servers answer."
+        );
+    }
     let tried = known_ways(&plan.kinds);
     let hint = if plan.kinds == [RouteKind::Local] {
         " It may be away from this network: with Tailscale on both devices, Relay can reach it from anywhere once they have met."
@@ -641,7 +674,7 @@ mod tests {
         };
         let err = plan(&w, ConnectionMode::Local).unwrap_err();
         assert!(err.contains("over a private network"), "{err}");
-        assert!(err.contains("Local network only"), "{err}");
+        assert!(err.contains("This Network Only"), "{err}");
 
         let local = vec!["192.168.1.169:4000".to_string()];
         let w = Whereabouts {
@@ -652,9 +685,16 @@ mod tests {
             by_key: false,
         };
         let p = plan(&w, ConnectionMode::Hybrid).unwrap();
-        let why = no_answer("create", &p);
+        let why = no_answer("create", &p, false);
         assert!(why.contains("on the local network"), "{why}");
         assert!(why.contains("Tailscale"), "{why}");
+        // With the servers down, that is what the person hears first.
+        let why = no_answer("create", &p, true);
+        assert!(why.starts_with("Relay's servers can't be reached"), "{why}");
+        assert!(
+            why.contains("didn't answer on the local network either"),
+            "{why}"
+        );
     }
 
     #[test]
@@ -669,7 +709,7 @@ mod tests {
         assert_eq!(p.kinds, vec![RouteKind::Internet]);
         let err = plan(&w, ConnectionMode::Private).unwrap_err();
         assert!(err.contains("through Relay's servers"), "{err}");
-        assert!(err.contains("Local and private networks"), "{err}");
+        assert!(err.contains("Private Networks"), "{err}");
     }
 
     #[test]

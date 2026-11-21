@@ -5231,6 +5231,13 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func sendWithCode(path: String) throws 
     
     /**
+     * Whether Relay's relay answers now: `Off` when none is in use (none
+     * set, or Connections isn't Everywhere), `Connecting` before Relay is
+     * open to devices or just after a change.
+     */
+    func serverHealth()  -> ServerHealth
+    
+    /**
      * Relay's own servers: a relay and a lookup server (M2 PR 7).
      */
     func servers()  -> RelayServers
@@ -5275,7 +5282,7 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func setSeesDevices(endpointId: String, on: Bool) async throws 
     
     /**
-     * Sets Relay's servers. They are used from the next time Relay opens.
+     * Sets Relay's servers, used at once.
      */
     func setServers(servers: RelayServers) async throws 
     
@@ -5928,6 +5935,20 @@ open func sendWithCode(path: String)throws   {try rustCallWithError(FfiConverter
 }
     
     /**
+     * Whether Relay's relay answers now: `Off` when none is in use (none
+     * set, or Connections isn't Everywhere), `Connecting` before Relay is
+     * open to devices or just after a change.
+     */
+open func serverHealth() -> ServerHealth  {
+    return try!  FfiConverterTypeServerHealth_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_server_health(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Relay's own servers: a relay and a lookup server (M2 PR 7).
      */
 open func servers() -> RelayServers  {
@@ -6070,7 +6091,7 @@ open func setSeesDevices(endpointId: String, on: Bool)async throws   {
 }
     
     /**
-     * Sets Relay's servers. They are used from the next time Relay opens.
+     * Sets Relay's servers, used at once.
      */
 open func setServers(servers: RelayServers)async throws   {
     return
@@ -12997,6 +13018,102 @@ public func FfiConverterTypeRouteKind_lower(_ value: RouteKind) -> RustBuffer {
 
 
 /**
+ * Whether Relay's servers answer now (N2), for the Connections screen,
+ * `relay status` and the reason a device can't be reached.
+ */
+
+public enum ServerHealth: Equatable, Hashable {
+    
+    /**
+     * No relay in use: none set, or Connections isn't Everywhere.
+     */
+    case off
+    /**
+     * Set moments ago, or Relay isn't open to devices yet.
+     */
+    case connecting
+    /**
+     * Connected to the relay.
+     */
+    case reachable
+    /**
+     * The relay doesn't answer.
+     */
+    case unreachable
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ServerHealth: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeServerHealth: FfiConverterRustBuffer {
+    typealias SwiftType = ServerHealth
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ServerHealth {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .off
+        
+        case 2: return .connecting
+        
+        case 3: return .reachable
+        
+        case 4: return .unreachable
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ServerHealth, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .off:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .connecting:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .reachable:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .unreachable:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeServerHealth_lift(_ buf: RustBuffer) throws -> ServerHealth {
+    return try FfiConverterTypeServerHealth.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeServerHealth_lower(_ value: ServerHealth) -> RustBuffer {
+    return FfiConverterTypeServerHealth.lower(value)
+}
+
+
+
+/**
  * Something the user can share through the system share sheet.
  * The host presents it (on iOS `ForgeShareLink`).
  */
@@ -14624,6 +14741,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_send_with_code() != 8349) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_server_health() != 15100) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_servers() != 62920) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14648,7 +14768,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_set_sees_devices() != 53785) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_set_servers() != 37385) {
+    if (uniffi_relay_core_checksum_method_relaycore_set_servers() != 31730) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_shutdown() != 23618) {

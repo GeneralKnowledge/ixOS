@@ -128,12 +128,14 @@ struct PairingPolicySection: View {
 struct ConnectionModeSection: View {
     let mode: ConnectionMode
     let servers: RelayServers
+    var health: ServerHealth = .off
     let choose: (ConnectionMode) -> Void
     let chooseServers: (RelayServers) -> Void
 
     init(model: RelayModel) {
         mode = model.connectionMode
         servers = model.servers
+        health = model.serverHealth
         choose = { mode in Task { await model.setConnectionMode(mode) } }
         chooseServers = { servers in Task { await model.setServers(servers) } }
     }
@@ -141,11 +143,13 @@ struct ConnectionModeSection: View {
     init(
         mode: ConnectionMode,
         servers: RelayServers,
+        health: ServerHealth,
         choose: @escaping (ConnectionMode) -> Void,
         chooseServers: @escaping (RelayServers) -> Void
     ) {
         self.mode = mode
         self.servers = servers
+        self.health = health
         self.choose = choose
         self.chooseServers = chooseServers
     }
@@ -165,6 +169,15 @@ struct ConnectionModeSection: View {
                     LabeledContent("Servers", value: Self.serversName(servers))
                 }
                 .accessibilityIdentifier("devices.servers")
+                if health == .unreachable {
+                    Label(
+                        "The servers can't be reached right now. Devices on the same Wi-Fi or Tailscale still can.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("devices.serversDown")
+                }
             }
         } header: {
             Text("Connections")
@@ -190,6 +203,7 @@ struct RelaySettingsSection: View {
     @State private var policy: PairingPolicy = .askToPair
     @State private var mode: ConnectionMode = .hybrid
     @State private var servers = RelayServers(relayUrl: nil, lookupUrl: nil)
+    @State private var health: ServerHealth = .off
 
     var body: some View {
         PairingPolicySection(policy: policy) { chosen in
@@ -203,7 +217,7 @@ struct RelaySettingsSection: View {
             }
         }
         .onAppear { policy = core.pairingPolicy() }
-        ConnectionModeSection(mode: mode, servers: servers) { chosen in
+        ConnectionModeSection(mode: mode, servers: servers, health: health) { chosen in
             mode = chosen
             Task {
                 do {
@@ -225,6 +239,7 @@ struct RelaySettingsSection: View {
         .onAppear {
             mode = core.connectionMode()
             servers = core.servers()
+            health = core.serverHealth()
         }
     }
 }

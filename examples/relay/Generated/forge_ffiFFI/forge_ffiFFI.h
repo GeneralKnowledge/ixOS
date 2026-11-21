@@ -672,6 +672,11 @@ uint64_t uniffi_relay_core_fn_method_relaycore_send_to_device(uint64_t ptr, Rust
 void uniffi_relay_core_fn_method_relaycore_send_with_code(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SERVER_HEALTH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SERVER_HEALTH
+RustBuffer uniffi_relay_core_fn_method_relaycore_server_health(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SERVERS
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SERVERS
 RustBuffer uniffi_relay_core_fn_method_relaycore_servers(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -2127,6 +2132,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_send_to_device(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_WITH_CODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_WITH_CODE
 uint16_t uniffi_relay_core_checksum_method_relaycore_send_with_code(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SERVER_HEALTH
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SERVER_HEALTH
+uint16_t uniffi_relay_core_checksum_method_relaycore_server_health(void
     
 );
 #endif

@@ -85,6 +85,7 @@ public final class RelayModel {
         policy = core.pairingPolicy()
         connectionMode = core.connectionMode()
         servers = core.servers()
+        serverHealth = core.serverHealth()
         trustOffer = core.trustOffer()
         savedDataNotice = core.savedDataNotice()
         awayNotice = core.awayFromHomeNotice()
@@ -195,6 +196,8 @@ public final class RelayModel {
     /// The relay and lookup server used in Everywhere: Relay's own by
     /// default (N2), the person's own, or none.
     public private(set) var servers = RelayServers(relayUrl: nil, lookupUrl: nil)
+    /// Whether the relay answers now, said on the Connections section.
+    public private(set) var serverHealth: ServerHealth = .off
     /// "Trust this device?" after a code transfer, until answered.
     public private(set) var trustOffer: TrustOffer?
 

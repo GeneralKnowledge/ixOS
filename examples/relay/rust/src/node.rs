@@ -98,7 +98,14 @@ pub(crate) struct Node {
     router: Router,
     /// The servers the endpoint uses now (`use_servers` changes them).
     servers: Mutex<RelayServers>,
+    /// When they last changed: a relay set moments ago is still
+    /// connecting, not down.
+    servers_since: Mutex<std::time::Instant>,
 }
+
+/// How long a newly set relay is given to connect before it counts as
+/// down.
+const RELAY_GRACE: std::time::Duration = std::time::Duration::from_secs(15);
 
 impl Node {
     /// Opens the store in `store_dir` and binds the endpoint with the key
@@ -149,6 +156,7 @@ impl Node {
             device_allowed,
             router,
             servers: Mutex::new(servers.clone()),
+            servers_since: Mutex::new(std::time::Instant::now()),
         })
     }
 
@@ -157,6 +165,9 @@ impl Node {
     /// not. Nothing waits for the next time Relay opens.
     pub async fn use_servers(&self, next: RelayServers) {
         let before = std::mem::replace(&mut *forge_runtime::lock(&self.servers), next.clone());
+        if before != next {
+            *forge_runtime::lock(&self.servers_since) = std::time::Instant::now();
+        }
         if before.relay() != next.relay() {
             if let Some(url) = before.relay() {
                 self.endpoint.remove_relay(&url).await;
@@ -193,6 +204,25 @@ impl Node {
             if next.relay().is_some() { "on" } else { "off" },
             if next.lookup().is_some() { "on" } else { "off" }
         );
+    }
+
+    /// Whether the relay answers, from iroh's view of its home relay.
+    pub fn relay_health(&self) -> crate::resolver::ServerHealth {
+        use crate::resolver::ServerHealth;
+        use iroh::Watcher;
+        if forge_runtime::lock(&self.servers).relay().is_none() {
+            return ServerHealth::Off;
+        }
+        let statuses = self.endpoint.home_relay_status().get();
+        if statuses.iter().any(|s| s.is_connected()) {
+            return ServerHealth::Reachable;
+        }
+        let failed = statuses.iter().any(|s| s.last_error().is_some());
+        if !failed && forge_runtime::lock(&self.servers_since).elapsed() < RELAY_GRACE {
+            ServerHealth::Connecting
+        } else {
+            ServerHealth::Unreachable
+        }
     }
 
     pub fn id(&self) -> EndpointId {

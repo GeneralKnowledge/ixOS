@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use relay_core::{CodeSend, ConnectionMode, RelayCore, RelayServers};
+use relay_core::{CodeSend, ConnectionMode, RelayCore, RelayServers, ServerHealth};
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     forge_runtime::block_on(future)
@@ -124,6 +124,9 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
         .is_err());
         block_on(core.set_servers(servers.clone())).unwrap();
         assert_eq!(core.servers(), servers);
+        eventually("the relay to answer", || {
+            core.server_health() == ServerHealth::Reachable
+        });
     }
     trust_each_other(dir.path(), &phone, &laptop);
     let laptop_id = phone
@@ -242,7 +245,7 @@ fn in_private_a_device_found_only_through_the_servers_is_not_reached() {
             .find(|d| d.endpoint_id == laptop_id)
             .and_then(|d| d.problem.clone())
             .is_some_and(|p| {
-                p.contains("through Relay's servers") && p.contains("Local and private")
+                p.contains("through Relay's servers") && p.contains("Private Networks")
             })
     });
     std::thread::sleep(Duration::from_secs(2));
@@ -257,4 +260,29 @@ fn in_private_a_device_found_only_through_the_servers_is_not_reached() {
     eventually("the note, once allowed", || {
         notes_from(&laptop, "phone") == ["not by relay"]
     });
+}
+
+#[test]
+fn a_relay_that_doesnt_answer_is_said_to_be_down() {
+    let dir = tempfile::tempdir().unwrap();
+    let phone = device(dir.path(), "phone");
+    assert_eq!(phone.server_health(), ServerHealth::Off, "none set");
+    block_on(phone.device_service()).unwrap();
+    // Nothing listens there.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    block_on(phone.set_servers(RelayServers {
+        relay_url: Some(format!("http://127.0.0.1:{port}")),
+        lookup_url: None,
+    }))
+    .unwrap();
+    eventually("the relay to count as down", || {
+        phone.server_health() == ServerHealth::Unreachable
+    });
+    // Private never uses it, so it isn't down there: it is off.
+    block_on(phone.set_connection_mode(ConnectionMode::Private)).unwrap();
+    assert_eq!(phone.server_health(), ServerHealth::Off);
 }

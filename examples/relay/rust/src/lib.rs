@@ -36,7 +36,7 @@ mod presence;
 mod record;
 mod resolver;
 mod store;
-pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind};
+pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind, ServerHealth};
 mod hex;
 mod trust;
 
@@ -982,6 +982,24 @@ impl RelayCore {
     /// Relay's own servers: a relay and a lookup server (M2 PR 7).
     pub fn servers(&self) -> RelayServers {
         self.record.get().devices.servers.clone()
+    }
+
+    /// Whether Relay's relay answers now: `Off` when none is in use (none
+    /// set, or Connections isn't Everywhere), `Connecting` before Relay is
+    /// open to devices or just after a change.
+    pub fn server_health(&self) -> ServerHealth {
+        if self
+            .servers()
+            .in_mode(self.connection_mode())
+            .relay()
+            .is_none()
+        {
+            return ServerHealth::Off;
+        }
+        match self.node.started() {
+            Some(node) => node.relay_health(),
+            None => ServerHealth::Connecting,
+        }
     }
 
     /// Sets Relay's servers, used at once.
