@@ -5,7 +5,8 @@
 #
 # UniFFI 0.32 doesn't rename the return type of a secondary constructor, so
 # `Library.open_fresh` (recovery from an unreadable library) is left out of the
-# Kotlin until the app needs it or UniFFI fixes that.
+# Kotlin. The app does the same in two steps: `setAsideUnreadableLibrary`
+# (rust/src/lib.rs, uniffi.forge_ffi), then the ordinary constructor.
 [crates.pocket_library_core.bindings.kotlin]
 exclude = ["Library.open_fresh"]
 
