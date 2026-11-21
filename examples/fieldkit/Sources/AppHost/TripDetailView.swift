@@ -15,7 +15,7 @@ struct TripDetailView: View {
     @State private var loadFailed = false
     @State private var isAddingNote = false
     @State private var isRenaming = false
-    @State private var exported: ExportedFile?
+    @State private var exported: URL?
     /// Share and Rename: a failure is shown, never dropped.
     @State private var acting = ForgeSubmission()
     @Environment(\.dismiss) private var dismiss
@@ -61,9 +61,7 @@ struct TripDetailView: View {
             .sheet(isPresented: $isAddingNote) {
                 AddNoteView(model: model, tripID: tripID)
             }
-            .sheet(item: $exported) { file in
-                ShareSheet(file: file)
-            }
+            .forgeShareFile($exported)
             .forgeRename("Rename Trip", isPresented: $isRenaming, name: trip.title, id: "renameTrip") { title in
                 try await model.rename(trip, to: title)
             }
@@ -113,43 +111,7 @@ struct TripDetailView: View {
     private func export(_ format: ExportFormat) async {
         var url: URL?
         _ = await acting.run { url = try await model.export(tripID, as: format) }
-        if let url { exported = ExportedFile(url: url) }
-    }
-}
-
-struct ExportedFile: Identifiable {
-    let url: URL
-    var id: URL { url }
-}
-
-/// The system share sheet for an exported file (AirDrop, Files, Mail...).
-private struct ShareSheet: View {
-    let file: ExportedFile
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Image(systemName: "doc")
-                    .font(.largeTitle)
-                    .accessibilityHidden(true)
-                Text(file.url.lastPathComponent)
-                    .font(.headline)
-                ShareLink(item: file.url) {
-                    Label("Share File", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("export.share")
-            }
-            .padding()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                        .accessibilityIdentifier("export.done")
-                }
-            }
-        }
-        .presentationDetents([.medium])
+        if let url { exported = url }
     }
 }
 

@@ -32,7 +32,7 @@ struct ChecklistScreen: View {
     /// still running and the screen must not say "No Results".
     @State private var resultsFor = ""
     @State private var editing: Editing?
-    @State private var export: ExportFile?
+    @State private var export: URL?
     @State private var importing = false
     @State private var imported: CsvImportSummary?
     @State private var confirmingClear = false
@@ -76,9 +76,7 @@ struct ChecklistScreen: View {
                 model.errorMessage = nil
                 return reason ?? String(localized: "The item couldn't be renamed.")
             }
-            .sheet(item: $export) { file in
-                ShareSheet(file: file)
-            }
+            .forgeShareFile($export)
             .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText]) { result in
                 switch result {
                 case .success(let url):
@@ -208,7 +206,7 @@ struct ChecklistScreen: View {
             Menu {
                 Button {
                     Task {
-                        if let url = await model.exportText() { export = ExportFile(url: url, kind: .text) }
+                        export = await model.exportText()
                     }
                 } label: {
                     Label("Share as Text", systemImage: "square.and.arrow.up")
@@ -217,7 +215,7 @@ struct ChecklistScreen: View {
                 .accessibilityIdentifier("checklist.share")
                 Button {
                     Task {
-                        if let url = await model.exportCSV() { export = ExportFile(url: url, kind: .spreadsheet) }
+                        export = await model.exportCSV()
                     }
                 } label: {
                     Label("Share as Spreadsheet", systemImage: "tablecells")
@@ -272,46 +270,8 @@ private struct SearchKey: Equatable {
     let changes: UInt64
 }
 
-private struct ShareSheet: View {
-    let file: ExportFile
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Image(systemName: file.kind == .text ? "doc.text" : "tablecells")
-                    .font(.largeTitle).foregroundStyle(.secondary)
-                Text(file.kind == .text
-                    ? "Your checklist is ready to share as text."
-                    : "Your checklist is ready to share as a spreadsheet.")
-                    .multilineTextAlignment(.center)
-                ShareLink(item: file.url) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.forgePrimary)
-                .accessibilityIdentifier("share.send")
-            }
-            .padding()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                        .accessibilityIdentifier("share.done")
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-}
-
 private struct Editing: Identifiable {
     let item: Item
     var id: UInt64 { item.id }
-}
-
-private struct ExportFile: Identifiable {
-    enum Kind { case text, spreadsheet }
-    let url: URL
-    let kind: Kind
-    var id: URL { url }
 }
 #endif

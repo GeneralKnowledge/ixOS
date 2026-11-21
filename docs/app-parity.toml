@@ -80,3 +80,9 @@ rule = "forge-theme"
 status = "deferred"
 wave = 0
 reason = "Weather draws its own sky colours with white text; whether its few controls take an accent waits for its redesign (ForgeUI coverage audit D3)"
+
+[[lag]]
+app = "sketchbook"
+rule = "share-file"
+status = "not-applicable"
+reason = "Its export screen previews the image and offers Save to Photos and Quick Look besides Share; sharing is one action of three, not a ready-to-share step"

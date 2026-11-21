@@ -15,9 +15,9 @@ struct SettingsView: View {
     enum Picking { case spreadsheet, backup }
 
     @Environment(LibraryModel.self) private var model
-    @State private var exportURL: URL?
+    /// A backup or spreadsheet just written, for the share sheet.
+    @State private var shared: URL?
     @State private var exporting = false
-    @State private var csvURL: URL?
     @State private var picking: Picking?
     @State private var storage: StorageInfo?
     /// The erase confirmation, or an error (ForgeAppKit).
@@ -52,34 +52,20 @@ struct SettingsView: View {
                         LabeledContent("Saved EPUBs", value: "\(storage.savedBooks)")
                         LabeledContent("Space used", value: Int64(storage.bytes).formatted(.byteCount(style: .file)))
                     }
-                    if let exportURL {
-                        ShareLink(item: exportURL) {
-                            Text("Share Backup")
+                    Button {
+                        export()
+                    } label: {
+                        LabeledContent("Back Up Library") {
+                            if exporting { ProgressView() }
                         }
-                        .accessibilityIdentifier("settings.shareExport")
-                    } else {
-                        Button {
-                            export()
-                        } label: {
-                            LabeledContent("Back Up Library") {
-                                if exporting { ProgressView() }
-                            }
-                        }
-                        .disabled(exporting)
-                        .accessibilityIdentifier("settings.export")
                     }
+                    .disabled(exporting)
+                    .accessibilityIdentifier("settings.export")
                     Button("Restore from Backup…") { picking = .backup }
                         .accessibilityIdentifier("settings.restore")
-                    if let csvURL {
-                        ShareLink(item: csvURL) {
-                            Text("Share Spreadsheet")
-                        }
-                        .accessibilityIdentifier("settings.shareCSV")
-                    } else {
-                        Button("Export as Spreadsheet") { exportCSV() }
-                            .disabled(exporting)
-                            .accessibilityIdentifier("settings.exportCSV")
-                    }
+                    Button("Export as Spreadsheet") { exportCSV() }
+                        .disabled(exporting)
+                        .accessibilityIdentifier("settings.exportCSV")
                     Button("Import from Spreadsheet…") { picking = .spreadsheet }
                         .accessibilityIdentifier("settings.importCSV")
                     Button("Erase Library…", role: .destructive) {
@@ -108,8 +94,6 @@ struct SettingsView: View {
             .onAppear { storage = model.storageInfo() }
             .onChange(of: model.totalBooks) { _, _ in
                 storage = model.storageInfo()
-                exportURL = nil
-                csvURL = nil
             }
             // One picker for both kinds: SwiftUI shows only one
             // .fileImporter per view.
@@ -132,6 +116,7 @@ struct SettingsView: View {
                 case .failure(let error): alert = .failure(error)
                 }
             }
+            .forgeShareFile($shared)
             .forgeAlert($alert) { action in
                 switch action {
                 case .erase: erase()
@@ -182,7 +167,7 @@ struct SettingsView: View {
         Task {
             defer { exporting = false }
             do {
-                exportURL = try await model.backupLibrary()
+                shared = try await model.backupLibrary()
             } catch {
                 alert = .failure(error)
             }
@@ -194,7 +179,7 @@ struct SettingsView: View {
         Task {
             defer { exporting = false }
             do {
-                csvURL = try await model.exportBooksCSV()
+                shared = try await model.exportBooksCSV()
             } catch {
                 alert = .failure(error)
             }
@@ -227,8 +212,6 @@ struct SettingsView: View {
             do {
                 let books = try await model.restoreLibrary(at: url)
                 storage = model.storageInfo()
-                exportURL = nil
-                csvURL = nil
                 alert = ForgeAlert(
                     title: "Library restored",
                     message: books == 1 ? "1 book" : "\(books) books",
@@ -244,8 +227,6 @@ struct SettingsView: View {
             do {
                 try await model.eraseLibrary()
                 storage = model.storageInfo()
-                exportURL = nil
-                csvURL = nil
             } catch {
                 alert = .failure(error)
             }
