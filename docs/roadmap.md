@@ -33,7 +33,7 @@ Device Lab's own state model is **not applicable**, not lag: its state is lab se
 5. A person runs it from Device Lab on the iPhone, and the result is a row in [device-validation.md](device-validation.md): launches, main interactions, relaunch after backgrounding, and the failure screen if it can be forced.
 6. Friction met during the move goes into the [app friction log](research/app-friction-log.md).
 
-**The completeness loop (wave 4 on).** No fixed feature list. For each app, repeatedly:
+**The completeness loop (wave 4 on).** No fixed feature list. The current list of next features per app, and the framework each needs, is in [app-plan.md](app-plan.md) (2026-11-21). For each app, repeatedly:
 
 1. Pick the most noticeable thing a user of the app would miss.
 2. Build it in the app.
