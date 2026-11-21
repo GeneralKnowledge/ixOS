@@ -69,7 +69,7 @@ extension ForgeServices {
             lock.unlock()
             let background = options.background && Self.hasLocationBackgroundMode
             if options.background && !background {
-                print("[forge] location: background updates need background_modes = [\"location\"] in forge.toml")
+                forgeServicesWarn("location: background updates need background_modes = [\"location\"] in forge.toml")
             }
             onMain { [manager] in
                 manager.desiredAccuracy = Self.accuracy(options.accuracy)
@@ -121,7 +121,7 @@ extension ForgeServices {
                 Bundle.main.object(forInfoDictionaryKey: "NSLocationWhenInUseUsageDescription") != nil
             else {
                 // Without it iOS ignores the request and no answer would come.
-                print("[forge] location permission: add [ios.permissions] location_when_in_use to forge.toml first")
+                forgeServicesWarn("location permission: add [ios.permissions] location_when_in_use to forge.toml first")
                 return .unsupported
             }
             // The delegate hears the answer; a spurious early callback still

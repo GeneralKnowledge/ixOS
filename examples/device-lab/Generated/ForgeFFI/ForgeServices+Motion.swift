@@ -197,7 +197,7 @@ extension ForgeServices {
             let current = await status()
             guard current == .notDetermined else { return current }
             guard Bundle.main.object(forInfoDictionaryKey: "NSMotionUsageDescription") != nil else {
-                print("[forge] motion permission: add [ios.permissions] motion to forge.toml first")
+                forgeServicesWarn("motion permission: add [ios.permissions] motion to forge.toml first")
                 return .unsupported
             }
             guard CMMotionActivityManager.isActivityAvailable() else { return .unsupported }
