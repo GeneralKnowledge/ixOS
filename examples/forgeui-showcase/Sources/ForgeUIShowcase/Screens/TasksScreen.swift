@@ -93,17 +93,16 @@ struct TasksScreen: View {
                         TaskRow(task: task)
                     }
                     .accessibilityIdentifier("tasks.row.\(task.title)")
-                    .swipeActions(edge: .trailing) {
-                        Button { pendingDelete = task } label: { Label("Delete", systemImage: "trash") }
-                            .tint(theme.colors.tone(.danger).solid)
-                            .accessibilityIdentifier("tasks.delete")
-                    }
-                    .swipeActions(edge: .leading) {
+                    .forgeRowActions {
                         Button { model.toggleDone(task.id) } label: {
                             Label(task.isDone ? "Reopen" : "Done", systemImage: task.isDone ? "arrow.uturn.backward" : "checkmark")
                         }
                         .tint(theme.colors.tone(.success).solid)
                         .accessibilityIdentifier("tasks.toggleDone")
+                    } trailing: {
+                        Button { pendingDelete = task } label: { Label("Delete", systemImage: "trash") }
+                            .tint(theme.colors.tone(.danger).solid)
+                            .accessibilityIdentifier("tasks.delete")
                     }
                 }
             }

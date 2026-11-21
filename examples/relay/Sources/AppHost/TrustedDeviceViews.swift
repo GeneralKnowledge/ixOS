@@ -70,7 +70,7 @@ struct RevokedDeviceRow: View {
             .buttonStyle(.borderless)
             .accessibilityIdentifier("revoked.trustAgain")
         }
-        .swipeActions {
+        .forgeRowActions {
             Button("Forget", systemImage: "trash", role: .destructive) {
                 model.askToForget(device)
             }

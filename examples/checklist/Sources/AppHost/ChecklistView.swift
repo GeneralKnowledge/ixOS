@@ -170,7 +170,7 @@ struct ChecklistScreen: View {
         .accessibilityValue(item.done ? "Done" : "Not done")
         .accessibilityHint("Double-tap to mark it \(item.done ? "not done" : "done").")
         .accessibilityIdentifier("checklist.item.\(item.id)")
-        .swipeActions {
+        .forgeRowActions {
             Button(role: .destructive) {
                 Task { await model.remove(item) }
             } label: {

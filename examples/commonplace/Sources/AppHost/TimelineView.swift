@@ -20,7 +20,7 @@ struct TimelineView: View {
                         showsSummary: model.settings.showSummaries)
                 }
                 .accessibilityIdentifier("timeline.article.\(article.id)")
-                .swipeActions(edge: .leading) {
+                .forgeRowActions {
                     Button(
                         article.read ? "Mark as Unread" : "Mark as Read",
                         systemImage: article.read ? "circle.fill" : "checkmark.circle"
@@ -29,8 +29,7 @@ struct TimelineView: View {
                     }
                     .tint(theme.colors.accent.solid)
                     .accessibilityIdentifier("timeline.toggleRead")
-                }
-                .swipeActions(edge: .trailing) {
+                } trailing: {
                     Button(
                         article.bookmarked ? "Remove Bookmark" : "Bookmark",
                         systemImage: article.bookmarked ? "bookmark.slash" : "bookmark"

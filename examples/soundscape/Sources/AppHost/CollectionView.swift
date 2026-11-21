@@ -167,7 +167,7 @@ struct PlaylistsView: View {
             ForEach(model.collection.playlists) { list in
                 NavigationLink(value: ListenRoute.playlist(list.id)) { PlaylistRow(list: list) }
                     .accessibilityIdentifier("playlists.playlist")
-                    .swipeActions {
+                    .forgeRowActions {
                         Button("Delete", systemImage: "trash", role: .destructive) { deleting = list }
                             .accessibilityIdentifier("playlists.delete")
                     }

@@ -55,10 +55,11 @@ struct SettingsView: View {
                 }
                 ForEach(muted, id: \.id) { conversation in
                     Text(conversation.title)
-                        .swipeActions {
+                        .forgeRowActions {
                             Button("Unmute", systemImage: "bell") {
                                 model.setMuted(conversation.id, false)
                             }
+                            .accessibilityIdentifier("settings.unmute")
                         }
                 }
             } header: {

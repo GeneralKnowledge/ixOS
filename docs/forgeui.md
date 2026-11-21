@@ -329,7 +329,28 @@ Button("Export Subscriptions") { Task { exported = await model.exportSubscriptio
 - A `ShareLink` stays right for something already there: a link, a book's details, a log on screen.
 - A model alert on the same screen is held back while the share sheet is up (the `alerts-over-sheets` rule counts it as a sheet).
 
-The `share-file` [parity rule](app-parity.md) catches a `ShareLink` on a written file (`file.url`, `exportURL`).
+The `share-file` [parity rule](app-parity.md) catches a `ShareLink` whose item is named like a written file: `<name>.url` or an identifier containing `URL` (`exportURL`), unless the name says it is a link (`websiteURL`, `linkURL`). It can't see types, so a file under another name passes.
+
+### Row actions
+
+Give a row its actions (Delete, Rename, Mark as Read) with `forgeRowActions`. The same buttons become swipe actions and the menu a long press opens, so someone who doesn't know to swipe, or uses Voice Control or a pointer, still finds them.
+
+```swift
+TripRow(trip: trip)
+    .forgeRowActions {
+        Button("Delete", systemImage: "trash", role: .destructive) { model.askToDelete(trip) }
+            .accessibilityIdentifier("trips.delete")
+    }
+
+ArticleRow(article: article)
+    .forgeRowActions {
+        Button("Mark as Read", systemImage: "checkmark.circle") { … }   // swipe from the left
+    } trailing: {
+        Button("Bookmark", systemImage: "bookmark") { … }               // swipe from the right
+    }
+```
+
+The `row-actions` [parity rule](app-parity.md) fails a file with `.swipeActions` and no `.contextMenu`.
 
 ### Visual language
 
