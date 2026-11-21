@@ -310,12 +310,13 @@ class LibraryModel(
      * one, is refused and the library is left as it was. Returns how many books it has.
      */
     suspend fun restoreLibrary(path: String): UInt {
-        val books = run { it.restoreLibrary(path) }
-        // The backup brought its own settings.
-        library?.let {
-            _settings.value = it.settings()
-            setSort(_settings.value.defaultSort)
+        // The backup brings its own settings; a settings change waits, then starts from them.
+        val (books, sort) = changingSettings.withLock {
+            val books = run { it.restoreLibrary(path) }
+            library?.let { _settings.value = it.settings() }
+            books to _settings.value.defaultSort
         }
+        setSort(sort)
         return books
     }
 
