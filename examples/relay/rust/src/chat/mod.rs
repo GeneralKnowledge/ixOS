@@ -426,6 +426,12 @@ impl ChatCore {
         reply_to: Option<String>,
         files: Vec<ChatOutgoingFile>,
     ) -> Result<ChatMessage, ChatError> {
+        if let Some(endpoint_id) = crate::device_chat::conversation_device(&conversation_id) {
+            let endpoint_id = endpoint_id.to_string();
+            return self
+                .send_files_to_device(conversation_id, endpoint_id, body, reply_to, files)
+                .await;
+        }
         let (client, user_id) = self.route(&conversation_id)?;
         let result = background("chat-send-files", move || {
             let files: Vec<chat_core::OutgoingFile> = files.into_iter().map(Into::into).collect();
@@ -436,6 +442,54 @@ impl ChatCore {
         })
         .await;
         result.map_err(|e| self.rejected(e))
+    }
+
+    /// Photos and documents to a trusted device go the way its Send Files
+    /// does: each through Relay's outbox, as a message with one
+    /// attachment, so they wait while the device is away. A caption follows
+    /// them as a message of its own. Resolves with the last message.
+    async fn send_files_to_device(
+        &self,
+        conversation_id: String,
+        endpoint_id: String,
+        body: String,
+        reply_to: Option<String>,
+        files: Vec<ChatOutgoingFile>,
+    ) -> Result<ChatMessage, ChatError> {
+        let relay = self.relay().ok_or(ChatError::NotSignedIn)?;
+        for file in files {
+            // Under the name the person sees: Relay names an item after its
+            // file, and a picked photo waits under a temporary one.
+            let staged = named_copy(&file).map_err(|e| ChatError::Storage {
+                reason: e.to_string(),
+            })?;
+            let path = staged
+                .as_ref()
+                .map(|(_, path)| path.clone())
+                .unwrap_or_else(|| std::path::PathBuf::from(&file.path));
+            let sent = relay
+                .send_to_device(
+                    endpoint_id.clone(),
+                    vec![path.to_string_lossy().into_owned()],
+                )
+                .await;
+            if let Some((dir, _)) = staged {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            sent.map_err(crate::device_chat::chat_error)?;
+        }
+        if !body.is_empty() {
+            return self.send_reply(conversation_id, body, reply_to).await;
+        }
+        Ok(types::message(
+            chat_core::Message {
+                conversation_id,
+                author_id: crate::device_chat::ME.into(),
+                status: chat_core::MessageStatus::Queued,
+                ..chat_core::Message::default()
+            },
+            crate::device_chat::ME,
+        ))
     }
 
     /// The local file of an attachment, if it is on this iPhone already
@@ -1297,3 +1351,25 @@ fn remove_directory(path: &Path) {
 
 #[cfg(test)]
 mod tests;
+
+/// A copy of `file` named as the person sees it, in a folder of its own,
+/// when its name differs from its file's; `None` when it already has it.
+fn named_copy(
+    file: &ChatOutgoingFile,
+) -> std::io::Result<Option<(std::path::PathBuf, std::path::PathBuf)>> {
+    let from = std::path::Path::new(&file.path);
+    let name = std::path::Path::new(&file.name)
+        .file_name()
+        .map(|n| n.to_os_string());
+    let Some(name) = name.filter(|n| Some(n.as_os_str()) != from.file_name()) else {
+        return Ok(None);
+    };
+    let dir = std::env::temp_dir().join(format!(
+        "relay-send-{}",
+        crate::hex::hex(&crate::outbox::new_id())
+    ));
+    std::fs::create_dir_all(&dir)?;
+    let to = dir.join(name);
+    std::fs::copy(from, &to)?;
+    Ok(Some((dir, to)))
+}
