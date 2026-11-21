@@ -14,7 +14,6 @@ struct LayersPanel: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var renaming: Layer?
-    @State private var newName = ""
     /// The slider's value while it moves; sent to Rust when it is let go.
     @State private var opacity: Double?
 
@@ -69,19 +68,17 @@ struct LayersPanel: View {
                         .accessibilityIdentifier("layers.done")
                 }
             }
-            .forgeAlert($model.alert) { action in
+            // Held back while the rename sheet is up: it shows its own
+            // refusal, and an alert here can't present over it.
+            .forgeAlert(Binding(
+                get: { renaming == nil ? model.alert : nil },
+                set: { model.alert = $0 }
+            )) { action in
                 apply { await model.handle(action) }
             }
-            .alert("Rename Layer", isPresented: Binding(
-                get: { renaming != nil },
-                set: { if !$0 { renaming = nil } }
-            )) {
-                TextField("Name", text: $newName)
-                    .accessibilityIdentifier("layers.rename.name")
-                Button("Rename") { rename() }
-                    .accessibilityIdentifier("layers.rename.save")
-                Button("Cancel", role: .cancel) {}
-                    .accessibilityIdentifier("layers.rename.cancel")
+            .forgeRename("Rename Layer", item: $renaming, name: \.name, id: "layers.renameSheet") { layer, name in
+                let changed = try await model.renameLayer(sketchID, layer: layer.id, to: name)
+                detail = changed
             }
         }
     }
@@ -129,10 +126,7 @@ struct LayersPanel: View {
             .accessibilityIdentifier("layers.delete")
         }
         .contextMenu {
-            Button("Rename", systemImage: "pencil") {
-                newName = layer.name
-                renaming = layer
-            }
+            Button("Rename", systemImage: "pencil") { renaming = layer }
             .accessibilityIdentifier("layers.rename")
             Button("Duplicate", systemImage: "plus.square.on.square") {
                 apply { await model.duplicateLayer(sketchID, layer: layer.id) }
@@ -161,12 +155,6 @@ struct LayersPanel: View {
     private func commitOpacity(_ layer: Layer) {
         guard let value = opacity else { return }
         apply { await model.setOpacity(sketchID, layer: layer.id, value) }
-    }
-
-    private func rename() {
-        guard let layer = renaming else { return }
-        let name = newName
-        apply { await model.renameLayer(sketchID, layer: layer.id, to: name) }
     }
 
     /// Runs a change and shows the sketch Rust returns; `select` picks the

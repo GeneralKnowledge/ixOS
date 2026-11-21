@@ -94,13 +94,16 @@ final class ListenModelTests: XCTestCase {
         await model.toggleFavourite("album:after hours/after hours")
         XCTAssertFalse(model.isFavourite("album:after hours/after hours"))
 
-        let made = try XCTUnwrap(await model.createPlaylist("  Late drive "))
+        let made = try await model.createPlaylist("  Late drive ")
         XCTAssertEqual(made.playlist.name, "Late drive")
         XCTAssertEqual(model.collection.playlists.map(\.name), ["Late drive"])
-        XCTAssertNil(await model.renamePlaylist(made.playlist.id, to: "   "), "an empty name is refused")
-        XCTAssertNotNil(model.alert)
-        model.alert = nil
-        let renamed = try XCTUnwrap(await model.renamePlaylist(made.playlist.id, to: "Night drive"))
+        do {
+            try await model.renamePlaylist(made.playlist.id, to: "   ")
+            XCTFail("an empty name is refused")
+        } catch {
+            XCTAssertNil(model.alert, "the name sheet shows the refusal, not an alert")
+        }
+        let renamed = try await model.renamePlaylist(made.playlist.id, to: "Night drive")
         XCTAssertEqual(renamed.playlist.name, "Night drive")
         await model.deletePlaylist(made.playlist.id)
         XCTAssertTrue(model.collection.playlists.isEmpty)

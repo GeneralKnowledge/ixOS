@@ -285,6 +285,33 @@ For any other sheet that must not be swiped away (a drawing canvas, a transfer t
 
 **Increase Contrast.** With Settings > Accessibility > Display & Text Size > Increase Contrast on, every theme's secondary and tertiary text, tone text and separators move 40% of the way toward primary text (`ForgePalette.increasedContrast`), so quieter text reaches WCAG AAA (7:1). Backgrounds and fills stay, so the app still looks like itself. Nothing to do in the app: the theme's colours switch by themselves.
 
+### Renaming and naming
+
+To rename something (a trip, a playlist, this device), or name a new one (a folder), use `forgeRename`. It shows a small sheet with one field, Cancel and Save. When the app's rules (in Rust) refuse the name, the reason shows under the field and the sheet stays open with what the person typed; an alert with a text field can do neither, so a refused name used to fail after the alert had closed.
+
+```swift
+// ForgeUI: save returns nil once saved, otherwise the reason it wasn't.
+.forgeRename("Rename", item: $editing, name: \.title, id: "rename") { item, title in
+    await model.rename(item, to: title) ? nil : model.takeError()
+}
+
+// ForgeAppKit: save throws, and the error's ForgeFailure message is the reason.
+.forgeRename("Rename Trip", isPresented: $isRenaming, name: trip.title, id: "renameTrip") { title in
+    try await model.rename(trip, to: title)
+}
+.forgeRename("New Playlist", isPresented: $naming, name: "", id: "playlistName", confirmTitle: "Create") { name in
+    _ = try await model.createPlaylist(name)
+}
+```
+
+- `item:` renames the item it holds (the sheet closes by setting it to nil); `isPresented:` renames one thing.
+- `message:` adds a line under the field ("Other devices see this name.", "Leave it empty to use the feed's own name.").
+- Save stays enabled: the app's rules decide what an empty or unchanged name means, not the sheet. A changed name keeps the sheet from being swiped away.
+- Identifiers: `<id>.name` for the field, `<id>.cancel` and `<id>.confirm` for the buttons, `<id>.error` for the reason.
+- A model alert on the same screen is held back while the sheet is up (the `alerts-over-sheets` rule counts `forgeRename` as a sheet).
+
+The `rename` [parity rule](app-parity.md) catches a hand-built prompt: an `.alert` about a name with a `TextField` in it, or an app's own `…NameSheet`/`…RenameSheet`.
+
 ### Visual language
 
 ForgeUI keeps the ixOS apps a recognisable family without making them identical:

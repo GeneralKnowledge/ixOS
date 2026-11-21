@@ -180,8 +180,10 @@ public final class LibraryModel {
         await perform { try await $0.removeFeed(feedId: feed.id) }
     }
 
-    public func rename(_ feed: Feed, to title: String) async {
-        await perform { try await $0.renameFeed(feedId: feed.id, title: title) }
+    /// Throws when Rust refuses the name, so the name sheet can say why.
+    public func rename(_ feed: Feed, to title: String) async throws {
+        try await core.renameFeed(feedId: feed.id, title: title)
+        reload()
     }
 
     /// Whether a feed's articles are fetched in full from their web pages.
@@ -221,8 +223,16 @@ public final class LibraryModel {
         return made
     }
 
-    public func rename(_ folder: Folder, to name: String) async {
-        await perform { try await $0.renameFolder(folderId: folder.id, name: name) }
+    /// Throws when Rust refuses the name, so the name sheet can say why.
+    public func rename(_ folder: Folder, to name: String) async throws {
+        try await core.renameFolder(folderId: folder.id, name: name)
+        reload()
+    }
+
+    /// A new folder from the name sheet; throws when Rust refuses the name.
+    public func makeFolder(named name: String, in parentID: Int64? = nil) async throws {
+        _ = try await core.createFolder(name: name, parentId: parentID)
+        reload()
     }
 
     /// Deletes a folder; its feeds and folders move up a level.

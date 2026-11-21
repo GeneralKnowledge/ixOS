@@ -60,7 +60,6 @@ struct DevicesView: View {
     @State private var receivingCode = false
     @State private var sendingCode = false
     @State private var renaming = false
-    @State private var newName = ""
     @State private var preview: URL?
 
     var body: some View {
@@ -89,7 +88,7 @@ struct DevicesView: View {
         // to forget a device, and an alert on the root showed behind it.
         // While a sheet is up, the sheet shows the alerts.
         .forgeAlert(Binding(
-            get: { receivingCode || sendingCode ? nil : model.alert },
+            get: { anySheet ? nil : model.alert },
             set: { model.alert = $0 }
         )) { action in Task { await model.handle(action) } }
         .onAppear(perform: open)
@@ -156,10 +155,7 @@ struct DevicesView: View {
                     .accessibilityIdentifier("relay.send")
             }
             ToolbarItem(placement: .topBarLeading) {
-                Button("Rename This Device", systemImage: "pencil") {
-                    newName = model.identity.name
-                    renaming = true
-                }
+                Button("Rename This Device", systemImage: "pencil") { renaming = true }
                 .accessibilityIdentifier("devices.rename")
             }
         }
@@ -169,15 +165,11 @@ struct DevicesView: View {
         .sheet(isPresented: $sendingCode) {
             SendCodeSheet(model: model, network: network)
         }
-        .alert("Rename This Device", isPresented: $renaming) {
-            TextField("Name", text: $newName)
-                .accessibilityIdentifier("rename.name")
-            Button("Rename") { rename() }
-                .accessibilityIdentifier("rename.save")
-            Button("Cancel", role: .cancel) {}
-                .accessibilityIdentifier("rename.cancel")
-        } message: {
-            Text("Other devices see this name.")
+        .forgeRename(
+            "Rename This Device", isPresented: $renaming, name: model.identity.name,
+            id: "rename", message: "Other devices see this name."
+        ) { name in
+            try await model.rename(to: name)
         }
     }
 
@@ -241,8 +233,9 @@ struct DevicesView: View {
         model.devices.isEmpty && model.transfers.isEmpty
     }
 
+    /// Alerts and offers wait while any sheet is up, the rename sheet too.
     private var anySheet: Bool {
-        receivingCode || sendingCode
+        receivingCode || sendingCode || renaming
     }
 
     private var showingTrustOffer: Bool {
@@ -285,13 +278,6 @@ struct DevicesView: View {
     private func close() {
         network.advertiseDevice(nil)
         network.stopWatchingDevices()
-    }
-
-    private func rename() {
-        let name = newName
-        Task {
-            do { try await model.rename(to: name) } catch { model.report(error) }
-        }
     }
 }
 

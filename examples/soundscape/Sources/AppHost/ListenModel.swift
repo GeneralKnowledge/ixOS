@@ -415,14 +415,17 @@ public final class ListenModel {
 
     public func playlist(_ id: UInt64) -> PlaylistDetail? { try? core.playlist(id: id) }
 
-    /// A new playlist, empty or with `tracks`.
+    /// A new playlist, empty or with `tracks`. Throws when Rust refuses the
+    /// name, so the name sheet can say why.
     @discardableResult
-    public func createPlaylist(_ name: String, with tracks: [String] = []) async -> PlaylistDetail? {
-        await changePlaylists { try await self.core.createPlaylist(name: name, trackIds: tracks) }
+    public func createPlaylist(_ name: String, with tracks: [String] = []) async throws -> PlaylistDetail {
+        try await savePlaylists { try await self.core.createPlaylist(name: name, trackIds: tracks) }
     }
 
-    public func renamePlaylist(_ id: UInt64, to name: String) async -> PlaylistDetail? {
-        await changePlaylists { try await self.core.renamePlaylist(id: id, name: name) }
+    /// Throws when Rust refuses the name, so the name sheet can say why.
+    @discardableResult
+    public func renamePlaylist(_ id: UInt64, to name: String) async throws -> PlaylistDetail {
+        try await savePlaylists { try await self.core.renamePlaylist(id: id, name: name) }
     }
 
     /// Adds songs (by track id) at the end of a playlist.
@@ -465,14 +468,19 @@ public final class ListenModel {
 
     private func changePlaylists(_ change: () async throws -> PlaylistDetail) async -> PlaylistDetail? {
         do {
-            let detail = try await change()
-            collection = core.collection()
-            feedback.play(.success)
-            return detail
+            return try await savePlaylists(change)
         } catch {
             report(error)
             return nil
         }
+    }
+
+    /// A playlist change whose failure the caller shows itself.
+    private func savePlaylists(_ change: () async throws -> PlaylistDetail) async throws -> PlaylistDetail {
+        let detail = try await change()
+        collection = core.collection()
+        feedback.play(.success)
+        return detail
     }
 
     // MARK: On the phone

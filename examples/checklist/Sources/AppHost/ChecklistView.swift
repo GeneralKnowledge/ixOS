@@ -70,13 +70,11 @@ struct ChecklistScreen: View {
             .toolbar { toolbar }
             // The sheet shows a failed rename itself: an alert from this
             // screen can't present over it (friction log A39).
-            .sheet(item: $editing) { editing in
-                RenameSheet(item: editing.item) { title in
-                    if await model.rename(editing.item, to: title) { return nil }
-                    let reason = model.errorMessage
-                    model.errorMessage = nil
-                    return reason ?? String(localized: "The item couldn't be renamed.")
-                }
+            .forgeRename("Rename", item: $editing, name: \.item.title, id: "rename") { editing, title in
+                if await model.rename(editing.item, to: title) { return nil }
+                let reason = model.errorMessage
+                model.errorMessage = nil
+                return reason ?? String(localized: "The item couldn't be renamed.")
             }
             .sheet(item: $export) { file in
                 ShareSheet(file: file)
@@ -272,67 +270,6 @@ struct ChecklistScreen: View {
 private struct SearchKey: Equatable {
     let query: String
     let changes: UInt64
-}
-
-private struct RenameSheet: View {
-    let item: Item
-    /// Saves the title; nil when saved, otherwise why it wasn't.
-    let save: (String) async -> String?
-    @State private var title: String
-    @State private var failure: String?
-    @State private var saving = false
-    @Environment(\.dismiss) private var dismiss
-
-    init(item: Item, save: @escaping (String) async -> String?) {
-        self.item = item
-        self.save = save
-        _title = State(initialValue: item.title)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Title", text: $title)
-                    .accessibilityIdentifier("rename.title")
-            }
-            .navigationTitle("Rename")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            // Rust checks the title, so Save stays enabled and a refusal
-            // is shown below. A changed title keeps the sheet from being
-            // swiped away.
-            .forgeFormToolbar(
-                id: "rename",
-                canConfirm: true,
-                isWorking: saving,
-                hasChanges: title != item.title,
-                cancel: { dismiss() },
-                confirm: {
-                    saving = true
-                    Task {
-                        let reason = await save(title)
-                        saving = false
-                        if let reason {
-                            failure = reason
-                        } else {
-                            dismiss()
-                        }
-                    }
-                }
-            )
-            .alert(
-                "Couldn't Rename",
-                isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })
-            ) {
-                Button("OK", role: .cancel) {}
-                    .accessibilityIdentifier("rename.errorOK")
-            } message: {
-                Text(failure ?? "")
-            }
-        }
-        .presentationDetents([.medium])
-    }
 }
 
 private struct ShareSheet: View {

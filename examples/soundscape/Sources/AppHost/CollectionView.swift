@@ -189,10 +189,8 @@ struct PlaylistsView: View {
                 )
             }
         }
-        .sheet(isPresented: $naming) {
-            PlaylistNameSheet(title: "New Playlist", name: "") { name in
-                await model.createPlaylist(name) != nil
-            }
+        .forgeRename("New Playlist", isPresented: $naming, name: "", id: "playlistName", confirmTitle: "Create") { name in
+            _ = try await model.createPlaylist(name)
         }
         .confirmationDialog(
             "Delete \(deleting?.name ?? "")?",
@@ -308,10 +306,8 @@ struct PlaylistView: View {
                 }
             }
         }
-        .sheet(isPresented: $renaming) {
-            PlaylistNameSheet(title: "Rename Playlist", name: detail?.playlist.name ?? "") { name in
-                await model.renamePlaylist(id, to: name) != nil
-            }
+        .forgeRename("Rename Playlist", isPresented: $renaming, name: detail?.playlist.name ?? "", id: "playlistName") { name in
+            _ = try await model.renamePlaylist(id, to: name)
         }
         .confirmationDialog("Delete \(detail?.playlist.name ?? "this playlist")?", isPresented: $confirmingDelete,
                             titleVisibility: .visible) {
@@ -488,62 +484,13 @@ struct AddToPlaylistSheet: View {
                         .accessibilityIdentifier("addToPlaylist.cancel")
                 }
             }
-            .sheet(isPresented: $naming) {
-                PlaylistNameSheet(title: "New Playlist", name: "") { name in
-                    let made = await model.createPlaylist(name, with: trackIds) != nil
-                    if made { dismiss() }
-                    return made
-                }
+            .forgeRename("New Playlist", isPresented: $naming, name: "", id: "playlistName", confirmTitle: "Create") { name in
+                _ = try await model.createPlaylist(name, with: trackIds)
+                dismiss()
             }
         }
         .presentationDetents([.medium, .large])
         .forgeFeedback(model.feedback)
-    }
-}
-
-/// A playlist's name, for a new one or a rename. `save` says whether it worked.
-struct PlaylistNameSheet: View {
-    let title: String
-    @State var name: String
-    let save: (String) async -> Bool
-    @Environment(\.dismiss) private var dismiss
-    @State private var saving = false
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Name", text: $name)
-                    .focused($focused)
-                    .submitLabel(.done)
-                    .onSubmit(commit)
-                    .accessibilityIdentifier("playlistName.field")
-            }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("playlistName.cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: commit)
-                        .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .accessibilityIdentifier("playlistName.save")
-                }
-            }
-            .onAppear { focused = true }
-        }
-        .presentationDetents([.height(220)])
-    }
-
-    private func commit() {
-        guard !saving else { return }
-        saving = true
-        Task {
-            defer { saving = false }
-            if await save(name) { dismiss() }
-        }
     }
 }
 
