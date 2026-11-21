@@ -595,14 +595,16 @@ def rule_now_playing(app):
 # pushed screens included. Hand-made versions measured the bar themselves
 # and padded each screen with clear space; Soundscape's hid an album's last
 # song and Commonplace's banner covered the last article
-# (docs/research/screen-space.md, 2026-11-21).
+# (docs/research/screen-space.md, 2026-11-21). Bottom bars only: a header
+# that content deliberately slides under (Weather's condensed header, which
+# cards pin beneath) needs no room and is not a forgeBar.
 def rule_floating_bars(app):
     bad = []
     for path in swift_sources(app):
         lines = [l.split("//", 1)[0] for l in read(path).splitlines()]
         for i, line in enumerate(lines):
             near = " ".join(lines[i : i + 4])
-            if re.search(r"\.overlay\(alignment: \.(bottom|top)\)", line) and "onGeometryChange" in near:
+            if re.search(r"\.overlay\(alignment: \.bottom\)", line) and "onGeometryChange" in near:
                 bad.append(f"{path.name}:{i + 1}")
             elif re.search(r"\.safeAreaInset\(", line) and "Color.clear" in near:
                 bad.append(f"{path.name}:{i + 1}")
