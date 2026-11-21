@@ -87,7 +87,7 @@ class PocketLibraryApplication : Application() {
      */
     fun launch(data: TestData) {
         launched = true
-        imports.firstRunHold = data.importHoldSeconds * 1000L
+        imports.runHold = data.importHoldSeconds * 1000L
         if (data.temporary) {
             // A new launch in the same process: open the test library again, as a relaunch.
             if (host.core != null) host.close()

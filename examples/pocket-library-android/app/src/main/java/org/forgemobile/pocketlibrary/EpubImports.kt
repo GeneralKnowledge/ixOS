@@ -46,11 +46,12 @@ class EpubImports(private val app: PocketLibraryApplication) {
     private val staging = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * Test data only (`pocketLibrary.holdImportSeconds`): how long an import's first run waits
-     * before it starts, so a test can end the process while it is still to do.
+     * Test data only (`pocketLibrary.holdImportSeconds`): how long every import run in this
+     * process waits before it starts, so a test can end the process while it is still to do. Only
+     * the process launched with the extra waits (a retry there too); the next launch doesn't.
      */
     @Volatile
-    var firstRunHold: Long = 0
+    var runHold: Long = 0
 
     /**
      * Imports the document the person picked and returns the book once it is in the library.
@@ -140,7 +141,7 @@ class EpubImports(private val app: PocketLibraryApplication) {
      */
     internal suspend fun run(file: File, temporary: Boolean, firstRun: Boolean): Outcome {
         val id = file.parentFile?.name ?: return Outcome.DONE
-        if (firstRun && firstRunHold > 0) delay(firstRunHold)
+        if (runHold > 0) delay(runHold)
         if (!app.openForWork(temporary)) return Outcome.RETRY
         val env = app.host.openedEnvironment ?: return Outcome.RETRY
         // The file went with its library: a throwaway test library that a new launch emptied.
