@@ -21,6 +21,8 @@ enum ListenRoute: Hashable {
     case toPick
     /// Free catalogues to search and play (Jamendo, Internet Archive).
     case discover
+    /// Discover, opened on a search (More in Discover).
+    case discoverSearch(String)
     /// An Internet Archive album or concert, with its tracks.
     case archiveItem(ArchiveItem)
 }
@@ -59,6 +61,7 @@ struct ListenView: View {
                     case .downloads: DownloadsView(model: model, player: player)
                     case .toPick: ToPickView(model: model, player: player)
                     case .discover: DiscoverView(model: model, player: player)
+                    case .discoverSearch(let query): DiscoverView(model: model, player: player, search: query)
                     case .archiveItem(let item): ArchiveItemView(model: model, player: player, item: item)
                     }
                 }
