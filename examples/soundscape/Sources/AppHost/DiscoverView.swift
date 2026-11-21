@@ -67,7 +67,6 @@ struct DiscoverView: View {
             .background(.bar)
             .accessibilityIdentifier("discover.source")
         }
-        .miniPlayerClearance()
         .navigationTitle("Discover")
         .toolbar {
             if model.jamendoClientId != nil {
@@ -258,7 +257,6 @@ struct ArchiveItemView: View {
                 }
             }
         }
-        .miniPlayerClearance()
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: attempt) {

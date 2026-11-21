@@ -57,7 +57,7 @@ public final class ForgeTransfers: NSObject, TransferSession, URLSessionDownload
         guard identifier == sessionIdentifier || identifier == discretionarySessionIdentifier else {
             return
         }
-        NSLog("[forge] transfers: woken for background session events")
+        forgeServicesNote("transfers: woken for background session events")
         shared.lock.lock()
         shared.completionHandlers[identifier] = completionHandler
         let attached = shared.sink != nil

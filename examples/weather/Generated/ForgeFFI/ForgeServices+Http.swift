@@ -156,7 +156,7 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
 
         if firstRequest {
             // Once per launch, so a device log shows which transport ran.
-            NSLog("[forge] http: requests go through URLSession")
+            forgeServicesNote("http: requests go through URLSession")
         }
         task.resume()
         return task
