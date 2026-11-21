@@ -87,7 +87,7 @@ Where an existing ForgeKit piece fits, and what looks unfinished.
 - Swipe-only delete and rename.
 - Import results and errors use raw `.alert` (→ `forgeAlert`).
 - The share sheet (→ share file).
-- Otherwise plain by design until due dates land ([app plan](../../app-plan.md)).
+- Otherwise plain by design until due dates land (the app plan, #358).
 
 **Sketchbook.**
 - Two rename alerts.
