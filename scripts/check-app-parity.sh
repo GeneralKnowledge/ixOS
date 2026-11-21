@@ -598,15 +598,35 @@ def rule_now_playing(app):
 # (docs/research/screen-space.md, 2026-11-21). Bottom bars only: a header
 # that content deliberately slides under (Weather's condensed header, which
 # cards pin beneath) needs no room and is not a forgeBar.
+def closure_after(lines, i):
+    """The text of the first `{ ... }` block that opens on line i or later
+    (comments already stripped), so a check sees a modifier's whole body."""
+    depth, out, started = 0, [], False
+    for line in lines[i:]:
+        for ch in line:
+            if ch == "{":
+                depth += 1
+                started = True
+            elif ch == "}":
+                depth -= 1
+        out.append(line)
+        if started and depth <= 0:
+            break
+    return " ".join(out)
+
+
+BOTTOM_OVERLAY = re.compile(r"\.overlay\(alignment: \.bottom\)")
+BOTTOM_INSET = re.compile(r"\.safeAreaInset\(edge: \.bottom\b")
+
+
 def rule_floating_bars(app):
     bad = []
     for path in swift_sources(app):
         lines = [l.split("//", 1)[0] for l in read(path).splitlines()]
         for i, line in enumerate(lines):
-            near = " ".join(lines[i : i + 4])
-            if re.search(r"\.overlay\(alignment: \.bottom\)", line) and "onGeometryChange" in near:
+            if BOTTOM_OVERLAY.search(line) and "onGeometryChange" in closure_after(lines, i):
                 bad.append(f"{path.name}:{i + 1}")
-            elif re.search(r"\.safeAreaInset\(", line) and "Color.clear" in near:
+            elif BOTTOM_INSET.search(line) and "Color.clear" in closure_after(lines, i):
                 bad.append(f"{path.name}:{i + 1}")
     if bad:
         return False, "floats a bar by hand; use ForgeUI's forgeBar: " + ", ".join(bad)
