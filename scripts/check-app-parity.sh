@@ -192,9 +192,15 @@ def rule_swift_logging(app):
     for path in swift_sources(app):
         if path.name == "AppMain.swift" and path.parent.name.endswith("Launcher"):
             continue
+        in_string = False
         for i, line in enumerate(read(path).splitlines()):
-            if SWIFT_PRINT.search(line.split("//", 1)[0]):
+            # Lines inside a multi-line string literal are text, not Swift
+            # (Python Lab's sample scripts call Python's print).
+            quotes = line.count('"""') % 2 == 1
+            if not in_string and not quotes and SWIFT_PRINT.search(line.split("//", 1)[0]):
                 bad.append(f"{path.name}:{i + 1}")
+            if quotes:
+                in_string = not in_string
     if bad:
         return False, "logs with print or NSLog; use ForgeLog: " + ", ".join(bad)
     return True, ""

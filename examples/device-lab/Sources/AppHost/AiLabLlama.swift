@@ -60,7 +60,7 @@ struct LlamaModelFile: Identifiable, Hashable, Sendable {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
-            try? folder.setResourceValues(values)
+            try folder.setResourceValues(values)
             return folder
         }
     }
