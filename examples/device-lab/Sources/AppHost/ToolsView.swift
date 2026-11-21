@@ -9,6 +9,8 @@ struct ToolsView: View {
     @State private var sensorLab = SensorLabModel.live()
     @State private var aiLab = AiLabModel(
         lab: AiLab(model: ForgeAppleModel()), structured: AiLabStructured.run)
+    @State private var llamaLab = LlamaLabModel()
+    @State private var pythonLab = PythonLabModel.live()
 
     var body: some View {
         List {
@@ -61,6 +63,26 @@ struct ToolsView: View {
                 .accessibilityIdentifier("dashboard.aiLab")
             } footer: {
                 Text("Experiments with Apple's on-device model: speed, Stop, structured output.")
+            }
+            Section {
+                NavigationLink {
+                    LlamaLabView(model: llamaLab)
+                } label: {
+                    Label("Bonsai on iPhone", systemImage: "cpu")
+                }
+                .accessibilityIdentifier("tools.llamaLab")
+            } footer: {
+                Text("Download a ternary Bonsai model and run it on this phone with llama.cpp, in AI Lab.")
+            }
+            Section {
+                NavigationLink {
+                    PythonLabView(model: pythonLab)
+                } label: {
+                    Label("Python Lab", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+                .accessibilityIdentifier("tools.pythonLab")
+            } footer: {
+                Text("Write a Python script and run it on this phone with CPython.")
             }
             Section {
                 NavigationLink {
