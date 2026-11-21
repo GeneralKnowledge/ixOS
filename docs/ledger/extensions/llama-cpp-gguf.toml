@@ -1,0 +1,9 @@
+order = 65
+capability = "GGUF models with llama.cpp (Metal)"
+framework = "No"
+rust_api = "Partial: AI Lab's `AiLab` drives it through the `AiModel` foreign trait; inference stays in Swift"
+ios_native = "Partial: `LlamaCppModel` over llama.cpp's prebuilt XCFramework (b12596) in Device Lab"
+in_app = "Partial: Device Lab, Tools → Bonsai on iPhone (download, then AI Lab)"
+iphone = "Yes: Ternary-Bonsai-2 4B Q2_0 at ~29 tok/s and 9B Q2_0 at ~19 tok/s on the GPU, app memory ~400–470 MB, answers coherent, iPhone 15 Pro Max, free team, reported by Reuben 2026-11-21"
+documented = "No"
+limits = "Downloads in the foreground only (keep the app open); one model loaded at a time; no memory-warning unload yet; Stop checked per token but not measured on the phone"
