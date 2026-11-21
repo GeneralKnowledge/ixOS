@@ -8,6 +8,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.File
 import org.forgemobile.pocketlibrary.host.ForgeEnvironment
 import org.forgemobile.pocketlibrary.host.ForgeHost
@@ -80,6 +81,9 @@ class PocketLibraryApplication : Application() {
             model.resetView()
         }
         model.open()
+        if (data.temporary && data.sampleBook) {
+            scope.launch { model.addSampleBook(File(cacheDir, "Sample Book.epub")) }
+        }
     }
 
     /** The launch extras UI tests pass, as iOS's launch arguments. */
@@ -90,6 +94,8 @@ class PocketLibraryApplication : Application() {
         val keep: Boolean = false,
         /** [UNREADABLE_TEST_DATA_EXTRA]: the throwaway library starts unreadable. */
         val unreadable: Boolean = false,
+        /** [SAMPLE_BOOK_EXTRA]: an empty throwaway library starts with a sample EPUB in it. */
+        val sampleBook: Boolean = false,
     ) {
         fun reopened() = if (temporary) copy(keep = true, unreadable = false) else this
 
@@ -104,6 +110,7 @@ class PocketLibraryApplication : Application() {
                     temporary = true,
                     keep = keep,
                     unreadable = !keep && intent.getBooleanExtra(UNREADABLE_TEST_DATA_EXTRA, false),
+                    sampleBook = intent.getBooleanExtra(SAMPLE_BOOK_EXTRA, false),
                 )
             }
         }
@@ -112,5 +119,8 @@ class PocketLibraryApplication : Application() {
     companion object {
         /** iOS's `-PocketLibraryUnreadableTestData`. */
         const val UNREADABLE_TEST_DATA_EXTRA = "pocketLibrary.unreadableTestData"
+
+        /** iOS's `-PocketLibrarySampleBook`: a book to open in the reader. */
+        const val SAMPLE_BOOK_EXTRA = "pocketLibrary.sampleBook"
     }
 }

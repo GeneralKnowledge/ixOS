@@ -132,6 +132,53 @@ class LibraryModelTest {
         assertEquals(ForgeHost.Status.Ready, host.status.value)
     }
 
+    /**
+     * The reader: the sample EPUB imports as a readable book, its chapters open, and the place
+     * the reader saves is where it opens again after a relaunch. (The sample is too short to
+     * move the page, so its status stays as it was.)
+     */
+    @Test
+    fun aSavedReadingPlaceSurvivesARelaunch() = runBlocking {
+        model.addSampleBook(File(root, "Sample Book.epub"))
+        val book = model.all.value.single()
+        assertEquals("The Lighthouse Keeper", book.title)
+        assertTrue(book.canRead)
+        assertNull(book.readingPosition)
+        assertFalse(File(root, "Sample Book.epub").exists())
+
+        val contents = model.openReader(book.id)
+        assertEquals(2, contents.chapters.size)
+        assertEquals(0u, contents.start.chapter)
+        val second = model.chapter(book.id, 1u)
+        assertEquals("Morning", second.section.title)
+        // The heading, then three paragraphs.
+        assertEquals(4, second.section.blocks.size)
+        assertNull(second.start)
+
+        val saved = model.saveReadingPosition(book.id, chapter = 1u, block = 2)
+        assertEquals(1u, saved.readingPosition?.chapter)
+
+        relaunch()
+        val reopened = model.openReader(book.id)
+        assertEquals(1u, reopened.start.chapter)
+        assertEquals(2u, model.chapter(book.id, 1u).start?.block)
+        // The second sample is refused: an empty library only.
+        model.addSampleBook(File(root, "Sample Book.epub"))
+        model.reload()
+        assertEquals(1, model.all.value.size)
+    }
+
+    /** Importing a file that isn't an EPUB is refused in the iPhone app's words. */
+    @Test
+    fun aFileThatIsntAnEpubIsRefused() = runBlocking {
+        val file = File(root, "notes.epub").apply { writeText("not a book") }
+        val error = runCatching { model.importEpub(file.path) }.exceptionOrNull()
+        assertTrue("expected UnsupportedFile, got $error", error is LibraryException.UnsupportedFile)
+        assertEquals("Can't Read That File", ForgeFailure.from(error!!).title)
+        model.reload()
+        assertTrue(model.all.value.isEmpty())
+    }
+
     /** PL-1 and PL-2: a page on an unread book starts it, and books and progress survive a relaunch. */
     @Test
     fun pl1_pl2_progressStartsABookAndSurvivesARelaunch() = runBlocking {

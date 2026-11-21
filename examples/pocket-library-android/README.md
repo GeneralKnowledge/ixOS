@@ -9,10 +9,17 @@ Done: stage 0 (the shared core, the Kotlin host, add, open, delete), A1 (typed n
 the process lifecycle, Kotlin counterparts of ForgeAppKit's patterns, the iPhone app's error
 text), A2 (ForgeUI's tokens and look), A3 (the complete library: the full book form and
 editing, progress, status and rating on a book's screen, search, filter and sort, and starting
-an unreadable library fresh) and A4 (the online catalogue through Android's own HTTP stack,
-with its on/off setting). Requirements met on the emulator: **PL-1** to **PL-8** and
-**PL-10**. Everything else in [Pocket Library](../pocket-library/README.md) (EPUB, reader, read
-aloud, the rest of Settings, backups, statistics) is iOS only for now.
+an unreadable library fresh), A4 (the online catalogue through Android's own HTTP stack,
+with its on/off setting) and A5 (importing EPUBs, the reader, and Read Aloud on Android's
+`TextToSpeech`). Requirements met on the emulator: **PL-1** to **PL-10**. Everything else in
+[Pocket Library](../pocket-library/README.md) (summaries, the rest of Settings, backups,
+statistics) is iOS only for now.
+
+Read Aloud is not yet like the iPhone's in three ways: it has no lock-screen or notification
+controls and stops when the reader closes (iOS keeps reading with the screen locked), it speaks
+with the voice chosen in the system's Text-to-speech settings (iOS has its own voice picker), and
+Pause starts the paused paragraph again from the word it reached when the voice reports word
+timing (otherwise from the paragraph's start), because `TextToSpeech` can't pause. The reader has no summaries yet (A7).
 
 ```
 PocketLibraryApp (Compose, Material 3, Navigation) → LibraryModel → ForgeHost (host/ForgeHost.kt)
@@ -46,6 +53,11 @@ PocketLibraryApp (Compose, Material 3, Navigation) → LibraryModel → ForgeHos
 - `host/ForgeHost.kt` is the Android counterpart of ForgeKit's `ForgeHost`: it opens the core
   off the main thread, checks the runtime contract version, reports the lifecycle and re-reads
   when Rust announces a change. It stays in this app until a second Android app needs it.
+- `reader/` is Read Aloud: `ReadAloud` (plain Kotlin, tested on the JVM with a stand-in
+  speaker) reads a chapter block by block and reports the block and word being said;
+  `SystemSpeaker` is its speaker on `TextToSpeech`. `ui/ReaderScreen.kt` is the reader (the
+  iPhone app's `ReaderView` and ForgeReader's block views), `ui/EpubImport.kt` the document picker
+  that copies the chosen EPUB for Rust to import.
 - `uniffi.toml` renames the core's `Library` to `PocketLibrary` in Kotlin (it clashes with
   JNA's `Library`) and leaves out `Library.open_fresh`, which UniFFI 0.32 can't rename.
 - Controls carry the iOS app's identifiers as test tags (`library.add.manual`,
@@ -64,7 +76,7 @@ FORGE_ANDROID_ABIS=x86_64 ./scripts/package-android-library.sh examples/pocket-l
 
 cd examples/pocket-library-android
 ./gradlew :app:installDebug                 # on a running emulator
-./gradlew :app:connectedDebugAndroidTest    # Compose UI tests: PL-1 to PL-8, PL-10, screenshots
+./gradlew :app:connectedDebugAndroidTest    # Compose UI tests: PL-1 to PL-10, screenshots
 ```
 
 JVM unit tests run the host and model against the real core, with no emulator:
@@ -80,10 +92,13 @@ touched. The catalogue tests install a stand-in transport in place of `ForgeHttp
 they need no network and see every request Rust sends and every one it stops. `forge.keepTestData` (iOS `-ForgeKeepTestData`) keeps the last launch's throwaway
 library, for a relaunch that checks something was saved, and `pocketLibrary.unreadableTestData`
 (iOS `-PocketLibraryUnreadableTestData`) starts it as a file that isn't a library, to reach
-Start Fresh. UI tests are named by requirement (`pl4_...`); a requirement counts as met on Android
+Start Fresh, and `pocketLibrary.sampleBook` (iOS `-PocketLibrarySampleBook`) starts it with a
+short sample EPUB to read. The reader tests make Read Aloud speak through a stand-in that records
+each utterance (`ReadAloudSpeaker.make`), so they check that what would be said is the text on
+the screen whatever voices the emulator has. UI tests are named by requirement (`pl4_...`); a requirement counts as met on Android
 only when its test passes on the CI emulator. `ThemeScreenshotTest` saves the library in light,
 dark and at 200% text, and the requirement tests save the screens they check (`pl2-reading`,
-`pl3-search`, `pl5-cannot-open`, ...), to `app/build/outputs/connected_android_test_additional_output/`; CI
+`pl3-search`, `pl5-cannot-open`, `pl9-reading-aloud`, ...), to `app/build/outputs/connected_android_test_additional_output/`; CI
 uploads them as the `pocket-library-android-screenshots` artifact.
 
 CI runs both on every push to main that touches Android or shared Rust (`.github/workflows/android.yml`,

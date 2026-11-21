@@ -101,6 +101,12 @@ private data class EditBookRoute(val id: Long) {
     val bookId: ULong get() = id.toULong()
 }
 
+/** A book's EPUB in the reader, which covers the app as on the iPhone. */
+@Serializable
+private data class ReaderRoute(val id: Long) {
+    val bookId: ULong get() = id.toULong()
+}
+
 /**
  * The app. [dark] forces an appearance (screenshot tests); by default it follows the system.
  */
@@ -207,8 +213,12 @@ private fun Screens(model: LibraryModel) {
                 model,
                 id,
                 onEdit = { nav.navigate(EditBookRoute(id.toLong())) { launchSingleTop = true } },
+                onRead = { nav.navigate(ReaderRoute(id.toLong())) { launchSingleTop = true } },
                 onClose = { nav.popBackStack() },
             )
+        }
+        composable<ReaderRoute> { entry ->
+            ReaderScreen(model, entry.toRoute<ReaderRoute>().bookId, onClose = { nav.popBackStack() })
         }
     }
 }
@@ -226,6 +236,10 @@ private fun LibraryScreen(
     val books by model.books.collectAsState()
     val search by model.searchText.collectAsState()
     val filter by model.statusFilter.collectAsState()
+    var alert by remember { mutableStateOf<ForgeAlert<Nothing>?>(null) }
+    var importing by remember { mutableStateOf(false) }
+    // An imported book opens, as on the iPhone.
+    val onImport = rememberEpubImport(model, onImported = onOpen, onFailure = { alert = it }, onImporting = { importing = it })
     Scaffold(
         topBar = {
             TopAppBar(
@@ -235,7 +249,7 @@ private fun LibraryScreen(
                     IconButton(onClick = onSettings, modifier = Modifier.testTag("library.settings")) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
                     }
-                    AddMenu(model, tag = "library.add", onAdd = onAdd, onFind = onFind) { open ->
+                    AddMenu(model, tag = "library.add", onAdd = onAdd, onFind = onFind, onImport = onImport) { open ->
                         IconButton(onClick = open, modifier = Modifier.testTag("library.add")) {
                             Icon(Icons.Filled.Add, contentDescription = "Add Book")
                         }
@@ -245,6 +259,7 @@ private fun LibraryScreen(
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            if (importing) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("library.importing"))
             if (all.isNotEmpty()) SearchField(search, model::setSearchText)
             when {
                 all.isEmpty() -> Message(
@@ -252,7 +267,7 @@ private fun LibraryScreen(
                     "Add the books you're reading, have read, or want to read.",
                     tag = "library.empty",
                 ) {
-                    AddMenu(model, tag = "library.empty.add", onAdd = onAdd, onFind = onFind) { open ->
+                    AddMenu(model, tag = "library.empty.add", onAdd = onAdd, onFind = onFind, onImport = onImport) { open ->
                         Button(onClick = open, modifier = Modifier.testTag("library.empty.add")) { Text("Add Book") }
                     }
                 }
@@ -274,6 +289,7 @@ private fun LibraryScreen(
             }
         }
     }
+    ForgeAlertDialog(alert, onDismiss = { alert = null }) {}
 }
 
 /**
@@ -286,6 +302,7 @@ private fun AddMenu(
     tag: String,
     onAdd: () -> Unit,
     onFind: () -> Unit,
+    onImport: () -> Unit,
     button: @Composable (open: () -> Unit) -> Unit,
 ) {
     val settings by model.settings.collectAsState()
@@ -316,6 +333,12 @@ private fun AddMenu(
                 onClick = { open = false; onAdd() },
                 leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
                 modifier = Modifier.testTag("library.add.manual"),
+            )
+            DropdownMenuItem(
+                text = { Text("Import EPUB File") },
+                onClick = { open = false; onImport() },
+                leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                modifier = Modifier.testTag("library.add.epub"),
             )
         }
     }
