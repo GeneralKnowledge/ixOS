@@ -113,7 +113,9 @@ public struct RelayRoot: View {
 /// Opens a trusted device's conversation in Chats. Set by `RelayRoot`; nil
 /// where Relay's Devices screen shows without Chats.
 struct OpenDeviceConversationKey: EnvironmentKey {
-    static let defaultValue: ((String) -> Void)? = nil
+    // Only ever nil, so no state is shared: Swift 6 can't see that for a
+    // function type.
+    nonisolated(unsafe) static let defaultValue: ((String) -> Void)? = nil
 }
 
 extension EnvironmentValues {
