@@ -1,0 +1,206 @@
+//! Evidence and acceptance: what the environment saw happen, and the rules
+//! that decide from it whether a task is complete. The model's own word
+//! never counts.
+
+use serde::{Deserialize, Serialize};
+
+/// Something a tool call did, recorded by the environment.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Evidence {
+    /// A file was written; `syntax_ok` is false when Python couldn't parse it.
+    Wrote { path: String, syntax_ok: bool },
+    /// A program ran; `ok` is false when it raised, or ran out of time.
+    Ran {
+        path: String,
+        ok: bool,
+        output: String,
+    },
+    /// The tests ran.
+    Tests {
+        ran: u32,
+        failures: u32,
+        errors: u32,
+    },
+}
+
+impl Evidence {
+    fn is_change(&self) -> bool {
+        matches!(self, Evidence::Wrote { .. })
+    }
+}
+
+/// One acceptance criterion, checked by the harness.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Criterion {
+    /// The last test run after the last change ran at least one test, and
+    /// all passed.
+    TestsPass,
+    /// Running `path` after the last change printed `text` and ended
+    /// without an error.
+    RunPrints { path: String, text: String },
+    /// `path` still holds exactly `content` (a fix must not edit the test
+    /// that caught the bug).
+    FileUnchanged { path: String, content: String },
+    /// For a task in the person's own words: the last run or test run after
+    /// the last change succeeded.
+    WorkRuns,
+}
+
+impl Criterion {
+    /// For the screen and the model.
+    pub fn describe(&self) -> String {
+        match self {
+            Criterion::TestsPass => "the tests pass (run after the last change)".into(),
+            Criterion::RunPrints { path, text } => {
+                format!("running {path} prints \u{201c}{text}\u{201d}")
+            }
+            Criterion::FileUnchanged { path, .. } => format!("{path} is left unchanged"),
+            Criterion::WorkRuns => {
+                "the last run or test run after the last change succeeded".into()
+            }
+        }
+    }
+
+    /// Ok with what proves it, or Err with what is missing.
+    pub fn check(
+        &self,
+        evidence: &[Evidence],
+        read: &dyn Fn(&str) -> Option<String>,
+    ) -> Result<String, String> {
+        // Only what happened after the last change counts.
+        let since = evidence
+            .iter()
+            .rposition(Evidence::is_change)
+            .map_or(0, |i| i + 1);
+        let fresh = &evidence[since..];
+        match self {
+            Criterion::TestsPass => match fresh
+                .iter()
+                .rev()
+                .find(|e| matches!(e, Evidence::Tests { .. }))
+            {
+                Some(&Evidence::Tests {
+                    ran,
+                    failures: 0,
+                    errors: 0,
+                }) if ran > 0 => Ok(format!("{ran} tests ran and all passed")),
+                Some(Evidence::Tests { ran: 0, .. }) => {
+                    Err("the last test run found no tests".into())
+                }
+                Some(Evidence::Tests {
+                    failures, errors, ..
+                }) => Err(format!(
+                    "the last test run had {failures} failures and {errors} errors"
+                )),
+                _ => Err("the tests have not been run since the last change".into()),
+            },
+            Criterion::RunPrints { path, text } => {
+                let run = fresh.iter().rev().find_map(|e| match e {
+                    Evidence::Ran {
+                        path: p,
+                        ok,
+                        output,
+                    } if p == path => Some((ok, output)),
+                    _ => None,
+                });
+                match run {
+                    Some((true, output)) if output.contains(text.as_str()) => {
+                        Ok(format!("{path} printed \u{201c}{text}\u{201d}"))
+                    }
+                    Some((true, _)) => Err(format!(
+                        "{path} ran but did not print \u{201c}{text}\u{201d}"
+                    )),
+                    Some((false, _)) => Err(format!("{path} ended with an error")),
+                    None => Err(format!("{path} has not been run since the last change")),
+                }
+            }
+            Criterion::FileUnchanged { path, content } => match read(path) {
+                Some(now) if &now == content => Ok(format!("{path} is unchanged")),
+                Some(_) => Err(format!("{path} was changed; put it back as it was")),
+                None => Err(format!("{path} is missing")),
+            },
+            Criterion::WorkRuns => match fresh.iter().rev().find(|e| !e.is_change()) {
+                Some(Evidence::Ran { path, ok: true, .. }) => {
+                    Ok(format!("{path} ran without an error"))
+                }
+                Some(&Evidence::Tests {
+                    ran,
+                    failures: 0,
+                    errors: 0,
+                }) if ran > 0 => Ok(format!("{ran} tests ran and all passed")),
+                Some(_) => Err("the last run after the last change failed".into()),
+                None => Err("nothing has been run since the last change".into()),
+            },
+        }
+    }
+}
+
+/// A seed file a task starts from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SeedFile {
+    pub path: &'static str,
+    pub content: &'static str,
+}
+
+/// One task of the ladder: the same request every time, so runs compare.
+#[derive(Clone, Debug)]
+pub struct LadderTask {
+    pub id: &'static str,
+    pub title: &'static str,
+    pub request: &'static str,
+    pub seed: Vec<SeedFile>,
+    pub criteria: Vec<Criterion>,
+}
+
+const AVERAGE_PY: &str = "def average(numbers):\n    \"\"\"The mean of a list of numbers.\"\"\"\n    return sum(numbers) / (len(numbers) + 1)\n";
+
+const TEST_AVERAGE_PY: &str = "import unittest\n\nfrom average import average\n\n\nclass AverageTest(unittest.TestCase):\n    def test_three_numbers(self):\n        self.assertEqual(average([2, 4, 6]), 4)\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n";
+
+/// H1's ladder (docs/bonsai-harness-plan.md).
+pub fn ladder() -> Vec<LadderTask> {
+    vec![
+        LadderTask {
+            id: "t1-hello",
+            title: "T1 Hello",
+            request: "Write hello.py that prints Hello from Bonsai, then run it.",
+            seed: vec![],
+            criteria: vec![Criterion::RunPrints {
+                path: "hello.py".into(),
+                text: "Hello from Bonsai".into(),
+            }],
+        },
+        LadderTask {
+            id: "t2-one-test",
+            title: "T2 One file, one test",
+            request: "Write mathutil.py with a function add(a, b) that returns the sum, and \
+                      test_mathutil.py with a unittest test for it. Then run the tests.",
+            seed: vec![],
+            criteria: vec![Criterion::TestsPass],
+        },
+        LadderTask {
+            id: "t3-one-fix",
+            title: "T3 One fix",
+            request: "This project has average.py and a test for it that fails. Run the tests, \
+                      find the bug in average.py and fix it. Do not change the test.",
+            seed: vec![
+                SeedFile {
+                    path: "average.py",
+                    content: AVERAGE_PY,
+                },
+                SeedFile {
+                    path: "test_average.py",
+                    content: TEST_AVERAGE_PY,
+                },
+            ],
+            criteria: vec![
+                Criterion::TestsPass,
+                Criterion::FileUnchanged {
+                    path: "test_average.py".into(),
+                    content: TEST_AVERAGE_PY.into(),
+                },
+            ],
+        },
+    ]
+}

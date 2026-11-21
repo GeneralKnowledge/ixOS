@@ -24,6 +24,9 @@ forge-services = { path = "../../../crates/forge-services", features = ["transfe
 # The folder background downloads are delivered into.
 forge-storage = { path = "../../../crates/forge-storage" }
 thiserror = "2"
+# Bonsai Harness: tool calls and its journal are JSON (src/harness).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 # UniFFI's generated code for async host interfaces names it directly.

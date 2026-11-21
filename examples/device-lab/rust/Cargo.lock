@@ -915,6 +915,8 @@ dependencies = [
  "good-dog-app",
  "pocket-library-core",
  "relay-core",
+ "serde",
+ "serde_json",
  "sketchbook-core",
  "soundscape-core",
  "sums-core",
