@@ -31,7 +31,7 @@ struct ForecastPage: View {
                         }
                         AirQualityCard(overview: overview.airQuality, palette: palette)
                         PollenCard(overview: overview.pollen, palette: palette)
-                        DetailsGrid(report: report, overview: overview, palette: palette)
+                        DetailsSection(details: overview.details, palette: palette)
                         Footer(credits: overview.credits)
                     }
                     .padding(.horizontal, 16)
@@ -410,77 +410,287 @@ struct TemperatureBar: View {
 
 // MARK: Details
 
-private struct DetailsGrid: View {
-    let report: WeatherReport
-    let overview: WeatherOverview
+/// The detail cards. Rust works out every value, sentence and position
+/// (`WeatherOverview.details`); these only lay them out: pairs of tiles,
+/// with wind and the moon across the full width. A card the source sent no
+/// data for is left out.
+private struct DetailsSection: View {
+    let details: WeatherDetails
+    let palette: SkyPalette
+    @Environment(\.weatherUnits) private var units
+
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            LazyVGrid(columns: columns, spacing: 12) {
+                if let feels = details.feelsLike {
+                    DetailTile(
+                        "Feels like", systemImage: "thermometer.medium", palette: palette,
+                        value: WeatherFormat.temperature(feels.celsius, units), note: feels.note,
+                        identifier: "forecast.feelsLike")
+                }
+                if let uv = details.uv {
+                    DetailTile(
+                        "UV index", systemImage: "sun.max.fill", palette: palette,
+                        value: "\(Int(uv.index.rounded()))", caption: uv.label, note: uv.note,
+                        identifier: "forecast.uv"
+                    ) {
+                        ScaleBar(position: uv.scalePosition, colors: ScaleBar.uv)
+                    }
+                }
+            }
+            if let wind = details.wind {
+                WindCard(wind: wind, palette: palette)
+            }
+            LazyVGrid(columns: columns, spacing: 12) {
+                if let sun = details.sun {
+                    DetailTile(
+                        sun.nextIsSunset ? "Sunset" : "Sunrise",
+                        systemImage: sun.nextIsSunset ? "sunset.fill" : "sunrise.fill", palette: palette,
+                        value: (sun.nextIsSunset ? sun.sunset : sun.sunrise) ?? "None today", note: sun.note,
+                        identifier: "forecast.sun"
+                    ) {
+                        SunArc(progress: sun.progress)
+                    }
+                }
+                if let rain = details.precipitation {
+                    DetailTile(
+                        "Precipitation", systemImage: "drop.fill", palette: palette,
+                        value: WeatherFormat.quantity(.precipitation(mm: rain.todayMm), units), caption: "Today",
+                        note: rain.note, identifier: "forecast.precipitation")
+                }
+                if let visibility = details.visibility {
+                    DetailTile(
+                        "Visibility", systemImage: "eye.fill", palette: palette,
+                        value: WeatherFormat.quantity(.distance(metres: visibility.metres), units),
+                        note: visibility.note, identifier: "forecast.visibility")
+                }
+                if let humidity = details.humidity {
+                    DetailTile(
+                        "Humidity", systemImage: "humidity", palette: palette,
+                        value: "\(humidity.percent)%", note: humidity.note, identifier: "forecast.humidity")
+                }
+            }
+            MoonCard(moon: details.moon, palette: palette)
+            LazyVGrid(columns: columns, spacing: 12) {
+                if let pressure = details.pressure {
+                    let value = WeatherFormat.quantity(.pressure(hpa: pressure.hpa), units)
+                    DetailTile(
+                        "Pressure", systemImage: "gauge.with.dots.needle.33percent", palette: palette,
+                        value: nil, spokenValue: value, note: pressure.note, identifier: "forecast.pressure"
+                    ) {
+                        PressureDial(position: pressure.scalePosition, trend: pressure.trend, value: value)
+                            .frame(maxWidth: 130)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A square-ish detail card: title, the value (big), an optional caption
+/// under it, an optional drawing, and Rust's sentence at the bottom.
+/// VoiceOver reads it as one element.
+private struct DetailTile<Graphic: View>: View {
+    let title: String
+    let systemImage: String
+    let palette: SkyPalette
+    let value: String?
+    let spokenValue: String?
+    let caption: String?
+    let note: String
+    let identifier: String
+    let graphic: Graphic
+
+    init(
+        _ title: String, systemImage: String, palette: SkyPalette, value: String?, spokenValue: String? = nil,
+        caption: String? = nil, note: String, identifier: String, @ViewBuilder graphic: () -> Graphic
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.palette = palette
+        self.value = value
+        self.spokenValue = spokenValue
+        self.caption = caption
+        self.note = note
+        self.identifier = identifier
+        self.graphic = graphic()
+    }
+
+    var body: some View {
+        Card(palette: palette) {
+            VStack(alignment: .leading, spacing: 6) {
+                DetailTitle(title: title, systemImage: systemImage)
+                if let value {
+                    Text(value)
+                        .font(.system(.title, weight: .regular))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                if let caption {
+                    Text(caption).font(.title3.weight(.semibold))
+                }
+                graphic
+                Spacer(minLength: 0)
+                Text(note)
+                    .font(.footnote)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([title, value ?? spokenValue, caption, note].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+extension DetailTile where Graphic == EmptyView {
+    init(
+        _ title: String, systemImage: String, palette: SkyPalette, value: String?, caption: String? = nil,
+        note: String, identifier: String
+    ) {
+        self.init(
+            title, systemImage: systemImage, palette: palette, value: value, caption: caption, note: note,
+            identifier: identifier
+        ) { EmptyView() }
+    }
+}
+
+private struct DetailTitle: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title.uppercased(), systemImage: systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.6))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+    }
+}
+
+/// One line of a wide card: "29" big, then "KM/H" over "Wind".
+private struct MeasureRow: View {
+    let number: String
+    let unit: String
+    let label: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(number).font(.title2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.7)
+            VStack(alignment: .leading, spacing: 0) {
+                if !unit.isEmpty {
+                    Text(unit.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
+                }
+                Text(label).font(.subheadline)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+/// "29 km/h" as ("29", "km/h").
+private func splitUnit(_ text: String) -> (String, String) {
+    guard let space = text.firstIndex(of: " ") else { return (text, "") }
+    return (String(text[..<space]), String(text[text.index(after: space)...]))
+}
+
+private struct WindCard: View {
+    let wind: WindDetail
     let palette: SkyPalette
     @Environment(\.weatherUnits) private var units
 
     var body: some View {
-        let now = report.current
-        let today = overview.today
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            if let feels = now.apparentTemperatureC {
-                Tile("Feels like", systemImage: "thermometer.medium", palette: palette,
-                     value: WeatherFormat.temperature(feels, units),
-                     note: feelsNote(feels: feels, actual: now.temperatureC, windy: (now.wind?.speedKmh ?? 0) > 15))
+        let measured = splitUnit(WeatherFormat.speed(kmh: wind.speedKmh, units: units))
+        let speed = measured.0
+        let unit = measured.1
+        Card(palette: palette) {
+            VStack(alignment: .leading, spacing: 8) {
+                DetailTitle(title: "Wind", systemImage: "wind")
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(spacing: 0) {
+                        MeasureRow(number: speed, unit: unit, label: "Wind")
+                        if let gusts = wind.gustsKmh {
+                            Divider().overlay(.white.opacity(0.25))
+                            let g = splitUnit(WeatherFormat.speed(kmh: gusts, units: units))
+                            MeasureRow(number: g.0, unit: g.1, label: "Gusts")
+                        }
+                        if let direction = wind.direction {
+                            Divider().overlay(.white.opacity(0.25))
+                            let d = splitUnit(direction)
+                            MeasureRow(number: d.0, unit: d.1, label: "Direction")
+                        }
+                    }
+                    WindCompass(directionDeg: wind.directionDeg.map(Double.init), speed: speed, unit: unit)
+                        .frame(width: 130)
+                }
+                Text(wind.note)
+                    .font(.footnote)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            if let wind = now.wind {
-                Tile("Wind", systemImage: "wind", palette: palette,
-                     value: WeatherFormat.speed(kmh: wind.speedKmh, units: units),
-                     note: windNote(wind))
+            .padding(14)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "Wind, \(WeatherFormat.speed(kmh: wind.speedKmh, units: units)), \(wind.note)")
+        .accessibilityIdentifier("forecast.wind")
+    }
+}
+
+private struct MoonCard: View {
+    let moon: MoonDetail
+    let palette: SkyPalette
+
+    var body: some View {
+        let name = WeatherFormat.moonName(moon.phase.name)
+        Card(palette: palette) {
+            VStack(alignment: .leading, spacing: 8) {
+                DetailTitle(title: name, systemImage: WeatherFormat.moonSymbol(moon.phase.name))
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(spacing: 0) {
+                        row("Illumination", "\(moon.phase.illuminationPct)%")
+                        Divider().overlay(.white.opacity(0.25))
+                        row("Moonrise", moon.moonrise ?? "None today")
+                        Divider().overlay(.white.opacity(0.25))
+                        row("Moonset", moon.moonset ?? "None today")
+                        Divider().overlay(.white.opacity(0.25))
+                        row("Next full moon", fullMoon)
+                    }
+                    MoonDisc(phase: moon.phase)
+                        .frame(width: 110)
+                }
             }
-            if let humidity = now.relativeHumidityPct {
-                Tile("Humidity", systemImage: "humidity", palette: palette,
-                     value: "\(humidity)%",
-                     note: now.dewPointC.map { "The dew point is \(WeatherFormat.temperature($0, units)) right now." }
-                        ?? (humidity >= 85 ? "The air is close to saturated." : "Relative humidity now."))
-            }
-            if let total = today?.precipitationSumMm {
-                Tile("Precipitation", systemImage: "drop.fill", palette: palette,
-                     value: WeatherFormat.quantity(.precipitation(mm: total), units),
-                     note: "Expected today.")
-            }
-            if let uv = today?.uvIndexMax {
-                Tile("UV index", systemImage: "sun.max.fill", palette: palette,
-                     value: "\(Int((now.uvIndex ?? uv).rounded()))",
-                     note: now.uvIndex == nil
-                        ? "\(WeatherFormat.uvLevel(uv)) at its peak today."
-                        : "\(WeatherFormat.uvLevel(now.uvIndex ?? uv)) now. Peak today \(Int(uv.rounded())).")
-            }
-            if let visibility = now.visibilityM {
-                Tile("Visibility", systemImage: "eye.fill", palette: palette,
-                     value: WeatherFormat.quantity(.distance(metres: visibility), units),
-                     note: visibility < 1_000 ? "Fog or heavy precipitation." : visibility < 10_000 ? "Hazy." : "Clear view.")
-            }
-            if let pressure = now.pressureMslHpa {
-                Tile("Pressure", systemImage: "gauge.with.dots.needle.33percent", palette: palette,
-                     value: WeatherFormat.quantity(.pressure(hpa: pressure), units),
-                     note: "At sea level.")
-            }
-            if let today, let sunrise = today.sunrise, let sunset = today.sunset {
-                Tile("Sunset", systemImage: "sunset.fill", palette: palette,
-                     value: WeatherFormat.hour(sunset),
-                     note: "Sunrise: \(WeatherFormat.hour(sunrise))."
-                        + (overview.daylightMinutes.map { " Daylight \($0 / 60) h \($0 % 60) min." } ?? ""))
-            }
-            Tile("Moon", systemImage: WeatherFormat.moonSymbol(overview.moon.name), palette: palette,
-                 value: WeatherFormat.moonName(overview.moon.name),
-                 note: "\(overview.moon.illuminationPct)% lit.")
+            .padding(14)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "Moon, \(name), \(moon.phase.illuminationPct)% lit. "
+                + (moon.moonrise.map { "Moonrise \($0). " } ?? "")
+                + (moon.moonset.map { "Moonset \($0). " } ?? "")
+                + moon.note)
+        .accessibilityIdentifier("forecast.moon")
+    }
+
+    private var fullMoon: String {
+        switch moon.daysToFullMoon {
+        case 0: return "Today"
+        case 1: return "Tomorrow"
+        default: return "\(moon.daysToFullMoon) days"
         }
     }
 
-    private func feelsNote(feels: Double, actual: Double, windy: Bool) -> String {
-        if feels < actual - 1.5 { return windy ? "Wind makes it feel colder." : "Feels colder than it is." }
-        if feels > actual + 1.5 { return "Humidity makes it feel warmer." }
-        return "Similar to the actual temperature."
-    }
-
-    private func windNote(_ wind: Wind) -> String {
-        var parts: [String] = []
-        if let gusts = wind.gustsKmh { parts.append("Gusts \(WeatherFormat.speed(kmh: gusts, units: units))") }
-        if let direction = wind.directionDeg { parts.append("from the \(WeatherFormat.compass(direction))") }
-        return parts.isEmpty ? "Wind speed now." : parts.joined(separator: ", ") + "."
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value).foregroundStyle(.white.opacity(0.75))
+        }
+        .font(.subheadline)
+        .padding(.vertical, 7)
     }
 }
 
@@ -507,87 +717,97 @@ private func sectionAge(_ state: SectionState) -> String? {
     return base + " (\(WeatherFormat.problem(problem)))."
 }
 
+/// The index big with its band's name, a marker on the colour scale, and
+/// Rust's comparison with yesterday. The pollutants and how far the
+/// forecast runs fold out under "Details".
 private struct AirQualityCard: View {
     let overview: AirQualityOverview
     let palette: SkyPalette
+    @State private var expanded = false
 
     var body: some View {
         Card("Air Quality", systemImage: "aqi.medium", palette: palette) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 if let message = sectionMessage(overview.state, what: "Air quality") {
                     Text(message).font(.subheadline)
                         .accessibilityIdentifier("forecast.airQuality.message")
                 } else if let index = overview.index {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("\(index.value)").font(.system(.title, weight: .regular))
-                        Text(index.label).font(.title3.weight(.medium))
+                    VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("\(index.value)").font(.system(.largeTitle, weight: .regular))
+                            Text(index.label).font(.title3.weight(.semibold))
+                        }
+                        ScaleBar(
+                            position: overview.scalePosition ?? (Double(index.level) - 0.5) / 6,
+                            colors: ScaleBar.airQuality)
+                        Text(overview.comparison ?? scaleName(index.scale))
+                            .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    AqiScaleBar(level: index.level)
-                    Text(index.scale == .european ? "European Air Quality Index" : "US Air Quality Index")
+                    .accessibilityElement(children: .combine)
+                    if expanded {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(scaleName(index.scale))
+                            if let now = overview.now, let text = pollutants(now) { Text(text) }
+                            if let until = overview.coversUntil {
+                                Text("Forecast until \(WeatherFormat.weekday(String(until.prefix(10)))) \(WeatherFormat.hour(until)).")
+                            }
+                        }
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.7))
-                    if let now = overview.now {
-                        Text(pollutants(now)).font(.footnote)
+                        .foregroundStyle(.white.opacity(0.8))
                     }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+                    } label: {
+                        Label(expanded ? "Less" : "Details", systemImage: expanded ? "chevron.up" : "chevron.down")
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .accessibilityLabel(expanded ? "Hide air quality details" : "Show air quality details")
+                    .accessibilityIdentifier("forecast.airQuality.details")
                 } else {
                     Text("No reading for this hour.").font(.subheadline)
                 }
-                if let until = overview.coversUntil, sectionMessage(overview.state, what: "") == nil {
-                    Text("Forecast until \(WeatherFormat.weekday(String(until.prefix(10)))) \(WeatherFormat.hour(until)).")
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.7))
-                }
-                if let age = sectionAge(overview.state) {
-                    Text(age).font(.footnote).foregroundStyle(.white.opacity(0.7))
-                }
-                if let source = overview.source {
-                    Text(source.name).font(.caption2).foregroundStyle(.white.opacity(0.6))
-                }
+                SourceLine(state: overview.state, source: overview.source)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("forecast.airQuality")
     }
 
-    private func pollutants(_ h: AirQualityHour) -> String {
+    private func scaleName(_ scale: AirQualityScale) -> String {
+        scale == .european ? "European Air Quality Index" : "US Air Quality Index"
+    }
+
+    private func pollutants(_ h: AirQualityHour) -> String? {
         var parts: [String] = []
         if let v = h.pm25 { parts.append("PM2.5 \(Int(v.rounded()))") }
         if let v = h.pm10 { parts.append("PM10 \(Int(v.rounded()))") }
         if let v = h.ozone { parts.append("O₃ \(Int(v.rounded()))") }
         if let v = h.nitrogenDioxide { parts.append("NO₂ \(Int(v.rounded()))") }
-        return parts.isEmpty ? "" : parts.joined(separator: " · ") + " µg/m³"
+        return parts.isEmpty ? nil : parts.joined(separator: " · ") + " µg/m³"
     }
 }
 
-/// Six bands, the current one marked.
-private struct AqiScaleBar: View {
-    let level: UInt8
+/// "Updated 2 h ago" when the data is kept, then the source, small.
+private struct SourceLine: View {
+    let state: SectionState
+    let source: SourceCredit?
 
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(1...6, id: \.self) { band in
-                Capsule()
-                    .fill(Self.color(band).opacity(Int(level) == band ? 1 : 0.35))
-                    .frame(height: Int(level) == band ? 8 : 5)
-            }
-        }
-        .accessibilityHidden(true)
-    }
-
-    static func color(_ band: Int) -> Color {
-        switch band {
-        case 1: return .green
-        case 2: return .yellow
-        case 3: return .orange
-        case 4: return .red
-        case 5: return .purple
-        default: return Color(red: 0.5, green: 0, blue: 0.15)
+        let parts = [sectionAge(state), source?.name].compactMap { $0 }
+        if !parts.isEmpty {
+            Text(parts.joined(separator: " · "))
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.6))
         }
     }
 }
 
+/// Rust's one-line summary, then only the species in the air today.
 private struct PollenCard: View {
     let overview: PollenOverview
     let palette: SkyPalette
@@ -605,71 +825,33 @@ private struct PollenCard: View {
                 {
                     Text(message).font(.subheadline)
                         .accessibilityIdentifier("forecast.pollen.message")
-                } else if overview.species.isEmpty {
-                    Text("No reading for this hour.").font(.subheadline)
                 } else {
-                    ForEach(overview.species, id: \.species) { s in
-                        HStack {
-                            Text(WeatherFormat.pollenName(s.species))
-                            Spacer()
-                            Text("\(WeatherFormat.grains(s.nowGrainsPerM3)) now, up to \(WeatherFormat.grains(s.todayMaxGrainsPerM3)) today")
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
+                    Text(overview.summary)
                         .font(.subheadline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !overview.species.isEmpty {
+                        VStack(spacing: 0) {
+                            ForEach(overview.species, id: \.species) { s in
+                                HStack {
+                                    Text(WeatherFormat.pollenName(s.species))
+                                    Spacer()
+                                    Text("\(WeatherFormat.grains(s.nowGrainsPerM3)) now · up to \(WeatherFormat.grains(s.todayMaxGrainsPerM3))")
+                                        .foregroundStyle(.white.opacity(0.8))
+                                }
+                                .font(.subheadline)
+                                .padding(.vertical, 6)
+                            }
+                        }
+                        Text("Grains per cubic metre.").font(.caption2).foregroundStyle(.white.opacity(0.6))
                     }
-                    Text("Grains per cubic metre.").font(.footnote).foregroundStyle(.white.opacity(0.7))
                 }
-                if let age = sectionAge(overview.state) {
-                    Text(age).font(.footnote).foregroundStyle(.white.opacity(0.7))
-                }
-                if let source = overview.source {
-                    Text(source.name).font(.caption2).foregroundStyle(.white.opacity(0.6))
-                }
+                SourceLine(state: overview.state, source: overview.source)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("forecast.pollen")
-    }
-}
-
-private struct Tile: View {
-    let title: String
-    let systemImage: String
-    let palette: SkyPalette
-    let value: String
-    let note: String
-
-    init(_ title: String, systemImage: String, palette: SkyPalette, value: String, note: String) {
-        self.title = title
-        self.systemImage = systemImage
-        self.palette = palette
-        self.value = value
-        self.note = note
-    }
-
-    var body: some View {
-        Card(palette: palette) {
-            VStack(alignment: .leading, spacing: 6) {
-                Label(title.uppercased(), systemImage: systemImage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Text(value)
-                    .font(.system(.title, weight: .regular))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Spacer(minLength: 0)
-                Text(note)
-                    .font(.footnote)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 

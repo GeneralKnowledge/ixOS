@@ -39,7 +39,7 @@ pub(crate) fn credit() -> SourceCredit {
 
 fn url(base: &str, c: Coordinate, fields: &str) -> String {
     format!(
-        "{}/v1/air-quality?latitude={:.4}&longitude={:.4}&hourly={fields}&timezone=auto&forecast_days={AIR_QUALITY_DAYS}&timeformat=iso8601",
+        "{}/v1/air-quality?latitude={:.4}&longitude={:.4}&hourly={fields}&timezone=auto&past_days=1&forecast_days={AIR_QUALITY_DAYS}&timeformat=iso8601",
         base.trim_end_matches('/'),
         c.latitude,
         c.longitude,

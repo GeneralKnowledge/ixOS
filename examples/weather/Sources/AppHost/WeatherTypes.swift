@@ -46,6 +46,18 @@ public typealias MoonPhase = WeatherFFI.MoonPhase
 public typealias MoonPhaseName = WeatherFFI.MoonPhaseName
 public typealias PollenGap = WeatherFFI.PollenGap
 public typealias SavedDataProblem = WeatherFFI.SavedDataProblem
+public typealias WeatherDetails = WeatherFFI.WeatherDetails
+public typealias FeelsLikeDetail = WeatherFFI.FeelsLikeDetail
+public typealias WindDetail = WeatherFFI.WindDetail
+public typealias HumidityDetail = WeatherFFI.HumidityDetail
+public typealias PrecipitationDetail = WeatherFFI.PrecipitationDetail
+public typealias UvDetail = WeatherFFI.UvDetail
+public typealias UvLevel = WeatherFFI.UvLevel
+public typealias VisibilityDetail = WeatherFFI.VisibilityDetail
+public typealias PressureDetail = WeatherFFI.PressureDetail
+public typealias PressureTrend = WeatherFFI.PressureTrend
+public typealias SunDetail = WeatherFFI.SunDetail
+public typealias MoonDetail = WeatherFFI.MoonDetail
 
 extension Place {
     /// A place for a device location fix. Rust only needs the coordinate;
