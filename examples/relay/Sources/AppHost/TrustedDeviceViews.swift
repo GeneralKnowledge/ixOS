@@ -170,12 +170,12 @@ struct ConnectionModeSection: View {
                 }
                 .accessibilityIdentifier("devices.servers")
                 if health == .unreachable {
-                    Label(
+                    ForgeNotice(
                         "The servers can't be reached right now. Devices on the same Wi-Fi or Tailscale still can.",
                         systemImage: "exclamationmark.triangle"
                     )
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                     .accessibilityIdentifier("devices.serversDown")
                 }
             }
