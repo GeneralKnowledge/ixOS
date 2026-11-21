@@ -359,8 +359,9 @@ impl RelayCore {
     /// person, once, until they dismiss it. `None` normally.
     pub fn away_from_home_notice(&self) -> Option<String> {
         self.record.get().away_notice.then(|| {
-            "Relay now reaches your devices away from home through its servers. What you send \
-             stays encrypted end to end. You can change this in Settings, under Connections."
+            "Relay now reaches your devices away from home through its servers. What your \
+             devices send each other stays encrypted end to end. You can change this in \
+             Settings, under Connections."
                 .to_string()
         })
     }
@@ -906,6 +907,10 @@ impl RelayCore {
             .ok_or_else(|| RelayError::UnknownPeer {
                 id: endpoint_id.clone(),
             })?;
+        // This device's own networks are known before dialling, so an
+        // address on one of them counts as the local network.
+        let node = self.node().await?;
+        self.watch_network(&node);
         let Some((addr, _)) = self.dial(&saved) else {
             return Err(RelayError::Unreachable {
                 reason: self.problem_of(&endpoint_id).unwrap_or_default(),
@@ -1217,6 +1222,10 @@ impl RelayCore {
                 reason: format!("{} isn't set to introduce devices here", saved.name),
             });
         }
+        // This device's own networks are known before dialling, so an
+        // address on one of them counts as the local network.
+        let node = self.node().await?;
+        self.watch_network(&node);
         let Some((addr, _)) = self.dial(&saved) else {
             return Err(RelayError::Unreachable {
                 reason: self.problem_of(&endpoint_id).unwrap_or_default(),
