@@ -96,7 +96,8 @@ class ForgeHost<Core : ForgeCore>(
     sealed interface Status {
         data object Loading : Status
         data object Ready : Status
-        data class Failed(val message: String) : Status
+        /** Opening failed; [error] is what the core threw, when it threw. */
+        data class Failed(val message: String, val error: Throwable? = null) : Status
         /** Shut down; [start] opens the core again. */
         data object Closed : Status
     }
@@ -152,7 +153,7 @@ class ForgeHost<Core : ForgeCore>(
             val opened = try {
                 withContext(io) { open(environment()) }
             } catch (e: Exception) {
-                _status.value = Status.Failed(e.message ?: "The app's data couldn't be opened ($e).")
+                _status.value = Status.Failed(e.message ?: "The app's data couldn't be opened ($e).", e)
                 return
             }
             // Subscribe before anyone reads, so no change is missed.

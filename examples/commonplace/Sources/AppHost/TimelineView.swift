@@ -53,7 +53,7 @@ struct TimelineView: View {
                 ToolbarItem(placement: .primaryAction) {
                     // Done at once, with Undo in a banner (LibraryModel).
                     Button("Mark All as Read", systemImage: "checkmark.circle") {
-                        Task { await model.markAllRead(feedID: timeline.feedID) }
+                        Task { await model.markAllRead(in: timeline) }
                     }
                     .disabled(!articles.contains { !$0.read })
                     .accessibilityIdentifier("timeline.markAllRead")

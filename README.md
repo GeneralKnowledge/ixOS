@@ -5,7 +5,7 @@
 
 Linux-first, Rust-first framework for building native mobile apps with **Rust** (domain logic), **UniFFI** (FFI), and thin platform hosts: **SwiftUI + xtool** (iOS) and **Jetpack Compose + Gradle** (Android).
 
-> **Platform focus: iOS.** Android is **work in progress** and paused while the project concentrates on iOS. The Android code, examples and template stay in the repository and keep building in CI, but they get no new features, Android has not been validated on a physical phone, and new capabilities land on iOS only. See [the roadmap](docs/roadmap.md#android--work-in-progress).
+> **Platform focus: iOS.** Android is **work in progress**, moving forward only as a capped side track: Pocket Library is being brought to parity on Android one milestone at a time, never ahead of iOS work. The rest of the Android code and the template stay and keep building in CI without new features, Android has not been validated on a physical phone, and new capabilities land on iOS first. See [the roadmap](docs/roadmap.md#android--work-in-progress).
 
 This repository (`ixOS` on GitHub) ships **Checklist**, the smallest app on the ixOS runtime, a networked **Weather** example (iOS), a **Chat** demo (iOS, with a frozen Android twin; live event stream, room subscriptions, offline retry; see [examples/relay/docs/chat-demo.md](examples/relay/docs/chat-demo.md)), **Pocket Library**, a multi-screen reading tracker made with `forge init` that owns its Rust crate ([examples/pocket-library](examples/pocket-library/README.md)), a developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
 

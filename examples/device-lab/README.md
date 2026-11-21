@@ -41,7 +41,7 @@ Nothing asks for a permission until you tap its button. Everything stops when th
 
 The **Apps** tab, the first thing Device Lab shows, opens the other example
 apps, each the full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Relay (with Chat's
-messaging, merged into it), FieldKit and the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
+messaging, merged into it), FieldKit, Urdu, Naturally and the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
 in one of them (the `-launchApp weather` launch argument does the same).
 One app on the phone holds all of them. (Counter isn't hosted.) The top row,
 **This Build**, shows the installed version and build number; every

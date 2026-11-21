@@ -18,6 +18,9 @@ public enum ForgeAudioSession {
         /// Playing speech, even with the ring/silent switch on silent, and
         /// pausing other apps' audio.
         case playback
+        /// Playing music: the same, in the default mode rather than the
+        /// spoken-audio one (Soundscape's songs).
+        case music
         /// Recording from the microphone, playing through the speaker.
         case record
     }
@@ -28,6 +31,8 @@ public enum ForgeAudioSession {
             switch use {
             case .playback:
                 try session.setCategory(.playback, mode: .spokenAudio)
+            case .music:
+                try session.setCategory(.playback, mode: .default)
             case .record:
                 try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
             }

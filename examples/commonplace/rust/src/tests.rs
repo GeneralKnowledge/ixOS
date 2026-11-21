@@ -43,9 +43,37 @@ fn open_with(dir: &std::path::Path, http: StaticClient) -> (Arc<AppCore>, Arc<St
     let core = AppCore::open(
         dir.to_string_lossy().into_owned(),
         Arc::clone(&http) as Arc<dyn HttpClient>,
+        fake_lookup,
     )
     .unwrap();
     (core, http)
+}
+
+/// Host names as the tests' made-up internet resolves them (there is no
+/// network in tests). `fixtures.example` is an ordinary public site.
+fn fake_lookup(host: &str, _port: u16) -> std::io::Result<Vec<std::net::IpAddr>> {
+    let ips: &[&str] = match host {
+        "fixtures.example" | "public.example" => &["93.184.215.14"],
+        // A public name that points into the home network.
+        "sneaky.example" => &["192.168.1.1"],
+        // Public and private at once: refused, as the private one may be used.
+        "mixed.example" => &["93.184.215.14", "10.0.0.7"],
+        // An iPhone on an IPv6-only network gets NAT64 addresses.
+        "nat64.example" => &["64:ff9b::5db8:d70e"],
+        "nat64-private.example" => &["64:ff9b::c0a8:0101"],
+        "laptop.tail1234.ts.net" => &["100.72.135.124"],
+        "nas.local" => &["192.168.1.20"],
+        // A home-network name that points at the device itself.
+        "self.local" => &["127.0.0.1"],
+        "metadata.local" => &["169.254.169.254"],
+        _ => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no such host",
+            ))
+        }
+    };
+    Ok(ips.iter().map(|ip| ip.parse().unwrap()).collect())
 }
 
 fn subscribed(dir: &std::path::Path) -> (Arc<AppCore>, Feed) {
@@ -189,7 +217,8 @@ fn refresh_adds_new_articles_and_keeps_read_and_bookmarks() {
             feeds: 1,
             unchanged: 0,
             new_articles: 1,
-            failures: vec![]
+            failures: vec![],
+            full_articles: 0,
         }
     );
     // The validators from the first fetch were sent.
@@ -840,4 +869,1020 @@ fn waiting_for_the_network_without_the_service_returns_at_once() {
     let dir = tempfile::tempdir().unwrap();
     let (core, _) = open_with(dir.path(), StaticClient::new());
     assert!(!block_on(core.wait_until_back_online(None)).unwrap());
+}
+
+// ---- Folders and OPML (C3) ----
+
+const FEEDER_STYLE: &str = include_str!("../fixtures/feeder-style.opml");
+
+fn empty_core(dir: &std::path::Path) -> Arc<AppCore> {
+    open_with(dir, StaticClient::new()).0
+}
+
+fn import_all(core: &AppCore, text: &str) -> OpmlImport {
+    let preview = core.preview_opml(text.into()).unwrap();
+    let all = preview.feeds.iter().map(|f| f.index).collect();
+    block_on(core.import_opml(text.into(), all)).unwrap()
+}
+
+fn folder_named(core: &AppCore, name: &str) -> Folder {
+    core.folders().into_iter().find(|f| f.name == name).unwrap()
+}
+
+fn feed_titled(core: &AppCore, title: &str) -> Feed {
+    core.feeds().into_iter().find(|f| f.title == title).unwrap()
+}
+
+#[test]
+fn an_opml_file_is_read_with_folders_options_and_filters() {
+    let doc = opml::parse(FEEDER_STYLE).unwrap();
+    let titles: Vec<_> = doc
+        .entries
+        .iter()
+        .map(|e| e.title.clone().unwrap())
+        .collect();
+    assert_eq!(
+        titles,
+        [
+            "Loose Feed",
+            "World & Politics",
+            "Gadgets",
+            "Listed Twice",
+            "Not a Web Address",
+            "Weird Notify"
+        ]
+    );
+    let world = &doc.entries[1];
+    assert_eq!(world.folder, ["News"]);
+    assert_eq!(
+        world.options,
+        opml::FeedOptions {
+            notify: Some(true),
+            full_text: Some(true)
+        }
+    );
+    // Feeder's other attributes are kept for export and named as not used.
+    assert_eq!(world.not_used, ["openArticlesWith", "alternateId"]);
+    assert_eq!(world.extras[0].namespace, opml::FEEDER_NS);
+    assert_eq!(world.extras[0].value, "reader");
+    assert_eq!(doc.entries[2].folder, ["News", "Tech"]);
+    assert_eq!(doc.entries[2].options.notify, Some(false));
+    // A value it can't read is named, not guessed.
+    assert_eq!(doc.entries[5].options.notify, None);
+    assert_eq!(doc.entries[5].not_used, ["notify"]);
+    // Patterns are trimmed text; the blank one is refused.
+    assert_eq!(doc.filters, ["giveaway", "sponsored"]);
+    assert_eq!(doc.rejected_filters, 1);
+    assert_eq!(doc.settings_not_used, ["pref_article_style", "pref_theme"]);
+}
+
+#[test]
+fn a_file_that_isnt_opml_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    for text in [
+        "",
+        "<html><body>hi</body></html>",
+        "<opml><body><outline",
+        "not xml at all",
+    ] {
+        assert!(
+            matches!(
+                core.preview_opml(text.into()),
+                Err(AppError::NotOpml { .. })
+            ),
+            "{text:?}"
+        );
+    }
+    let huge = format!("<opml><body>{}</body></opml>", " ".repeat(opml::MAX_BYTES));
+    assert!(matches!(
+        core.preview_opml(huge),
+        Err(AppError::NotOpml { .. })
+    ));
+    assert_eq!(
+        app_error_kind(AppError::NotOpml {
+            reason: String::new()
+        }),
+        forge_app::ErrorKind::Invalid
+    );
+}
+
+#[test]
+fn an_opml_file_cant_smuggle_in_entities_or_control_characters() {
+    let text = "<?xml version=\"1.0\"?><!DOCTYPE opml [<!ENTITY x \"EXPANDED\">]>\
+        <opml version=\"2.0\" xmlns:feeder=\"https://nononsenseapps.com/feeder\"><head>\
+        <feeder:blocked pattern=\"bad&#7;pattern\"/></head><body>\
+        <outline text=\"&x;\" xmlUrl=\"https://a.example/feed\"/></body></opml>";
+    // An entity beyond XML's own is an error, never expanded.
+    match opml::parse(text) {
+        Err(_) => {}
+        Ok(doc) => assert!(doc.entries.iter().all(|e| !e
+            .title
+            .clone()
+            .unwrap_or_default()
+            .contains("EXPANDED"))),
+    }
+    let text = "<opml version=\"2.0\" xmlns:feeder=\"https://nononsenseapps.com/feeder\"><head>\
+        <feeder:blocked pattern=\"bad&#7;pattern\"/></head><body>\
+        <outline text=\"Line&#10;Break\" xmlUrl=\"https://a.example/feed\"/></body></opml>";
+    let doc = opml::parse(text).unwrap();
+    assert_eq!(doc.filters, Vec::<String>::new());
+    assert_eq!(doc.rejected_filters, 1);
+    assert_eq!(doc.entries[0].title.as_deref(), Some("Line Break"));
+}
+
+#[test]
+fn the_preview_says_what_importing_would_do_and_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _) = open_with(
+        dir.path(),
+        StaticClient::new().route(
+            Method::Get,
+            "https://loose.example/feed.xml",
+            ok(rss(&[("a", "Alpha")]), None),
+        ),
+    );
+    let loose = block_on(core.add_feed("https://loose.example/feed.xml".into(), None)).unwrap();
+    let preview = core.preview_opml(FEEDER_STYLE.into()).unwrap();
+    let statuses: Vec<_> = preview.feeds.iter().map(|f| f.status.clone()).collect();
+    assert_eq!(
+        statuses,
+        [
+            OpmlFeedStatus::AlreadySubscribed { feed_id: loose.id },
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::ListedTwice,
+            OpmlFeedStatus::BadAddress,
+            OpmlFeedStatus::New,
+        ]
+    );
+    // feed:// means https://.
+    assert_eq!(preview.feeds[2].url, "https://gadgets.example/atom");
+    assert_eq!(
+        preview.folders,
+        ["News", "News / Tech", "Podcasts and Odd Things"]
+    );
+    assert_eq!(preview.filters, 2);
+    assert_eq!(preview.rejected_filters, 1);
+    assert_eq!(core.feeds().len(), 1);
+    assert!(core.folders().is_empty());
+}
+
+#[test]
+fn importing_adds_the_picked_feeds_in_their_folders() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    let preview = core.preview_opml(FEEDER_STYLE.into()).unwrap();
+    // Only World and Gadgets.
+    let done = block_on(core.import_opml(FEEDER_STYLE.into(), vec![1, 2])).unwrap();
+    assert_eq!(done.added, 2);
+    assert_eq!(done.folders_created, 2);
+    assert_eq!(done.filters_added, 2);
+    assert_eq!(preview.feeds.len(), 6);
+    let world = feed_titled(&core, "World & Politics");
+    let gadgets = feed_titled(&core, "Gadgets");
+    assert_eq!(world.folder_id, Some(folder_named(&core, "News").id));
+    assert_eq!(gadgets.folder_id, Some(folder_named(&core, "Tech").id));
+    assert!(world.notify && world.full_text);
+    assert!(!gadgets.notify && !gadgets.full_text);
+    let tech = folder_named(&core, "Tech");
+    assert_eq!(tech.parent_id, Some(folder_named(&core, "News").id));
+    assert_eq!(tech.depth, 1);
+    assert_eq!(folder_named(&core, "News").feed_count, 2);
+    // Skipped entries are counted, not added.
+    let skipped = block_on(core.import_opml(FEEDER_STYLE.into(), vec![3, 4])).unwrap();
+    assert_eq!(skipped.skipped, 1);
+    assert_eq!(skipped.already_subscribed, 1);
+    assert_eq!(skipped.added, 0);
+}
+
+#[test]
+fn importing_twice_adds_nothing_and_changes_nothing_the_library_has() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    let first = import_all(&core, FEEDER_STYLE);
+    assert_eq!(first.added, 4);
+    assert_eq!(first.skipped, 2);
+    // The person changes things after the import.
+    let world = feed_titled(&core, "World & Politics");
+    block_on(core.rename_feed(world.id, "My World".into())).unwrap();
+    block_on(core.move_feed(world.id, None)).unwrap();
+    block_on(core.set_feed_notify(world.id, false)).unwrap();
+    let before = core.feeds();
+    let names = |core: &AppCore| {
+        core.folders()
+            .into_iter()
+            .map(|f| (f.id, f.parent_id, f.name))
+            .collect::<Vec<_>>()
+    };
+    let folders_before = names(&core);
+    let second = import_all(&core, FEEDER_STYLE);
+    assert_eq!(second.added, 0);
+    assert_eq!(second.already_subscribed, 4);
+    assert_eq!(second.folders_created, 0);
+    assert_eq!(second.filters_added, 0);
+    // World keeps the person's name, place and option.
+    let world = feed_titled(&core, "My World");
+    assert_eq!(world.folder_id, None);
+    assert!(!world.notify);
+    assert_eq!(core.feeds(), before);
+    assert_eq!(core.feeds().len(), before.len());
+    assert_eq!(names(&core), folders_before);
+}
+
+#[test]
+fn an_export_imports_again_with_its_folders_settings_and_kept_attributes() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    import_all(&core, FEEDER_STYLE);
+    let exported = block_on(core.export_opml()).unwrap();
+    // Feeder's attribute Commonplace doesn't use goes back out as it came.
+    assert!(
+        exported.contains("feeder:openArticlesWith=\"reader\""),
+        "{exported}"
+    );
+    assert!(exported.contains("World &amp; Politics"));
+    // Into a fresh library, and out again: the same file.
+    let dir2 = tempfile::tempdir().unwrap();
+    let again = empty_core(dir2.path());
+    let done = import_all(&again, &exported);
+    assert_eq!(done.added, 4);
+    assert_eq!(done.skipped, 0);
+    let shape = |core: &AppCore| {
+        let folders = core.folders();
+        let mut feeds: Vec<_> = core
+            .feeds()
+            .into_iter()
+            .map(|f| {
+                let folder = f
+                    .folder_id
+                    .and_then(|id| folders.iter().find(|x| x.id == id))
+                    .map(|x| x.name.clone());
+                (f.title, f.url, folder, f.notify, f.full_text)
+            })
+            .collect();
+        feeds.sort();
+        let folders: Vec<_> = folders.into_iter().map(|f| (f.name, f.depth)).collect();
+        (feeds, folders)
+    };
+    assert_eq!(shape(&core), shape(&again));
+    assert_eq!(block_on(again.export_opml()).unwrap(), exported);
+}
+
+#[test]
+fn folders_are_made_renamed_and_deleted_without_losing_feeds() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    import_all(&core, FEEDER_STYLE);
+    let news = folder_named(&core, "News");
+    // Same name, any case: the existing folder.
+    assert_eq!(
+        block_on(core.create_folder("  news ".into(), None))
+            .unwrap()
+            .id,
+        news.id
+    );
+    let other = block_on(core.create_folder("Other".into(), None)).unwrap();
+    assert!(matches!(
+        block_on(core.create_folder("   ".into(), None)),
+        Err(AppError::InvalidInput { .. })
+    ));
+    assert!(matches!(
+        block_on(core.rename_folder(other.id, "NEWS".into())),
+        Err(AppError::InvalidInput { .. })
+    ));
+    block_on(core.rename_folder(other.id, "Reading".into())).unwrap();
+    // Deleting News moves World to the top and Tech (with Gadgets) up.
+    block_on(core.delete_folder(news.id)).unwrap();
+    assert_eq!(core.feeds().len(), 4);
+    assert_eq!(feed_titled(&core, "World & Politics").folder_id, None);
+    let tech = folder_named(&core, "Tech");
+    assert_eq!((tech.parent_id, tech.depth), (None, 0));
+    assert_eq!(feed_titled(&core, "Gadgets").folder_id, Some(tech.id));
+    assert!(matches!(
+        block_on(core.delete_folder(news.id)),
+        Err(AppError::NotFound)
+    ));
+    assert!(matches!(
+        block_on(core.move_feed(999, None)),
+        Err(AppError::NotFound)
+    ));
+    assert!(matches!(
+        block_on(core.move_feed(feed_titled(&core, "Gadgets").id, Some(news.id))),
+        Err(AppError::NotFound)
+    ));
+}
+
+#[test]
+fn a_folder_timeline_covers_the_folders_inside_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "https://world.example/rss",
+            ok(rss(&[("w", "World story")]), None),
+        )
+        .route(
+            Method::Get,
+            "https://gadgets.example/atom",
+            ok(rss(&[("g", "Gadget story")]), None),
+        )
+        .route(
+            Method::Get,
+            "https://loose.example/feed.xml",
+            ok(rss(&[("l", "Loose story")]), None),
+        )
+        .route(
+            Method::Get,
+            "https://weird.example/feed",
+            ok(rss(&[("x", "Weird story")]), None),
+        );
+    let (core, _) = open_with(dir.path(), http);
+    import_all(&core, FEEDER_STYLE);
+    let (report, notifying) = block_on(core.refresh_in(core.rt.lifetime(None))).unwrap();
+    assert_eq!(report.new_articles, 4);
+    // Gadgets said notify="false": its article doesn't count for the alert.
+    assert_eq!(notifying, 3);
+    let news = folder_named(&core, "News");
+    let titles = |t: Timeline| {
+        core.timeline(t)
+            .into_iter()
+            .map(|a| a.title)
+            .collect::<Vec<_>>()
+    };
+    let mut in_news = titles(Timeline::Folder { folder_id: news.id });
+    in_news.sort();
+    assert_eq!(in_news, ["Gadget story", "World story"]);
+    assert_eq!(
+        core.counts(Timeline::Folder { folder_id: news.id }).unread,
+        2
+    );
+    assert_eq!(folder_named(&core, "News").unread_count, 2);
+    // Mark the folder read: only its articles, and Undo brings them back.
+    let marked = block_on(core.mark_folder_read(news.id)).unwrap();
+    assert_eq!(marked.count, 2);
+    assert_eq!(core.counts(Timeline::Unread).unread, 2);
+    block_on(core.undo_mark_all_read(marked.undo_token)).unwrap();
+    assert_eq!(core.counts(Timeline::Unread).unread, 4);
+}
+
+#[test]
+fn folders_and_options_survive_a_relaunch() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let core = empty_core(dir.path());
+        import_all(&core, FEEDER_STYLE);
+        core.shutdown();
+    }
+    let core = empty_core(dir.path());
+    assert_eq!(core.folders().len(), 3);
+    assert!(!feed_titled(&core, "Gadgets").notify);
+    assert!(block_on(core.export_opml())
+        .unwrap()
+        .contains("commonplace:filter pattern=\"sponsored\""));
+}
+
+#[test]
+fn a_library_from_before_folders_opens_with_its_feeds_at_the_top() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        // The file as slice 2 left it: schema version 2, one feed.
+        let c =
+            forge_storage::rusqlite::Connection::open(dir.path().join("library.sqlite")).unwrap();
+        for step in &store::MIGRATIONS[..2] {
+            c.execute_batch(step).unwrap();
+        }
+        c.execute(
+            "INSERT INTO feeds (url, title, added_at_ms) VALUES ('https://old.example/feed', 'Old', 1)",
+            [],
+        )
+        .unwrap();
+        c.pragma_update(None, "user_version", 2).unwrap();
+    }
+    let core = empty_core(dir.path());
+    let old = feed_titled(&core, "Old");
+    assert_eq!(old.folder_id, None);
+    assert!(old.notify && !old.full_text);
+    assert!(core.folders().is_empty());
+    assert!(block_on(core.export_opml())
+        .unwrap()
+        .contains("xmlUrl=\"https://old.example/feed\""));
+}
+
+#[test]
+fn the_phone_checks_opml_fixture_previews_as_the_steps_say() {
+    let text = include_str!("../../docs/benchmark/fixtures/feeder-folders.opml")
+        .replace("HOST", "192.168.1.10:8765");
+    let dir = tempfile::tempdir().unwrap();
+    let core = empty_core(dir.path());
+    let preview = core.preview_opml(text).unwrap();
+    let statuses: Vec<_> = preview.feeds.iter().map(|f| f.status.clone()).collect();
+    assert_eq!(
+        statuses,
+        [
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::New,
+            OpmlFeedStatus::ListedTwice,
+            OpmlFeedStatus::BadAddress,
+        ]
+    );
+    assert_eq!(preview.folders, ["News", "News / Tech", "Odd Ones"]);
+    assert_eq!(preview.filters, 1);
+    assert_eq!(preview.settings_not_used, ["pref_theme"]);
+}
+
+// ---- Full articles (C4) ----
+
+/// A web page like a blog's: navigation, a sidebar and a footer around one
+/// article of several paragraphs.
+fn article_page(title: &str, word: &str) -> Vec<u8> {
+    let paragraph = format!(
+        "<p>The {word} story goes on for a while, with enough sentences to read like a real article. \
+         It has commas, full stops and several clauses, which is what a readability score looks for. \
+         A second sentence adds more of the same, so the paragraph is long enough to count.</p>"
+    );
+    format!(
+        "<!DOCTYPE html><html><head><title>{title} | Example Blog</title></head><body>\
+         <nav><a href=\"/\">Home</a> <a href=\"/about\">About</a> <a href=\"/shop\">Shop</a></nav>\
+         <aside class=\"sidebar\"><p>Subscribe to our newsletter!</p><a href=\"/ad\">Buy now</a></aside>\
+         <article><h1>{title}</h1>{p}{p}{p}<p><img src=\"/pics/{word}.jpg\" alt=\"A picture\"></p>{p}</article>\
+         <footer>Copyright Example Blog. <a href=\"/privacy\">Privacy</a></footer></body></html>",
+        p = paragraph
+    )
+    .into_bytes()
+}
+
+fn page(body: Vec<u8>) -> Result<Response, NetError> {
+    let mut response = Response::new(200, body);
+    response.headers.push(forge_net::Header {
+        name: "Content-Type".into(),
+        value: "text/html; charset=utf-8".into(),
+    });
+    Ok(response)
+}
+
+#[test]
+fn the_readable_part_of_a_page_is_kept_and_the_rest_left_out() {
+    let html = full::extract(
+        &String::from_utf8(article_page("Moss", "walrus")).unwrap(),
+        "https://fixtures.example/a",
+    )
+    .unwrap();
+    assert!(html.contains("walrus story goes on"), "{html}");
+    assert!(!html.contains("newsletter"), "{html}");
+    assert!(!html.contains("Privacy"), "{html}");
+    // Relative pictures resolve against the page.
+    assert!(
+        html.contains("https://fixtures.example/pics/walrus.jpg"),
+        "{html}"
+    );
+    // ForgeReader lays it out as blocks, picture included.
+    let blocks = forge_reader::blocks_from_html(
+        &html,
+        &mut forge_reader::WebResources::new(Some("https://fixtures.example/a")),
+    );
+    assert!(blocks.len() >= 4, "{blocks:?}");
+    assert!(matches!(
+        full::extract(
+            "<html><body><nav>Home</nav></body></html>",
+            "https://fixtures.example/a"
+        ),
+        Err(AppError::NoReadableText { .. })
+    ));
+}
+
+fn full_text_library(dir: &std::path::Path, http: StaticClient) -> (Arc<AppCore>, Feed) {
+    let http = http.route(
+        Method::Get,
+        URL,
+        ok(rss(&[("a", "Alpha"), ("b", "Beta")]), None),
+    );
+    let (core, _) = open_with(dir, http);
+    let feed = block_on(core.add_feed(URL.into(), None)).unwrap();
+    (core, feed)
+}
+
+#[test]
+fn a_feed_that_wants_full_articles_gets_them_with_the_refresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "https://fixtures.example/a",
+            page(article_page("Alpha", "walrus")),
+        )
+        .route(
+            Method::Get,
+            "https://fixtures.example/b",
+            Ok(Response::new(404, Vec::new())),
+        );
+    let (core, feed) = full_text_library(dir.path(), http);
+    // Off by default: a refresh fetches no pages.
+    let report = block_on(core.refresh(None)).unwrap();
+    assert_eq!(report.full_articles, 0);
+    block_on(core.set_feed_full_text(feed.id, true)).unwrap();
+    assert!(core.feeds()[0].full_text);
+    let report = block_on(core.refresh(None)).unwrap();
+    assert_eq!(report.full_articles, 1);
+    let alpha = core
+        .timeline(Timeline::All)
+        .into_iter()
+        .find(|a| a.title == "Alpha")
+        .unwrap();
+    let beta = core
+        .timeline(Timeline::All)
+        .into_iter()
+        .find(|a| a.title == "Beta")
+        .unwrap();
+    let text = block_on(core.open_article(alpha.id)).unwrap();
+    assert!(text.full);
+    // The page's text is searchable too.
+    assert_eq!(
+        block_on(core.search("walrus".into()))
+            .unwrap()
+            .into_iter()
+            .map(|a| a.id)
+            .collect::<Vec<_>>(),
+        [alpha.id]
+    );
+    // Beta's page failed: it keeps the feed's text and isn't tried again.
+    let text = block_on(core.open_article(beta.id)).unwrap();
+    assert!(!text.full);
+    assert!(!text.body.blocks.is_empty());
+    assert_eq!(block_on(core.refresh(None)).unwrap().full_articles, 0);
+    // Asking again (turning it off and on) gives the failure another try.
+    block_on(core.set_feed_full_text(feed.id, false)).unwrap();
+    block_on(core.set_feed_full_text(feed.id, true)).unwrap();
+    assert_eq!(block_on(core.refresh(None)).unwrap().full_articles, 0);
+}
+
+#[test]
+fn one_article_can_be_loaded_in_full_on_demand_and_stays_full() {
+    let dir = tempfile::tempdir().unwrap();
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "https://fixtures.example/a",
+            page(article_page("Alpha", "otter")),
+        )
+        .route(
+            Method::Get,
+            "https://fixtures.example/b",
+            Ok({
+                let mut r = Response::new(200, b"%PDF-1.7".to_vec());
+                r.headers.push(forge_net::Header {
+                    name: "Content-Type".into(),
+                    value: "application/pdf".into(),
+                });
+                r
+            }),
+        );
+    let (core, _) = full_text_library(dir.path(), http);
+    let alpha = core
+        .timeline(Timeline::All)
+        .into_iter()
+        .find(|a| a.title == "Alpha")
+        .unwrap();
+    let beta = core
+        .timeline(Timeline::All)
+        .into_iter()
+        .find(|a| a.title == "Beta")
+        .unwrap();
+    let text = block_on(core.load_full_article(alpha.id, None)).unwrap();
+    assert!(text.full);
+    assert!(matches!(
+        block_on(core.load_full_article(beta.id, None)),
+        Err(AppError::NoReadableText { .. })
+    ));
+    assert!(matches!(
+        block_on(core.load_full_article(999, None)),
+        Err(AppError::NotFound)
+    ));
+    assert_eq!(
+        app_error_kind(AppError::NoReadableText {
+            reason: String::new()
+        }),
+        forge_app::ErrorKind::Invalid
+    );
+    // A refresh that updates the article's feed text keeps the full text.
+    block_on(core.refresh(None)).unwrap();
+    core.shutdown();
+    drop(core);
+    let core = empty_core(dir.path());
+    assert!(block_on(core.open_article(alpha.id)).unwrap().full);
+}
+
+#[test]
+fn full_articles_are_never_fetched_from_this_device_or_its_networks() {
+    let allowed = |url: &str, feed: Option<&str>| full::check_destination(url, feed, fake_lookup);
+    let feed = Some("https://fixtures.example/feed.xml");
+    for url in [
+        "https://fixtures.example/a",
+        "https://public.example:8443/a",
+        "https://93.184.215.14/a",
+        "https://nat64.example/a",
+    ] {
+        assert!(allowed(url, feed).is_ok(), "{url} should be allowed");
+    }
+    for url in [
+        "http://127.0.0.1/a",
+        "http://127.1/a",
+        // Spellings of 127.0.0.1 that some parsers read differently: the
+        // address is parsed (and then requested) the way browsers do.
+        "http://0x7f.1/a",
+        "http://2130706433/a",
+        "http://0177.0.0.1/a",
+        "http://[::1]/a",
+        "http://0.0.0.0/a",
+        "http://localhost:8080/a",
+        "http://shop.localhost/a",
+        "http://10.1.2.3/a",
+        "http://172.16.0.1/a",
+        "http://192.168.1.1/a",
+        // Cloud metadata services live on link-local addresses.
+        "http://169.254.169.254/latest/meta-data",
+        // Tailscale (carrier-grade NAT) and its MagicDNS names.
+        "http://100.72.135.124:8642/a",
+        "http://laptop.tail1234.ts.net/a",
+        "http://[::ffff:192.168.0.1]/a",
+        "http://[fd00::1]/a",
+        "http://[fe80::1]/a",
+        "http://printer.local/a",
+        "http://router.lan/a",
+        "http://nas.home.arpa/a",
+        "http://intranet/a",
+        // Public names that resolve inside: checked after the lookup.
+        "https://sneaky.example/a",
+        "https://mixed.example/a",
+        "https://nat64-private.example/a",
+    ] {
+        assert!(
+            matches!(allowed(url, feed), Err(AppError::NoReadableText { .. })),
+            "{url} should be refused: {:?}",
+            allowed(url, feed).map(|u| u.to_string())
+        );
+    }
+    // Not web pages at all, or carrying credentials.
+    for url in [
+        "file:///etc/passwd",
+        "ftp://fixtures.example/a",
+        "javascript:alert(1)",
+        "https://user:secret@fixtures.example/a",
+    ] {
+        assert!(allowed(url, feed).is_err(), "{url}");
+    }
+    // A name that doesn't resolve fails like the network, not as refused.
+    assert!(matches!(
+        allowed("https://nowhere.example/a", feed),
+        Err(AppError::Network { .. })
+    ));
+    // A feed the person subscribed to on their own network may link its
+    // own articles there, and only there.
+    let home = Some("http://192.168.1.5/feed.xml");
+    assert!(allowed("http://192.168.1.5/posts/1", home).is_ok());
+    assert!(allowed("http://192.168.1.6/posts/1", home).is_err());
+    let tailnet = Some("http://laptop.tail1234.ts.net:8642/feed.xml");
+    assert!(allowed("http://laptop.tail1234.ts.net:8642/a", tailnet).is_ok());
+    assert!(allowed("http://other.tail1234.ts.net/a", tailnet).is_err());
+}
+
+#[test]
+fn a_full_article_on_a_local_address_is_refused_before_any_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let feed = r#"<?xml version="1.0"?><rss version="2.0"><channel><title>T</title>
+        <item><guid>a</guid><title>Inside</title><link>http://192.168.1.1/admin</link><description>x</description></item>
+        </channel></rss>"#;
+    let http = StaticClient::new()
+        .route(Method::Get, URL, ok(feed.as_bytes().to_vec(), None))
+        .route(
+            Method::Get,
+            "http://192.168.1.1/admin",
+            page(article_page("Inside", "router")),
+        );
+    let (core, http) = open_with(dir.path(), http);
+    let added = block_on(core.add_feed(URL.into(), None)).unwrap();
+    block_on(core.set_feed_full_text(added.id, true)).unwrap();
+    assert_eq!(block_on(core.refresh(None)).unwrap().full_articles, 0);
+    let inside = core.timeline(Timeline::All)[0].id;
+    assert!(matches!(
+        block_on(core.load_full_article(inside, None)),
+        Err(AppError::NoReadableText { .. })
+    ));
+    assert!(
+        http.received().iter().all(|r| !r.url.contains("192.168")),
+        "a request reached the local address"
+    );
+}
+
+/// A transport whose page body never ends, or trickles, counting what
+/// was read from it.
+struct Endless {
+    content_length: Option<u64>,
+    /// Bytes per read, and how long each read takes.
+    chunk: usize,
+    pause: std::time::Duration,
+    read: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+struct EndlessBody {
+    chunk: usize,
+    pause: std::time::Duration,
+    read: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl std::io::Read for EndlessBody {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        std::thread::sleep(self.pause);
+        let n = self.chunk.min(buf.len());
+        buf[..n].fill(b'a');
+        self.read.fetch_add(n, std::sync::atomic::Ordering::SeqCst);
+        Ok(n)
+    }
+}
+
+impl HttpClient for Endless {
+    fn send(&self, _: &forge_net::Request) -> Result<Response, NetError> {
+        panic!("pages are read as a stream, never buffered whole")
+    }
+
+    fn open_stream(
+        &self,
+        _: &forge_net::Request,
+    ) -> Result<forge_net::StreamingResponse, NetError> {
+        let mut headers = vec![forge_net::Header {
+            name: "Content-Type".into(),
+            value: "text/html".into(),
+        }];
+        if let Some(length) = self.content_length {
+            headers.push(forge_net::Header {
+                name: "Content-Length".into(),
+                value: length.to_string(),
+            });
+        }
+        Ok(forge_net::StreamingResponse {
+            status: 200,
+            headers,
+            body: Box::new(EndlessBody {
+                chunk: self.chunk,
+                pause: self.pause,
+                read: Arc::clone(&self.read),
+            }),
+        })
+    }
+}
+
+fn endless(content_length: Option<u64>, chunk: usize, pause_ms: u64) -> Endless {
+    Endless {
+        content_length,
+        chunk,
+        pause: std::time::Duration::from_millis(pause_ms),
+        read: Arc::default(),
+    }
+}
+
+#[test]
+fn a_page_that_never_ends_stops_at_the_size_limit_while_downloading() {
+    let policy = full::Policy {
+        max_bytes: 64 * 1024,
+        ..full::Policy::new(fake_lookup)
+    };
+    let http = endless(None, 4096, 0);
+    let result = full::fetch_article(
+        &http,
+        "https://fixtures.example/huge",
+        None,
+        &policy,
+        &forge_net::CancelHandle::new(),
+    );
+    assert!(
+        matches!(&result, Err(AppError::NoReadableText { reason }) if reason == "page too large"),
+        "{result:?}"
+    );
+    // Reading stopped one chunk past the limit, not at the end of the body.
+    let read = http.read.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(read <= 64 * 1024 + 4096, "read {read} bytes");
+
+    // A page that says up front it is too large isn't read at all.
+    let http = endless(Some(10 * 1024 * 1024 * 1024), 4096, 0);
+    let result = full::fetch_article(
+        &http,
+        "https://fixtures.example/huge",
+        None,
+        &full::Policy::new(fake_lookup),
+        &forge_net::CancelHandle::new(),
+    );
+    assert!(matches!(result, Err(AppError::NoReadableText { .. })));
+    assert_eq!(http.read.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_page_that_trickles_in_stops_at_the_deadline() {
+    let policy = full::Policy {
+        timeout: std::time::Duration::from_millis(300),
+        ..full::Policy::new(fake_lookup)
+    };
+    // One byte every 20 ms: never too large, never idle, never finished.
+    let http = endless(None, 1, 20);
+    let started = std::time::Instant::now();
+    let result = full::fetch_article(
+        &http,
+        "https://fixtures.example/slow",
+        None,
+        &policy,
+        &forge_net::CancelHandle::new(),
+    );
+    assert!(matches!(result, Err(AppError::Timeout)), "{result:?}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+}
+
+fn moved(status: u16, to: &str) -> Result<Response, NetError> {
+    let mut response = Response::new(status, Vec::new());
+    response.headers.push(forge_net::Header {
+        name: "Location".into(),
+        value: to.into(),
+    });
+    Ok(response)
+}
+
+fn fetch_page(http: &StaticClient, url: &str, feed: Option<&str>) -> Result<String, AppError> {
+    full::fetch_article(
+        http,
+        url,
+        feed,
+        &full::Policy::new(fake_lookup),
+        &forge_net::CancelHandle::new(),
+    )
+}
+
+#[test]
+fn redirects_are_followed_one_checked_hop_at_a_time() {
+    // Every kind of redirect, two hops, a relative Location: followed, and
+    // the transport was never asked to follow anything itself.
+    for status in [301, 302, 303, 307, 308] {
+        let http = StaticClient::new()
+            .route(
+                Method::Get,
+                "https://fixtures.example/old",
+                moved(status, "https://public.example/middle"),
+            )
+            .route(
+                Method::Get,
+                "https://public.example/middle",
+                moved(status, "/final?x=1"),
+            )
+            .route(
+                Method::Get,
+                "https://public.example/final?x=1",
+                page(article_page("Moved", "heron")),
+            );
+        let html = fetch_page(&http, "https://fixtures.example/old", None).unwrap();
+        assert!(html.contains("heron story goes on"), "{status}");
+        // Relative links resolve against the page that answered.
+        assert!(
+            html.contains("https://public.example/pics/heron.jpg"),
+            "{status}"
+        );
+        let asked = http.received();
+        assert_eq!(asked.len(), 3, "{status}");
+        assert!(asked.iter().all(|r| !r.follow_redirects), "{status}");
+    }
+}
+
+#[test]
+fn a_redirect_to_a_local_address_is_refused_before_it_is_asked() {
+    for target in [
+        "http://127.0.0.1/admin",
+        "http://192.168.1.1/",
+        "http://169.254.169.254/latest/meta-data",
+        "http://[::1]:8080/",
+        "http://router.local/",
+        "https://sneaky.example/",
+        "file:///etc/passwd",
+    ] {
+        let http = StaticClient::new()
+            .route(
+                Method::Get,
+                "https://fixtures.example/a",
+                moved(302, "https://public.example/b"),
+            )
+            .route(Method::Get, "https://public.example/b", moved(307, target))
+            .route(Method::Get, target, page(article_page("Inside", "router")));
+        let result = fetch_page(&http, "https://fixtures.example/a", None);
+        assert!(
+            matches!(result, Err(AppError::NoReadableText { .. })),
+            "{target}: {result:?}"
+        );
+        let asked: Vec<_> = http.received().into_iter().map(|r| r.url).collect();
+        assert_eq!(
+            asked,
+            ["https://fixtures.example/a", "https://public.example/b"],
+            "{target}"
+        );
+    }
+}
+
+#[test]
+fn redirect_loops_and_long_chains_stop() {
+    // a -> b -> a
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "https://fixtures.example/a",
+            moved(302, "https://fixtures.example/b"),
+        )
+        .route(
+            Method::Get,
+            "https://fixtures.example/b",
+            moved(302, "https://fixtures.example/a"),
+        );
+    let result = fetch_page(&http, "https://fixtures.example/a", None);
+    assert!(
+        matches!(&result, Err(AppError::NoReadableText { reason }) if reason.contains("loop")),
+        "{result:?}"
+    );
+    assert_eq!(http.received().len(), 2);
+
+    // A page that redirects to itself.
+    let http =
+        StaticClient::new().route(Method::Get, "https://fixtures.example/a", moved(301, "/a"));
+    assert!(fetch_page(&http, "https://fixtures.example/a", None).is_err());
+    assert_eq!(http.received().len(), 1);
+
+    // A chain longer than the limit, every address different.
+    let mut http = StaticClient::new();
+    for hop in 0..10 {
+        http = http.route(
+            Method::Get,
+            format!("https://fixtures.example/{hop}"),
+            moved(302, &format!("/{}", hop + 1)),
+        );
+    }
+    let result = fetch_page(&http, "https://fixtures.example/0", None);
+    assert!(
+        matches!(&result, Err(AppError::NoReadableText { reason }) if reason.contains("too many")),
+        "{result:?}"
+    );
+    assert_eq!(http.received().len(), full::MAX_REDIRECTS + 1);
+
+    // A redirect with nowhere to go is the site's error.
+    let http = StaticClient::new().route(
+        Method::Get,
+        "https://fixtures.example/a",
+        Ok(Response::new(302, Vec::new())),
+    );
+    assert!(matches!(
+        fetch_page(&http, "https://fixtures.example/a", None),
+        Err(AppError::Http { status: 302 })
+    ));
+}
+
+#[test]
+fn a_home_feed_reaches_only_its_own_origin_and_never_this_device() {
+    let lookup = fake_lookup;
+    // Only a feed on a local network gets the exception.
+    assert!(full::HomeFeed::of("http://192.168.1.5/feed.xml", lookup).is_some());
+    assert!(full::HomeFeed::of("http://nas.local/feed.xml", lookup).is_some());
+    assert!(full::HomeFeed::of("https://sneaky.example/feed.xml", lookup).is_some());
+    assert!(full::HomeFeed::of("https://fixtures.example/feed.xml", lookup).is_none());
+    let allowed = |url: &str, feed: &str| full::check_destination(url, Some(feed), lookup);
+    // Same scheme, host and port only.
+    let nas = "http://nas.local/feed.xml";
+    assert!(allowed("http://nas.local/posts/1", nas).is_ok());
+    assert!(allowed("http://nas.local:8080/posts/1", nas).is_err());
+    assert!(allowed("https://nas.local/posts/1", nas).is_err());
+    assert!(allowed("http://printer.local/", nas).is_err());
+    // Still looked up and checked: never this device, link-local or
+    // metadata addresses, even at the feed's own origin.
+    for feed in [
+        "http://self.local/feed.xml",
+        "http://metadata.local/feed.xml",
+        "http://127.0.0.1:8080/feed.xml",
+        "http://localhost/feed.xml",
+        "http://[fe80::1]/feed.xml",
+    ] {
+        let page = feed.replace("feed.xml", "posts/1");
+        assert!(allowed(&page, feed).is_err(), "{page}");
+    }
+    // A public feed's articles get no exception, even on its own host.
+    assert!(allowed(
+        "https://fixtures.example/a",
+        "https://fixtures.example/feed.xml"
+    )
+    .is_ok());
+    assert!(allowed("http://10.0.0.1/a", "https://fixtures.example/feed.xml").is_err());
+    // A home feed's redirect to elsewhere on the network is checked too.
+    let http = StaticClient::new()
+        .route(
+            Method::Get,
+            "http://nas.local/posts/1",
+            moved(302, "http://192.168.1.1/admin"),
+        )
+        .route(
+            Method::Get,
+            "http://192.168.1.1/admin",
+            page(article_page("Inside", "router")),
+        );
+    assert!(fetch_page(&http, "http://nas.local/posts/1", Some(nas)).is_err());
+    assert_eq!(http.received().len(), 1);
 }

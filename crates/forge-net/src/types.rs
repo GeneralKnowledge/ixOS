@@ -43,6 +43,11 @@ pub struct Request {
     pub body: Vec<u8>,
     /// `None` leaves the timeout to the implementation.
     pub timeout: Option<Duration>,
+    /// Whether the transport follows redirects itself (the default). With
+    /// `false` a 3xx answer comes back as the response, `Location` header
+    /// included, so the caller can check where it points before asking
+    /// there: for addresses that came from untrusted content.
+    pub follow_redirects: bool,
 }
 
 impl Request {
@@ -53,6 +58,7 @@ impl Request {
             headers: Vec::new(),
             body: Vec::new(),
             timeout: None,
+            follow_redirects: true,
         }
     }
 
@@ -79,6 +85,13 @@ impl Request {
 
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
+        self
+    }
+
+    /// Whether the transport follows redirects (default `true`); see
+    /// [`Request::follow_redirects`](Request#structfield.follow_redirects).
+    pub fn follow_redirects(mut self, follow: bool) -> Self {
+        self.follow_redirects = follow;
         self
     }
 

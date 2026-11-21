@@ -2,18 +2,23 @@
 import ForgeAppKit
 import ForgeUI
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// Screen 1: the smart timelines (unread, bookmarks, everything) and every
-/// subscription with its unread count. Pull to refresh or the refresh
-/// button fetches every feed; + adds one; the search field searches every
-/// saved article; the gear opens Settings.
+/// Screen 1: the smart timelines (unread, bookmarks, everything), then the
+/// folders and the feeds in none, with their unread counts. Pull to
+/// refresh or the refresh button fetches every feed; + adds one; the
+/// ellipsis menu makes a folder and imports or exports subscriptions as
+/// OPML; the search field searches every saved article; the gear opens
+/// Settings.
 struct FeedListView: View {
     @Bindable var model: LibraryModel
     @State private var path: [Route] = []
     @State private var isAdding = false
-    @State private var renaming: Feed?
-    @State private var newTitle = ""
-    @State private var unsubscribing: Feed?
+    @State private var action: LibraryAction?
+    @State private var choosingFile = false
+    @State private var importDraft: OpmlDraft?
+    @State private var importDone: OpmlImport?
+    @State private var exported: ExportedFile?
     @State private var showingSettings = false
     @State private var query = ""
     @State private var results: [ArticleSummary] = []
@@ -51,6 +56,8 @@ struct FeedListView: View {
                     TimelineView(model: model, timeline: timeline)
                 case .article(let id):
                     ArticleView(model: model, articleID: id)
+                case .folder(let id):
+                    FolderView(model: model, folderID: id)
                 }
             }
             .toolbar {
@@ -61,6 +68,28 @@ struct FeedListView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Add Feed", systemImage: "plus") { isAdding = true }
                         .accessibilityIdentifier("feeds.add")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu("More", systemImage: "ellipsis.circle") {
+                        Button("New Folder", systemImage: "folder.badge.plus") {
+                            action = .newFolder(in: nil)
+                        }
+                        .accessibilityIdentifier("feeds.newFolder")
+                        Button("Import Subscriptions…", systemImage: "square.and.arrow.down") {
+                            choosingFile = true
+                        }
+                        .accessibilityIdentifier("feeds.import")
+                        Button("Export Subscriptions", systemImage: "square.and.arrow.up") {
+                            Task {
+                                if let url = await model.exportSubscriptions() {
+                                    exported = ExportedFile(url: url)
+                                }
+                            }
+                        }
+                        .disabled(model.feeds.isEmpty)
+                        .accessibilityIdentifier("feeds.export")
+                    }
+                    .accessibilityIdentifier("feeds.more")
                 }
                 #if os(iOS)
                     ToolbarItemGroup(placement: .bottomBar) {
@@ -81,32 +110,36 @@ struct FeedListView: View {
                     path.append(.timeline(.feed(feedId: feed.id)))
                 }
             }
-            .alert("Rename Feed", isPresented: renamingBinding) {
-                TextField("Name", text: $newTitle)
-                    .accessibilityIdentifier("feeds.rename.title")
-                Button("Cancel", role: .cancel) {}
-                    .accessibilityIdentifier("feeds.rename.cancel")
-                Button("Rename") {
-                    if let feed = renaming {
-                        Task { await model.rename(feed, to: newTitle) }
-                    }
+            .libraryActions($action, model: model)
+            // OPML (and the XML it is): Feeder, NetNewsWire and most readers
+            // export one of these.
+            .fileImporter(
+                isPresented: $choosingFile,
+                allowedContentTypes: [UTType(filenameExtension: "opml") ?? .xml, .xml, .plainText]
+            ) { result in
+                switch result {
+                case .success(let url):
+                    importDraft = model.previewSubscriptions(at: url)
+                case .failure(let error):
+                    model.alert = .failure(error)
                 }
-                .accessibilityIdentifier("feeds.rename.save")
-            } message: {
-                Text("Leave it empty to use the feed's own name.")
             }
-            .confirmationDialog(
-                "Unsubscribe from \(unsubscribing?.title ?? "this feed")?",
-                isPresented: unsubscribingBinding, titleVisibility: .visible
+            .sheet(item: $importDraft) { draft in
+                ImportSubscriptionsView(model: model, draft: draft) { importDone = $0 }
+            }
+            .sheet(item: $exported) { file in
+                ExportSubscriptionsView(file: file)
+            }
+            .alert(
+                "Subscriptions Imported",
+                isPresented: Binding(get: { importDone != nil }, set: { if !$0 { importDone = nil } })
             ) {
-                Button("Unsubscribe", role: .destructive) {
-                    if let feed = unsubscribing {
-                        Task { await model.remove(feed) }
-                    }
-                }
-                .accessibilityIdentifier("feeds.unsubscribe.confirm")
+                Button("OK", role: .cancel) {}
+                    .accessibilityIdentifier("import.done")
             } message: {
-                Text("Its articles are removed from this device, bookmarked ones too.")
+                if let done = importDone {
+                    Text(Self.importSummary(done))
+                }
             }
         }
         // On the stack, not its first screen: an article that fails to open
@@ -144,32 +177,9 @@ struct FeedListView: View {
             smartRow(.bookmarked, systemImage: "bookmark.fill", tone: .warning)
             smartRow(.all, systemImage: "tray.full.fill", tone: .neutral)
         }
-        if !model.feeds.isEmpty {
+        if !model.feeds.isEmpty || !model.folders.isEmpty {
             Section("Feeds") {
-                ForEach(model.feeds) { feed in
-                    NavigationLink(value: Route.timeline(.feed(feedId: feed.id))) {
-                        FeedRow(feed: feed)
-                    }
-                    .accessibilityIdentifier("feeds.feed.\(feed.id)")
-                    .swipeActions {
-                        Button("Unsubscribe", systemImage: "trash", role: .destructive) {
-                            unsubscribing = feed
-                        }
-                        .accessibilityIdentifier("feeds.unsubscribe")
-                    }
-                    .contextMenu {
-                        Button("Rename", systemImage: "pencil") {
-                            newTitle = feed.title
-                            renaming = feed
-                        }
-                        Button("Mark All as Read", systemImage: "checkmark.circle") {
-                            Task { await model.markAllRead(feedID: feed.id) }
-                        }
-                        Button("Unsubscribe", systemImage: "trash", role: .destructive) {
-                            unsubscribing = feed
-                        }
-                    }
-                }
+                LibraryRows(model: model, folderID: nil, action: $action)
             }
         }
     }
@@ -211,12 +221,23 @@ struct FeedListView: View {
         }
     }
 
-    private var renamingBinding: Binding<Bool> {
-        Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
-    }
-
-    private var unsubscribingBinding: Binding<Bool> {
-        Binding(get: { unsubscribing != nil }, set: { if !$0 { unsubscribing = nil } })
+    /// "3 feeds added. 1 already subscribed. 2 folders made."
+    static func importSummary(_ done: OpmlImport) -> String {
+        var parts = [inflected("^[\(Int(done.added)) feed](inflect: true) added")]
+        if done.alreadySubscribed > 0 {
+            parts.append(String(localized: "\(Int(done.alreadySubscribed)) already subscribed, left as they were"))
+        }
+        if done.foldersCreated > 0 {
+            parts.append(inflected("^[\(Int(done.foldersCreated)) folder](inflect: true) made"))
+        }
+        if done.filtersAdded > 0 {
+            parts.append(inflected("^[\(Int(done.filtersAdded)) filter](inflect: true) kept"))
+        }
+        if done.skipped > 0 {
+            parts.append(String(localized: "\(Int(done.skipped)) skipped"))
+        }
+        let text = parts.joined(separator: ". ") + "."
+        return done.added > 0 ? text + " " + String(localized: "Their articles are being fetched.") : text
     }
 }
 
@@ -224,24 +245,6 @@ struct FeedListView: View {
 private struct SearchKey: Hashable {
     let query: String
     let version: Int
-}
-
-private struct FeedRow: View {
-    let feed: Feed
-
-    var body: some View {
-        ForgeRow(
-            feed.title,
-            subtitle: feed.lastError.map(LibraryModel.refreshProblem),
-            systemImage: feed.lastError == nil ? "dot.radiowaves.up.forward" : "exclamationmark.triangle.fill",
-            tone: feed.lastError == nil ? .accent : .danger
-        ) {
-            if feed.unreadCount > 0 {
-                Text(feed.unreadCount, format: .number)
-                    .accessibilityLabel("\(feed.unreadCount) unread")
-            }
-        }
-    }
 }
 
 /// "Updated 10:42", "3 new articles", or "1 feed couldn't refresh".
