@@ -155,8 +155,12 @@ struct DevicesView: View {
                     .accessibilityIdentifier("trustOffer.trust")
                 Button("Not Now", role: .cancel) { model.dismissTrustOffer() }
                     .accessibilityIdentifier("trustOffer.notNow")
-            } message: { _ in
-                Text("You'll be able to send to each other without a code. You can revoke this at any time.")
+            } message: { offer in
+                if let introducer = offer.introducedBy {
+                    Text("\(introducer) trusts it. You'll be able to send to each other without a code. You can revoke this at any time.")
+                } else {
+                    Text("You'll be able to send to each other without a code. You can revoke this at any time.")
+                }
             }
             // Saved data that couldn't be read when Relay opened: said once
             // the screen is clear, until the person dismisses it.

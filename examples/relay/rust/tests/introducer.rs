@@ -150,15 +150,23 @@ fn a_device_revoked_once_is_revoked_on_your_other_devices() {
 
     // Revoked on the laptop; the phone follows, and says who did it.
     block_on(laptop.revoke_device(tablet_id.clone())).unwrap();
+    // A sync the phone starts by itself (on opening the device service)
+    // may get there first, so the count is 1 or 0 and the outcome is
+    // what's checked.
     let synced = block_on(phone.sync_devices(laptop_id.clone())).unwrap();
-    assert_eq!((synced.offered, synced.revoked), (0, 1));
-    let t = phone
-        .devices()
-        .into_iter()
-        .find(|d| d.endpoint_id == tablet_id)
-        .unwrap();
-    assert!(!t.trusted);
-    assert_eq!(t.revoked_by.as_deref(), Some("laptop"));
+    assert_eq!(synced.offered, 0);
+    assert!(synced.revoked <= 1);
+    let tablet_on_phone = || {
+        phone
+            .devices()
+            .into_iter()
+            .find(|d| d.endpoint_id == tablet_id)
+            .unwrap()
+    };
+    eventually("the phone revokes the tablet", || {
+        !tablet_on_phone().trusted
+    });
+    assert_eq!(tablet_on_phone().revoked_by.as_deref(), Some("laptop"));
 
     // The tablet is refused by the phone now.
     sees(&tablet, &[&laptop, &phone]);
