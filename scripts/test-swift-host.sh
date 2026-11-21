@@ -42,5 +42,14 @@ if [[ "$(basename "$PACKAGE")" == "relay" ]]; then
   export CHAT_SERVER="${CARGO_TARGET_DIR:-$MESSAGING/target}/debug/chat-server"
 fi
 
+# The app's [ios] prepare script (forge.toml) lays out files Package.swift
+# names, such as Device Lab's Generated/Python; forge runs it before iOS
+# builds, so the host tests and Xcode builds need it too.
+prepare="$(sed -n 's/^prepare *= *"\(.*\)".*/\1/p' "$PACKAGE_DIR/forge.toml" 2>/dev/null | head -1)"
+if [[ -n "$prepare" ]]; then
+  echo "[forge] Preparing the app ($prepare)..."
+  (cd "$PACKAGE_DIR" && bash "$prepare")
+fi
+
 echo "[forge] Running swift test in $PACKAGE..."
 swift test --package-path "$PACKAGE"

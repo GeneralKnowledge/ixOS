@@ -5,3 +5,5 @@
 /.build/
 /xtool/
 *.xcuserstate
+# CPython for Python Lab, made by scripts/prepare-python.sh
+/Generated/Python/
