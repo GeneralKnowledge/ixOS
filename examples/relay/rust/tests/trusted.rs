@@ -111,6 +111,39 @@ fn after_a_code_transfer_both_sides_are_asked_and_the_receipt_names_the_sender()
 }
 
 #[test]
+fn a_second_code_transfer_doesnt_replace_the_first_offer() {
+    let dir = tempfile::tempdir().unwrap();
+    let phone = device(dir.path(), "phone");
+    let laptop = device(dir.path(), "laptop");
+    let tablet = device(dir.path(), "tablet");
+    let file = dir.path().join("a.txt");
+    std::fs::write(&file, b"a").unwrap();
+    let from_laptop = code_transfer(&laptop, &phone, &file);
+    let from_tablet = code_transfer(&tablet, &phone, &file);
+    // The oldest is offered first; once it is answered, the next one is.
+    assert_eq!(
+        phone.trust_offer().unwrap().endpoint_id,
+        from_laptop.sender_id
+    );
+    phone.dismiss_trust_offer();
+    let next = phone
+        .trust_offer()
+        .expect("the tablet's offer is still there");
+    assert_eq!(next.endpoint_id, from_tablet.sender_id);
+    assert_eq!(next.name, "tablet");
+    // Trusting a device takes its own offer, wherever it is in the line.
+    code_transfer(&laptop, &phone, &file);
+    block_on(phone.trust_device(from_laptop.sender_id.clone())).unwrap();
+    assert_eq!(
+        phone.trust_offer().unwrap().endpoint_id,
+        from_tablet.sender_id
+    );
+    block_on(phone.trust_device(from_tablet.sender_id.clone())).unwrap();
+    assert!(phone.trust_offer().is_none());
+    assert_eq!(phone.devices().len(), 2);
+}
+
+#[test]
 fn codes_only_never_asks() {
     let dir = tempfile::tempdir().unwrap();
     let phone = device(dir.path(), "phone");

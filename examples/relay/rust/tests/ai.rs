@@ -85,6 +85,9 @@ fn paired(dir: &tempfile::TempDir) -> (Arc<RelayCore>, Arc<RelayCore>, String) {
     let phone = device(dir.path(), "phone");
     let id = trust(dir.path(), &laptop, &phone);
     sees(&phone, &laptop);
+    // Trust alone doesn't let the phone ask: the laptop turns it on.
+    let phone_on_laptop = laptop.devices()[0].endpoint_id.clone();
+    block_on(laptop.set_may_ask(phone_on_laptop, true)).unwrap();
     (phone, laptop, id)
 }
 
@@ -111,6 +114,33 @@ fn a_trusted_device_answers_with_its_model() {
     assert_eq!(out.text(), "The night train leaves at nine.");
     // The laptop's model got the request exactly as the phone sent it.
     assert_eq!(model.requests(), vec![request]);
+}
+
+#[test]
+fn trust_alone_doesnt_let_a_device_ask() {
+    let dir = tempfile::tempdir().unwrap();
+    let laptop = device(dir.path(), "laptop");
+    let phone = device(dir.path(), "phone");
+    let at = trust(dir.path(), &laptop, &phone);
+    sees(&phone, &laptop);
+    let model = Arc::new(ScriptedModel::new(["ok"]));
+    laptop.answer_asks(Some(model.clone()));
+    let phone_on_laptop = laptop.devices()[0].clone();
+    assert!(phone_on_laptop.trusted && !phone_on_laptop.may_ask);
+
+    let err = ask(&phone, &at, ChatRequest::new("", "Hi", 8), &Collect::new()).unwrap_err();
+    assert!(
+        matches!(&err, RelayError::Declined { reason } if reason.contains("asks")),
+        "{err:?}"
+    );
+    assert!(model.requests().is_empty(), "the model never saw it");
+
+    block_on(laptop.set_may_ask(phone_on_laptop.endpoint_id.clone(), true)).unwrap();
+    assert!(ask(&phone, &at, ChatRequest::new("", "Hi", 8), &Collect::new()).is_ok());
+    // Trusting again (after a revocation) starts with asks off.
+    block_on(laptop.revoke_device(phone_on_laptop.endpoint_id.clone())).unwrap();
+    block_on(laptop.trust_device(phone_on_laptop.endpoint_id.clone())).unwrap();
+    assert!(!laptop.devices()[0].may_ask);
 }
 
 #[test]
@@ -209,6 +239,9 @@ fn one_ask_at_a_time() {
     let tablet = device(dir.path(), "tablet");
     trust(dir.path(), &laptop, &tablet);
     sees(&tablet, &laptop);
+    for d in laptop.devices() {
+        block_on(laptop.set_may_ask(d.endpoint_id, true)).unwrap();
+    }
     let slow = vec!["slow"; 40].join(" ");
     laptop.answer_asks(Some(Arc::new(
         ScriptedModel::new([slow]).pause(Duration::from_millis(20)),

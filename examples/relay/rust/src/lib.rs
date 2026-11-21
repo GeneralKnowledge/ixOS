@@ -39,7 +39,7 @@ pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind};
 mod hex;
 mod trust;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -128,7 +128,10 @@ pub struct RelayCore {
     code_send: Arc<CodeSendShared>,
     /// The device a code transfer was just made with, waiting for the
     /// person to say whether to trust it (Ask to Pair).
-    trust_offer: Arc<Mutex<Option<TrustOffer>>>,
+    /// Devices code transfers were made with that the person hasn't
+    /// answered yet, oldest first: a second transfer doesn't replace the
+    /// first's offer.
+    trust_offers: Arc<Mutex<VecDeque<TrustOffer>>>,
     /// Trusted devices the app sees nearby, with their addresses.
     nearby: Mutex<HashMap<String, Vec<String>>>,
     /// When each trusted device last got past Hello on a connection it
@@ -199,7 +202,11 @@ impl RelayCore {
             record.change(|r| migrate::run(r, &peer_logs))?;
         }
         let store_dir = code_dir.join("store");
-        let servers = record.value().devices.servers.clone();
+        // Outside Hybrid the endpoint has no relay and no lookup server.
+        let servers = {
+            let devices = &record.value().devices;
+            devices.servers.in_mode(devices.mode)
+        };
         let state = State {
             record,
             inbox,
@@ -222,7 +229,7 @@ impl RelayCore {
             code_progress: Arc::new(CodeProgress::default()),
             code_stop: Mutex::new(Arc::new(AtomicBool::new(false))),
             code_send: Arc::new(CodeSendShared::default()),
-            trust_offer: Arc::new(Mutex::new(None)),
+            trust_offers: Arc::new(Mutex::new(VecDeque::new())),
             nearby: Mutex::new(HashMap::new()),
             reached: Mutex::new(HashMap::new()),
             problems: Mutex::new(HashMap::new()),
@@ -567,6 +574,8 @@ pub struct Device {
     pub since_ms: i64,
     /// Whether it may send files and notes here.
     pub receives_from: bool,
+    /// Whether it may ask this device's AI (off until turned on).
+    pub may_ask: bool,
     /// Whether the app sees it on this network now.
     pub nearby: bool,
     /// Nearby, reachable (a trusted connection worked in the last few
@@ -663,6 +672,7 @@ impl RelayCore {
                     trusted,
                     since_ms: d.since_ms,
                     receives_from: d.receives_from,
+                    may_ask: d.may_ask,
                     nearby: is_nearby,
                     presence: if trusted {
                         presence::presence(is_nearby, last_seen_ms, now)
@@ -749,6 +759,11 @@ impl RelayCore {
         self.record.get().devices.mode
     }
 
+    /// Only Hybrid uses the relay server. Leaving Hybrid lets go of the
+    /// relay at once, and any connection that still finds a relay path is
+    /// refused; Relay opens without the relay from then on. Coming back to
+    /// Hybrid takes the relay up again (fully from the next open, when
+    /// Relay opened outside Hybrid).
     pub async fn set_connection_mode(&self, mode: ConnectionMode) -> Result<(), RelayError> {
         self.rt
             .command("connection-mode", move |state| {
@@ -758,6 +773,17 @@ impl RelayCore {
                 })
             })
             .await?;
+        if let (Some(node), Some(url)) = (self.node.started(), self.servers().relay()) {
+            code::TOKIO.spawn(async move {
+                if mode == ConnectionMode::Hybrid {
+                    node.endpoint
+                        .insert_relay(url.clone(), Arc::new(url.into()))
+                        .await;
+                } else {
+                    node.endpoint.remove_relay(&url).await;
+                }
+            });
+        }
         self.deliver_waiting();
         Ok(())
     }
@@ -810,15 +836,16 @@ impl RelayCore {
             .await
     }
 
-    /// The device the last code transfer was with, when the pairing policy
-    /// asks whether to trust it. Ask on both sides; each decides for itself.
+    /// The oldest device a code transfer was with that the pairing policy
+    /// asks whether to trust. Ask on both sides; each decides for itself.
+    /// Once it is answered, the next one (if any) is offered.
     pub fn trust_offer(&self) -> Option<TrustOffer> {
-        lock(&self.trust_offer).clone()
+        lock(&self.trust_offers).front().cloned()
     }
 
-    /// The person said Not Now.
+    /// The person said Not Now to the offer `trust_offer` gave.
     pub fn dismiss_trust_offer(&self) {
-        lock(&self.trust_offer).take();
+        lock(&self.trust_offers).pop_front();
     }
 
     /// The person trusts the device: from the trust offer, or a revoked
@@ -826,11 +853,9 @@ impl RelayCore {
     /// becomes trusted again.
     pub async fn trust_device(&self, endpoint_id: String) -> Result<(), RelayError> {
         let offered = {
-            let mut offer = lock(&self.trust_offer);
-            match offer.as_ref() {
-                Some(o) if o.endpoint_id == endpoint_id => offer.take(),
-                _ => None,
-            }
+            let mut offers = lock(&self.trust_offers);
+            let at = offers.iter().position(|o| o.endpoint_id == endpoint_id);
+            at.and_then(|at| offers.remove(at))
         };
         let name = match offered {
             Some(o) => o.name,
@@ -904,6 +929,22 @@ impl RelayCore {
             .command("receives-from", move |state| {
                 state.change(|r| {
                     if r.devices.set_receives_from(&endpoint_id, on) {
+                        Ok(())
+                    } else {
+                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                    }
+                })
+            })
+            .await
+    }
+
+    /// Whether a trusted device may ask this device's AI. Off when a
+    /// device is trusted; trust never turns it on.
+    pub async fn set_may_ask(&self, endpoint_id: String, on: bool) -> Result<(), RelayError> {
+        self.rt
+            .command("may-ask", move |state| {
+                state.change(|r| {
+                    if r.devices.set_may_ask(&endpoint_id, on) {
                         Ok(())
                     } else {
                         Err(RelayError::UnknownPeer { id: endpoint_id })
@@ -1111,6 +1152,23 @@ impl RelayCore {
     }
 }
 
+/// The most offers kept waiting; past it, the oldest goes.
+const MOST_OFFERS: usize = 8;
+
+/// Adds an offer behind the others. A device already waiting keeps its
+/// place, with the name it gave this time.
+fn offer(offers: &mut VecDeque<TrustOffer>, new: TrustOffer) {
+    match offers.iter_mut().find(|o| o.endpoint_id == new.endpoint_id) {
+        Some(o) => *o = new,
+        None => {
+            offers.push_back(new);
+            if offers.len() > MOST_OFFERS {
+                offers.pop_front();
+            }
+        }
+    }
+}
+
 impl RelayCore {
     /// Applies the pairing policy after a code transfer with `endpoint_id`,
     /// which called itself `name`.
@@ -1118,7 +1176,7 @@ impl RelayCore {
         if endpoint_id.is_empty() {
             return;
         }
-        let offer = self.trust_offer.clone();
+        let offers = self.trust_offers.clone();
         let decided: Result<AfterCode, RelayError> = self
             .rt
             .command("after-code", move |state| {
@@ -1127,7 +1185,7 @@ impl RelayCore {
                 // Set within the command, so the change the app hears
                 // about already carries the offer.
                 if decided == AfterCode::Offer {
-                    *lock(&offer) = Some(TrustOffer { endpoint_id, name });
+                    offer(&mut lock(&offers), TrustOffer { endpoint_id, name });
                 }
                 Ok(decided)
             })
@@ -1251,10 +1309,21 @@ impl device::DeviceInbound for CoreDevices {
         let saved = record.devices.get(from)?;
         let rights = trust::may_connect(Some(saved.trust)).then_some(device::Rights {
             receives_from: saved.receives_from,
+            may_ask: saved.may_ask,
         })?;
         // It is here: anything waiting for it goes now.
         core.try_now(from);
         Some(rights)
+    }
+
+    fn still_takes_from(&self, from: &str) -> bool {
+        self.core.upgrade().is_some_and(|core| {
+            core.record
+                .get()
+                .devices
+                .get(from)
+                .is_some_and(|d| trust::may_connect(Some(d.trust)) && d.receives_from)
+        })
     }
 
     fn received_before(&self, from: &str, id: &[u8; 16]) -> bool {

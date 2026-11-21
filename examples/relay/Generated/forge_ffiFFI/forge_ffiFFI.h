@@ -657,6 +657,11 @@ RustBuffer uniffi_relay_core_fn_method_relaycore_servers(uint64_t ptr, RustCallS
 uint64_t uniffi_relay_core_fn_method_relaycore_set_connection_mode(uint64_t ptr, RustBuffer mode
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_MAY_ASK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_MAY_ASK
+uint64_t uniffi_relay_core_fn_method_relaycore_set_may_ask(uint64_t ptr, RustBuffer endpoint_id, int8_t on
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PAIRING_POLICY
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PAIRING_POLICY
 uint64_t uniffi_relay_core_fn_method_relaycore_set_pairing_policy(uint64_t ptr, RustBuffer policy
@@ -2070,6 +2075,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_servers(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_CONNECTION_MODE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_CONNECTION_MODE
 uint16_t uniffi_relay_core_checksum_method_relaycore_set_connection_mode(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_MAY_ASK
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_MAY_ASK
+uint16_t uniffi_relay_core_checksum_method_relaycore_set_may_ask(void
     
 );
 #endif

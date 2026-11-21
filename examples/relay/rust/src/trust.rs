@@ -52,6 +52,10 @@ pub struct SavedDevice {
     /// Whether it may send files and notes here (on by default).
     #[serde(default = "yes")]
     pub receives_from: bool,
+    /// Whether it may ask this device's AI (off by default): trust never
+    /// grants it on its own.
+    #[serde(default)]
+    pub may_ask: bool,
     /// Where it was last reached or seen, for when Bonjour hasn't found it.
     #[serde(default)]
     pub addresses: Vec<String>,
@@ -145,6 +149,7 @@ impl Devices {
                 d.trust = SavedTrust::Trusted;
                 d.since_ms = now_ms;
                 d.receives_from = true;
+                d.may_ask = false;
                 if !name.is_empty() {
                     d.name = name.into();
                 }
@@ -155,6 +160,7 @@ impl Devices {
                 trust: SavedTrust::Trusted,
                 since_ms: now_ms,
                 receives_from: true,
+                may_ask: false,
                 addresses: Vec::new(),
                 last_seen_ms: None,
                 platform: None,
@@ -207,6 +213,18 @@ impl Devices {
         match self.get_mut(endpoint_id) {
             Some(d) if d.trust == SavedTrust::Trusted => {
                 d.receives_from = on;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether the device may ask this device's AI (off until the person
+    /// turns it on). Only for a trusted device; returns false otherwise.
+    pub fn set_may_ask(&mut self, endpoint_id: &str, on: bool) -> bool {
+        match self.get_mut(endpoint_id) {
+            Some(d) if d.trust == SavedTrust::Trusted => {
+                d.may_ask = on;
                 true
             }
             _ => false,
@@ -376,6 +394,7 @@ mod tests {
         )
         .unwrap();
         assert!(one.receives_from);
+        assert!(!one.may_ask, "an old record grants no asks");
         assert_eq!(one.last_seen_ms, None);
         assert_eq!(one.platform, None);
         assert!(one.offers.is_empty());
