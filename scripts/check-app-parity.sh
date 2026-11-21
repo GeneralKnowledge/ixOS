@@ -615,10 +615,26 @@ def closure_after(lines, i):
     return " ".join(out)
 
 
-# Matched against a line and the two after it, so arguments split over
-# lines are found too.
-BOTTOM_OVERLAY = re.compile(r"\.overlay\(\s*alignment:\s*\.bottom\s*\)")
-BOTTOM_INSET = re.compile(r"\.safeAreaInset\(\s*edge:\s*\.bottom\b")
+def modifier_args(lines, i, name):
+    """The text between `name(` on line `i` and its closing parenthesis,
+    however many lines the arguments take."""
+    text = "\n".join(lines[i:])
+    start = text.find(name + "(")
+    if start < 0:
+        return ""
+    depth = 0
+    for j in range(start + len(name), len(text)):
+        if text[j] == "(":
+            depth += 1
+        elif text[j] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start + len(name) + 1 : j]
+    return ""
+
+
+BOTTOM_ALIGNMENT = re.compile(r"^\s*alignment:\s*\.bottom\s*$")
+BOTTOM_EDGE = re.compile(r"^\s*edge:\s*\.bottom\b")
 
 
 def rule_floating_bars(app):
@@ -626,13 +642,12 @@ def rule_floating_bars(app):
     for path in swift_sources(app):
         lines = [l.split("//", 1)[0] for l in read(path).splitlines()]
         for i, line in enumerate(lines):
-            if ".overlay(" not in line and ".safeAreaInset(" not in line:
-                continue
-            head = " ".join(lines[i : i + 3])
-            if BOTTOM_OVERLAY.search(head) and "onGeometryChange" in closure_after(lines, i):
-                bad.append(f"{path.name}:{i + 1}")
-            elif BOTTOM_INSET.search(head) and "Color.clear" in closure_after(lines, i):
-                bad.append(f"{path.name}:{i + 1}")
+            if ".overlay(" in line:
+                if BOTTOM_ALIGNMENT.search(modifier_args(lines, i, ".overlay")) and "onGeometryChange" in closure_after(lines, i):
+                    bad.append(f"{path.name}:{i + 1}")
+            elif ".safeAreaInset(" in line:
+                if BOTTOM_EDGE.search(modifier_args(lines, i, ".safeAreaInset")) and "Color.clear" in closure_after(lines, i):
+                    bad.append(f"{path.name}:{i + 1}")
     if bad:
         return False, "floats a bar by hand; use ForgeUI's forgeBar: " + ", ".join(bad)
     return True, ""
