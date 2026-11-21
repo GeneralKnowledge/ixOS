@@ -65,7 +65,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -102,8 +101,11 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.forgemobile.pocketlibrary.LibraryModel
 import org.forgemobile.pocketlibrary.kit.ForgeAlert
@@ -127,6 +129,18 @@ private data class SavedPlace(val chapter: UInt, val block: Int)
 /** What the reader keeps between compositions without drawing it. */
 private class ReaderSession {
     var lastSaved: SavedPlace? = null
+
+    /** The latest save, which a chapter load waits for (Rust saves only the chapter loaded last). */
+    var saving: Job? = null
+
+    /** Counts chapter loads: only the latest one is shown. */
+    var loads = 0
+
+    /** Chapter loads run one at a time, so the chapter Rust loaded last is the one shown. */
+    val loading = Mutex()
+
+    /** The reader has closed: failures are no longer shown. */
+    var closed = false
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -167,15 +181,11 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
         if (place == session.lastSaved) return
         val previous = session.lastSaved
         session.lastSaved = place
-        scope.launch {
-            try {
-                model.saveReadingPosition(bookId, place.chapter, place.block)
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                // Not saved: the next move, or leaving, tries again.
-                if (session.lastSaved == place) session.lastSaved = previous
-                alert = ForgeAlert.failure(e)
-            }
+        // In the model's scope: moving to another chapter, or closing, doesn't cancel it.
+        session.saving = model.saveReadingPositionLater(bookId, place.chapter, place.block) { e ->
+            // Not saved: the next move, or leaving, tries again.
+            if (session.lastSaved == place) session.lastSaved = previous
+            if (!session.closed) alert = ForgeAlert.failure(e)
         }
     }
 
@@ -185,14 +195,22 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
      */
     suspend fun show(index: UInt) {
         savePosition()
+        val load = ++session.loads
         loadingChapter = true
         try {
-            val loaded = model.chapter(bookId, index)
+            val loaded = session.loading.withLock {
+                // The place in this chapter is saved before Rust loads another.
+                session.saving?.join()
+                model.chapter(bookId, index)
+            }
+            // A later load (a second tap) wins.
+            if (load != session.loads) return
             val last = maxOf(loaded.section.blocks.size - 1, 0)
             val start = minOf(loaded.start?.block?.toInt() ?: 0, last)
             if (session.lastSaved == null) session.lastSaved = SavedPlace(index, start)
             startBlock = start
             chapter = loaded
+            openError = null
             loadCount += 1
             // Reading aloud carries on into the new chapter.
             val wasPlaying = readAloud.state.value == ReadAloud.State.PLAYING
@@ -201,9 +219,12 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
             if (wasPlaying) readAloud.play(start)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
+            if (load != session.loads) return
+            // Reading aloud was handing over to this chapter: it stops rather than hang.
+            if (readAloud.state.value != ReadAloud.State.STOPPED && readAloud.block.value == null) readAloud.stop()
             if (contents == null || chapter == null) openError = ForgeFailure.from(e) else alert = ForgeAlert.failure(e)
         } finally {
-            loadingChapter = false
+            if (load == session.loads) loadingChapter = false
         }
     }
 
@@ -229,7 +250,13 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
         readAloud.onChapterEnd = {
             val current = chapter
             val count = contents?.chapters?.size ?: 0
-            if (current == null || current.index.toInt() + 1 >= count) readAloud.stop() else move(current.index + 1u)
+            when {
+                current == null || current.index.toInt() + 1 >= count -> readAloud.stop()
+                // A chapter is already loading (a tap on the bar or the contents): reading
+                // carries on into that one.
+                loadingChapter -> Unit
+                else -> move(current.index + 1u)
+            }
         }
     }
 
@@ -260,11 +287,12 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
     // scope, which outlives this screen).
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentSave by rememberUpdatedState(::savePosition)
-    val leave by rememberUpdatedState {
+    val leave by rememberUpdatedState { spoken: Int? ->
         val current = chapter
         if (current != null && !loadingChapter) {
-            val place = SavedPlace(current.index, listState.firstVisibleItemIndex)
-            if (place != session.lastSaved) model.saveReadingPositionOnLeave(bookId, place.chapter, place.block)
+            // While reading aloud, the voice's block is the place (it may be ahead of the screen).
+            val place = SavedPlace(current.index, spoken ?: listState.firstVisibleItemIndex)
+            if (place != session.lastSaved) model.saveReadingPositionLater(bookId, place.chapter, place.block)
         }
     }
     DisposableEffect(lifecycle) {
@@ -272,8 +300,10 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
+            session.closed = true
+            val spoken = readAloud.block.value.takeIf { readAloud.state.value != ReadAloud.State.STOPPED }
             readAloud.close()
-            leave()
+            leave(spoken)
         }
     }
 
@@ -571,8 +601,10 @@ private fun annotated(
 /** A picture from the EPUB (a file Rust saved), scaled to the text column. */
 @Composable
 private fun ReaderImage(source: String, alt: String, modifier: Modifier) {
-    val image by produceState<ImageBitmap?>(null, source) {
-        value = withContext(Dispatchers.IO) { decodeScaled(source, maxPixels = 1600) }
+    // A new source starts empty, rather than showing the previous picture while it decodes.
+    var image by remember(source) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(source) {
+        image = withContext(Dispatchers.IO) { decodeScaled(source, maxPixels = 1600) }
     }
     val bitmap = image
     val described = modifier.fillMaxWidth().semantics { if (alt.isNotEmpty()) contentDescription = alt }

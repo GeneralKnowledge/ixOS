@@ -211,7 +211,7 @@ private fun ReadSection(book: Book, onRead: () -> Unit) {
         }
     } else if (book.source is BookSource.Epub) {
         Text(
-            "Import this book's EPUB again to read it here. Your progress is kept.",
+            "Import this book's EPUB again to read it here (one with the same title and author). Your progress is kept.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.testTag("bookDetail.reimport"),

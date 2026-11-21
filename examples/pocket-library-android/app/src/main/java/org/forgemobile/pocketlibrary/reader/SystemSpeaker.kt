@@ -12,6 +12,9 @@ import android.speech.tts.UtteranceProgressListener
 class SystemSpeaker(context: Context) : Speaker {
     override var listener: Speaker.Listener? = null
 
+    // TextToSpeech refuses longer text (4,000 characters).
+    override val maxInputLength: Int = TextToSpeech.getMaxSpeechInputLength()
+
     private val main = Handler(Looper.getMainLooper())
 
     private enum class Engine { STARTING, READY, FAILED }

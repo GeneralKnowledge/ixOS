@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import android.util.Log
 import java.io.File
@@ -244,23 +246,34 @@ class LibraryModel(
         return withContext(RUST_CALLS) { core.readerChapter(id, index) }
     }
 
+    /** Reading-place saves, one at a time and in the order they were asked for. */
+    private val savingPlace = Mutex()
+
     /**
      * Saves where the reader is: a block of the chapter loaded last, which Rust keeps as an
      * anchor. Rust moves the book's page to match, so the library and the book's screen update.
      */
-    suspend fun saveReadingPosition(id: ULong, chapter: UInt, block: Int): Book = run {
-        it.saveReadingPosition(id, chapter, ReaderLocation(block.coerceAtLeast(0).toUInt(), 0.0))
+    suspend fun saveReadingPosition(id: ULong, chapter: UInt, block: Int): Book = savingPlace.withLock {
+        run { it.saveReadingPosition(id, chapter, ReaderLocation(block.coerceAtLeast(0).toUInt(), 0.0)) }
     }
 
     /**
-     * Saves the reader's place as the reader closes, in the model's scope so leaving doesn't
-     * cancel it. A failure is only logged: the reader is gone, and its last regular save stands.
+     * Saves the reader's place in the model's scope, so a reader that closes, or moves to another
+     * chapter, doesn't cancel the save. The returned job ends when the save has; [onFailure]
+     * gets the error in the model's scope, the main thread (the failure is logged either way).
      */
-    fun saveReadingPositionOnLeave(id: ULong, chapter: UInt, block: Int): Job = scope.launch {
+    fun saveReadingPositionLater(
+        id: ULong,
+        chapter: UInt,
+        block: Int,
+        onFailure: ((Exception) -> Unit)? = null,
+    ): Job = scope.launch {
         try {
             saveReadingPosition(id, chapter, block)
         } catch (e: Exception) {
-            Log.w(TAG, "reading position not saved on leaving the reader: ${e.javaClass.simpleName}")
+            if (e is CancellationException) throw e
+            Log.w(TAG, "reading position not saved: ${e.javaClass.simpleName}")
+            onFailure?.invoke(e)
         }
     }
 

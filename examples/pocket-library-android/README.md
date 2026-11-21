@@ -18,8 +18,8 @@ statistics) is iOS only for now.
 Read Aloud is not yet like the iPhone's in three ways: it has no lock-screen or notification
 controls and stops when the reader closes (iOS keeps reading with the screen locked), it speaks
 with the voice chosen in the system's Text-to-speech settings (iOS has its own voice picker), and
-Pause starts the paused paragraph again from the word it reached, because `TextToSpeech` can't
-pause. The reader has no summaries yet (A7).
+Pause starts the paused paragraph again from the word it reached when the voice reports word
+timing (otherwise from the paragraph's start), because `TextToSpeech` can't pause. The reader has no summaries yet (A7).
 
 ```
 PocketLibraryApp (Compose, Material 3, Navigation) → LibraryModel → ForgeHost (host/ForgeHost.kt)

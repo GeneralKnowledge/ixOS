@@ -17,6 +17,9 @@ import uniffi.pocket_library_core.ReaderBlockKind
 interface Speaker {
     var listener: Listener?
 
+    /** The longest text [speak] takes; a longer block is said in pieces. */
+    val maxInputLength: Int get() = Int.MAX_VALUE
+
     /** Speaks [text] at [speed] (1 is the voice's normal pace), replacing anything being said. */
     fun speak(text: String, id: String, speed: Double)
 
@@ -44,7 +47,8 @@ interface Speaker {
  * it, and have the speaker call back, on the main thread.
  *
  * Android's TextToSpeech can't pause, so pausing stops the voice and remembers the word it had
- * reached; playing on starts that block again from that word.
+ * reached; playing on starts that block again from that word. A block longer than the speaker
+ * takes is said in pieces, split at a sentence (or failing that a space), as one block.
  */
 class ReadAloud(private val speaker: Speaker) : Speaker.Listener {
     enum class State { STOPPED, PLAYING, PAUSED }
@@ -86,6 +90,9 @@ class ReadAloud(private val speaker: Speaker) : Speaker.Listener {
 
     /** Where in its block the current utterance starts (after a pause, the word reached). */
     private var startOffset = 0
+
+    /** Where in its block the current utterance ends: short of the end for a long block. */
+    private var endOffset = 0
 
     init {
         speaker.listener = this
@@ -167,7 +174,8 @@ class ReadAloud(private val speaker: Speaker) : Speaker.Listener {
         speaker.stop()
     }
 
-    private fun speak(from: Int, offset: Int) {
+    /** Speaks block [from] (or the next with text) from [offset]; [moved] reports a new block. */
+    private fun speak(from: Int, offset: Int, moved: Boolean = true) {
         var index = maxOf(from, 0)
         while (index < texts.size && texts[index].isEmpty()) index += 1
         quiet()
@@ -180,13 +188,15 @@ class ReadAloud(private val speaker: Speaker) : Speaker.Listener {
         val text = texts[index]
         // A pause at the very end of a block plays on from its start.
         val start = if (offset in 1 until text.length) offset else 0
+        val end = pieceEnd(text, start, speaker.maxInputLength)
         val id = "readAloud.${++utterances}"
         current = id
         startOffset = start
+        endOffset = end
         _block.value = index
         _word.value = null
-        speaker.speak(text.substring(start), id, _speed.value)
-        onBlock?.invoke(index)
+        speaker.speak(text.substring(start, end), id, _speed.value)
+        if (moved) onBlock?.invoke(index)
     }
 
     override fun onRange(id: String, start: Int, end: Int) {
@@ -196,7 +206,10 @@ class ReadAloud(private val speaker: Speaker) : Speaker.Listener {
 
     override fun onDone(id: String) {
         if (id != current || _state.value != State.PLAYING) return
-        speak((_block.value ?: -1) + 1, 0)
+        val block = _block.value ?: -1
+        // The rest of a long block, then the next block.
+        if (block in texts.indices && endOffset < texts[block].length) speak(block, endOffset, moved = false)
+        else speak(block + 1, 0)
     }
 
     override fun onError(id: String) {
@@ -223,6 +236,23 @@ class ReadAloud(private val speaker: Speaker) : Speaker.Listener {
         fun speakableText(block: ReaderBlock): String = when (block.kind) {
             is ReaderBlockKind.Separator, is ReaderBlockKind.Image -> ""
             else -> shownText(block)
+        }
+
+        /**
+         * Where the piece of [text] said from [start] ends, at most [max] characters on: after
+         * the last sentence that fits, or else the last space, or else (one very long word) at
+         * [max], never inside a character that takes two code units.
+         */
+        fun pieceEnd(text: String, start: Int, max: Int): Int {
+            if (max <= 0 || text.length - start <= max) return text.length
+            val limit = start + max
+            for (i in limit - 1 downTo start + 1) {
+                if (text[i].isWhitespace() && text[i - 1] in ".!?…") return i + 1
+            }
+            for (i in limit - 1 downTo start + 1) {
+                if (text[i].isWhitespace()) return i + 1
+            }
+            return if (Character.isHighSurrogate(text[limit - 1]) && limit - 1 > start) limit - 1 else limit
         }
 
         /** The text the reader shows for a block: its spans, joined. */

@@ -17,6 +17,7 @@ class ReadAloudTest {
         var lastId = ""
         var stops = 0
         var shutDown = false
+        override var maxInputLength = Int.MAX_VALUE
 
         override fun speak(text: String, id: String, speed: Double) {
             said += text
@@ -144,5 +145,38 @@ class ReadAloudTest {
     @Test
     fun speedLabels() {
         assertEquals(listOf("0.75×", "1×", "1.25×", "1.5×", "1.75×", "2×", "2.5×", "3×"), ReadAloud.SPEEDS.map(ReadAloud::speedLabel))
+    }
+
+    /** TextToSpeech takes at most 4,000 characters: a longer block is said in pieces, as one block. */
+    @Test
+    fun aLongBlockIsSaidInPiecesAtSentences() {
+        val speaker = StandIn().apply { maxInputLength = 20 }
+        val reader = ReadAloud(speaker)
+        val blocks = mutableListOf<Int>()
+        reader.onBlock = { blocks += it }
+        val long = "One two three. Four five six seven eight nine."
+        reader.load(listOf(block(ReaderBlockKind.Paragraph, span(long)), block(ReaderBlockKind.Paragraph, span("End."))))
+        reader.play(0)
+        speaker.listener!!.onRange(speaker.lastId, 0, 3)
+        assertEquals(0 until 3, reader.word.value)
+        speaker.finish()
+        // Word positions stay positions in the whole block.
+        speaker.listener!!.onRange(speaker.lastId, 0, 4)
+        assertEquals(15 until 19, reader.word.value)
+        speaker.finish()
+        speaker.finish()
+        assertEquals(listOf("One two three. ", "Four five six seven ", "eight nine.", "End."), speaker.said)
+        assertEquals(long, speaker.said.take(3).joinToString(""))
+        assertEquals(listOf(0, 1), blocks)
+    }
+
+    @Test
+    fun aPieceEndsAtASentenceThenASpaceThenTheLimit() {
+        assertEquals(5, ReadAloud.pieceEnd("short", 0, 10))
+        assertEquals(15, ReadAloud.pieceEnd("One two three. Four five six", 0, 20))
+        assertEquals(7, ReadAloud.pieceEnd("onetwo three", 0, 9))
+        assertEquals(4, ReadAloud.pieceEnd("abcdefgh", 0, 4))
+        // Never between the two halves of a character outside the basic plane.
+        assertEquals(3, ReadAloud.pieceEnd("abc\uD83D\uDE00defgh", 0, 4))
     }
 }
