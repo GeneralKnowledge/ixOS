@@ -70,7 +70,10 @@ struct LibraryHome: View {
             // Wait for typing to pause before asking the catalogues.
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            switch await model.searchCatalogues(query) {
+            let result = await model.searchCatalogues(query)
+            // A newer search cancelled this one: its late answer is dropped.
+            guard !Task.isCancelled else { return }
+            switch result {
             case .success(let found): catalogues = found
             case .failure(let failure):
                 if !failure.stopped { cataloguesProblem = failure.message }
@@ -86,7 +89,7 @@ struct LibraryHome: View {
             }
         }
         .overlay {
-            if library.tracks.isEmpty {
+            if library.tracks.isEmpty && query.isEmpty {
                 ForgeStateView.empty(
                     "No Music Yet", systemImage: "music.note.list",
                     description: "Find music in Discover, import your own files, or add a take server."
@@ -175,11 +178,13 @@ extension LibraryHome {
     /// Archive found, each in its own section, or why not.
     @ViewBuilder fileprivate var catalogueResults: some View {
         if let found = catalogues {
-            if !found.jamendo.isEmpty || found.jamendoProblem != nil {
+            // A track added from here moves up to the library's results.
+            let jamendo = found.jamendo.filter { !model.inLibrary($0.id) }
+            if !jamendo.isEmpty || found.jamendoProblem != nil {
                 Section {
-                    ForEach(Array(found.jamendo.enumerated()), id: \.element.id) { index, track in
+                    ForEach(Array(jamendo.enumerated()), id: \.element.id) { index, track in
                         CatalogueRow(model: model, player: player, track: track) {
-                            player.play(model.queue(found.jamendo), from: index)
+                            player.play(model.queue(jamendo), from: index)
                         }
                     }
                 } header: {
@@ -208,9 +213,9 @@ extension LibraryHome {
                     }
                 }
             }
-            if !found.jamendo.isEmpty || !found.archive.isEmpty {
+            if !jamendo.isEmpty || !found.archive.isEmpty {
                 Section {
-                    NavigationLink(value: ListenRoute.discover) {
+                    NavigationLink(value: ListenRoute.discoverSearch(query)) {
                         Label("More in Discover", systemImage: "sparkle.magnifyingglass")
                     }
                     .accessibilityIdentifier("search.discover")

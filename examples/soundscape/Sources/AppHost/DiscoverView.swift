@@ -21,13 +21,21 @@ struct DiscoverView: View {
     }
 
     @AppStorage("discover.source") private var source: Source = .jamendo
-    @State private var search = ""
+    @State private var search: String
     @State private var results: [CatalogueTrack] = []
     @State private var items: [ArchiveItem] = []
     @State private var problem: String?
     @State private var searching = false
     @State private var editingClientId = false
     @State private var attempt = 0
+
+    /// Opens on `search` when given (More in Discover, from the library's
+    /// search), else on the source's popular list.
+    init(model: ListenModel, player: TakePlayer, search: String = "") {
+        self.model = model
+        self.player = player
+        _search = State(initialValue: search)
+    }
 
     private var query: String { search.trimmingCharacters(in: .whitespaces) }
     private var needsClientId: Bool { source == .jamendo && model.jamendoClientId == nil }
