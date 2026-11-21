@@ -337,10 +337,10 @@ private struct Notice: View {
     let palette: SkyPalette
 
     var body: some View {
+        // ForgeUI's notice, drawn in the sky's colours on Weather's own card.
         Card(palette: palette) {
-            Label(text, systemImage: systemImage)
-                .font(.footnote)
-                .padding(12)
+            ForgeNotice(text, systemImage: systemImage)
+                .forgeNoticeBackground(.hidden)
         }
     }
 }

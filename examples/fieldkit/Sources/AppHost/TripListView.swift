@@ -123,9 +123,7 @@ private struct RecordingRow: View {
                     .foregroundStyle(.secondary)
             }
             if let problem {
-                Label(problem, systemImage: "location.slash")
-                    .font(.footnote)
-                    .forgeForeground(.warning)
+                ForgeStatus(problem, tone: .warning)
             }
         }
         .accessibilityElement(children: .combine)

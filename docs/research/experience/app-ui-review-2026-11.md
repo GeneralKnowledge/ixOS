@@ -25,7 +25,7 @@
 | X12 rename is an alert | 4 apps | Sketchbook (sketch, layer), FieldKit (trip), Relay (this device); Checklist uses a sheet |
 | X5, S2 fixed point sizes | Several | Soundscape transport 64 pt (`ListenView.swift:846`, `:889`) and take rows 34 pt; Weather's bottom bar 19 pt (`WeatherView.swift:126`). Sums' 72 pt display and Good Dog's 96 pt celebration are display sizes and fine |
 | X15 bare root spinner | 3 apps | Fixed at the root (`root-loading` rule). Inline bare `ProgressView()` remains in 15 places, which is fine inside a row or button |
-| C3 notice component | Proposed | Not built; now 4 users (below) |
+| C3 notice component | Proposed | Built as `ForgeNotice` after this review (7 places in 6 apps, with the `notices` parity rule) |
 
 Fixed since: Checklist is on ForgeUI with its accent and state views (#331), app sheets moved onto ForgeUI's swipe guard (#331), the mini-player and Undo banner sit in `forgeBar` (#322, #363), haptics are everywhere (#309).
 
@@ -55,6 +55,7 @@ Each of these moves every app that has it in the same PR (rule 12), with a parit
 - Commonplace's `RefreshStatus` (`FeedListView.swift:251`).
 - Each picks its own icon, size and colour for the same message: something is wrong, here is what still works, here is the one action.
 - **Proposal:** `ForgeNotice(tone:, message:, action:)` in ForgeUI (C3). Weather keeps its sky colours through the tone.
+- **Built** (the PR after ForgeKit 0.7): Weather (its own card, with `.forgeNoticeBackground(.hidden)`), Relay (connection, send failure, waiting messages, account problem), FieldKit (map and location), Soundscape (library refresh, catalogues) and Pocket Library (skipped passages). Commonplace's `RefreshStatus` turned out to be a status line in the bottom toolbar ("Updated 10:42"), not a notice, so it stays; FieldKit's trip row moved to `ForgeStatus`.
 
 Not proposed: a shared stat tile. FieldKit's `Stat` and Weather's `Tile` look alike, but Weather's is part of its own design. Pocket Library's `StatRow` is a list row. Wait for a second plain use, such as Good Dog's progress charts (GD4).
 

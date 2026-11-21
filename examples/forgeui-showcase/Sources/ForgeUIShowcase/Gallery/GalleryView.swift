@@ -8,7 +8,7 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
     case colors, layout, typography
     case buttons, iconButtons, textFields, formFields
     case cards, rows, badges, headers
-    case states, dialogs
+    case states, notices, dialogs
 
     var id: String { rawValue }
 
@@ -24,7 +24,7 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
         case .colors, .layout, .typography: .foundations
         case .buttons, .iconButtons, .textFields, .formFields: .controls
         case .cards, .rows, .badges, .headers: .content
-        case .states, .dialogs: .feedback
+        case .states, .notices, .dialogs: .feedback
         }
     }
 
@@ -42,6 +42,7 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
         case .badges: "Badges and Status"
         case .headers: "Headers"
         case .states: "Empty, Loading, Error"
+        case .notices: "Notices"
         case .dialogs: "Alerts, Dialogs, Sheets"
         }
     }
@@ -60,6 +61,7 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
         case .badges: "Tinted labels and status dots"
         case .headers: "Section and detail headers"
         case .states: "When there is nothing to show yet"
+        case .notices: "A problem in a screen that still works"
         case .dialogs: "Native presentation, themed"
         }
     }
@@ -78,6 +80,7 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
         case .badges: "tag.fill"
         case .headers: "textformat.size"
         case .states: "tray.fill"
+        case .notices: "exclamationmark.bubble.fill"
         case .dialogs: "rectangle.portrait.on.rectangle.portrait.fill"
         }
     }

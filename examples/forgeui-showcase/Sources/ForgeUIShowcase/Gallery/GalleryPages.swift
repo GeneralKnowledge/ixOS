@@ -19,6 +19,7 @@ struct GalleryPageView: View {
         case .badges: BadgesPage()
         case .headers: HeadersPage()
         case .states: StatesPage()
+        case .notices: NoticesPage()
         case .dialogs: DialogsPage()
         }
     }
@@ -550,6 +551,41 @@ private struct StatesPage: View {
             .frame(height: 320)
         } options: {
             OptionPicker(title: "State", id: "gallery.states.kind", values: Kind.allCases, label: { $0.title }, selection: $kind)
+        }
+    }
+}
+
+private struct NoticesPage: View {
+    @State private var tone = ForgeTone.warning
+    @State private var withAction = true
+    @State private var retries = 0
+
+    @Environment(\.forgeTheme) private var theme
+
+    var body: some View {
+        ComponentPage(title: "Notices", code: """
+        ForgeNotice("Offline. Messages you send now go out when you're back.",
+                    systemImage: "wifi.slash",
+                    action: ForgeStateAction("Reconnect", identifier: "chat.reconnect") { reconnect() })
+        ForgeNotice("The map can't be updated right now. Recording carries on.",
+                    systemImage: "map")
+        """) {
+            VStack(spacing: theme.spacing.m) {
+                ForgeNotice(
+                    "Offline. Messages you send now go out when you're back.",
+                    systemImage: "wifi.slash", tone: tone,
+                    action: withAction
+                        ? ForgeStateAction("Reconnect", identifier: "gallery.notices.action") { retries += 1 }
+                        : nil)
+                ForgeNotice("Connecting…", systemImage: "antenna.radiowaves.left.and.right", tone: .info)
+                if retries > 0 {
+                    ForgeStatus("Reconnect tapped \(retries)×", tone: .neutral)
+                }
+            }
+        } options: {
+            OptionPicker(title: "Tone", id: "gallery.notices.tone", values: ForgeTone.allCases, label: { $0.rawValue.capitalized }, selection: $tone)
+            Toggle("Action", isOn: $withAction)
+                .accessibilityIdentifier("gallery.notices.withAction")
         }
     }
 }

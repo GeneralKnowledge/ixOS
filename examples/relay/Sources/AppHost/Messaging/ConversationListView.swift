@@ -93,29 +93,29 @@ struct ConversationListView: View {
         }
     }
 
+    /// A notice as a row of its own, drawn on the list's background.
+    private func notice(_ notice: ForgeNotice) -> some View {
+        notice
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+    }
+
     private var conversationList: some View {
         List {
             if model.waitingCount > 0 {
-                Label(
+                notice(ForgeNotice(
                     model.waitingCount == 1
                         ? "1 message is waiting to be sent. It goes out when the server can be reached."
                         : "\(model.waitingCount) messages are waiting to be sent. They go out when the server can be reached.",
-                    systemImage: "tray.and.arrow.up"
-                )
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                    systemImage: "tray.and.arrow.up", tone: .info))
             }
             if let problem = model.accountProblem {
-                Label(
+                notice(ForgeNotice(
                     "The server no longer accepts this account (\(problem)). Sign out in Settings.",
-                    systemImage: "person.crop.circle.badge.exclamationmark"
-                )
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                    systemImage: "person.crop.circle.badge.exclamationmark"))
             } else if let error = model.listError {
-                Label(error, systemImage: "wifi.exclamationmark")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                notice(ForgeNotice(error, systemImage: "wifi.exclamationmark"))
             }
             ForEach(model.sortedConversations, id: \.id) { conversation in
                 NavigationLink(value: ChatRoute(conversationId: conversation.id)) {

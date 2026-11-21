@@ -653,6 +653,57 @@ def rule_floating_bars(app):
     return True, ""
 
 
+# A notice in a screen that still works ("offline", "the map can't update")
+# is ForgeUI's ForgeNotice. Built by hand, it is a Label with a problem
+# symbol, made small and grey or toned: each app picked its own size,
+# colour and place for the same message (app UI review, November 2026).
+PROBLEM_SYMBOL = re.compile(r'systemImage:\s*"(exclamationmark|wifi|[^"]*\.slash\b|[^"]*\.badge\.exclamationmark|[^"]*exclamationmark\.(triangle|circle|icloud))[^"]*"')
+SMALL_FONT = re.compile(r"\.font\(\.(footnote|callout|caption)\)")
+QUIET_COLOUR = re.compile(r"\.foregroundStyle\(\.secondary\)|\.forgeForeground\(")
+
+
+def call_and_chain(lines, i, name):
+    """The arguments of `name(` on line i and the modifiers chained after
+    its closing parenthesis, one per following line that starts with `.`."""
+    text = "\n".join(lines[i:])
+    start = text.find(name + "(")
+    if start < 0:
+        return "", ""
+    depth = 0
+    for j in range(start + len(name), len(text)):
+        if text[j] == "(":
+            depth += 1
+        elif text[j] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+    else:
+        return "", ""
+    args = text[start + len(name) + 1 : j]
+    rest = text[j + 1 :].split("\n")
+    chain = [rest[0]]
+    for line in rest[1:]:
+        if not line.strip().startswith("."):
+            break
+        chain.append(line)
+    return args, "\n".join(chain)
+
+
+def rule_notices(app):
+    bad = []
+    for path in swift_sources(app):
+        lines = [l.split("//", 1)[0] for l in read(path).splitlines()]
+        for i, line in enumerate(lines):
+            if "Label(" not in line:
+                continue
+            args, chain = call_and_chain(lines, i, "Label")
+            if PROBLEM_SYMBOL.search(args) and SMALL_FONT.search(chain) and QUIET_COLOUR.search(chain):
+                bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "builds a notice by hand; use ForgeUI's ForgeNotice: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -670,6 +721,7 @@ RULES = [
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
+    ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),

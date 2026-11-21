@@ -34,9 +34,9 @@ struct LibraryHome: View {
         List {
             if let problem = model.refreshProblem {
                 Section {
-                    Label(problem, systemImage: "exclamationmark.icloud")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    ForgeNotice(problem, systemImage: "exclamationmark.icloud")
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                         .accessibilityIdentifier("library.refreshProblem")
                 }
             }
@@ -223,9 +223,9 @@ extension LibraryHome {
             }
         } else if let cataloguesProblem {
             Section {
-                Label(cataloguesProblem, systemImage: "exclamationmark.icloud")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                ForgeNotice(cataloguesProblem, systemImage: "exclamationmark.icloud")
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                     .accessibilityIdentifier("search.catalogueProblem")
             }
         } else {

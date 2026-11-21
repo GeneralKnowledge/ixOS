@@ -673,34 +673,25 @@ private struct ConnectionBanner: View {
         switch state {
         case .connected:
             if let problem {
-                banner(Text(verbatim: problem), systemImage: "exclamationmark.triangle")
+                bar(ForgeNotice(problem, systemImage: "exclamationmark.triangle"))
             }
         case .connecting:
-            banner(Text("Connecting…"), systemImage: "antenna.radiowaves.left.and.right")
+            bar(ForgeNotice("Connecting…", systemImage: "antenna.radiowaves.left.and.right", tone: .info))
         case .reconnecting:
-            banner(
-                Text("Reconnecting… Messages you send now wait and go out when the connection is back."),
-                systemImage: "wifi.exclamationmark")
+            bar(ForgeNotice(
+                "Reconnecting… Messages you send now wait and go out when the connection is back.",
+                systemImage: "wifi.exclamationmark"))
         case .closed:
-            VStack(spacing: 4) {
-                banner(problem.map { Text(verbatim: $0) } ?? Text("Not connected"), systemImage: "wifi.slash")
-                Button("Reconnect", action: reconnect)
-                    .font(.footnote)
-                    .accessibilityIdentifier("chat.reconnect")
-            }
-            .padding(.bottom, 6)
-            .frame(maxWidth: .infinity)
-            .background(.bar)
+            bar(ForgeNotice(
+                problem ?? String(localized: "Not connected"), systemImage: "wifi.slash",
+                action: ForgeStateAction("Reconnect", identifier: "chat.reconnect", action: reconnect)))
         }
     }
 
-    private func banner(_ text: Text, systemImage: String) -> some View {
-        Label { text } icon: { Image(systemName: systemImage) }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
+    private func bar(_ notice: ForgeNotice) -> some View {
+        notice
             .padding(.horizontal)
+            .padding(.vertical, 6)
             .background(.bar)
     }
 }
@@ -735,9 +726,7 @@ private struct Composer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let problem {
-                Label(problem, systemImage: "exclamationmark.circle")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                ForgeNotice(problem, systemImage: "exclamationmark.circle")
             }
             if let context {
                 contextBar(context)
