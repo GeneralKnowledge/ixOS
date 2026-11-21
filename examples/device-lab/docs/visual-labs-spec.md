@@ -77,6 +77,7 @@ Gated on a spike, because the packages don't exist for iOS 3.15 yet.
 1. BeeWare's index: do iOS wheels of numpy, contourpy, Matplotlib and Pillow exist for 3.14 or 3.15? (From a machine that can reach it.)
 2. If only 3.14 exists: weigh moving Python Lab from 3.15 to 3.14, where Pillow and kiwisolver already have PyPI iOS wheels. Python Lab has no 3.15-only code, but #356's phone results were on 3.15.
 3. If nothing exists: build them with `cibuildwheel` (which supports iOS) in a GitHub Actions macOS job, once per version bump, and pin the results by SHA-256. That is a build artifact fetched like python.org's tarball, not a Mac in anyone's workflow. Cross-building from Linux with xtool's SDK is the alternative to test; numpy's Meson build makes it harder.
+4. Compare against Terrarium's route (below): Pyodide in a web view already has numpy, Matplotlib and pandas as WebAssembly, with nothing to compile. It needs iOS 27 and would be a second Python next to CPython, so it is a decision for Reuben, not a default.
 
 Then the milestone:
 - `prepare-python.sh` installs a pinned list (`numpy`, `matplotlib`, `contourpy`, `kiwisolver`, `pillow`, `cycler`, `pyparsing`, `python-dateutil`, `six`, `packaging`, `fonttools`) into the bundle's `python/lib/python3.x/site-packages`, wrapping each `.so` as a framework. App size grows by roughly 60 to 80 MB (to measure); frameworks don't use App IDs.
@@ -88,7 +89,27 @@ Acceptance (phone): both samples produce a PNG within the 30 s limit (first impo
 
 If the spike finds no workable route, the fallback is pure-Python charting that needs no native code (for example pygal for SVG charts), recorded as a decision for Reuben, not taken silently.
 
-**Study, ideas only:** Terrarium, for inline plots next to the code, tracebacks linked to the source line and editor UX. Its Pyodide runtime is not a reason to replace CPython.
+### What Terrarium shows (read 2026-11-21)
+
+[Terrarium](https://github.com/mitsuhiko/terrarium) (Armin Ronacher, Apache 2.0, in TestFlight) is a Pythonista-style Python IDE for iPhone with a coding agent built on Pi's durable package: the closest existing thing to Python Lab plus Bonsai Harness. We read its docs, `DECISIONS.md` (64 decisions with evidence) and runtime code. Ideas only; no code or dependency enters ixOS.
+
+**Its central choice answers our packaging question from the other side.** iOS won't load native code at run time, so an embedded CPython only gets the C extensions compiled and signed into the app (our P2 problem). Terrarium runs CPython as WebAssembly (Pyodide) inside a WKWebView, the one process iOS lets JIT, and loads numpy, Matplotlib and pandas as wasm at run time. Its costs, measured on an iPhone 14 Pro: 3 to 7 times slower than native, about 1.1 s to start an interpreter, no threads or raw sockets, iOS ends the web process near 1.9 GB with no `MemoryError` (so it budgets Python's heaps at 12% of device memory), scripts pause in the background, and Python versions follow Pyodide's (its 3.15 build has numpy but no Matplotlib). **It needs iOS 27:** on iOS 26, pages from a custom scheme aren't cross-origin isolated, so the shared memory behind `input()`, Stop and sleep doesn't work. Reuben's phone is on 26.3.1; loopback HTTP might work on 26 but Terrarium never tried it.
+
+So it stays route 4 of spike S-P2, and CPython stays Python Lab's runtime: it is native speed, already passed on the phone (#356), and the harness tests run against the same wrapper.
+
+What we take, all of it small and runtime-independent:
+
+| Terrarium | What we take | Where |
+|---|---|---|
+| A `sys.meta_path` hook that patches `pyplot.show` the moment pyplot is imported, saving every open figure as a PNG (dpi 144, tight box) and closing it; `MPLBACKEND=agg` in the environment | The same hook in our run wrapper, so `plt.show()` works as people write it and each figure becomes a file in the project's artifacts (`figure-1.png`, ...), which `ProducesImage` can check | P2 |
+| Tracebacks as data (D45): Python describes the exception once (chain, type, message with "Did you mean", frames marked app or library, the span, a few dedented source lines), and the console draws frames that open the line; recursion folded, long stacks cut to first 20 and last 40 | Our wrapper already keeps only the project's frames. Add the structured form: the screen links a frame to its line, and the harness gives Bonsai the last app frame with its source line instead of the whole text, which is shorter and easier for a small model | P1 (screen), H2 (harness) |
+| Stop sends `KeyboardInterrupt`, then kills the worker after 1.5 s | We can't kill an in-process CPython. Record the gap: a C-level loop that ignores the interrupt keeps running past the limit. The harness marks the run failed and blocks new runs until Python returns; P1's acceptance gains a check with a long `sum(range(10**10))`-style call | P1 |
+| The agent's `run_python` returns plots to the model as images | Bonsai can't see images, so evidence stays the file and its size (as already planned); a vision model can use the image later | Later |
+| A self-test where a scripted model (pi-ai's faux provider) drives every tool against a real folder on the device, separately from any real model | A **Scripted** entry in Bonsai Harness's model picker that replays a known-good T3 run. The phone sitting then proves the tools, the guard and the journal on the device first, so a T3 failure with Bonsai is about the model, not the plumbing | Harness, next push |
+| Writes and edits append new lint problems to their result (ruff, ty) | Our syntax check after a write is the same idea; ruff has no iOS build, so nothing more for now | Done |
+| Pythonista-style device modules (`clipboard`, `haptics`, `location`, `speech`, ...) and a Solid-style `ui` module for native screens from Python | Interesting for Python Lab's own future; out of scope for these tracks | Later idea |
+
+**For the screen:** console and plot inline under the code, Stop always visible, run header naming the Python version, Quick Look and sharing for files. P1's artifact panel follows this.
 
 ## Track 2: AI Lab image generation
 
