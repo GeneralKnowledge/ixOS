@@ -153,11 +153,13 @@ Decided 2026-11-07: ixOS focuses on **iOS**. Decided 2026-11-20 (Reuben): Androi
 | A1 | App structure (typed navigation, process lifecycle), Kotlin counterparts of ForgeAppKit's failure, alert, load, submission and field errors, error text for every error | PL-4, PL-10 | 1 week | **Done** (#349) |
 | A2 | ForgeUI's Swift tokens generate the Android theme's tokens (`scripts/android-tokens.py`, checked in CI); Material 3 colours and type from them; contrast tests | | 1 to 1.5 weeks | **Done** (#350) |
 | A3 | The complete library: full book form, edit, progress, search, filter and sort, start fresh | PL-1, PL-2, PL-3, PL-5, PL-6 | 1.5 weeks | **Done** (#355) |
-| A4 | Android `http` service adapter and the catalogue | PL-7, PL-8 | 1.5 weeks | **In progress** |
+| A4 | Android `http` service adapter and the catalogue | PL-7, PL-8 | 1.5 weeks | **Done** (#359) |
 | A5 | EPUB reader and read aloud (`TextToSpeech`) | PL-9 | 2 weeks | Planned |
 | A6 | Background work (WorkManager), settings, backups | PL-1 after process death | 1 week | Planned |
 | A7 | AI summaries shown as unavailable (no on-device model on the emulator) | | 2 to 3 days | Planned |
 | A8 | `forge run android --emulator` and logcat | | 2 to 3 days | Planned |
+
+After A8 (decided 2026-11-21, Reuben): **on-device AI for Android** as its own stage. R0 checks the candidate projects and engines, R1 compares two engines in a check app, and R2 adds the chosen one as a Kotlin `LanguageModel` (Forge AI's trait) for Pocket Library's summaries. Speed results count only from a physical phone. Plan and findings: [research/android-local-ai.md](research/android-local-ai.md).
 
 ### Tooling freeze and reuse rules
 
