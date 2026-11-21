@@ -15,7 +15,6 @@ import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -141,6 +140,8 @@ class ForgeHost<Core : ForgeCore>(
     var core: Core? = null
         private set
 
+    /** Read by the listener's pool thread too: it tells a closed stream from a broken one. */
+    @Volatile
     private var stream: RuntimeEvents? = null
     private var listener: Job? = null
     private var opening = false
@@ -200,13 +201,16 @@ class ForgeHost<Core : ForgeCore>(
 
     /** Ends the event loop and shuts the core down. Committed work is already on disk. */
     fun close() {
-        // Cancelling ends the listener's loop, and the listener frees the stream once it is out
-        // of `next()`: freeing it here could race a `next()` the loop is about to make.
-        stream?.cancel()
+        val events = stream
+        // Cleared first, so a listener that finds the stream freed knows it was closed.
+        stream = null
+        events?.cancel()
         listener?.cancel()
         core?.shutdown()
         core?.close()
-        stream = null
+        // Freed now, not when the listener ends: the stream keeps the runtime, and with it the
+        // data folder's lock, until it is freed, and a reopen must find the folder free.
+        events?.close()
         listener = null
         core = null
         _status.value = Status.Closed
@@ -221,23 +225,23 @@ class ForgeHost<Core : ForgeCore>(
     private fun listen(events: RuntimeEvents) {
         // Awaited on a pool thread, not the caller's (often main) dispatcher: UniFFI resumes
         // from Rust's waker, and a dispatcher that resumes in place re-enters Rust there.
-        // ATOMIC: the body runs even if cancelled first, so the stream is always freed here.
-        listener = scope.launch(io, start = CoroutineStart.ATOMIC) {
-            try {
-                while (true) {
-                    val event = events.next() ?: break
-                    when (event) {
-                        is RuntimeEvent.Changed -> {
-                            revision = event.revision
-                            _changes.value += 1
-                        }
-                        is RuntimeEvent.EventsDropped -> reconcile()
-                        is RuntimeEvent.PhaseChanged -> if (event.resumed) reconcile()
-                        is RuntimeEvent.BackgroundWork -> Unit
+        listener = scope.launch(io) {
+            while (true) {
+                val event = try {
+                    events.next()
+                } catch (e: IllegalStateException) {
+                    // close() freed the stream between two reads; anything else is a real error.
+                    if (stream !== events) break else throw e
+                } ?: break
+                when (event) {
+                    is RuntimeEvent.Changed -> {
+                        revision = event.revision
+                        _changes.value += 1
                     }
+                    is RuntimeEvent.EventsDropped -> reconcile()
+                    is RuntimeEvent.PhaseChanged -> if (event.resumed) reconcile()
+                    is RuntimeEvent.BackgroundWork -> Unit
                 }
-            } finally {
-                events.close()
             }
         }
     }
