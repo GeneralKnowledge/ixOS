@@ -447,7 +447,7 @@ impl PeerRepo {
 /// What a failed delivery means to chat-core: a device that wasn't
 /// reached is a network error (the message waits in the outbox); one that
 /// refused it is not (the message fails, and the person can retry).
-fn chat_error(err: RelayError) -> ChatError {
+pub(crate) fn chat_error(err: RelayError) -> ChatError {
     match err {
         RelayError::Unreachable { reason } | RelayError::Connection { reason } => {
             ChatError::Network { reason }

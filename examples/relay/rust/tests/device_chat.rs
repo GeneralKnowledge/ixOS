@@ -335,6 +335,44 @@ fn files_to_a_device_are_attachments_in_both_conversations() {
     assert_eq!(laptop_chat.attachment_file(photo.id.clone()), Some(kept));
 }
 
+/// A photo picked in a device's conversation in Chats goes as the device
+/// screen's Send Files does, under the name the person picked, and a
+/// caption follows it as a message. Before, chat-core refused it ("This
+/// isn't available on this iPhone").
+#[test]
+fn a_photo_sent_from_chats_goes_to_the_device() {
+    let dir = tempfile::tempdir().unwrap();
+    let (phone, laptop, phone_id) = trusted_pair(dir.path());
+    let laptop_id = phone.devices()[0].endpoint_id.clone();
+    sees(&laptop, &phone);
+    let laptop_chat = chat(dir.path(), "laptop", &laptop);
+    // A picked photo waits under a temporary name.
+    let staged = dir.path().join("3F2A-staged.jpg");
+    std::fs::write(&staged, b"not really a photo").unwrap();
+    let to_phone = format!("device:{phone_id}");
+    block_on(laptop_chat.send_files(
+        to_phone,
+        "the harbour".into(),
+        None,
+        vec![relay_core::chat::ChatOutgoingFile {
+            path: staged.to_string_lossy().into_owned(),
+            name: "harbour.jpg".into(),
+            mime: "image/jpeg".into(),
+        }],
+    ))
+    .unwrap();
+
+    eventually("the photo and its caption on the phone", || {
+        phone.device_messages(&laptop_id).unwrap().len() == 2
+    });
+    let got = phone.device_messages(&laptop_id).unwrap();
+    let photo = &got[0].attachments[0];
+    assert_eq!(photo.name, "harbour.jpg");
+    let saved = phone.device_file(&laptop_id, &photo.id).unwrap();
+    assert_eq!(std::fs::read(&saved).unwrap(), b"not really a photo");
+    assert_eq!(got[1].body, "the harbour");
+}
+
 /// A note from a device on an older build is a message in its
 /// conversation, and a retry of it adds nothing.
 #[test]
