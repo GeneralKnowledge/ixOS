@@ -27,8 +27,9 @@ together, and services that compose.
 
 ## What exists today
 
-Written from the code on main (all of the 1.0 foundations are merged), so
-the PR numbers are the 1.0 foundations still open.
+Written from the code on main, where all of the 1.0 foundations are
+merged, so this part doesn't go stale. The PR numbers say which PR added
+each piece.
 
 | Primitive | Today | Where |
 |---|---|---|
