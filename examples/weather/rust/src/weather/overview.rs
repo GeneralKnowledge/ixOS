@@ -197,7 +197,9 @@ fn pollen(report: &WeatherReport, current_hour: &str, local_date: &str) -> Polle
         .filter(|h| h.time.get(..13) == current_hour.get(..13))
     {
         for reading in &first.readings {
-            let today_max = ahead
+            // The whole day, so a species that peaked this morning stays.
+            let today_max = section
+                .hours
                 .iter()
                 .filter(|h| h.time.starts_with(local_date))
                 .flat_map(|h| &h.readings)

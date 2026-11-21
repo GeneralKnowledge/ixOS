@@ -32,6 +32,7 @@ pub(crate) fn details(
     units: UnitSettings,
 ) -> WeatherDetails {
     let c = &report.current;
+    let observed_this_hour = c.observed_at.get(..13) == now.get(..13);
     let temp = |celsius: f64| format_quantity(Quantity::Temperature { celsius }, units);
     WeatherDetails {
         feels_like: c.apparent_temperature_c.map(|feels| FeelsLikeDetail {
@@ -65,7 +66,15 @@ pub(crate) fn details(
             percent,
             dew_point_c: c.dew_point_c,
             note: match c.dew_point_c {
-                Some(dew) => format!("The dew point is {} right now.", temp(dew)),
+                // A report from an earlier hour says when, not "right now".
+                Some(dew) if observed_this_hour => {
+                    format!("The dew point is {} right now.", temp(dew))
+                }
+                Some(dew) => format!(
+                    "The dew point was {} at {}.",
+                    temp(dew),
+                    c.observed_at.get(11..16).unwrap_or("the last update")
+                ),
                 None if percent >= 85 => "The air is close to saturated.".into(),
                 None => "Relative humidity now.".into(),
             },
@@ -163,7 +172,12 @@ fn next_rain(days: &[DailyForecast], units: UnitSettings) -> String {
             ),
             weekday(&day.date)
         ),
-        None if ahead.is_empty() => "Expected today.".into(),
+        None if ahead.is_empty() => "No forecast for the days ahead.".into(),
+        // Only a full set of dry days is "none expected"; a missing amount
+        // isn't a dry day.
+        None if ahead.iter().any(|d| d.precipitation_sum_mm.is_none()) => {
+            "Amounts for the days ahead aren't in the forecast.".into()
+        }
         None => format!("None expected in the next {} days.", ahead.len()),
     }
 }
@@ -192,7 +206,12 @@ fn uv(
         .filter(|h| h.time.starts_with(date))
         .filter_map(|h| Some((h.time.as_str(), h.uv_index?)))
         .collect();
-    let index = current.or_else(|| rest.first().map(|(_, v)| *v));
+    // An hourly value stands in for "now" only if it is for this hour.
+    let index = current.or_else(|| {
+        rest.first()
+            .filter(|(at, _)| at.get(..13) == now.get(..13))
+            .map(|(_, v)| *v)
+    });
     let (index, note) = match index {
         Some(index) => {
             let (level, label) = uv_level(index);
@@ -240,10 +259,13 @@ fn visibility_note(metres: f64) -> &'static str {
     }
 }
 
-/// From this hour to [`TREND_HOURS`] later, when both are in the forecast.
+/// From this hour to [`TREND_HOURS`] later, found by time (a gap in the
+/// hours must not shorten the span), when both are in the forecast.
 fn pressure_trend(hours: &[&HourlyPoint]) -> Option<PressureTrend> {
-    let now = hours.first()?.pressure_msl_hpa?;
-    let later = hours.get(TREND_HOURS)?.pressure_msl_hpa?;
+    let first = hours.first()?;
+    let at = shift_hours(&first.time, TREND_HOURS as i64)?;
+    let now = first.pressure_msl_hpa?;
+    let later = hours.iter().find(|h| h.time == at)?.pressure_msl_hpa?;
     Some(match later - now {
         d if d >= TREND_HPA => PressureTrend::Rising,
         d if d <= -TREND_HPA => PressureTrend::Falling,
@@ -428,6 +450,12 @@ mod tests {
         assert_eq!(next_rain(&days, uk), "Next expected is 4.2 mm on Tue.");
         let dry = [day("2026-11-21", Some(0.0)), day("2026-11-22", Some(0.0))];
         assert_eq!(next_rain(&dry, uk), "None expected in the next 1 days.");
+        let unknown = [day("2026-11-21", Some(0.0)), day("2026-11-22", None)];
+        assert_eq!(
+            next_rain(&unknown, uk),
+            "Amounts for the days ahead aren't in the forecast."
+        );
+        assert_eq!(next_rain(&dry[..1], uk), "No forecast for the days ahead.");
     }
 
     #[test]
@@ -451,19 +479,36 @@ mod tests {
         let u = uv(Some(0.0), &refs, Some(&today), "2026-11-21T14:05").unwrap();
         assert_eq!(u.note, "Low for the rest of the day.");
         assert_eq!(u.scale_position, 0.0);
+        // No reading for now: a later hour isn't "now", today's peak is used.
+        let later = [hour("2026-06-21T11:00", Some(2.0), None)];
+        let refs: Vec<&HourlyPoint> = later.iter().collect();
+        let mut peak = day("2026-06-21", None);
+        peak.uv_index_max = Some(8.0);
+        let u = uv(None, &refs, Some(&peak), "2026-06-21T09:10").unwrap();
+        assert_eq!(u.index, 8.0);
+        assert_eq!(u.label, "Very high");
     }
 
     #[test]
     fn pressure_trend_over_three_hours() {
         let falling = [
-            hour("T10:00", None, Some(1017.0)),
-            hour("T11:00", None, Some(1016.6)),
-            hour("T12:00", None, Some(1016.1)),
-            hour("T13:00", None, Some(1015.8)),
+            hour("2026-11-21T10:00", None, Some(1017.0)),
+            hour("2026-11-21T11:00", None, Some(1016.6)),
+            hour("2026-11-21T12:00", None, Some(1016.1)),
+            hour("2026-11-21T13:00", None, Some(1015.8)),
         ];
         let refs: Vec<&HourlyPoint> = falling.iter().collect();
         assert_eq!(pressure_trend(&refs), Some(PressureTrend::Falling));
         assert_eq!(pressure_trend(&refs[..3]), None, "not far enough ahead");
+        // 11:00 missing: 14:00 is four hours on, not three.
+        let gap = [
+            hour("2026-11-21T10:00", None, Some(1017.0)),
+            hour("2026-11-21T12:00", None, Some(1016.6)),
+            hour("2026-11-21T13:00", None, Some(1016.4)),
+            hour("2026-11-21T14:00", None, Some(1015.8)),
+        ];
+        let refs: Vec<&HourlyPoint> = gap.iter().collect();
+        assert_eq!(pressure_trend(&refs), Some(PressureTrend::Steady));
     }
 
     #[test]

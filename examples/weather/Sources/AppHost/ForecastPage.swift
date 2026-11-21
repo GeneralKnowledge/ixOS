@@ -927,7 +927,8 @@ private struct PollenCard: View {
                     Text(message).font(.subheadline)
                         .accessibilityIdentifier("forecast.pollen.message")
                 } else {
-                    Text(overview.summary)
+                    // Empty when the source has hours ahead but none for now.
+                    Text(overview.summary.isEmpty ? "No reading for this hour." : overview.summary)
                         .font(.subheadline)
                         .fixedSize(horizontal: false, vertical: true)
                     if !overview.species.isEmpty {
