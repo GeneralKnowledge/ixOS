@@ -331,6 +331,14 @@ struct ReaderView: View {
             topBlock = block
             savePosition(block: block)
         }
+        // The lock screen's previous and next chapter.
+        readAloud.onChapterMove = { offset in
+            guard let chapter, let contents = self.contents else { return false }
+            let target = Int(chapter.index) + offset
+            guard target >= 0, target < contents.chapters.count, !loadingChapter else { return false }
+            Task { await show(chapter: UInt32(target)) }
+            return true
+        }
         readAloud.onChapterEnd = {
             Task {
                 guard let chapter, let contents = self.contents,

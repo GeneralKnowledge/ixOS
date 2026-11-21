@@ -196,6 +196,23 @@ impl Phone {
         })
     }
 
+    /// Bundle ids of the apps that come with iOS (Calculator, Weather…),
+    /// which `user_apps` leaves out.
+    pub fn system_apps(&self) -> Result<Vec<String>> {
+        self.within("listing system apps", Duration::from_secs(60), async {
+            let mut proxy = InstallationProxyClient::connect(&*self.provider)
+                .await
+                .map_err(|e| device_error("installation_proxy", e))?;
+            let apps = proxy
+                .get_apps(Some("System"), None)
+                .await
+                .map_err(|e| device_error("listing system apps", e))?;
+            let mut ids: Vec<String> = apps.into_keys().collect();
+            ids.sort();
+            Ok(ids)
+        })
+    }
+
     /// Starts the WebDriverAgent runner through testmanagerd and waits until
     /// it answers. It runs until the returned handle is dropped.
     pub fn start_runner(&self, runner_id: &str) -> Result<Runner> {

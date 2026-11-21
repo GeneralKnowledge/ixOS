@@ -1,0 +1,1714 @@
+# Urdu, Naturally: the phrase library. This file is the curriculum's source
+# of truth (docs/content-guidelines.md). The app shows Roman Urdu; the Urdu
+# script is kept only so the phone's Urdu voice can read the phrase aloud.
+#
+# A phrase:
+#   id          stable slug; progress is saved against it, so never rename one
+#   roman       Roman Urdu, in the house style (content-guidelines.md)
+#   english     what it means, in the English you'd actually say
+#   urdu        the same words in Urdu script, for speech only
+#   topic       one of the [[topic]] ids below
+#   difficulty  1 (first week) to 5
+#   formality   informal | neutral | polite | formal | context_dependent
+#   speaker     "any", or "male" when the phrase is the learner's own male
+#               form (give the female form as a variant, so it is understood)
+#   literal     word for word, when that helps (optional)
+#   usage       when and how to use it (optional)
+#   status      draft (not yet checked; everything starts here) | reviewed
+#               (grammar, usage and naturalness checked by a competent
+#               Pakistani Urdu speaker) | field_tested (confirmed natural in
+#               a real conversation of this kind)
+#   [[phrase.variant]]  other ways to say it: kind = female_speaker |
+#               female_addressee | polite | informal | alternative | spelling
+#   [[phrase.part]]     the building blocks, in order
+#
+# {name} in roman, english or urdu is replaced by the learner's name.
+
+[[topic]]
+id = "greetings"
+title = "Hello and goodbye"
+description = "Starting and ending a conversation."
+level = "conversation"
+
+[[topic]]
+id = "small-talk"
+title = "Keeping it going"
+description = "How you are, what you're up to, and reacting to the answer."
+
+[[topic]]
+id = "plans"
+title = "Making plans"
+description = "Tonight, what time, and don't be late."
+
+[[topic]]
+id = "banter"
+title = "Jokes and banter"
+description = "Teasing, being teased, and 'just joking'."
+
+[[topic]]
+id = "recovery"
+title = "When you're lost"
+description = "Slowing people down, asking again, and keeping going anyway."
+
+[[topic]]
+id = "glue"
+title = "Conversation glue"
+description = "Yaar, acha, matlab, pata nahi: the little words that keep a conversation alive."
+
+[[topic]]
+id = "your-day"
+title = "Your day"
+description = "How was it, where are you, on my way: the everyday check-ins."
+
+[[topic]]
+id = "family"
+title = "Family"
+description = "Asking after everyone at home, aunts, Eid, and being fed."
+
+[[topic]]
+id = "food"
+title = "Food and chai"
+description = "Have you eaten, will you have tea, go on have one."
+
+[[topic]]
+id = "feelings"
+title = "How you feel"
+description = "Tired, stressed, fine really: and being told not to worry."
+
+# ---------------------------------------------------------------- greetings
+
+[[phrase]]
+id = "assalam-o-alaikum"
+roman = "Assalam-o-alaikum."
+english = "Hello."
+urdu = "السلام علیکم۔"
+topic = "greetings"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+literal = "Peace be upon you."
+usage = "The everyday hello, to anyone, at any time of day."
+status = "draft"
+[[phrase.variant]]
+roman = "Salaam!"
+kind = "informal"
+note = "Short and friendly."
+[[phrase.part]]
+roman = "assalam"
+english = "the peace"
+[[phrase.part]]
+roman = "alaikum"
+english = "upon you"
+
+[[phrase]]
+id = "walaikum-assalam"
+roman = "Walaikum assalam."
+english = "Hello (in reply)."
+urdu = "وعلیکم السلام۔"
+topic = "greetings"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+literal = "And upon you, peace."
+usage = "The answer to assalam-o-alaikum, always."
+status = "draft"
+
+[[phrase]]
+id = "aap-ka-naam-kya-hai"
+roman = "Aap ka naam kya hai?"
+english = "What's your name?"
+urdu = "آپ کا نام کیا ہے؟"
+topic = "greetings"
+difficulty = 1
+formality = "polite"
+speaker = "any"
+usage = "Aap is the polite 'you': use it with someone you've just met or anyone older."
+status = "draft"
+[[phrase.variant]]
+roman = "Tumhara naam kya hai?"
+kind = "informal"
+note = "Tum is the friendly 'you', for friends and people your age."
+[[phrase.part]]
+roman = "aap ka"
+english = "your (polite)"
+[[phrase.part]]
+roman = "naam"
+english = "name"
+[[phrase.part]]
+roman = "kya hai"
+english = "what is"
+
+[[phrase]]
+id = "mera-naam-hai"
+roman = "Mera naam {name} hai."
+english = "My name's {name}."
+urdu = "میرا نام {name} ہے۔"
+topic = "greetings"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+[[phrase.part]]
+roman = "mera"
+english = "my"
+[[phrase.part]]
+roman = "naam"
+english = "name"
+[[phrase.part]]
+roman = "hai"
+english = "is"
+
+[[phrase]]
+id = "main-ayesha-hoon"
+roman = "Main Ayesha hoon."
+english = "I'm Ayesha."
+urdu = "میں عائشہ ہوں۔"
+topic = "greetings"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+[[phrase.part]]
+roman = "main"
+english = "I"
+[[phrase.part]]
+roman = "hoon"
+english = "am"
+
+[[phrase]]
+id = "aap-kahan-se-hain"
+roman = "Aap kahan se hain?"
+english = "Where are you from?"
+urdu = "آپ کہاں سے ہیں؟"
+topic = "greetings"
+difficulty = 1
+formality = "polite"
+speaker = "any"
+literal = "You are from where?"
+status = "draft"
+[[phrase.variant]]
+roman = "Tum kahan se ho?"
+kind = "informal"
+note = "With tum, hain becomes ho."
+[[phrase.part]]
+roman = "kahan"
+english = "where"
+[[phrase.part]]
+roman = "se"
+english = "from"
+[[phrase.part]]
+roman = "hain"
+english = "are (polite)"
+
+[[phrase]]
+id = "main-uk-se-hoon"
+roman = "Main UK se hoon."
+english = "I'm from the UK."
+urdu = "میں یو کے سے ہوں۔"
+topic = "greetings"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+
+[[phrase]]
+id = "main-lahore-se-hoon"
+roman = "Main Lahore se hoon."
+english = "I'm from Lahore."
+urdu = "میں لاہور سے ہوں۔"
+topic = "greetings"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+
+[[phrase]]
+id = "aap-se-mil-kar-acha-laga"
+roman = "Aap se mil kar acha laga."
+english = "Nice to meet you."
+urdu = "آپ سے مل کر اچھا لگا۔"
+topic = "greetings"
+difficulty = 1
+formality = "polite"
+speaker = "any"
+literal = "Having met you, it felt good."
+status = "draft"
+[[phrase.variant]]
+roman = "Tum se mil kar acha laga."
+kind = "informal"
+[[phrase.part]]
+roman = "aap se"
+english = "with you"
+[[phrase.part]]
+roman = "mil kar"
+english = "having met"
+[[phrase.part]]
+roman = "acha laga"
+english = "felt good"
+
+[[phrase]]
+id = "mujhe-bhi"
+roman = "Mujhe bhi."
+english = "Me too."
+urdu = "مجھے بھی۔"
+topic = "greetings"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+literal = "To me also."
+usage = "Answers anything that starts with mujhe: nice to meet you, I liked it."
+status = "draft"
+
+[[phrase]]
+id = "phir-milte-hain"
+roman = "Phir milte hain."
+english = "See you again."
+urdu = "پھر ملتے ہیں۔"
+topic = "greetings"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+literal = "We meet again."
+status = "draft"
+
+[[phrase]]
+id = "allah-hafiz"
+roman = "Allah hafiz."
+english = "Bye."
+urdu = "اللہ حافظ۔"
+topic = "greetings"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+literal = "God (be your) protector."
+usage = "The everyday goodbye. Answer with the same."
+status = "draft"
+[[phrase.variant]]
+roman = "Khuda hafiz."
+kind = "alternative"
+note = "Means the same; you'll hear both."
+
+[[phrase]]
+id = "apna-khayal-rakhna"
+roman = "Apna khayal rakhna."
+english = "Take care of yourself."
+urdu = "اپنا خیال رکھنا۔"
+topic = "greetings"
+difficulty = 2
+formality = "neutral"
+speaker = "any"
+status = "draft"
+
+# --------------------------------------------------------------- small talk
+
+[[phrase]]
+id = "kya-haal-hai"
+roman = "Yaar, kya haal hai?"
+english = "Hey, how's it going?"
+urdu = "یار، کیا حال ہے؟"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "Friend, what's the condition?"
+usage = "Between friends. With someone older or new, drop yaar and say: Aap kaise hain?"
+status = "draft"
+[[phrase.variant]]
+roman = "Kya haal hai?"
+kind = "alternative"
+[[phrase.variant]]
+roman = "Aap kaise hain?"
+kind = "polite"
+note = "Respectful: elders, people you've just met."
+[[phrase.variant]]
+roman = "Tum kaise ho?"
+kind = "informal"
+[[phrase.part]]
+roman = "yaar"
+english = "mate, friend"
+[[phrase.part]]
+roman = "kya"
+english = "what"
+[[phrase.part]]
+roman = "haal"
+english = "condition, state"
+[[phrase.part]]
+roman = "hai"
+english = "is"
+
+[[phrase]]
+id = "bohat-din-ho-gaye"
+roman = "Bohat din ho gaye!"
+english = "It's been ages!"
+urdu = "بہت دن ہو گئے!"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "Many days have gone by!"
+status = "draft"
+[[phrase.part]]
+roman = "bohat"
+english = "many, very"
+[[phrase.part]]
+roman = "din"
+english = "days"
+[[phrase.part]]
+roman = "ho gaye"
+english = "have become, have gone"
+
+[[phrase]]
+id = "main-theek-hoon"
+roman = "Main theek hoon."
+english = "I'm good."
+urdu = "میں ٹھیک ہوں۔"
+topic = "small-talk"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+[[phrase.part]]
+roman = "main"
+english = "I"
+[[phrase.part]]
+roman = "theek"
+english = "fine, okay"
+[[phrase.part]]
+roman = "hoon"
+english = "am"
+
+[[phrase]]
+id = "tum-sunao"
+roman = "Tum sunao?"
+english = "How about you?"
+urdu = "تم سناؤ؟"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "You tell?"
+usage = "Bounces the question back. People also say aap sunao: friendly but respectful."
+status = "draft"
+[[phrase.variant]]
+roman = "Aap sunao?"
+kind = "polite"
+[[phrase.variant]]
+roman = "Aap sunaiye?"
+kind = "formal"
+
+[[phrase]]
+id = "main-bhi-theek-hoon"
+roman = "Main bhi theek hoon."
+english = "I'm good too."
+urdu = "میں بھی ٹھیک ہوں۔"
+topic = "small-talk"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+[[phrase.part]]
+roman = "bhi"
+english = "too, also"
+
+[[phrase]]
+id = "kya-chal-raha-hai"
+roman = "Kya chal raha hai?"
+english = "What's going on?"
+urdu = "کیا چل رہا ہے؟"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "What is walking?"
+usage = "A casual 'what's new?' or 'what's up?'."
+status = "draft"
+[[phrase.part]]
+roman = "kya"
+english = "what"
+[[phrase.part]]
+roman = "chal raha hai"
+english = "is going on"
+
+[[phrase]]
+id = "kuch-khaas-nahi"
+roman = "Kuch khaas nahi."
+english = "Nothing much."
+urdu = "کچھ خاص نہیں۔"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "Nothing special."
+status = "draft"
+[[phrase.variant]]
+roman = "Kuch khaas nahin."
+kind = "spelling"
+
+[[phrase]]
+id = "kya-kar-rahe-ho"
+roman = "Kya kar rahe ho?"
+english = "What are you doing?"
+urdu = "کیا کر رہے ہو؟"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+usage = "To a man. To a woman: kya kar rahi ho?"
+status = "draft"
+[[phrase.variant]]
+roman = "Kya kar rahi ho?"
+kind = "female_addressee"
+
+[[phrase]]
+id = "aaj-kal-kya-kar-rahe-ho"
+roman = "Aaj kal kya kar rahe ho?"
+english = "What have you been up to lately?"
+urdu = "آج کل کیا کر رہے ہو؟"
+topic = "small-talk"
+difficulty = 2
+formality = "informal"
+speaker = "any"
+usage = "To a man. To a woman: aaj kal kya kar rahi ho?"
+status = "draft"
+[[phrase.variant]]
+roman = "Aaj kal kya kar rahi ho?"
+kind = "female_addressee"
+[[phrase.part]]
+roman = "aaj kal"
+english = "these days, lately"
+[[phrase.part]]
+roman = "kya"
+english = "what"
+[[phrase.part]]
+roman = "kar rahe ho"
+english = "are you doing"
+
+[[phrase]]
+id = "main-kaam-kar-raha-hoon"
+roman = "Main kaam kar raha hoon."
+english = "I'm working."
+urdu = "میں کام کر رہا ہوں۔"
+topic = "small-talk"
+difficulty = 2
+formality = "neutral"
+speaker = "male"
+status = "draft"
+[[phrase.variant]]
+roman = "Main kaam kar rahi hoon."
+kind = "female_speaker"
+[[phrase.part]]
+roman = "main"
+english = "I"
+[[phrase.part]]
+roman = "kaam"
+english = "work"
+[[phrase.part]]
+roman = "kar raha hoon"
+english = "am doing (a man speaking)"
+
+[[phrase]]
+id = "main-bas-aise-hi"
+roman = "Main? Bas aise hi."
+english = "Me? Just chilling."
+urdu = "میں؟ بس ایسے ہی۔"
+topic = "small-talk"
+difficulty = 2
+formality = "informal"
+speaker = "any"
+literal = "Me? Just like this."
+usage = "When someone asks what you're doing and the answer is nothing much."
+status = "draft"
+
+[[phrase]]
+id = "kaam-kaisa-chal-raha-hai"
+roman = "Kaam kaisa chal raha hai?"
+english = "How's work going?"
+urdu = "کام کیسا چل رہا ہے؟"
+topic = "small-talk"
+difficulty = 2
+formality = "neutral"
+speaker = "any"
+status = "draft"
+[[phrase.part]]
+roman = "kaam"
+english = "work"
+[[phrase.part]]
+roman = "kaisa"
+english = "how"
+[[phrase.part]]
+roman = "chal raha hai"
+english = "is going"
+
+[[phrase]]
+id = "theek-chal-raha-hai"
+roman = "Theek chal raha hai, bas thora busy hoon."
+english = "It's going fine, I'm just a bit busy."
+urdu = "ٹھیک چل رہا ہے، بس تھوڑا بزی ہوں۔"
+topic = "small-talk"
+difficulty = 2
+formality = "neutral"
+speaker = "any"
+usage = "Everyday Urdu borrows plenty of English: busy, tension, plan, mood."
+status = "draft"
+
+[[phrase]]
+id = "aur-tum"
+roman = "Aur tum?"
+english = "And you?"
+urdu = "اور تم؟"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+status = "draft"
+[[phrase.variant]]
+roman = "Aur aap?"
+kind = "polite"
+
+[[phrase]]
+id = "nayi-naukri-mil-gayi"
+roman = "Pata hai? Mujhe nayi naukri mil gayi!"
+english = "Guess what? I got a new job!"
+urdu = "پتا ہے؟ مجھے نئی نوکری مل گئی!"
+topic = "small-talk"
+difficulty = 2
+formality = "informal"
+speaker = "any"
+literal = "Is it known? To me a new job was got!"
+status = "draft"
+
+[[phrase]]
+id = "sach-mein"
+roman = "Sach mein?"
+english = "Really?"
+urdu = "سچ میں؟"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "In truth?"
+status = "draft"
+
+[[phrase]]
+id = "mubarak-ho"
+roman = "Mubarak ho!"
+english = "Congratulations!"
+urdu = "مبارک ہو!"
+topic = "small-talk"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+
+[[phrase]]
+id = "kya-baat-hai"
+roman = "Kya baat hai!"
+english = "That's brilliant!"
+urdu = "کیا بات ہے!"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "What a thing it is!"
+status = "draft"
+
+[[phrase]]
+id = "acha-phir"
+roman = "Acha, phir?"
+english = "Okay, and then?"
+urdu = "اچھا، پھر؟"
+topic = "small-talk"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+usage = "Keeps someone's story going."
+status = "draft"
+
+[[phrase]]
+id = "kyun"
+roman = "Kyun?"
+english = "Why?"
+urdu = "کیوں؟"
+topic = "small-talk"
+also_in = ["questions"]
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+
+[[phrase]]
+id = "mujhe-nahi-pata"
+roman = "Mujhe nahi pata."
+english = "I don't know."
+urdu = "مجھے نہیں پتا۔"
+topic = "small-talk"
+opposite = "mujhe-pata-hai"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+literal = "To me (it's) not known."
+status = "draft"
+[[phrase.variant]]
+roman = "Mujhe nahin pata."
+kind = "spelling"
+
+[[phrase]]
+id = "mujhe-lagta-hai"
+roman = "Mujhe lagta hai…"
+english = "I think…"
+urdu = "مجھے لگتا ہے…"
+topic = "small-talk"
+opposite = "mujhe-nahi-lagta"
+difficulty = 2
+formality = "neutral"
+speaker = "any"
+literal = "To me it seems…"
+usage = "Starts an opinion. Lagta stays the same whoever you are."
+status = "draft"
+
+[[phrase]]
+id = "tumhara-kya-khayal-hai"
+roman = "Tumhara kya khayal hai?"
+english = "What do you think?"
+urdu = "تمہارا کیا خیال ہے؟"
+topic = "small-talk"
+difficulty = 2
+formality = "informal"
+speaker = "any"
+literal = "What is your thought?"
+status = "draft"
+[[phrase.variant]]
+roman = "Aap ka kya khayal hai?"
+kind = "polite"
+
+# -------------------------------------------------------------------- plans
+
+[[phrase]]
+id = "aaj-shaam-kya-kar-rahe-ho"
+roman = "Aaj shaam kya kar rahe ho?"
+english = "What are you up to this evening?"
+urdu = "آج شام کیا کر رہے ہو؟"
+topic = "plans"
+difficulty = 2
+formality = "informal"
+speaker = "any"
+status = "draft"
+[[phrase.variant]]
+roman = "Aaj shaam kya kar rahi ho?"
+kind = "female_addressee"
+[[phrase.part]]
+roman = "aaj shaam"
+english = "this evening"
+
+[[phrase]]
+id = "chalo-bahar-khana-khate-hain"
+roman = "Chalo, bahar khana khate hain."
+english = "Come on, let's eat out."
+urdu = "چلو، باہر کھانا کھاتے ہیں۔"
+topic = "plans"
+difficulty = 2
+formality = "informal"
+speaker = "any"
+status = "draft"
+[[phrase.part]]
+roman = "chalo"
+english = "come on, let's"
+[[phrase.part]]
+roman = "bahar"
+english = "outside, out"
+[[phrase.part]]
+roman = "khana"
+english = "food"
+[[phrase.part]]
+roman = "khate hain"
+english = "(we) eat"
+
+[[phrase]]
+id = "zabardast"
+roman = "Zabardast!"
+english = "Brilliant!"
+urdu = "زبردست!"
+topic = "plans"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+status = "draft"
+
+[[phrase]]
+id = "kitne-baje"
+roman = "Kitne baje?"
+english = "What time?"
+urdu = "کتنے بجے؟"
+topic = "plans"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+literal = "At how many o'clock?"
+status = "draft"
+
+[[phrase]]
+id = "saat-baje-theek-hai"
+roman = "Saat baje theek hai?"
+english = "Is seven okay?"
+urdu = "سات بجے ٹھیک ہے؟"
+topic = "plans"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+[[phrase.part]]
+roman = "saat baje"
+english = "at seven o'clock"
+[[phrase.part]]
+roman = "theek hai"
+english = "is okay"
+
+[[phrase]]
+id = "pakka-main-aa-jaunga"
+roman = "Pakka. Main aa jaunga."
+english = "Definitely. I'll be there."
+urdu = "پکا۔ میں آ جاؤں گا۔"
+topic = "plans"
+difficulty = 2
+formality = "informal"
+speaker = "male"
+usage = "Pakka: for sure, it's a deal."
+status = "draft"
+[[phrase.variant]]
+roman = "Pakka. Main aa jaungi."
+kind = "female_speaker"
+[[phrase.part]]
+roman = "pakka"
+english = "definitely"
+[[phrase.part]]
+roman = "aa jaunga"
+english = "will come (a man speaking)"
+
+[[phrase]]
+id = "late-mat-hona"
+roman = "Late mat hona!"
+english = "Don't be late!"
+urdu = "لیٹ مت ہونا!"
+topic = "plans"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+status = "draft"
+
+# ------------------------------------------------------------------- banter
+
+[[phrase]]
+id = "aaj-bare-smart-lag-rahe-ho"
+roman = "Aaj bare smart lag rahe ho!"
+english = "Looking sharp today!"
+urdu = "آج بڑے اسمارٹ لگ رہے ہو!"
+topic = "banter"
+difficulty = 2
+formality = "informal"
+speaker = "any"
+usage = "To a man. To a woman: aaj bari smart lag rahi ho!"
+status = "draft"
+[[phrase.variant]]
+roman = "Aaj bari smart lag rahi ho!"
+kind = "female_addressee"
+
+[[phrase]]
+id = "main-to-hamesha-smart-lagta-hoon"
+roman = "Main to hamesha smart lagta hoon."
+english = "I always look sharp."
+urdu = "میں تو ہمیشہ اسمارٹ لگتا ہوں۔"
+topic = "banter"
+difficulty = 2
+formality = "informal"
+speaker = "male"
+status = "draft"
+[[phrase.variant]]
+roman = "Main to hamesha smart lagti hoon."
+kind = "female_speaker"
+[[phrase.part]]
+roman = "to"
+english = "(emphasis) well, as for me"
+[[phrase.part]]
+roman = "hamesha"
+english = "always"
+[[phrase.part]]
+roman = "lagta hoon"
+english = "look, seem (a man speaking)"
+
+[[phrase]]
+id = "pagal-ho-kya"
+roman = "Pagal ho kya?"
+english = "Are you mad?"
+urdu = "پاگل ہو کیا؟"
+topic = "banter"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+usage = "Friendly between friends. Not to someone you've just met."
+status = "draft"
+
+[[phrase]]
+id = "sach-keh-raha-hoon"
+roman = "Sach keh raha hoon!"
+english = "I'm telling the truth!"
+urdu = "سچ کہہ رہا ہوں!"
+topic = "banter"
+difficulty = 2
+formality = "neutral"
+speaker = "male"
+status = "draft"
+[[phrase.variant]]
+roman = "Sach keh rahi hoon!"
+kind = "female_speaker"
+
+[[phrase]]
+id = "bas-karo"
+roman = "Bas karo!"
+english = "Stop it!"
+urdu = "بس کرو!"
+topic = "banter"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+usage = "Laughing, it's 'stop it, you'. Said sharply, it's a real stop."
+status = "draft"
+
+[[phrase]]
+id = "mazaaq-kar-raha-hoon"
+roman = "Mazaaq kar raha hoon yaar."
+english = "I'm only joking, mate."
+urdu = "مذاق کر رہا ہوں یار۔"
+topic = "banter"
+difficulty = 2
+formality = "informal"
+speaker = "male"
+status = "draft"
+[[phrase.variant]]
+roman = "Mazaaq kar rahi hoon yaar."
+kind = "female_speaker"
+[[phrase.part]]
+roman = "mazaaq"
+english = "joke"
+[[phrase.part]]
+roman = "kar raha hoon"
+english = "am doing (a man speaking)"
+
+[[phrase]]
+id = "tum-bhi-na"
+roman = "Tum bhi na!"
+english = "Oh, you!"
+urdu = "تم بھی نا!"
+topic = "banter"
+difficulty = 2
+formality = "informal"
+speaker = "any"
+usage = "An affectionate eye-roll."
+status = "draft"
+
+[[phrase]]
+id = "bohat-maza-aaya"
+roman = "Bohat maza aaya!"
+english = "That was really fun!"
+urdu = "بہت مزہ آیا!"
+topic = "banter"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "Much enjoyment came!"
+status = "draft"
+
+[[phrase]]
+id = "koi-baat-nahi"
+roman = "Koi baat nahi."
+english = "No problem."
+urdu = "کوئی بات نہیں۔"
+topic = "banter"
+also_in = ["manners"]
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+literal = "No matter."
+usage = "Answers sorry and thank you, and means 'never mind'."
+status = "draft"
+[[phrase.variant]]
+roman = "Koi baat nahin."
+kind = "spelling"
+
+# ----------------------------------------------------------------- recovery
+
+[[phrase]]
+id = "aahista-boliye"
+roman = "Thora aahista boliye."
+english = "Could you speak a bit slower?"
+urdu = "تھوڑا آہستہ بولیے۔"
+topic = "recovery"
+difficulty = 1
+formality = "polite"
+speaker = "any"
+status = "draft"
+[[phrase.variant]]
+roman = "Thora aahista bolo."
+kind = "informal"
+[[phrase.part]]
+roman = "thora"
+english = "a little"
+[[phrase.part]]
+roman = "aahista"
+english = "slowly"
+[[phrase.part]]
+roman = "boliye"
+english = "please speak"
+
+[[phrase]]
+id = "dobara-bolo"
+roman = "Dobara bolo?"
+english = "Say that again?"
+urdu = "دوبارہ بولو؟"
+topic = "recovery"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "Speak again?"
+status = "draft"
+[[phrase.variant]]
+roman = "Dobara boliye?"
+kind = "polite"
+[[phrase.variant]]
+roman = "Phir se bolo?"
+kind = "alternative"
+
+[[phrase]]
+id = "mujhe-samajh-nahi-aaya"
+roman = "Mujhe samajh nahi aaya."
+english = "I didn't get that."
+urdu = "مجھے سمجھ نہیں آیا۔"
+topic = "recovery"
+difficulty = 2
+formality = "neutral"
+speaker = "any"
+literal = "Understanding didn't come to me."
+usage = "No verb to agree with you here, so it's the same for everyone."
+status = "draft"
+[[phrase.variant]]
+roman = "Samajh nahi aaya."
+kind = "informal"
+[[phrase.part]]
+roman = "mujhe"
+english = "to me"
+[[phrase.part]]
+roman = "samajh"
+english = "understanding"
+[[phrase.part]]
+roman = "nahi aaya"
+english = "didn't come"
+
+[[phrase]]
+id = "is-ka-matlab-kya-hai"
+roman = "Is ka matlab kya hai?"
+english = "What does that mean?"
+urdu = "اس کا مطلب کیا ہے؟"
+topic = "recovery"
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+[[phrase.part]]
+roman = "is ka"
+english = "its, of this"
+[[phrase.part]]
+roman = "matlab"
+english = "meaning"
+
+[[phrase]]
+id = "shukriya"
+roman = "Shukriya."
+english = "Thanks."
+urdu = "شکریہ۔"
+topic = "recovery"
+also_in = ["manners"]
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+status = "draft"
+
+# --------------------------------------------------------------------- glue
+
+[[phrase]]
+id = "yaar"
+roman = "Yaar"
+english = "Mate, man"
+urdu = "یار"
+topic = "glue"
+also_in = ["reactions"]
+difficulty = 1
+formality = "informal"
+speaker = "any"
+usage = "Between friends, at the start or end of almost anything. Not with your boss."
+status = "draft"
+
+[[phrase]]
+id = "acha"
+roman = "Acha"
+english = "Okay / really? / I see"
+urdu = "اچھا"
+topic = "glue"
+also_in = ["reactions"]
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+usage = "The tone does the work: flat is okay, rising is really?, drawn out is I see."
+status = "draft"
+
+[[phrase]]
+id = "bas"
+roman = "Bas"
+english = "That's it / enough / just"
+urdu = "بس"
+topic = "glue"
+also_in = ["reactions", "connectors"]
+difficulty = 1
+formality = "neutral"
+speaker = "any"
+usage = "Bas! stops the food coming. Bas theek is 'just fine'."
+status = "draft"
+
+[[phrase]]
+id = "chalo"
+roman = "Chalo"
+english = "Come on / oh well / right then"
+urdu = "چلو"
+topic = "glue"
+also_in = ["reactions"]
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "Walk!"
+usage = "Moves anything along: starting, giving up, leaving."
+status = "draft"
+
+[[phrase]]
+id = "waise"
+roman = "Waise…"
+english = "By the way / actually…"
+urdu = "ویسے…"
+topic = "glue"
+also_in = ["connectors"]
+difficulty = 2
+formality = "neutral"
+speaker = "any"
+status = "draft"
+[[phrase.variant]]
+roman = "Waisay…"
+kind = "spelling"
+
+[[phrase]]
+id = "matlab"
+roman = "Matlab"
+english = "I mean / meaning"
+urdu = "مطلب"
+topic = "glue"
+also_in = ["connectors"]
+difficulty = 2
+formality = "neutral"
+speaker = "any"
+usage = "Matlab… is what you say while you think, like 'I mean…'."
+status = "draft"
+
+[[phrase]]
+id = "pata-nahi"
+roman = "Pata nahi."
+english = "Dunno."
+urdu = "پتا نہیں۔"
+topic = "glue"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+usage = "What people actually say for 'I don't know'. Mujhe nahi pata is the full version."
+status = "draft"
+[[phrase.variant]]
+roman = "Pata nahin."
+kind = "spelling"
+
+[[phrase]]
+id = "haan-shayad"
+roman = "Haan, shayad."
+english = "Yeah, maybe."
+urdu = "ہاں، شاید۔"
+topic = "glue"
+opposite = "shayad-nahi"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+status = "draft"
+
+[[phrase]]
+id = "acha-acha"
+roman = "Acha, acha."
+english = "Right, right."
+urdu = "اچھا، اچھا۔"
+topic = "glue"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+usage = "I'm listening, go on. Said while someone else is talking."
+status = "draft"
+
+[[phrase]]
+id = "matlab-question"
+roman = "Matlab?"
+english = "What do you mean?"
+urdu = "مطلب؟"
+topic = "glue"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+literal = "Meaning?"
+status = "draft"
+
+[[phrase]]
+id = "phir-kya-hua"
+roman = "Phir kya hua?"
+english = "Then what happened?"
+urdu = "پھر کیا ہوا؟"
+topic = "glue"
+difficulty = 1
+formality = "informal"
+speaker = "any"
+usage = "The best way to keep someone talking."
+status = "draft"
+[[phrase.part]]
+roman = "phir"
+english = "then"
+[[phrase.part]]
+roman = "kya hua"
+english = "what happened"
+
+# ------------------------------------------------- everyday conversations
+# Added for the conversation-first redesign (2026-11-19): what friends and
+# family actually talk about. All draft.
+
+[[phrase]]
+id = "aaj-din-kaisa-raha"
+roman = "Aaj din kaisa raha?"
+english = "How was your day?"
+urdu = "آج دن کیسا رہا؟"
+topic = "your-day"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "theek-tha-bas-thak-gaya"
+roman = "Theek tha, bas thak gaya hoon."
+english = "It was OK, I'm just tired."
+urdu = "ٹھیک تھا، بس تھک گیا ہوں۔"
+topic = "your-day"
+difficulty = 1
+speaker = "male"
+[[phrase.variant]]
+roman = "Theek tha, bas thak gayi hoon."
+kind = "female_speaker"
+
+[[phrase]]
+id = "kyun-kya-hua"
+roman = "Kyun, kya hua?"
+english = "Why, what happened?"
+urdu = "کیوں، کیا ہوا؟"
+topic = "your-day"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "kaam-bohat-zyada-tha"
+roman = "Kaam bohat zyada tha."
+english = "There was way too much work."
+urdu = "کام بہت زیادہ تھا۔"
+topic = "your-day"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "chalo-ab-aaram-karo"
+roman = "Chalo, ab aaram karo."
+english = "Well, get some rest now."
+urdu = "چلو، اب آرام کرو۔"
+topic = "your-day"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "pehle-chai-peeni-hai"
+roman = "Haan yaar, pehle chai peeni hai."
+english = "Yeah, but first I need tea."
+urdu = "ہاں یار، پہلے چائے پینی ہے۔"
+topic = "your-day"
+difficulty = 1
+speaker = "any"
+literal = "Yes friend, first tea is to be drunk."
+
+[[phrase]]
+id = "hello-kahan-ho"
+roman = "Hello? Kahan ho?"
+english = "Hello? Where are you?"
+urdu = "ہیلو؟ کہاں ہو؟"
+topic = "your-day"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "raste-mein-hoon"
+roman = "Raste mein hoon, bas paanch minute."
+english = "On my way, five minutes."
+urdu = "راستے میں ہوں، بس پانچ منٹ۔"
+topic = "your-day"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "tumhare-paanch-minute"
+roman = "Tumhare paanch minute matlab aadha ghanta!"
+english = "Your five minutes means half an hour!"
+urdu = "تمہارے پانچ منٹ مطلب آدھا گھنٹہ!"
+topic = "your-day"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "sach-mein-traffic-hai"
+roman = "Nahi yaar, sach mein. Traffic bohat hai."
+english = "No, honestly. There's loads of traffic."
+urdu = "نہیں یار، سچ میں۔ ٹریفک بہت ہے۔"
+topic = "your-day"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "jaldi-aao-sab-intezaar"
+roman = "Acha, jaldi aao. Sab intezaar kar rahe hain."
+english = "OK, hurry up. Everyone's waiting."
+urdu = "اچھا، جلدی آؤ۔ سب انتظار کر رہے ہیں۔"
+topic = "your-day"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "bas-pohanch-gaya"
+roman = "Bas pohanch gaya."
+english = "I'm basically there."
+urdu = "بس پہنچ گیا۔"
+topic = "your-day"
+difficulty = 1
+speaker = "male"
+literal = "Just arrived."
+usage = "Said when you're nearly there, not when you've arrived. Everyone knows."
+[[phrase.variant]]
+roman = "Bas pohanch gayi."
+kind = "female_speaker"
+
+[[phrase]]
+id = "ghar-mein-sab-kaise-hain"
+roman = "Ghar mein sab kaise hain?"
+english = "How's everyone at home?"
+urdu = "گھر میں سب کیسے ہیں؟"
+topic = "family"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "sab-theek-hain-shukar-hai"
+roman = "Sab theek hain, shukar hai."
+english = "Everyone's fine, thank God."
+urdu = "سب ٹھیک ہیں، شکر ہے۔"
+topic = "family"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "ammi-ki-tabiyat-kaisi-hai"
+roman = "Ammi ki tabiyat kaisi hai?"
+english = "How's your mum keeping?"
+urdu = "امی کی طبیعت کیسی ہے؟"
+topic = "family"
+difficulty = 1
+speaker = "any"
+usage = "Tabiyat is health and mood together: the usual way to ask after someone who's been unwell."
+
+[[phrase]]
+id = "pehle-se-behtar-hain"
+roman = "Pehle se behtar hain."
+english = "Better than before."
+urdu = "پہلے سے بہتر ہیں۔"
+topic = "family"
+difficulty = 1
+speaker = "any"
+usage = "Hain (plural) for a parent, out of respect."
+
+[[phrase]]
+id = "unko-mera-salaam-dena"
+roman = "Unko mera salaam dena."
+english = "Give her my regards."
+urdu = "ان کو میرا سلام دینا۔"
+topic = "family"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "aur-tumhare-ghar-mein"
+roman = "Aur tumhare ghar mein?"
+english = "And at your place?"
+urdu = "اور تمہارے گھر میں؟"
+topic = "family"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "eid-mubarak"
+roman = "Eid Mubarak!"
+english = "Happy Eid!"
+urdu = "عید مبارک!"
+topic = "family"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "khair-mubarak"
+roman = "Khair Mubarak!"
+english = "Happy Eid to you too!"
+urdu = "خیر مبارک!"
+topic = "family"
+difficulty = 1
+speaker = "any"
+usage = "The reply to any mubarak: Eid, a new job, a wedding."
+
+[[phrase]]
+id = "kitne-bare-ho-gaye-ho"
+roman = "Arre, kitne bare ho gaye ho!"
+english = "Look how grown up you are!"
+urdu = "ارے، کتنے بڑے ہو گئے ہو!"
+topic = "family"
+difficulty = 2
+speaker = "any"
+usage = "Every aunt, every time. Smile."
+[[phrase.variant]]
+roman = "Arre, kitni bari ho gayi ho!"
+kind = "female_addressee"
+
+[[phrase]]
+id = "bas-aap-ki-duaayein-hain"
+roman = "Bas, aap ki duaayein hain."
+english = "It's all thanks to your prayers."
+urdu = "بس، آپ کی دعائیں ہیں۔"
+topic = "family"
+difficulty = 2
+speaker = "any"
+usage = "The polite reply to a compliment from an elder."
+
+[[phrase]]
+id = "khana-kha-ke-jaana"
+roman = "Khana kha ke jaana."
+english = "Don't go without eating."
+urdu = "کھانا کھا کے جانا۔"
+topic = "family"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "jee-zaroor"
+roman = "Jee, zaroor."
+english = "Of course."
+urdu = "جی، ضرور۔"
+topic = "family"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "chai-piyoge"
+roman = "Chai piyoge?"
+english = "Will you have some tea?"
+urdu = "چائے پیو گے؟"
+topic = "food"
+difficulty = 1
+speaker = "any"
+[[phrase.variant]]
+roman = "Chai piyogi?"
+kind = "female_addressee"
+
+[[phrase]]
+id = "haan-zaroor-shukriya"
+roman = "Haan, zaroor. Shukriya."
+english = "Yes please, thanks."
+urdu = "ہاں، ضرور۔ شکریہ۔"
+topic = "food"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "cheeni-kitni"
+roman = "Cheeni kitni?"
+english = "How much sugar?"
+urdu = "چینی کتنی؟"
+topic = "food"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "bas-thori-si"
+roman = "Bas thori si."
+english = "Just a little."
+urdu = "بس تھوڑی سی۔"
+topic = "food"
+difficulty = 1
+speaker = "any"
+usage = "Thori, not thora: cheeni (sugar) is feminine."
+
+[[phrase]]
+id = "kuch-khaoge"
+roman = "Kuch khaoge? Biscuit?"
+english = "Want something to eat? A biscuit?"
+urdu = "کچھ کھاؤ گے؟ بسکٹ؟"
+topic = "food"
+difficulty = 1
+speaker = "any"
+[[phrase.variant]]
+roman = "Kuch khaogi? Biscuit?"
+kind = "female_addressee"
+
+[[phrase]]
+id = "arre-lo-na"
+roman = "Arre, lo na! Takalluf mat karo."
+english = "Oh go on, have one! Don't stand on ceremony."
+urdu = "ارے، لو نا! تکلف مت کرو۔"
+topic = "food"
+difficulty = 2
+speaker = "any"
+usage = "A host will offer at least twice. Saying no once is just being polite."
+
+[[phrase]]
+id = "ek-le-leta-hoon"
+roman = "Acha, theek hai, ek le leta hoon."
+english = "OK, fine, I'll have one."
+urdu = "اچھا، ٹھیک ہے، ایک لے لیتا ہوں۔"
+topic = "food"
+difficulty = 2
+speaker = "male"
+[[phrase.variant]]
+roman = "Acha, theek hai, ek le leti hoon."
+kind = "female_speaker"
+
+[[phrase]]
+id = "khana-kha-liya"
+roman = "Khana kha liya?"
+english = "Have you eaten?"
+urdu = "کھانا کھا لیا؟"
+topic = "food"
+difficulty = 1
+speaker = "any"
+usage = "Asked as a greeting as much as a question."
+
+[[phrase]]
+id = "haan-kha-liya"
+roman = "Haan, kha liya."
+english = "Yes, I've eaten."
+urdu = "ہاں، کھا لیا۔"
+topic = "food"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "kya-khaya"
+roman = "Kya khaya?"
+english = "What did you have?"
+urdu = "کیا کھایا؟"
+topic = "food"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "biryani-ammi-ne-banayi"
+roman = "Biryani. Ammi ne banayi thi."
+english = "Biryani. Mum made it."
+urdu = "بریانی۔ امی نے بنائی تھی۔"
+topic = "food"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "mere-liye-bachi-hai"
+roman = "Waah! Mere liye bachi hai?"
+english = "Nice! Is there any left for me?"
+urdu = "واہ! میرے لیے بچی ہے؟"
+topic = "food"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "aa-jao-abhi-garam-hai"
+roman = "Aa jao, abhi garam hai."
+english = "Come over, it's still hot."
+urdu = "آ جاؤ، ابھی گرم ہے۔"
+topic = "food"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "weekend-pe-kya-plan-hai"
+roman = "Weekend pe kya plan hai?"
+english = "What are you up to this weekend?"
+urdu = "ویک اینڈ پہ کیا پلان ہے؟"
+topic = "plans"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "abhi-kuch-pakka-nahi"
+roman = "Abhi kuch pakka nahi."
+english = "Nothing's fixed yet."
+urdu = "ابھی کچھ پکا نہیں۔"
+topic = "plans"
+difficulty = 1
+speaker = "any"
+
+[[phrase]]
+id = "cricket-khelne-chalein"
+roman = "Cricket khelne chalein?"
+english = "Shall we go and play cricket?"
+urdu = "کرکٹ کھیلنے چلیں؟"
+topic = "plans"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "itwaar-subah-das-baje"
+roman = "Itwaar, subah das baje."
+english = "Sunday, ten in the morning."
+urdu = "اتوار، صبح دس بجے۔"
+topic = "plans"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "itni-subah"
+roman = "Itni subah? Yaar, main to so raha hoonga."
+english = "That early? Mate, I'll be asleep."
+urdu = "اتنی صبح؟ یار، میں تو سو رہا ہوں گا۔"
+topic = "plans"
+difficulty = 3
+speaker = "male"
+[[phrase.variant]]
+roman = "Itni subah? Yaar, main to so rahi hoongi."
+kind = "female_speaker"
+
+[[phrase]]
+id = "acha-gyarah-baje-pakka"
+roman = "Acha, gyarah baje. Pakka?"
+english = "OK, eleven. Deal?"
+urdu = "اچھا، گیارہ بجے۔ پکا؟"
+topic = "plans"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "tum-thake-hue-lag-rahe-ho"
+roman = "Tum thake hue lag rahe ho."
+english = "You look tired."
+urdu = "تم تھکے ہوئے لگ رہے ہو۔"
+topic = "feelings"
+difficulty = 2
+speaker = "any"
+[[phrase.variant]]
+roman = "Tum thaki hui lag rahi ho."
+kind = "female_addressee"
+
+[[phrase]]
+id = "raat-ko-neend-nahi-aayi"
+roman = "Haan, raat ko neend nahi aayi."
+english = "Yeah, I couldn't sleep last night."
+urdu = "ہاں، رات کو نیند نہیں آئی۔"
+topic = "feelings"
+difficulty = 2
+speaker = "any"
+literal = "Yes, at night sleep didn't come."
+
+[[phrase]]
+id = "koi-pareshani-hai"
+roman = "Kyun? Koi pareshani hai?"
+english = "Why? Is something bothering you?"
+urdu = "کیوں؟ کوئی پریشانی ہے؟"
+topic = "feelings"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "bas-kaam-ki-tension-hai"
+roman = "Nahi, bas kaam ki tension hai."
+english = "No, just work stress."
+urdu = "نہیں، بس کام کی ٹینشن ہے۔"
+topic = "feelings"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "fikar-mat-karo"
+roman = "Fikar mat karo, sab theek ho jayega."
+english = "Don't worry, it'll all be fine."
+urdu = "فکر مت کرو، سب ٹھیک ہو جائے گا۔"
+topic = "feelings"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "inshallah"
+roman = "Inshallah."
+english = "Hopefully (God willing)."
+urdu = "ان شاء اللہ۔"
+topic = "feelings"
+difficulty = 1
+speaker = "any"
+usage = "For anything in the future you hope for, big or small."
+
+[[phrase]]
+id = "kal-ka-match-dekha"
+roman = "Kal ka match dekha?"
+english = "Did you see yesterday's match?"
+urdu = "کل کا میچ دیکھا؟"
+topic = "banter"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "kya-match-tha"
+roman = "Haan! Kya match tha!"
+english = "Yes! What a match!"
+urdu = "ہاں! کیا میچ تھا!"
+topic = "banter"
+difficulty = 2
+speaker = "any"
+
+[[phrase]]
+id = "tumhari-team-to-haar-gayi"
+roman = "Tumhari team to haar gayi."
+english = "Your team lost, though."
+urdu = "تمہاری ٹیم تو ہار گئی۔"
+topic = "banter"
+difficulty = 3
+speaker = "any"
+
+[[phrase]]
+id = "toh-kya-agli-baar-dekhna"
+roman = "Toh kya? Agli baar dekhna."
+english = "So what? Just wait till next time."
+urdu = "تو کیا؟ اگلی بار دیکھنا۔"
+topic = "banter"
+difficulty = 3
+speaker = "any"
+
+[[phrase]]
+id = "har-baar-yahi-kehte-ho"
+roman = "Har baar yahi kehte ho!"
+english = "You say that every time!"
+urdu = "ہر بار یہی کہتے ہو!"
+topic = "banter"
+difficulty = 3
+speaker = "any"
+[[phrase.variant]]
+roman = "Har baar yahi kehti ho!"
+kind = "female_addressee"

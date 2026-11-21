@@ -37,7 +37,7 @@ background_tasks = [
 # and -ForgeUITestData, so either one starts them all on throwaway data.
 # See docs/app-config.md.
 [host]
-apps = ["../weather", "../checklist", "../pocket-library", "../good-dog", "../commonplace", "../fieldkit", "../sketchbook", "../soundscape", "../relay"]
+apps = ["../weather", "../checklist", "../pocket-library", "../good-dog", "../commonplace", "../fieldkit", "../sketchbook", "../soundscape", "../relay", "../sums", "../urdu-naturally"]
 
 # The text iOS shows when the app asks. Each one is asked only when the user
 # taps the matching "Allow" button on the dashboard.

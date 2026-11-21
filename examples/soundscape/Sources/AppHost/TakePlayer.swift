@@ -2,7 +2,6 @@
 @preconcurrency import SoundscapeFFI
 @preconcurrency import ForgeKit
 import AVFoundation
-import MediaPlayer
 import UIKit
 import Observation
 
@@ -159,17 +158,19 @@ final class TakePlayer {
     @ObservationIgnored private var fadeLength: TimeInterval = 0
     @ObservationIgnored private var fadeTimer: Timer?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
-    @ObservationIgnored private let remoteTargets = RemoteCommandTargets()
+    /// The lock screen, headphone buttons, and the system's rules for
+    /// calls, Siri and unplugged headphones (Forge's Now Playing helper).
+    @ObservationIgnored private lazy var nowPlaying = ForgeNowPlaying(
+        isPlaying: { [weak self] in self?.isPlaying == true },
+        pause: { [weak self] in self?.stoppedBySystem() },
+        play: { [weak self] in self?.resume() }
+    )
     /// The lock screen's picture for `current`, and the address it came from.
-    @ObservationIgnored private var artwork: MPMediaItemArtwork?
+    @ObservationIgnored private var artwork: UIImage?
     @ObservationIgnored private var artworkUrl: String?
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
-    /// Watches the system: interruptions, unplugged headphones, and each
-    /// player stopping or starting by itself.
-    @ObservationIgnored private var systemObservers: [NSObjectProtocol] = []
+    /// Watches each player stopping or starting by itself.
     @ObservationIgnored private var statusObservers: [NSKeyValueObservation] = []
-    /// Playing when an interruption began, so it may carry on after.
-    @ObservationIgnored private var interruptedWhilePlaying = false
 
     init() {
         for (index, player) in players.enumerated() {
@@ -240,8 +241,7 @@ final class TakePlayer {
         artworkTask?.cancel()
         artwork = nil
         artworkUrl = nil
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        remoteTargets.removeAll()
+        nowPlaying.end()
         ForgeAudioSession.deactivate()
     }
 
@@ -338,11 +338,9 @@ final class TakePlayer {
     func resume() {
         guard a != nil else { return }
         do {
-            // Music, not speech: the "playback" category with default mode,
-            // so it plays with the silent switch on and over other apps.
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default)
-            try session.setActive(true)
+            // Music, not speech: plays with the silent switch on and over
+            // other apps.
+            try ForgeAudioSession.activate(.music)
         } catch {
             log.warn("audio session: \(error)")
         }
@@ -510,45 +508,11 @@ final class TakePlayer {
 
     // MARK: The system
 
-    /// Another app's sound, a call, Siri or unplugged headphones can stop
-    /// the players without asking. Each way it can happen is watched, so
-    /// the buttons, the mini-player and the lock screen show Play as soon
-    /// as the sound stops.
+    /// Another app's sound can stop the players without asking (calls,
+    /// Siri and unplugged headphones come through `nowPlaying`). Each player
+    /// is watched, so the buttons, the mini-player and the lock screen show
+    /// Play as soon as the sound stops.
     private func watchSystem() {
-        let center = NotificationCenter.default
-        systemObservers.append(center.addObserver(
-            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
-        ) { [weak self] note in
-            let info = note.userInfo
-            let type = (info?[AVAudioSessionInterruptionTypeKey] as? UInt)
-                .flatMap(AVAudioSession.InterruptionType.init(rawValue:))
-            let options = AVAudioSession.InterruptionOptions(
-                rawValue: info?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-            )
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                switch type {
-                case .began:
-                    self.interruptedWhilePlaying = self.isPlaying
-                    self.stoppedBySystem()
-                case .ended:
-                    // A call or Siri hands the sound back; another app that
-                    // started its own music doesn't.
-                    if self.interruptedWhilePlaying, options.contains(.shouldResume) { self.resume() }
-                    self.interruptedWhilePlaying = false
-                default:
-                    break
-                }
-            }
-        })
-        systemObservers.append(center.addObserver(
-            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
-        ) { [weak self] note in
-            let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
-            guard reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue else { return }
-            // Headphones unplugged: iOS pauses, and so do we, both sides.
-            MainActor.assumeIsolated { self?.stoppedBySystem() }
-        })
         for player in [playerA, playerB] {
             statusObservers.append(player.observe(\.timeControlStatus) { [weak self] _, _ in
                 DispatchQueue.main.async {
@@ -781,24 +745,17 @@ final class TakePlayer {
 
     private func updateNowPlaying() {
         guard let current else { return }
-        var info: [String: Any] = [
-            MPMediaItemPropertyTitle: isComparing
-                ? "\(active == .a ? "A" : "B"): \(current.label)"
-                : current.song,
-            MPMediaItemPropertyAlbumTitle: isComparing ? current.song : current.album ?? current.label,
-            MPMediaItemPropertyArtist: isComparing ? "Comparing takes" : current.artist ?? current.label,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: time,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
-            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
-            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
-        ]
-        if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
-        if let artwork, !isComparing { info[MPMediaItemPropertyArtwork] = artwork }
-        if let queue, !isComparing {
-            info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = Int(queue.position)
-            info[MPNowPlayingInfoPropertyPlaybackQueueCount] = queue.order.count
-        }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        nowPlaying.update(.init(
+            title: isComparing ? "\(active == .a ? "A" : "B"): \(current.label)" : current.song,
+            artist: isComparing ? "Comparing takes" : current.artist ?? current.label,
+            album: isComparing ? current.song : current.album ?? current.label,
+            artwork: isComparing ? nil : artwork,
+            duration: duration,
+            position: time,
+            playing: isPlaying,
+            queueIndex: isComparing ? nil : queue.map { Int($0.position) },
+            queueCount: isComparing ? nil : queue.map { $0.order.count }
+        ))
     }
 
     /// Fetches the song's artwork for the lock screen. The song shows
@@ -817,90 +774,32 @@ final class TakePlayer {
                 : await ForgeImages.thumbnail(from: address, maxPixels: 1024)
             guard let picture, !Task.isCancelled else { return }
             guard let self, self.artworkUrl == url else { return }
-            self.artwork = Self.lockScreenArtwork(UIImage(cgImage: picture))
+            self.artwork = UIImage(cgImage: picture)
             self.updateNowPlaying()
         }
     }
 
-    /// Made outside the main actor: MediaPlayer asks for the picture on a
-    /// background queue, and a closure made on the main actor would trap
-    /// there.
-    nonisolated private static func lockScreenArtwork(_ image: UIImage) -> MPMediaItemArtwork {
-        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-    }
-
-    /// Adds the player's lock-screen handlers on the first song after a
-    /// stop; `stop()` removes them again, and only them.
+    /// Puts the player's buttons on the lock screen and headphones on the
+    /// first song after a stop; `stop()` takes them away again.
     private func setUpRemoteCommands() {
-        guard remoteTargets.isEmpty else { return }
-        let center = MPRemoteCommandCenter.shared()
-        remoteTargets.add(center.playCommand) { [weak self] _ in
-            MainActor.assumeIsolated { self?.resume() }
-            return .success
-        }
-        remoteTargets.add(center.pauseCommand) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pause() }
-            return .success
-        }
-        remoteTargets.add(center.togglePlayPauseCommand) { [weak self] _ in
-            MainActor.assumeIsolated { self?.toggle() }
-            return .success
-        }
-        remoteTargets.add(center.changePlaybackPositionCommand) { [weak self] event in
-            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            let position = event.positionTime
-            MainActor.assumeIsolated { self?.seek(to: position) }
-            return .success
-        }
-        center.skipBackwardCommand.preferredIntervals = [10]
-        remoteTargets.add(center.skipBackwardCommand) { [weak self] _ in
-            MainActor.assumeIsolated { self?.skip(-10) }
-            return .success
-        }
-        // In a comparison, "next" and "previous" on headphones or the lock
-        // screen switch between A and B; otherwise they move through the
-        // queue.
-        remoteTargets.add(center.nextTrackCommand) { [weak self] _ in
-            MainActor.assumeIsolated {
+        guard !nowPlaying.hasCommands else { return }
+        nowPlaying.commands(.init(
+            play: { [weak self] in self?.resume() },
+            pause: { [weak self] in self?.pause() },
+            toggle: { [weak self] in self?.toggle() },
+            // In a comparison, "next" and "previous" switch between A and B;
+            // otherwise they move through the queue.
+            next: { [weak self] in
                 guard let self else { return }
                 if self.isComparing { self.hear(self.active == .a ? .b : .a) } else { self.next() }
-            }
-            return .success
-        }
-        remoteTargets.add(center.previousTrackCommand) { [weak self] _ in
-            MainActor.assumeIsolated {
+            },
+            previous: { [weak self] in
                 guard let self else { return }
                 if self.isComparing { self.hear(self.active == .a ? .b : .a) } else { self.previous() }
-            }
-            return .success
-        }
+            },
+            seek: { [weak self] seconds in self?.seek(to: seconds) },
+            skipBackward: (interval: 10, run: { [weak self] in self?.skip(-10) })
+        ))
     }
-}
-
-/// The lock-screen handlers one player added, so it removes only its own:
-/// the command center is shared by every app in Device Lab, and
-/// `removeTarget(nil)` would take away another app's controls too. Removes
-/// them when it goes away as well, so a player that is freed without
-/// stopping leaves no dead buttons behind (Soundscape's did, found on the
-/// phone, 2026-11-18). Each app keeps its own copy until the Now Playing
-/// helper is extracted.
-private final class RemoteCommandTargets {
-    private var targets: [(command: MPRemoteCommand, token: Any)] = []
-
-    var isEmpty: Bool { targets.isEmpty }
-
-    func add(
-        _ command: MPRemoteCommand,
-        _ handler: @escaping @Sendable (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus
-    ) {
-        targets.append((command, command.addTarget(handler: handler)))
-    }
-
-    func removeAll() {
-        for target in targets { target.command.removeTarget(target.token) }
-        targets = []
-    }
-
-    deinit { removeAll() }
 }
 #endif

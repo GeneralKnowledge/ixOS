@@ -1,0 +1,41 @@
+# What Urdu, Naturally must do, and what proves it (docs/evidence.md).
+# `twin`: XCTests that drive the real view model against the real Rust core
+# (`forge check swift` runs them on Linux). `device`: UI scenarios for
+# `forge ui run`; their verdicts come only from a run on an iPhone.
+# The curriculum's own rules (every phrase in Urdu script, male forms with
+# their female form, known topics and twins) are Rust tests in
+# rust/src/content.rs.
+
+[[requirement]]
+id = "UN-1"
+statement = "A new learner is sent to the first conversation, and the Building Blocks topics come first in Learn."
+twin = ["UrduModelTests.testABeginnerStartsWithTheFirstConversation"]
+device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "UN-2"
+statement = "Practice is saved per phrase and per skill, and survives closing the app, as does the learner's name."
+twin = ["UrduModelTests.testProgressAndNameSurviveARestart"]
+device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "UN-3"
+statement = "A save that fails is an alert in plain words, never a crash."
+twin = ["UrduModelTests.testAnUnknownPhraseIsAnAlertNotACrash"]
+
+[[requirement]]
+id = "UN-4"
+statement = "A typed answer is checked against the phrase and its accepted spellings: spelling variation is not marked wrong, and words that only sound alike (kam, kaam) are never marked right."
+twin = ["UrduModelTests.testTypedAnswersForgiveSpelling", "UrduModelTests.testTypedAnswersDontMergeWordsThatSoundAlike"]
+device = ["uitests/typed-answer.toml"]
+
+[[requirement]]
+id = "UN-5"
+statement = "Building Blocks are words, expressions and sentence patterns; a pattern is practised by building its example sentences from the English, and is never read aloud with its gap."
+twin = ["UrduModelTests.testAPatternIsPractisedWithItsExamples"]
+
+[[requirement]]
+id = "UN-6"
+statement = "Conversations are the course: each one lists the words, expressions and patterns it uses, offers to practise them at the end, and what you met comes back in Practise the next day."
+twin = ["UrduModelTests.testAConversationBringsItsWords"]
+device = ["uitests/smoke.toml"]

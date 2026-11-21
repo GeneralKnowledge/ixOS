@@ -7,24 +7,27 @@ package org.forgemobile.pocketlibrary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.forgemobile.pocketlibrary.host.ForgeCore
 import org.forgemobile.pocketlibrary.host.ForgeHost
+import org.forgemobile.pocketlibrary.kit.ForgeFailure
+import org.forgemobile.pocketlibrary.kit.ForgeLoad
 import uniffi.forge_app.AppPhase
-import uniffi.forge_app.ErrorKind
 import uniffi.forge_app.LaunchReport
 import uniffi.forge_app.RuntimeEvents
 import uniffi.pocket_library_core.Book
 import uniffi.pocket_library_core.BookInput
-import uniffi.pocket_library_core.PocketLibrary
 import uniffi.pocket_library_core.LibraryException
 import uniffi.pocket_library_core.LibraryQuery
 import uniffi.pocket_library_core.LibrarySort
+import uniffi.pocket_library_core.PocketLibrary
 import uniffi.pocket_library_core.ReadingStatus
-import uniffi.pocket_library_core.libraryErrorKind
 
 /** Pocket Library's Rust core, as the host sees it. */
 class LibraryCore(val library: PocketLibrary) : ForgeCore {
@@ -40,12 +43,20 @@ class LibraryModel(
     private val host: ForgeHost<LibraryCore>,
     private val scope: CoroutineScope,
 ) {
+    init {
+        // Alerts, failed loads and failed saves use ErrorText's words (ForgeAppKit).
+        ForgeFailure.describer = ErrorText
+    }
+
     private val _books = MutableStateFlow<List<Book>>(emptyList())
 
     /** Every book, newest first. */
     val books: StateFlow<List<Book>> = _books.asStateFlow()
 
-    val status: StateFlow<ForgeHost.Status> get() = host.status
+    /** Opening the library: loading, open, or why it couldn't open (with Try Again). */
+    val opening: StateFlow<ForgeLoad<Unit>> = host.status
+        .map(::openingState)
+        .stateIn(scope, SharingStarted.Eagerly, openingState(host.status.value))
 
     init {
         // Re-read whenever Rust's state may have changed: commits from any screen, and the
@@ -56,35 +67,33 @@ class LibraryModel(
     private val library: PocketLibrary?
         get() = host.core?.library
 
+    /** Opens the library, or tries again after a failure. Does nothing once open. */
+    fun open() {
+        scope.launch { host.start() }
+    }
+
     fun reload() {
         _books.value = library?.books(ALL_BOOKS) ?: emptyList()
     }
 
     fun book(id: ULong): Book? = _books.value.firstOrNull { it.id == id }
 
-    /**
-     * Adds a book from the form. The core validates it; an invalid form comes back as
-     * [LibraryException], whose text [describe] gives.
-     */
-    suspend fun add(title: String, author: String): Book {
-        val core = library ?: throw IllegalStateException("The library isn't open yet.")
-        val input = BookInput(
-            title = title,
-            author = author,
-            description = "",
-            status = ReadingStatus.WANT_TO_READ,
-            currentPage = 0u,
-            totalPages = null,
-            rating = null,
-            notes = "",
-            coverUrl = null,
-        )
-        return withContext(RUST_CALLS) { core.addBook(input) }
+    // Commands. Each throws the Rust LibraryException, so the screen that started it shows the
+    // problem where the person is: field errors under the fields, anything else as an alert.
+
+    private suspend fun <T> run(command: suspend (PocketLibrary) -> T): T {
+        val core = library ?: throw LibraryException.ShutDown()
+        val result = withContext(RUST_CALLS) { command(core) }
+        // The event updates the screen too; reading now avoids a flicker.
+        reload()
+        return result
     }
 
+    /** Adds a book. The core validates it: invalid fields come back as `InvalidFields`. */
+    suspend fun add(input: BookInput): Book = run { it.addBook(input) }
+
     suspend fun delete(id: ULong) {
-        val core = library ?: throw IllegalStateException("The library isn't open yet.")
-        withContext(RUST_CALLS) { core.deleteBook(id) }
+        run { it.deleteBook(id) }
     }
 
     companion object {
@@ -98,27 +107,27 @@ class LibraryModel(
 
         val ALL_BOOKS = LibraryQuery(text = "", status = null, sort = LibrarySort.RECENTLY_ADDED)
 
-        /** Text for an error, by the framework's error kind (ForgeErrors.describe in Swift). */
-        fun describe(error: Throwable): String {
-            if (error is LibraryException.InvalidFields) {
-                return error.fields.joinToString("\n") { it.message }
+        /** A new book's empty form, as the iPhone app starts it. */
+        fun emptyInput(): BookInput = BookInput(
+            title = "",
+            author = "",
+            description = "",
+            status = ReadingStatus.WANT_TO_READ,
+            currentPage = 0u,
+            totalPages = null,
+            rating = null,
+            notes = "",
+            coverUrl = null,
+        )
+
+        fun openingState(status: ForgeHost.Status): ForgeLoad<Unit> = when (status) {
+            ForgeHost.Status.Ready -> ForgeLoad.Loaded(Unit)
+            is ForgeHost.Status.Failed -> {
+                val error = status.error
+                val message = if (error is LibraryException) ErrorText.message(error) else status.message
+                ForgeLoad.Failed(ForgeFailure("Can't Open Library", message, isRetryable = true))
             }
-            if (error is LibraryException.InvalidInput) return error.reason
-            if (error !is LibraryException) return error.message ?: "Something went wrong."
-            return when (libraryErrorKind(error)) {
-                ErrorKind.INVALID -> "Check what you entered."
-                ErrorKind.NOT_FOUND -> "That book no longer exists."
-                ErrorKind.UNAVAILABLE -> "Not available right now. Try again later."
-                ErrorKind.NETWORK -> "Couldn't connect. Check your connection and try again."
-                ErrorKind.REFUSED -> "That was refused."
-                ErrorKind.INTERRUPTED -> "Stopped when the app went to the background. Try again."
-                ErrorKind.CANCELLED -> "Cancelled."
-                ErrorKind.NEEDS_USER -> "This needs your permission or sign-in."
-                ErrorKind.CORRUPT -> "The saved library couldn't be read."
-                ErrorKind.NEWER_DATA -> "This library was saved by a newer version of the app. Update the app to open it."
-                ErrorKind.SHUT_DOWN -> "The app is closing."
-                ErrorKind.INTERNAL -> "Something went wrong."
-            }
+            ForgeHost.Status.Loading, ForgeHost.Status.Closed -> ForgeLoad.Loading
         }
 
         fun statusLabel(status: ReadingStatus): String = when (status) {
