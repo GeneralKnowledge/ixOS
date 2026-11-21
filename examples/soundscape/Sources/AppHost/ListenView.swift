@@ -33,7 +33,6 @@ struct ListenView: View {
     @State private var player = TakePlayer()
     @State private var editingServer = false
     @State private var showingNowPlaying = false
-    @State private var barHeight: CGFloat = 0
 
     init(core: SoundscapeCore, host: ForgeHost<SoundscapeCore>) {
         let model = ListenModel(core: core)
@@ -44,7 +43,6 @@ struct ListenView: View {
     var body: some View {
         NavigationStack {
             content
-                .miniPlayerClearance()
                 .navigationTitle("Library")
                 .navigationDestination(for: ListenRoute.self) { route in
                     switch route {
@@ -74,14 +72,11 @@ struct ListenView: View {
                     ServerSheet(model: model)
                 }
         }
-        // The bar floats over every screen of the stack, and each screen
-        // keeps room for it below its content (`miniPlayerClearance`):
-        // an inset on the stack alone didn't reach the lists of pushed
-        // screens, so a long album's last song hid under the bar.
-        .environment(\.miniPlayerHeight, player.current == nil ? 0 : barHeight)
-        .overlay(alignment: .bottom) {
+        // The bar floats over every screen of the stack, and ForgeUI gives
+        // each one room below its content, pushed screens included (an
+        // inset on the stack alone hid a long album's last song).
+        .forgeBar {
             NowPlayingBar(player: player) { showingNowPlaying = true }
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
         }
         .sheet(isPresented: $showingNowPlaying) {
             NowPlayingView(model: model, player: player)
@@ -248,7 +243,6 @@ private struct SongView: View {
                 ForgeStateView.loading()
             }
         }
-        .miniPlayerClearance()
         .navigationTitle(song?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
@@ -581,27 +575,6 @@ private struct Scrubber: View {
 }
 
 /// What's playing, under every Listen screen; tap it for Now Playing.
-extension EnvironmentValues {
-    /// How tall the mini-player is over the Library's screens; 0 when nothing plays.
-    @Entry var miniPlayerHeight: CGFloat = 0
-}
-
-extension View {
-    /// Room below a screen's content for the mini-player, so the last row
-    /// can scroll clear of it.
-    func miniPlayerClearance() -> some View { modifier(MiniPlayerClearance()) }
-}
-
-private struct MiniPlayerClearance: ViewModifier {
-    @Environment(\.miniPlayerHeight) private var height
-
-    func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: height).allowsHitTesting(false)
-        }
-    }
-}
-
 private struct NowPlayingBar: View {
     let player: TakePlayer
     let open: () -> Void

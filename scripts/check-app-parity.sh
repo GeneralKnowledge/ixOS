@@ -590,6 +590,27 @@ def rule_now_playing(app):
     return True, ""
 
 
+# A bar floating over a screen's content (a mini-player, an undo banner)
+# through ForgeUI's `forgeBar`, which gives every scroll view below it room,
+# pushed screens included. Hand-made versions measured the bar themselves
+# and padded each screen with clear space; Soundscape's hid an album's last
+# song and Commonplace's banner covered the last article
+# (docs/research/screen-space.md, 2026-11-21).
+def rule_floating_bars(app):
+    bad = []
+    for path in swift_sources(app):
+        lines = [l.split("//", 1)[0] for l in read(path).splitlines()]
+        for i, line in enumerate(lines):
+            near = " ".join(lines[i : i + 4])
+            if re.search(r"\.overlay\(alignment: \.(bottom|top)\)", line) and "onGeometryChange" in near:
+                bad.append(f"{path.name}:{i + 1}")
+            elif re.search(r"\.safeAreaInset\(", line) and "Color.clear" in near:
+                bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "floats a bar by hand; use ForgeUI's forgeBar: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -606,6 +627,7 @@ RULES = [
     ("toned-text", "Warning, success and error text in ForgeUI's tones, never raw orange, yellow, green or (for errors) red", rule_toned_text),
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
+    ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
