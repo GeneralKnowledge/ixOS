@@ -415,9 +415,8 @@ public final class ListenModel {
 
     public func playlist(_ id: UInt64) -> PlaylistDetail? { try? core.playlist(id: id) }
 
-    /// A new playlist, empty or with `tracks`.
-    @discardableResult
-    /// Throws when Rust refuses the name, so the name sheet can say why.
+    /// A new playlist, empty or with `tracks`. Throws when Rust refuses the
+    /// name, so the name sheet can say why.
     @discardableResult
     public func createPlaylist(_ name: String, with tracks: [String] = []) async throws -> PlaylistDetail {
         try await savePlaylists { try await self.core.createPlaylist(name: name, trackIds: tracks) }
