@@ -89,7 +89,14 @@ internal fun SettingsScreen(model: LibraryModel, onClose: () -> Unit) {
     val result by model.dataResult.collectAsState()
     var storage by remember { mutableStateOf<StorageInfo?>(null) }
     // What the library holds, read again whenever its books change or a data operation ends.
-    LaunchedEffect(all, working) { storage = runCatching { model.storageInfo() }.getOrNull() }
+    LaunchedEffect(all, working) {
+        storage = try {
+            model.storageInfo()
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            null
+        }
+    }
 
     fun work(block: suspend () -> ForgeAlert<Nothing>?) {
         model.runDataWork(::failureAlert, block)

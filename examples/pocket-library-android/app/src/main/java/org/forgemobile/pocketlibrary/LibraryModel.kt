@@ -213,18 +213,25 @@ class LibraryModel(
         run { it.deleteBook(id) }
     }
 
-    suspend fun updateSettings(settings: LibrarySettings) {
-        _settings.value = run { it.updateSettings(settings) }
+    /**
+     * Changes the saved settings. Rust replaces the whole record, so changes run one at a time,
+     * each starting from the settings the one before saved; two at once can't undo each other.
+     */
+    private suspend fun changeSettings(change: (LibrarySettings) -> LibrarySettings) {
+        changingSettings.withLock {
+            val settings = change(_settings.value)
+            _settings.value = run { it.updateSettings(settings) }
+        }
     }
 
     /** Settings' default order: saved in Rust, and the library list follows it straight away. */
     suspend fun setDefaultSort(sort: LibrarySort) {
-        updateSettings(_settings.value.copy(defaultSort = sort))
+        changeSettings { it.copy(defaultSort = sort) }
         setSort(sort)
     }
 
     /** Switches online search on or off (Settings' Online Catalogue). */
-    suspend fun setCatalogueEnabled(enabled: Boolean) = updateSettings(_settings.value.copy(catalogueEnabled = enabled))
+    suspend fun setCatalogueEnabled(enabled: Boolean) = changeSettings { it.copy(catalogueEnabled = enabled) }
 
     /**
      * Searches the online catalogue. Cancelling the calling coroutine (leaving the screen, or a
@@ -289,8 +296,8 @@ class LibraryModel(
     // Your data: backups, spreadsheets, erasing. Each is finishing work in Rust, so it
     // completes when the person leaves the app (the host holds background time).
 
-    /** How much the library holds, for Settings; null while it isn't open. */
-    fun storageInfo(): StorageInfo? = library?.storageInfo()
+    /** How much the library holds, for Settings; null while it isn't open. It counts files, so off the main thread. */
+    suspend fun storageInfo(): StorageInfo? = withContext(Dispatchers.IO) { library?.storageInfo() }
 
     /**
      * Writes a backup of the whole library (books, notes, history, settings, covers and EPUBs)
@@ -344,6 +351,7 @@ class LibraryModel(
 
     /** Reading-place saves, one at a time and in the order they were asked for. */
     private val savingPlace = Mutex()
+    private val changingSettings = Mutex()
 
     /**
      * Saves where the reader is: a block of the chapter loaded last, which Rust keeps as an
