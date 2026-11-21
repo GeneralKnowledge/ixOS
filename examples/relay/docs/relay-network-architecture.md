@@ -88,6 +88,7 @@ yet done.
 | Pairing | Word codes (SPAKE2), typed or scanned as a QR code | `code.rs`, `CodeQR.swift` |
 | Trust and revocation | A trusted-device list; revoked is refused for good until the person trusts again | `trust.rs` |
 | Authorisation | Separate rights per device, never implied by trust: "may send here" (`receives_from`), "may ask" (`may_ask`, #344) | `trust.rs` |
+| My Devices, step 1 | An introducer (#354): a device you mark "Introduces Devices" offers you the devices it trusts and revokes here what it revoked, saying so; it never trusts for you. Its own right, "Can See My Devices" (`sees_devices`), decides who may read the list ([design](relay-my-devices.md)) | `trust.rs`, `device.rs` |
 | Secure communication | iroh's encrypted, authenticated connections; one protocol (ALPN) per job: word codes, device messages, files | `node.rs`, `device.rs` |
 | Reliable exchange | One durable outbox for messages and files (#340): retried after an interruption, with stable ids the receiver uses to drop duplicates, in order per device, ending Done or Failed; files resumable and verified (iroh-blobs). Not exactly-once under every failure: duplicates are dropped by id, not prevented | `outbox.rs` |
 | Persistence | One SQLite database, changed in transactions (#347) | `store.rs` |
@@ -205,7 +206,7 @@ them. The stages after them are named N1 to N9 so they don't collide.
 | Stage | Focus | Purpose |
 |---|---|---|
 | M1, M2 | Reliable Trusted-Device Delivery, Personal Device Network | As defined; with #353 and the 1.0 acceptance run, the proven device foundation ([audit, step 5](relay-audit-2026-11.md)) |
-| N1 | My Devices | A person's identity across devices; trust and revoke once |
+| N1 | My Devices | A person's identity across devices; trust and revoke once. Step 1, the introducer, is on main; next is a signed device list |
 | N2 | Away from home | Secure communication beyond the home network, without manual networking |
 | N3 | The encrypted mailbox | Somewhere things wait while a device is away: its own security, retention and availability questions ([review, refinement 3](relay-review-2026-11.md)) |
 | N4 | One messaging security model | The chat server path on Relay's identities and encryption |
