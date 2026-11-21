@@ -21,13 +21,22 @@ struct DiscoverView: View {
     }
 
     @AppStorage("discover.source") private var source: Source = .jamendo
-    @State private var search = ""
+    @State private var search: String
     @State private var results: [CatalogueTrack] = []
     @State private var items: [ArchiveItem] = []
     @State private var problem: String?
     @State private var searching = false
     @State private var editingClientId = false
     @State private var attempt = 0
+    @State private var opened = false
+
+    /// Opens on `search` when given (More in Discover, from the library's
+    /// search), else on the source's popular list.
+    init(model: ListenModel, player: TakePlayer, search: String = "") {
+        self.model = model
+        self.player = player
+        _search = State(initialValue: search)
+    }
 
     private var query: String { search.trimmingCharacters(in: .whitespaces) }
     private var needsClientId: Bool { source == .jamendo && model.jamendoClientId == nil }
@@ -41,6 +50,13 @@ struct DiscoverView: View {
                 list
             }
         }
+        .onAppear {
+            // A search carried over from the library opens where it can
+            // run: without a Jamendo client ID, that is the Archive. Only on
+            // opening, so coming back from an album keeps the person's pick.
+            if !opened && !query.isEmpty && needsClientId { source = .archive }
+            opened = true
+        }
         .safeAreaInset(edge: .top) {
             Picker("Source", selection: $source) {
                 ForEach(Source.allCases) { Text($0.rawValue).tag($0) }
@@ -51,7 +67,6 @@ struct DiscoverView: View {
             .background(.bar)
             .accessibilityIdentifier("discover.source")
         }
-        .miniPlayerClearance()
         .navigationTitle("Discover")
         .toolbar {
             if model.jamendoClientId != nil {
@@ -242,7 +257,6 @@ struct ArchiveItemView: View {
                 }
             }
         }
-        .miniPlayerClearance()
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: attempt) {

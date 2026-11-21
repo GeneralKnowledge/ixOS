@@ -40,7 +40,7 @@ class ThemeScreenshotTest {
     fun openWithBooks() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val app = context.applicationContext as PocketLibraryApplication
-        InstrumentationRegistry.getInstrumentation().runOnMainSync { app.launch(temporary = true) }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { app.launch(PocketLibraryApplication.TestData(temporary = true)) }
         model = app.model
         withTimeout(20_000) { model.opening.first { it is ForgeLoad.Loaded } }
         for ((title, author) in listOf(

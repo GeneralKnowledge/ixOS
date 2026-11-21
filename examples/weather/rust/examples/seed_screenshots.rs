@@ -245,6 +245,8 @@ fn report(seed: &Seed, fetched_at: i64) -> WeatherReport {
                 precipitation_probability_pct: Some(if wet { 70 } else { 5 }),
                 condition,
                 wind_gusts_kmh: Some(seed.gusts_kmh - (h % 5) as f64),
+                pressure_msl_hpa: Some(1015.0 - h as f64 * 0.2),
+                uv_index: Some(if wet { 0.0 } else { 1.0 }),
             }
         })
         .collect();

@@ -748,20 +748,26 @@ impl RelayCore {
         use iroh::Watcher;
         let me = self.me.clone();
         let mut watcher = node.endpoint.watch_addr();
+        // Learned before anything is dialled, so the first delivery already
+        // knows which networks are this device's own.
+        let owner = node.endpoint.id().to_string();
+        let mut last: HashSet<std::net::SocketAddr> = watcher.get().ip_addrs().copied().collect();
+        crate::resolver::learn_own_addresses(&owner, last.iter());
         code::TOKIO.spawn(async move {
-            let mut last: HashSet<std::net::SocketAddr> =
-                watcher.get().ip_addrs().copied().collect();
             while watcher.updated().await.is_ok() {
                 let now: HashSet<std::net::SocketAddr> =
                     watcher.get().ip_addrs().copied().collect();
                 if now == last {
                     continue;
                 }
+                crate::resolver::learn_own_addresses(&owner, now.iter());
                 last = now;
                 let Some(core) = me.upgrade() else { break };
                 forge_runtime::logging::info!("relay: the network changed; retrying what waits");
                 core.retry_now();
             }
+            // The endpoint closed: its networks no longer count as local.
+            crate::resolver::forget_own_addresses(&owner);
         });
     }
 

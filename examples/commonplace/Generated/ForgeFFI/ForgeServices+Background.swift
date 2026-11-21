@@ -83,7 +83,7 @@ public final class ForgeBackgroundScheduler: BackgroundScheduler, @unchecked Sen
                         task.setTaskCompleted(success: false)
                     }
                     if !ok {
-                        print("[forge] background task \(identifier) could not be registered")
+                        forgeServicesWarn("background task \(identifier) could not be registered")
                     }
                 }
             }

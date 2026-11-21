@@ -318,7 +318,7 @@ dependencies = [
 
 [[package]]
 name = "forge-app"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "forge-runtime",
  "forge-storage",
@@ -754,6 +754,7 @@ version = "0.1.0"
 dependencies = [
  "forge-runtime",
  "pocket-library-core",
+ "uniffi",
 ]
 
 [[package]]

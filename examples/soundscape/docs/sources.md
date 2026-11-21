@@ -165,6 +165,21 @@ title and artist (`/ws/2/recording`, JSON, no key) and lists what MusicBrainz kn
 - **In `rust/src/musicbrainz.rs`**, tested in `rust/tests/musicbrainz.rs` against canned answers and the real
   answer from that check (`rust/tests/data/`).
 
+## One search for everything, as built
+
+The library's search box searches everywhere. Your own music answers at once, on the phone. Half a second after
+typing pauses, Jamendo and the Internet Archive are asked together (`search_catalogues`, each on its own thread),
+and their results appear below under **From Jamendo** and **From the Internet Archive**, at most 8 each, with
+**More in Discover** for the rest.
+
+- **Library first.** A Jamendo track already in the library is left out of Jamendo's section: the library's row
+  has the person's edits and any download.
+- **Each source answers for itself.** A source that fails or isn't set up (no Jamendo client ID) says why in its
+  own section, and never hides the other's results.
+- **Typing doesn't flood the catalogues.** Each change of the search cancels the previous one, and nothing is
+  asked for an empty search (the catalogues' popular lists belong to Discover).
+- **In `rust/src/search.rs`**, tested in `rust/tests/search.rs`.
+
 ## Order of work
 
 1. ~~The track resolver~~ (the library is the lookup; above) and Jamendo: built.

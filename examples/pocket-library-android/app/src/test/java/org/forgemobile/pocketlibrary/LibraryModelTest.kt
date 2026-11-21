@@ -20,7 +20,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import uniffi.forge_app.AppPhase
-import uniffi.pocket_library_core.PocketLibrary
+import uniffi.pocket_library_core.LibrarySort
+import uniffi.pocket_library_core.ReadingStatus
+import java.io.File
+import org.junit.Assert.assertNull
 import uniffi.pocket_library_core.LibraryException
 
 /**
@@ -33,12 +36,13 @@ class LibraryModelTest {
     private lateinit var env: ForgeEnvironment
     private lateinit var host: ForgeHost<LibraryCore>
     private lateinit var model: LibraryModel
+    private val opener = LibraryOpener()
 
     @Before
     fun open() = runBlocking {
         env = ForgeEnvironment.temporary(root)
         host = newHost()
-        model = LibraryModel(host, scope)
+        model = LibraryModel(host, scope, opener)
         host.start()
         assertEquals(ForgeHost.Status.Ready, host.status.value)
     }
@@ -53,7 +57,7 @@ class LibraryModelTest {
     private fun newHost() = ForgeHost(
         scope = scope,
         environment = { env },
-        open = { LibraryCore(PocketLibrary(it.dataDirectory)) },
+        open = opener::open,
     )
 
     private fun input(title: String, author: String) = LibraryModel.emptyInput().copy(title = title, author = author)
@@ -119,17 +123,115 @@ class LibraryModelTest {
         assertEquals(ForgeLoad.Loaded(Unit), LibraryModel.openingState(ForgeHost.Status.Ready))
     }
 
-    @Test
-    fun booksAreSavedAcrossLaunches() = runBlocking {
-        model.add(input("Piranesi", "Susanna Clarke"))
-        awaitBooks { it.size == 1 }
+    private suspend fun relaunch() {
         host.report(AppPhase.BACKGROUND)
         host.close()
-
         host = newHost()
-        model = LibraryModel(host, scope)
+        model = LibraryModel(host, scope, opener)
         host.start()
         assertEquals(ForgeHost.Status.Ready, host.status.value)
-        assertEquals(listOf("Piranesi"), awaitBooks { it.isNotEmpty() }.map { it.title })
+    }
+
+    /** PL-1 and PL-2: a page on an unread book starts it, and books and progress survive a relaunch. */
+    @Test
+    fun pl1_pl2_progressStartsABookAndSurvivesARelaunch() = runBlocking {
+        val book = model.add(LibraryModel.emptyInput().copy(title = "Dune", totalPages = 400u))
+        assertEquals(ReadingStatus.WANT_TO_READ, book.status)
+
+        val read = model.updateProgress(book.id, 100u)
+        assertEquals(ReadingStatus.READING, read.status)
+        assertEquals(0.25, read.progress, 0.0001)
+        assertEquals("Page 100 of 400", LibraryModel.pageSummary(read))
+
+        relaunch()
+        val after = awaitBooks { it.isNotEmpty() }.single()
+        assertEquals("Dune", after.title)
+        assertEquals(100u, after.currentPage)
+        assertEquals(ReadingStatus.READING, after.status)
+    }
+
+    /** PL-3: search, the status filter and the sort order come from Rust. */
+    @Test
+    fun pl3_searchFilterAndSortChangeWhichBooksShow() = runBlocking {
+        val emma = model.add(input("Emma", "Jane Austen"))
+        val dune = model.add(input("Dune", "Frank Herbert"))
+        model.setStatus(dune.id, ReadingStatus.FINISHED)
+        assertEquals(listOf(dune.id, emma.id), model.books.value.map { it.id })
+
+        model.setSort(LibrarySort.TITLE)
+        assertEquals(listOf("Dune", "Emma"), model.books.value.map { it.title })
+
+        model.setSearchText("austen")
+        assertEquals(listOf("Emma"), model.books.value.map { it.title })
+        model.setSearchText("")
+
+        model.setStatusFilter(ReadingStatus.FINISHED)
+        assertEquals(listOf("Dune"), model.books.value.map { it.title })
+        // A book's screen still finds a book the list doesn't show.
+        assertEquals("Emma", model.book(emma.id)?.title)
+        assertEquals(2, model.all.value.size)
+    }
+
+    /** PL-6: a change made elsewhere (straight to the core here) reaches the library. */
+    @Test
+    fun pl6_aChangeMadeElsewhereReachesTheLibrary() = runBlocking {
+        val book = model.add(input("Emma", "Jane Austen"))
+        model.setStatusFilter(ReadingStatus.FINISHED)
+        assertTrue(model.books.value.isEmpty())
+
+        host.core!!.library.setStatus(book.id, ReadingStatus.FINISHED)
+        assertEquals(listOf(book.id), awaitBooks { it.isNotEmpty() }.map { it.id })
+    }
+
+    /** PL-5: an unreadable library can be started fresh, and the unreadable file is kept. */
+    @Test
+    fun pl5_anUnreadableLibraryCanBeStartedFreshAndIsKept() = runBlocking {
+        host.close()
+        val data = File(env.dataDirectory)
+        File(data, "library.json").writeText("not a library")
+
+        host = newHost()
+        model = LibraryModel(host, scope, opener)
+        host.start()
+        val failed = host.status.value
+        assertTrue("expected a failure, got $failed", failed is ForgeHost.Status.Failed)
+        assertTrue(LibraryModel.canStartFresh(failed))
+        assertTrue(withTimeout(5_000) { model.canStartFresh.first { it } })
+
+        model.startFresh().join()
+        assertEquals(ForgeHost.Status.Ready, host.status.value)
+        assertFalse(opener.fresh)
+        assertTrue(model.books.value.isEmpty())
+        val kept = data.listFiles()!!.filter { it.name.startsWith("library.unreadable-") }
+        assertEquals(1, kept.size)
+        assertEquals("not a library", kept.single().readText())
+    }
+
+    @Test
+    fun aLibraryFromANewerAppOrOpenElsewhereIsNeverStartedFresh() {
+        assertFalse(LibraryModel.canStartFresh(ForgeHost.Status.Failed("x", LibraryException.InUse("held"))))
+        assertFalse(LibraryModel.canStartFresh(ForgeHost.Status.Failed("x", LibraryException.NewerLibrary(9u, 1u))))
+        assertFalse(LibraryModel.canStartFresh(ForgeHost.Status.Failed("x", IllegalStateException())))
+        assertFalse(LibraryModel.canStartFresh(ForgeHost.Status.Ready))
+    }
+
+    /** The edit form starts from the book and saves the same book back. */
+    @Test
+    fun theEditFormRoundTripsABook() = runBlocking {
+        val book = model.add(
+            LibraryModel.emptyInput().copy(
+                title = "Piranesi", author = "Susanna Clarke", totalPages = 272u, rating = 4u,
+                notes = "The House", description = "A labyrinth", coverUrl = "https://example.com/c.jpg",
+            ),
+        )
+        val text = org.forgemobile.pocketlibrary.ui.BookFormText.from(book)
+        assertEquals("", text.currentPage)
+        assertEquals(book.title, text.input().title)
+        val edited = model.update(book.id, text.copy(author = "S. Clarke", rating = null).input())
+        assertEquals("S. Clarke", edited.author)
+        assertNull(edited.rating)
+        assertEquals("The House", edited.notes)
+        assertEquals("https://example.com/c.jpg", edited.coverUrl)
+        assertEquals("Piranesi by S. Clarke is on my reading list.", LibraryModel.shareText(edited))
     }
 }

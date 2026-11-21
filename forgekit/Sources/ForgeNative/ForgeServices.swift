@@ -9,6 +9,29 @@
 
 import Foundation
 
+#if canImport(os)
+import os
+
+/// The adapters' own warnings go to the system log, so they show in
+/// `forge device logs` and crash reports. (Apps log through `ForgeLog`,
+/// which not every app exports, so the adapters can't rely on it.)
+private let forgeServicesLog = Logger(subsystem: "org.forgemobile.forge", category: "services")
+#endif
+
+/// Logs a warning from a native service adapter. Never pass user content.
+func forgeServicesWarn(_ message: String) {
+    #if canImport(os)
+    forgeServicesLog.warning("\(message, privacy: .public)")
+    #endif
+}
+
+/// Logs a notice from a native service adapter. Never pass user content.
+func forgeServicesNote(_ message: String) {
+    #if canImport(os)
+    forgeServicesLog.notice("\(message, privacy: .public)")
+    #endif
+}
+
 /// The services-interface version these adapters implement. Must equal
 /// `nativeServicesVersion()` from the Rust side (forge_services::VERSION).
 /// Both now ship together (the forge-native crate at the ixOS commit of this
@@ -36,8 +59,8 @@ public enum ForgeServices {
     ) -> Bool {
         let rustVersion = nativeServicesVersion()
         guard rustVersion == forgeServicesSwiftVersion else {
-            print(
-                "[forge] native services not installed: the Rust crate has services interface v\(rustVersion), "
+            forgeServicesWarn(
+                "native services not installed: the Rust crate has services interface v\(rustVersion), "
                     + "the Swift adapters v\(forgeServicesSwiftVersion). Rebuild with the same Forge checkout "
                     + "(pin forge-native to the ixOS commit of this ForgeKit release).")
             return false
@@ -50,14 +73,14 @@ public enum ForgeServices {
                 notifier: ForgeNotifications.makeNotifier(),
                 permissions: ForgePermissions.shared)
         } catch {
-            print("[forge] native services not installed: \(error)")
+            forgeServicesWarn("native services not installed: \(error)")
             return false
         }
         for service in optional {
             do {
                 try service.install()
             } catch {
-                print("[forge] native service \(service.name) not installed: \(error)")
+                forgeServicesWarn("native service \(service.name) not installed: \(error)")
             }
         }
         return true

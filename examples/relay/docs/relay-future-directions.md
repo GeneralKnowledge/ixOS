@@ -4,6 +4,9 @@ Status: ideas from Reuben, 2026-11-17, recorded so they aren't lost. These
 are not commitments, and none of them is built until he says so. The
 current milestone is [Relay M1: Reliable Trusted-Device Delivery](relay-reliable-delivery.md).
 
+These ideas are now organised around one network in
+[relay-network-architecture.md](relay-network-architecture.md) (2026-11-21).
+
 Every direction here is a hypothesis, not a commitment: Relay has no
 fixed final product category
 ([open-ended design principles](relay-open-ended-design-principles.md)).

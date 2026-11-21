@@ -1,5 +1,8 @@
 # Relay Foundational Computing Study (research plan, parked)
 
+How this fits the rest of Relay: [relay-network-architecture.md](relay-network-architecture.md)
+(one secure communication layer; 2026-11-21).
+
 Status: proposed by Reuben, 2026-11-17 21:48. Recorded so it isn't lost.
 **Not started.** M1 comes first, then M2; the direction after M2 is
 decided once both are done (Reuben's choice, 21:48). This study sits one

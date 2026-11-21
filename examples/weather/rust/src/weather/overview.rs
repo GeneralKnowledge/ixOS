@@ -4,7 +4,8 @@
 //! host never re-derives forecast logic and the rules are tested here.
 
 use super::astro::moon_phase;
-use super::indices::{aqi_reading, hour_reading};
+use super::details::{details, shift_hours};
+use super::indices::{aqi_reading, hour_reading, scale_position};
 use super::types::{
     AirQualityDay, AirQualityOverview, AirQualityScale, Coordinate, DailyForecast, HourlyPoint,
     PollenGap, PollenOverview, PollenSpeciesNow, SectionState, SkyScene, SourceCredit,
@@ -79,6 +80,15 @@ pub fn weather_overview(
         moon: moon_phase(now_unix),
         daylight_minutes: today.as_ref().and_then(daylight_minutes),
         credits: credits(&report),
+        details: details(
+            &report,
+            now_unix,
+            &now,
+            &hours,
+            &days,
+            today.as_ref(),
+            units,
+        ),
         local_date,
         today,
         days,
@@ -121,6 +131,24 @@ fn air_quality(
         .filter(|h| h.time.get(..13) == current_hour.get(..13))
         .map(|h| (*h).clone());
     let index = now.as_ref().and_then(|h| hour_reading(h, scale));
+    // The same hour yesterday (the source sends the day before too).
+    let yesterday = shift_hours(current_hour, -24).and_then(|t| {
+        section
+            .hours
+            .iter()
+            .find(|h| h.time.get(..13) == t.get(..13))
+            .and_then(|h| hour_reading(h, scale))
+    });
+    let comparison = index.as_ref().zip(yesterday).map(|(now, then)| {
+        let (a, b) = (i32::from(now.value), i32::from(then.value));
+        if (a - b).abs() <= (b / 10).max(3) {
+            "Similar to yesterday at this time.".to_string()
+        } else if a > b {
+            format!("Up from {b} yesterday at this time.")
+        } else {
+            format!("Down from {b} yesterday at this time.")
+        }
+    });
     let mut days: Vec<AirQualityDay> = Vec::new();
     for hour in section
         .hours
@@ -146,6 +174,8 @@ fn air_quality(
     AirQualityOverview {
         state: past_end(&section.state, ahead.is_empty()),
         source: section.source.clone(),
+        scale_position: index.as_ref().map(|i| scale_position(i.value, scale)),
+        comparison,
         index,
         now,
         days,
@@ -167,7 +197,9 @@ fn pollen(report: &WeatherReport, current_hour: &str, local_date: &str) -> Polle
         .filter(|h| h.time.get(..13) == current_hour.get(..13))
     {
         for reading in &first.readings {
-            let today_max = ahead
+            // The whole day, so a species that peaked this morning stays.
+            let today_max = section
+                .hours
                 .iter()
                 .filter(|h| h.time.starts_with(local_date))
                 .flat_map(|h| &h.readings)
@@ -185,12 +217,25 @@ fn pollen(report: &WeatherReport, current_hour: &str, local_date: &str) -> Polle
         b.today_max_grains_per_m3
             .total_cmp(&a.today_max_grains_per_m3)
     });
+    let had_reading = !species.is_empty();
+    // Below half a grain rounds to nothing: not worth a row.
+    species.retain(|s| s.today_max_grains_per_m3 >= 0.5);
+    let summary = match species.first() {
+        Some(top) => format!(
+            "{} is highest today, up to {} grains per cubic metre.",
+            pollen_name(top.species),
+            top.today_max_grains_per_m3.round()
+        ),
+        None if had_reading => "No pollen in the air right now.".into(),
+        None => String::new(),
+    };
     let state = past_end(&section.state, ahead.is_empty());
     PollenOverview {
         gap: (state == SectionState::NotAvailableHere).then(|| pollen_gap(report.place.coordinate)),
         state,
         source: section.source.clone(),
         species,
+        summary,
         covers_until: ahead.last().map(|h| h.time.clone()),
     }
 }
@@ -204,6 +249,18 @@ fn pollen_gap(c: Coordinate) -> PollenGap {
         PollenGap::NothingForecastNow
     } else {
         PollenGap::OutsideModelArea
+    }
+}
+
+fn pollen_name(species: crate::weather::types::PollenSpecies) -> &'static str {
+    use crate::weather::types::PollenSpecies::*;
+    match species {
+        Alder => "Alder",
+        Birch => "Birch",
+        Grass => "Grass",
+        Mugwort => "Mugwort",
+        Olive => "Olive",
+        Ragweed => "Ragweed",
     }
 }
 
@@ -464,7 +521,7 @@ pub(crate) fn local_time(unix: i64, utc_offset_seconds: i32) -> String {
 mod tests {
     use super::*;
     use crate::weather::sources::open_meteo::decode_forecast;
-    use crate::weather::types::{Coordinate, Intensity, Place, PlaceSource};
+    use crate::weather::types::{AirQualityScale, Coordinate, Intensity, Place, PlaceSource};
 
     const FORECAST: &str = include_str!("fixtures/forecast_paris.json");
     /// 2026-11-04T20:30 in Paris (UTC+1).
@@ -495,6 +552,8 @@ mod tests {
             condition,
             is_day: true,
             wind_gusts_kmh: None,
+            pressure_msl_hpa: None,
+            uv_index: None,
         }
     }
 
@@ -726,6 +785,73 @@ mod tests {
         let us = crate::default_units(Some("US".into()));
         let o = weather_overview(with_sections(), PARIS_EVENING, us);
         assert_eq!(o.air_quality.index.unwrap().label, "Good");
+    }
+
+    #[test]
+    fn air_quality_has_a_marker_and_compares_with_yesterday() {
+        let eu = crate::default_units(Some("FR".into()));
+        let mut r = with_sections();
+        let o = weather_overview(r.clone(), PARIS_EVENING, eu);
+        // 25 is a quarter of the way into the second of six bands.
+        let p = o.air_quality.scale_position.unwrap();
+        assert!((p - (1.25 / 6.0)).abs() < 1e-9, "{p}");
+        assert_eq!(o.air_quality.comparison, None, "no reading from yesterday");
+        r.air_quality
+            .hours
+            .insert(0, air_hour("2026-11-03T20:00", 24, 40));
+        let o = weather_overview(r.clone(), PARIS_EVENING, eu);
+        assert_eq!(
+            o.air_quality.comparison.as_deref(),
+            Some("Similar to yesterday at this time.")
+        );
+        r.air_quality.hours[0] = air_hour("2026-11-03T20:00", 60, 40);
+        let o = weather_overview(r, PARIS_EVENING, eu);
+        assert_eq!(
+            o.air_quality.comparison.as_deref(),
+            Some("Down from 60 yesterday at this time.")
+        );
+        assert_eq!(
+            crate::weather::indices::scale_position(400, AirQualityScale::European),
+            1.0
+        );
+    }
+
+    #[test]
+    fn pollen_says_what_is_highest_or_that_there_is_none() {
+        let o = weather_overview(with_sections(), PARIS_EVENING, crate::default_units(None));
+        assert_eq!(
+            o.pollen.summary,
+            "Birch is highest today, up to 6 grains per cubic metre."
+        );
+        let mut r = with_sections();
+        for h in &mut r.pollen.hours {
+            for reading in &mut h.readings {
+                reading.grains_per_m3 = 0.0;
+            }
+        }
+        let o = weather_overview(r, PARIS_EVENING, crate::default_units(None));
+        assert!(o.pollen.species.is_empty(), "no rows of zeros");
+        assert_eq!(o.pollen.summary, "No pollen in the air right now.");
+        assert_eq!(o.pollen.state, SectionState::Live);
+    }
+
+    #[test]
+    fn detail_cards_from_a_live_report() {
+        let uk = crate::default_units(Some("GB".into()));
+        let o = weather_overview(report(), PARIS_EVENING, uk);
+        let d = &o.details;
+        assert!(d.feels_like.is_some());
+        let wind = d.wind.as_ref().unwrap();
+        assert!(wind.direction.as_ref().unwrap().contains('°'));
+        assert!(wind.note.contains("mph"), "{}", wind.note);
+        let pressure = d.pressure.as_ref().unwrap();
+        // The fixture falls 0.1 hPa an hour: steady over three hours.
+        assert_eq!(pressure.trend, Some(crate::PressureTrend::Steady));
+        assert!(d.visibility.is_some());
+        let sun = d.sun.as_ref().unwrap();
+        assert!(!sun.next_is_sunset, "20:30 in November is after sunset");
+        assert_eq!(sun.progress, None);
+        assert!(d.moon.note.contains("full moon") || d.moon.note.contains("Full moon"));
     }
 
     #[test]

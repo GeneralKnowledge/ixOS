@@ -93,6 +93,8 @@ fun <V> ForgeLoadView(
     failureTag: String = "load.failure",
     /** Test tag of Try Again, which the caller names, as on iOS (`open.retry`). */
     retryTag: String = "load.retry",
+    /** More ways out of a failure, below Try Again (Pocket Library's Start Fresh). */
+    failureActions: @Composable () -> Unit = {},
     content: @Composable (V) -> Unit,
 ) {
     when (load) {
@@ -117,6 +119,7 @@ fun <V> ForgeLoadView(
                 if (load.failure.isRetryable) {
                     Button(onClick = onRetry, modifier = Modifier.testTag(retryTag)) { Text("Try Again") }
                 }
+                failureActions()
             }
         }
         ForgeLoad.Idle, ForgeLoad.Loading -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

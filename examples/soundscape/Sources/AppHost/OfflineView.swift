@@ -138,7 +138,6 @@ struct DownloadsView: View {
                 }
             }
         }
-        .miniPlayerClearance()
         .navigationTitle("Downloaded")
         .navigationDestination(item: $details) { id in
             TrackView(model: model, player: player, id: id)
