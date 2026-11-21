@@ -42,6 +42,7 @@ Each of these moves every app that has it in the same PR (rule 12), with a parit
 - Pocket Library does the same inline in Settings.
 - Three of them define the same `ExportedFile`/`ExportFile` identifiable wrapper.
 - **Proposal:** `.forgeShareFile($file)` in ForgeAppKit takes an export that may fail (through `ForgeSubmission`) and shows the system share sheet with the file once it's ready. The extra "your file is ready" step goes.
+- *Built as `forgeShareFile($url)` in ForgeUI (Checklist has no ForgeAppKit; each app already reports a failed export its own way). Checklist, FieldKit, Commonplace and Pocket Library moved, with the `share-file` parity rule. Sketchbook keeps its export screen, which also offers Save to Photos and Quick Look.*
 
 **2. Rename (4 apps, 5 places).**
 - An alert with a text field can't show why a name was refused, so a bad name fails after the alert has closed.

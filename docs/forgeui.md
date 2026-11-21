@@ -312,6 +312,25 @@ To rename something (a trip, a playlist, this device), or name a new one (a fold
 
 The `rename` [parity rule](app-parity.md) catches a hand-built prompt: an `.alert` about a name with a `TextField` in it, or an app's own `…NameSheet`/`…RenameSheet`.
 
+### Sharing a file the app wrote
+
+When the person exports something (a trip as GPX, a checklist as a spreadsheet, a backup), show the system share sheet as soon as the file is written, with `forgeShareFile`. AirDrop, Save to Files, Mail and Messages are all in it, so it is also how a file is saved.
+
+```swift
+@State private var exported: URL?
+
+Button("Export Subscriptions") { Task { exported = await model.exportSubscriptions() } }
+    ...
+    .forgeShareFile($exported)
+```
+
+- Set the binding only once the file is written; the sheet sets it back to nil when it closes. Show a failed export as any failed action.
+- There is no "your file is ready" sheet or "Share Backup" row in between: the person asked for the export, so the share sheet is what they see next.
+- A `ShareLink` stays right for something already there: a link, a book's details, a log on screen.
+- A model alert on the same screen is held back while the share sheet is up (the `alerts-over-sheets` rule counts it as a sheet).
+
+The `share-file` [parity rule](app-parity.md) catches a `ShareLink` on a written file (`file.url`, `exportURL`).
+
 ### Visual language
 
 ForgeUI keeps the ixOS apps a recognisable family without making them identical:

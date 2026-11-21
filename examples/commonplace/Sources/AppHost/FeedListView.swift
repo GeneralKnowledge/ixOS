@@ -18,7 +18,7 @@ struct FeedListView: View {
     @State private var choosingFile = false
     @State private var importDraft: OpmlDraft?
     @State private var importDone: OpmlImport?
-    @State private var exported: ExportedFile?
+    @State private var exported: URL?
     @State private var showingSettings = false
     @State private var query = ""
     @State private var results: [ArticleSummary] = []
@@ -81,9 +81,7 @@ struct FeedListView: View {
                         .accessibilityIdentifier("feeds.import")
                         Button("Export Subscriptions", systemImage: "square.and.arrow.up") {
                             Task {
-                                if let url = await model.exportSubscriptions() {
-                                    exported = ExportedFile(url: url)
-                                }
+                                exported = await model.exportSubscriptions()
                             }
                         }
                         .disabled(model.feeds.isEmpty)
@@ -127,9 +125,7 @@ struct FeedListView: View {
             .sheet(item: $importDraft) { draft in
                 ImportSubscriptionsView(model: model, draft: draft) { importDone = $0 }
             }
-            .sheet(item: $exported) { file in
-                ExportSubscriptionsView(file: file)
-            }
+            .forgeShareFile($exported)
             .alert(
                 "Subscriptions Imported",
                 isPresented: Binding(get: { importDone != nil }, set: { if !$0 { importDone = nil } })

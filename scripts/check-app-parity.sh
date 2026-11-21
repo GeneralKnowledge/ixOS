@@ -331,9 +331,11 @@ def sheet_alert_problems(text):
         for line in member:
             for m in re.finditer(r"\.(?:sheet|fullScreenCover)\(\s*(?:isPresented|item):\s*\$([\w.]+)", line):
                 sheets.add(m.group(1).split(".")[-1])
-        # forgeRename is a sheet too; its binding follows the title, often
-        # on a later line.
+        # forgeRename and forgeShareFile are sheets too; forgeRename's
+        # binding follows the title, often on a later line.
         for m in re.finditer(r"\.forgeRename\([^{]*?\b(?:isPresented|item):\s*\$([\w.]+)", "\n".join(member)):
+            sheets.add(m.group(1).split(".")[-1])
+        for m in re.finditer(r"\.forgeShareFile\(\s*\$([\w.]+)", "\n".join(member)):
             sheets.add(m.group(1).split(".")[-1])
         if not sheets:
             continue
@@ -840,6 +842,27 @@ def rule_rename(app):
     return True, ""
 
 
+# A file the app has just written (an export, a backup) goes to the system
+# share sheet with ForgeUI's forgeShareFile as soon as it is ready. Four
+# apps had their own "your file is ready" sheet or row with a ShareLink on
+# it, one tap more and each with its own words and identifiers (app UI
+# review, November 2026). A ShareLink for something already there (a link,
+# a book's details) is fine; a written file is a URL held in a variable.
+WRITTEN_FILE_SHARE = re.compile(r"\bShareLink\(\s*item:\s*(\w+\.url|\w*URL)\b")
+
+
+def rule_share_file(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in WRITTEN_FILE_SHARE.finditer(code):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "shares a written file from its own sheet or row; use ForgeUI's forgeShareFile: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -859,6 +882,7 @@ RULES = [
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
+    ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),

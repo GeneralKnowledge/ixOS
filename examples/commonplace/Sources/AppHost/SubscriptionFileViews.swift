@@ -158,38 +158,6 @@ struct ImportSubscriptionsView: View {
     }
 }
 
-/// The exported subscription list, ready to share or save to Files.
-struct ExportSubscriptionsView: View {
-    let file: ExportedFile
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Image(systemName: "list.bullet.rectangle")
-                    .font(.largeTitle)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                Text("Your subscriptions, folders and filters are ready as an OPML file, which other feed readers can import.")
-                    .multilineTextAlignment(.center)
-                ShareLink(item: file.url) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.forgePrimary)
-                .accessibilityIdentifier("export.share")
-            }
-            .padding()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                        .accessibilityIdentifier("export.done")
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-}
-
 /// The feeds of one folder path in an import preview.
 private struct FeedGroup: Identifiable {
     let name: String
@@ -197,8 +165,3 @@ private struct FeedGroup: Identifiable {
     var id: String { name }
 }
 
-/// A written file, for `.sheet(item:)`.
-struct ExportedFile: Identifiable {
-    let url: URL
-    var id: String { url.absoluteString }
-}
