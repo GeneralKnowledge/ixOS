@@ -62,7 +62,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use forge_services::ai::{ChatMessage, ChatRequest, Collect, LanguageModel};
@@ -296,14 +296,15 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             }
             out += match health {
                 ServerHealth::Off if core.connection_mode() == ConnectionMode::Hybrid => {
-                    "Relay's servers: none set\n"
+                    "Relay's servers: no relay set\n"
                 }
                 ServerHealth::Off => "Relay's servers: never used in this mode\n",
                 ServerHealth::Connecting => "Relay's servers: still connecting\n",
                 ServerHealth::Reachable => "Relay's servers: the relay answers\n",
                 ServerHealth::Unreachable => "Relay's servers: the relay can't be reached\n",
             };
-            if health != ServerHealth::Off && s.lookup_url.is_some() {
+            // The lookup server is used in Everywhere, relay or not.
+            if core.connection_mode() == ConnectionMode::Hybrid && s.lookup_url.is_some() {
                 let published = if s.relay_url.is_some() {
                     "the relay's address"
                 } else {
@@ -989,10 +990,26 @@ fn find_device_addresses(endpoint_id: &str) -> Result<Vec<String>, String> {
     Ok(found)
 }
 
+/// Held by the terminal whose word-code send or receive is running.
+static SEND_OWNER: Mutex<()> = Mutex::new(());
+static RECEIVE_OWNER: Mutex<()> = Mutex::new(());
+
+/// Takes `owner` unless another terminal holds it.
+fn own(owner: &Mutex<()>) -> Option<std::sync::MutexGuard<'_, ()>> {
+    match owner.try_lock() {
+        Ok(guard) => Some(guard),
+        Err(std::sync::TryLockError::Poisoned(p)) => Some(p.into_inner()),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+    }
+}
+
 /// Sends `paths` with a word code: advertises the code with mDNS while it
 /// is open, tells the core which numbers other senders nearby use, and
 /// prints what happens until the receiver has everything.
 fn send_code(core: &Arc<RelayCore>, paths: &[String], io: &dyn Io) -> Result<(), String> {
+    // One terminal owns the send from start to end, so its status and a
+    // cancel when it closes are never another terminal's send.
+    let _owner = own(&SEND_OWNER).ok_or("already sending")?;
     core.send_paths_with_code(paths.to_vec())
         .map_err(|e| e.to_string())?;
     let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
@@ -1155,6 +1172,8 @@ fn watch_senders(core: Arc<RelayCore>, done: Arc<AtomicBool>) -> std::thread::Jo
 /// receives from it. Two senders with that number is an error, never a
 /// guess.
 fn receive_code(core: &Arc<RelayCore>, code: &str, io: &dyn Io) -> Result<(), String> {
+    // As with sends: a refused receive never cancels the running one.
+    let _owner = own(&RECEIVE_OWNER).ok_or("already receiving")?;
     let number = word_code_number(code.to_string()).map_err(|e| e.to_string())?;
     let (id, addresses) = find_sender(number)?;
     let receiving = {
