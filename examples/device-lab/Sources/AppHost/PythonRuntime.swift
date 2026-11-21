@@ -1,3 +1,4 @@
+@preconcurrency import ForgeFFI
 import Foundation
 #if canImport(PythonBridge)
 import PythonBridge
@@ -11,6 +12,10 @@ final class PythonRuntime: PythonRunning {
         let message: String
         var errorDescription: String? { message }
     }
+
+    /// One interpreter for the app: Python Lab and Bonsai Harness share it,
+    /// so their scripts take turns on `queue`.
+    static let shared = PythonRuntime()
 
     private let queue = DispatchQueue(label: "org.forgemobile.devicelab.python")
 
@@ -55,10 +60,49 @@ final class PythonRuntime: PythonRunning {
 }
 
 extension PythonLabModel {
-    static func live() -> PythonLabModel { PythonLabModel(runtime: PythonRuntime()) }
+    /// Scripts run in the harness's `scratch` project, so the images they
+    /// save show under Artifacts and Bonsai's own tasks see the same files.
+    static func live() -> PythonLabModel {
+        PythonLabModel(
+            runtime: PythonRuntime.shared,
+            projectFolder: PythonLabProjects.folder.appendingPathComponent("scratch").path)
+    }
+}
+
+/// Where Python Lab's projects live (Bonsai Harness's too).
+enum PythonLabProjects {
+    static let folder = URL.applicationSupportDirectory
+        .appendingPathComponent("Python Lab/Projects", isDirectory: true)
+}
+
+/// Bonsai Harness runs its wrapper scripts through the same interpreter
+/// (rust/src/harness/python_lab.rs writes them).
+extension PythonRuntime: PythonHost {
+    func run(code: String) async throws -> PythonOutcome {
+        do {
+            _ = try await start()
+        } catch {
+            throw PythonHostError.Unavailable(reason: error.localizedDescription)
+        }
+        let result = await run(code)
+        return PythonOutcome(ok: result.ok, output: result.output)
+    }
+}
+
+extension BonsaiHarnessModel {
+    static func live() -> BonsaiHarnessModel {
+        let projects = PythonLabProjects.folder
+        try? FileManager.default.createDirectory(at: projects, withIntermediateDirectories: true)
+        return BonsaiHarnessModel(
+            harness: BonsaiHarness(python: PythonRuntime.shared, projectsFolder: projects.path))
+    }
 }
 #else
 extension PythonLabModel {
     static func live() -> PythonLabModel { PythonLabModel(runtime: nil) }
+}
+
+extension BonsaiHarnessModel {
+    static func live() -> BonsaiHarnessModel { BonsaiHarnessModel(harness: nil) }
 }
 #endif
