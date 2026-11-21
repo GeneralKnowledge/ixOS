@@ -427,6 +427,7 @@ impl ChatCore {
         files: Vec<ChatOutgoingFile>,
     ) -> Result<ChatMessage, ChatError> {
         if let Some(endpoint_id) = crate::device_chat::conversation_device(&conversation_id) {
+            self.ensure_running()?;
             let endpoint_id = endpoint_id.to_string();
             return self
                 .send_files_to_device(conversation_id, endpoint_id, body, reply_to, files)
@@ -457,6 +458,15 @@ impl ChatCore {
         files: Vec<ChatOutgoingFile>,
     ) -> Result<ChatMessage, ChatError> {
         let relay = self.relay().ok_or(ChatError::NotSignedIn)?;
+        // All or none: the limit is checked before the first one goes.
+        if files.len() > chat_core::MAX_ATTACHMENTS_PER_MESSAGE {
+            return Err(ChatError::InvalidInput {
+                reason: format!(
+                    "at most {} files at a time",
+                    chat_core::MAX_ATTACHMENTS_PER_MESSAGE
+                ),
+            });
+        }
         for file in files {
             // Under the name the person sees: Relay names an item after its
             // file, and a picked photo waits under a temporary one.
@@ -467,29 +477,31 @@ impl ChatCore {
                 .as_ref()
                 .map(|(_, path)| path.clone())
                 .unwrap_or_else(|| std::path::PathBuf::from(&file.path));
-            let sent = relay
+            // The staged copy stays in the temporary folder (the system
+            // clears it): when Relay couldn't keep its own copy, the
+            // conversation opens the file from there.
+            relay
                 .send_to_device(
                     endpoint_id.clone(),
                     vec![path.to_string_lossy().into_owned()],
                 )
-                .await;
-            if let Some((dir, _)) = staged {
-                let _ = std::fs::remove_dir_all(dir);
-            }
-            sent.map_err(crate::device_chat::chat_error)?;
+                .await
+                .map_err(crate::device_chat::chat_error)?;
         }
         if !body.is_empty() {
             return self.send_reply(conversation_id, body, reply_to).await;
         }
-        Ok(types::message(
-            chat_core::Message {
-                conversation_id,
-                author_id: crate::device_chat::ME.into(),
-                status: chat_core::MessageStatus::Queued,
-                ..chat_core::Message::default()
-            },
-            crate::device_chat::ME,
-        ))
+        // The last file's message, as the conversation keeps it.
+        let sent = relay
+            .device_messages(&endpoint_id)
+            .map_err(crate::device_chat::chat_error)?
+            .into_iter()
+            .rev()
+            .find(|m| m.author_id == crate::device_chat::ME && !m.attachments.is_empty())
+            .ok_or_else(|| ChatError::Internal {
+                reason: "the file's message wasn't saved".into(),
+            })?;
+        Ok(types::message(sent, crate::device_chat::ME))
     }
 
     /// The local file of an attachment, if it is on this iPhone already
