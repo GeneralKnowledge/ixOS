@@ -143,6 +143,9 @@ private class ReaderSession {
     /** Chapter loads run one at a time, so the chapter Rust loaded last is the one shown. */
     val loading = Mutex()
 
+    /** The chapter Rust loaded last: the only one it saves a place in. */
+    var coreChapter: UInt? = null
+
     /** The reader has closed: failures are no longer shown. */
     var closed = false
 }
@@ -204,7 +207,7 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
             val loaded = session.loading.withLock {
                 // The place in this chapter is saved before Rust loads another.
                 session.saving?.join()
-                model.chapter(bookId, index)
+                model.chapter(bookId, index).also { session.coreChapter = index }
             }
             // A later load (a second tap) wins.
             if (load != session.loads) return
@@ -218,6 +221,9 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
             chapter = loaded
             openError = null
             loadCount += 1
+            // Loaded: a chapter with nothing to say hands on to the next one at once, which
+            // must not be taken for a load still in progress.
+            loadingChapter = false
             // Reading aloud carries on into the new chapter.
             val wasPlaying = readAloud.state.value == ReadAloud.State.PLAYING
             if (readAloud.state.value == ReadAloud.State.PAUSED) readAloud.stop()
@@ -226,6 +232,19 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             if (load != session.loads) return
+            // An earlier load, since dropped, may have left Rust on another chapter: load the
+            // one shown again, so its place can still be saved.
+            val shown = chapter
+            if (shown != null && session.coreChapter != shown.index) {
+                try {
+                    session.loading.withLock {
+                        model.chapter(bookId, shown.index)
+                        session.coreChapter = shown.index
+                    }
+                } catch (again: Exception) {
+                    if (again is CancellationException) throw again
+                }
+            }
             // Reading aloud was handing over to this chapter: it stops rather than hang.
             if (readAloud.state.value != ReadAloud.State.STOPPED && readAloud.block.value == null) readAloud.stop()
             if (contents == null || chapter == null) openError = ForgeFailure.from(e) else alert = ForgeAlert.failure(e)
