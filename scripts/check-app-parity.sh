@@ -662,25 +662,91 @@ SMALL_FONT = re.compile(r"\.font\(\.(footnote|callout|caption)\)")
 QUIET_COLOUR = re.compile(r"\.foregroundStyle\(\.secondary\)|\.forgeForeground\(")
 
 
-def call_and_chain(lines, i, name):
-    """The arguments of `name(` on line i and the modifiers chained after
-    its closing parenthesis, one per following line that starts with `.`."""
-    text = "\n".join(lines[i:])
-    start = text.find(name + "(")
-    if start < 0:
-        return "", ""
+def swift_code_mask(text):
+    """`text` with comments blanked and string-literal contents replaced by
+    `x`, the same length and with the same line breaks, so parentheses and
+    `//` inside a string ("(\\(reason))", a URL) don't count as code.
+    Interpolated code inside a string stays code."""
+    out = list(text)
+    stack = []  # "s" (string), "m" (multi-line string) or an int (paren depth inside \( ... ))
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        top = stack[-1] if stack else None
+        if top in ("s", "m"):
+            if c == "\\" and i + 1 < n and text[i + 1] == "(":
+                out[i] = out[i + 1] = "x"
+                stack.append(0)
+                i += 2
+                continue
+            if c == "\\":
+                out[i] = "x"
+                if i + 1 < n and text[i + 1] != "\n":
+                    out[i + 1] = "x"
+                i += 2
+                continue
+            if top == "m" and text.startswith('"""', i):
+                stack.pop()
+                i += 3
+                continue
+            if top == "s" and c == '"':
+                stack.pop()
+                i += 1
+                continue
+            if c != "\n":
+                out[i] = "x"
+            i += 1
+            continue
+        # code (top level or inside an interpolation)
+        if text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                out[i] = " "
+                i += 1
+            continue
+        if text.startswith("/*", i):
+            while i < n and not text.startswith("*/", i):
+                if text[i] != "\n":
+                    out[i] = " "
+                i += 1
+            for k in range(i, min(i + 2, n)):
+                out[k] = " "
+            i += 2
+            continue
+        if text.startswith('"""', i):
+            stack.append("m")
+            i += 3
+            continue
+        if c == '"':
+            stack.append("s")
+        elif isinstance(top, int):
+            if c == "(":
+                stack[-1] += 1
+            elif c == ")":
+                if top == 0:
+                    stack.pop()
+                    out[i] = "x"
+                else:
+                    stack[-1] -= 1
+        i += 1
+    return "".join(out)
+
+
+def call_and_chain(text, code, start):
+    """For a call whose `(` is at `start` in `code` (the masked `text`):
+    its arguments (from `text`, strings intact) and the modifiers chained
+    after its closing parenthesis, one per following line starting with `.`."""
     depth = 0
-    for j in range(start + len(name), len(text)):
-        if text[j] == "(":
+    for j in range(start, len(code)):
+        if code[j] == "(":
             depth += 1
-        elif text[j] == ")":
+        elif code[j] == ")":
             depth -= 1
             if depth == 0:
                 break
     else:
         return "", ""
-    args = text[start + len(name) + 1 : j]
-    rest = text[j + 1 :].split("\n")
+    args = text[start + 1 : j]
+    rest = code[j + 1 :].split("\n")
     chain = [rest[0]]
     for line in rest[1:]:
         if not line.strip().startswith("."):
@@ -692,13 +758,12 @@ def call_and_chain(lines, i, name):
 def rule_notices(app):
     bad = []
     for path in swift_sources(app):
-        lines = [l.split("//", 1)[0] for l in read(path).splitlines()]
-        for i, line in enumerate(lines):
-            if "Label(" not in line:
-                continue
-            args, chain = call_and_chain(lines, i, "Label")
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in re.finditer(r"\bLabel\(", code):
+            args, chain = call_and_chain(text, code, m.end() - 1)
             if PROBLEM_SYMBOL.search(args) and SMALL_FONT.search(chain) and QUIET_COLOUR.search(chain):
-                bad.append(f"{path.name}:{i + 1}")
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
     if bad:
         return False, "builds a notice by hand; use ForgeUI's ForgeNotice: " + ", ".join(bad)
     return True, ""
