@@ -1,10 +1,16 @@
 //! This device on iroh: one endpoint with a key that lasts, and one blob
 //! store on disk (Relay M1, [relay-m1-m2-brief.md], "One transfer path").
 //!
-//! - **The key** is this device's identity. It is made once, saved as
-//!   `device.key` in Relay's data directory (0600), and reused on every
-//!   launch, so the endpoint id never changes under a connection already
-//!   made. PR 3 moves it into the Keychain on iPhone, unchanged.
+//! - **The key** is this device's identity. It is made once and reused on
+//!   every launch, so the endpoint id never changes under a connection
+//!   already made. On the iPhone it lives in the Keychain, "this device
+//!   only" (the host's secure store, `ForgeServices.install()`), so it never
+//!   leaves the phone in a backup: a phone restored from a backup is a new
+//!   device, to be trusted again (relay-review-2026-11.md, P4). An older
+//!   install's `device.key` moves into the Keychain unchanged, so trusted
+//!   devices keep working, and the file is then removed. Where the host has
+//!   no secure store (Linux, the `relay` command) the key stays in
+//!   `device.key` in Relay's data directory (0600).
 //! - **One endpoint** serves every protocol on its own ALPN: word codes
 //!   (`code`, `code_send`) and iroh-blobs. Relays are off: the local
 //!   network only, until M2.
@@ -103,7 +109,7 @@ impl Node {
         link: NodeLink,
         servers: &RelayServers,
     ) -> Result<Self, RelayError> {
-        let key = device_key(key_dir)?;
+        let key = load_key(key_dir)?;
         let store = open_store(store_dir).await?;
         let endpoint = bind(key, key_dir, servers).await?;
         let sending = Arc::new(Mutex::new(None));
@@ -318,6 +324,102 @@ async fn bind(
     Ok(endpoint)
 }
 
+/// The secure-store account the device key lives under where the host has
+/// a secure store (the iOS Keychain).
+pub(crate) const KEY_ACCOUNT: &str = "relay.device-key";
+
+/// Whether this platform keeps the device key only in the host's secure
+/// store: the iPhone, whose data folder travels in backups.
+const KEY_NEEDS_SECURE_STORE: bool = cfg!(target_os = "ios");
+
+/// This device's key: from the host's secure store when it has installed
+/// one (the iPhone's Keychain), else from `dir/device.key`.
+fn load_key(dir: &Path) -> Result<SecretKey, RelayError> {
+    let services = crate::native::NativeServices::installed();
+    key_from(
+        services.as_ref().map(|s| s.secure_store.as_ref()),
+        KEY_NEEDS_SECURE_STORE,
+        dir,
+    )
+}
+
+/// The key from `store` if the host installed one. Without one, the file
+/// on a platform that allows it, and an error on one that doesn't (the
+/// iPhone): falling back to a file there would put the identity back where
+/// backups copy it, so Relay doesn't start its endpoint instead.
+fn key_from(
+    store: Result<&dyn crate::native::SecureStore, &crate::native::NativeServiceError>,
+    needs_secure_store: bool,
+    dir: &Path,
+) -> Result<SecretKey, RelayError> {
+    match store {
+        Ok(store) => device_key_in(store, dir),
+        Err(e) if needs_secure_store => Err(RelayError::Storage {
+            reason: format!(
+                "the Keychain isn't available ({e}), and Relay keeps this device's key only there"
+            ),
+        }),
+        Err(_) => device_key(dir),
+    }
+}
+
+/// This device's key in a secure store (`KEY_ACCOUNT`). The first time,
+/// the key in `dir/device.key` moves in unchanged (an older install), or a
+/// new one is made; it is read back before the file is removed, since the
+/// file is the only other copy. A key in the store wins over a file left
+/// beside it, and that file is removed too: a copy outside the store would
+/// travel in backups. A store that can't be read is an error, never a new
+/// key: a new key is a new identity, and every trusted device would refuse
+/// it.
+pub(crate) fn device_key_in(
+    store: &dyn crate::native::SecureStore,
+    dir: &Path,
+) -> Result<SecretKey, RelayError> {
+    let file = dir.join(KEY_FILE);
+    let unreadable = |what: &str| RelayError::Corrupt {
+        reason: format!("{what} isn't a device key"),
+    };
+    let stored = store
+        .get(KEY_ACCOUNT.to_string())
+        .map_err(secure_store_error)?;
+    let key: [u8; 32] = match stored {
+        Some(bytes) => bytes
+            .try_into()
+            .map_err(|_| unreadable("the Keychain's copy"))?,
+        None => {
+            let key: [u8; 32] = match std::fs::read(&file) {
+                Ok(bytes) => bytes.try_into().map_err(|_| unreadable(KEY_FILE))?,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => crate::hex::random(),
+                Err(e) => return Err(file_error(e)),
+            };
+            store
+                .set(KEY_ACCOUNT.to_string(), key.to_vec())
+                .map_err(secure_store_error)?;
+            let kept = store
+                .get(KEY_ACCOUNT.to_string())
+                .map_err(secure_store_error)?;
+            if kept.as_deref() != Some(&key[..]) {
+                return Err(RelayError::Storage {
+                    reason: "the Keychain didn't keep this device's key".into(),
+                });
+            }
+            key
+        }
+    };
+    match std::fs::remove_file(&file) {
+        Ok(()) => log::info!("device key: kept in the secure store; the file is gone"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => log::warn!("device key: the old file couldn't be removed: {e}"),
+    }
+    Ok(SecretKey::from_bytes(&key))
+}
+
+fn secure_store_error(e: crate::native::NativeServiceError) -> RelayError {
+    RelayError::Storage {
+        reason: format!("the device key in the Keychain: {e}"),
+    }
+}
+
 /// This device's key: read from `dir/device.key`, or made and saved there
 /// (readable by this user only) the first time.
 pub(crate) fn device_key(dir: &Path) -> Result<SecretKey, RelayError> {
@@ -332,7 +434,7 @@ pub(crate) fn device_key(dir: &Path) -> Result<SecretKey, RelayError> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(file_error(e)),
     }
-    let bytes = forge_devproto::new_secret();
+    let bytes = crate::hex::random();
     std::fs::create_dir_all(dir).map_err(file_error)?;
     let temporary = dir.join(format!("{KEY_FILE}.new"));
     let mut options = std::fs::OpenOptions::new();
@@ -481,6 +583,172 @@ mod tests {
             device_key(dir.path()),
             Err(RelayError::Corrupt { .. })
         ));
+    }
+
+    use crate::native::testing::MemorySecureStore;
+    use crate::native::{NativeServiceError, SecureStore};
+
+    /// A Keychain that can't be read (locked, or failing).
+    struct BrokenStore;
+    impl SecureStore for BrokenStore {
+        fn get(&self, _: String) -> Result<Option<Vec<u8>>, NativeServiceError> {
+            Err(NativeServiceError::Platform {
+                code: -25308,
+                reason: "Keychain reading: interaction not allowed".into(),
+            })
+        }
+        fn set(&self, _: String, _: Vec<u8>) -> Result<(), NativeServiceError> {
+            unreachable!("never written after a failed read")
+        }
+        fn delete(&self, _: String) -> Result<(), NativeServiceError> {
+            Ok(())
+        }
+    }
+
+    /// A Keychain that says yes to writes but keeps nothing.
+    #[derive(Default)]
+    struct ForgetfulStore;
+    impl SecureStore for ForgetfulStore {
+        fn get(&self, _: String) -> Result<Option<Vec<u8>>, NativeServiceError> {
+            Ok(None)
+        }
+        fn set(&self, _: String, _: Vec<u8>) -> Result<(), NativeServiceError> {
+            Ok(())
+        }
+        fn delete(&self, _: String) -> Result<(), NativeServiceError> {
+            Ok(())
+        }
+    }
+
+    fn in_store(store: &MemorySecureStore) -> Option<Vec<u8>> {
+        store.get(KEY_ACCOUNT.into()).unwrap()
+    }
+
+    #[test]
+    fn a_fresh_install_keeps_its_key_in_the_keychain_and_never_in_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let keychain = MemorySecureStore::default();
+        let first = device_key_in(&keychain, dir.path()).unwrap();
+        assert_eq!(in_store(&keychain).unwrap(), first.to_bytes());
+        assert!(
+            !dir.path().join(KEY_FILE).exists(),
+            "no copy for backups to carry"
+        );
+        // Every later launch (and a reinstall, since the Keychain item
+        // outlives the app) is the same device.
+        let again = device_key_in(&keychain, dir.path()).unwrap();
+        assert_eq!(first.public(), again.public());
+    }
+
+    #[test]
+    fn an_upgrade_moves_the_old_key_into_the_keychain_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        // An older install: the key in a file, already trusted elsewhere.
+        let old = device_key(dir.path()).unwrap();
+        let keychain = MemorySecureStore::default();
+        let moved = device_key_in(&keychain, dir.path()).unwrap();
+        assert_eq!(old.public(), moved.public(), "trusted devices keep working");
+        assert_eq!(in_store(&keychain).unwrap(), old.to_bytes());
+        assert!(!dir.path().join(KEY_FILE).exists(), "the file is gone");
+        let again = device_key_in(&keychain, dir.path()).unwrap();
+        assert_eq!(old.public(), again.public());
+    }
+
+    #[test]
+    fn a_backup_restored_onto_a_new_phone_is_a_new_device() {
+        // The old phone, after the move: its key only in its own Keychain,
+        // and nothing in the data a backup carries.
+        let old_phone = tempfile::tempdir().unwrap();
+        let old_keychain = MemorySecureStore::default();
+        let old = device_key_in(&old_keychain, old_phone.path()).unwrap();
+        // The backup holds the data folder, which has no key file now; the
+        // new phone's Keychain doesn't have the "this device only" item.
+        let restored = tempfile::tempdir().unwrap();
+        for entry in std::fs::read_dir(old_phone.path()).unwrap() {
+            let entry = entry.unwrap();
+            std::fs::copy(entry.path(), restored.path().join(entry.file_name())).unwrap();
+        }
+        let new_keychain = MemorySecureStore::default();
+        let new = device_key_in(&new_keychain, restored.path()).unwrap();
+        assert_ne!(
+            old.public(),
+            new.public(),
+            "a new identity, to be trusted again"
+        );
+    }
+
+    #[test]
+    fn the_keychain_wins_over_a_stray_file_which_is_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let keychain = MemorySecureStore::default();
+        let kept = device_key_in(&keychain, dir.path()).unwrap();
+        // A file appears beside it (an old backup's data restored over this
+        // install): the Keychain's key stays, and the file goes.
+        std::fs::write(dir.path().join(KEY_FILE), [9u8; 32]).unwrap();
+        let after = device_key_in(&keychain, dir.path()).unwrap();
+        assert_eq!(kept.public(), after.public());
+        assert!(!dir.path().join(KEY_FILE).exists());
+    }
+
+    #[test]
+    fn a_keychain_that_cant_be_read_is_an_error_never_a_new_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = device_key(dir.path()).unwrap();
+        assert!(matches!(
+            device_key_in(&BrokenStore, dir.path()),
+            Err(RelayError::Storage { .. })
+        ));
+        // Nothing was lost: the old key is still there for the next try.
+        assert_eq!(device_key(dir.path()).unwrap().public(), old.public());
+    }
+
+    #[test]
+    fn the_file_stays_unless_the_keychain_really_kept_the_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = device_key(dir.path()).unwrap();
+        assert!(matches!(
+            device_key_in(&ForgetfulStore, dir.path()),
+            Err(RelayError::Storage { .. })
+        ));
+        assert_eq!(device_key(dir.path()).unwrap().public(), old.public());
+    }
+
+    #[test]
+    fn a_damaged_key_in_the_keychain_is_an_error_not_a_new_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let keychain = MemorySecureStore::default();
+        keychain.set(KEY_ACCOUNT.into(), b"short".to_vec()).unwrap();
+        assert!(matches!(
+            device_key_in(&keychain, dir.path()),
+            Err(RelayError::Corrupt { .. })
+        ));
+        assert_eq!(
+            in_store(&keychain).unwrap(),
+            b"short",
+            "left for the person to see"
+        );
+    }
+
+    #[test]
+    fn without_a_secure_store_the_iphone_refuses_and_linux_uses_the_file() {
+        let not_installed = NativeServiceError::NotInstalled {
+            service: "core".into(),
+        };
+        // The iPhone: no Keychain means no endpoint, and no file is made.
+        let phone = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            key_from(Err(&not_installed), true, phone.path()),
+            Err(RelayError::Storage { .. })
+        ));
+        assert!(!phone.path().join(KEY_FILE).exists());
+        // Linux: the 0600 file, as always.
+        let linux = tempfile::tempdir().unwrap();
+        let key = key_from(Err(&not_installed), false, linux.path()).unwrap();
+        assert_eq!(device_key(linux.path()).unwrap().public(), key.public());
+        // With a store, both use it.
+        let keychain = MemorySecureStore::default();
+        let a = key_from(Ok(&keychain), true, phone.path()).unwrap();
+        assert_eq!(in_store(&keychain).unwrap(), a.to_bytes());
     }
 
     #[test]

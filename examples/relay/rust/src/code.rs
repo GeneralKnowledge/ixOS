@@ -81,7 +81,7 @@ impl WordCode {
     /// A new code whose number nobody nearby is using (`in_use`), when one
     /// is free, and three random list words.
     pub fn new(in_use: &[u8]) -> Self {
-        let random = forge_devproto::new_secret();
+        let random = crate::hex::random();
         let pick = |i: usize| {
             let n = u16::from_be_bytes([random[i], random[i + 1]]) as usize;
             n % WORDS.len()

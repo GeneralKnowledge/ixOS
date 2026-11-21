@@ -1,12 +1,15 @@
-//! What Relay saves: this device's identity, its paired devices with their
-//! secrets, and the history of what went across. One JSON document.
+//! What Relay saves: this device's identity, its trusted devices, what
+//! waits for them, and the history of what went across. A value in memory,
+//! saved as rows of Relay's database (`store`); older builds saved it as one
+//! JSON document, `relay.json`, read once to move it in (`VERSION`).
+//! Devices paired the old way (QR code, TCP) were kept with their secrets
+//! under `peers`; that field is no longer read, so the next save drops it.
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Direction, Item, Peer, Transfer, TransferStatus};
+use crate::model::{Direction, Item, Transfer, TransferStatus};
 use crate::outbox::{ReceivedId, SavedDelivery};
 use crate::trust::Devices;
-use crate::wire::{hex, unhex};
 
 /// The saved document's version.
 pub const VERSION: u32 = 1;
@@ -19,14 +22,15 @@ pub const CODE_PEER_NAME: &str = "someone with a code";
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Record {
-    #[serde(default)]
+    /// Retired (P4): the random id an older build made. Read so its own
+    /// messages can be moved to [`crate::device_chat::ME`] once, then
+    /// cleared; the endpoint id is the device's only id.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub device_id: String,
     #[serde(default)]
     pub name: String,
     #[serde(default = "first_id")]
     pub next_id: u64,
-    #[serde(default)]
-    pub peers: Vec<SavedPeer>,
     #[serde(default)]
     pub transfers: Vec<SavedTransfer>,
     /// Devices trusted on iroh, and the pairing policy (`trust`).
@@ -39,22 +43,24 @@ pub struct Record {
     /// twice (`outbox`).
     #[serde(default)]
     pub received_ids: Vec<ReceivedId>,
+    /// Notes have moved into conversations (`migrate`, review step 4).
+    #[serde(default)]
+    pub notes_are_messages: bool,
+    /// Saved data that couldn't be read when Relay opened, for the person
+    /// to hear about until they dismiss it (`store`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notice: Option<SavedNotice>,
+}
+
+/// What couldn't be read, in words, and where it is kept on this device.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct SavedNotice {
+    pub message: String,
+    pub kept: Vec<String>,
 }
 
 fn first_id() -> u64 {
     1
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct SavedPeer {
-    pub device_id: String,
-    pub name: String,
-    /// The pair's shared secret, hex. In the app's data container, which iOS
-    /// encrypts while the phone is locked (friction R2: Keychain later).
-    pub secret: String,
-    pub paired_ms: i64,
-    #[serde(default)]
-    pub last_address: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -94,52 +100,14 @@ pub enum SavedStatus {
 }
 
 impl Record {
-    pub fn peer(&self, device_id: &str) -> Option<&SavedPeer> {
-        self.peers.iter().find(|p| p.device_id == device_id)
-    }
-
-    pub fn secret(&self, device_id: &str) -> Option<[u8; 32]> {
-        self.peer(device_id)
-            .and_then(|p| unhex(&p.secret))
-            .and_then(|s| s.try_into().ok())
-    }
-
-    /// Adds or refreshes a paired device (pairing again replaces the secret).
-    pub fn pair(
-        &mut self,
-        device_id: &str,
-        name: &str,
-        secret: &[u8; 32],
-        address: Option<String>,
-        now_ms: i64,
-    ) {
-        self.peers.retain(|p| p.device_id != device_id);
-        self.peers.push(SavedPeer {
-            device_id: device_id.into(),
-            name: name.into(),
-            secret: hex(secret),
-            paired_ms: now_ms,
-            last_address: address,
-        });
-    }
-
-    pub fn reached(&mut self, device_id: &str, name: &str, address: Option<String>) {
-        if let Some(peer) = self.peers.iter_mut().find(|p| p.device_id == device_id) {
-            peer.name = name.into();
-            if address.is_some() {
-                peer.last_address = address;
-            }
-        }
-    }
-
     /// Starts a history entry; returns its id.
     pub fn begin(&mut self, peer_id: &str, sent: bool, item: SavedItem, now_ms: i64) -> u64 {
         let id = self.next_id.max(1);
         self.next_id = id + 1;
         let peer_name = self
-            .peer(peer_id)
-            .map(|p| p.name.clone())
-            .or_else(|| self.devices.get(peer_id).map(|d| d.name.clone()))
+            .devices
+            .get(peer_id)
+            .map(|d| d.name.clone())
             .unwrap_or_default();
         self.transfers.push(SavedTransfer {
             id,
@@ -167,7 +135,7 @@ impl Record {
     }
 
     /// Adds a finished transfer made with a word code: the other side is
-    /// "someone with a code", never a paired device.
+    /// "someone with a code", never a trusted device.
     pub fn code_transfer(
         &mut self,
         sent: bool,
@@ -201,21 +169,6 @@ impl Record {
             }
         }
         any
-    }
-
-    pub fn peers(&self) -> Vec<Peer> {
-        let mut peers: Vec<Peer> = self
-            .peers
-            .iter()
-            .map(|p| Peer {
-                device_id: p.device_id.clone(),
-                name: p.name.clone(),
-                paired_ms: p.paired_ms,
-                last_address: p.last_address.clone(),
-            })
-            .collect();
-        peers.sort_by_key(|p| p.name.to_lowercase());
-        peers
     }
 
     /// The history, newest first. `inbox` turns a received file's name into

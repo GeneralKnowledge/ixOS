@@ -36,9 +36,11 @@ pub(crate) const MAX_ADDRESSES: usize = 12;
 pub enum ConnectionMode {
     /// Only devices on the same local network.
     Local,
-    /// The local network, then private networks such as Tailscale.
+    /// The local network, then private networks such as Tailscale. Never
+    /// over the open internet, and never through a relay server.
     Private,
-    /// Every route Relay has: local, private, then direct over the internet.
+    /// Every route Relay has: local, private, direct over the internet, and
+    /// Relay's own relay server. The only mode that uses a relay.
     #[default]
     Hybrid,
 }
@@ -47,7 +49,7 @@ impl ConnectionMode {
     pub(crate) fn allows(self, kind: RouteKind) -> bool {
         match self {
             ConnectionMode::Local => kind == RouteKind::Local,
-            ConnectionMode::Private => kind != RouteKind::Internet,
+            ConnectionMode::Private => matches!(kind, RouteKind::Local | RouteKind::Private),
             ConnectionMode::Hybrid => true,
         }
     }
@@ -232,6 +234,16 @@ impl RelayServers {
         self.lookup_url.as_deref()?.parse().ok()
     }
 
+    /// The servers the endpoint is opened with in `mode`: none outside
+    /// Hybrid, so in Local and Private no relay path, or lookup by key, is
+    /// ever tried (decided 2026-11-19: Private means no relay).
+    pub(crate) fn in_mode(&self, mode: ConnectionMode) -> RelayServers {
+        match mode {
+            ConnectionMode::Hybrid => self.clone(),
+            ConnectionMode::Local | ConnectionMode::Private => RelayServers::default(),
+        }
+    }
+
     /// Whether a device can be looked up by key at all.
     pub(crate) fn finds_by_key(&self) -> bool {
         self.lookup().is_some()
@@ -294,6 +306,13 @@ pub(crate) fn plan(w: &Whereabouts<'_>, mode: ConnectionMode) -> Result<Plan, St
         .map(|(i, a)| (kind_of(&a), i, a))
         .collect();
     let by_key = w.by_key && mode == ConnectionMode::Hybrid;
+    if all.is_empty() && w.by_key && !by_key {
+        return Err(format!(
+            "{} can only be found through Relay's servers, and Connections is set to {}, which never uses them.",
+            w.name,
+            mode_words(mode)
+        ));
+    }
     if all.is_empty() && !by_key {
         return Err(format!(
             "Relay hasn't met {} on a network yet. Open Relay on both devices on the same Wi-Fi once, so they learn where to find each other.",
@@ -557,7 +576,26 @@ mod tests {
         let p = plan(&w, ConnectionMode::Hybrid).unwrap();
         assert!(p.addresses.is_empty());
         assert_eq!(p.kinds, vec![RouteKind::Internet]);
-        assert!(plan(&w, ConnectionMode::Private).is_err());
+        let err = plan(&w, ConnectionMode::Private).unwrap_err();
+        assert!(err.contains("through Relay's servers"), "{err}");
+        assert!(err.contains("Local and private networks"), "{err}");
+    }
+
+    #[test]
+    fn only_hybrid_uses_a_relay() {
+        use ConnectionMode::*;
+        assert!(Hybrid.allows(RouteKind::Relay));
+        assert!(!Private.allows(RouteKind::Relay));
+        assert!(!Private.allows(RouteKind::Internet));
+        assert!(Private.allows(RouteKind::Private) && Private.allows(RouteKind::Local));
+        assert!(!Local.allows(RouteKind::Relay));
+        let own = RelayServers {
+            relay_url: Some("https://relay.example.org".into()),
+            lookup_url: Some("https://relay.example.org/pkarr".into()),
+        };
+        assert_eq!(own.in_mode(Hybrid), own);
+        assert_eq!(own.in_mode(Private), RelayServers::default());
+        assert_eq!(own.in_mode(Local), RelayServers::default());
     }
 
     #[test]

@@ -1129,6 +1129,7 @@ fn package_ios(
     devtools: bool,
 ) -> Result<(), String> {
     sync_app_config(project_dir, cfg)?;
+    prepare_ios(runner, project_dir, cfg)?;
     let generated = project_dir.join("Generated");
     let mut package = script(root, "package-ios-library.sh")
         .arg(generated_dir_arg(root, &generated))
@@ -1143,6 +1144,26 @@ fn package_ios(
     }
     // Cargo for iOS: the heaviest step, capped (build_lock.rs).
     crate::build_lock::run_heavy(runner, with_app_crate(package, cfg, project_dir))
+}
+
+/// Runs the app's `[ios] prepare` script, if it has one, from the app's
+/// folder: for example one that downloads a prebuilt framework the Swift
+/// package and `[ios] resources` name. Not a heavy step: a prepare script
+/// that has nothing to do must finish at once.
+fn prepare_ios(
+    runner: &dyn CommandRunner,
+    project_dir: &Path,
+    cfg: &ForgeConfig,
+) -> Result<(), String> {
+    let Some(prepare) = cfg.ios.as_ref().and_then(|ios| ios.prepare.as_ref()) else {
+        return Ok(());
+    };
+    println!("[forge] Preparing the app ({prepare})");
+    let cmd = Cmd::new("bash")
+        .arg(project_dir.join(prepare))
+        .cwd(project_dir)
+        .env("FORGE_APP_DIR", project_dir);
+    run_explained(runner, cmd).map_err(|e| format!("[ios] prepare ({prepare}) failed: {e}"))
 }
 
 /// The Cargo profile of the iOS Rust library for a Swift configuration.
@@ -2073,6 +2094,44 @@ ios_device = true
         assert_eq!(
             mock.calls().last().unwrap().cwd.as_deref(),
             Some(root.join("apps/demo").as_path())
+        );
+    }
+
+    #[test]
+    fn build_ios_runs_the_prepare_script_before_the_rust_build() {
+        let toml = format!(
+            "{IOS_TOML}\n[ios]\nprepare = \"scripts/prepare.sh\"\nresources = [\"Generated/Python/python\"]\n"
+        );
+        let (_tmp, root) = workspace(&toml, &[]);
+        let mock = ready_ios_host();
+        build_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            false,
+            IosConfiguration::Debug,
+            false,
+        )
+        .unwrap();
+        let calls = mock.call_lines();
+        let prepare = calls
+            .iter()
+            .position(|l| l.ends_with("apps/demo/scripts/prepare.sh"))
+            .unwrap_or_else(|| panic!("prepare ran: {calls:?}"));
+        let rust = calls
+            .iter()
+            .position(|l| l.contains("package-ios-library.sh"))
+            .unwrap();
+        assert!(prepare < rust, "{calls:?}");
+        assert_eq!(
+            mock.calls()[prepare].cwd.as_deref(),
+            Some(root.join("apps/demo").as_path())
+        );
+        let xtool = read(root.join("apps/demo/xtool.yml"));
+        assert!(
+            xtool.contains("resources:\n  - Generated/Python/python\n"),
+            "{xtool}"
         );
     }
 

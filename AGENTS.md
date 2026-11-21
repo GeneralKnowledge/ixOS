@@ -18,7 +18,7 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 | `crates/forge-storage`, `crates/forge-net` | Persistence (JSON, SQLite) and networking |
 | `forgekit/` | The Swift package: ForgeKit (the runtime host) and ForgeUI (the design system), released as GeneralKnowledge/ForgeKit |
 | `crates/forge-cli` | The `forge` command |
-| `crates/forge-device`, `forge-devproto`, `forge-uitest`, `forge-crash` | Talking to a USB iPhone from Linux (logs, crashes, UI tests); `forge-devproto` is the encrypted channel Relay uses |
+| `crates/forge-device`, `forge-devproto`, `forge-uitest`, `forge-crash` | Talking to a USB iPhone from Linux (logs, crashes, UI tests) |
 | `examples/` | Apps. Each Forge app owns its Rust crate in `rust/`; `forgeui-showcase` is a plain SwiftUI app on ForgeUI only |
 | `templates/` | What `forge init` copies; `templates/agent/` is what `forge agent setup` adds |
 | `docs/` | Developer docs, with one entry page per area: `framework.md`, `tools.md`, `infrastructure.md` (apps: `examples/README.md`). An app's own plans live in `examples/<app>/docs/`. `docs/research/` holds investigations |

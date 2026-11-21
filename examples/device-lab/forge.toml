@@ -19,6 +19,11 @@ ios_simulator = false
 # this section on every `forge build ios` / `forge run ios` (or `forge config
 # sync`), so edit them here, not in those files. All keys: docs/app-config.md.
 [ios]
+# Python Lab's CPython: downloads the official iOS build once and lays it
+# out in Generated/Python; its standard library and extension modules go
+# to the app bundle's root as python/ (PYTHONHOME).
+prepare = "scripts/prepare-python.sh"
+resources = ["Generated/Python/python"]
 devices = ["iphone"]
 orientations = ["portrait"]
 icon = "Resources/AppIcon.png"    # 1024x1024 PNG, no transparency
@@ -49,7 +54,7 @@ bluetooth = "Device Lab shows whether Bluetooth is on. It does not connect to an
 # text for each.
 local_network = "Relay connects to your chat server and finds your paired devices and sends to them, Commonplace reads feeds, and Soundscape plays songs from your computer, on your local network."
 microphone = "Relay records voice messages for you to send."
-camera = "Relay scans another device's pairing code."
+camera = "Relay scans the QR code of a code someone sends you."
 
 [ios.signing]
 # Everything here works with a free Apple account: no paid-only entitlements.

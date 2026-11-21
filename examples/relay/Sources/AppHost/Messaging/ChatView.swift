@@ -49,6 +49,7 @@ struct ChatView: View {
     @State private var pickingFiles = false
     /// The attachment open in Quick Look.
     @State private var previewURL: URL?
+    @Environment(\.openURL) private var openURL
     /// Records voice messages (Forge's audio module).
     @State private var recorder = ForgeAudioRecorder(maxDuration: 300)
     @State private var microphoneDenied = false
@@ -382,6 +383,14 @@ struct ChatView: View {
             react: { emoji in Task { await model.toggleReaction(emoji, on: message) } },
             jump: { jumpTarget = $0 },
             open: { attachment in
+                if attachment.isFolder {
+                    if let url = model.folderURL(for: attachment) {
+                        openURL(url)
+                    } else {
+                        model.showError(String(localized: "This folder is no longer on this iPhone."))
+                    }
+                    return
+                }
                 Task {
                     if let url = await model.previewFile(for: attachment) { previewURL = url }
                 }
@@ -977,7 +986,7 @@ private struct MessageBubble: View {
                     attachment.isImage
                         ? String(localized: "Open Photo")
                         : String(localized: "Open \(attachment.name)"),
-                    systemImage: attachment.isImage ? "photo" : "doc"
+                    systemImage: attachment.isImage ? "photo" : attachment.isFolder ? "folder" : "doc"
                 ) { actions.open(attachment) }
             }
         }

@@ -28,11 +28,10 @@
 	<true/>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_forgerelay._tcp</string>
 		<string>_forgerelay._udp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Scan another device's pairing code.</string>
+	<string>Scan the QR code of a code someone sends you.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Relay uses Face ID to unlock when you turn on the app lock in Settings.</string>
 	<key>NSLocalNetworkUsageDescription</key>

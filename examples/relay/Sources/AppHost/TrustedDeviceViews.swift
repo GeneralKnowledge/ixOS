@@ -216,18 +216,18 @@ struct RelayServersSection: View {
     }
 }
 
-/// One trusted device: send it a note or files without a code, choose
-/// whether it may send here, see what went between you, revoke or forget.
+/// One trusted device: message it or send it files without a code (both
+/// land in its conversation in Chats), choose whether it may send here,
+/// revoke or forget.
 struct TrustedDeviceView: View {
     @Bindable var model: RelayModel
     let endpointID: String
     @Binding var preview: URL?
 
-    @State private var note = ""
+    @Environment(\.openDeviceConversation) private var openConversation
     @State private var sending = false
     @State private var pickingFiles = false
     @State private var asking = false
-    @FocusState private var writing: Bool
 
     /// "iPhone or iPad", "Linux", "Mac": the platform Rust reports, in
     /// words.
@@ -253,18 +253,15 @@ struct TrustedDeviceView: View {
     private func content(_ device: Device) -> some View {
         List {
             Section {
-                TextField("Write a note", text: $note, axis: .vertical)
-                    .lineLimit(3...8)
-                    .focused($writing)
-                    .accessibilityIdentifier("trusted.note")
                 HStack {
-                    Button {
-                        sendNote(to: device)
-                    } label: {
-                        Label("Send Note", systemImage: "paperplane")
+                    if let openConversation {
+                        Button {
+                            openConversation(device.endpointId)
+                        } label: {
+                            Label("Message", systemImage: "bubble.left")
+                        }
+                        .accessibilityIdentifier("trusted.message")
                     }
-                    .disabled(sending || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("trusted.sendNote")
                     Spacer()
                     Button {
                         pickingFiles = true
@@ -311,16 +308,8 @@ struct TrustedDeviceView: View {
                 .accessibilityIdentifier("trusted.receivesFrom")
             } footer: {
                 Text(device.receivesFrom
-                     ? "\(device.name) can send notes and files here without a code."
+                     ? "\(device.name) can send messages and files here without a code."
                      : "\(device.name) is still trusted, but what it sends here is declined.")
-            }
-            let history = model.transfers(with: device)
-            if !history.isEmpty {
-                Section("Between You") {
-                    ForEach(history) { transfer in
-                        TransferRow(transfer: transfer, model: model, preview: $preview)
-                    }
-                }
             }
         }
         .navigationTitle(device.name)
@@ -355,18 +344,6 @@ struct TrustedDeviceView: View {
             case .success(let urls): sendFiles(urls, to: device)
             case .failure(let error): model.report(error)
             }
-        }
-    }
-
-    private func sendNote(to device: Device) {
-        let text = note
-        sending = true
-        Task {
-            if await model.send(note: text, toDevice: device) {
-                note = ""
-                writing = false
-            }
-            sending = false
         }
     }
 
