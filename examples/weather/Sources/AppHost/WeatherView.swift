@@ -52,8 +52,10 @@ public struct WeatherView: View {
             // Pages sit on a drawn sky whatever the system appearance: white
             // text, and materials that read as frosted glass over it.
             .environment(\.colorScheme, .dark)
+            .environment(\.weatherUnits, model.units)
             .sheet(isPresented: $showingLocations) {
                 LocationsView(model: model, isPresented: $showingLocations)
+                    .environment(\.weatherUnits, model.units)
             }
             .task { await model.start() }
             .onChange(of: model.selection) { _, _ in model.pageDidAppear() }

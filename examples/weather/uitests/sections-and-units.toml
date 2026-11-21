@@ -1,0 +1,69 @@
+# Weather W1 inside Device Lab: add Edinburgh, see its air quality and
+# pollen sections (each with its own state and source), switch the
+# temperature to Fahrenheit, and see the page change. Needs the network
+# (Open-Meteo). Starts on throwaway data (-ForgeTemporaryData), so the
+# person's own places and units are never touched.
+# Run with the phone plugged in:  forge ui run uitests/sections-and-units.toml
+
+name = "Air quality, pollen and units"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "weather"] }
+
+[[step]]
+tap = { id = "weather.places" }
+
+[[step]]
+type = { kind = "SearchField", index = 0, text = "Edinburgh" }
+
+[[step]]
+tap = { id = "places.result.Edinburgh" }
+
+[[step]]
+expect = { id = "weather.page.Edinburgh" }
+
+[[step]]
+tap = { id = "weather.refresh" }
+
+[[step]]
+expect = { id = "weather.refresh", enabled = true }
+
+[[step]]
+scroll = { id = "forecast.airQuality" }
+
+[[step]]
+expect = { id = "forecast.airQuality" }
+
+[[step]]
+scroll = { id = "forecast.pollen" }
+
+[[step]]
+expect = { id = "forecast.pollen" }
+
+[[step]]
+screenshot = "1-sections"
+
+[[step]]
+tap = { id = "weather.places" }
+
+[[step]]
+tap = { id = "places.units" }
+
+[[step]]
+tap = { id = "units.temperature" }
+
+[[step]]
+tap = { label = "Fahrenheit (°F)" }
+
+[[step]]
+back = {}
+
+[[step]]
+tap = { id = "places.done" }
+
+[[step]]
+screenshot = "2-fahrenheit"

@@ -67,10 +67,14 @@ public final class WeatherViewModel {
     /// Why removing or reordering a saved place failed; the places list
     /// shows it, and clears it when dismissed.
     public var placesError: String?
+    /// Why the saved places couldn't be read (they are left untouched).
+    public private(set) var placesProblem: SavedDataProblem?
 
     public let client: WeatherClient
-    /// How the summary and the wind tile state wind speed.
-    public let windUnit: WindUnit
+    /// The person's display units; every value on the page uses them.
+    public private(set) var units: UnitSettings
+    /// Why saving the units failed, shown in the units screen.
+    public var unitsError: String?
     private let location: any LocationProviding
     /// False shows only what is cached: no location request, no network.
     /// The simulator screenshot job uses it (launch argument
@@ -100,17 +104,17 @@ public final class WeatherViewModel {
     ///   - client: the Rust core the app's host opened, wrapped.
     ///   - location: defaults to the core's `current_location` (Core
     ///     Location through Forge's `location` service).
-    ///   - windUnit: defaults to mph where the locale uses it (US, UK).
+    ///   - units: defaults to the saved units, else the region's usual ones.
     ///   - isLive: false to show only cached data (screenshots).
     public init(
         client: WeatherClient,
         location: (any LocationProviding)? = nil,
-        windUnit: WindUnit? = nil,
+        units: UnitSettings? = nil,
         isLive: Bool? = nil
     ) {
         self.client = client
         self.location = location ?? DeviceLocationProvider(core: client.app)
-        self.windUnit = windUnit ?? Self.localeWindUnit()
+        self.units = units ?? client.units(regionCode: Locale.current.region?.identifier)
         self.isLive = isLive ?? !UserDefaults.standard.bool(forKey: "WeatherOfflineDemo")
         pages = [WeatherPage(id: WeatherPage.myLocationID)]
     }
@@ -135,6 +139,7 @@ public final class WeatherViewModel {
             myLocation.place = cached.place
             myLocation.report = cached
         }
+        placesProblem = client.savedPlacesProblem
         pages = [myLocation] + client.savedPlaces.map { place in
             var page = WeatherPage.saved(place)
             page.report = client.cachedReport(for: place)
@@ -348,6 +353,17 @@ public final class WeatherViewModel {
         }
     }
 
+    /// After the person agreed: sets the unreadable list aside (kept) and
+    /// starts a new, empty one.
+    public func startNewSavedPlaces() {
+        do {
+            rebuildPages(saved: try client.startNewSavedPlaces())
+            placesProblem = client.savedPlacesProblem
+        } catch {
+            placesError = Self.message(error, doing: "start a new list")
+        }
+    }
+
     /// "Couldn't remove Paris." and why, for the places list's alert.
     nonisolated static func message(_ error: Error, doing action: String) -> String {
         let reason = (error as? WeatherClientError)?.userMessage
@@ -423,7 +439,7 @@ public final class WeatherViewModel {
     private func recomputeOverview(_ id: String) {
         let now = Date()
         update(id) { page in
-            page.overview = page.report.map { client.overview(of: $0, at: now, windUnit: windUnit) }
+            page.overview = page.report.map { client.overview(of: $0, at: now, units: units) }
         }
     }
 
@@ -441,7 +457,7 @@ public final class WeatherViewModel {
             if let page = existing[id] { return page }
             var page = WeatherPage.saved(place)
             page.report = client.cachedReport(for: place)
-            page.overview = page.report.map { client.overview(of: $0, windUnit: windUnit) }
+            page.overview = page.report.map { client.overview(of: $0, units: units) }
             return page
         }
     }
@@ -451,10 +467,21 @@ public final class WeatherViewModel {
             && abs(a.coordinate.longitude - b.coordinate.longitude) < limit
     }
 
-    private static func localeWindUnit() -> WindUnit {
-        switch Locale.current.measurementSystem {
-        case .us, .uk: return .milesPerHour
-        default: return .kilometresPerHour
+    /// Saves `units` and shows every page in them. On failure nothing
+    /// changes and `unitsError` says why.
+    public func setUnits(_ new: UnitSettings) {
+        do {
+            try client.setUnits(new)
+            units = new
+            unitsError = nil
+            recomputeOverviews()
+        } catch {
+            unitsError = "Couldn't save your units."
         }
+    }
+
+    /// A stored value in the person's units ("12°", "18 mph").
+    public func format(_ quantity: Quantity) -> String {
+        client.format(quantity, units: units)
     }
 }

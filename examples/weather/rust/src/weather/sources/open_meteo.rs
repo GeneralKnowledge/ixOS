@@ -1,13 +1,18 @@
-//! Open-Meteo (https://open-meteo.com) request building and response decoding.
-//! No API key is needed. Everything here is pure, so it is tested with
-//! recorded JSON and no network.
+//! Open-Meteo's forecast and geocoding APIs (https://open-meteo.com/en/docs,
+//! https://open-meteo.com/en/docs/geocoding-api): request building and
+//! response decoding, written from Open-Meteo's own documentation. No API key
+//! is needed; the data is CC BY 4.0. Everything here is pure, so it is tested
+//! with JSON in the documented format and no network.
 
+use forge_net::Request;
 use serde::Deserialize;
 
-use super::error::WeatherError;
-use super::types::{
-    Coordinate, CurrentConditions, DailyForecast, Freshness, HourlyPoint, Intensity, Place,
-    PlaceSource, WeatherCondition, WeatherReport, Wind,
+use super::Source;
+use crate::weather::error::WeatherError;
+use crate::weather::types::{
+    AirQualitySection, Coordinate, CurrentConditions, DailyForecast, Freshness, HourlyPoint,
+    Intensity, Place, PlaceSource, PollenSection, SourceCredit, WeatherCondition, WeatherReport,
+    Wind,
 };
 
 pub(crate) const DEFAULT_FORECAST_BASE: &str = "https://api.open-meteo.com";
@@ -15,11 +20,12 @@ pub(crate) const DEFAULT_GEOCODING_BASE: &str = "https://geocoding-api.open-mete
 
 /// Two days of hours, so a report cached yesterday still fills the strip.
 pub(crate) const HOURLY_POINTS: usize = 48;
-pub(crate) const DAILY_POINTS: usize = 10;
+/// Open-Meteo's longest daily forecast.
+pub(crate) const DAILY_POINTS: usize = 16;
 pub(crate) const MAX_SEARCH_RESULTS: u32 = 10;
 pub(crate) const MAX_QUERY_CHARS: usize = 100;
 
-const CURRENT_FIELDS: &str = "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m";
+const CURRENT_FIELDS: &str = "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,pressure_msl,visibility,cloud_cover,uv_index";
 const HOURLY_FIELDS: &str = "temperature_2m,precipitation_probability,weather_code,wind_gusts_10m";
 const DAILY_FIELDS: &str = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset,uv_index_max";
 
@@ -124,6 +130,16 @@ struct CurrentJson {
     wind_speed_10m: Option<f64>,
     wind_direction_10m: Option<f64>,
     wind_gusts_10m: Option<f64>,
+    #[serde(default)]
+    dew_point_2m: Option<f64>,
+    #[serde(default)]
+    pressure_msl: Option<f64>,
+    #[serde(default)]
+    visibility: Option<f64>,
+    #[serde(default)]
+    cloud_cover: Option<f64>,
+    #[serde(default)]
+    uv_index: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -278,6 +294,11 @@ pub(crate) fn decode_forecast(
         condition: condition(c.weather_code),
         // Open-Meteo sends 1/0; assume day if it did not say.
         is_day: c.is_day.is_none_or(|d| d >= 0.5),
+        dew_point_c: c.dew_point_2m.filter(|v| v.is_finite()),
+        pressure_msl_hpa: c.pressure_msl.filter(|v| v.is_finite()),
+        visibility_m: c.visibility.filter(|v| v.is_finite() && *v >= 0.0),
+        cloud_cover_pct: percent(c.cloud_cover),
+        uv_index: c.uv_index.filter(|v| v.is_finite() && *v >= 0.0),
     };
 
     let d = r.daily;
@@ -359,7 +380,48 @@ pub(crate) fn decode_forecast(
         daily,
         fetched_at_unix,
         freshness: Freshness::Live,
+        forecast_source: credit(),
+        air_quality: AirQualitySection::never_fetched(),
+        pollen: PollenSection::never_fetched(),
     })
+}
+
+/// Open-Meteo's credit, which CC BY 4.0 asks for.
+pub(crate) fn credit() -> SourceCredit {
+    SourceCredit {
+        id: "open-meteo".into(),
+        name: "Open-Meteo".into(),
+        credit: "Weather data by Open-Meteo.com (CC BY 4.0)".into(),
+        url: "https://open-meteo.com/".into(),
+    }
+}
+
+/// The forecast source: current conditions, 48 hours and 16 days.
+pub(crate) struct OpenMeteoForecast {
+    pub(crate) base: String,
+}
+
+impl Source<WeatherReport> for OpenMeteoForecast {
+    fn credit(&self) -> SourceCredit {
+        credit()
+    }
+
+    fn request(&self, coordinate: Coordinate) -> Request {
+        Request::get(forecast_url(&self.base, coordinate))
+    }
+
+    fn decode(
+        &self,
+        body: &[u8],
+        place: &Place,
+        fetched_at_unix: i64,
+    ) -> Result<Option<WeatherReport>, WeatherError> {
+        decode_forecast(body, place.clone(), fetched_at_unix).map(Some)
+    }
+
+    fn status_error(&self, status: u16, body: &[u8]) -> WeatherError {
+        status_error(status, body)
+    }
 }
 
 // ---- Geocoding ----
@@ -412,9 +474,9 @@ pub(crate) fn decode_search(body: &[u8]) -> Result<Vec<Place>, WeatherError> {
 mod tests {
     use super::*;
 
-    const FORECAST: &str = include_str!("fixtures/forecast_paris.json");
-    const SPARSE: &str = include_str!("fixtures/forecast_sparse.json");
-    const SEARCH: &str = include_str!("fixtures/search_paris.json");
+    const FORECAST: &str = include_str!("../fixtures/forecast_paris.json");
+    const SPARSE: &str = include_str!("../fixtures/forecast_sparse.json");
+    const SEARCH: &str = include_str!("../fixtures/search_paris.json");
 
     fn paris() -> Place {
         Place {
@@ -446,10 +508,11 @@ mod tests {
         ));
         for part in [
             "current=temperature_2m,",
+            "dew_point_2m,pressure_msl,visibility,cloud_cover,uv_index",
             "hourly=temperature_2m,precipitation_probability,weather_code,wind_gusts_10m",
             "daily=weather_code,",
             "timezone=auto",
-            "forecast_days=10",
+            "forecast_days=16",
             "forecast_hours=48",
             "wind_speed_unit=kmh",
         ] {
@@ -520,6 +583,16 @@ mod tests {
         assert_eq!(wind.speed_kmh, 14.2);
         assert_eq!(wind.gusts_kmh, Some(29.5));
         assert_eq!(wind.direction_deg, Some(0), "360 wraps to 0");
+        assert_eq!(c.dew_point_c, Some(7.4));
+        assert_eq!(c.pressure_msl_hpa, Some(1012.6));
+        assert_eq!(c.visibility_m, Some(24140.0));
+        assert_eq!(c.cloud_cover_pct, Some(100));
+        assert_eq!(c.uv_index, Some(0.0));
+        assert_eq!(report.forecast_source.id, "open-meteo");
+        assert_eq!(
+            report.air_quality.state,
+            crate::weather::types::SectionState::Unavailable { problem: None }
+        );
 
         assert_eq!(report.hourly.len(), 24);
         assert_eq!(report.hourly[0].time, "2026-11-04T20:00");

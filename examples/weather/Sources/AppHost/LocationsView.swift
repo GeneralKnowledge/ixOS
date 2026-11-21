@@ -11,7 +11,14 @@ struct LocationsView: View {
         NavigationStack {
             List {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if let problem = model.placesProblem {
+                        SavedPlacesProblemRow(problem: problem) { model.startNewSavedPlaces() }
+                            .listRowSeparator(.hidden)
+                    }
                     places
+                    NavigationLink("Units") { UnitsView(model: model) }
+                        .accessibilityIdentifier("places.units")
+                        .listRowSeparator(.hidden)
                 } else {
                     results
                 }
@@ -113,6 +120,7 @@ struct LocationsView: View {
 /// the current temperature with today's high and low, over its sky.
 private struct PlaceCard: View {
     let page: WeatherPage
+    @Environment(\.weatherUnits) private var units
 
     var body: some View {
         let overview = page.overview
@@ -134,12 +142,12 @@ private struct PlaceCard: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 if let report {
-                    Text(WeatherFormat.temperature(report.current.temperatureC))
+                    Text(WeatherFormat.temperature(report.current.temperatureC, units))
                         .font(.system(size: 50, weight: .light))
                 }
                 Spacer(minLength: 0)
                 if let today = overview?.today {
-                    Text("H:\(WeatherFormat.temperature(today.highC))  L:\(WeatherFormat.temperature(today.lowC))")
+                    Text("H:\(WeatherFormat.temperature(today.highC, units))  L:\(WeatherFormat.temperature(today.lowC, units))")
                         .font(.subheadline.weight(.medium))
                 }
             }
@@ -161,5 +169,40 @@ private struct PlaceCard: View {
             return WeatherFormat.localClock(utcOffsetSeconds: report.utcOffsetSeconds)
         }
         return page.place?.subtitle ?? ""
+    }
+}
+
+/// Saved places that couldn't be read: say so, and (only for a damaged
+/// file) offer to start a new list. The old file is always kept.
+private struct SavedPlacesProblemRow: View {
+    let problem: SavedDataProblem
+    let startNew: () -> Void
+    @State private var confirming = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch problem {
+            case .unreadable:
+                Text("Your saved places can't be read, so they aren't shown. They've been kept as they are.")
+                Button("Start a New List") { confirming = true }
+                    .accessibilityIdentifier("places.startNew")
+            case .fromNewerVersion:
+                Text("Your saved places were saved by a newer version of Weather. Update the app to see them.")
+            case .couldNotOpen:
+                Text("Your saved places couldn't be opened just now. Try again later.")
+            }
+        }
+        .font(.subheadline)
+        .accessibilityIdentifier("places.problem")
+        .confirmationDialog(
+            "Start a new list of places?", isPresented: $confirming, titleVisibility: .visible
+        ) {
+            Button("Start a New List") { startNew() }
+                .accessibilityIdentifier("places.startNew.confirm")
+            Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier("places.startNew.cancel")
+        } message: {
+            Text("The old list is kept on this device, set aside, in case it can be recovered.")
+        }
     }
 }

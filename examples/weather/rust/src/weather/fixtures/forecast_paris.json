@@ -30,7 +30,12 @@
   "is_day": 0,
   "wind_speed_10m": 14.2,
   "wind_direction_10m": 360,
-  "wind_gusts_10m": 29.5
+  "wind_gusts_10m": 29.5,
+  "dew_point_2m": 7.4,
+  "pressure_msl": 1012.6,
+  "visibility": 24140.0,
+  "cloud_cover": 100,
+  "uv_index": 0.0
  },
  "hourly_units": {
   "time": "iso8601",
