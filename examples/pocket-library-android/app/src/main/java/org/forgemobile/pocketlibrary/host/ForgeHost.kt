@@ -60,13 +60,25 @@ data class ForgeEnvironment(val dataDirectory: String, val cachesDirectory: Stri
         const val TEMPORARY_DATA_EXTRA = "forge.temporaryData"
 
         /**
-         * `<files>/<app>/data` and `<cache>/<app>`, or, with [temporary], an empty folder under
-         * the cache that each launch starts afresh.
+         * With [TEMPORARY_DATA_EXTRA], keeps the last launch's throwaway data instead of
+         * emptying it: a relaunch that checks something was saved. iOS's `-ForgeKeepTestData`.
          */
-        fun standard(app: String, files: File, cache: File, temporary: Boolean): ForgeEnvironment {
+        const val KEEP_TEST_DATA_EXTRA = "forge.keepTestData"
+
+        /**
+         * `<files>/<app>/data` and `<cache>/<app>`, or, with [temporary], a folder under the
+         * cache that each launch empties unless it [keep]s it.
+         */
+        fun standard(
+            app: String,
+            files: File,
+            cache: File,
+            temporary: Boolean,
+            keep: Boolean = false,
+        ): ForgeEnvironment {
             if (temporary) {
                 val base = File(cache, "forge-test-$app")
-                base.deleteRecursively()
+                if (!keep) base.deleteRecursively()
                 return make(File(base, "data"), File(base, "caches"))
             }
             return make(File(File(files, app), "data"), File(cache, app))
