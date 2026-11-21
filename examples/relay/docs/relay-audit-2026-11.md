@@ -225,8 +225,10 @@ Device Lab 1.29921164 on the iPhone 15 Pro Max, `relay` from main
 | My Devices, step 1 | Passed: offered once, revoked once (#354) |
 
 Other findings, fixed in #362: on one Wi-Fi the route read "Direct,
-internet" over the home's public IPv6; the device-list refusal was titled
-"Not Sent"; `relay messages` printed attachments as empty lines.
+internet" over the home's public IPv6; the alert when an introducer
+refused to share its devices was titled "Not Sent" (now "Couldn't Check
+Its Devices", set where Check Its Devices Now fails); `relay messages`
+printed attachments as empty lines.
 
 ### 6. P5: My Devices
 

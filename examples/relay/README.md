@@ -19,7 +19,7 @@ can be a Linux machine running the `relay` command, so one iPhone is enough.
 
 ## Where it is
 
-The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay-reliable-delivery.md). Ideas beyond it are in [relay-future-directions.md](docs/relay-future-directions.md). A review of the product and architecture (2026-11-18): [relay-review-2026-11.md](docs/relay-review-2026-11.md); a code audit from identity to persistence, with the prioritised plan (2026-11-19): [relay-audit-2026-11.md](docs/relay-audit-2026-11.md). How the ideas fit one network: [relay-network-architecture.md](docs/relay-network-architecture.md).
+M1 ([Reliable Trusted-Device Delivery](docs/relay-reliable-delivery.md)) and M2 passed together in the 1.0 acceptance run on 2026-11-21, except the away-from-home cases listed in the [architecture](docs/relay-network-architecture.md); the next stage is N2, away from home ([plan](docs/relay-away-from-home.md)). Ideas beyond it are in [relay-future-directions.md](docs/relay-future-directions.md). A review of the product and architecture (2026-11-18): [relay-review-2026-11.md](docs/relay-review-2026-11.md); a code audit from identity to persistence, with the prioritised plan (2026-11-19): [relay-audit-2026-11.md](docs/relay-audit-2026-11.md). How the ideas fit one network: [relay-network-architecture.md](docs/relay-network-architecture.md).
 
 | Step | What | State |
 |---|---|---|

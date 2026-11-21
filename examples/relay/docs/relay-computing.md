@@ -106,7 +106,7 @@ index returned to the phone.
 
 | | Milestone | Exit |
 |---|---|---|
-| M1 | Reliable Delivery (current, unchanged) | Work is delivered safely and exactly once across interruptions and relaunches |
+| M1 | Reliable Delivery (unchanged) | Work is delivered safely across interruptions and relaunches: at least once, with duplicates dropped by id |
 | M2 | Personal Network (unchanged) | Devices find and reach each other with no manual addresses or tunnels |
 | M3 | Resource and Capability Model | A node discovers another's capabilities and knows exactly what it may request |
 | M4 | Remote Execution | Submit on one device, run on another, get a verified result even if the connection drops during execution |
@@ -178,8 +178,10 @@ the work under way.
   but the milestone order after M2 has to pick one.
 - **It builds on what exists:** the trust model's per-device
   `receives_from` grant is already the first per-capability permission;
-  M1's outbox already gives exactly-once delivery with ids, which the
-  remote-execution proof needs for "result without running twice"; AI Lab
+  M1's outbox already gives at-least-once delivery with duplicates
+  dropped by id; "result without running twice" in the remote-execution
+  proof needs more than that (the job's own id, checked before it runs,
+  and its result kept to answer a repeat); AI Lab
   (A1 on the GTX 1060) and `relay serve-ai` are a natural first
   `ai.inference` capability.
 - **It touches the merged Chat plan:** Chat merged into Relay and the front

@@ -47,11 +47,15 @@ What's missing is the default and the setup:
   has been applied or the person sets the servers, so Relay never changes
   them by itself again. Older builds didn't record a choice, so someone
   who turned the servers off there looks the same as someone who never
-  touched them; the notice tells them where to turn them off again.
+  touched them. Such an earlier "off" is overridden on purpose, and the
+  one-time notice is how the person learns of it and where to turn them
+  off again (Connections → Servers → No Servers).
 - An upgrade that turns them on says so once, in the same way as the saved-data
   notice: "Relay now reaches your devices away from home through its
-  servers. What you send stays encrypted end to end. Settings →
-  Connections to change this."
+  servers. What your devices send each other stays encrypted end to end.
+  You can change this in Settings, under Connections." The claim covers
+  device connections only; the chat server's own path is plain HTTP until
+  N3.
 
 ### 2. Changes take effect at once
 
@@ -72,9 +76,14 @@ One setting replaces both, with three choices:
 | **Private networks** | Private | Only the same Wi-Fi or a private network such as Tailscale. Nothing goes through Relay's servers. |
 | **This network only** | Local | Only the same Wi-Fi or wired network. |
 
-Own servers (self-hosting) move to an "Advanced" row under Everywhere:
-the relay and lookup URLs, with `relay servers <relay> <lookup>` on the
-command line as today. The wording comes from the security claims table
+Under Everywhere, a **Servers** row opens an Advanced screen with three
+choices: Relay's servers (the default), your own (the relay and lookup
+URLs; `relay servers --relay URL --lookup URL` on the command line), or
+**No Servers**: devices then connect directly over Wi-Fi, a private
+network or the internet, with no relay and no lookup. That keeps what
+Hybrid with the servers off did before, for anyone who wants it.
+The command line takes the same names: `relay connections everywhere |
+private | this-network`. The wording comes from the security claims table
 in the architecture doc; nothing claims more than it does.
 
 ### 4. Saying why a device can't be reached
@@ -126,7 +135,7 @@ Each check is recorded on its own, like the 1.0 run.
 
 ## Order of work
 
-1. Record and default (`servers_chosen`, upgrade rule, notice), with
+1. Record and default (`servers_settled`, upgrade rule, notice), with
    tests for the three upgrade cases.
 2. Applying changes at once, with a test that a mode switch reaches a
    device without a restart.

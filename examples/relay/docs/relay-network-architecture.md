@@ -199,8 +199,10 @@ existing layer.
 M1 and M2 keep their definitions and acceptance criteria
 ([Reliable Trusted-Device Delivery](relay-reliable-delivery.md) and the
 Personal Device Network in the [M1/M2 brief](relay-m1-m2-brief.md)); the
-1.0 acceptance run proves them together on the phone, it doesn't replace
-them. The stages after them are named N1 to N9 so they don't collide.
+1.0 acceptance run proved M1 and most of M2 on the phone, it doesn't
+replace them. Still open from M2: the iMac away from home, and files (not
+only messages) both ways through the relay; only the phone to the laptop,
+messages over 5G, was run. N2's acceptance run covers them. The stages after them are named N1 to N9 so they don't collide.
 
 | Stage | Focus | Purpose |
 |---|---|---|
