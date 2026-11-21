@@ -22,6 +22,14 @@ pub enum Evidence {
         failures: u32,
         errors: u32,
     },
+    /// A run made or changed an image file (PNG size from its header).
+    Produced {
+        path: String,
+        format: String,
+        bytes: u64,
+        width: Option<u32>,
+        height: Option<u32>,
+    },
 }
 
 impl Evidence {
@@ -46,6 +54,14 @@ pub enum Criterion {
     /// For a task in the person's own words: the last run or test run after
     /// the last change succeeded.
     WorkRuns,
+    /// A run after the last change made `path` as a `format` image ("png",
+    /// "svg" ...), at least `min_width` pixels wide when its size is known.
+    /// An SVG must also contain an <svg> element.
+    ProducesImage {
+        path: String,
+        format: String,
+        min_width: u32,
+    },
 }
 
 impl Criterion {
@@ -59,6 +75,17 @@ impl Criterion {
             Criterion::FileUnchanged { path, .. } => format!("{path} is left unchanged"),
             Criterion::WorkRuns => {
                 "the last run or test run after the last change succeeded".into()
+            }
+            Criterion::ProducesImage {
+                path,
+                format: kind,
+                min_width,
+            } => {
+                if *min_width > 0 {
+                    format!("running it makes {path} ({kind}, at least {min_width} pixels wide)")
+                } else {
+                    format!("running it makes {path} ({kind})")
+                }
             }
         }
     }
@@ -121,7 +148,11 @@ impl Criterion {
                 Some(_) => Err(format!("{path} was changed; put it back as it was")),
                 None => Err(format!("{path} is missing")),
             },
-            Criterion::WorkRuns => match fresh.iter().rev().find(|e| !e.is_change()) {
+            Criterion::WorkRuns => match fresh
+                .iter()
+                .rev()
+                .find(|e| matches!(e, Evidence::Ran { .. } | Evidence::Tests { .. }))
+            {
                 Some(Evidence::Ran { path, ok: true, .. }) => {
                     Ok(format!("{path} ran without an error"))
                 }
@@ -133,6 +164,44 @@ impl Criterion {
                 Some(_) => Err("the last run after the last change failed".into()),
                 None => Err("nothing has been run since the last change".into()),
             },
+            Criterion::ProducesImage {
+                path,
+                format: kind,
+                min_width,
+            } => {
+                let made = fresh.iter().rev().find_map(|e| match e {
+                    Evidence::Produced {
+                        path: p,
+                        format: k,
+                        width,
+                        ..
+                    } if p == path => Some((k, *width)),
+                    _ => None,
+                });
+                match made {
+                    None => Err(format!(
+                        "no run since the last change has made {path}; run the program that saves it"
+                    )),
+                    Some((k, _)) if k != kind => {
+                        Err(format!("{path} is not a {kind} file (it looks like {k})"))
+                    }
+                    Some((_, Some(width))) if width < *min_width => Err(format!(
+                        "{path} is {width} pixels wide; it should be at least {min_width}"
+                    )),
+                    Some((_, None)) if kind == "png" && *min_width > 0 => {
+                        Err(format!("{path} is not a valid PNG (no size in its header)"))
+                    }
+                    Some(_) if kind == "svg"
+                        && !read(path).is_some_and(|text| text.contains("<svg")) =>
+                    {
+                        Err(format!("{path} does not contain an <svg> element"))
+                    }
+                    Some((_, width)) => Ok(match width {
+                        Some(width) => format!("running it made {path} ({kind}, {width} pixels wide)"),
+                        None => format!("running it made {path} ({kind})"),
+                    }),
+                }
+            }
         }
     }
 }
@@ -224,6 +293,19 @@ pub fn ladder() -> Vec<LadderTask> {
             ],
         },
         LadderTask {
+            id: "tp1-svg-chart",
+            title: "T-P1 An SVG chart",
+            request: "Write chart.py that draws a bar chart of the numbers [3, 7, 5] as chart.svg, \
+                      using only the standard library (write the SVG as text), with each bar's value \
+                      as a label. Then run chart.py.",
+            seed: vec![],
+            criteria: vec![Criterion::ProducesImage {
+                path: "chart.svg".into(),
+                format: "svg".into(),
+                min_width: 0,
+            }],
+        },
+        LadderTask {
             id: "t5-fix-from-traceback",
             title: "T5 Fix from a traceback",
             request: "Run inventory.py. It crashes. Fix the bug so it prints each item and its count, \
@@ -264,6 +346,9 @@ fn answer(thought: &str, tool: &str, args: &[(&str, &str)]) -> String {
     text.push('}');
     text
 }
+
+/// Scripted T-P1's chart.py: three labelled bars as SVG text.
+const SCRIPTED_CHART_PY: &str = "values = [3, 7, 5]\nbars = []\nfor i, v in enumerate(values):\n    x = 20 + i * 60\n    h = v * 20\n    bars.append(f'<rect x=\"{x}\" y=\"{160 - h}\" width=\"40\" height=\"{h}\" fill=\"teal\"/>')\n    bars.append(f'<text x=\"{x + 20}\" y=\"175\" text-anchor=\"middle\">{v}</text>')\nsvg = '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"180\">' + ''.join(bars) + '</svg>'\nwith open('chart.svg', 'w') as f:\n    f.write(svg)\nprint('Wrote chart.svg')\n";
 
 /// A probe the scripted T1 runs first: on the phone it shows the guard
 /// blocking a write outside the project and a network connection.
@@ -360,6 +445,18 @@ pub fn script(task_id: &str) -> Vec<String> {
             ),
             answer("Run it.", "run_python", &[("path", "main.py")]),
             finish("main.py prints both areas."),
+        ],
+        "tp1-svg-chart" => vec![
+            answer(
+                "Write the chart as SVG text.",
+                "write_file",
+                &[
+                    ("path", "chart.py"),
+                    ("content", SCRIPTED_CHART_PY),
+                ],
+            ),
+            answer("Run it to make chart.svg.", "run_python", &[("path", "chart.py")]),
+            finish("chart.py writes chart.svg with three labelled bars."),
         ],
         // The first edit copies the line wrongly (single quotes), to show
         // the "did you mean" answer; the second copies it exactly.

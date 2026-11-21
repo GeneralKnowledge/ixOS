@@ -181,6 +181,8 @@ Started after the H1 sitting: all of T1 to T3 passed, so the escaping-proof raw 
 
 Phone sitting: Scripted T1 to T5, then T4 and T5 on the 4B and the 9B, comparing model time per step with H1's.
 
+The ladder also has **T-P1** (`tp1-svg-chart`, from Visual Labs P1): write chart.py that saves a bar chart of [3, 7, 5] as chart.svg with the standard library; accepted when a run after the last change made chart.svg and it contains an `<svg>` element (`ProducesImage`).
+
 ### H4: planning and multi-task orchestration
 
 Planner mode: the request becomes a constrained plan (tasks, dependencies, acceptance criteria chosen from the harness's list). As in Cline's Plan and Act, the plan is shown before anything changes, with an approval switch (approve each plan, or run on). The harness runs ready tasks in dependency order, one executor at a time, each with a fresh context, and shows the plan with each task's status (as in "3 / 6 tasks passed"). The journal now resumes a half-finished plan from its last verified task, and the model can be unloaded between tasks. Ladder: T6 "a module with two functions, each with its own test" as a two-task plan; T7 a three-task plan with a dependency.

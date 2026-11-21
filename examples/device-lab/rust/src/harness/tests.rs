@@ -811,3 +811,118 @@ fn the_project_map_lists_definitions_from_ast() {
         .overview()
         .contains("broken.py (8 bytes): Python cannot parse it (line 1)"));
 }
+
+fn manual_run(project: &std::path::Path, code: &str) -> super::python_lab::PythonLabOutput {
+    use std::process::Command;
+    let script = super::python_lab::python_lab_script(project.display().to_string(), code.into());
+    // PythonBridge's runner: the script's output, ok when nothing escaped.
+    let output = Command::new("python3")
+        .arg("-I")
+        .arg("-c")
+        .arg(&script)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr);
+    super::python_lab::python_lab_output(
+        project.display().to_string(),
+        output.status.success(),
+        text,
+    )
+}
+
+#[test]
+fn png_headers_give_the_size_and_artifacts_list_newest_first() {
+    use super::artifacts::{kind_of, list, png_size};
+    let mut head = vec![
+        0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n', 0, 0, 0, 13,
+    ];
+    head.extend_from_slice(b"IHDR");
+    head.extend_from_slice(&640u32.to_be_bytes());
+    head.extend_from_slice(&480u32.to_be_bytes());
+    assert_eq!(png_size(&head), Some((640, 480)));
+    assert_eq!(png_size(b"GIF89a not a png at all......"), None);
+    assert_eq!(kind_of("a/B.JPG"), Some("jpeg"));
+    assert_eq!(kind_of("notes.txt"), None);
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("plots")).unwrap();
+    std::fs::create_dir_all(dir.path().join(".harness")).unwrap();
+    std::fs::write(dir.path().join("plots/a.png"), &head).unwrap();
+    std::fs::write(dir.path().join(".harness/hidden.png"), &head).unwrap();
+    std::fs::write(dir.path().join("notes.txt"), "x").unwrap();
+    std::thread::sleep(Duration::from_millis(20));
+    std::fs::write(dir.path().join("b.svg"), "<svg/>").unwrap();
+    let found = list(dir.path());
+    let paths: Vec<_> = found.iter().map(|a| a.path.as_str()).collect();
+    assert_eq!(paths, vec!["b.svg", "plots/a.png"]);
+    assert_eq!(found[1].width, Some(640));
+    assert_eq!(found[0].width, None);
+}
+
+#[test]
+fn python_lab_runs_in_its_project_and_the_samples_make_images() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let project = dir.path().join("scratch");
+    std::fs::create_dir_all(&project).unwrap();
+    // The last expression is shown; the working folder is the project.
+    let run = manual_run(
+        &project,
+        "import os\nopen('note.txt', 'w').write('hi')\n6 * 7",
+    );
+    assert!(run.ok, "{}", run.output);
+    assert_eq!(run.output.trim(), "42");
+    assert!(project.join("note.txt").exists());
+    // A failure: not ok, and only the script's own frames, with its line.
+    let failed = manual_run(&project, "import json\nx = 1\njson.loads('{')\n");
+    assert!(!failed.ok);
+    assert!(
+        failed.output.contains("File \"<script>\", line 3"),
+        "{}",
+        failed.output
+    );
+    assert!(
+        failed.output.contains("json.loads('{')"),
+        "{}",
+        failed.output
+    );
+    assert!(
+        !failed.output.contains("json/decoder.py"),
+        "{}",
+        failed.output
+    );
+    assert!(
+        failed.output.contains("JSONDecodeError"),
+        "{}",
+        failed.output
+    );
+    // Writes stay inside the project.
+    let outside = manual_run(&project, "open('../outside.txt', 'w')\n");
+    assert!(!outside.ok);
+    assert!(!dir.path().join("outside.txt").exists());
+
+    for sample in super::samples::python_lab_graphics_samples() {
+        let run = manual_run(&project, &sample.code);
+        assert!(run.ok, "{}: {}", sample.id, run.output);
+    }
+    let found = super::artifacts::list(&project);
+    let gradient = found.iter().find(|a| a.path == "gradient.png").unwrap();
+    assert_eq!((gradient.width, gradient.height), (Some(256), Some(128)));
+    for svg in ["chart.svg", "safety.svg"] {
+        let text = std::fs::read_to_string(project.join(svg)).unwrap();
+        // Well-formed XML, by Python's own parser.
+        let check = manual_run(
+            &project,
+            &format!("import xml.etree.ElementTree as ET\nET.parse({svg:?}).getroot().tag"),
+        );
+        assert!(
+            check.ok && check.output.contains("svg"),
+            "{svg}: {}",
+            check.output
+        );
+        assert!(text.starts_with("<svg"));
+    }
+}

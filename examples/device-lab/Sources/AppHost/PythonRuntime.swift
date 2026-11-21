@@ -60,7 +60,19 @@ final class PythonRuntime: PythonRunning {
 }
 
 extension PythonLabModel {
-    static func live() -> PythonLabModel { PythonLabModel(runtime: PythonRuntime.shared) }
+    /// Scripts run in the harness's `scratch` project, so the images they
+    /// save show under Artifacts and Bonsai's own tasks see the same files.
+    static func live() -> PythonLabModel {
+        PythonLabModel(
+            runtime: PythonRuntime.shared,
+            projectFolder: PythonLabProjects.folder.appendingPathComponent("scratch").path)
+    }
+}
+
+/// Where Python Lab's projects live (Bonsai Harness's too).
+enum PythonLabProjects {
+    static let folder = URL.applicationSupportDirectory
+        .appendingPathComponent("Python Lab/Projects", isDirectory: true)
 }
 
 /// Bonsai Harness runs its wrapper scripts through the same interpreter
@@ -79,8 +91,7 @@ extension PythonRuntime: PythonHost {
 
 extension BonsaiHarnessModel {
     static func live() -> BonsaiHarnessModel {
-        let projects = URL.applicationSupportDirectory
-            .appendingPathComponent("Python Lab/Projects", isDirectory: true)
+        let projects = PythonLabProjects.folder
         try? FileManager.default.createDirectory(at: projects, withIntermediateDirectories: true)
         return BonsaiHarnessModel(
             harness: BonsaiHarness(python: PythonRuntime.shared, projectsFolder: projects.path))

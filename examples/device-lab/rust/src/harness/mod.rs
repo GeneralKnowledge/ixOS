@@ -13,11 +13,13 @@
 //! [`Environment`] (Python Lab, [`python_lab`], is the first) and models
 //! through [`HarnessModel`].
 
+pub mod artifacts;
 pub mod calls;
 pub mod evidence;
 pub mod journal;
 mod prompt;
 pub mod python_lab;
+pub mod samples;
 #[cfg(test)]
 mod tests;
 
@@ -453,6 +455,15 @@ impl BonsaiHarness {
     }
 
     /// The open project's files.
+    /// The folder of the project on screen, for its images
+    /// (`project_artifacts`).
+    pub fn project_folder(&self) -> Option<String> {
+        let name = lock(&self.shared.state).project.clone()?;
+        self.project_root(&name)
+            .ok()
+            .map(|root| root.display().to_string())
+    }
+
     pub fn files(&self) -> Vec<ProjectFile> {
         let Some(name) = lock(&self.shared.state).project.clone() else {
             return Vec::new();

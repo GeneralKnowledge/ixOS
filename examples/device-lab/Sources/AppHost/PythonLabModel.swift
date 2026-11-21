@@ -1,3 +1,4 @@
+@preconcurrency import ForgeFFI
 import Foundation
 import Observation
 
@@ -34,15 +35,35 @@ public final class PythonLabModel {
     public private(set) var unavailable: String?
     /// A script running longer than this is stopped.
     public let timeLimit: Duration
+    /// The project folder scripts run in (the harness's `scratch` project,
+    /// shared with Bonsai's own tasks), so a script that saves `plot.png`
+    /// has somewhere to put it. Nil runs the bare script, as before.
+    public let projectFolder: String?
+    /// The project's images, newest first.
+    public private(set) var artifacts: [ProjectArtifact] = []
+    /// The images the last run made or changed.
+    public private(set) var madeByLastRun: [ProjectArtifact] = []
 
-    public let samples = PythonLabModel.allSamples
+    public let samples: [PythonLabSample]
 
     @ObservationIgnored private let runtime: (any PythonRunning)?
     @ObservationIgnored private var started = false
 
-    public init(runtime: (any PythonRunning)?, timeLimit: Duration = .seconds(30)) {
+    public init(
+        runtime: (any PythonRunning)?, projectFolder: String? = nil,
+        timeLimit: Duration = .seconds(30)
+    ) {
         self.runtime = runtime
         self.timeLimit = timeLimit
+        self.projectFolder = projectFolder
+        // The graphics samples write files, so they need the project.
+        samples =
+            projectFolder == nil
+            ? Self.allSamples
+            : Self.allSamples
+                + pythonLabGraphicsSamples().map {
+                    PythonLabSample(id: $0.id, title: $0.title, code: $0.code)
+                }
         code = Self.allSamples[0].code
         if runtime == nil {
             unavailable = "This build of Device Lab has no Python."
@@ -80,16 +101,46 @@ public final class PythonLabModel {
             try? await Task.sleep(for: limit)
             if !Task.isCancelled { runtime.interrupt() }
         }
+        var script = code
+        var before: [String: ProjectArtifact] = [:]
+        if let projectFolder {
+            try? FileManager.default.createDirectory(
+                atPath: projectFolder, withIntermediateDirectories: true)
+            script = pythonLabScript(project: projectFolder, code: code)
+            before = Dictionary(
+                projectArtifacts(project: projectFolder).map { ($0.path, $0) },
+                uniquingKeysWith: { first, _ in first })
+        }
         let clock = ContinuousClock()
         let begin = clock.now
-        let result = await runtime.run(code)
+        var result = await runtime.run(script)
         watchdog.cancel()
         let elapsed = clock.now - begin
+        if let projectFolder {
+            let readable = pythonLabOutput(project: projectFolder, ok: result.ok, output: result.output)
+            result = (readable.ok, readable.output)
+            artifacts = projectArtifacts(project: projectFolder)
+            madeByLastRun = artifacts.filter { artifact in
+                guard let old = before[artifact.path] else { return true }
+                return old.bytes != artifact.bytes || old.modifiedMs != artifact.modifiedMs
+            }
+        }
         lastSeconds = Double(elapsed.components.seconds)
             + Double(elapsed.components.attoseconds) / 1e18
         output = result.output.isEmpty ? "(no output)" : result.output
         succeeded = result.ok
         isRunning = false
+    }
+
+    /// Reads the project's images again (after a delete, or on opening).
+    public func loadArtifacts() {
+        guard let projectFolder else { return }
+        artifacts = projectArtifacts(project: projectFolder)
+    }
+
+    /// Where an artifact is, to show or share it.
+    public func url(of artifact: ProjectArtifact) -> URL? {
+        projectFolder.map { URL(fileURLWithPath: $0).appendingPathComponent(artifact.path) }
     }
 
     public func stop() {

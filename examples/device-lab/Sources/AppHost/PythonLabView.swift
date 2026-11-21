@@ -65,6 +65,9 @@ struct PythonLabView: View {
                     }
                 }
             }
+            if model.projectFolder != nil {
+                artifactsSection
+            }
             Section {
                 if let version = model.version {
                     LabeledContent("Python", value: version)
@@ -81,6 +84,42 @@ struct PythonLabView: View {
         .groupedList()
         .navigationTitle("Python Lab")
         .inlineNavigationTitle()
-        .task { await model.prepare() }
+        .task {
+            model.loadArtifacts()
+            await model.prepare()
+        }
+    }
+
+    /// What the last run made or changed, then a link to all the project's
+    /// images.
+    @ViewBuilder private var artifactsSection: some View {
+        Section {
+            if model.madeByLastRun.isEmpty {
+                Text(model.succeeded == nil ? "Images a script saves, like plot.png, show here." : "The last run made no images.")
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("pythonLab.artifacts.none")
+            }
+            ForEach(model.madeByLastRun, id: \.path) { artifact in
+                ArtifactRow(artifact: artifact, url: model.url(of: artifact))
+            }
+            if !model.artifacts.isEmpty {
+                NavigationLink {
+                    List {
+                        ForEach(model.artifacts, id: \.path) { artifact in
+                            ArtifactRow(artifact: artifact, url: model.url(of: artifact))
+                        }
+                    }
+                    .navigationTitle("Artifacts")
+                    .inlineNavigationTitle()
+                } label: {
+                    LabeledContent("All Images", value: "\(model.artifacts.count)")
+                }
+                .accessibilityIdentifier("pythonLab.artifacts.all")
+            }
+        } header: {
+            Text("Artifacts")
+        } footer: {
+            Text("Scripts run in the scratch project, which Bonsai Harness's own tasks share.")
+        }
     }
 }

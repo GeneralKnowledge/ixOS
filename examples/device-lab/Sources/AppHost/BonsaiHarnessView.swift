@@ -172,7 +172,10 @@ struct BonsaiHarnessView: View {
 
     private func projectSection(_ snapshot: HarnessSnapshot) -> some View {
         Section {
-            ForEach(model.files, id: \.path) { file in
+            ForEach(model.artifacts, id: \.path) { artifact in
+                ArtifactRow(artifact: artifact, url: model.url(of: artifact))
+            }
+            ForEach(model.files.filter { file in !model.artifacts.contains { $0.path == file.path } }, id: \.path) { file in
                 NavigationLink {
                     ScrollView {
                         Text(file.text)

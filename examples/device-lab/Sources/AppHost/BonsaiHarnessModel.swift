@@ -13,6 +13,8 @@ public final class BonsaiHarnessModel {
     public private(set) var snapshot: HarnessSnapshot?
     public private(set) var ladder: [HarnessTask] = []
     public private(set) var files: [ProjectFile] = []
+    /// The project's images, newest first, shown as thumbnails.
+    public private(set) var artifacts: [ProjectArtifact] = []
     public private(set) var error: String?
     /// The person's own task.
     public var request = ""
@@ -98,6 +100,15 @@ public final class BonsaiHarnessModel {
 
     public func loadFiles() {
         files = harness?.files() ?? []
+        artifacts = projectFolder.map { projectArtifacts(project: $0) } ?? []
+    }
+
+    /// The folder of the project on screen.
+    public var projectFolder: String? { harness?.projectFolder() }
+
+    /// Where an artifact is, to show or share it.
+    public func url(of artifact: ProjectArtifact) -> URL? {
+        projectFolder.map { URL(fileURLWithPath: $0).appendingPathComponent(artifact.path) }
     }
 
     private func perform(_ start: (BonsaiHarness, LlamaCppModel) throws -> Void) {

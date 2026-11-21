@@ -764,6 +764,11 @@ RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_ladder(uint64_t ptr, RustCal
 void uniffi_forge_ffi_fn_method_bonsaiharness_open_project(uint64_t ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_PROJECT_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_PROJECT_FOLDER
+RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_project_folder(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SNAPSHOT
 RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_snapshot(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -1301,6 +1306,27 @@ void uniffi_forge_ffi_fn_func_crash_test_rust_panic(RustCallStatus *_Nonnull out
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PROJECT_ARTIFACTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PROJECT_ARTIFACTS
+RustBuffer uniffi_forge_ffi_fn_func_project_artifacts(RustBuffer project, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_OUTPUT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_OUTPUT
+RustBuffer uniffi_forge_ffi_fn_func_python_lab_output(RustBuffer project, int8_t ok, RustBuffer output, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_SCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_SCRIPT
+RustBuffer uniffi_forge_ffi_fn_func_python_lab_script(RustBuffer project, RustBuffer code, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_GRAPHICS_SAMPLES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_GRAPHICS_SAMPLES
+RustBuffer uniffi_forge_ffi_fn_func_python_lab_graphics_samples(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_LOGS_AS_TEXT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_LOGS_AS_TEXT
 RustBuffer uniffi_forge_ffi_fn_func_logs_as_text(RustBuffer lines, RustCallStatus *_Nonnull out_status
@@ -1678,6 +1704,30 @@ uint16_t uniffi_forge_ffi_checksum_func_crash_test_rust_panic(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PROJECT_ARTIFACTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PROJECT_ARTIFACTS
+uint16_t uniffi_forge_ffi_checksum_func_project_artifacts(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_OUTPUT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_OUTPUT
+uint16_t uniffi_forge_ffi_checksum_func_python_lab_output(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_SCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_SCRIPT
+uint16_t uniffi_forge_ffi_checksum_func_python_lab_script(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_GRAPHICS_SAMPLES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_GRAPHICS_SAMPLES
+uint16_t uniffi_forge_ffi_checksum_func_python_lab_graphics_samples(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_LOGS_AS_TEXT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_LOGS_AS_TEXT
 uint16_t uniffi_forge_ffi_checksum_func_logs_as_text(void
@@ -1903,6 +1953,12 @@ uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_ladder(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_OPEN_PROJECT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_OPEN_PROJECT
 uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_open_project(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_PROJECT_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_PROJECT_FOLDER
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_project_folder(void
     
 );
 #endif

@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
+use super::artifacts;
 use super::calls::{check_path, ArgKind, ToolCall, ToolSpec};
 use super::evidence::{Evidence, SeedFile};
 use super::{Environment, ToolOutcome};
@@ -291,6 +292,7 @@ impl PythonLab {
             "import runpy\n    try:\n        runpy.run_path({}, run_name='__main__')\n    except SystemExit as _exit:\n        if _exit.code not in (None, 0):\n            raise\n",
             py_str(&full.display().to_string())
         );
+        let before = artifacts::stamps(&self.root);
         let (outcome, timed_out) = self.run_script(wrapper(&self.root, self.network, &action));
         let failed = !outcome.ok || outcome.output.contains(FAILED_MARK) || timed_out;
         let mut text = self.clean(&outcome.output);
@@ -300,22 +302,42 @@ impl PythonLab {
                 self.run_limit.as_secs()
             );
         }
-        let shown = if text.trim().is_empty() {
+        let mut shown = if text.trim().is_empty() {
             "(no output)".to_string()
         } else {
             text.trim_end().to_string()
         };
+        let mut evidence = vec![Evidence::Ran {
+            path: path.into(),
+            ok: !failed,
+            output: text,
+        }];
+        for made in artifacts::changed(&self.root, &before) {
+            shown += &format!(
+                "\nMade {} ({}, {} bytes{}).",
+                made.path,
+                made.kind,
+                made.bytes,
+                match (made.width, made.height) {
+                    (Some(w), Some(h)) => format!(", {w} by {h} pixels"),
+                    _ => String::new(),
+                }
+            );
+            evidence.push(Evidence::Produced {
+                path: made.path,
+                format: made.kind,
+                bytes: made.bytes,
+                width: made.width,
+                height: made.height,
+            });
+        }
         ToolOutcome {
             ok: !failed,
             text: format!(
                 "{path} {}.\n{shown}",
                 if failed { "ended with an error" } else { "ran" }
             ),
-            evidence: vec![Evidence::Ran {
-                path: path.into(),
-                ok: !failed,
-                output: text,
-            }],
+            evidence,
         }
     }
 
@@ -718,6 +740,51 @@ finally:
         root = py_str(&root.display().to_string()),
         network = if network { "True" } else { "False" },
     )
+}
+
+/// A script Python Lab runs for the person, in the project folder
+/// `project`: the harness's wrapper (the folder, `sys.path`, the project's
+/// modules forgotten, tracebacks cut to the project's frames, writes kept
+/// inside the project) with the network allowed, since the person wrote
+/// the code. If the last line is an expression its value is printed, as
+/// before. Run it with PythonBridge, then pass the output through
+/// `python_lab_output`.
+#[uniffi::export]
+pub fn python_lab_script(project: String, code: String) -> String {
+    let action = format!(
+        "import ast, linecache\n    _source = {source}\n    _name = os.path.join(_root, '<script>')\n    linecache.cache[_name] = (len(_source), None, _source.splitlines(True), _name)\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _scope = {{'__name__': '__main__', '__file__': _name}}\n    exec(compile(_tree, _name, 'exec'), _scope)\n    if _last is not None:\n        _value = eval(compile(_last, _name, 'eval'), _scope)\n        if _value is not None:\n            print(repr(_value))\n",
+        source = py_str(&code)
+    );
+    wrapper(Path::new(&project), true, &action)
+}
+
+/// What a `python_lab_script` run printed, made readable: whether it
+/// succeeded, and the output with the project folder's paths removed.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PythonLabOutput {
+    pub ok: bool,
+    pub output: String,
+}
+
+#[uniffi::export]
+pub fn python_lab_output(project: String, ok: bool, output: String) -> PythonLabOutput {
+    let root = PathBuf::from(&project);
+    let mut text = output.clone();
+    for prefix in [Some(root.clone()), fs::canonicalize(&root).ok()]
+        .into_iter()
+        .flatten()
+    {
+        text = text.replace(&format!("{}/", prefix.display()), "");
+    }
+    let text = text
+        .lines()
+        .filter(|l| !l.starts_with(FAILED_MARK))
+        .collect::<Vec<_>>()
+        .join("\n");
+    PythonLabOutput {
+        ok: ok && !output.contains(FAILED_MARK),
+        output: text,
+    }
 }
 
 #[cfg(test)]
