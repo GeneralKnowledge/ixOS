@@ -84,6 +84,7 @@ public final class RelayModel {
         devices = core.devices()
         policy = core.pairingPolicy()
         connectionMode = core.connectionMode()
+        servers = core.servers()
         trustOffer = core.trustOffer()
         savedDataNotice = core.savedDataNotice()
         awayNotice = core.awayFromHomeNotice()
@@ -191,6 +192,9 @@ public final class RelayModel {
     public private(set) var policy: PairingPolicy = .askToPair
     /// Which routes reach trusted devices (Settings).
     public private(set) var connectionMode: ConnectionMode = .hybrid
+    /// The relay and lookup server used in Everywhere: Relay's own by
+    /// default (N2), the person's own, or none.
+    public private(set) var servers = RelayServers(relayUrl: nil, lookupUrl: nil)
     /// "Trust this device?" after a code transfer, until answered.
     public private(set) var trustOffer: TrustOffer?
 
@@ -364,6 +368,11 @@ public final class RelayModel {
         await perform { try await $0.setConnectionMode(mode: mode) }
     }
 
+    /// Takes effect at once, without reopening Relay (N2).
+    public func setServers(_ servers: RelayServers) async {
+        await perform { try await $0.setServers(servers: servers) }
+    }
+
     /// How a trusted device can be reached, in words: nearby, why Relay
     /// couldn't reach it last time, or the route it was last reached by.
     public static func reach(_ device: Device) -> String {
@@ -382,14 +391,39 @@ public final class RelayModel {
         return "\(device.name) isn't showing on this network. Open Relay on it, on the same Wi-Fi."
     }
 
-    public static func explain(_ mode: ConnectionMode) -> String {
+    /// What a Connections choice means, in the words of the security
+    /// claims (relay-network-architecture.md): nothing claims more than it
+    /// does.
+    public static func explain(_ mode: ConnectionMode, servers: RelayServers) -> String {
         switch mode {
         case .hybrid:
-            "Relay tries the local network first, then a private network such as Tailscale, then the internet and Relay's own servers, if they are on."
+            switch ServerChoice(servers) {
+            case .relays:
+                "Your devices reach each other from anywhere. When there's no direct way, an encrypted connection passes through Relay's server, which can't read it but sees that two devices are connected, when and how much."
+            case .own:
+                "Your devices reach each other from anywhere. When there's no direct way, an encrypted connection passes through your own server, which can't read it but sees that two devices are connected, when and how much."
+            case .none:
+                "Your devices reach each other directly when they can, over Wi-Fi, a private network or the internet. With no server, some networks keep them apart."
+            }
         case .private:
-            "Relay tries the local network, then a private network such as Tailscale. It never connects over the open internet or through a relay."
+            "Only the same Wi-Fi or a private network such as Tailscale. Nothing goes through Relay's servers."
         case .local:
-            "Relay only connects to devices on the same network."
+            "Only the same Wi-Fi or wired network."
+        }
+    }
+
+    /// Which servers Everywhere uses, as the Advanced screen offers them.
+    public enum ServerChoice: Hashable, Sendable {
+        case relays, own, none
+
+        public init(_ servers: RelayServers) {
+            if servers.relayUrl == nil, servers.lookupUrl == nil {
+                self = .none
+            } else if servers == ownRelayServers() {
+                self = .relays
+            } else {
+                self = .own
+            }
         }
     }
 

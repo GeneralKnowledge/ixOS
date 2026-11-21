@@ -14,7 +14,7 @@
 //! relay trust <device>               trust a revoked device again
 //! relay policy [codes-only | ask | automatic]
 //!                                    what happens after a code transfer
-//! relay connections [local | private | any]
+//! relay connections [everywhere | private | this-network]
 //!                                    which routes reach trusted devices
 //! relay servers [--own] [--relay URL] [--lookup URL] [--none]
 //!                                    Relay's own relay and lookup server
@@ -73,7 +73,7 @@ send <device> (--text TEXT | PATH...) [--to host:port] | \
 messages <device> | status <device> | revoke <device> | forget <device> | \
 trust <device> | asks <device> on|off | introduces <device> on|off | \
 sees-devices <device> on|off | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
-connections [local | private | any] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
+connections [everywhere | private | this-network] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] | \
 ask <device> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
@@ -427,9 +427,10 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             }
             Some(name) => {
                 let mode = match name {
-                    "local" => relay_core::ConnectionMode::Local,
+                    // The app's words (N2), and the older ones.
+                    "this-network" | "local" => relay_core::ConnectionMode::Local,
                     "private" => relay_core::ConnectionMode::Private,
-                    "any" => relay_core::ConnectionMode::Hybrid,
+                    "everywhere" | "any" => relay_core::ConnectionMode::Hybrid,
                     _ => return Some(Err(USAGE.into())),
                 };
                 block_on(core.set_connection_mode(mode)).map_err(|e| e.to_string())
@@ -624,10 +625,12 @@ fn policy_name(policy: relay_core::PairingPolicy) -> &'static str {
 
 fn mode_name(mode: relay_core::ConnectionMode) -> &'static str {
     match mode {
-        relay_core::ConnectionMode::Local => "local (the same network only)",
-        relay_core::ConnectionMode::Private => "private (the same network, then Tailscale)",
+        relay_core::ConnectionMode::Local => "this-network (the same Wi-Fi or wired network only)",
+        relay_core::ConnectionMode::Private => {
+            "private (the same network or a private one such as Tailscale; no servers)"
+        }
         relay_core::ConnectionMode::Hybrid => {
-            "any (the same network, Tailscale, then the internet)"
+            "everywhere (the same network, Tailscale, the internet, then the relay)"
         }
     }
 }
