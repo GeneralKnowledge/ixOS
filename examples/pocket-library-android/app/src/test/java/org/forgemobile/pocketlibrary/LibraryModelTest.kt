@@ -198,7 +198,7 @@ class LibraryModelTest {
         assertTrue(LibraryModel.canStartFresh(failed))
         assertTrue(withTimeout(5_000) { model.canStartFresh.first { it } })
 
-        model.startFresh()
+        model.startFresh().join()
         assertEquals(ForgeHost.Status.Ready, host.status.value)
         assertFalse(opener.fresh)
         assertTrue(model.books.value.isEmpty())

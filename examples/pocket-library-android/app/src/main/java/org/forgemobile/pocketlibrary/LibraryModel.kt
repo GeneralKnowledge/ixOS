@@ -6,6 +6,7 @@ package org.forgemobile.pocketlibrary
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -108,8 +109,10 @@ class LibraryModel(
      * After an unreadable library: keeps the old file as a backup and opens an empty library.
      * Does nothing while a library is open.
      */
-    suspend fun startFresh() {
-        if (host.core != null) return
+    fun startFresh(): Job = scope.launch {
+        // In the model's scope, not the screen's: the failure screen that asked leaves as soon
+        // as opening starts, and its scope would cancel the open.
+        if (host.core != null) return@launch
         opener.fresh = true
         host.start()
     }

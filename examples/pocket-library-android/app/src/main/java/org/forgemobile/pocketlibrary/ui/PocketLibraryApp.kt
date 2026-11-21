@@ -45,7 +45,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -62,8 +61,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import org.forgemobile.pocketlibrary.LibraryModel
 import org.forgemobile.pocketlibrary.kit.ForgeAlert
@@ -132,7 +129,6 @@ private enum class OpenAction { START_FRESH }
 @Composable
 private fun StartFreshButton(model: LibraryModel) {
     var alert by remember { mutableStateOf<ForgeAlert<OpenAction>?>(null) }
-    val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     TextButton(
         onClick = {
             alert = ForgeAlert.confirm(
@@ -146,7 +142,7 @@ private fun StartFreshButton(model: LibraryModel) {
         },
         modifier = Modifier.testTag("open.startFresh"),
     ) { Text("Start a New Library…") }
-    ForgeAlertDialog(alert, onDismiss = { alert = null }) { scope.launch { model.startFresh() } }
+    ForgeAlertDialog(alert, onDismiss = { alert = null }) { model.startFresh() }
 }
 
 @Composable

@@ -183,10 +183,10 @@ class LibraryFlowTest {
         compose.onNode(row("Dune")).assertIsDisplayed()
         saveScreenshot("pl3-finished-filter")
 
-        // Nothing is Want to Read: the filter says so.
+        // Nothing is being read now that Dune is finished: the filter says so.
         compose.onNodeWithTag("library.filter").performClick()
-        compose.onNodeWithTag("library.filter.wantToRead").performClick()
-        compose.waitUntilExactlyOneExists(hasTestTag("library.filtered.empty") and hasText("No Want to Read Books"), 5_000)
+        compose.onNodeWithTag("library.filter.reading").performClick()
+        compose.waitUntilExactlyOneExists(hasTestTag("library.filtered.empty") and hasText("No Reading Books"), 5_000)
 
         // And the sort order is a choice in the same menu: newest first, then by title.
         compose.onNodeWithTag("library.filter").performClick()

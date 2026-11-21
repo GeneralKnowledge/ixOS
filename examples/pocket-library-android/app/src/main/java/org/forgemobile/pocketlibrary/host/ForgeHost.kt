@@ -12,6 +12,7 @@
 package org.forgemobile.pocketlibrary.host
 
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -164,6 +165,10 @@ class ForgeHost<Core : ForgeCore>(
             }
             val opened = try {
                 withContext(io) { open(environment()) }
+            } catch (e: CancellationException) {
+                // Whoever started it went away; that isn't a failure to open. Start again later.
+                _status.value = Status.Closed
+                throw e
             } catch (e: Exception) {
                 _status.value = Status.Failed(e.message ?: "The app's data couldn't be opened ($e).", e)
                 return
