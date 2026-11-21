@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int started = 0;
@@ -73,6 +74,16 @@ char *pybridge_start(const char *home, const char *site_dir) {
         pthread_mutex_unlock(&lock);
         return NULL;
     }
+    // iOS has no OpenSSL trust store: point ssl at the CA certificates
+    // prepare-python.sh put in PYTHONHOME (OpenSSL reads this variable
+    // itself, so isolated mode doesn't hide it). Without it every HTTPS
+    // request fails with CERTIFICATE_VERIFY_FAILED.
+    char cafile[4096];
+    snprintf(cafile, sizeof cafile, "%s/etc/cacert.pem", home);
+    if (access(cafile, R_OK) == 0 && getenv("SSL_CERT_FILE") == NULL) {
+        setenv("SSL_CERT_FILE", cafile, 0);
+    }
+
     PyPreConfig preconfig;
     PyPreConfig_InitIsolatedConfig(&preconfig);
     preconfig.utf8_mode = 1;
