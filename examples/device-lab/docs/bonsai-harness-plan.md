@@ -212,4 +212,5 @@ Apple's on-device model as another backend (its guided generation, `DynamicGener
 |---|---|---|---|---|---|
 | 2026-11-21 | H0 | Standard library check | | passed | Reuben's screenshot: 22 of 22 modules imported, 0.008 s (Device Lab 1.29921164, iOS 26.3.1) |
 | 2026-11-21 | H0 | Samples: hello, primes, SQLite | | passed | Screenshots: CPython 3.15.0 on iOS-26.3.1-iPhone16,2; 17984 primes below 200,000 in 0.004 s; SQLite 3.51.0 |
+| 2026-11-21 | H1 | T1 Hello | Bonsai 4B (Q2_0) | passed | Reuben's transcript: 3 steps, no invalid answers (write_file, run_python, finish), verified by hello.py printing "Hello from Bonsai"; 5.7 to 7.4 s per model turn, 20 s in all |
 | 2026-11-21 | H0 | Sample: HTTPS request | | failed | `CERTIFICATE_VERIFY_FAILED` (no CA store); fixed in #357, recheck next build |
