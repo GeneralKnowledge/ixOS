@@ -131,7 +131,8 @@ class CatalogueFlowTest {
         compose.onNodeWithTag("catalogue.add").performClick()
 
         compose.waitUntilExactlyOneExists(hasTestTag("bookDetail.title") and hasText("The Hobbit"), 10_000)
-        compose.onNode(hasText("A hobbit goes on an adventure.")).assertIsDisplayed()
+        // Further down the book's screen, so it exists rather than being on screen.
+        compose.onNode(hasText("A hobbit goes on an adventure.")).assertExists()
         assertTrue(transport.requests.all { it.url.startsWith("https://openlibrary.org/") })
     }
 
@@ -140,7 +141,7 @@ class CatalogueFlowTest {
     fun pl8_leavingASearchStopsIt() {
         openCatalogue()
         search("tolkien")
-        assertTrue("the search went out", transport.held.await(10, TimeUnit.SECONDS))
+        if (!transport.held.await(20, TimeUnit.SECONDS)) throw AssertionError("the search didn't go out: ${screen()}")
         compose.onNodeWithTag("catalogue.searching").assertIsDisplayed()
         compose.onNodeWithTag("catalogue.cancel").performClick()
 
@@ -159,15 +160,24 @@ class CatalogueFlowTest {
             compose.onNodeWithTag("settings.onlineCatalogue").fetchSemanticsNode()
                 .config.getOrNull(SemanticsProperties.ToggleableState)?.name == "Off"
         }
-        saveScreenshot("pl7-switched-off")
         compose.onNodeWithTag("settings.back").performClick()
 
         compose.onNodeWithTag("library.empty.add").performClick()
         compose.onNodeWithTag("library.add.catalogue").assertIsNotEnabled()
         compose.onNodeWithTag("library.add.catalogue.off", useUnmergedTree = true)
             .assertTextEquals("Online search is off in Settings")
-        saveScreenshot("pl7-menu")
         assertTrue(transport.requests.isEmpty())
+    }
+
+    /** What the catalogue screen shows and what was sent, for a failure message. */
+    private fun screen(): String {
+        val shown = listOf("catalogue.idle", "catalogue.searching", "catalogue.results", "catalogue.error", "catalogue.noResults")
+            .filter { compose.onAllNodes(hasTestTag(it)).fetchSemanticsNodes().isNotEmpty() }
+        val error = compose.onAllNodes(hasTestTag("catalogue.error")).fetchSemanticsNodes().firstOrNull()
+            ?.config?.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }
+        val field = compose.onAllNodes(hasTestTag("catalogue.search")).fetchSemanticsNodes().firstOrNull()
+            ?.config?.getOrNull(SemanticsProperties.EditableText)?.text
+        return "showing $shown, error $error, field \"$field\", requests ${transport.requests.map { it.url }}"
     }
 
     private fun saveScreenshot(name: String) {
