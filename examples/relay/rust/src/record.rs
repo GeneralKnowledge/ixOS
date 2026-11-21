@@ -22,7 +22,10 @@ pub const CODE_PEER_NAME: &str = "someone with a code";
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Record {
-    #[serde(default)]
+    /// Retired (P4): the random id an older build made. Read so its own
+    /// messages can be moved to [`crate::device_chat::ME`] once, then
+    /// cleared; the endpoint id is the device's only id.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub device_id: String,
     #[serde(default)]
     pub name: String,
