@@ -191,6 +191,15 @@ fn an_unreadable_record_is_set_aside_and_the_key_kept() {
     let core = open(dir.path());
     let id = block_on(core.device_service()).unwrap().endpoint_id;
     close(core);
+    // The last Arc can drop on another thread, so the connection may still
+    // be closing: SQLite then checkpoints the WAL into relay.db, which would
+    // write over the damage below. It removes the WAL once it has closed.
+    let wal = dir.path().join("relay.db-wal");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while wal.exists() {
+        assert!(Instant::now() < deadline, "relay.db didn't close");
+        std::thread::sleep(Duration::from_millis(20));
+    }
 
     // The database is damaged.
     std::fs::write(
