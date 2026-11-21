@@ -28,6 +28,7 @@ struct DiscoverView: View {
     @State private var searching = false
     @State private var editingClientId = false
     @State private var attempt = 0
+    @State private var opened = false
 
     /// Opens on `search` when given (More in Discover, from the library's
     /// search), else on the source's popular list.
@@ -48,6 +49,13 @@ struct DiscoverView: View {
             } else {
                 list
             }
+        }
+        .onAppear {
+            // A search carried over from the library opens where it can
+            // run: without a Jamendo client ID, that is the Archive. Only on
+            // opening, so coming back from an album keeps the person's pick.
+            if !opened && !query.isEmpty && needsClientId { source = .archive }
+            opened = true
         }
         .safeAreaInset(edge: .top) {
             Picker("Source", selection: $source) {
