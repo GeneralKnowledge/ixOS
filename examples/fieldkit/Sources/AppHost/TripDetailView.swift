@@ -15,7 +15,6 @@ struct TripDetailView: View {
     @State private var loadFailed = false
     @State private var isAddingNote = false
     @State private var isRenaming = false
-    @State private var newTitle = ""
     @State private var exported: ExportedFile?
     /// Share and Rename: a failure is shown, never dropped.
     @State private var acting = ForgeSubmission()
@@ -65,12 +64,8 @@ struct TripDetailView: View {
             .sheet(item: $exported) { file in
                 ShareSheet(file: file)
             }
-            .alert("Rename Trip", isPresented: $isRenaming) {
-                TextField("Name", text: $newTitle)
-                    .accessibilityIdentifier("trip.renameField")
-                Button("Cancel", role: .cancel) {}
-                Button("Rename") { Task { await rename(trip) } }
-                    .accessibilityIdentifier("trip.renameSave")
+            .forgeRename("Rename Trip", isPresented: $isRenaming, name: trip.title, id: "renameTrip") { title in
+                try await model.rename(trip, to: title)
             }
             .forgeAlert(failure: $acting.failure)
         } else {
@@ -92,10 +87,7 @@ struct TripDetailView: View {
                     Task { await export(.geoJson) }
                 }
                 .accessibilityIdentifier("trip.shareGeoJSON")
-                Button("Rename", systemImage: "pencil") {
-                    newTitle = trip.title
-                    isRenaming = true
-                }
+                Button("Rename", systemImage: "pencil") { isRenaming = true }
                 .accessibilityIdentifier("trip.rename")
                 Button("Delete Trip", systemImage: "trash", role: .destructive) {
                     model.askToDelete(trip)
@@ -116,11 +108,6 @@ struct TripDetailView: View {
         } catch {
             loadFailed = true
         }
-    }
-
-    private func rename(_ trip: TripSummary) async {
-        let title = newTitle
-        _ = await acting.run { try await model.rename(trip, to: title) }
     }
 
     private func export(_ format: ExportFormat) async {

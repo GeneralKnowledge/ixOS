@@ -87,6 +87,7 @@ public final class SketchbookModel {
     public func rename(_ id: UInt64, to title: String) async throws {
         try await core.renameSketch(id: id, title: title)
         reload()
+        feedback.play(.success)
     }
 
     public func askToDelete(_ sketch: SketchSummary) {
@@ -151,8 +152,12 @@ public final class SketchbookModel {
         }
     }
 
-    public func renameLayer(_ sketch: UInt64, layer: UInt64, to name: String) async -> SketchDetail? {
-        await perform { core in try await core.renameLayer(sketchId: sketch, layerId: layer, name: name) }
+    /// Throws when Rust refuses the name, so the rename sheet can say why.
+    public func renameLayer(_ sketch: UInt64, layer: UInt64, to name: String) async throws -> SketchDetail {
+        let changed = try await core.renameLayer(sketchId: sketch, layerId: layer, name: name)
+        reload()
+        feedback.play(.success)
+        return changed
     }
 
     public func setVisible(_ sketch: UInt64, layer: UInt64, _ visible: Bool) async -> SketchDetail? {

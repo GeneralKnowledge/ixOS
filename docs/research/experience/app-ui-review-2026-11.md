@@ -22,7 +22,7 @@
 | Text roles unused (A1) | 0 apps | Checklist 1 footer, Device Lab 13. The decision stands: no mass migration, roles come in when a screen is touched |
 | Relay and Soundscape on the standard accent (D3) | Deferred to their redesigns | Unchanged, as decided |
 | X11 swipe-only actions | 6 apps | 7 screens: Checklist rows, FieldKit trips and notes, Commonplace timeline (2), Soundscape playlists, Relay trusted devices and muted chats |
-| X12 rename is an alert | 4 apps | Sketchbook (sketch, layer), FieldKit (trip), Relay (this device); Checklist uses a sheet |
+| X12 rename is an alert | 4 apps | Sketchbook (sketch, layer), FieldKit (trip), Relay (this device); Checklist uses a sheet. Built as `forgeRename` after this review, which also moved Commonplace's feed and folder names and Soundscape's playlist name sheet (8 places in 6 apps, with the `rename` parity rule) |
 | X5, S2 fixed point sizes | Several | Soundscape transport 64 pt (`ListenView.swift:846`, `:889`) and take rows 34 pt; Weather's bottom bar 19 pt (`WeatherView.swift:126`). Sums' 72 pt display and Good Dog's 96 pt celebration are display sizes and fine |
 | X15 bare root spinner | 3 apps | Fixed at the root (`root-loading` rule). Inline bare `ProgressView()` remains in 15 places, which is fine inside a row or button |
 | C3 notice component | Proposed | Built as `ForgeNotice` after this review (7 places in 6 apps, with the `notices` parity rule) |

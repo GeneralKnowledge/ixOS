@@ -260,4 +260,21 @@ final class ForgeAppKitTests: XCTestCase {
         XCTAssertFalse(later.showsActivity, "measured progress shows a bar, not a spinner")
         XCTAssertEqual(ForgeBanner<Never>.message("Saved to Files").announcement, "Saved to Files")
     }
+
+    // MARK: Rename
+
+    func testRenameRefusalIsTheAppsReason() async {
+        enum NameError: ForgeDescribedError {
+            case empty
+            var failure: ForgeFailure { ForgeFailure(title: "Couldn't Rename", message: "Give it a name.") }
+        }
+        let refused = await ForgeRenameRefusal.reason { throw NameError.empty }
+        XCTAssertEqual(refused, "Give it a name.", "the sentence shown under the field")
+        let saved = await ForgeRenameRefusal.reason {}
+        XCTAssertNil(saved, "a saved name closes the sheet")
+        let stopped = await ForgeRenameRefusal.reason { throw CancellationError() }
+        XCTAssertNil(stopped, "stopped work is not a refusal")
+        let other = await ForgeRenameRefusal.reason { throw TestError.plain }
+        XCTAssertFalse(other?.contains("couldn") ?? true, "never Swift's error number")
+    }
 }

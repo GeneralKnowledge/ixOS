@@ -191,21 +191,15 @@ extension View {
 private struct LibraryActions: ViewModifier {
     @Binding var action: LibraryAction?
     let model: LibraryModel
-    @State private var name = ""
 
     func body(content: Content) -> some View {
         content
-            .alert(nameTitle, isPresented: isNaming) {
-                TextField("Name", text: $name)
-                    .accessibilityIdentifier("library.name")
-                Button("Cancel", role: .cancel) {}
-                    .accessibilityIdentifier("library.name.cancel")
-                Button(nameButton) { saveName() }
-                    .accessibilityIdentifier("library.name.save")
-            } message: {
-                if case .renameFeed = action {
-                    Text("Leave it empty to use the feed's own name.")
-                }
+            .forgeRename(
+                nameTitle, item: naming, name: currentName, id: "library.name",
+                message: isRenamingFeed ? "Leave it empty to use the feed's own name." : nil,
+                confirmTitle: nameButton
+            ) { action, typed in
+                try await saveName(action, typed)
             }
             .confirmationDialog(confirmTitle, isPresented: isConfirming, titleVisibility: .visible) {
                 switch action {
@@ -235,24 +229,32 @@ private struct LibraryActions: ViewModifier {
             .sheet(item: movingFeed) { feed in
                 MoveFeedView(model: model, feed: feed)
             }
-            .onChange(of: action?.id) {
-                switch action {
-                case .renameFeed(let feed): name = feed.title
-                case .renameFolder(let folder): name = folder.name
-                default: name = ""
-                }
-            }
     }
 
-    private var isNaming: Binding<Bool> {
+    /// The action while it names something (rename a feed or folder, make
+    /// a folder), for the name sheet.
+    private var naming: Binding<LibraryAction?> {
         Binding(
             get: {
                 switch action {
-                case .renameFeed, .newFolder, .renameFolder: return true
-                default: return false
+                case .renameFeed, .newFolder, .renameFolder: return action
+                default: return nil
                 }
             },
-            set: { if !$0 { action = nil } })
+            set: { if $0 == nil { action = nil } })
+    }
+
+    private var isRenamingFeed: Bool {
+        if case .renameFeed = action { return true }
+        return false
+    }
+
+    private func currentName(_ action: LibraryAction) -> String {
+        switch action {
+        case .renameFeed(let feed): return feed.title
+        case .renameFolder(let folder): return folder.name
+        default: return ""
+        }
     }
 
     private var isConfirming: Binding<Bool> {
@@ -272,18 +274,18 @@ private struct LibraryActions: ViewModifier {
             set: { if $0 == nil { action = nil } })
     }
 
-    private var nameTitle: String {
+    private var nameTitle: LocalizedStringKey {
         switch action {
-        case .renameFeed: return String(localized: "Rename Feed")
-        case .newFolder: return String(localized: "New Folder")
-        case .renameFolder: return String(localized: "Rename Folder")
+        case .renameFeed: return "Rename Feed"
+        case .newFolder: return "New Folder"
+        case .renameFolder: return "Rename Folder"
         default: return ""
         }
     }
 
-    private var nameButton: String {
-        if case .newFolder = action { return String(localized: "Create") }
-        return String(localized: "Rename")
+    private var nameButton: LocalizedStringKey {
+        if case .newFolder = action { return "Create" }
+        return "Rename"
     }
 
     private var confirmTitle: String {
@@ -294,12 +296,11 @@ private struct LibraryActions: ViewModifier {
         }
     }
 
-    private func saveName() {
-        let typed = name
+    private func saveName(_ action: LibraryAction, _ typed: String) async throws {
         switch action {
-        case .renameFeed(let feed): Task { await model.rename(feed, to: typed) }
-        case .newFolder(let parent): Task { await model.createFolder(named: typed, in: parent) }
-        case .renameFolder(let folder): Task { await model.rename(folder, to: typed) }
+        case .renameFeed(let feed): try await model.rename(feed, to: typed)
+        case .newFolder(let parent): try await model.makeFolder(named: typed, in: parent)
+        case .renameFolder(let folder): try await model.rename(folder, to: typed)
         default: break
         }
     }

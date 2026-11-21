@@ -329,8 +329,13 @@ def sheet_alert_problems(text):
         member = lines[begin:end]
         sheets = set()
         for line in member:
-            for m in re.finditer(r"\.(?:sheet|fullScreenCover)\(\s*(?:isPresented|item):\s*\$([\w.]+)", line):
-                sheets.add(m.group(1).split(".")[-1])
+            # forgeRename is a sheet too; its binding follows the title.
+            for m in re.finditer(
+                r"\.(?:sheet|fullScreenCover)\(\s*(?:isPresented|item):\s*\$([\w.]+)"
+                r"|\.forgeRename\([^\n]*?\b(?:isPresented|item):\s*\$([\w.]+)",
+                line,
+            ):
+                sheets.add((m.group(1) or m.group(2)).split(".")[-1])
         if not sheets:
             continue
         for j, line in enumerate(member):
@@ -784,6 +789,52 @@ def rule_notices(app):
     return True, ""
 
 
+# Naming something (rename a trip, a new folder) is ForgeUI's forgeRename:
+# a sheet that keeps what was typed and shows why Rust refused a name under
+# the field. Built by hand it was an alert with a TextField, which can show
+# neither, or an app's own name sheet; six apps had one each, with their
+# own identifiers (ForgeUI coverage audit C2, November 2026).
+NAME_PROMPT = re.compile(r"renam|\bnam(e|ing)", re.I)
+OWN_NAME_SHEET = re.compile(r"\bstruct\s+\w*(Rename|Name)Sheet\b")
+
+
+def brace_block(code, start):
+    """The text of the first `{ ... }` block at or after `start` in `code`."""
+    open_at = code.find("{", start)
+    if open_at < 0:
+        return ""
+    depth = 0
+    for j in range(open_at, len(code)):
+        if code[j] == "{":
+            depth += 1
+        elif code[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return code[open_at : j + 1]
+    return code[open_at:]
+
+
+def rule_rename(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        plain = swift_code_mask(text, keep_strings=True)
+        line = lambda at: text.count(chr(10), 0, at) + 1
+        for m in re.finditer(r"\.alert\(", code):
+            args, _ = call_and_chain(plain, code, m.end() - 1)
+            # The actions closure after the arguments (a Binding's own
+            # closures sit inside them), or an `actions:` argument.
+            close = m.end() + len(args)
+            if NAME_PROMPT.search(args) and "TextField(" in args + brace_block(code, close):
+                bad.append(f"{path.name}:{line(m.start())}")
+        for m in OWN_NAME_SHEET.finditer(code):
+            bad.append(f"{path.name}:{line(m.start())}")
+    if bad:
+        return False, "names things in its own alert or sheet; use ForgeUI's forgeRename: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -802,6 +853,7 @@ RULES = [
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
+    ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),

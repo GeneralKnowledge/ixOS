@@ -49,7 +49,6 @@ struct SketchListView: View {
     let changes: UInt64
     @State private var path: [UInt64] = []
     @State private var renaming: SketchSummary?
-    @State private var newTitle = ""
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 16)]
 
@@ -94,21 +93,14 @@ struct SketchListView: View {
                     .accessibilityIdentifier("sketches.new")
                 }
             }
-            .alert("Rename Sketch", isPresented: Binding(
-                get: { renaming != nil },
-                set: { if !$0 { renaming = nil } }
-            )) {
-                TextField("Name", text: $newTitle)
-                    .accessibilityIdentifier("rename.title")
-                Button("Rename") { rename() }
-                    .accessibilityIdentifier("rename.save")
-                Button("Cancel", role: .cancel) {}
-                    .accessibilityIdentifier("rename.cancel")
+            .forgeRename("Rename Sketch", item: $renaming, name: \.title, id: "rename") { sketch, title in
+                try await model.rename(sketch.id, to: title)
             }
             // Only while the list is on screen: the sketch screen it pushes
-            // shows its own alerts, and this one would show behind it.
+            // shows its own alerts, and this one would show behind it. Held
+            // back while the rename sheet is up, which shows its own refusal.
             .forgeAlert(Binding(
-                get: { path.isEmpty ? model.alert : nil },
+                get: { path.isEmpty && renaming == nil ? model.alert : nil },
                 set: { model.alert = $0 }
             )) { action in Task { await model.handle(action) } }
             .forgeFeedback(model.feedback)
@@ -117,7 +109,6 @@ struct SketchListView: View {
 
     @ViewBuilder private func menu(for sketch: SketchSummary) -> some View {
         Button("Rename", systemImage: "pencil") {
-            newTitle = sketch.title
             renaming = sketch
         }
         .accessibilityIdentifier("sketches.rename")
@@ -145,18 +136,6 @@ struct SketchListView: View {
         Task {
             if let sketch = await model.create(paper: paper) {
                 path = [sketch.summary.id]
-            }
-        }
-    }
-
-    private func rename() {
-        guard let sketch = renaming else { return }
-        let title = newTitle
-        Task {
-            do {
-                try await model.rename(sketch.id, to: title)
-            } catch {
-                model.report(error)
             }
         }
     }
