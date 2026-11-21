@@ -158,6 +158,21 @@ struct DevicesView: View {
             } message: { _ in
                 Text("You'll be able to send to each other without a code. You can revoke this at any time.")
             }
+            // Saved data that couldn't be read when Relay opened: said once
+            // the screen is clear, until the person dismisses it.
+            .alert(
+                "Some Saved Data Couldn't Be Read",
+                isPresented: Binding(
+                    get: { showingSavedDataNotice },
+                    set: { _ in }
+                ),
+                presenting: model.savedDataNotice
+            ) { _ in
+                Button("OK") { Task { await model.dismissSavedDataNotice() } }
+                    .accessibilityIdentifier("savedData.ok")
+            } message: { notice in
+                Text(notice.message)
+            }
             .onChange(of: anySheet) { if !anySheet { model.refreshTrustOffer() } }
             .quickLookPreview($preview)
             .forgeFeedback(model.feedback)
@@ -202,7 +217,11 @@ struct DevicesView: View {
     }
 
     private var showingTrustOffer: Bool {
-        model.trustOffer != nil && !anySheet && model.alert == nil
+        model.trustOffer != nil && !anySheet && model.alert == nil && model.savedDataNotice == nil
+    }
+
+    private var showingSavedDataNotice: Bool {
+        model.savedDataNotice != nil && !anySheet && model.alert == nil
     }
 
     private var trustOfferTitle: String {

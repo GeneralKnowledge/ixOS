@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 
 use chat_core::{Message, MessageStatus};
 
-use crate::device_chat::{files_attachment, files_message_id, PeerLogs};
+use crate::device_chat::{files_attachment, files_message_id, Conversations};
 use crate::model::RelayError;
 use crate::outbox::Payload;
 use crate::record::{Record, SavedItem, SavedStatus};
@@ -38,9 +38,9 @@ struct Move {
 }
 
 /// Moves notes into conversations; the record is saved after it returns.
-pub(crate) fn run(record: &mut Record, logs: &PeerLogs) -> Result<(), RelayError> {
+pub(crate) fn run(record: &mut Record, c: &mut Conversations<'_>) -> Result<(), RelayError> {
     for m in moves(record) {
-        logs.get(&m.to)?.import(m.message, m.path.as_deref())?;
+        c.import(&m.to, m.message, m.path.as_deref())?;
     }
     apply(record);
     Ok(())
@@ -183,6 +183,7 @@ fn apply(record: &mut Record) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device_chat::PeerLogs;
     use crate::outbox::SavedDelivery;
     use crate::record::SavedTransfer;
 
@@ -294,10 +295,16 @@ mod tests {
     fn notes_move_into_conversations_once() {
         let dir = tempfile::tempdir().unwrap();
         let mut record = saved(dir.path());
-        let logs = PeerLogs::new(dir.path().join("devices"));
-        run(&mut record, &logs).unwrap();
+        let store = std::sync::Arc::new(crate::store::Store::in_memory());
+        let logs = PeerLogs::new(dir.path().join("devices"), store.clone());
+        let run = |record: &mut Record| {
+            store
+                .write(|c| run(record, &mut Conversations::new(c)))
+                .unwrap()
+        };
+        run(&mut record);
 
-        let got = logs.get(PHONE).unwrap().since(None);
+        let got = logs.get(PHONE).unwrap().since(None).unwrap();
         let shown: Vec<(&str, &str, MessageStatus, i64)> = got
             .iter()
             .map(|m| (m.id.as_str(), m.body.as_str(), m.status, m.sent_at))
@@ -368,13 +375,13 @@ mod tests {
         assert!(record.notes_are_messages);
 
         // Again (Relay ended before the record was saved): nothing changes.
-        let before = logs.get(PHONE).unwrap().since(None).len();
+        let before = logs.get(PHONE).unwrap().since(None).unwrap().len();
         let mut again = saved(dir.path());
-        run(&mut again, &logs).unwrap();
+        run(&mut again);
         assert_eq!(again, record);
-        assert_eq!(logs.get(PHONE).unwrap().since(None).len(), before);
+        assert_eq!(logs.get(PHONE).unwrap().since(None).unwrap().len(), before);
         let mut twice = record.clone();
-        run(&mut twice, &logs).unwrap();
+        run(&mut twice);
         assert_eq!(twice, record);
     }
 }

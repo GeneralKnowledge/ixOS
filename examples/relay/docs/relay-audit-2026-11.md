@@ -147,6 +147,13 @@ One PR, no new features. Each fix ships with its test.
 
 ### 3. P3: one database
 
+Built on `claude/relay-sqlite` (stacked on #344): `store.rs`. One part
+differs from the plan below. chat-core still keeps its own store of
+device conversations, as a cache that it can rebuild through `PeerRepo`,
+the same way it caches a server. Relay's database is the truth, and
+nothing depends on the cache. Removing the cache would mean changing
+chat-core, so that waits until it is needed.
+
 - SQLite (forge-storage) holds devices, deliveries, received ids, the
   history and device conversations (messages and attachment locations),
   with the four transactions above.
@@ -167,12 +174,31 @@ One PR, no new features. Each fix ships with its test.
   upgrade (same key), backup restore (new identity), reinstall, a lost
   phone, revocation.
 
-### 5. The whole experience, proven
+### 5. The whole experience, proven ("Relay 1.0 foundations")
 
-- One acceptance run on the iPhone and Linux: add a device, message both
-  ways, send a photo and a folder, go offline and come back, reconnect
-  after a network change, revoke.
-- It becomes the regression check before every Relay release.
+Reuben, 2026-11-20: finish the foundations (one identity, one network,
+one delivery system) and prove them together before My Devices. Nothing
+new starts first. The acceptance run, on the iPhone and Linux, then
+across more than two devices:
+
+1. Upgrade: install over existing Relay data. Trusted devices,
+   conversations and history are all still there (P3), and the laptop
+   still trusts the iPhone without pairing again (P4).
+2. Pair a new device with a word code, typed and scanned.
+3. Messages and files both ways: a message, a photo, a message, in
+   order; a folder.
+4. Interrupt a large transfer (stop the receiver, or change network) and
+   check it recovers and arrives once.
+5. Revoke a device while its transfer runs: the file isn't saved (#344).
+6. The Keychain identity survives a restart, and isn't carried to a new
+   phone by a backup taken after the update (P4).
+7. Private and Hybrid on their own: in Private, a device reachable only
+   through the relay isn't reached, and nothing connects (#344); in
+   Hybrid it is reached.
+8. Both the Relay app on its own and Relay inside Device Lab.
+
+Each check is recorded on its own, a failure included. The run becomes
+the regression check before every Relay release.
 
 ### 6. P5: My Devices
 
@@ -191,6 +217,20 @@ decided in step 2.
 
 The mailbox comes only once direct delivery and My Devices are
 dependable.
+
+### Parked: sites over Relay (Reuben, 2026-11-21)
+
+A website that only your Relay devices can open, never the normal
+internet. The site listens only on its host's localhost, and a new
+`relay/web/1` channel carries HTTP to it over the existing iroh
+connection. It needs a separate `web` right per device, never implied by
+trust, and revoking a device cuts it off. Computers view it through
+`relay web <device>` (a local address for any browser). The iPhone
+views it in Relay's own web view, whose requests Rust fetches over iroh.
+The iPhone can also host a folder as a site, but only while Relay is open
+(iOS suspends it otherwise, which is the behaviour he wants). It is a new
+feature, so it waits for the Relay 1.0 foundations like everything else
+here.
 
 ## What not to change
 

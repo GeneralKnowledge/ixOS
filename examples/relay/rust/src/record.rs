@@ -1,5 +1,7 @@
 //! What Relay saves: this device's identity, its trusted devices, what
-//! waits for them, and the history of what went across. One JSON document.
+//! waits for them, and the history of what went across. A value in memory,
+//! saved as rows of Relay's database (`store`); older builds saved it as one
+//! JSON document, `relay.json`, read once to move it in (`VERSION`).
 //! Devices paired the old way (QR code, TCP) were kept with their secrets
 //! under `peers`; that field is no longer read, so the next save drops it.
 
@@ -41,6 +43,17 @@ pub struct Record {
     /// Notes have moved into conversations (`migrate`, review step 4).
     #[serde(default)]
     pub notes_are_messages: bool,
+    /// Saved data that couldn't be read when Relay opened, for the person
+    /// to hear about until they dismiss it (`store`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notice: Option<SavedNotice>,
+}
+
+/// What couldn't be read, in words, and where it is kept on this device.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct SavedNotice {
+    pub message: String,
+    pub kept: Vec<String>,
 }
 
 fn first_id() -> u64 {

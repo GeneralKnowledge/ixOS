@@ -5100,6 +5100,11 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func devicesNearby(devices: [NearbyDevice]) 
     
     /**
+     * The person has read the notice.
+     */
+    func dismissSavedDataNotice() async throws 
+    
+    /**
      * The person said Not Now to the offer `trust_offer` gave.
      */
     func dismissTrustOffer() 
@@ -5180,6 +5185,13 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * transfers still work, as with any device.
      */
     func revokeDevice(endpointId: String) async throws 
+    
+    /**
+     * What Relay couldn't read of its saved data when it opened, and
+     * where that is kept, for the app to show until the person dismisses
+     * it. `None` normally.
+     */
+    func savedDataNotice()  -> SavedDataNotice?
     
     /**
      * Starts sending several files and folders as one transfer with a new
@@ -5538,6 +5550,25 @@ open func devicesNearby(devices: [NearbyDevice])  {try! rustCall() {
 }
     
     /**
+     * The person has read the notice.
+     */
+open func dismissSavedDataNotice()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_dismiss_saved_data_notice(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
      * The person said Not Now to the offer `trust_offer` gave.
      */
 open func dismissTrustOffer()  {try! rustCall() {
@@ -5748,6 +5779,20 @@ open func revokeDevice(endpointId: String)async throws   {
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeRelayError_lift
         )
+}
+    
+    /**
+     * What Relay couldn't read of its saved data when it opened, and
+     * where that is kept, for the app to show until the person dismisses
+     * it. `None` normally.
+     */
+open func savedDataNotice() -> SavedDataNotice?  {
+    return try!  FfiConverterOptionTypeSavedDataNotice.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_saved_data_notice(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -9377,6 +9422,64 @@ public func FfiConverterTypeRelayServers_lift(_ buf: RustBuffer) throws -> Relay
 #endif
 public func FfiConverterTypeRelayServers_lower(_ value: RelayServers) -> RustBuffer {
     return FfiConverterTypeRelayServers.lower(value)
+}
+
+
+/**
+ * Saved data Relay couldn't read when it opened: what happened, in words,
+ * and where it is kept on this device.
+ */
+public struct SavedDataNotice: Equatable, Hashable {
+    public var message: String
+    public var kept: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(message: String, kept: [String]) {
+        self.message = message
+        self.kept = kept
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedDataNotice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedDataNotice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedDataNotice {
+        return
+            try SavedDataNotice(
+                message: FfiConverterString.read(from: &buf), 
+                kept: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedDataNotice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.message, into: &buf)
+        FfiConverterSequenceString.write(value.kept, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedDataNotice_lift(_ buf: RustBuffer) throws -> SavedDataNotice {
+    return try FfiConverterTypeSavedDataNotice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedDataNotice_lower(_ value: SavedDataNotice) -> RustBuffer {
+    return FfiConverterTypeSavedDataNotice.lower(value)
 }
 
 
@@ -13126,6 +13229,30 @@ fileprivate struct FfiConverterOptionTypeCodeSize: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeSavedDataNotice: FfiConverterRustBuffer {
+    typealias SwiftType = SavedDataNotice?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSavedDataNotice.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSavedDataNotice.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeTrustOffer: FfiConverterRustBuffer {
     typealias SwiftType = TrustOffer?
 
@@ -14170,6 +14297,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_devices_nearby() != 37105) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_dismiss_saved_data_notice() != 49479) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_dismiss_trust_offer() != 41745) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14210,6 +14340,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_revoke_device() != 64705) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_saved_data_notice() != 22012) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_send_paths_with_code() != 4107) {

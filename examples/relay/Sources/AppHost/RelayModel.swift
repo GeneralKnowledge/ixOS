@@ -85,6 +85,17 @@ public final class RelayModel {
         policy = core.pairingPolicy()
         connectionMode = core.connectionMode()
         trustOffer = core.trustOffer()
+        savedDataNotice = core.savedDataNotice()
+    }
+
+    /// Saved data Relay couldn't read when it opened, and where it is
+    /// kept: shown until the person dismisses it.
+    public private(set) var savedDataNotice: SavedDataNotice?
+
+    /// The person has read the notice.
+    public func dismissSavedDataNotice() async {
+        savedDataNotice = nil
+        await perform { try await $0.dismissSavedDataNotice() }
     }
 
     /// Whether anything is still on its way, so the screen refreshes its

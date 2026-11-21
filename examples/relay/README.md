@@ -34,6 +34,7 @@ The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay
 | R3 | Resume, background transfers, a share extension (costs an App ID) | Later, within M1 and the plan's milestones |
 | Review step 4 | Unified delivery ([plan](docs/relay-unified-delivery.md)): text to a trusted device is a message in its conversation in Chats (notes are gone; one from an older build arrives as a message), files sent to it are an attachment there (a folder opens in Files), and Relay's outbox is the one queue for both, so they keep their order. Notes already sent or received move into their device's conversation once, on the first open. The device's screen has Message and Send Files; History keeps word-code transfers and file deliveries | Rust and the command tested on Linux (order, relaunch, a lost answer, revocation, the migration from a saved record); the Swift model tested on Linux, the screens not yet compiled or tried on a phone |
 | Audit fixes | Five fixes from the [November audit](docs/relay-audit-2026-11.md#2-fix-now-small-and-in-scope): an item this build can't read is refused at once ("update it"), not retried for 30 days; a file from a device revoked while it is on its way isn't saved; AI asks need their own per-device switch, off when a device is trusted (`relay asks <device> on`); a second code transfer's trust offer waits behind the first instead of replacing it; Private means no relay: only Any Route (Hybrid) opens Relay with its relay and lookup servers, and Private explains when a device could only be found through them | Rust and the command tested on Linux; the Swift changes (offer after offer, the Connections wording) not compiled; no phone run yet |
+| Review P3 | One database ([audit plan](docs/relay-audit-2026-11.md#3-p3-one-database)): `relay.db` replaces `relay.json` and the per-device `messages.json` logs; the record's lists are rows written only when they change; queueing, ending a delivery, receiving and the move from JSON are each one transaction; the JSON files move in once (run twice in tests) and are kept renamed; an unreadable record, database or conversation is set aside and the key kept, and the app says so until dismissed (`saved_data_notice`); a damaged message row is an error, never a gap in the history | Rust and the command tested on Linux; no Swift change except the regenerated bindings (not compiled); no phone run yet. chat-core's own store stays a cache of the conversations, as for a server |
 | AI A1 | Ask a trusted device's language model (over `relay/device/1` since review step 3): `relay serve-ai` answers with an OpenAI-compatible server, `relay ask` asks from a terminal ([forge-ai-plan.md](../../docs/forge-ai-plan.md)) | Done in Rust and the command, tested on Linux; the app gets it with the AI Lab (A2) |
 
 ## How it works
@@ -49,6 +50,14 @@ The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay
 - **One queue per device** (`outbox.rs`, `device_chat.rs`): messages and
   files for a trusted device wait in Relay's outbox, are sent oldest first
   and received once; both show in the device's conversation in Chats.
+- **One database** (`store.rs`): `relay.db` (SQLite) holds trusted
+  devices, the outbox, received ids, the history and every device
+  conversation. A change writes only the rows it touched, and what belongs
+  together is one transaction (a message and its delivery, a delivery's
+  end and its message's status, a received item and its id). An older
+  build's `relay.json` and `messages.json` files move in once and are kept
+  as `*.migrated`; saved data that can't be read is set aside and Relay
+  starts again with the same device key.
 - **Files** are kept only if their hash matches what the sender announced.
 - **Rust owns iroh; Swift owns Bonjour.** The app advertises Rust's iroh
   port and passes the addresses it browses to Rust.

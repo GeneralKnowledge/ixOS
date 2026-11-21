@@ -35,6 +35,7 @@ mod outbox;
 mod presence;
 mod record;
 mod resolver;
+mod store;
 pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind};
 mod hex;
 mod trust;
@@ -45,7 +46,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
-use forge_app::{DataDirectory, Document, Published, Runtime};
+use forge_app::{DataDirectory, Published, Runtime};
 use forge_runtime::{lock, now_ms};
 use forge_services::ai::{AiError, ChatRequest, LanguageModel, ModelInfo, TextOut};
 use forge_storage::FileStore;
@@ -81,11 +82,12 @@ forge_runtime::log_export!();
 // (`chat`) uses them.
 forge_services::native_services!(audio, biometrics, http, ai, background);
 
-const SAVE_FILE: &str = "relay.json";
-
 /// What the command thread owns.
 struct State {
-    record: Document<Record>,
+    /// The record as saved in `store`.
+    record: Record,
+    store: Arc<store::Store>,
+    logs: device_chat::PeerLogs,
     inbox: FileStore,
     published: Arc<Published<Record>>,
 }
@@ -95,10 +97,40 @@ impl State {
         &mut self,
         edit: impl FnOnce(&mut Record) -> Result<T, RelayError>,
     ) -> Result<T, RelayError> {
-        let value = self.record.change(edit)?;
-        self.published.set(self.record.value().clone());
+        self.change_with(|r, _| edit(r))
+    }
+
+    /// Changes the record and device conversations in one transaction:
+    /// all of it is saved, or none (`store`).
+    fn change_with<T>(
+        &mut self,
+        edit: impl FnOnce(&mut Record, &mut device_chat::Conversations<'_>) -> Result<T, RelayError>,
+    ) -> Result<T, RelayError> {
+        let (value, record, changed) = change_record(&self.store, &self.record, edit)?;
+        self.record = record;
+        self.published.set(self.record.clone());
+        self.logs.notify(changed);
         Ok(value)
     }
+}
+
+/// `edit` applied to a copy of `record` and saved, with any conversation
+/// changes, in one transaction. Returns the changed record, and the
+/// messages that changed for the listeners.
+type Changed<T> = (T, Record, Vec<(String, chat_core::Message)>);
+fn change_record<T>(
+    store: &store::Store,
+    record: &Record,
+    edit: impl FnOnce(&mut Record, &mut device_chat::Conversations<'_>) -> Result<T, RelayError>,
+) -> Result<Changed<T>, RelayError> {
+    let mut next = record.clone();
+    let (value, changed) = store.write(|c| {
+        let mut conversations = device_chat::Conversations::new(c);
+        let value = edit(&mut next, &mut conversations)?;
+        store::save(c, record, &next)?;
+        Ok((value, conversations.changed()))
+    })?;
+    Ok((value, next, changed))
 }
 
 /// Called with a trusted device's endpoint id when it can be reached now.
@@ -165,30 +197,41 @@ impl RelayCore {
     pub fn new(data_directory: String, device_name: String) -> Result<Arc<Self>, RelayError> {
         forge_runtime::logging::init();
         let directory = DataDirectory::open(&data_directory)?;
-        let mut record =
-            Document::<Record>::open(directory.path().join(SAVE_FILE), record::VERSION)?;
-        if record.value().device_id.is_empty() {
+        // One database (P3); the JSON files move into it on the first open.
+        let (store, saved, found) = store::Store::open(directory.path())?;
+        let store = Arc::new(store);
+        let mut record = saved.unwrap_or_default();
+        // Each change at open is a transaction of its own.
+        let opening = |record: &mut Record,
+                       edit: &mut dyn FnMut(
+            &mut Record,
+            &mut device_chat::Conversations<'_>,
+        ) -> Result<(), RelayError>|
+         -> Result<(), RelayError> {
+            let ((), next, _) = change_record(&store, record, |r, c| edit(r, c))?;
+            *record = next;
+            Ok(())
+        };
+        if record.device_id.is_empty() {
             let name = model::clean_name(&device_name).unwrap_or_else(|_| "Relay".into());
-            record.change(|r| {
+            opening(&mut record, &mut |r, _| {
                 r.device_id = hex::hex(&hex::random()[..16]);
-                r.name = name;
-                Ok::<_, RelayError>(())
+                r.name = name.clone();
+                Ok(())
             })?;
         }
         if record
-            .value()
             .transfers
             .iter()
             .any(|t| t.status == SavedStatus::InProgress)
         {
-            record.change(|r| {
+            opening(&mut record, &mut |r, _| {
                 r.interrupted();
-                Ok::<_, RelayError>(())
+                Ok(())
             })?;
         }
         let inbox = FileStore::new(directory.path().join("inbox")).with_max_bytes(MAX_FILE_BYTES);
         inbox.sweep_temporaries();
-        let published = Arc::new(Published::new(record.value().clone()));
         let inbox_root = inbox.root().to_path_buf();
         // Absolute, so the history can tell a code receive's path.
         let code_dir = std::path::absolute(directory.path().join("codes"))
@@ -196,19 +239,34 @@ impl RelayCore {
         // Sends kept their own store before one store served both.
         let _ = std::fs::remove_dir_all(code_dir.join("send-store"));
         let key_dir = directory.path().to_path_buf();
-        let peer_logs = device_chat::PeerLogs::new(directory.path().join("devices"));
-        // Notes become messages, once (review step 4).
-        if !record.value().notes_are_messages {
-            record.change(|r| migrate::run(r, &peer_logs))?;
+        // What couldn't be read is said, not only logged.
+        if let Some(notice) = store::notice(&found) {
+            opening(&mut record, &mut |r, _| {
+                r.notice = Some(notice.clone());
+                Ok(())
+            })?;
         }
+        // Notes become messages, once (review step 4).
+        if !record.notes_are_messages {
+            opening(&mut record, &mut |r, c| migrate::run(r, c))?;
+        }
+        // A message the conversation shows queued that the outbox doesn't
+        // hold (saved by a build before one transaction held both) failed,
+        // so the person can send it again.
+        opening(&mut record, &mut |r, c| {
+            outbox::settle_messages(r, c);
+            Ok(())
+        })?;
+        let published = Arc::new(Published::new(record.clone()));
+        let peer_logs =
+            device_chat::PeerLogs::new(directory.path().join("devices"), Arc::clone(&store));
         let store_dir = code_dir.join("store");
         // Outside Hybrid the endpoint has no relay and no lookup server.
-        let servers = {
-            let devices = &record.value().devices;
-            devices.servers.in_mode(devices.mode)
-        };
+        let servers = record.devices.servers.in_mode(record.devices.mode);
         let state = State {
             record,
+            store,
+            logs: peer_logs.clone(),
             inbox,
             published: Arc::clone(&published),
         };
@@ -240,8 +298,29 @@ impl RelayCore {
             chat_waker: Mutex::new(None),
             me: me.clone(),
         });
-        core.settle_messages();
         Ok(core)
+    }
+
+    /// What Relay couldn't read of its saved data when it opened, and
+    /// where that is kept, for the app to show until the person dismisses
+    /// it. `None` normally.
+    pub fn saved_data_notice(&self) -> Option<SavedDataNotice> {
+        self.record.get().notice.clone().map(|n| SavedDataNotice {
+            message: n.message,
+            kept: n.kept,
+        })
+    }
+
+    /// The person has read the notice.
+    pub async fn dismiss_saved_data_notice(&self) -> Result<(), RelayError> {
+        self.rt
+            .command("dismiss-notice", |state| {
+                state.change(|r| {
+                    r.notice = None;
+                    Ok(())
+                })
+            })
+            .await
     }
 
     /// Saves what later code receives bring into `folder` (made if missing)
@@ -592,6 +671,14 @@ pub struct Device {
     pub route: Option<String>,
     /// Why Relay couldn't reach it the last time it tried, in words.
     pub problem: Option<String>,
+}
+
+/// Saved data Relay couldn't read when it opened: what happened, in words,
+/// and where it is kept on this device.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct SavedDataNotice {
+    pub message: String,
+    pub kept: Vec<String>,
 }
 
 /// A device a code transfer was just made with, which the person may
@@ -1019,27 +1106,26 @@ impl RelayCore {
             size,
         );
         let me = self.identity();
-        let message_id = device_chat::files_message_id(&delivery);
         let log = self.peer_logs.get(&endpoint_id)?;
         let kept = local.and_then(|file| log.keep(file, &attachment.id));
-        log.add_files(
-            chat_core::Message {
-                id: message_id.clone(),
-                author: me.name,
-                author_id: format!("relay:{}", me.device_id),
-                attachments: vec![attachment],
-                status: chat_core::MessageStatus::Queued,
-                ..chat_core::Message::default()
-            },
-            kept.as_deref().or(local),
-        )?;
-        let queued = self
-            .queue(id, endpoint_id, item, outbox::Payload::files(&offer))
-            .await;
-        if queued.is_err() && self.record.get().delivery(&delivery).is_none() {
-            let _ = log.set_status(&message_id, chat_core::MessageStatus::Failed);
-        }
-        queued
+        let message = chat_core::Message {
+            id: device_chat::files_message_id(&delivery),
+            author: me.name,
+            author_id: format!("relay:{}", me.device_id),
+            attachments: vec![attachment],
+            status: chat_core::MessageStatus::Queued,
+            ..chat_core::Message::default()
+        };
+        // The message and its delivery are saved together (P3).
+        let path = kept.or_else(|| local.map(Path::to_path_buf));
+        self.queue_with(
+            id,
+            endpoint_id,
+            item,
+            outbox::Payload::files(&offer),
+            Some((message, path)),
+        )
+        .await
     }
 
     /// Stops a send to a trusted device that is still going, or takes it
@@ -1223,59 +1309,30 @@ impl CoreDevices {
         })?;
         forge_runtime::block_on(core.rt.command(name, move |state| state.change(edit)))
     }
-}
 
-impl CoreDevices {
-    /// Adds what delivery `delivery` saved at `path` to `from`'s
-    /// conversation, once.
-    fn files_arrived(
+    /// [`command`](Self::command), changing conversations in the same
+    /// transaction.
+    fn command_with<T: Send + 'static>(
         &self,
-        from: &str,
-        delivery: [u8; 16],
-        content: [u8; 32],
-        path: &Path,
-    ) -> Result<(), RelayError> {
+        name: &'static str,
+        edit: impl FnOnce(&mut Record, &mut device_chat::Conversations<'_>) -> Result<T, RelayError>
+            + Send
+            + 'static,
+    ) -> Result<T, RelayError> {
         let core = self.core.upgrade().ok_or(RelayError::Stopped {
             kind: forge_app::ErrorKind::ShutDown,
         })?;
-        let log = core.peer_logs.get(from)?;
-        let delivery = hex::hex(&delivery);
-        let id = device_chat::files_message_id(&delivery);
-        if log.get(&id).is_some() {
-            return Ok(());
-        }
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let size = code_send::items_in(&[path.to_path_buf()])
-            .map(|f| f.iter().map(|(_, _, n)| n).sum())
-            .unwrap_or(0);
-        let attachment =
-            device_chat::files_attachment(&hex::hex(&content), path.is_dir(), &name, size);
-        let author = core
-            .record
-            .get()
-            .devices
-            .get(from)
-            .map(|d| d.name.clone())
-            .unwrap_or_default();
-        log.add_files(
-            chat_core::Message {
-                id,
-                author,
-                author_id: from.to_string(),
-                attachments: vec![attachment],
-                ..chat_core::Message::default()
-            },
-            Some(path),
-        )?;
-        Ok(())
+        forge_runtime::block_on(core.rt.command(name, move |state| state.change_with(edit)))
     }
 }
 
-impl device::DeviceInbound for CoreDevices {
-    fn message(&self, from: &str, message: device_chat::PeerMessage) -> Result<(), RelayError> {
+impl CoreDevices {
+    /// A message from `from`, checked, as its conversation keeps it.
+    fn peer_message(
+        &self,
+        from: &str,
+        message: device_chat::PeerMessage,
+    ) -> Result<chat_core::Message, RelayError> {
         let core = self.core.upgrade().ok_or(RelayError::Stopped {
             kind: forge_app::ErrorKind::ShutDown,
         })?;
@@ -1292,14 +1349,64 @@ impl device::DeviceInbound for CoreDevices {
             .get(from)
             .map(|d| d.name.clone())
             .unwrap_or_default();
-        core.peer_logs.get(from)?.add(chat_core::Message {
+        Ok(chat_core::Message {
             id: message.id,
             author,
             author_id: from.to_string(),
             body,
             reply_to: message.reply_to,
             ..chat_core::Message::default()
+        })
+    }
+
+    /// The message for what delivery `delivery` saved at `path`, for
+    /// `from`'s conversation (added once, by its id).
+    fn files_arrived(
+        &self,
+        from: &str,
+        delivery: [u8; 16],
+        content: [u8; 32],
+        path: &Path,
+    ) -> Result<chat_core::Message, RelayError> {
+        let core = self.core.upgrade().ok_or(RelayError::Stopped {
+            kind: forge_app::ErrorKind::ShutDown,
         })?;
+        let id = device_chat::files_message_id(&hex::hex(&delivery));
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let size = code_send::items_in(&[path.to_path_buf()])
+            .map(|f| f.iter().map(|(_, _, n)| n).sum())
+            .unwrap_or(0);
+        let attachment =
+            device_chat::files_attachment(&hex::hex(&content), path.is_dir(), &name, size);
+        let author = core
+            .record
+            .get()
+            .devices
+            .get(from)
+            .map(|d| d.name.clone())
+            .unwrap_or_default();
+        Ok(chat_core::Message {
+            id,
+            author,
+            author_id: from.to_string(),
+            attachments: vec![attachment],
+            ..chat_core::Message::default()
+        })
+    }
+}
+
+impl device::DeviceInbound for CoreDevices {
+    fn message(&self, from: &str, message: device_chat::PeerMessage) -> Result<(), RelayError> {
+        let core = self.core.upgrade().ok_or(RelayError::Stopped {
+            kind: forge_app::ErrorKind::ShutDown,
+        })?;
+        let message = self.peer_message(from, message)?;
+        // One statement, so its own transaction: a message is kept once by
+        // its id, which is what makes a retry harmless.
+        core.peer_logs.get(from)?.add(message)?;
         Ok(())
     }
 
@@ -1410,7 +1517,7 @@ impl device::DeviceInbound for CoreDevices {
     /// A note from a device on an older build: a message in its
     /// conversation, `note-<delivery id>`, so a retry adds it once.
     fn note(&self, from: &str, delivery: [u8; 16], text: String) -> Result<(), RelayError> {
-        self.message(
+        let message = self.peer_message(
             from,
             device_chat::PeerMessage {
                 id: format!("note-{}", hex::hex(&delivery)),
@@ -1419,7 +1526,9 @@ impl device::DeviceInbound for CoreDevices {
             },
         )?;
         let from = from.to_string();
-        self.command("device-note", move |r| {
+        // The message and the id it came with: one transaction (P3).
+        self.command_with("device-note", move |r, c| {
+            c.add(&from, message)?;
             r.remember_received(&from, &delivery, now_ms());
             Ok(())
         })
@@ -1458,18 +1567,27 @@ impl device::DeviceInbound for CoreDevices {
         if let Some(core) = self.core.upgrade() {
             lock(&core.progress).remove(&id);
         }
-        if let Ok(path) = &result {
-            // The conversation shows it as a message with the saved file.
-            if let Err(err) = self.files_arrived(from, delivery, content, Path::new(path)) {
-                forge_runtime::logging::warn!("relay couldn't add files to a conversation: {err}");
-            }
-        }
+        // The conversation shows it as a message with the saved file.
+        let message = match &result {
+            Ok(path) => match self.files_arrived(from, delivery, content, Path::new(path)) {
+                Ok(message) => Some((message, PathBuf::from(path))),
+                Err(err) => {
+                    forge_runtime::logging::warn!("relay couldn't make a files message: {err}");
+                    None
+                }
+            },
+            Err(_) => None,
+        };
         let (status, file) = match result {
             Ok(path) => (SavedStatus::Done, Some(path)),
             Err(reason) => (SavedStatus::Failed { reason }, None),
         };
         let from = from.to_string();
-        if let Err(err) = self.command("device-file-done", move |r| {
+        // Its message, its id and its history entry: one transaction (P3).
+        if let Err(err) = self.command_with("device-file-done", move |r, c| {
+            if let Some((message, path)) = message {
+                c.add_files(&from, message, Some(&path))?;
+            }
             if status == SavedStatus::Done {
                 r.remember_received(&from, &delivery, now_ms());
             }
