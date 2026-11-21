@@ -159,7 +159,7 @@ Decided 2026-11-07: ixOS focuses on **iOS**. Decided 2026-11-20 (Reuben): Androi
 | A7 | AI summaries shown as unavailable (no on-device model on the emulator) | | 2 to 3 days | Planned |
 | A8 | `forge run android --emulator` and logcat | | 2 to 3 days | Planned |
 
-After A8 (decided 2026-11-21, Reuben): **on-device AI for Android** as its own stage. R0 checks the candidate projects and engines, R1 compares two engines in a check app, and R2 adds the chosen one as a Kotlin `LanguageModel` (Forge AI's trait) for Pocket Library's summaries. Speed results count only from a physical phone. Plan and findings: [research/android-local-ai.md](research/android-local-ai.md).
+After A8 (decided 2026-11-21, Reuben): **on-device AI for Android** as its own stage. R0 checks the candidate projects and engines, R1 compares two engines in a check app, and R2 adds the chosen one as a Kotlin `AiModel` (Forge AI's foreign trait) for Pocket Library's summaries. Speed results count only from a physical phone. Plan and findings: [research/android-local-ai.md](research/android-local-ai.md).
 
 ### Tooling freeze and reuse rules
 

@@ -4,14 +4,14 @@ Research, 21 November 2026. Reuben shared a survey of Android projects and infer
 
 ## Where it fits in ixOS
 
-The interface already exists. `forge-services` has Forge AI's `LanguageModel` foreign trait (`crates/forge-services/src/ai/mod.rs`, plan in [forge-ai-plan.md](../forge-ai-plan.md)):
+The interface already exists. `forge-services` has the `AiModel` foreign trait (`crates/forge-services/src/ai_service.rs`), which the host implements and installs with `install_native_ai`. `HostModel` adapts it to Forge AI's Rust-only `LanguageModel` trait (`crates/forge-services/src/ai/mod.rs`, plan in [forge-ai-plan.md](../forge-ai-plan.md)), which the rest of Rust uses:
 
 - `describe()` says which model this is, where it runs, whether it is available and why not, and its context size.
 - `generate(request, sink)` streams text into a `TextSink`, and Rust stops it by returning `false` from the sink.
 
-The rule from [local-ai.md](../local-ai.md) holds on both platforms: **no inference in Rust**. Rust owns the request, the history, the prompts, the checks on a small model's answers, and when to stop. The platform engine owns tokens, weights and hardware. On iOS, Apple's Foundation Models implements the trait, and CoreML-LLM with Qwen3.5 0.8B is planned for L2 (llama.cpp is only the fallback there).
+The rule from [local-ai.md](../local-ai.md) holds on both platforms: **no inference in Rust**. Rust owns the request, the history, the prompts, the checks on a small model's answers, and when to stop. The platform engine owns tokens, weights and hardware. On iOS, `ForgeAppleModel` implements `AiModel` on Apple's Foundation Models, and CoreML-LLM with Qwen3.5 0.8B is planned for L2 (llama.cpp is only the fallback there).
 
-So the `LocalAIProvider` Reuben sketched is, in ixOS terms, **a Kotlin class implementing `LanguageModel`**. Loading and unloading become part of the engine and of a model library, as L2 plans for iOS. Cancelling is the sink returning `false`. That keeps everything above the engine shared: Pocket Library's summaries, Chat's assistant and the AI Lab run unchanged on Android. The same shape is how `ForgeHttpTransport` brought Android's HTTP stack to Rust in A4.
+So the `LocalAIProvider` Reuben sketched is, in ixOS terms, **a Kotlin class implementing `AiModel`**, installed with `install_native_ai` like `ForgeAppleModel` on iOS. Loading and unloading become part of the engine and of a model library, as L2 plans for iOS. Cancelling is the sink returning `false`. That keeps everything above the engine shared: Pocket Library's summaries, Chat's assistant and the AI Lab run unchanged on Android. The same shape is how `ForgeHttpTransport` brought Android's HTTP stack to Rust in A4.
 
 What can't be shared is the weights format. iOS's planned engine reads Core ML packages, while llama.cpp reads GGUF and LiteRT-LM reads its own format. The same model (Qwen3.5 0.8B) can come in each format, so prompts and quality checks carry over even though the files don't.
 
@@ -50,7 +50,7 @@ His ranking: AiPaca (implementation), EdgeDroid (architecture), AI Edge Gallery 
 |---|---|---|
 | R0 Check | Read AiPaca, EdgeDroid, AI Edge Gallery and the PoC. For each candidate engine, record its licence, last release, Android ABIs, APK size and whether it builds from Linux with the NDK we already use. GPL code is read only if its licence allows what we would do with it ([android-ports.md](android-ports.md) rules). | A table in this doc; a shortlist of two engines |
 | R1 Compare | A throwaway Android check app (like L0 on iOS) runs both shortlisted engines with the same prompts and, where both formats exist, the same model (Qwen3.5 0.8B). It measures load time, time to first text, tokens per second, memory, and how fast Stop really stops. | A results table. The emulator gives functional results only, since it has no Android GPU or NPU; speed numbers count only from a real phone, once Reuben's is back |
-| R2 Engine | The chosen engine as a Kotlin `LanguageModel` in Pocket Library's Android app, with a model download in the app. A7's "unavailable" state becomes a real one when no model is downloaded. | Pocket Library's AI summaries run on Android, through the same Rust code as on iOS |
+| R2 Engine | The chosen engine as a Kotlin `AiModel` in Pocket Library's Android app, with a model download in the app. A7's "unavailable" state becomes a real one when no model is downloaded. | Pocket Library's AI summaries run on Android, through the same Rust code as on iOS |
 
 Apps first holds: the engine lives in the Android app until a second Android app needs it, as `ForgeHost` and `ForgeHttpTransport` do.
 
