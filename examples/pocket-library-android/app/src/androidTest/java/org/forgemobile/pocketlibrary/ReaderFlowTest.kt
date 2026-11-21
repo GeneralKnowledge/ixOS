@@ -156,8 +156,8 @@ class ReaderFlowTest {
 
         // Back to the first chapter through the contents, then on again.
         compose.onNodeWithTag("reader.contents").performClick()
+        // No screenshot here: the sheet is a second window, which captureToImage can't take.
         compose.waitUntilExactlyOneExists(hasTestTag("contents.chapter.0"), 5_000)
-        saveScreenshot("reader-contents")
         compose.onNodeWithTag("contents.chapter.0").performClick()
         awaitText("reader.title", "The Storm")
         compose.onNodeWithTag("reader.nextChapterEnd").performClick()
