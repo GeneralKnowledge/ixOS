@@ -153,10 +153,12 @@ impl Journal {
         let Ok(file) = File::open(root.join(Self::FILE)) else {
             return Vec::new();
         };
+        // Split on raw bytes: a line cut inside a multibyte character is
+        // skipped like any other unreadable line, and replay carries on.
         BufReader::new(file)
-            .lines()
+            .split(b'\n')
             .map_while(Result::ok)
-            .filter_map(|line| serde_json::from_str(&line).ok())
+            .filter_map(|line| serde_json::from_slice(&line).ok())
             .collect()
     }
 }

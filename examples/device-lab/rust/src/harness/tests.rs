@@ -926,3 +926,82 @@ fn python_lab_runs_in_its_project_and_the_samples_make_images() {
         assert!(text.starts_with("<svg"));
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn a_path_through_a_link_is_refused() {
+    let (dir, lab) = seeded("t1-hello");
+    let outside = dir.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, lab.root().join("link")).unwrap();
+    std::os::unix::fs::symlink(outside.join("gone.txt"), lab.root().join("dangling")).unwrap();
+    for path in ["link/escape.txt", "dangling"] {
+        let text = format!(
+            "{{\"thought\": \"Write.\", \"tool\": \"write_file\", \"path\": {}, \"content\": \"x\"}}",
+            serde_json::to_string(path).unwrap()
+        );
+        let out = lab.execute(&call(&text));
+        assert!(!out.ok, "{path}: {}", out.text);
+        assert!(out.text.contains("symbolic link"), "{}", out.text);
+    }
+    assert!(!outside.join("escape.txt").exists());
+    assert!(!outside.join("gone.txt").exists());
+}
+
+#[test]
+fn a_run_that_changes_source_makes_earlier_tests_stale() {
+    if !has_python() {
+        return;
+    }
+    let (_dir, lab) = seeded("t3-one-fix");
+    edit(&lab, "average.py", "(len(numbers) + 1)", "len(numbers)");
+    let tests = lab.execute(&call(r#"{"tool": "run_tests"}"#));
+    assert!(tests.ok, "{}", tests.text);
+    let script =
+        "with open('average.py', 'a') as f:\n    f.write('\\nBROKEN = 1\\n')\nprint('done')\n";
+    let text = format!(
+        "{{\"thought\": \"Write.\", \"tool\": \"write_file\", \"path\": \"sneak.py\", \"content\": {}}}",
+        serde_json::to_string(script).unwrap()
+    );
+    assert!(lab.execute(&call(&text)).ok);
+    let ran = lab.execute(&call(r#"{"tool": "run_python", "path": "sneak.py"}"#));
+    assert!(ran.ok, "{}", ran.text);
+    assert!(
+        ran.text.contains("The run changed average.py"),
+        "{}",
+        ran.text
+    );
+    let evidence: Vec<Evidence> = [tests.evidence, ran.evidence].concat();
+    let read = |path: &str| lab.read_text(path);
+    assert!(Criterion::TestsPass.check(&evidence, &read).is_err());
+}
+
+#[test]
+fn replay_skips_a_line_cut_inside_a_character() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("scratch");
+    std::fs::create_dir_all(&root).unwrap();
+    let good = serde_json::to_string(&Entry::Status {
+        task: "task-1".into(),
+        status: TaskStatus::Stopped,
+        reason: None,
+        at_ms: 3,
+    })
+    .unwrap();
+    let mut bytes = b"{\"kind\": \"answer\", \"text\": \"caf\xc3".to_vec();
+    bytes.push(b'\n');
+    bytes.extend_from_slice(good.as_bytes());
+    bytes.push(b'\n');
+    let file = root.join(Journal::FILE);
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(file, bytes).unwrap();
+    let entries = Journal::replay(&root);
+    assert_eq!(entries.len(), 1);
+    assert!(matches!(
+        entries[0],
+        Entry::Status {
+            status: TaskStatus::Stopped,
+            ..
+        }
+    ));
+}

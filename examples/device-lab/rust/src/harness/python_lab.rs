@@ -7,11 +7,12 @@
 //! app, and would otherwise keep running the version it imported before a
 //! fix), and a guard of audit hooks that is active only during harness runs.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use super::artifacts;
 use super::calls::{check_path, ArgKind, ToolCall, ToolSpec};
@@ -106,7 +107,31 @@ impl PythonLab {
 
     fn full(&self, path: &str) -> Result<PathBuf, String> {
         check_path(path)?;
+        // A link inside the project could point outside it, and the
+        // harness's own writes don't pass through Python's guard.
+        let mut current = self.root.clone();
+        for part in path.split('/') {
+            current.push(part);
+            if fs::symlink_metadata(&current).is_ok_and(|m| m.file_type().is_symlink()) {
+                return Err(format!("{path:?} must not pass through a symbolic link."));
+            }
+        }
         Ok(self.root.join(path))
+    }
+
+    /// Size and modification time of each Python source file, to notice a
+    /// run that changed the project's code.
+    fn source_stamps(&self) -> BTreeMap<String, (u64, Option<SystemTime>)> {
+        self.files()
+            .into_iter()
+            .filter(|(path, _)| path.ends_with(".py"))
+            .map(|(path, bytes)| {
+                let modified = fs::metadata(self.root.join(&path))
+                    .and_then(|m| m.modified())
+                    .ok();
+                (path, (bytes, modified))
+            })
+            .collect()
     }
 
     /// Runs a wrapper script with the time limit; `timed_out` when the
@@ -293,6 +318,7 @@ impl PythonLab {
             py_str(&full.display().to_string())
         );
         let before = artifacts::stamps(&self.root);
+        let sources = self.source_stamps();
         let (outcome, timed_out) = self.run_script(wrapper(&self.root, self.network, &action));
         let failed = !outcome.ok || outcome.output.contains(FAILED_MARK) || timed_out;
         let mut text = self.clean(&outcome.output);
@@ -307,11 +333,38 @@ impl PythonLab {
         } else {
             text.trim_end().to_string()
         };
-        let mut evidence = vec![Evidence::Ran {
+        // Source the run changed counts as a change, so earlier test
+        // results go stale; it comes before the run so the run still counts.
+        let after = self.source_stamps();
+        let mut evidence: Vec<Evidence> = after
+            .iter()
+            .filter(|(file, stamp)| sources.get(*file) != Some(stamp))
+            .map(|(file, _)| Evidence::Wrote {
+                path: file.clone(),
+                syntax_ok: true,
+            })
+            .collect();
+        for file in sources.keys().filter(|f| !after.contains_key(*f)) {
+            evidence.push(Evidence::Wrote {
+                path: file.clone(),
+                syntax_ok: true,
+            });
+        }
+        if !evidence.is_empty() {
+            let changed: Vec<String> = evidence
+                .iter()
+                .filter_map(|e| match e {
+                    Evidence::Wrote { path, .. } => Some(path.clone()),
+                    _ => None,
+                })
+                .collect();
+            shown += &format!("\nThe run changed {}.", changed.join(", "));
+        }
+        evidence.push(Evidence::Ran {
             path: path.into(),
             ok: !failed,
             output: text,
-        }];
+        });
         for made in artifacts::changed(&self.root, &before) {
             shown += &format!(
                 "\nMade {} ({}, {} bytes{}).",
@@ -694,6 +747,8 @@ if _guard is None:
             writes = (mode is not None and any(c in mode for c in 'wax+')) or (mode is None and flags and flags & _WRITE_FLAGS)
             if writes and isinstance(path, (str, bytes, os.PathLike)) and not _inside(path):
                 raise PermissionError(f'Bonsai Harness: writing outside the project is not allowed ({path})')
+        elif event in ('os.symlink', 'os.link'):
+            raise PermissionError('Bonsai Harness: making links is not allowed')
         elif event in ('os.remove', 'os.rmdir', 'shutil.rmtree', 'os.rename', 'os.replace'):
             for path in args[:2]:
                 if isinstance(path, (str, bytes, os.PathLike)) and not _inside(path):

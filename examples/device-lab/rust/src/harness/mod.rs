@@ -580,6 +580,9 @@ impl BonsaiHarness {
             return Err(HarnessError::Busy);
         }
         state.running = true;
+        // Reset under the state lock, before any preparation, so a Stop
+        // for this task (which follows the claim) is never cleared.
+        self.shared.stop.store(false, Ordering::SeqCst);
         Ok(())
     }
 
@@ -613,7 +616,6 @@ impl BonsaiHarness {
             state.phase = HarnessPhase::Thinking;
             state.environment = Some(Arc::clone(&lab) as Arc<dyn Environment>);
         }
-        self.shared.stop.store(false, Ordering::SeqCst);
         let shared = Arc::clone(&self.shared);
         let limits = self.limits.clone();
         let spawned = std::thread::Builder::new()
@@ -872,6 +874,17 @@ impl Run {
                         .join("; ");
                     if let Err(err) = self.environment.checkpoint(task) {
                         logging::warn!(target: "harness", "checkpoint failed: {err}");
+                    }
+                    // A Stop or the time limit that landed during the last
+                    // model turn or the checkpoint still wins.
+                    if self.stopped() {
+                        return Err(End(TaskStatus::Stopped, "Stopped.".into()));
+                    }
+                    if started.elapsed() >= Duration::from_secs(limits.task_seconds.into()) {
+                        return Err(End(
+                            TaskStatus::Failed,
+                            format!("Ran out of time ({} s).", limits.task_seconds),
+                        ));
                     }
                     self.record(Entry::Result {
                         task: task.into(),
