@@ -190,7 +190,7 @@ struct RelaySettingsSection: View {
 }
 
 /// Whether Relay uses its own relay and lookup server, so trusted devices
-/// find each other away from any shared network. Off until turned on.
+/// find each other away from any shared network. On by default (N2).
 struct RelayServersSection: View {
     let core: RelayCore
     @State private var on = false

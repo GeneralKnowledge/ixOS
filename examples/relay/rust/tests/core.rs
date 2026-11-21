@@ -11,9 +11,10 @@ fn block_on<F: std::future::Future>(future: F) -> F::Output {
 }
 
 fn device(dir: &tempfile::TempDir, name: &str) -> Arc<RelayCore> {
-    RelayCore::new(
+    RelayCore::with_default_servers(
         dir.path().join(name).to_string_lossy().into_owned(),
         name.into(),
+        relay_core::RelayServers::default(),
     )
     .unwrap()
 }

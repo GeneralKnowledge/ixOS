@@ -5014,6 +5014,12 @@ public func FfiConverterTypePermissionProvider_lower(_ value: PermissionProvider
 public protocol RelayCoreProtocol: AnyObject, Sendable {
     
     /**
+     * Relay's servers were turned on by an upgrade (N2): what to tell the
+     * person, once, until they dismiss it. `None` normally.
+     */
+    func awayFromHomeNotice()  -> String?
+    
+    /**
      * The host's background time ran out: finishing work stops.
      */
     func backgroundTimeExpired() 
@@ -5098,6 +5104,11 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * waits for it.
      */
     func devicesNearby(devices: [NearbyDevice]) 
+    
+    /**
+     * The person has read the away-from-home notice.
+     */
+    func dismissAwayFromHomeNotice() async throws 
     
     /**
      * The person has read the notice.
@@ -5349,6 +5360,8 @@ open class RelayCore: RelayCoreProtocol, @unchecked Sendable {
      * the directory so no second core can write to it. The first open
      * makes this device's identity, named `device_name` (the person can
      * rename it).
+     *
+     * Relay's own servers are on unless the person chose otherwise (N2).
      */
 public convenience init(dataDirectory: String, deviceName: String)throws  {
     let handle =
@@ -5372,7 +5385,34 @@ public convenience init(dataDirectory: String, deviceName: String)throws  {
     }
 
     
+    /**
+     * `new` for tests and previews: a device that never chose gets no
+     * servers, so nothing reaches the real ones.
+     */
+public static func withoutDefaultServers(dataDirectory: String, deviceName: String)throws  -> RelayCore  {
+    return try  FfiConverterTypeRelayCore_lift(try rustCallWithError(FfiConverterTypeRelayError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_constructor_relaycore_without_default_servers(
+        FfiConverterString.lower(dataDirectory),
+        FfiConverterString.lower(deviceName),uniffiCallStatus
+    )
+})
+}
+    
 
+    
+    /**
+     * Relay's servers were turned on by an upgrade (N2): what to tell the
+     * person, once, until they dismiss it. `None` normally.
+     */
+open func awayFromHomeNotice() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_away_from_home_notice(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
     
     /**
      * The host's background time ran out: finishing work stops.
@@ -5566,6 +5606,25 @@ open func devicesNearby(devices: [NearbyDevice])  {try! rustCall() {
         FfiConverterSequenceTypeNearbyDevice.lower(devices),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * The person has read the away-from-home notice.
+     */
+open func dismissAwayFromHomeNotice()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_dismiss_away_from_home_notice(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
 }
     
     /**
@@ -14460,6 +14519,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_func_own_relay_servers() != 41425) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_away_from_home_notice() != 6695) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_background_time_expired() != 12393) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14500,6 +14562,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_devices_nearby() != 37105) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_dismiss_away_from_home_notice() != 30751) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_dismiss_saved_data_notice() != 49479) {
@@ -14868,7 +14933,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_httptransport_cancel() != 38169) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_constructor_relaycore_new() != 45345) {
+    if (uniffi_relay_core_checksum_constructor_relaycore_new() != 42895) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_constructor_relaycore_without_default_servers() != 34355) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_constructor_chatcore_new() != 13538) {

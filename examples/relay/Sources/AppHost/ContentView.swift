@@ -177,6 +177,20 @@ struct DevicesView: View {
             } message: { notice in
                 Text(notice.message)
             }
+            // An upgrade turned Relay's servers on: said once.
+            .alert(
+                "Relay Works Away From Home",
+                isPresented: Binding(
+                    get: { showingAwayNotice },
+                    set: { _ in }
+                ),
+                presenting: model.awayNotice
+            ) { _ in
+                Button("OK") { Task { await model.dismissAwayNotice() } }
+                    .accessibilityIdentifier("awayNotice.ok")
+            } message: { notice in
+                Text(notice)
+            }
             .onChange(of: anySheet) { if !anySheet { model.refreshTrustOffer() } }
             .quickLookPreview($preview)
             .forgeFeedback(model.feedback)
@@ -222,10 +236,15 @@ struct DevicesView: View {
 
     private var showingTrustOffer: Bool {
         model.trustOffer != nil && !anySheet && model.alert == nil && model.savedDataNotice == nil
+            && model.awayNotice == nil
     }
 
     private var showingSavedDataNotice: Bool {
         model.savedDataNotice != nil && !anySheet && model.alert == nil
+    }
+
+    private var showingAwayNotice: Bool {
+        model.awayNotice != nil && model.savedDataNotice == nil && !anySheet && model.alert == nil
     }
 
     private var trustOfferTitle: String {

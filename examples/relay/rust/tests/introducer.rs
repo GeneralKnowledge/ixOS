@@ -14,7 +14,12 @@ fn block_on<F: std::future::Future>(future: F) -> F::Output {
 }
 
 fn device(dir: &Path, name: &str) -> Arc<RelayCore> {
-    let core = RelayCore::new(dir.join(name).to_string_lossy().into_owned(), name.into()).unwrap();
+    let core = RelayCore::with_default_servers(
+        dir.join(name).to_string_lossy().into_owned(),
+        name.into(),
+        relay_core::RelayServers::default(),
+    )
+    .unwrap();
     core.receive_into(
         dir.join(name)
             .join("Received")

@@ -86,6 +86,7 @@ public final class RelayModel {
         connectionMode = core.connectionMode()
         trustOffer = core.trustOffer()
         savedDataNotice = core.savedDataNotice()
+        awayNotice = core.awayFromHomeNotice()
     }
 
     /// Saved data Relay couldn't read when it opened, and where it is
@@ -96,6 +97,15 @@ public final class RelayModel {
     public func dismissSavedDataNotice() async {
         savedDataNotice = nil
         await perform { try await $0.dismissSavedDataNotice() }
+    }
+
+    /// An upgrade turned Relay's servers on (N2): said once, until the
+    /// person dismisses it.
+    public private(set) var awayNotice: String?
+
+    public func dismissAwayNotice() async {
+        awayNotice = nil
+        await perform { try await $0.dismissAwayFromHomeNotice() }
     }
 
     /// Whether anything is still on its way, so the screen refreshes its

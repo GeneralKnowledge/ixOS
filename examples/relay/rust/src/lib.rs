@@ -193,8 +193,32 @@ impl RelayCore {
     /// the directory so no second core can write to it. The first open
     /// makes this device's identity, named `device_name` (the person can
     /// rename it).
+    ///
+    /// Relay's own servers are on unless the person chose otherwise (N2).
     #[uniffi::constructor]
     pub fn new(data_directory: String, device_name: String) -> Result<Arc<Self>, RelayError> {
+        Self::with_default_servers(data_directory, device_name, own_relay_servers())
+    }
+
+    /// `new` for tests and previews: a device that never chose gets no
+    /// servers, so nothing reaches the real ones.
+    #[uniffi::constructor]
+    pub fn without_default_servers(
+        data_directory: String,
+        device_name: String,
+    ) -> Result<Arc<Self>, RelayError> {
+        Self::with_default_servers(data_directory, device_name, RelayServers::default())
+    }
+}
+
+impl RelayCore {
+    /// `new`, with `default_servers` as the servers a device that never
+    /// chose gets. Tests pass none, so they never reach the real servers.
+    pub fn with_default_servers(
+        data_directory: String,
+        device_name: String,
+        default_servers: RelayServers,
+    ) -> Result<Arc<Self>, RelayError> {
         forge_runtime::logging::init();
         let directory = DataDirectory::open(&data_directory)?;
         // One database (P3); the JSON files move into it on the first open.
@@ -260,6 +284,23 @@ impl RelayCore {
                 Ok(())
             })?;
         }
+        // Away from home (N2): Relay's servers on, unless the person chose
+        // otherwise (another mode, or servers of their own). Applied once;
+        // an upgrade that turns them on says so.
+        if !record.devices.servers_settled {
+            let turn_on = record.devices.mode == ConnectionMode::Hybrid
+                && record.devices.servers == RelayServers::default()
+                && default_servers != RelayServers::default();
+            let used_before = !record.devices.list.is_empty();
+            opening(&mut record, &mut |r, _| {
+                if turn_on {
+                    r.devices.servers = default_servers.clone();
+                    r.away_notice = used_before;
+                }
+                r.devices.servers_settled = true;
+                Ok(())
+            })?;
+        }
         // A message the conversation shows queued that the outbox doesn't
         // hold (saved by a build before one transaction held both) failed,
         // so the person can send it again.
@@ -309,6 +350,31 @@ impl RelayCore {
             me: me.clone(),
         });
         Ok(core)
+    }
+}
+
+#[uniffi::export]
+impl RelayCore {
+    /// Relay's servers were turned on by an upgrade (N2): what to tell the
+    /// person, once, until they dismiss it. `None` normally.
+    pub fn away_from_home_notice(&self) -> Option<String> {
+        self.record.get().away_notice.then(|| {
+            "Relay now reaches your devices away from home through its servers. What you send \
+             stays encrypted end to end. You can change this in Settings, under Connections."
+                .to_string()
+        })
+    }
+
+    /// The person has read the away-from-home notice.
+    pub async fn dismiss_away_from_home_notice(&self) -> Result<(), RelayError> {
+        self.rt
+            .command("dismiss-away-notice", |state| {
+                state.change(|r| {
+                    r.away_notice = false;
+                    Ok(())
+                })
+            })
+            .await
     }
 
     /// What Relay couldn't read of its saved data when it opened, and
@@ -941,6 +1007,7 @@ impl RelayCore {
             .command("servers", move |state| {
                 state.change(|r| {
                     r.devices.servers = clean;
+                    r.devices.servers_settled = true;
                     Ok(())
                 })
             })
