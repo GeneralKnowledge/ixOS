@@ -26,6 +26,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -38,6 +41,9 @@ import uniffi.pocket_library_core.LibraryException
 class EpubImports(private val app: PocketLibraryApplication) {
     /** Screens waiting for an import in this process, by the import's id. */
     private val waiting = ConcurrentHashMap<String, CompletableDeferred<Book>>()
+
+    /** Copies picked documents and hands them to WorkManager, whoever was waiting. */
+    private val staging = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
      * Test data only (`pocketLibrary.holdImportSeconds`): how long an import's first run waits
@@ -54,16 +60,19 @@ class EpubImports(private val app: PocketLibraryApplication) {
      */
     suspend fun import(uri: Uri): Book {
         val folder = newFolder() ?: throw LibraryException.ShutDown()
-        val file = try {
-            withContext(Dispatchers.IO) { copy(app, uri, folder) }
-        } catch (e: Throwable) {
-            withContext(Dispatchers.IO) { folder.deleteRecursively() }
-            throw e
-        }
         val result = CompletableDeferred<Book>()
         waiting[folder.name] = result
+        // The copy and the job are the app's, not the caller's: a screen that leaves while the
+        // document is still being copied stops waiting, and the import goes ahead.
+        staging.launch {
+            try {
+                enqueue(copy(app, uri, folder))
+            } catch (e: Throwable) {
+                folder.deleteRecursively()
+                result.completeExceptionally(e)
+            }
+        }
         try {
-            enqueue(file)
             return result.await()
         } finally {
             waiting.remove(folder.name)

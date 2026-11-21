@@ -31,10 +31,10 @@ relaunch_keeping_data() {
     adb shell am start -W -n "$ACTIVITY" --ez forge.temporaryData true --ez forge.keepTestData true >/dev/null
 }
 
-echo "1. A throwaway library whose sample-book import waits 30 s before it starts"
+echo "1. A throwaway library whose sample-book import waits 90 s before it starts (long enough that a slow runner still kills it first)"
 adb shell am force-stop "$PKG"
 adb shell am start -W -n "$ACTIVITY" \
-    --ez forge.temporaryData true --ez pocketLibrary.sampleBook true --ei pocketLibrary.holdImportSeconds 30 >/dev/null
+    --ez forge.temporaryData true --ez pocketLibrary.sampleBook true --ei pocketLibrary.holdImportSeconds 90 >/dev/null
 sleep 6
 if shows_book; then
     echo "FAIL: the import didn't wait, so this run proves nothing" >&2

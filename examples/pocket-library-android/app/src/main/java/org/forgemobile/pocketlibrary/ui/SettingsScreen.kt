@@ -83,38 +83,28 @@ internal fun SettingsScreen(model: LibraryModel, onClose: () -> Unit) {
     val settings by model.settings.collectAsState()
     val all by model.all.collectAsState()
     var alert by remember { mutableStateOf<ForgeAlert<SettingsAction>?>(null) }
-    /** A backup, spreadsheet or restore is running: one at a time. */
-    var working by remember { mutableStateOf(false) }
+    // Backups and the rest run in the model, so they carry on, and still show, if Settings
+    // closes and opens again.
+    val working by model.dataBusy.collectAsState()
+    val result by model.dataResult.collectAsState()
     var storage by remember { mutableStateOf<StorageInfo?>(null) }
-    // What the library holds, read again whenever its books change.
-    LaunchedEffect(all) { storage = model.storageInfo() }
+    // What the library holds, read again whenever its books change or a data operation ends.
+    LaunchedEffect(all, working) { storage = runCatching { model.storageInfo() }.getOrNull() }
 
-    /** Runs [block] in the model's scope, so leaving Settings doesn't stop it. */
-    fun work(block: suspend () -> Unit) {
-        working = true
-        model.finish {
-            try {
-                block()
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                alert = failureAlert(e)
-            } finally {
-                storage = model.storageInfo()
-                working = false
-            }
-        }
+    fun work(block: suspend () -> ForgeAlert<Nothing>?) {
+        model.runDataWork(::failureAlert, block)
     }
 
     val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) work {
             saveTo(context, uri) { model.backupLibrary() }
-            alert = done("Backup Saved", "Restore it from Settings on this phone or another.")
+            done("Backup Saved", "Restore it from Settings on this phone or another.")
         }
     }
     val saveSpreadsheet = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) work {
             saveTo(context, uri) { model.exportBooksCsv() }
-            alert = done("Spreadsheet Saved", null)
+            done("Spreadsheet Saved", null)
         }
     }
     val pickBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -132,7 +122,7 @@ internal fun SettingsScreen(model: LibraryModel, onClose: () -> Unit) {
     val pickSpreadsheet = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) work {
             val summary = readFrom(context, uri, "PocketLibrary.csv") { model.importBooksCsv(it) }
-            alert = importSummary(summary)
+            importSummary(summary)
         }
     }
 
@@ -229,12 +219,16 @@ internal fun SettingsScreen(model: LibraryModel, onClose: () -> Unit) {
             Value("Built with", "Forge (Rust + Jetpack Compose)", "settings.builtWith")
         }
     }
+    ForgeAlertDialog(result, onDismiss = model::clearDataResult)
     ForgeAlertDialog(alert, onDismiss = { alert = null }) { action ->
         when (action) {
-            SettingsAction.Erase -> work { model.eraseLibrary() }
+            SettingsAction.Erase -> work {
+                model.eraseLibrary()
+                null
+            }
             is SettingsAction.Restore -> work {
                 val books = readFrom(context, action.uri, "PocketLibrary-backup.zip") { model.restoreLibrary(it) }
-                alert = done("Library restored", if (books == 1u) "1 book" else "$books books")
+                done("Library restored", if (books == 1u) "1 book" else "$books books")
             }
         }
     }
@@ -322,10 +316,10 @@ private fun SortRow(sort: LibrarySort, onSelect: (LibrarySort) -> Unit) {
     }
 }
 
-private fun done(title: String, message: String?): ForgeAlert<SettingsAction> =
+private fun done(title: String, message: String?): ForgeAlert<Nothing> =
     ForgeAlert(title, message, listOf(ForgeAlertButton.ok()))
 
-private fun failureAlert(e: Exception): ForgeAlert<SettingsAction>? = when (e) {
+private fun failureAlert(e: Exception): ForgeAlert<Nothing>? = when (e) {
     is IOException -> ForgeAlert.failure(ForgeFailure("Can't Use That File", "Pocket Library couldn't read or write the file you chose."))
     else -> ForgeAlert.failure(e)
 }

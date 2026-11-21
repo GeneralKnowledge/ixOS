@@ -25,6 +25,7 @@ import android.util.Log
 import java.io.File
 import org.forgemobile.pocketlibrary.host.ForgeCore
 import org.forgemobile.pocketlibrary.host.ForgeHost
+import org.forgemobile.pocketlibrary.kit.ForgeAlert
 import org.forgemobile.pocketlibrary.kit.ForgeFailure
 import org.forgemobile.pocketlibrary.kit.ForgeLoad
 import uniffi.forge_app.AppPhase
@@ -247,6 +248,43 @@ class LibraryModel(
      * screen that started it goes (a backup, a restore), as a Swift `Task` does.
      */
     fun finish(block: suspend () -> Unit): Job = scope.launch { block() }
+
+    private val _dataBusy = MutableStateFlow(false)
+    private val _dataResult = MutableStateFlow<ForgeAlert<Nothing>?>(null)
+
+    /** A backup, restore, spreadsheet or erase is running (one at a time). */
+    val dataBusy: StateFlow<Boolean> = _dataBusy.asStateFlow()
+
+    /** What the last of those came to, until the person dismisses it. */
+    val dataResult: StateFlow<ForgeAlert<Nothing>?> = _dataResult.asStateFlow()
+
+    fun clearDataResult() {
+        _dataResult.value = null
+    }
+
+    /**
+     * Runs one data operation in the model's scope, so Settings can close and open again while
+     * it runs and still show it running, then its result. [block] returns the alert to show (or
+     * null); [failure] turns an error into one. False, doing nothing, while another runs.
+     */
+    fun runDataWork(
+        failure: (Exception) -> ForgeAlert<Nothing>?,
+        block: suspend () -> ForgeAlert<Nothing>?,
+    ): Boolean {
+        if (_dataBusy.value) return false
+        _dataBusy.value = true
+        scope.launch {
+            try {
+                _dataResult.value = block()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _dataResult.value = failure(e)
+            } finally {
+                _dataBusy.value = false
+            }
+        }
+        return true
+    }
 
     // Your data: backups, spreadsheets, erasing. Each is finishing work in Rust, so it
     // completes when the person leaves the app (the host holds background time).

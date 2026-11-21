@@ -246,7 +246,9 @@ class ForgeHost<Core : ForgeCore>(
     @Synchronized
     private fun holdBackgroundTime() {
         val time = backgroundTime
-        if (hold != null || time == null) return
+        // Checked under the lock: an event read while in the background may arrive after the
+        // app has come back, and a hold then would only expire on foreground work.
+        if (hold != null || time == null || phase != AppPhase.BACKGROUND) return
         val token = Any()
         hold = token
         time.begin { expire(token) }
