@@ -18,7 +18,7 @@ Every stage runs a fixed ladder of tasks on the phone and records each as passed
 
 - **Bonsai on iPhone:** Ternary-Bonsai-2 4B and 9B (Q2_0 GGUF) through llama.cpp's prebuilt XCFramework, Metal. About 29 tok/s (4B) and 19 tok/s (9B) on the iPhone 15 Pro Max, 4,096-token context. Rust's `AiLab` drives it through the `AiModel` foreign trait (`AiLabLlama.swift`).
 - **Python Lab:** CPython 3.15 from python.org, embedded; `PythonBridge` (start, run, interrupt). One interpreter for the app's life, scripts one at a time, a time limit and Stop (a `KeyboardInterrupt`).
-- Python Lab on the phone (Device Lab 1.29921164, 2026-11-21): hello, the standard library check (22 of 22 modules), primes and SQLite pass. HTTPS failed with `CERTIFICATE_VERIFY_FAILED`: iOS has no OpenSSL trust store, so #357 bundles certifi's CA file and sets `SSL_CERT_FILE` (to recheck in the next build).
+- Python Lab on the phone (Device Lab 1.29921164, 2026-11-21): hello, the standard library check (22 of 22 modules), primes and SQLite pass. HTTPS failed with `CERTIFICATE_VERIFY_FAILED`: iOS has no OpenSSL trust store, so #357 bundles certifi's CA file and sets `SSL_CERT_FILE` (rechecked on Device Lab 1.29921350: passed).
 
 ## What we borrow from other agents
 
@@ -228,3 +228,5 @@ Apple's on-device model as another backend (its guided generation, `DynamicGener
 | 2026-11-21 | H1 | Stop during a model turn | Bonsai 4B (Q2_0) | passed | Reuben: "Stopping Bonsai works" |
 | 2026-11-21 | H1+ | Own task: expenses tracker (two modules, three tests, report) | Bonsai 9B (Q2_0) | passed (harness), partly off-spec | Reuben's transcript: 9 steps, no invalid answers; 3 tests passed; report.py first failed (NameError: items undefined), Bonsai read the traceback, fixed it and reran. Off-spec: the report printed three categories, not two (WorkRuns can't catch that). Model turns 12.7 to 57.4 s, growing with the history (whole prompt re-read each turn; H2's cache reuse), about 5.4 min in all |
 | 2026-11-21 | H0 | Sample: HTTPS request | | failed | `CERTIFICATE_VERIFY_FAILED` (no CA store); fixed in #357, recheck next build |
+| 2026-11-21 | H0 | Sample: HTTPS request (recheck) | | passed | Reuben on Device Lab 1.29921350: "the request worked" with the bundled certifi CA file |
+| 2026-11-21 | P1 | Python Lab image previews (graphics samples) | | passed | Reuben on Device Lab 1.29921350: "images worked" |
