@@ -1,7 +1,7 @@
 # Relay as a personal computing network (one possible direction)
 
 How this fits the rest of Relay: [relay-network-architecture.md](relay-network-architecture.md)
-(one network, shared primitives; 2026-11-21).
+(one secure communication layer; 2026-11-21).
 
 Status: an idea from Reuben, 2026-11-17 21:46, recorded so it isn't lost.
 This is **one possible direction emerging from the project, a hypothesis

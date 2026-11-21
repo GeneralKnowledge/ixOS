@@ -1,7 +1,7 @@
 # Relay Social: open social infrastructure (idea)
 
 How this fits the rest of Relay: [relay-network-architecture.md](relay-network-architecture.md)
-(one network, shared primitives; 2026-11-21).
+(one secure communication layer; 2026-11-21).
 
 Status: an idea from Reuben, 2026-11-17 ("another mud at the wall idea"),
 recorded so it isn't lost, then reviewed by him the same evening (kept,
