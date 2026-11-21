@@ -40,7 +40,11 @@ pub(crate) const VERSION: u16 = 1;
 /// How often the receiver says how far it has got.
 const TICK: Duration = Duration::from_secs(2);
 /// How often a file on its way is checked against trust (revoked: stop).
-const TRUST_CHECK: Duration = Duration::from_millis(250);
+const TRUST_CHECK: Duration = if cfg!(test) {
+    Duration::from_millis(20)
+} else {
+    Duration::from_millis(250)
+};
 /// How long the sender waits without a tick before giving up.
 const SILENCE: Duration = Duration::from_secs(30);
 /// The close code for a device that isn't trusted.
@@ -660,33 +664,37 @@ impl DeviceHandler {
         let progress = Arc::new(CodeProgress::default());
         progress.total.store(size, Ordering::SeqCst);
         crate::code::hold(node, content).await?;
-        let fetching = crate::code::fetch(node, content, conn.remote_id(), &progress);
-        tokio::pin!(fetching);
-        // Trust is checked while the file comes, not only at the end: a
-        // device revoked meanwhile stops sending at once (the first check
-        // is straight away).
-        let mut trust_check = tokio::time::interval(TRUST_CHECK);
-        let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + TICK, TICK);
         let mut revoked = false;
-        let fetched = loop {
-            tokio::select! {
-                r = &mut fetching => break r,
-                _ = trust_check.tick() => {
-                    let host = Arc::clone(&self.host);
-                    let from = them.to_string();
-                    let still = tokio::task::spawn_blocking(move || host.still_takes_from(&from))
-                        .await
-                        .map_err(connection)?;
-                    if !still {
-                        revoked = true;
-                        break Err(connection("no longer trusted here"));
+        // In a block of its own, so the fetch is dropped (and stops) as
+        // soon as the loop ends, before anything below waits.
+        let fetched = {
+            let fetching = crate::code::fetch(node, content, conn.remote_id(), &progress);
+            tokio::pin!(fetching);
+            // Trust is checked while the file comes, not only at the end: a
+            // device revoked meanwhile stops sending at once (the first check
+            // is straight away).
+            let mut trust_check = tokio::time::interval(TRUST_CHECK);
+            let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + TICK, TICK);
+            loop {
+                tokio::select! {
+                    r = &mut fetching => break r,
+                    _ = trust_check.tick() => {
+                        let host = Arc::clone(&self.host);
+                        let from = them.to_string();
+                        let still = tokio::task::spawn_blocking(move || host.still_takes_from(&from))
+                            .await
+                            .map_err(connection)?;
+                        if !still {
+                            revoked = true;
+                            break Err(connection("no longer trusted here"));
+                        }
                     }
-                }
-                _ = tick.tick() => {
-                    let done = progress.done.load(Ordering::SeqCst);
-                    self.host.progress(id, done);
-                    if say(send, &DeviceMsg::Tick { done }).await.is_err() {
-                        break Err(connection("the sender went away"));
+                    _ = tick.tick() => {
+                        let done = progress.done.load(Ordering::SeqCst);
+                        self.host.progress(id, done);
+                        if say(send, &DeviceMsg::Tick { done }).await.is_err() {
+                            break Err(connection("the sender went away"));
+                        }
                     }
                 }
             }
@@ -1336,14 +1344,20 @@ mod tests {
     /// Takes from anyone when a connection opens, but no longer by the
     /// time a file has arrived (it was revoked meanwhile); keeps how each
     /// file ended.
-    struct RevokedMeanwhile(std::sync::Mutex<Vec<Result<String, String>>>);
+    /// A host that stops taking from the sender after `.1` trust checks.
+    struct RevokedMeanwhile(
+        std::sync::Mutex<Vec<Result<String, String>>>,
+        std::sync::atomic::AtomicUsize,
+    );
 
     impl DeviceInbound for RevokedMeanwhile {
         fn rights(&self, from: &str) -> Option<Rights> {
             TrustsAll.rights(from)
         }
         fn still_takes_from(&self, _: &str) -> bool {
-            false
+            self.1
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+                .is_ok()
         }
         fn my_name(&self) -> String {
             TrustsAll.my_name()
@@ -1385,7 +1399,10 @@ mod tests {
     #[test]
     fn a_file_from_a_device_revoked_meanwhile_is_not_saved() {
         let dir = tempfile::tempdir().unwrap();
-        let host = Arc::new(RevokedMeanwhile(std::sync::Mutex::new(Vec::new())));
+        let host = Arc::new(RevokedMeanwhile(
+            std::sync::Mutex::new(Vec::new()),
+            std::sync::atomic::AtomicUsize::new(0),
+        ));
         crate::code::TOKIO.block_on(async {
             let listener = test_node(dir.path(), "listener", Arc::clone(&host) as _).await;
             let sender = test_node(dir.path(), "sender", Arc::new(NoDevices)).await;
@@ -1422,7 +1439,12 @@ mod tests {
     #[test]
     fn a_device_revoked_meanwhile_stops_sending_at_once() {
         let dir = tempfile::tempdir().unwrap();
-        let host = Arc::new(RevokedMeanwhile(std::sync::Mutex::new(Vec::new())));
+        // Trusted for the first two checks (the one at the start and the next),
+        // so the file is on its way when trust goes.
+        let host = Arc::new(RevokedMeanwhile(
+            std::sync::Mutex::new(Vec::new()),
+            std::sync::atomic::AtomicUsize::new(2),
+        ));
         crate::code::TOKIO.block_on(async {
             let listener = test_node(dir.path(), "listener", Arc::clone(&host) as _).await;
             let sender = test_node(dir.path(), "sender", Arc::new(NoDevices)).await;

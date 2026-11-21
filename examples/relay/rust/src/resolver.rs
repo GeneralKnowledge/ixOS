@@ -183,13 +183,20 @@ fn kind_v6(ip: Ipv6Addr) -> RouteKind {
 }
 
 /// The /64 networks of this device's own global IPv6 addresses (the first
-/// four segments), so a device on the same Wi-Fi reached by its public
-/// IPv6 address counts as the local network, not the internet.
-static MY_V6_NETWORKS: std::sync::RwLock<Vec<[u16; 4]>> = std::sync::RwLock::new(Vec::new());
+/// four segments), per endpoint, so a device on the same Wi-Fi reached by
+/// its public IPv6 address counts as the local network, not the internet.
+/// Several endpoints can run in one process (tests, the CLI's devices);
+/// an address is local when it is on any of their current networks.
+static MY_V6_NETWORKS: std::sync::RwLock<std::collections::BTreeMap<String, Vec<[u16; 4]>>> =
+    std::sync::RwLock::new(std::collections::BTreeMap::new());
 
-/// Records this device's own addresses (when the endpoint starts and
-/// whenever its addresses change).
-pub(crate) fn learn_own_addresses<'a>(addrs: impl IntoIterator<Item = &'a SocketAddr>) {
+/// Records the current addresses of the endpoint `owner` (when it starts
+/// and whenever they change), replacing what it had: a network it left
+/// stops counting as local.
+pub(crate) fn learn_own_addresses<'a>(
+    owner: &str,
+    addrs: impl IntoIterator<Item = &'a SocketAddr>,
+) {
     let mut networks: Vec<[u16; 4]> = addrs
         .into_iter()
         .filter_map(|a| match a.ip() {
@@ -205,13 +212,14 @@ pub(crate) fn learn_own_addresses<'a>(addrs: impl IntoIterator<Item = &'a Socket
     networks.sort_unstable();
     networks.dedup();
     if let Ok(mut mine) = MY_V6_NETWORKS.write() {
-        // Several endpoints can run in one process (tests, the CLI's
-        // devices): every one of them is on these networks.
-        for n in networks {
-            if !mine.contains(&n) {
-                mine.push(n);
-            }
-        }
+        mine.insert(owner.to_string(), networks);
+    }
+}
+
+/// The endpoint `owner` has closed: its networks no longer count.
+pub(crate) fn forget_own_addresses(owner: &str) {
+    if let Ok(mut mine) = MY_V6_NETWORKS.write() {
+        mine.remove(owner);
     }
 }
 
@@ -220,7 +228,7 @@ fn on_my_network(ip: Ipv6Addr) -> bool {
     let network = [s[0], s[1], s[2], s[3]];
     MY_V6_NETWORKS
         .read()
-        .map(|mine| mine.contains(&network))
+        .map(|mine| mine.values().any(|n| n.contains(&network)))
         .unwrap_or(false)
 }
 
@@ -477,7 +485,10 @@ mod tests {
         // "Direct, internet" over the home's public IPv6 addresses.
         let other = sa("[2a00:23c4:11ec:7502:1c2b:3d4e:5f60:7182]:4000");
         assert_eq!(kind_of(&other), RouteKind::Internet);
-        learn_own_addresses([&sa("[2a00:23c4:11ec:7502:9a2c:bcff:fe73:2b93]:46787")]);
+        learn_own_addresses(
+            "test-a",
+            [&sa("[2a00:23c4:11ec:7502:9a2c:bcff:fe73:2b93]:46787")],
+        );
         assert_eq!(kind_of(&other), RouteKind::Local);
         assert_eq!(
             kind_of(&sa("[2a00:23c4:11ec:7503::1]:4000")),
@@ -485,6 +496,18 @@ mod tests {
             "a neighbouring /64 is not this network"
         );
         assert!(ConnectionMode::Private.allows(kind_of(&other)));
+        // Another endpoint on the same network keeps it local when the
+        // first moves on; once neither is there, it is the internet again.
+        learn_own_addresses("test-b", [&sa("[2a00:23c4:11ec:7502::b]:4000")]);
+        learn_own_addresses("test-a", [&sa("[2a00:23c4:11ec:7503::a]:4000")]);
+        assert_eq!(kind_of(&other), RouteKind::Local);
+        forget_own_addresses("test-b");
+        assert_eq!(
+            kind_of(&other),
+            RouteKind::Internet,
+            "a network left behind"
+        );
+        forget_own_addresses("test-a");
     }
 
     #[test]
