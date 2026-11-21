@@ -25,6 +25,7 @@ Each area has one entry page that lists its pages in reading order ([areas.md](a
 | [capability-ledger.md](capability-ledger.md) | Every capability with its evidence (generated) |
 | [app-parity.md](app-parity.md) | Which apps keep up with the framework, and when the rest catch up (generated) |
 | [roadmap.md](roadmap.md) | What comes next, and what isn't planned |
+| [app-plan.md](app-plan.md) | What each app builds next, and the framework parts those features need |
 | [areas.md](areas.md) | The four areas, what belongs to each, and which way dependencies may run |
 | [audits/half-baked-work-audit.md](audits/half-baked-work-audit.md) | Unfinished and half-baked work in the foundation: what is unproven, duplicated or misleading, and the order to fix it |
 | [audits/structure-audit.md](audits/structure-audit.md) | The `forge` CLI, area boundaries and Device Lab: parallel systems and drift between lists, with the order to fix them |
