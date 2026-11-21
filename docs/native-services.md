@@ -439,6 +439,8 @@ Keep each capability small and iOS-first, behind an interface that Android can i
 
 The interfaces are platform-neutral, and UniFFI generates the Kotlin interfaces already (`SecureStore`, `LocalNotifier`, `PermissionProvider` in `uniffi.forge_ffi`). A later milestone adds Kotlin implementations: Android Keystore with encrypted preferences, `NotificationManagerCompat`, and runtime permissions. It also adds an `installNativeServices(...)` call in `ForgeAndroid.init`. Until then, Rust code should treat `NotInstalled` as "this platform does not have it yet".
 
+The optional `http` service has its first Android transport: Pocket Library on Android installs `ForgeHttpTransport` (`HttpURLConnection`, the platform's own HTTP stack) with `installNativeHttp` at launch, so its catalogue requests go through Android as they go through `URLSession` on iOS. It lives in that app until a second Android app needs it ([its README](../examples/pocket-library-android/README.md)).
+
 ## Checking on an iPhone
 
 `swift test` cannot reach the notification centre, and the Keychain it reaches is the Mac's. So the device behaviour is checked by hand, from Linux with xtool, using a fresh `forge init` app. The steps are in [native-services-device-check.md](native-services-device-check.md).

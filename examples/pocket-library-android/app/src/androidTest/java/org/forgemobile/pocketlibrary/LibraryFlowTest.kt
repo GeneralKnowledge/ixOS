@@ -90,10 +90,16 @@ class LibraryFlowTest {
 
     private fun row(title: String) = hasText(title) and isLibraryRow
 
+    /** Opens the Add menu: the toolbar's, or the empty library's. */
+    private fun openAddMenu() {
+        val empty = compose.onAllNodes(hasTestTag("library.empty.add")).fetchSemanticsNodes().isNotEmpty()
+        compose.onNodeWithTag(if (empty) "library.empty.add" else "library.add").performClick()
+    }
+
     /** Adds a book from the library; saving opens it, as on the iPhone. */
     private fun addBook(title: String, author: String = "", currentPage: String = "", totalPages: String = "") {
-        val empty = compose.onAllNodes(hasTestTag("library.empty.add")).fetchSemanticsNodes().isNotEmpty()
-        compose.onNodeWithTag(if (empty) "library.empty.add" else "library.add.manual").performClick()
+        openAddMenu()
+        compose.onNodeWithTag("library.add.manual").performClick()
         compose.onNodeWithTag("bookForm.title").performTextInput(title)
         if (author.isNotEmpty()) compose.onNodeWithTag("bookForm.author").performTextInput(author)
         if (currentPage.isNotEmpty()) compose.onNodeWithTag("bookForm.currentPage").performTextInput(currentPage)
@@ -228,7 +234,8 @@ class LibraryFlowTest {
     @Test
     fun pl10_newBookFormEnablesAddAndCancelSavesNothing() {
         launchEmpty()
-        compose.onNodeWithTag("library.empty.add").performClick()
+        openAddMenu()
+        compose.onNodeWithTag("library.add.manual").performClick()
         compose.onNodeWithTag("bookForm.save").assertIsNotEnabled()
         compose.onNodeWithTag("bookForm.title").performTextInput("Hello from Forge")
         compose.onNodeWithTag("bookForm.title").assert(hasText("Hello from Forge"))
@@ -243,7 +250,8 @@ class LibraryFlowTest {
     @Test
     fun pl4_invalidDetailsAreRefusedAndChangeNothing() {
         launchEmpty()
-        compose.onNodeWithTag("library.empty.add").performClick()
+        openAddMenu()
+        compose.onNodeWithTag("library.add.manual").performClick()
         compose.onNodeWithTag("bookForm.title").performTextInput("Short Book")
         compose.onNodeWithTag("bookForm.currentPage").performTextInput("50")
         compose.onNodeWithTag("bookForm.totalPages").performTextInput("10")

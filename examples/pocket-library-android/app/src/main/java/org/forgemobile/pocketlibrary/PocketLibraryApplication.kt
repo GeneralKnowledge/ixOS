@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import java.io.File
 import org.forgemobile.pocketlibrary.host.ForgeEnvironment
 import org.forgemobile.pocketlibrary.host.ForgeHost
+import org.forgemobile.pocketlibrary.host.ForgeHttpTransport
 import uniffi.forge_app.AppPhase
 
 /**
@@ -32,6 +33,9 @@ class PocketLibraryApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Rust's requests (the catalogue) go through Android's own HTTP stack, as they go
+        // through URLSession on iOS.
+        ForgeHttpTransport.install()
         host = ForgeHost(
             scope = scope,
             environment = {
