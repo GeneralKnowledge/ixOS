@@ -128,7 +128,11 @@ private data class SavedPlace(val chapter: UInt, val block: Int)
 
 /** What the reader keeps between compositions without drawing it. */
 private class ReaderSession {
+    /** The place last asked to be saved; null after a failed save, so the next one is written. */
     var lastSaved: SavedPlace? = null
+
+    /** The first chapter has loaded (the place it opened at needs no save). */
+    var opened = false
 
     /** The latest save, which a chapter load waits for (Rust saves only the chapter loaded last). */
     var saving: Job? = null
@@ -179,12 +183,11 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
         if (loadingChapter) return
         val place = SavedPlace(current.index, block ?: listState.firstVisibleItemIndex)
         if (place == session.lastSaved) return
-        val previous = session.lastSaved
         session.lastSaved = place
         // In the model's scope: moving to another chapter, or closing, doesn't cancel it.
         session.saving = model.saveReadingPositionLater(bookId, place.chapter, place.block) { e ->
-            // Not saved: the next move, or leaving, tries again.
-            if (session.lastSaved == place) session.lastSaved = previous
+            // Not saved: forget it, so the next move, or leaving, writes again whatever the place.
+            if (session.lastSaved == place) session.lastSaved = null
             if (!session.closed) alert = ForgeAlert.failure(e)
         }
     }
@@ -207,7 +210,10 @@ internal fun ReaderScreen(model: LibraryModel, bookId: ULong, onClose: () -> Uni
             if (load != session.loads) return
             val last = maxOf(loaded.section.blocks.size - 1, 0)
             val start = minOf(loaded.start?.block?.toInt() ?: 0, last)
-            if (session.lastSaved == null) session.lastSaved = SavedPlace(index, start)
+            if (!session.opened) {
+                session.opened = true
+                session.lastSaved = SavedPlace(index, start)
+            }
             startBlock = start
             chapter = loaded
             openError = null
