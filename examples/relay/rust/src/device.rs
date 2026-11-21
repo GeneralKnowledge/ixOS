@@ -39,6 +39,8 @@ pub(crate) const DEVICE_ALPN: &[u8] = b"forge-relay/device/1";
 pub(crate) const VERSION: u16 = 1;
 /// How often the receiver says how far it has got.
 const TICK: Duration = Duration::from_secs(2);
+/// How often a file on its way is checked against trust (revoked: stop).
+const TRUST_CHECK: Duration = Duration::from_millis(250);
 /// How long the sender waits without a tick before giving up.
 const SILENCE: Duration = Duration::from_secs(30);
 /// The close code for a device that isn't trusted.
@@ -660,10 +662,27 @@ impl DeviceHandler {
         crate::code::hold(node, content).await?;
         let fetching = crate::code::fetch(node, content, conn.remote_id(), &progress);
         tokio::pin!(fetching);
+        // Trust is checked while the file comes, not only at the end: a
+        // device revoked meanwhile stops sending at once (the first check
+        // is straight away).
+        let mut trust_check = tokio::time::interval(TRUST_CHECK);
+        let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + TICK, TICK);
+        let mut revoked = false;
         let fetched = loop {
             tokio::select! {
                 r = &mut fetching => break r,
-                _ = tokio::time::sleep(TICK) => {
+                _ = trust_check.tick() => {
+                    let host = Arc::clone(&self.host);
+                    let from = them.to_string();
+                    let still = tokio::task::spawn_blocking(move || host.still_takes_from(&from))
+                        .await
+                        .map_err(connection)?;
+                    if !still {
+                        revoked = true;
+                        break Err(connection("no longer trusted here"));
+                    }
+                }
+                _ = tick.tick() => {
                     let done = progress.done.load(Ordering::SeqCst);
                     self.host.progress(id, done);
                     if say(send, &DeviceMsg::Tick { done }).await.is_err() {
@@ -675,7 +694,7 @@ impl DeviceHandler {
         // The sender is still connected but what it sent couldn't be had
         // intact: a chunk failed its BLAKE3 check (or the sender no longer
         // holds it). That doesn't heal with a retry.
-        if fetched.is_err() && conn.close_reason().is_none() {
+        if fetched.is_err() && !revoked && conn.close_reason().is_none() {
             let host = Arc::clone(&self.host);
             let from = them.to_string();
             let reason = VERIFICATION_FAILED.to_string();
@@ -1392,6 +1411,52 @@ mod tests {
                 "{sent:?}"
             );
             assert_eq!(*lock(&host.0), [Err(NO_LONGER_TAKEN.to_string())]);
+            sender.shutdown().await;
+            listener.shutdown().await;
+        });
+    }
+
+    /// Revoked while a large file comes: it stops at once rather than
+    /// running to the end and being refused at the save (found on the
+    /// phone, 2026-11-21: 504 of 524 MB crossed after the revoke).
+    #[test]
+    fn a_device_revoked_meanwhile_stops_sending_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = Arc::new(RevokedMeanwhile(std::sync::Mutex::new(Vec::new())));
+        crate::code::TOKIO.block_on(async {
+            let listener = test_node(dir.path(), "listener", Arc::clone(&host) as _).await;
+            let sender = test_node(dir.path(), "sender", Arc::new(NoDevices)).await;
+            let file = dir.path().join("big.bin");
+            let mut data = vec![0u8; 64 * 1024 * 1024];
+            for (i, b) in data.iter_mut().enumerate() {
+                *b = (i.wrapping_mul(2654435761) >> 13) as u8;
+            }
+            std::fs::write(&file, &data).unwrap();
+            let (offer, _tags) =
+                crate::code_send::prepare(&[file], "big.bin".into(), &sender, false)
+                    .await
+                    .unwrap();
+            let hash = offer.hash;
+            let sent = send(
+                &sender,
+                listener.endpoint.addr(),
+                ConnectionMode::Hybrid,
+                "sender".into(),
+                [8; 16],
+                Outgoing::Stored(offer),
+                |_| {},
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await;
+            assert!(
+                matches!(&sent, Err(RelayError::Declined { reason }) if reason == NO_LONGER_TAKEN),
+                "{sent:?}"
+            );
+            let status = listener.store.blobs().status(hash).await.unwrap();
+            assert!(
+                !matches!(status, iroh_blobs::api::blobs::BlobStatus::Complete { .. }),
+                "the whole file came anyway: {status:?}"
+            );
             sender.shutdown().await;
             listener.shutdown().await;
         });

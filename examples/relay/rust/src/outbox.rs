@@ -751,12 +751,14 @@ impl RelayCore {
         code::TOKIO.spawn(async move {
             let mut last: HashSet<std::net::SocketAddr> =
                 watcher.get().ip_addrs().copied().collect();
+            crate::resolver::learn_own_addresses(last.iter());
             while watcher.updated().await.is_ok() {
                 let now: HashSet<std::net::SocketAddr> =
                     watcher.get().ip_addrs().copied().collect();
                 if now == last {
                     continue;
                 }
+                crate::resolver::learn_own_addresses(now.iter());
                 last = now;
                 let Some(core) = me.upgrade() else { break };
                 forge_runtime::logging::info!("relay: the network changed; retrying what waits");

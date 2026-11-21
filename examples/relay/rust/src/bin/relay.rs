@@ -218,7 +218,19 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 } else {
                     "me"
                 };
-                out += &format!("{who}: {}\n", m.body);
+                // An attachment's message has no text: say what it carries.
+                let files: Vec<String> = m
+                    .attachments
+                    .iter()
+                    .map(|a| format!("[file {}, {} bytes]", a.name, a.size))
+                    .collect();
+                let line = [m.body.clone()]
+                    .into_iter()
+                    .filter(|b| !b.is_empty())
+                    .chain(files)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                out += &format!("{who}: {line}\n");
             }
             Ok(())
         })(),
