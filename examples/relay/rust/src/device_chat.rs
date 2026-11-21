@@ -53,6 +53,13 @@ use crate::store::{self, Store};
 use crate::RelayCore;
 
 /// The conversation id of the trusted device `endpoint_id`.
+/// The author of this device's own messages in every device conversation.
+/// A local label, never sent: a message's sender is the connection's
+/// endpoint id. It isn't the endpoint id itself, so history stays this
+/// device's own across a new key (a restore from backup is a new
+/// identity, P4).
+pub const ME: &str = "relay:me";
+
 pub fn device_conversation(endpoint_id: &str) -> String {
     format!("{PREFIX}{endpoint_id}")
 }
@@ -211,6 +218,17 @@ impl<'a> Conversations<'a> {
     ) -> Result<(), RelayError> {
         if let Some(m) = store::set_status(self.c, &checked(endpoint_id)?, id, status)? {
             self.changed.push((endpoint_id.to_string(), m));
+        }
+        Ok(())
+    }
+
+    /// Gives this device's own messages, authored `from` by an older build,
+    /// the author [`ME`] (see [`store::reauthor`]).
+    pub fn reauthor_own(&mut self, from: &str) -> Result<(), RelayError> {
+        for (conversation, m) in store::reauthor(self.c, from, ME)? {
+            if let Some(endpoint) = conversation_device(&conversation) {
+                self.changed.push((endpoint.to_string(), m));
+            }
         }
         Ok(())
     }
@@ -613,7 +631,7 @@ impl RelayCore {
         let message = Message {
             id: crate::hex::hex(&crate::outbox::new_id()),
             author: me.name,
-            author_id: format!("relay:{}", me.device_id),
+            author_id: ME.into(),
             body,
             ..Message::default()
         };

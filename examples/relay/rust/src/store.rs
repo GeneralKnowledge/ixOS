@@ -617,6 +617,38 @@ pub(crate) fn set_status(
     Ok(Some(m))
 }
 
+/// Gives every message authored `from` the author `to`, each with a new
+/// stamp so catch-up after `since` sees it. Returns what changed.
+pub(crate) fn reauthor(
+    c: &Connection,
+    from: &str,
+    to: &str,
+) -> Result<Vec<(String, Message)>, RelayError> {
+    let mut found = Vec::new();
+    {
+        let mut statement = c.prepare("SELECT conversation, body FROM messages")?;
+        let rows =
+            statement.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        for row in rows {
+            let (conversation, body) = row?;
+            let m = parse::<Message>(&body).map_err(|err| RelayError::Corrupt {
+                reason: format!("a saved message can't be read ({err})"),
+            })?;
+            if m.author_id == from {
+                found.push((conversation, m));
+            }
+        }
+    }
+    let mut changed = Vec::new();
+    for (conversation, mut m) in found {
+        m.author_id = to.to_string();
+        m.updated_at = Some(stamp(c, &conversation)?);
+        insert_message(c, &conversation, &m)?;
+        changed.push((conversation, m));
+    }
+    Ok(changed)
+}
+
 /// Adds a message moved from elsewhere (the history, before notes were
 /// messages), keeping its time, unless its id is there. Its change is
 /// stamped now, so catch-up after `since` sees it.
@@ -774,6 +806,37 @@ mod tests {
         assert_eq!(store.read(|c| last(c, &conv)).unwrap(), Some(b));
         let other = device_conversation("other");
         assert!(store.read(|c| since(c, &other, None)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn own_messages_change_author_with_a_new_stamp_and_others_dont() {
+        let store = Store::in_memory();
+        let conv = device_conversation("abc123");
+        let own = |id: &str| Message {
+            author_id: "relay:old".into(),
+            ..msg(id)
+        };
+        let (a, _) = store.write(|c| add(c, &conv, own("a"))).unwrap();
+        let (b, _) = store.write(|c| add(c, &conv, msg("b"))).unwrap();
+        let changed = store
+            .write(|c| reauthor(c, "relay:old", "relay:me"))
+            .unwrap();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].0, conv);
+        // Catch-up after the newest message sees the change, once.
+        let seen = store
+            .read(|c| since(c, &conv, Some(b.changed_at())))
+            .unwrap();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].id, a.id);
+        assert_eq!(seen[0].author_id, "relay:me");
+        let all = store.read(|c| since(c, &conv, None)).unwrap();
+        assert_eq!(all[1].author_id, b.author_id, "the other side's are left");
+        // A second run changes nothing.
+        assert!(store
+            .write(|c| reauthor(c, "relay:old", "relay:me"))
+            .unwrap()
+            .is_empty());
     }
 
     /// An older build's record and one conversation, as it saved them.

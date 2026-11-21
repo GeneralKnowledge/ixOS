@@ -8787,19 +8787,11 @@ public func FfiConverterTypeHttpStreamHead_lower(_ value: HttpStreamHead) -> Rus
  * This device, as other devices see it.
  */
 public struct Identity: Equatable, Hashable {
-    /**
-     * Random, made once; 32 hex characters.
-     */
-    public var deviceId: String
     public var name: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(
-        /**
-         * Random, made once; 32 hex characters.
-         */deviceId: String, name: String) {
-        self.deviceId = deviceId
+    public init(name: String) {
         self.name = name
     }
 
@@ -8819,13 +8811,11 @@ public struct FfiConverterTypeIdentity: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Identity {
         return
             try Identity(
-                deviceId: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf)
         )
     }
 
     public static func write(_ value: Identity, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.deviceId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
     }
 }

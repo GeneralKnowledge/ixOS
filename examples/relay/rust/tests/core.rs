@@ -31,7 +31,7 @@ fn eventually(what: &str, check: impl Fn() -> bool) {
 fn identity_survives_a_restart() {
     let dir = tempfile::tempdir().unwrap();
     let phone = device(&dir, "phone");
-    let id = phone.identity();
+    let id = block_on(phone.device_service()).unwrap().endpoint_id;
     block_on(phone.rename_device("Cati".into())).unwrap();
     phone.shutdown();
     let closing = Arc::downgrade(&phone);
@@ -40,7 +40,11 @@ fn identity_survives_a_restart() {
         closing.strong_count() == 0
     });
     let phone = device(&dir, "phone");
-    assert_eq!(phone.identity().device_id, id.device_id);
+    // The same key, so the same device (its store may still be closing).
+    eventually("the endpoint to start again", || {
+        block_on(phone.device_service()).is_ok()
+    });
+    assert_eq!(block_on(phone.device_service()).unwrap().endpoint_id, id);
     assert_eq!(phone.identity().name, "Cati");
 }
 
