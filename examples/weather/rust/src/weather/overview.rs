@@ -3,10 +3,14 @@
 //! one temperature scale. Pure functions of a report and a moment, so the
 //! host never re-derives forecast logic and the rules are tested here.
 
+use super::astro::moon_phase;
+use super::indices::{aqi_reading, hour_reading};
 use super::types::{
-    DailyForecast, HourlyPoint, SkyScene, TimelineEntry, WeatherCondition, WeatherOverview,
-    WeatherReport, WindUnit,
+    AirQualityDay, AirQualityOverview, AirQualityScale, Coordinate, DailyForecast, HourlyPoint,
+    PollenGap, PollenOverview, PollenSpeciesNow, SectionState, SkyScene, SourceCredit,
+    TimelineEntry, UnitSettings, WeatherCondition, WeatherOverview, WeatherReport,
 };
+use super::units::speed;
 
 /// Hours in the hourly strip.
 pub(crate) const TIMELINE_HOURS: usize = 24;
@@ -19,12 +23,13 @@ const EVENING_WINDOW_HOURS: usize = 12;
 
 /// Works out what to show for `report` at `now_unix` (Unix seconds). Hours
 /// and days already past at the place are dropped, so a cached report reads
-/// correctly. `wind_unit` is how the summary states wind speed.
+/// correctly; air quality and pollen likewise, each only as far as its own
+/// source reaches. `units` is how the summary states wind speed.
 #[uniffi::export]
 pub fn weather_overview(
     report: WeatherReport,
     now_unix: i64,
-    wind_unit: WindUnit,
+    units: UnitSettings,
 ) -> WeatherOverview {
     let now = local_time(now_unix, report.utc_offset_seconds);
     let local_date = now[..10].to_string();
@@ -67,14 +72,164 @@ pub fn weather_overview(
     WeatherOverview {
         scene: scene(condition),
         is_day,
-        summary: summary(&report, &hours, &local_date, condition, is_day, wind_unit),
+        summary: summary(&report, &hours, &local_date, condition, is_day, units),
         timeline: timeline(&hours, &report.daily, &now),
+        air_quality: air_quality(&report, &current_hour, &local_date, units.air_quality),
+        pollen: pollen(&report, &current_hour, &local_date),
+        moon: moon_phase(now_unix),
+        daylight_minutes: today.as_ref().and_then(daylight_minutes),
+        credits: credits(&report),
         local_date,
         today,
         days,
         range_low_c,
         range_high_c,
     }
+}
+
+/// Minutes between sunrise and sunset ("…THH:MM" strings on one day).
+fn daylight_minutes(day: &DailyForecast) -> Option<u32> {
+    let minutes = |t: &str| -> Option<u32> {
+        let hm = t.split('T').nth(1)?;
+        let (h, m) = hm.split_once(':')?;
+        Some(h.parse::<u32>().ok()? * 60 + m.get(..2)?.parse::<u32>().ok()?)
+    };
+    let (rise, set) = (
+        minutes(day.sunrise.as_deref()?)?,
+        minutes(day.sunset.as_deref()?)?,
+    );
+    set.checked_sub(rise)
+}
+
+/// Air quality from the current hour on. Days are only those the source
+/// covers; nothing is carried past its last hour.
+fn air_quality(
+    report: &WeatherReport,
+    current_hour: &str,
+    local_date: &str,
+    scale: AirQualityScale,
+) -> AirQualityOverview {
+    let section = &report.air_quality;
+    let ahead: Vec<_> = section
+        .hours
+        .iter()
+        .filter(|h| h.time.as_str() >= current_hour)
+        .collect();
+    // This hour only: an hour already past is not "now".
+    let now = ahead
+        .first()
+        .filter(|h| h.time.get(..13) == current_hour.get(..13))
+        .map(|h| (*h).clone());
+    let index = now.as_ref().and_then(|h| hour_reading(h, scale));
+    let mut days: Vec<AirQualityDay> = Vec::new();
+    for hour in section
+        .hours
+        .iter()
+        .filter(|h| h.time.as_str() >= local_date)
+    {
+        let Some(reading) = hour_reading(hour, scale) else {
+            continue;
+        };
+        let date = hour.time.get(..10).unwrap_or(&hour.time);
+        match days.last_mut() {
+            Some(day) if day.date == date => {
+                if reading.value > day.worst.value {
+                    day.worst = reading;
+                }
+            }
+            _ => days.push(AirQualityDay {
+                date: date.to_string(),
+                worst: aqi_reading(reading.value, scale),
+            }),
+        }
+    }
+    AirQualityOverview {
+        state: past_end(&section.state, ahead.is_empty()),
+        source: section.source.clone(),
+        index,
+        now,
+        days,
+        covers_until: ahead.last().map(|h| h.time.clone()),
+    }
+}
+
+/// Pollen from the current hour on, species highest today first.
+fn pollen(report: &WeatherReport, current_hour: &str, local_date: &str) -> PollenOverview {
+    let section = &report.pollen;
+    let ahead: Vec<_> = section
+        .hours
+        .iter()
+        .filter(|h| h.time.as_str() >= current_hour)
+        .collect();
+    let mut species: Vec<PollenSpeciesNow> = Vec::new();
+    if let Some(first) = ahead
+        .first()
+        .filter(|h| h.time.get(..13) == current_hour.get(..13))
+    {
+        for reading in &first.readings {
+            let today_max = ahead
+                .iter()
+                .filter(|h| h.time.starts_with(local_date))
+                .flat_map(|h| &h.readings)
+                .filter(|r| r.species == reading.species)
+                .map(|r| r.grains_per_m3)
+                .fold(reading.grains_per_m3, f64::max);
+            species.push(PollenSpeciesNow {
+                species: reading.species,
+                now_grains_per_m3: reading.grains_per_m3,
+                today_max_grains_per_m3: today_max,
+            });
+        }
+    }
+    species.sort_by(|a, b| {
+        b.today_max_grains_per_m3
+            .total_cmp(&a.today_max_grains_per_m3)
+    });
+    let state = past_end(&section.state, ahead.is_empty());
+    PollenOverview {
+        gap: (state == SectionState::NotAvailableHere).then(|| pollen_gap(report.place.coordinate)),
+        state,
+        source: section.source.clone(),
+        species,
+        covers_until: ahead.last().map(|h| h.time.clone()),
+    }
+}
+
+/// The area of the European pollen model (CAMS European regional air
+/// quality ensemble: 25° W to 45° E, 30° N to 72° N), which Open-Meteo's
+/// pollen comes from ("only available in Europe during pollen season").
+fn pollen_gap(c: Coordinate) -> PollenGap {
+    let inside = (30.0..=72.0).contains(&c.latitude) && (-25.0..=45.0).contains(&c.longitude);
+    if inside {
+        PollenGap::NothingForecastNow
+    } else {
+        PollenGap::OutsideModelArea
+    }
+}
+
+/// A section whose hours are all in the past has nothing left to show:
+/// it is unavailable (it was fetched, but it does not reach now).
+fn past_end(state: &SectionState, nothing_ahead: bool) -> SectionState {
+    match state {
+        SectionState::Live | SectionState::Cached { .. } if nothing_ahead => {
+            SectionState::Unavailable { problem: None }
+        }
+        other => other.clone(),
+    }
+}
+
+/// The forecast's source first, then each other source once.
+fn credits(report: &WeatherReport) -> Vec<SourceCredit> {
+    let mut out = vec![report.forecast_source.clone()];
+    for credit in [&report.air_quality.source, &report.pollen.source]
+        .into_iter()
+        .flatten()
+    {
+        if !out.iter().any(|c| c.id == credit.id) {
+            out.push(credit.clone());
+        }
+    }
+    out
 }
 
 pub(crate) fn scene(condition: WeatherCondition) -> SkyScene {
@@ -168,7 +323,7 @@ fn summary(
     local_date: &str,
     condition: WeatherCondition,
     is_day: bool,
-    wind_unit: WindUnit,
+    units: UnitSettings,
 ) -> String {
     let today: Vec<&HourlyPoint> = hours
         .iter()
@@ -238,10 +393,7 @@ fn summary(
             Some(max.map_or(g, |m| m.max(g)))
         });
     if let Some(kmh) = gusts {
-        let (value, unit) = match wind_unit {
-            WindUnit::KilometresPerHour => (kmh, "km/h"),
-            WindUnit::MilesPerHour => (kmh / 1.609_344, "mph"),
-        };
+        let (value, unit) = speed(kmh, units.wind);
         let value = value.round() as i64;
         if value > 0 {
             sentences.push(format!("Wind gusts are up to {value} {unit}."));
@@ -311,7 +463,7 @@ pub(crate) fn local_time(unix: i64, utc_offset_seconds: i32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::weather::open_meteo::decode_forecast;
+    use crate::weather::sources::open_meteo::decode_forecast;
     use crate::weather::types::{Coordinate, Intensity, Place, PlaceSource};
 
     const FORECAST: &str = include_str!("fixtures/forecast_paris.json");
@@ -368,7 +520,11 @@ mod tests {
 
     #[test]
     fn overview_of_a_live_report() {
-        let o = weather_overview(report(), PARIS_EVENING, WindUnit::KilometresPerHour);
+        let o = weather_overview(
+            report(),
+            PARIS_EVENING,
+            crate::default_units(Some("FR".into())),
+        );
         assert_eq!(o.local_date, "2026-11-04");
         assert_eq!(o.scene, SkyScene::Rain);
         assert!(!o.is_day);
@@ -405,7 +561,7 @@ mod tests {
     fn a_cached_report_drops_what_is_past() {
         // The next afternoon: 18 hours later.
         let later = PARIS_EVENING + 18 * 3_600;
-        let o = weather_overview(report(), later, WindUnit::KilometresPerHour);
+        let o = weather_overview(report(), later, crate::default_units(Some("FR".into())));
         assert_eq!(o.local_date, "2026-11-05");
         assert_eq!(o.days[0].date, "2026-11-05");
         assert_eq!(o.days.len(), 6);
@@ -417,7 +573,11 @@ mod tests {
             other => panic!("{other:?}"),
         }
         // A report from days ago has nothing left for the strip.
-        let o = weather_overview(report(), later + 3 * 86_400, WindUnit::KilometresPerHour);
+        let o = weather_overview(
+            report(),
+            later + 3 * 86_400,
+            crate::default_units(Some("FR".into())),
+        );
         assert!(o.timeline.is_empty());
     }
 
@@ -435,7 +595,9 @@ mod tests {
                 .map(|(i, (c, p))| hour(&format!("2026-11-05T{:02}:00", 9 + i), *c, *p))
                 .collect()
         };
-        let o = |r: &WeatherReport| weather_overview(r.clone(), nine_am, WindUnit::MilesPerHour);
+        let o = |r: &WeatherReport| {
+            weather_overview(r.clone(), nine_am, crate::default_units(Some("GB".into())))
+        };
         let rain = WeatherCondition::Rain {
             intensity: Intensity::Moderate,
             freezing: false,
@@ -488,6 +650,156 @@ mod tests {
             o(&r).summary,
             "Rain will continue for the rest of the day. Wind gusts are up to 20 mph."
         );
+    }
+
+    fn air_hour(time: &str, eu: u16, us: u16) -> crate::AirQualityHour {
+        crate::AirQualityHour {
+            time: time.into(),
+            european_aqi: Some(eu),
+            us_aqi: Some(us),
+            pm2_5: Some(5.0),
+            pm10: None,
+            ozone: None,
+            nitrogen_dioxide: None,
+            sulphur_dioxide: None,
+            carbon_monoxide: None,
+        }
+    }
+
+    fn with_sections() -> WeatherReport {
+        use crate::{AirQualitySection, PollenHour, PollenReading, PollenSection, PollenSpecies};
+        let credit = crate::weather::sources::open_meteo_air_quality::credit();
+        let mut r = report();
+        r.air_quality = AirQualitySection {
+            state: SectionState::Live,
+            source: Some(credit.clone()),
+            fetched_at_unix: Some(PARIS_EVENING),
+            hours: vec![
+                air_hour("2026-11-04T19:00", 70, 150), // past: dropped
+                air_hour("2026-11-04T20:00", 25, 40),
+                air_hour("2026-11-04T23:00", 45, 60),
+                air_hour("2026-11-05T03:00", 12, 20),
+            ],
+        };
+        let pollen = |time: &str, birch: f64, grass: f64| PollenHour {
+            time: time.into(),
+            readings: vec![
+                PollenReading {
+                    species: PollenSpecies::Birch,
+                    grains_per_m3: birch,
+                },
+                PollenReading {
+                    species: PollenSpecies::Grass,
+                    grains_per_m3: grass,
+                },
+            ],
+        };
+        r.pollen = PollenSection {
+            state: SectionState::Live,
+            source: Some(credit),
+            fetched_at_unix: Some(PARIS_EVENING),
+            hours: vec![
+                pollen("2026-11-04T20:00", 1.0, 3.0),
+                pollen("2026-11-04T22:00", 6.0, 2.0),
+                pollen("2026-11-05T09:00", 40.0, 0.0), // tomorrow: not today's max
+            ],
+        };
+        r
+    }
+
+    #[test]
+    fn air_quality_reads_from_this_hour_and_stops_where_the_source_stops() {
+        let eu = crate::default_units(Some("FR".into()));
+        let o = weather_overview(with_sections(), PARIS_EVENING, eu);
+        let a = &o.air_quality;
+        assert_eq!(a.state, SectionState::Live);
+        let index = a.index.as_ref().unwrap();
+        assert_eq!((index.value, index.label.as_str()), (25, "Fair"));
+        assert_eq!(a.now.as_ref().unwrap().time, "2026-11-04T20:00");
+        // Days from today; today's worst ignores nothing still in the
+        // report, tomorrow only has what the source sent.
+        assert_eq!(a.days.len(), 2);
+        assert_eq!(a.days[0].worst.value, 70);
+        assert_eq!(a.days[1].worst.value, 12);
+        assert_eq!(a.covers_until.as_deref(), Some("2026-11-05T03:00"));
+
+        let us = crate::default_units(Some("US".into()));
+        let o = weather_overview(with_sections(), PARIS_EVENING, us);
+        assert_eq!(o.air_quality.index.unwrap().label, "Good");
+    }
+
+    #[test]
+    fn no_hour_for_now_means_no_index_rather_than_a_neighbour() {
+        let mut r = with_sections();
+        r.air_quality.hours.remove(1); // no 20:00
+        let o = weather_overview(r, PARIS_EVENING, crate::default_units(None));
+        assert_eq!(o.air_quality.index, None);
+        assert_eq!(o.air_quality.now, None);
+    }
+
+    #[test]
+    fn pollen_lists_species_by_todays_peak() {
+        let o = weather_overview(with_sections(), PARIS_EVENING, crate::default_units(None));
+        let p = &o.pollen;
+        assert_eq!(p.species.len(), 2);
+        assert_eq!(p.species[0].species, crate::PollenSpecies::Birch);
+        assert_eq!(p.species[0].now_grains_per_m3, 1.0);
+        assert_eq!(p.species[0].today_max_grains_per_m3, 6.0);
+        assert_eq!(p.species[1].today_max_grains_per_m3, 3.0);
+        assert_eq!(p.covers_until.as_deref(), Some("2026-11-05T09:00"));
+    }
+
+    #[test]
+    fn sections_that_no_longer_reach_now_are_unavailable_and_not_here_stays() {
+        let mut r = with_sections();
+        r.pollen.state = SectionState::NotAvailableHere;
+        r.pollen.hours.clear();
+        // Two days later every air quality hour is past.
+        let o = weather_overview(r, PARIS_EVENING + 2 * 86_400, crate::default_units(None));
+        assert_eq!(
+            o.air_quality.state,
+            SectionState::Unavailable { problem: None }
+        );
+        assert_eq!(o.air_quality.index, None);
+        assert!(o.air_quality.days.is_empty());
+        assert_eq!(o.pollen.state, SectionState::NotAvailableHere);
+        assert!(o.pollen.species.is_empty());
+        // Paris is inside the pollen model's area: nothing forecast now.
+        assert_eq!(o.pollen.gap, Some(PollenGap::NothingForecastNow));
+    }
+
+    #[test]
+    fn no_pollen_outside_the_model_area_says_so() {
+        let mut r = with_sections();
+        r.pollen.state = SectionState::NotAvailableHere;
+        r.pollen.hours.clear();
+        r.place.coordinate = Coordinate {
+            latitude: 40.71,
+            longitude: -74.01,
+        };
+        let o = weather_overview(r, PARIS_EVENING, crate::default_units(None));
+        assert_eq!(o.pollen.gap, Some(PollenGap::OutsideModelArea));
+        // With data there is no gap.
+        let o = weather_overview(with_sections(), PARIS_EVENING, crate::default_units(None));
+        assert_eq!(o.pollen.gap, None);
+    }
+
+    #[test]
+    fn credits_moon_and_daylight() {
+        let o = weather_overview(with_sections(), PARIS_EVENING, crate::default_units(None));
+        let ids: Vec<&str> = o.credits.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["open-meteo", "open-meteo-air-quality"]);
+        // Sunrise 07:50; the fixture's sunset is checked against this.
+        let today = o.today.as_ref().unwrap();
+        let expected = {
+            let m = |t: &str| {
+                let hm = t.split('T').nth(1).unwrap();
+                hm[..2].parse::<u32>().unwrap() * 60 + hm[3..5].parse::<u32>().unwrap()
+            };
+            m(today.sunset.as_deref().unwrap()) - m(today.sunrise.as_deref().unwrap())
+        };
+        assert_eq!(o.daylight_minutes, Some(expected));
+        assert!(o.moon.illumination_pct <= 100);
     }
 
     #[test]

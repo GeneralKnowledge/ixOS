@@ -25,6 +25,10 @@ public enum WeatherClientError: Error, Sendable, Equatable {
     case inUse
     /// "My Location": not allowed, or no position found.
     case location(LocationError)
+    /// Saved data (saved places) can't be read. It is left as it is.
+    case savedDataUnreadable
+    /// Saved data is from a newer version of Weather. It is never written over.
+    case savedDataNewer
     case internalFailure(detail: String)
 
     /// Short text suitable for showing to the user.
@@ -42,6 +46,10 @@ public enum WeatherClientError: Error, Sendable, Equatable {
         case .closed: return "Weather has been closed. Reopen the app to continue."
         case .inUse: return "Weather's data is open in another copy of the app. Close it and try again."
         case let .location(error): return error.userMessage
+        case .savedDataUnreadable:
+            return "Your saved places can't be read. They've been left as they are."
+        case .savedDataNewer:
+            return "Your saved places are from a newer version of Weather. Update the app to change them."
         case .internalFailure: return "Something went wrong in the weather engine."
         }
     }
@@ -61,6 +69,8 @@ public enum WeatherClientError: Error, Sendable, Equatable {
         case .InUse: self = .inUse
         case .LocationDenied: self = .location(.denied)
         case let .LocationUnavailable(reason): self = .location(.unavailable(detail: reason))
+        case .SavedDataUnreadable: self = .savedDataUnreadable
+        case .SavedDataNewer: self = .savedDataNewer
         case let .Internal(reason): self = .internalFailure(detail: reason)
         }
     }

@@ -50,11 +50,22 @@ public final class WeatherClient: @unchecked Sendable {
     public var savedPlaces: [Place] { app.savedPlaces() }
 
     /// What to show for `report` at `date`: sky, summary sentence, hourly
-    /// strip with sunrise and sunset, and the days ahead. Worked out in Rust.
+    /// strip with sunrise and sunset, the days ahead, air quality, pollen,
+    /// the moon and the credits. Worked out in Rust.
     public func overview(
-        of report: WeatherReport, at date: Date = Date(), windUnit: WindUnit = .kilometresPerHour
+        of report: WeatherReport, at date: Date = Date(), units: UnitSettings = defaultUnits(regionCode: nil)
     ) -> WeatherOverview {
-        weatherOverview(report: report, nowUnix: Int64(date.timeIntervalSince1970), windUnit: windUnit)
+        weatherOverview(report: report, nowUnix: Int64(date.timeIntervalSince1970), units: units)
+    }
+
+    /// The person's units, or the usual ones for `regionCode` until they choose.
+    public func units(regionCode: String?) -> UnitSettings {
+        app.units(regionCode: regionCode)
+    }
+
+    /// Saves the person's units.
+    public func setUnits(_ units: UnitSettings) throws {
+        try bridged { try app.setUnits(units: units) }
     }
 
     public var isRefreshing: Bool { app.activeRefresh() != nil }
@@ -100,6 +111,22 @@ public final class WeatherClient: @unchecked Sendable {
     @discardableResult
     public func removeSaved(_ place: Place) throws -> [Place] {
         try bridged { try app.removeSavedPlace(place: place) }
+    }
+
+    /// A stored value in `units` ("12°", "18 mph"), formatted by Rust.
+    public func format(_ quantity: Quantity, units: UnitSettings) -> String {
+        formatQuantity(quantity: quantity, units: units)
+    }
+
+    /// Why the saved places could not be read, if they could not. While
+    /// set, every change to them is refused, so nothing writes over them.
+    public var savedPlacesProblem: SavedDataProblem? { app.savedPlacesProblem() }
+
+    /// The person chose to start a new list because the old one can't be
+    /// read: Rust sets the old file aside (kept) and starts an empty list.
+    @discardableResult
+    public func startNewSavedPlaces() throws -> [Place] {
+        try bridged { try app.startNewSavedPlaces() }
     }
 
     /// Moves a saved place from one index to another. Returns the new list.

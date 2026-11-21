@@ -29,8 +29,10 @@ struct ForecastPage: View {
                         if !overview.days.isEmpty {
                             DailyCard(overview: overview, current: report.current.temperatureC, palette: palette)
                         }
-                        DetailsGrid(report: report, overview: overview, windUnit: model.windUnit, palette: palette)
-                        Footer()
+                        AirQualityCard(overview: overview.airQuality, palette: palette)
+                        PollenCard(overview: overview.pollen, palette: palette)
+                        DetailsGrid(report: report, overview: overview, palette: palette)
+                        Footer(credits: overview.credits)
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
@@ -71,6 +73,7 @@ private struct Header: View {
     let page: WeatherPage
     let report: WeatherReport
     let overview: WeatherOverview
+    @Environment(\.weatherUnits) private var units
 
     var body: some View {
         let described = WeatherFormat.describe(report.current.condition, isDay: overview.isDay)
@@ -88,7 +91,7 @@ private struct Header: View {
             Text(described.text)
                 .font(.title3.weight(.medium))
             if let today = overview.today {
-                Text("H:\(WeatherFormat.temperature(today.highC))  L:\(WeatherFormat.temperature(today.lowC))")
+                Text("H:\(WeatherFormat.temperature(today.highC, units))  L:\(WeatherFormat.temperature(today.lowC, units))")
                     .font(.title3.weight(.medium))
             }
         }
@@ -105,12 +108,14 @@ private struct Header: View {
 /// the middle of the screen.
 private struct BigTemperature: View {
     let celsius: Double
+    @Environment(\.weatherUnits) private var units
     @ScaledMetric(relativeTo: .largeTitle) private var scaled: CGFloat = 96
 
     var body: some View {
         let size = min(scaled, 150)
-        let number = "\(Int(celsius.rounded()))"
-        Text(number == "-0" ? "0" : number)
+        // "12°" in the person's unit, drawn without its degree sign.
+        let number = String(WeatherFormat.temperature(celsius, units).dropLast())
+        Text(number)
             .font(.system(size: size, weight: .thin))
             .overlay(alignment: .topTrailing) {
                 Text("°")
@@ -118,7 +123,7 @@ private struct BigTemperature: View {
                     .fixedSize()
                     .alignmentGuide(.trailing) { d in d[.leading] - size * 0.02 }
             }
-            .accessibilityLabel(WeatherFormat.temperature(celsius))
+            .accessibilityLabel(WeatherFormat.temperature(celsius, units))
     }
 }
 
@@ -215,6 +220,7 @@ private struct HourlyCard: View {
 
 private struct TimelineCell: View {
     let entry: TimelineEntry
+    @Environment(\.weatherUnits) private var units
 
     var body: some View {
         VStack(spacing: 8) {
@@ -262,7 +268,7 @@ private struct TimelineCell: View {
 
     private var value: String {
         switch entry {
-        case let .hour(point, _): return WeatherFormat.temperature(point.temperatureC)
+        case let .hour(point, _): return WeatherFormat.temperature(point.temperatureC, units)
         case .sunrise: return "Sunrise"
         case .sunset: return "Sunset"
         }
@@ -300,6 +306,7 @@ private struct DayRow: View {
     let current: Double?
     let rangeLow: Double
     let rangeHigh: Double
+    @Environment(\.weatherUnits) private var units
 
     var body: some View {
         HStack(spacing: 10) {
@@ -319,13 +326,13 @@ private struct DayRow: View {
                 }
             }
             .frame(width: 40)
-            Text(WeatherFormat.temperature(day.lowC))
+            Text(WeatherFormat.temperature(day.lowC, units))
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.white.opacity(0.6))
                 .frame(width: 44, alignment: .trailing)
             TemperatureBar(
                 low: day.lowC, high: day.highC, rangeLow: rangeLow, rangeHigh: rangeHigh, current: current)
-            Text(WeatherFormat.temperature(day.highC))
+            Text(WeatherFormat.temperature(day.highC, units))
                 .font(.title3.weight(.medium))
                 .frame(width: 44, alignment: .trailing)
         }
@@ -333,7 +340,7 @@ private struct DayRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             "\(WeatherFormat.weekday(day.date, isFirst: isToday)): \(WeatherFormat.describe(day.condition).text), "
-                + "low \(WeatherFormat.temperature(day.lowC)), high \(WeatherFormat.temperature(day.highC))")
+                + "low \(WeatherFormat.temperature(day.lowC, units)), high \(WeatherFormat.temperature(day.highC, units))")
     }
 }
 
@@ -406,8 +413,8 @@ struct TemperatureBar: View {
 private struct DetailsGrid: View {
     let report: WeatherReport
     let overview: WeatherOverview
-    let windUnit: WindUnit
     let palette: SkyPalette
+    @Environment(\.weatherUnits) private var units
 
     var body: some View {
         let now = report.current
@@ -415,34 +422,51 @@ private struct DetailsGrid: View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             if let feels = now.apparentTemperatureC {
                 Tile("Feels like", systemImage: "thermometer.medium", palette: palette,
-                     value: WeatherFormat.temperature(feels),
+                     value: WeatherFormat.temperature(feels, units),
                      note: feelsNote(feels: feels, actual: now.temperatureC, windy: (now.wind?.speedKmh ?? 0) > 15))
             }
             if let wind = now.wind {
                 Tile("Wind", systemImage: "wind", palette: palette,
-                     value: WeatherFormat.speed(kmh: wind.speedKmh, unit: windUnit),
+                     value: WeatherFormat.speed(kmh: wind.speedKmh, units: units),
                      note: windNote(wind))
             }
             if let humidity = now.relativeHumidityPct {
                 Tile("Humidity", systemImage: "humidity", palette: palette,
                      value: "\(humidity)%",
-                     note: humidity >= 85 ? "The air is close to saturated." : "Relative humidity now.")
+                     note: now.dewPointC.map { "The dew point is \(WeatherFormat.temperature($0, units)) right now." }
+                        ?? (humidity >= 85 ? "The air is close to saturated." : "Relative humidity now."))
             }
             if let total = today?.precipitationSumMm {
                 Tile("Precipitation", systemImage: "drop.fill", palette: palette,
-                     value: String(format: "%.1f mm", total),
+                     value: WeatherFormat.quantity(.precipitation(mm: total), units),
                      note: "Expected today.")
             }
             if let uv = today?.uvIndexMax {
                 Tile("UV index", systemImage: "sun.max.fill", palette: palette,
-                     value: "\(Int(uv.rounded()))",
-                     note: "\(WeatherFormat.uvLevel(uv)) at its peak today.")
+                     value: "\(Int((now.uvIndex ?? uv).rounded()))",
+                     note: now.uvIndex == nil
+                        ? "\(WeatherFormat.uvLevel(uv)) at its peak today."
+                        : "\(WeatherFormat.uvLevel(now.uvIndex ?? uv)) now. Peak today \(Int(uv.rounded())).")
+            }
+            if let visibility = now.visibilityM {
+                Tile("Visibility", systemImage: "eye.fill", palette: palette,
+                     value: WeatherFormat.quantity(.distance(metres: visibility), units),
+                     note: visibility < 1_000 ? "Fog or heavy precipitation." : visibility < 10_000 ? "Hazy." : "Clear view.")
+            }
+            if let pressure = now.pressureMslHpa {
+                Tile("Pressure", systemImage: "gauge.with.dots.needle.33percent", palette: palette,
+                     value: WeatherFormat.quantity(.pressure(hpa: pressure), units),
+                     note: "At sea level.")
             }
             if let today, let sunrise = today.sunrise, let sunset = today.sunset {
                 Tile("Sunset", systemImage: "sunset.fill", palette: palette,
                      value: WeatherFormat.hour(sunset),
-                     note: "Sunrise: \(WeatherFormat.hour(sunrise)).")
+                     note: "Sunrise: \(WeatherFormat.hour(sunrise))."
+                        + (overview.daylightMinutes.map { " Daylight \($0 / 60) h \($0 % 60) min." } ?? ""))
             }
+            Tile("Moon", systemImage: WeatherFormat.moonSymbol(overview.moon.name), palette: palette,
+                 value: WeatherFormat.moonName(overview.moon.name),
+                 note: "\(overview.moon.illuminationPct)% lit.")
         }
     }
 
@@ -454,9 +478,159 @@ private struct DetailsGrid: View {
 
     private func windNote(_ wind: Wind) -> String {
         var parts: [String] = []
-        if let gusts = wind.gustsKmh { parts.append("Gusts \(WeatherFormat.speed(kmh: gusts, unit: windUnit))") }
+        if let gusts = wind.gustsKmh { parts.append("Gusts \(WeatherFormat.speed(kmh: gusts, units: units))") }
         if let direction = wind.directionDeg { parts.append("from the \(WeatherFormat.compass(direction))") }
         return parts.isEmpty ? "Wind speed now." : parts.joined(separator: ", ") + "."
+    }
+}
+
+// MARK: Air quality and pollen
+
+/// The section's message when it has nothing to show, or nil when it has
+/// data. "Not available here" and "couldn't load" are never the same line.
+/// `notHere` says why a source can have nothing for a place.
+private func sectionMessage(_ state: SectionState, what: String, notHere: String? = nil) -> String? {
+    switch state {
+    case .live, .cached: return nil
+    case .notAvailableHere: return notHere ?? "\(what) isn't available for this place."
+    case let .unavailable(problem):
+        guard let problem else { return "No \(what.lowercased()) data yet." }
+        return "Couldn't load \(what.lowercased()): \(WeatherFormat.problem(problem))."
+    }
+}
+
+/// "Updated 2 h ago" for kept data, with why it couldn't be refreshed.
+private func sectionAge(_ state: SectionState) -> String? {
+    guard case let .cached(age, problem) = state else { return nil }
+    let base = "Updated \(WeatherFormat.age(seconds: age)) ago"
+    guard let problem else { return base + "." }
+    return base + " (\(WeatherFormat.problem(problem)))."
+}
+
+private struct AirQualityCard: View {
+    let overview: AirQualityOverview
+    let palette: SkyPalette
+
+    var body: some View {
+        Card("Air Quality", systemImage: "aqi.medium", palette: palette) {
+            VStack(alignment: .leading, spacing: 8) {
+                if let message = sectionMessage(overview.state, what: "Air quality") {
+                    Text(message).font(.subheadline)
+                        .accessibilityIdentifier("forecast.airQuality.message")
+                } else if let index = overview.index {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(index.value)").font(.system(.title, weight: .regular))
+                        Text(index.label).font(.title3.weight(.medium))
+                    }
+                    AqiScaleBar(level: index.level)
+                    Text(index.scale == .european ? "European Air Quality Index" : "US Air Quality Index")
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.7))
+                    if let now = overview.now {
+                        Text(pollutants(now)).font(.footnote)
+                    }
+                } else {
+                    Text("No reading for this hour.").font(.subheadline)
+                }
+                if let until = overview.coversUntil, sectionMessage(overview.state, what: "") == nil {
+                    Text("Forecast until \(WeatherFormat.weekday(String(until.prefix(10)))) \(WeatherFormat.hour(until)).")
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                if let age = sectionAge(overview.state) {
+                    Text(age).font(.footnote).foregroundStyle(.white.opacity(0.7))
+                }
+                if let source = overview.source {
+                    Text(source.name).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("forecast.airQuality")
+    }
+
+    private func pollutants(_ h: AirQualityHour) -> String {
+        var parts: [String] = []
+        if let v = h.pm25 { parts.append("PM2.5 \(Int(v.rounded()))") }
+        if let v = h.pm10 { parts.append("PM10 \(Int(v.rounded()))") }
+        if let v = h.ozone { parts.append("O₃ \(Int(v.rounded()))") }
+        if let v = h.nitrogenDioxide { parts.append("NO₂ \(Int(v.rounded()))") }
+        return parts.isEmpty ? "" : parts.joined(separator: " · ") + " µg/m³"
+    }
+}
+
+/// Six bands, the current one marked.
+private struct AqiScaleBar: View {
+    let level: UInt8
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(1...6, id: \.self) { band in
+                Capsule()
+                    .fill(Self.color(band).opacity(Int(level) == band ? 1 : 0.35))
+                    .frame(height: Int(level) == band ? 8 : 5)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    static func color(_ band: Int) -> Color {
+        switch band {
+        case 1: return .green
+        case 2: return .yellow
+        case 3: return .orange
+        case 4: return .red
+        case 5: return .purple
+        default: return Color(red: 0.5, green: 0, blue: 0.15)
+        }
+    }
+}
+
+private struct PollenCard: View {
+    let overview: PollenOverview
+    let palette: SkyPalette
+
+    var body: some View {
+        Card("Pollen", systemImage: "leaf.fill", palette: palette) {
+            VStack(alignment: .leading, spacing: 8) {
+                // Rust tells "outside the model's area" from "nothing
+                // forecast now"; the source sends the same empty answer.
+                if let message = sectionMessage(
+                    overview.state, what: "Pollen",
+                    notHere: overview.gap == .outsideModelArea
+                        ? "Pollen forecasts cover Europe only, so there's none for this place."
+                        : "No pollen forecast available right now. Pollen forecasts here run during the pollen season.")
+                {
+                    Text(message).font(.subheadline)
+                        .accessibilityIdentifier("forecast.pollen.message")
+                } else if overview.species.isEmpty {
+                    Text("No reading for this hour.").font(.subheadline)
+                } else {
+                    ForEach(overview.species, id: \.species) { s in
+                        HStack {
+                            Text(WeatherFormat.pollenName(s.species))
+                            Spacer()
+                            Text("\(WeatherFormat.grains(s.nowGrainsPerM3)) now, up to \(WeatherFormat.grains(s.todayMaxGrainsPerM3)) today")
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        .font(.subheadline)
+                    }
+                    Text("Grains per cubic metre.").font(.footnote).foregroundStyle(.white.opacity(0.7))
+                }
+                if let age = sectionAge(overview.state) {
+                    Text(age).font(.footnote).foregroundStyle(.white.opacity(0.7))
+                }
+                if let source = overview.source {
+                    Text(source.name).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("forecast.pollen")
     }
 }
 
@@ -500,25 +674,31 @@ private struct Tile: View {
 }
 
 private struct Footer: View {
+    let credits: [SourceCredit]
     #if os(iOS)
         @State private var credit: URL?
     #endif
 
     var body: some View {
-        // Open-Meteo's data is CC BY 4.0, which asks for this credit. On iOS
-        // the page opens in Safari inside the app, so the forecast stays put.
+        // Every source's credit, which their licences ask for (CC BY 4.0,
+        // Copernicus). On iOS the page opens in Safari inside the app, so the
+        // forecast stays put.
+        VStack(spacing: 6) {
+            ForEach(credits, id: \.id) { source in
+                #if os(iOS)
+                    Button(source.credit) { credit = URL(string: source.url) }
+                        .accessibilityIdentifier("forecast.credit.\(source.id)")
+                #else
+                    Link(source.credit, destination: URL(string: source.url)!)
+                #endif
+            }
+        }
+        .font(.footnote)
+        .multilineTextAlignment(.center)
+        .foregroundStyle(.white.opacity(0.7))
+        .padding(.top, 8)
         #if os(iOS)
-            Button("Weather data by Open-Meteo.com") { credit = URL(string: "https://open-meteo.com/") }
-                .font(.footnote)
-                .foregroundStyle(.white.opacity(0.7))
-                .padding(.top, 8)
-                .accessibilityIdentifier("forecast.credit")
-                .forgeSafari($credit)
-        #else
-            Link("Weather data by Open-Meteo.com", destination: URL(string: "https://open-meteo.com/")!)
-                .font(.footnote)
-                .foregroundStyle(.white.opacity(0.7))
-                .padding(.top, 8)
+            .forgeSafari($credit)
         #endif
     }
 }
