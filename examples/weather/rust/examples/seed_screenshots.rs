@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use weather_core::{
     Coordinate, CurrentConditions, DailyForecast, Freshness, HourlyPoint, Intensity, Place,
-    PlaceSource, WeatherCondition, WeatherReport, Wind,
+    PlaceSource, SourceCredit, WeatherCondition, WeatherReport, Wind,
 };
 
 struct Seed {
@@ -174,14 +174,21 @@ fn main() {
         .filter(|p| !matches!(p.source, PlaceSource::Device { .. }))
         .collect();
 
-    let cache = serde_json::json!({ "schema_version": 2, "reports": reports });
-    let saved = serde_json::json!({ "schema_version": 1, "places": places });
+    let cache = serde_json::json!({ "schema_version": 3, "reports": reports });
+    let saved = serde_json::json!({ "schema_version": 1, "data": { "places": places } });
     let dir = std::path::Path::new(&dir);
     std::fs::write(dir.join("forge-weather-cache-v1.json"), cache.to_string()).unwrap();
-    std::fs::write(dir.join("forge-weather-places-v1.json"), saved.to_string()).unwrap();
+    std::fs::write(
+        dir.join("forge-weather-saved-places.json"),
+        saved.to_string(),
+    )
+    .unwrap();
     for r in &reports {
-        let o =
-            weather_core::weather_overview(r.clone(), now, weather_core::WindUnit::MilesPerHour);
+        let o = weather_core::weather_overview(
+            r.clone(),
+            now,
+            weather_core::default_units(Some("GB".into())),
+        );
         println!(
             "[seed] {}: {:?} day={} {} | {} hours, {} days",
             r.place.name,
@@ -304,11 +311,25 @@ fn report(seed: &Seed, fetched_at: i64) -> WeatherReport {
             }),
             condition: first.condition,
             is_day: first.is_day,
+            dew_point_c: Some(temperature_at(local) - 2.0),
+            pressure_msl_hpa: Some(1009.0),
+            visibility_m: Some(18_000.0),
+            cloud_cover_pct: Some(70),
+            uv_index: Some(if first.is_day { 1.0 } else { 0.0 }),
         },
         hourly,
         daily,
         fetched_at_unix: fetched_at,
         freshness: Freshness::Live,
+        forecast_source: SourceCredit {
+            id: "open-meteo".into(),
+            name: "Open-Meteo".into(),
+            credit: "Weather data by Open-Meteo.com (CC BY 4.0)".into(),
+            url: "https://open-meteo.com/".into(),
+        },
+        // Screenshots show the sections as never fetched.
+        air_quality: Default::default(),
+        pollen: Default::default(),
     }
 }
 

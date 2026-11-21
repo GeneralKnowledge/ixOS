@@ -1,48 +1,173 @@
 //! Saved places: the cities the user pages between, after "My Location".
 //!
-//! The list lives in its own small JSON file next to the cache, written
-//! atomically on every change. Unlike the cache it is the user's own data,
-//! so a failed write is reported (`Internal`) and the in-memory list is left
-//! as it was. The device location is never saved: the host asks the
-//! platform for it each launch.
+//! They are the person's own data, kept in a [`Document`] (forge-app's
+//! saved-document rules): every change edits a copy, saves it, and only
+//! then keeps it, so a failed write leaves the list as it was. A file this
+//! build can't read is never replaced: the list shows as empty, changes
+//! are refused with [`WeatherError::SavedDataUnreadable`] until the person
+//! chooses to start a new list (which sets the old file aside and keeps it),
+//! and a file from a newer version of the app is never touched at all. The
+//! device location is never saved: the host asks the platform for it each
+//! launch.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use forge_app::{Document, DocumentError};
 use serde::{Deserialize, Serialize};
 
 use super::app::ForgeWeatherApp;
 use super::error::WeatherError;
-use super::open_meteo;
-use super::types::{Place, PlaceSource};
+use super::sources::open_meteo;
+use super::types::{Place, PlaceSource, SavedDataProblem};
 use crate::signal::lock;
 
-pub(crate) const PLACES_FILENAME: &str = "forge-weather-places-v1.json";
-const PLACES_SCHEMA_VERSION: u32 = 1;
+/// The document (`{"schema_version": 1, "data": {"places": [...]}}`).
+pub(crate) const PLACES_FILENAME: &str = "forge-weather-saved-places.json";
+const PLACES_VERSION: u32 = 1;
+/// The file builds before the document wrote
+/// (`{"schema_version": 1, "places": [...]}`). Read once into the document
+/// and then left where it is.
+pub(crate) const LEGACY_PLACES_FILENAME: &str = "forge-weather-places-v1.json";
+const LEGACY_PLACES_VERSION: u32 = 1;
 /// More than anyone pages through.
 pub(crate) const MAX_SAVED_PLACES: usize = 20;
 /// A place this close to a saved one is the same place.
 const SAME_PLACE_KM: f64 = 2.0;
 
-#[derive(Serialize, Deserialize)]
-struct PlacesEnvelope {
-    schema_version: u32,
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
+pub(crate) struct SavedPlaces {
     places: Vec<Place>,
 }
 
-pub(crate) fn load_places(path: &Path) -> Vec<Place> {
-    std::fs::read(path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<PlacesEnvelope>(&bytes).ok())
-        .filter(|e| e.schema_version == PLACES_SCHEMA_VERSION)
-        .map(|e| e.places)
-        .unwrap_or_default()
+/// Where the saved places are.
+pub(crate) enum PlacesStore {
+    /// No data folder (tests and previews): kept in memory only.
+    Memory(Vec<Place>),
+    Saved(Document<SavedPlaces>),
+    /// The file could not be opened. Nothing is written until the person
+    /// starts a new list (only allowed when it is unreadable, not newer).
+    Failed {
+        directory: PathBuf,
+        error: DocumentError,
+    },
+}
+
+impl PlacesStore {
+    pub(crate) fn places(&self) -> Vec<Place> {
+        match self {
+            PlacesStore::Memory(places) => places.clone(),
+            PlacesStore::Saved(doc) => doc.value().places.clone(),
+            PlacesStore::Failed { .. } => Vec::new(),
+        }
+    }
+}
+
+/// Opens the saved places in `directory`, bringing over the older file the
+/// first time.
+pub(crate) fn open_places(directory: Option<&Path>) -> PlacesStore {
+    let Some(directory) = directory else {
+        return PlacesStore::Memory(Vec::new());
+    };
+    match open_document(directory) {
+        Ok(doc) => PlacesStore::Saved(doc),
+        Err(error) => PlacesStore::Failed {
+            directory: directory.to_path_buf(),
+            error,
+        },
+    }
+}
+
+fn open_document(directory: &Path) -> Result<Document<SavedPlaces>, DocumentError> {
+    let path = directory.join(PLACES_FILENAME);
+    let legacy = directory.join(LEGACY_PLACES_FILENAME);
+    if path.exists() || !legacy.exists() {
+        return Document::open(path, PLACES_VERSION);
+    }
+    let places = read_legacy(&legacy)?;
+    let mut doc = Document::open(path, PLACES_VERSION)?;
+    doc.replace(SavedPlaces { places })?;
+    Ok(doc)
+}
+
+/// The list from a file the older builds wrote. Unreadable or newer files
+/// are errors, never an empty list.
+fn read_legacy(path: &Path) -> Result<Vec<Place>, DocumentError> {
+    #[derive(Deserialize)]
+    struct LegacyEnvelope {
+        schema_version: u32,
+        #[serde(default)]
+        places: Option<Vec<Place>>,
+    }
+    let bytes = std::fs::read(path).map_err(|e| DocumentError::Io {
+        reason: format!("read {}: {e}", path.display()),
+    })?;
+    let envelope: LegacyEnvelope =
+        serde_json::from_slice(&bytes).map_err(|e| DocumentError::Unreadable {
+            reason: e.to_string(),
+        })?;
+    if envelope.schema_version > LEGACY_PLACES_VERSION {
+        return Err(DocumentError::Newer {
+            found: envelope.schema_version,
+            supported: LEGACY_PLACES_VERSION,
+        });
+    }
+    envelope.places.ok_or_else(|| DocumentError::Unreadable {
+        reason: "no places list".into(),
+    })
 }
 
 #[uniffi::export]
 impl ForgeWeatherApp {
-    /// The saved places, in the user's order.
+    /// The saved places, in the user's order. Empty when they could not be
+    /// read: [`Self::saved_places_problem`] says so.
     pub fn saved_places(&self) -> Vec<Place> {
-        lock(&self.shared.places).clone()
+        lock(&self.shared.places).places()
+    }
+
+    /// Why the saved places could not be read, if they could not. Until it
+    /// is resolved every change is refused, so nothing overwrites them.
+    pub fn saved_places_problem(&self) -> Option<SavedDataProblem> {
+        match &*lock(&self.shared.places) {
+            PlacesStore::Failed { error, .. } => Some(match error {
+                DocumentError::Unreadable { .. } => SavedDataProblem::Unreadable,
+                DocumentError::Newer { .. } => SavedDataProblem::FromNewerVersion,
+                DocumentError::Io { .. } => SavedDataProblem::CouldNotOpen,
+            }),
+            _ => None,
+        }
+    }
+
+    /// After the person chose to start a new list because the old one
+    /// can't be read: sets the unreadable file aside (kept next to it,
+    /// renamed) and starts an empty list. Refused for a file from a newer
+    /// version, which is never touched. Returns the new (empty) list.
+    pub fn start_new_saved_places(&self) -> Result<Vec<Place>, WeatherError> {
+        if self.is_shut_down() {
+            return Err(WeatherError::ShutDown);
+        }
+        let mut store = lock(&self.shared.places);
+        let PlacesStore::Failed { directory, error } = &*store else {
+            return Ok(store.places());
+        };
+        if !error.can_start_fresh() {
+            return Err(WeatherError::from(error.clone()));
+        }
+        let now_ms = forge_runtime::now_ms();
+        // Whichever file failed: the document, or the older file before it.
+        let legacy = directory.join(LEGACY_PLACES_FILENAME);
+        if !directory.join(PLACES_FILENAME).exists() && legacy.exists() {
+            forge_storage::set_aside(&legacy, now_ms).map_err(|e| WeatherError::Internal {
+                reason: format!("could not set the old places aside: {e}"),
+            })?;
+        }
+        let (doc, _kept) = Document::start_fresh(
+            directory.join(PLACES_FILENAME),
+            PLACES_VERSION,
+            None,
+            now_ms,
+        )?;
+        *store = PlacesStore::Saved(doc);
+        Ok(Vec::new())
     }
 
     /// Adds `place` at the end, unless a saved place is already within 2 km
@@ -105,6 +230,7 @@ impl ForgeWeatherApp {
 
 impl ForgeWeatherApp {
     /// Applies `change` to a copy, writes it, then makes it current.
+    /// Refused while the saved places can't be read.
     fn update_places(
         &self,
         change: impl FnOnce(&mut Vec<Place>) -> Result<(), WeatherError>,
@@ -112,29 +238,27 @@ impl ForgeWeatherApp {
         if self.is_shut_down() {
             return Err(WeatherError::ShutDown);
         }
-        let mut places = lock(&self.shared.places);
-        let mut updated = places.clone();
-        change(&mut updated)?;
-        if updated == *places {
-            return Ok(updated);
-        }
-        if let Some(path) = &self.shared.places_path {
-            let envelope = PlacesEnvelope {
-                schema_version: PLACES_SCHEMA_VERSION,
-                places: updated.clone(),
-            };
-            let json = serde_json::to_vec(&envelope).map_err(|e| WeatherError::Internal {
-                reason: format!("could not encode saved places: {e}"),
-            })?;
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
+        let mut store = lock(&self.shared.places);
+        match &mut *store {
+            PlacesStore::Memory(places) => {
+                let mut updated = places.clone();
+                change(&mut updated)?;
+                *places = updated.clone();
+                Ok(updated)
             }
-            forge_storage::write_atomic(path, &json).map_err(|e| WeatherError::Internal {
-                reason: format!("could not save places: {e}"),
-            })?;
+            PlacesStore::Saved(doc) => {
+                let mut updated = doc.value().places.clone();
+                change(&mut updated)?;
+                if updated == doc.value().places {
+                    return Ok(updated);
+                }
+                doc.replace(SavedPlaces {
+                    places: updated.clone(),
+                })?;
+                Ok(updated)
+            }
+            PlacesStore::Failed { error, .. } => Err(WeatherError::from(error.clone())),
         }
-        *places = updated.clone();
-        Ok(updated)
     }
 }
 
@@ -224,13 +348,113 @@ mod tests {
     #[test]
     fn a_failed_write_keeps_the_old_list() {
         let dir = tempfile::tempdir().unwrap();
-        // A directory where the file should be makes the write fail.
-        std::fs::create_dir(dir.path().join(PLACES_FILENAME)).unwrap();
         let a = app(Some(dir.path().to_path_buf()));
+        a.save_place(place("Prague", 50.09, 14.42)).unwrap();
+        // A directory where the file should be makes the next write fail.
+        let path = dir.path().join(PLACES_FILENAME);
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
         assert!(matches!(
-            a.save_place(place("Prague", 50.09, 14.42)),
+            a.save_place(place("Paris", 48.85, 2.35)),
             Err(WeatherError::Internal { .. })
         ));
+        assert_eq!(a.saved_places().len(), 1, "the list is as it was");
+    }
+
+    #[test]
+    fn an_unreadable_file_is_never_written_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(PLACES_FILENAME);
+        std::fs::write(&path, b"{ not json").unwrap();
+        let a = app(Some(dir.path().to_path_buf()));
         assert!(a.saved_places().is_empty());
+        assert_eq!(a.saved_places_problem(), Some(SavedDataProblem::Unreadable));
+        assert!(matches!(
+            a.save_place(place("Prague", 50.09, 14.42)),
+            Err(WeatherError::SavedDataUnreadable { .. })
+        ));
+        assert!(a.remove_saved_place(place("x", 1.0, 1.0)).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"{ not json", "untouched");
+
+        // Only when the person chooses to: set aside (kept), then a new list.
+        assert_eq!(a.start_new_saved_places().unwrap(), Vec::<Place>::new());
+        assert_eq!(a.saved_places_problem(), None);
+        a.save_place(place("Prague", 50.09, 14.42)).unwrap();
+        let kept: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains("unreadable"))
+            .collect();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(std::fs::read(kept[0].path()).unwrap(), b"{ not json");
+    }
+
+    #[test]
+    fn a_file_from_a_newer_version_is_never_touched() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(PLACES_FILENAME);
+        let newer = br#"{"schema_version":2,"data":{"places":[],"groups":[]}}"#;
+        std::fs::write(&path, newer).unwrap();
+        let a = app(Some(dir.path().to_path_buf()));
+        assert_eq!(
+            a.saved_places_problem(),
+            Some(SavedDataProblem::FromNewerVersion)
+        );
+        assert!(matches!(
+            a.save_place(place("Prague", 50.09, 14.42)),
+            Err(WeatherError::SavedDataNewer {
+                found: 2,
+                supported: 1
+            })
+        ));
+        assert!(a.start_new_saved_places().is_err(), "not even on request");
+        assert_eq!(std::fs::read(&path).unwrap(), newer);
+        assert!(
+            !std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .any(|e| e.file_name().to_string_lossy().contains("unreadable")),
+            "nothing set aside"
+        );
+    }
+
+    #[test]
+    fn places_saved_by_older_builds_are_brought_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy = dir.path().join(LEGACY_PLACES_FILENAME);
+        let old = serde_json::json!({
+            "schema_version": 1,
+            "places": [place("Prague", 50.09, 14.42)],
+        });
+        std::fs::write(&legacy, serde_json::to_vec(&old).unwrap()).unwrap();
+        let a = app(Some(dir.path().to_path_buf()));
+        assert_eq!(a.saved_places()[0].name, "Prague");
+        assert!(legacy.exists(), "the old file is left where it was");
+        a.save_place(place("Paris", 48.85, 2.35)).unwrap();
+        drop(a);
+        assert_eq!(app(Some(dir.path().to_path_buf())).saved_places().len(), 2);
+    }
+
+    #[test]
+    fn a_damaged_or_newer_older_file_is_reported_not_emptied() {
+        for (contents, problem) in [
+            (
+                &br#"{"schema_version":1,"plac"#[..],
+                SavedDataProblem::Unreadable,
+            ),
+            (
+                &br#"{"schema_version":7,"places":[]}"#[..],
+                SavedDataProblem::FromNewerVersion,
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let legacy = dir.path().join(LEGACY_PLACES_FILENAME);
+            std::fs::write(&legacy, contents).unwrap();
+            let a = app(Some(dir.path().to_path_buf()));
+            assert_eq!(a.saved_places_problem(), Some(problem));
+            assert!(a.save_place(place("Prague", 50.09, 14.42)).is_err());
+            assert!(!dir.path().join(PLACES_FILENAME).exists());
+            assert_eq!(std::fs::read(&legacy).unwrap(), contents);
+        }
     }
 }

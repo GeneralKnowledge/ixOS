@@ -131,11 +131,20 @@ final class RelayModelTests: XCTestCase {
         XCTAssertEqual(RelayFormat.address(host: "fd00::1", port: 4000), "[fd00::1]:4000")
     }
 
+    /// What a sync with an introducer changed, in words.
+    func testSyncedText() {
+        XCTAssertEqual(RelayModel.synced(DevicesSynced(offered: 0, revoked: 0), from: "laptop"),
+                       "Nothing new from laptop.")
+        XCTAssertEqual(RelayModel.synced(DevicesSynced(offered: 1, revoked: 2), from: "laptop"),
+                       "From laptop: 1 device to trust, 2 devices revoked.")
+    }
+
     /// How a device can be reached, in words: nearby wins, then why it
     /// wasn't reached, then reachable, then the route it was last reached by.
     func testReachText() {
         func device(nearby: Bool, route: String?, problem: String?, presence: Presence = .offline) -> Device {
             Device(endpointId: "id", name: "create", trusted: true, sinceMs: 0, receivesFrom: true, mayAsk: false,
+                   introduces: false, seesDevices: false, introducedBy: nil, revokedBy: nil,
                    nearby: nearby, presence: nearby ? .nearby : presence, lastSeenMs: nil,
                    platform: nil, offers: [], route: route, problem: problem)
         }

@@ -215,6 +215,9 @@ model.
 Acceptance: pair a new device once, and every device learns of it.
 Revoke it once, and every device refuses it.
 
+Step 1, the introducer, is built (2026-11-21, [relay-my-devices.md](relay-my-devices.md)):
+tested on Linux with three devices; Swift not yet tried on a phone.
+
 ### 7. Away from home
 
 Tailscale, then the Hetzner relay with TLS, under the Connections modes as

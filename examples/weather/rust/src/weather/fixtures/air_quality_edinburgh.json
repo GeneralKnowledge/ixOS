@@ -1,0 +1,43 @@
+{
+ "latitude": 55.95,
+ "longitude": -3.1999998,
+ "generationtime_ms": 0.42,
+ "utc_offset_seconds": 0,
+ "timezone": "Europe/London",
+ "timezone_abbreviation": "GMT",
+ "elevation": 47.0,
+ "hourly_units": {
+  "time": "iso8601",
+  "european_aqi": "EAQI",
+  "us_aqi": "USAQI",
+  "pm2_5": "μg/m³",
+  "pm10": "μg/m³",
+  "ozone": "μg/m³",
+  "nitrogen_dioxide": "μg/m³",
+  "sulphur_dioxide": "μg/m³",
+  "carbon_monoxide": "μg/m³",
+  "alder_pollen": "grains/m³",
+  "birch_pollen": "grains/m³",
+  "grass_pollen": "grains/m³",
+  "mugwort_pollen": "grains/m³",
+  "olive_pollen": "grains/m³",
+  "ragweed_pollen": "grains/m³"
+ },
+ "hourly": {
+  "time": ["2026-11-20T07:00", "2026-11-20T08:00", "2026-11-20T09:00", "2026-11-20T10:00", "2026-11-20T11:00", "2026-11-20T12:00"],
+  "european_aqi": [18, 24, 26, 22, 20, null],
+  "us_aqi": [21, 25, 27, 26, 24, null],
+  "pm2_5": [4.6, 6.1, 6.8, 5.9, 5.2, null],
+  "pm10": [6.9, 8.8, 9.7, 8.4, 7.6, null],
+  "ozone": [52.0, null, 49.0, 55.0, 58.0, null],
+  "nitrogen_dioxide": [14.2, 21.5, 23.0, 18.1, 15.3, null],
+  "sulphur_dioxide": [1.2, 1.6, 1.8, 1.5, 1.3, null],
+  "carbon_monoxide": [161.0, 178.0, 184.0, 172.0, 166.0, null],
+  "alder_pollen": [0.1, 0.1, 0.2, 0.2, null, null],
+  "birch_pollen": [0.0, 0.0, 0.0, 0.0, null, null],
+  "grass_pollen": [0.0, 0.0, 0.1, 0.1, null, null],
+  "mugwort_pollen": [0.0, 0.0, 0.0, 0.0, null, null],
+  "olive_pollen": [null, null, null, null, null, null],
+  "ragweed_pollen": [null, null, null, null, null, null]
+ }
+}

@@ -22,17 +22,24 @@
 //!   waits for that write, and the refresh counts as having succeeded.)
 //! * A successful refresh writes the cache *before* resolving, so
 //!   `cached_report()` reflects it as soon as `result()` returns.
-//! * **Offline fallback.** When a refresh fails for a network reason and the
-//!   cache holds a report for (about) the same place that is not too old, the
-//!   refresh *succeeds* with that report marked `Freshness::Cached`, carrying
-//!   the problem. Otherwise it fails with the typed error.
+//! * **Several sources, one report.** A refresh asks the forecast, air
+//!   quality and pollen sources in parallel (`sources/`). The forecast is the
+//!   report's base; the others are merged in as sections with their own
+//!   state (`merge.rs`), so a failed or empty secondary source never costs
+//!   the data that did arrive.
+//! * **Offline fallback.** When the forecast fails for a network reason and
+//!   the cache holds a report for (about) the same place that is not too old,
+//!   the refresh *succeeds* with that report marked `Freshness::Cached`,
+//!   carrying the problem, and still takes any section that did arrive.
+//!   Otherwise it fails with the typed error.
 //! * The cache holds the newest report for each of up to
 //!   [`MAX_CACHED_REPORTS`] places, written atomically after every live
 //!   refresh, so every saved place has something to show at launch. It is
 //!   disposable: unreadable cache files are ignored, and cache write failures
 //!   never fail a refresh.
-//! * Saved places (see `places.rs`) are a separate small file; they are
-//!   state the user made, so failing to write them is an error.
+//! * Saved places (see `places.rs`) are a forge-app `Document`: state the
+//!   user made, so failing to write them is an error, and a file that can't
+//!   be read is never written over.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
@@ -45,15 +52,19 @@ use forge_net::{CancelHandle, HttpClient, Request, UreqClient};
 use serde::{Deserialize, Serialize};
 
 use super::error::WeatherError;
-use super::open_meteo;
+use super::merge;
+use super::sources::{self, open_meteo, open_meteo_air_quality, Sources};
 use super::types::{
-    Coordinate, FetchProblem, Freshness, Place, RefreshPhase, WeatherConfig, WeatherReport,
+    Coordinate, FetchProblem, Freshness, Place, RefreshPhase, SectionState, WeatherConfig,
+    WeatherReport,
 };
 use crate::signal::{lock, Completion};
 
 const CACHE_FILENAME: &str = "forge-weather-cache-v1.json";
-/// 1: one report. 2: a list of reports, newest first. Both are read.
-const CACHE_SCHEMA_VERSION: u32 = 2;
+/// 1: one report. 2: a list of reports, newest first. 3: reports carry
+/// their forecast source, air quality and pollen. All are read (older
+/// reports get the Open-Meteo credit and sections that were never fetched).
+const CACHE_SCHEMA_VERSION: u32 = 3;
 /// Reports kept in the cache, one per place.
 pub(crate) const MAX_CACHED_REPORTS: usize = 16;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -69,7 +80,6 @@ const USER_AGENT: &str = concat!(
 type RefreshResult = Result<WeatherReport, WeatherError>;
 
 struct Settings {
-    forecast_base: String,
     geocoding_base: String,
     timeout: Duration,
     max_cache_age_seconds: u64,
@@ -78,11 +88,12 @@ struct Settings {
 pub(crate) struct Shared {
     client: Arc<dyn HttpClient>,
     settings: Settings,
+    sources: Sources,
+    pub(crate) units: Mutex<super::units::UnitsStore>,
     cache_path: Option<PathBuf>,
     /// Newest first, at most one per place.
     cache: Mutex<Vec<WeatherReport>>,
-    pub(crate) places_path: Option<PathBuf>,
-    pub(crate) places: Mutex<Vec<Place>>,
+    pub(crate) places: Mutex<super::places::PlacesStore>,
     active: Mutex<Option<Arc<RefreshState>>>,
     next_id: AtomicU64,
 }
@@ -325,8 +336,14 @@ impl ForgeWeatherApp {
             })?;
             Ok(value.trim_end_matches('/').to_string())
         };
+        let sources = Sources::open_meteo(
+            &base(config.forecast_base_url, open_meteo::DEFAULT_FORECAST_BASE)?,
+            &base(
+                config.air_quality_base_url,
+                open_meteo_air_quality::DEFAULT_AIR_QUALITY_BASE,
+            )?,
+        );
         let settings = Settings {
-            forecast_base: base(config.forecast_base_url, open_meteo::DEFAULT_FORECAST_BASE)?,
             geocoding_base: base(
                 config.geocoding_base_url,
                 open_meteo::DEFAULT_GEOCODING_BASE,
@@ -350,20 +367,16 @@ impl ForgeWeatherApp {
             .as_ref()
             .map(|dir| dir.join(CACHE_FILENAME));
         let cache = cache_path.as_deref().map(load_cache).unwrap_or_default();
-        let places_path = storage_directory
-            .as_ref()
-            .map(|dir| dir.join(super::places::PLACES_FILENAME));
-        let places = places_path
-            .as_deref()
-            .map(super::places::load_places)
-            .unwrap_or_default();
+        let places = super::places::open_places(storage_directory.as_deref());
+        let units = super::units::open_units(storage_directory.as_deref());
         Ok(Self {
             shared: Arc::new(Shared {
                 client,
                 settings,
+                sources,
+                units: Mutex::new(units),
                 cache_path,
                 cache: Mutex::new(cache),
-                places_path,
                 places: Mutex::new(places),
                 active: Mutex::new(None),
                 next_id: AtomicU64::new(0),
@@ -377,42 +390,106 @@ fn run_refresh(shared: &Shared, state: &RefreshState) {
     if state.completion.get().is_some() {
         return; // Cancelled before the thread got going.
     }
-    let request = Request::get(open_meteo::forecast_url(
-        &shared.settings.forecast_base,
-        state.place.coordinate,
-    ))
-    .header("Accept", "application/json")
-    .timeout(shared.settings.timeout);
-
-    let fetched = shared.client.send_cancellable(&request, &state.abort);
+    let place = &state.place;
+    let timeout = shared.settings.timeout;
+    let client = shared.client.as_ref();
+    let now = now_unix();
+    // Every source at once; each request is aborted with the refresh.
+    let (forecast, air_quality, pollen) = thread::scope(|scope| {
+        let air = scope.spawn(|| {
+            sources::fetch(
+                client,
+                shared.sources.air_quality.as_ref(),
+                place,
+                timeout,
+                &state.abort,
+                now,
+            )
+        });
+        let pollen = scope.spawn(|| {
+            sources::fetch(
+                client,
+                shared.sources.pollen.as_ref(),
+                place,
+                timeout,
+                &state.abort,
+                now,
+            )
+        });
+        let forecast = sources::fetch(
+            client,
+            shared.sources.forecast.as_ref(),
+            place,
+            timeout,
+            &state.abort,
+            now,
+        );
+        (forecast, joined(air.join()), joined(pollen.join()))
+    });
     if state.completion.get().is_some() {
-        return; // Cancelled while waiting: discard the response.
+        return; // Cancelled while waiting: discard the responses.
     }
     state.phase.store(PHASE_DECODING, Ordering::SeqCst);
-    let result = match fetched {
-        Ok(response) if response.is_success() => {
-            open_meteo::decode_forecast(&response.body, state.place.clone(), now_unix())
-        }
-        Ok(response) => Err(open_meteo::status_error(response.status, &response.body)),
-        Err(err) => Err(err.into()),
-    };
 
-    match result {
-        Ok(report) => {
-            let _commit = lock(&state.commit);
-            // A cancel that got here first wins: discard the report.
-            if state.completion.get().is_none() {
-                store_cache(shared, report.clone());
-                state.completion.complete(Ok(report));
-            }
-        }
+    // The newest earlier report for this place, for sections that failed.
+    let prior = {
+        let cache = lock(&shared.cache);
+        nearest(&cache, place.coordinate).cloned()
+    };
+    let forecast = forecast.and_then(|r| {
+        r.ok_or_else(|| WeatherError::bad_response("the forecast source had no forecast"))
+    });
+    let (mut report, forecast_is_live) = match forecast {
+        Ok(report) => (report, true),
         Err(err) => {
             let fallback = err.as_fetch_problem().and_then(|problem| {
-                usable_cache(shared, state.place.coordinate).map(|r| as_cached(r, Some(problem)))
+                usable_cache(shared, place.coordinate).map(|r| as_cached(r, Some(problem)))
             });
-            state.completion.complete(fallback.ok_or(err));
+            match fallback {
+                Some(report) => (report, false),
+                None => {
+                    state.completion.complete(Err(err));
+                    return;
+                }
+            }
         }
+    };
+    let max_age = shared.settings.max_cache_age_seconds;
+    report.air_quality = merge::air_quality(
+        air_quality,
+        shared.sources.air_quality.credit(),
+        now,
+        prior.as_ref().map(|p| &p.air_quality),
+        max_age,
+    );
+    report.pollen = merge::pollen(
+        pollen,
+        shared.sources.pollen.credit(),
+        now,
+        prior.as_ref().map(|p| &p.pollen),
+        max_age,
+    );
+    let anything_new = forecast_is_live
+        || report.air_quality.state == SectionState::Live
+        || report.pollen.state == SectionState::Live;
+
+    let _commit = lock(&state.commit);
+    // A cancel that got here first wins: discard the report.
+    if state.completion.get().is_none() {
+        if anything_new {
+            store_cache(shared, report.clone());
+        }
+        state.completion.complete(Ok(report));
     }
+}
+
+/// A source thread's result; a panic counts as a failed fetch.
+fn joined<T>(r: thread::Result<Result<T, WeatherError>>) -> Result<T, WeatherError> {
+    r.unwrap_or_else(|_| {
+        Err(WeatherError::Internal {
+            reason: "a source request panicked".into(),
+        })
+    })
 }
 
 fn run_search(
@@ -444,11 +521,19 @@ fn age_seconds(report: &WeatherReport) -> u64 {
     u64::try_from(now_unix().saturating_sub(report.fetched_at_unix)).unwrap_or(0)
 }
 
+/// Marks a report from the cache as cached: the forecast with `problem`
+/// (why this refresh could not replace it, if it tried), and each section
+/// with its own age.
 fn as_cached(mut report: WeatherReport, problem: Option<FetchProblem>) -> WeatherReport {
     report.freshness = Freshness::Cached {
         age_seconds: age_seconds(&report),
         problem,
     };
+    let now = now_unix();
+    let a = &mut report.air_quality;
+    a.state = merge::age_state(&a.state, !a.hours.is_empty(), a.fetched_at_unix, now, None);
+    let p = &mut report.pollen;
+    p.state = merge::age_state(&p.state, !p.hours.is_empty(), p.fetched_at_unix, now, None);
     report
 }
 
@@ -495,7 +580,7 @@ fn load_cache(path: &Path) -> Vec<WeatherReport> {
     };
     match serde_json::from_slice::<CacheEnvelope>(&bytes) {
         Ok(CacheEnvelope {
-            schema_version: CACHE_SCHEMA_VERSION,
+            schema_version: 2 | CACHE_SCHEMA_VERSION,
             mut reports,
             ..
         }) => {
@@ -600,8 +685,9 @@ mod tests {
         .unwrap()
     }
 
-    /// A client whose every call blocks until the test releases it, then
-    /// delegates to `inner`.
+    /// A client whose forecast requests block until the test releases them,
+    /// then delegate to `inner`. Other sources' requests go straight through,
+    /// so one release lets one refresh finish.
     struct GatedClient {
         inner: StaticClient,
         entered: Mutex<mpsc::Sender<()>>,
@@ -610,8 +696,10 @@ mod tests {
 
     impl HttpClient for GatedClient {
         fn send(&self, request: &Request) -> Result<Response, NetError> {
-            let _ = lock(&self.entered).send(());
-            let _ = lock(&self.release).recv();
+            if request.url.contains("/v1/forecast") {
+                let _ = lock(&self.entered).send(());
+                let _ = lock(&self.release).recv();
+            }
             self.inner.send(request)
         }
     }
@@ -971,6 +1059,208 @@ mod tests {
         assert_eq!(restored.len(), 2);
     }
 
+    const AIR: &str = include_str!("fixtures/air_quality_edinburgh.json");
+    const NO_POLLEN: &str = include_str!("fixtures/air_quality_new_york.json");
+
+    fn air_url(place: &Place) -> String {
+        use crate::weather::sources::{open_meteo_air_quality as aq, Source};
+        aq::OpenMeteoAirQuality {
+            base: aq::DEFAULT_AIR_QUALITY_BASE.into(),
+        }
+        .request(place.coordinate)
+        .url
+    }
+
+    fn pollen_url(place: &Place) -> String {
+        use crate::weather::sources::{open_meteo_air_quality as aq, Source};
+        aq::OpenMeteoPollen {
+            base: aq::DEFAULT_AIR_QUALITY_BASE.into(),
+        }
+        .request(place.coordinate)
+        .url
+    }
+
+    fn every_source(
+        forecast: Result<Response, NetError>,
+        air: Result<Response, NetError>,
+        pollen: Result<Response, NetError>,
+    ) -> StaticClient {
+        StaticClient::new()
+            .route(Method::Get, forecast_url(&paris()), forecast)
+            .route(Method::Get, air_url(&paris()), air)
+            .route(Method::Get, pollen_url(&paris()), pollen)
+    }
+
+    fn offline() -> NetError {
+        NetError::Offline {
+            reason: "no route".into(),
+        }
+    }
+
+    #[test]
+    fn several_sources_make_one_report_and_it_is_cached() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = every_source(
+            Ok(Response::new(200, FORECAST)),
+            Ok(Response::new(200, AIR)),
+            Ok(Response::new(200, AIR)),
+        );
+        let app = app(client, Some(dir.path()));
+        let report = block_on(app.refresh(paris()).unwrap().result()).unwrap();
+        assert_eq!(report.freshness, Freshness::Live);
+        assert_eq!(report.air_quality.state, SectionState::Live);
+        assert_eq!(report.air_quality.hours.len(), 5);
+        assert_eq!(report.pollen.state, SectionState::Live);
+        assert_eq!(report.pollen.hours.len(), 4);
+        assert_eq!(report.forecast_source.id, "open-meteo");
+        assert_eq!(
+            report.air_quality.source.as_ref().map(|s| s.id.as_str()),
+            Some("open-meteo-air-quality")
+        );
+
+        drop(app);
+        let restored = self::app(NoopClientForTests, Some(dir.path()))
+            .cached_report()
+            .unwrap();
+        assert_eq!(restored.air_quality.hours, report.air_quality.hours);
+        assert!(matches!(
+            restored.pollen.state,
+            SectionState::Cached { problem: None, .. }
+        ));
+    }
+
+    #[test]
+    fn a_failed_secondary_source_never_costs_the_rest() {
+        let client = every_source(
+            Ok(Response::new(200, FORECAST)),
+            Ok(Response::new(503, "{}")),
+            Ok(Response::new(200, NO_POLLEN)),
+        );
+        let report = block_on(app(client, None).refresh(paris()).unwrap().result()).unwrap();
+        assert_eq!(report.freshness, Freshness::Live);
+        assert_eq!(report.daily.len(), 7, "the forecast arrived");
+        assert_eq!(
+            report.air_quality.state,
+            SectionState::Unavailable {
+                problem: Some(FetchProblem::ServerError { status: 503 })
+            }
+        );
+        assert!(report.air_quality.hours.is_empty());
+        assert_eq!(
+            report.pollen.state,
+            SectionState::NotAvailableHere,
+            "no pollen model here: said so, not zero"
+        );
+    }
+
+    #[test]
+    fn a_failed_section_keeps_what_an_earlier_refresh_fetched() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = every_source(
+            Ok(Response::new(200, FORECAST)),
+            Ok(Response::new(200, AIR)),
+            Ok(Response::new(200, AIR)),
+        );
+        drop(block_on(
+            app(first, Some(dir.path()))
+                .refresh(paris())
+                .unwrap()
+                .result(),
+        ));
+        let second = every_source(
+            Ok(Response::new(200, FORECAST)),
+            Err(NetError::Timeout),
+            Ok(Response::new(200, AIR)),
+        );
+        let report = block_on(
+            app(second, Some(dir.path()))
+                .refresh(paris())
+                .unwrap()
+                .result(),
+        )
+        .unwrap();
+        assert!(matches!(
+            report.air_quality.state,
+            SectionState::Cached {
+                problem: Some(FetchProblem::TimedOut),
+                ..
+            }
+        ));
+        assert_eq!(report.air_quality.hours.len(), 5);
+        assert_eq!(report.pollen.state, SectionState::Live);
+    }
+
+    #[test]
+    fn an_offline_forecast_still_takes_the_sections_that_arrived() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = every_source(
+            Ok(Response::new(200, FORECAST)),
+            Err(offline()),
+            Err(offline()),
+        );
+        drop(block_on(
+            app(first, Some(dir.path()))
+                .refresh(paris())
+                .unwrap()
+                .result(),
+        ));
+        let second = every_source(Err(offline()), Ok(Response::new(200, AIR)), Err(offline()));
+        let app = app(second, Some(dir.path()));
+        let report = block_on(app.refresh(paris()).unwrap().result()).unwrap();
+        assert!(matches!(
+            report.freshness,
+            Freshness::Cached {
+                problem: Some(FetchProblem::Offline),
+                ..
+            }
+        ));
+        assert_eq!(report.air_quality.state, SectionState::Live);
+        assert_eq!(
+            report.pollen.state,
+            SectionState::Unavailable {
+                problem: Some(FetchProblem::Offline)
+            }
+        );
+        // The new air quality was kept.
+        assert_eq!(app.cached_report().unwrap().air_quality.hours.len(), 5);
+    }
+
+    #[test]
+    fn a_schema_2_cache_is_read_with_its_sections_never_fetched() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = StaticClient::new().route(
+            Method::Get,
+            forecast_url(&paris()),
+            Ok(Response::new(200, FORECAST)),
+        );
+        let report = block_on(app(client, None).refresh(paris()).unwrap().result()).unwrap();
+        let mut json = serde_json::to_value(&report).unwrap();
+        let object = json.as_object_mut().unwrap();
+        for field in ["forecast_source", "air_quality", "pollen"] {
+            object.remove(field);
+        }
+        for field in [
+            "dew_point_c",
+            "pressure_msl_hpa",
+            "visibility_m",
+            "cloud_cover_pct",
+            "uv_index",
+        ] {
+            object["current"].as_object_mut().unwrap().remove(field);
+        }
+        let v2 = serde_json::json!({"schema_version": 2, "reports": [json]});
+        std::fs::write(dir.path().join(CACHE_FILENAME), v2.to_string()).unwrap();
+        let cached = app(StaticClient::new(), Some(dir.path()))
+            .cached_report()
+            .unwrap();
+        assert_eq!(cached.forecast_source.id, "open-meteo");
+        assert_eq!(
+            cached.air_quality.state,
+            SectionState::Unavailable { problem: None }
+        );
+        assert_eq!(cached.current.dew_point_c, None);
+    }
+
     #[test]
     fn a_schema_1_cache_is_still_read() {
         let dir = tempfile::tempdir().unwrap();
@@ -1065,6 +1355,7 @@ mod tests {
             dir.path().display().to_string(),
             WeatherConfig {
                 forecast_base_url: Some("http://127.0.0.1:9".into()),
+                air_quality_base_url: Some("http://127.0.0.1:9".into()),
                 request_timeout_ms: Some(2_000),
                 ..Default::default()
             },

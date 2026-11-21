@@ -667,6 +667,11 @@ RustBuffer uniffi_relay_core_fn_method_relaycore_servers(uint64_t ptr, RustCallS
 uint64_t uniffi_relay_core_fn_method_relaycore_set_connection_mode(uint64_t ptr, RustBuffer mode
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_INTRODUCES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_INTRODUCES
+uint64_t uniffi_relay_core_fn_method_relaycore_set_introduces(uint64_t ptr, RustBuffer endpoint_id, int8_t on
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_MAY_ASK
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_MAY_ASK
 uint64_t uniffi_relay_core_fn_method_relaycore_set_may_ask(uint64_t ptr, RustBuffer endpoint_id, int8_t on
@@ -687,6 +692,11 @@ void uniffi_relay_core_fn_method_relaycore_set_phase(uint64_t ptr, RustBuffer ph
 uint64_t uniffi_relay_core_fn_method_relaycore_set_receives_from(uint64_t ptr, RustBuffer endpoint_id, int8_t on
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_SEES_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_SEES_DEVICES
+uint64_t uniffi_relay_core_fn_method_relaycore_set_sees_devices(uint64_t ptr, RustBuffer endpoint_id, int8_t on
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_SERVERS
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_SERVERS
 uint64_t uniffi_relay_core_fn_method_relaycore_set_servers(uint64_t ptr, RustBuffer servers
@@ -695,6 +705,11 @@ uint64_t uniffi_relay_core_fn_method_relaycore_set_servers(uint64_t ptr, RustBuf
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SHUTDOWN
 void uniffi_relay_core_fn_method_relaycore_shutdown(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SYNC_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SYNC_DEVICES
+uint64_t uniffi_relay_core_fn_method_relaycore_sync_devices(uint64_t ptr, RustBuffer endpoint_id
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_TRANSFERS
@@ -2100,6 +2115,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_set_connection_mode(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_INTRODUCES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_INTRODUCES
+uint16_t uniffi_relay_core_checksum_method_relaycore_set_introduces(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_MAY_ASK
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_MAY_ASK
 uint16_t uniffi_relay_core_checksum_method_relaycore_set_may_ask(void
@@ -2124,6 +2145,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_set_receives_from(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_SEES_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_SEES_DEVICES
+uint16_t uniffi_relay_core_checksum_method_relaycore_set_sees_devices(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_SERVERS
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_SERVERS
 uint16_t uniffi_relay_core_checksum_method_relaycore_set_servers(void
@@ -2133,6 +2160,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_set_servers(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SHUTDOWN
 uint16_t uniffi_relay_core_checksum_method_relaycore_shutdown(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SYNC_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SYNC_DEVICES
+uint16_t uniffi_relay_core_checksum_method_relaycore_sync_devices(void
     
 );
 #endif

@@ -46,6 +46,15 @@ pub enum WeatherError {
     /// Another Weather core already has this data folder open.
     #[error("the weather data is open elsewhere")]
     InUse,
+    // Saved data (saved places).
+    /// The saved data can't be read. It is left as it is; nothing is
+    /// written over it until the person chooses to start again.
+    #[error("saved data can't be read: {reason}")]
+    SavedDataUnreadable { reason: String },
+    /// The saved data was written by a newer version of the app. It is
+    /// never written over.
+    #[error("saved data is from a newer version (schema {found}, this build reads {supported})")]
+    SavedDataNewer { found: u32, supported: u32 },
     // Internal. A bug, not an expected condition.
     #[error("internal failure: {reason}")]
     Internal { reason: String },
@@ -99,6 +108,8 @@ pub fn weather_error_kind(error: WeatherError) -> ErrorKind {
         WeatherError::LocationUnavailable { .. } => ErrorKind::Unavailable,
         WeatherError::Cancelled => ErrorKind::Cancelled,
         WeatherError::ShutDown => ErrorKind::ShutDown,
+        WeatherError::SavedDataUnreadable { .. } => ErrorKind::Corrupt,
+        WeatherError::SavedDataNewer { .. } => ErrorKind::NewerData,
         WeatherError::Internal { .. } => ErrorKind::Internal,
     }
 }
@@ -110,6 +121,17 @@ impl From<Stopped> for WeatherError {
         match stopped.kind {
             ErrorKind::ShutDown => Self::ShutDown,
             _ => Self::Cancelled,
+        }
+    }
+}
+
+impl From<forge_app::DocumentError> for WeatherError {
+    fn from(error: forge_app::DocumentError) -> Self {
+        use forge_app::DocumentError;
+        match error {
+            DocumentError::Unreadable { reason } => Self::SavedDataUnreadable { reason },
+            DocumentError::Newer { found, supported } => Self::SavedDataNewer { found, supported },
+            DocumentError::Io { reason } => Self::Internal { reason },
         }
     }
 }

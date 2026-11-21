@@ -112,6 +112,16 @@ pub(crate) enum DeviceMsg {
     Failed { error: AiError },
     /// The asker wants no more of the answer: stop the model.
     Stop,
+    /// Instead of an item: "which devices do you trust?" (My Devices,
+    /// step 1). Answered with `DeviceList` only to a device the person let
+    /// see them; `Refused` otherwise.
+    DevicesAsk,
+    /// The devices this one trusts (endpoint id, name) and has revoked,
+    /// without the asker.
+    DeviceList {
+        trusted: Vec<(String, String)>,
+        revoked: Vec<String>,
+    },
 }
 
 impl DeviceMsg {
@@ -173,6 +183,10 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn my_name(&self) -> String;
     /// What this device says about itself, for a `StatusAsk`.
     fn status(&self) -> StatusReport;
+    /// The devices trusted and revoked here, for `asker` (`DevicesAsk`).
+    fn device_list(&self, _asker: &str) -> crate::trust::DeviceList {
+        crate::trust::DeviceList::default()
+    }
     /// A trusted connection from `from` got past Hello: it was reached.
     fn reached(&self, from: &str);
     /// A trusted device said where it can be reached, and connected over
@@ -224,6 +238,7 @@ impl DeviceInbound for TrustsAll {
         Some(Rights {
             receives_from: true,
             may_ask: true,
+            sees_devices: true,
         })
     }
     fn my_name(&self) -> String {
@@ -314,6 +329,9 @@ pub(crate) struct Rights {
     /// May ask this device's AI: its own switch, off by default, never
     /// implied by trust.
     pub may_ask: bool,
+    /// May see the devices trusted here (My Devices): its own switch, off
+    /// by default.
+    pub sees_devices: bool,
 }
 
 /// The node, for the protocol handler, which is made before the node is.
@@ -507,6 +525,27 @@ impl DeviceHandler {
             DeviceMsg::Ask { request } => return self.answer_ask(send, recv, them, request).await,
             other => other,
         };
+        // The device list has its own switch: trust alone doesn't share it.
+        if item == DeviceMsg::DevicesAsk {
+            let reply = if rights.sees_devices {
+                let host = Arc::clone(&self.host);
+                let asker = them.to_string();
+                let list = tokio::task::spawn_blocking(move || host.device_list(&asker))
+                    .await
+                    .map_err(connection)?;
+                DeviceMsg::DeviceList {
+                    trusted: list.trusted,
+                    revoked: list.revoked,
+                }
+            } else {
+                DeviceMsg::Refused {
+                    reason: NOT_SHOWN.into(),
+                }
+            };
+            say(&mut send, &reply).await?;
+            send.finish().ok();
+            return Ok(());
+        }
         // Status is read-only: a device that may not send here may still ask.
         if item == DeviceMsg::StatusAsk {
             let host = Arc::clone(&self.host);
@@ -712,6 +751,7 @@ fn unsupported() -> DeviceMsg {
 /// Why a file from a device revoked while it came isn't saved.
 pub(crate) const NOT_ASKED: &str = "The other device doesn't take asks from this one";
 pub(crate) const NO_LONGER_TAKEN: &str = "Not saved: that device is no longer trusted here";
+pub(crate) const NOT_SHOWN: &str = "The other device doesn't share its devices with this one";
 
 /// Why a file that didn't arrive intact failed, on both sides.
 pub(crate) const VERIFICATION_FAILED: &str =
@@ -825,6 +865,56 @@ pub(crate) async fn ask_status(
                     .take(32)
                     .collect(),
             }),
+            DeviceMsg::Refused { reason } => Err(RelayError::Declined { reason }),
+            _ => Err(connection("unexpected answer")),
+        }
+    }
+    .await;
+    let result = not_trusted(&conn, result);
+    conn.close(0u32.into(), b"bye");
+    result
+}
+
+/// The most devices read from one introducer's list.
+const MOST_LISTED: usize = 256;
+
+/// Asks a trusted device at `to` which devices it trusts and has revoked
+/// (My Devices, step 1).
+pub(crate) async fn ask_devices(
+    node: &Node,
+    to: EndpointAddr,
+    my_name: String,
+) -> Result<crate::trust::DeviceList, RelayError> {
+    let conn = connect(node, to).await?;
+    let result = async {
+        let (mut send, mut recv) = hello(node, &conn, my_name).await?;
+        say(&mut send, &DeviceMsg::DevicesAsk).await?;
+        let answer = hear(&mut recv, STEP).await;
+        send.finish().ok();
+        match answer? {
+            DeviceMsg::DeviceList { trusted, revoked } => {
+                let id_ok = |id: &str| {
+                    !id.is_empty()
+                        && id.len() <= 128
+                        && id.chars().all(|c| c.is_ascii_alphanumeric())
+                };
+                Ok(crate::trust::DeviceList {
+                    trusted: trusted
+                        .into_iter()
+                        .filter(|(id, _)| id_ok(id))
+                        .take(MOST_LISTED)
+                        .map(|(id, name)| {
+                            let name = clean_offered_name(&name, "Unnamed device");
+                            (id, name)
+                        })
+                        .collect(),
+                    revoked: revoked
+                        .into_iter()
+                        .filter(|id| id_ok(id))
+                        .take(MOST_LISTED)
+                        .collect(),
+                })
+            }
             DeviceMsg::Refused { reason } => Err(RelayError::Declined { reason }),
             _ => Err(connection("unexpected answer")),
         }

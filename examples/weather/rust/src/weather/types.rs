@@ -5,8 +5,9 @@
 //! (some of which hold further enums). That exercises UniFFI's type mapping far
 //! harder than the Counter's single `i64`.
 //!
-//! Units are fixed (Celsius, km/h, millimetres) and encoded in field names;
-//! hosts convert for display.
+//! Stored units are fixed (Celsius, km/h, millimetres, hectopascals, metres,
+//! µg/m³, grains/m³) and encoded in field names; the person's display units
+//! are [`UnitSettings`], applied by [`crate::format_quantity`].
 
 use serde::{Deserialize, Serialize};
 
@@ -113,6 +114,17 @@ pub struct CurrentConditions {
     pub wind: Option<Wind>,
     pub condition: WeatherCondition,
     pub is_day: bool,
+    #[serde(default)]
+    pub dew_point_c: Option<f64>,
+    /// Pressure reduced to mean sea level.
+    #[serde(default)]
+    pub pressure_msl_hpa: Option<f64>,
+    #[serde(default)]
+    pub visibility_m: Option<f64>,
+    #[serde(default)]
+    pub cloud_cover_pct: Option<u8>,
+    #[serde(default)]
+    pub uv_index: Option<f64>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -171,6 +183,154 @@ pub enum Freshness {
     },
 }
 
+/// Who provided a part of a report, shown next to it. Most open data asks
+/// for this credit (CC BY 4.0, Copernicus).
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceCredit {
+    /// Stable id, e.g. "open-meteo".
+    pub id: String,
+    /// "Open-Meteo".
+    pub name: String,
+    /// The line to show, e.g. "Weather data by Open-Meteo.com (CC BY 4.0)".
+    pub credit: String,
+    pub url: String,
+}
+
+/// The state of one optional part of a report (air quality, pollen). Each
+/// part is fetched from its own source and fails or ages on its own, so a
+/// failure never takes the rest of the report with it.
+#[derive(uniffi::Enum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum SectionState {
+    /// Fetched by the refresh that returned the report.
+    Live,
+    /// Kept from an earlier refresh. `problem` is why this refresh could not
+    /// fetch it, `None` when nothing was asked (a cached report).
+    Cached {
+        age_seconds: u64,
+        problem: Option<FetchProblem>,
+    },
+    /// The source answered, and has no data for this place right now. Not
+    /// an error, and never filled in. For pollen this covers both "outside
+    /// the model's area" and "nothing forecast now" (the source sends the
+    /// same empty answer); `PollenOverview::gap` tells them apart.
+    NotAvailableHere,
+    /// There is no data to show: the fetch failed with `problem` and nothing
+    /// usable was kept, or (`None`) it was never fetched or what was fetched
+    /// no longer reaches the present. Never the same as "nothing to report".
+    Unavailable { problem: Option<FetchProblem> },
+}
+
+/// One hour of air quality. Concentrations in µg/m³; each value is `None`
+/// when the source has none for that hour.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AirQualityHour {
+    /// Local time, ISO 8601 without offset.
+    pub time: String,
+    /// European Air Quality Index (0 = clean, over 100 = extremely poor).
+    pub european_aqi: Option<u16>,
+    /// US EPA Air Quality Index (0 to 500).
+    pub us_aqi: Option<u16>,
+    pub pm2_5: Option<f64>,
+    pub pm10: Option<f64>,
+    pub ozone: Option<f64>,
+    pub nitrogen_dioxide: Option<f64>,
+    pub sulphur_dioxide: Option<f64>,
+    pub carbon_monoxide: Option<f64>,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AirQualitySection {
+    pub state: SectionState,
+    pub source: Option<SourceCredit>,
+    /// Unix seconds when the hours were fetched.
+    pub fetched_at_unix: Option<i64>,
+    /// As far ahead as the source forecasts (about 5 to 7 days), which is
+    /// shorter than the weather forecast.
+    pub hours: Vec<AirQualityHour>,
+}
+
+/// Pollen species the sources report.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PollenSpecies {
+    Alder,
+    Birch,
+    Grass,
+    Mugwort,
+    Olive,
+    Ragweed,
+}
+
+/// One hour of pollen, grains per cubic metre. A species the source has no
+/// data for at this place is left out, never reported as zero.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PollenHour {
+    pub time: String,
+    pub readings: Vec<PollenReading>,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PollenReading {
+    pub species: PollenSpecies,
+    pub grains_per_m3: f64,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PollenSection {
+    pub state: SectionState,
+    pub source: Option<SourceCredit>,
+    pub fetched_at_unix: Option<i64>,
+    pub hours: Vec<PollenHour>,
+}
+
+impl AirQualitySection {
+    pub(crate) fn never_fetched() -> Self {
+        Self {
+            state: SectionState::Unavailable { problem: None },
+            source: None,
+            fetched_at_unix: None,
+            hours: Vec::new(),
+        }
+    }
+}
+
+impl Default for AirQualitySection {
+    fn default() -> Self {
+        Self::never_fetched()
+    }
+}
+
+impl PollenSection {
+    pub(crate) fn never_fetched() -> Self {
+        Self {
+            state: SectionState::Unavailable { problem: None },
+            source: None,
+            fetched_at_unix: None,
+            hours: Vec::new(),
+        }
+    }
+}
+
+impl Default for PollenSection {
+    fn default() -> Self {
+        Self::never_fetched()
+    }
+}
+
+/// Why saved data (the saved places) could not be read. It is left
+/// exactly as it is.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SavedDataProblem {
+    /// The file is damaged. The person can start again; the old file is
+    /// kept, renamed, next to the new one.
+    Unreadable,
+    /// A newer version of the app wrote it. Updating the app opens it;
+    /// nothing is ever written over it.
+    FromNewerVersion,
+    /// The file could not be read or written (storage full, permissions).
+    /// Trying again later may work.
+    CouldNotOpen,
+}
+
 /// The full payload of one refresh.
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WeatherReport {
@@ -185,11 +345,21 @@ pub struct WeatherReport {
     pub current: CurrentConditions,
     /// The next 48 hours, starting with the current hour.
     pub hourly: Vec<HourlyPoint>,
-    /// Today and the following nine days.
+    /// Today and up to the following 15 days, as far as the source goes.
     pub daily: Vec<DailyForecast>,
-    /// Unix seconds when the data was fetched.
+    /// Unix seconds when the forecast was fetched.
     pub fetched_at_unix: i64,
+    /// How current the forecast (current, hourly, daily) is. Air quality
+    /// and pollen carry their own state.
     pub freshness: Freshness,
+    /// Who provided the forecast. Reports cached before sources were named
+    /// came from Open-Meteo.
+    #[serde(default = "crate::weather::sources::open_meteo_credit")]
+    pub forecast_source: SourceCredit,
+    #[serde(default)]
+    pub air_quality: AirQualitySection,
+    #[serde(default)]
+    pub pollen: PollenSection,
 }
 
 /// Where a refresh is. Reported by `WeatherOperation::phase`.
@@ -213,6 +383,9 @@ pub struct WeatherConfig {
     /// Default `https://geocoding-api.open-meteo.com`.
     #[uniffi(default)]
     pub geocoding_base_url: Option<String>,
+    /// Default `https://air-quality-api.open-meteo.com` (air quality and pollen).
+    #[uniffi(default)]
+    pub air_quality_base_url: Option<String>,
     /// Per-request timeout. Default 15 s.
     #[uniffi(default)]
     pub request_timeout_ms: Option<u32>,
@@ -234,11 +407,164 @@ pub enum SkyScene {
     Thunderstorm,
 }
 
-/// How the summary sentence states wind speeds.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TemperatureUnit {
+    Celsius,
+    Fahrenheit,
+}
+
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindUnit {
     KilometresPerHour,
     MilesPerHour,
+    MetresPerSecond,
+    Knots,
+}
+
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PrecipitationUnit {
+    Millimetres,
+    Inches,
+}
+
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PressureUnit {
+    Hectopascals,
+    InchesOfMercury,
+}
+
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DistanceUnit {
+    Kilometres,
+    Miles,
+}
+
+/// Which air quality index the page shows.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AirQualityScale {
+    European,
+    UnitedStates,
+}
+
+/// The person's display units. Reports always store metric values; these
+/// apply only when showing them, everywhere through [`crate::format_quantity`].
+#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnitSettings {
+    pub temperature: TemperatureUnit,
+    pub wind: WindUnit,
+    pub precipitation: PrecipitationUnit,
+    pub pressure: PressureUnit,
+    pub distance: DistanceUnit,
+    pub air_quality: AirQualityScale,
+}
+
+/// A stored value to show in the person's units.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq)]
+pub enum Quantity {
+    /// "12°" (the unit letter is left out, as weather apps do).
+    Temperature {
+        celsius: f64,
+    },
+    Speed {
+        kmh: f64,
+    },
+    Precipitation {
+        mm: f64,
+    },
+    Pressure {
+        hpa: f64,
+    },
+    Distance {
+        metres: f64,
+    },
+}
+
+/// An air quality index value placed in its band.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct AqiReading {
+    pub value: u16,
+    pub scale: AirQualityScale,
+    /// 1 (best) to 6 (worst), for colour.
+    pub level: u8,
+    /// The band's official name, e.g. "Fair" or "Unhealthy for sensitive groups".
+    pub label: String,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct AirQualityDay {
+    pub date: String,
+    /// The day's worst hour.
+    pub worst: AqiReading,
+}
+
+/// Air quality on the page: now, the days the source covers, and the state.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct AirQualityOverview {
+    pub state: SectionState,
+    pub source: Option<SourceCredit>,
+    /// This hour's index on the chosen scale, if the source has it.
+    pub index: Option<AqiReading>,
+    /// This hour's concentrations.
+    pub now: Option<AirQualityHour>,
+    /// Today onward, only days with data. Shorter than the weather forecast.
+    pub days: Vec<AirQualityDay>,
+    /// The last local hour the source covers, ISO 8601 without offset.
+    pub covers_until: Option<String>,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct PollenSpeciesNow {
+    pub species: PollenSpecies,
+    pub now_grains_per_m3: f64,
+    /// The highest hour still ahead today (including now).
+    pub today_max_grains_per_m3: f64,
+}
+
+/// Why the pollen source had nothing for a place. The source sends the
+/// same empty answer for both, so this is told apart by where the place is.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PollenGap {
+    /// The place is outside the area the pollen model covers (Europe).
+    OutsideModelArea,
+    /// The place is inside it, and the source has no pollen forecast right
+    /// now. Its documentation says pollen is forecast during the pollen
+    /// season, but the empty answer itself doesn't say why, so the page
+    /// words this neutrally.
+    NothingForecastNow,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct PollenOverview {
+    pub state: SectionState,
+    /// Set when `state` is `NotAvailableHere`.
+    pub gap: Option<PollenGap>,
+    pub source: Option<SourceCredit>,
+    /// Species the source reports here, highest today first. Empty when the
+    /// state has no data.
+    pub species: Vec<PollenSpeciesNow>,
+    pub covers_until: Option<String>,
+}
+
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MoonPhaseName {
+    NewMoon,
+    WaxingCrescent,
+    FirstQuarter,
+    WaxingGibbous,
+    FullMoon,
+    WaningGibbous,
+    LastQuarter,
+    WaningCrescent,
+}
+
+/// The moon now, computed (no source needed).
+#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq)]
+pub struct MoonPhase {
+    pub name: MoonPhaseName,
+    /// Lit fraction of the disc, 0 to 100.
+    pub illumination_pct: u8,
+    /// Through the cycle: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter.
+    pub cycle_fraction: f64,
 }
 
 /// One slot of the hourly strip: an hour, or a sunrise or sunset between
@@ -282,4 +608,11 @@ pub struct WeatherOverview {
     /// temperature bar shares one scale.
     pub range_low_c: f64,
     pub range_high_c: f64,
+    pub air_quality: AirQualityOverview,
+    pub pollen: PollenOverview,
+    pub moon: MoonPhase,
+    /// Today's daylight, when sunrise and sunset are known.
+    pub daylight_minutes: Option<u32>,
+    /// Every source on the page, forecast first, once each.
+    pub credits: Vec<SourceCredit>,
 }

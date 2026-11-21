@@ -1,11 +1,13 @@
 import Foundation
+@preconcurrency import WeatherFFI
 
 /// Display helpers. Times in a report are local to the place and come as
 /// "YYYY-MM-DDTHH:MM" strings, so they are formatted as text, never through
 /// the device's time zone.
 public enum WeatherFormat {
-    public static func temperature(_ celsius: Double) -> String {
-        "\(Int(celsius.rounded()))°"
+    /// "12°" in the person's temperature unit.
+    public static func temperature(_ celsius: Double, _ units: UnitSettings) -> String {
+        formatQuantity(quantity: .temperature(celsius: celsius), units: units)
     }
 
     /// "20:00" from "2026-11-04T20:00".
@@ -82,12 +84,14 @@ public enum WeatherFormat {
         }
     }
 
-    /// "29 km/h" or "18 mph" from km/h.
-    public static func speed(kmh: Double, unit: WindUnit) -> String {
-        switch unit {
-        case .kilometresPerHour: return "\(Int(kmh.rounded())) km/h"
-        case .milesPerHour: return "\(Int((kmh / 1.609_344).rounded())) mph"
-        }
+    /// "29 km/h", "18 mph", "8 m/s" or "16 kn" from km/h.
+    public static func speed(kmh: Double, units: UnitSettings) -> String {
+        formatQuantity(quantity: .speed(kmh: kmh), units: units)
+    }
+
+    /// The person's units for any other stored value.
+    public static func quantity(_ quantity: Quantity, _ units: UnitSettings) -> String {
+        formatQuantity(quantity: quantity, units: units)
     }
 
     /// The UV index band as the WHO names it.
@@ -108,6 +112,59 @@ public enum WeatherFormat {
         out.timeZone = TimeZone(secondsFromGMT: Int(utcOffsetSeconds))
         out.dateFormat = "HH:mm"
         return out.string(from: now)
+    }
+
+    /// Why a refresh could not fetch something, as a short phrase.
+    public static func problem(_ problem: FetchProblem) -> String {
+        switch problem {
+        case .offline: return "you're offline"
+        case .timedOut: return "the service took too long"
+        case let .serverError(status): return "the service failed (\(status))"
+        case .badResponse: return "the service sent something unexpected"
+        }
+    }
+
+    /// "3", "0.4" or "120": grains per cubic metre, without the unit.
+    public static func grains(_ value: Double) -> String {
+        value < 10 && value != value.rounded() ? String(format: "%.1f", value) : "\(Int(value.rounded()))"
+    }
+
+    public static func pollenName(_ species: PollenSpecies) -> String {
+        switch species {
+        case .alder: return "Alder"
+        case .birch: return "Birch"
+        case .grass: return "Grass"
+        case .mugwort: return "Mugwort"
+        case .olive: return "Olive"
+        case .ragweed: return "Ragweed"
+        }
+    }
+
+    public static func moonName(_ phase: MoonPhaseName) -> String {
+        switch phase {
+        case .newMoon: return "New moon"
+        case .waxingCrescent: return "Waxing crescent"
+        case .firstQuarter: return "First quarter"
+        case .waxingGibbous: return "Waxing gibbous"
+        case .fullMoon: return "Full moon"
+        case .waningGibbous: return "Waning gibbous"
+        case .lastQuarter: return "Last quarter"
+        case .waningCrescent: return "Waning crescent"
+        }
+    }
+
+    /// The SF Symbol for a moon phase.
+    public static func moonSymbol(_ phase: MoonPhaseName) -> String {
+        switch phase {
+        case .newMoon: return "moonphase.new.moon"
+        case .waxingCrescent: return "moonphase.waxing.crescent"
+        case .firstQuarter: return "moonphase.first.quarter"
+        case .waxingGibbous: return "moonphase.waxing.gibbous"
+        case .fullMoon: return "moonphase.full.moon"
+        case .waningGibbous: return "moonphase.waning.gibbous"
+        case .lastQuarter: return "moonphase.last.quarter"
+        case .waningCrescent: return "moonphase.waning.crescent"
+        }
     }
 
     private static func name(_ intensity: Intensity) -> String {
