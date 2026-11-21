@@ -15,6 +15,8 @@ import org.junit.Before
 import org.junit.Test
 import uniffi.pocket_library_core.HttpHeader
 import uniffi.pocket_library_core.HttpRequest
+import uniffi.pocket_library_core.HttpStreamBody
+import uniffi.pocket_library_core.NoHandle
 import uniffi.pocket_library_core.HttpTransportException
 
 /**
@@ -162,6 +164,14 @@ class ForgeHttpTransportTest {
     }
 
     @Test
+    fun aRequestWithABodyReturnsItsRedirect() {
+        // Its streamed body can't be sent again, so the 3xx is the answer.
+        val answer = transport.send(request("/moved", method = "POST", body = "a body".toByteArray()))
+        assertEquals(302.toUShort(), answer.status)
+        assertEquals(listOf("/moved"), paths.toList())
+    }
+
+    @Test
     fun failuresAreTyped() {
         // A port nothing listens on: refused, so offline.
         val closed = ServerSocket(0).use { it.localPort }
@@ -190,5 +200,19 @@ class ForgeHttpTransportTest {
         val early = request("/hello")
         transport.cancel(early.id)
         assertFails<HttpTransportException.Cancelled> { transport.send(early) }
+    }
+
+    @Test
+    fun cancellingAStreamBeforeItsHeadersReadsAsCancelled() {
+        // The cancel closes the connection while it waits for the status line; that failure
+        // must still read as Cancelled, not as a broken connection.
+        val stream = request("/slow")
+        Thread {
+            arrived.await(5, TimeUnit.SECONDS)
+            transport.cancel(stream.id)
+        }.start()
+        // Never used: the stream fails before it has a body.
+        val body = HttpStreamBody(NoHandle)
+        assertFails<HttpTransportException.Cancelled> { transport.openStream(stream, body) }
     }
 }

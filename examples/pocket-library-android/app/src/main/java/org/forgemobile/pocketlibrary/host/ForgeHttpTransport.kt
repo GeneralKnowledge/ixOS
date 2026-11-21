@@ -36,7 +36,8 @@ import uniffi.pocket_library_core.installNativeHttp
  * request, which then fails with `Cancelled`.
  *
  * Not the same as iOS yet: `PATCH` is refused where the platform's `HttpURLConnection` doesn't
- * take it (the JVM's; Android's does), and HTTP/3 isn't used.
+ * take it (the JVM's; Android's does), a request with a body doesn't follow redirects (its 3xx is
+ * the response), and HTTP/3 isn't used.
  */
 class ForgeHttpTransport : HttpTransport {
     private val lock = Any()
@@ -70,9 +71,7 @@ class ForgeHttpTransport : HttpTransport {
             val status = connection.responseCode
             HttpStreamHead(status.toUShort(), headers(connection))
         } catch (e: IOException) {
-            connection.disconnect()
-            finished(request.id)
-            throw failure(request.id, e)
+            throw closed(connection, request.id, e)
         }
         // The headers came within the request's timeout; a stream may then be quiet for long
         // stretches (Server-Sent Events), so its body has no idle timeout.
@@ -126,7 +125,12 @@ class ForgeHttpTransport : HttpTransport {
         val timeout = request.timeoutMs.coerceIn(1uL, Int.MAX_VALUE.toULong()).toInt()
         connection.connectTimeout = timeout
         connection.readTimeout = timeout
-        connection.instanceFollowRedirects = request.followRedirects
+        val file = request.bodyFile?.let(::File)
+        // A request with a body streams it (a file can be large), and HttpURLConnection can't
+        // resend a streamed body, so it doesn't follow that request's redirects: it returns the
+        // 3xx as the response. Requests without a body follow them as Rust asks.
+        val hasBody = file != null || request.body.isNotEmpty()
+        connection.instanceFollowRedirects = request.followRedirects && !hasBody
         connection.useCaches = false
         for (header in request.headers) connection.addRequestProperty(header.name, header.value)
 
@@ -139,7 +143,6 @@ class ForgeHttpTransport : HttpTransport {
                 System.err.println("[forge] http: requests go through HttpURLConnection")
             }
         }
-        val file = request.bodyFile?.let(::File)
         when {
             file != null -> {
                 connection.doOutput = true
@@ -166,9 +169,7 @@ class ForgeHttpTransport : HttpTransport {
                 request.body.isNotEmpty() -> connection.outputStream.use { it.write(request.body) }
             }
         } catch (e: IOException) {
-            connection.disconnect()
-            finished(request.id)
-            throw failure(request.id, e)
+            throw closed(connection, request.id, e)
         }
         return connection
     }
@@ -177,6 +178,17 @@ class ForgeHttpTransport : HttpTransport {
 
     /** Tests only: runs once a request is registered for [cancel], before it connects. */
     internal var onRegistered: ((ULong) -> Unit)? = null
+
+    /**
+     * Closes a request that failed and says why. The failure is read first: [finished] forgets
+     * that the request was cancelled.
+     */
+    private fun closed(connection: HttpURLConnection, id: ULong, e: IOException): HttpTransportException {
+        val error = failure(id, e)
+        connection.disconnect()
+        finished(id)
+        return error
+    }
 
     private fun finished(id: ULong) {
         synchronized(lock) {
