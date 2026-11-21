@@ -81,7 +81,7 @@ struct SignUpView: View {
                     .accessibilityIdentifier("signUp.create")
                 }
             }
-            .navigationTitle("Welcome to Chat")
+            .navigationTitle("Join a Chat Server")
             .toolbar {
                 // The assistant runs on the phone and needs no account.
                 if model.assistant != nil {

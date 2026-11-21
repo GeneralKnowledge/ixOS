@@ -65,7 +65,7 @@ struct SettingsView: View {
                 Text("Muted Conversations")
             } footer: {
                 Text(
-                    "Muted conversations still show unread messages, without notifications on this iPhone. Notifications arrive while Chat is open or was used recently, and when iOS lets Chat check for news in the background: there is no push service, so they can be late."
+                    "Muted conversations still show unread messages, without notifications on this iPhone. Notifications arrive while Relay is open or was used recently, and when iOS lets Relay check for news in the background: there is no push service, so they can be late."
                 )
             }
             Section {
@@ -80,8 +80,8 @@ struct SettingsView: View {
             } footer: {
                 Text(
                     model.appLockMethod == nil
-                        ? "Set a passcode on this iPhone to lock Chat."
-                        : "Chat asks when it opens and after a minute in the background, and hides its content in the app switcher."
+                        ? "Set a passcode on this iPhone to lock Relay."
+                        : "Relay asks when it opens and after a minute in the background, and hides its content in the app switcher."
                 )
             }
             if model.account != nil {
@@ -90,7 +90,7 @@ struct SettingsView: View {
                         .accessibilityIdentifier("settings.signOut")
                 } footer: {
                     Text(
-                        "Removes the account and its chats from this iPhone. Chat has no sign-in, so you can't use this account again: you'd sign up as someone new. Your sent messages stay on the server."
+                        "Removes the account and its chats from this iPhone. The chat server has no sign-in, so you can't use this account again: you'd sign up as someone new. Your sent messages stay on the server."
                     )
                 }
             }
@@ -103,7 +103,7 @@ struct SettingsView: View {
             if signedIn { joining = false }
         }
         .confirmationDialog(
-            "Sign out of Chat?", isPresented: $confirmingSignOut, titleVisibility: .visible
+            "Sign Out of the Chat Server?", isPresented: $confirmingSignOut, titleVisibility: .visible
         ) {
             Button("Sign Out", role: .destructive) { model.signOut() }
                 .accessibilityIdentifier("settings.confirmSignOut")

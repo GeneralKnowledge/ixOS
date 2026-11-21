@@ -123,33 +123,74 @@ struct PairingPolicySection: View {
 }
 
 /// Which routes reach trusted devices (Rust's `ConnectionMode`), on the
-/// Devices tab and in Settings.
+/// Devices tab and in Settings: one choice in plain words (N2). Relay's
+/// servers belong to Everywhere; their Advanced screen sets other ones.
 struct ConnectionModeSection: View {
     let mode: ConnectionMode
+    let servers: RelayServers
+    var health: ServerHealth = .off
     let choose: (ConnectionMode) -> Void
+    let chooseServers: (RelayServers) -> Void
 
     init(model: RelayModel) {
         mode = model.connectionMode
+        servers = model.servers
+        health = model.serverHealth
         choose = { mode in Task { await model.setConnectionMode(mode) } }
+        chooseServers = { servers in Task { await model.setServers(servers) } }
     }
 
-    init(mode: ConnectionMode, choose: @escaping (ConnectionMode) -> Void) {
+    init(
+        mode: ConnectionMode,
+        servers: RelayServers,
+        health: ServerHealth,
+        choose: @escaping (ConnectionMode) -> Void,
+        chooseServers: @escaping (RelayServers) -> Void
+    ) {
         self.mode = mode
+        self.servers = servers
+        self.health = health
         self.choose = choose
+        self.chooseServers = chooseServers
     }
 
     var body: some View {
         Section {
-            Picker("Reach Trusted Devices", selection: Binding(get: { mode }, set: choose)) {
-                Text("Any Route").tag(ConnectionMode.hybrid)
-                Text("Local and Private Networks").tag(ConnectionMode.private)
-                Text("Local Network Only").tag(ConnectionMode.local)
+            Picker("Reach Your Devices", selection: Binding(get: { mode }, set: choose)) {
+                Text("Everywhere").tag(ConnectionMode.hybrid)
+                Text("Private Networks").tag(ConnectionMode.private)
+                Text("This Network Only").tag(ConnectionMode.local)
             }
             .accessibilityIdentifier("devices.connectionMode")
+            if mode == .hybrid {
+                NavigationLink {
+                    RelayServersView(servers: servers, choose: chooseServers)
+                } label: {
+                    LabeledContent("Servers", value: Self.serversName(servers))
+                }
+                .accessibilityIdentifier("devices.servers")
+                if health == .unreachable {
+                    Label(
+                        "The servers can't be reached right now. Devices on the same Wi-Fi or Tailscale still can.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("devices.serversDown")
+                }
+            }
         } header: {
             Text("Connections")
         } footer: {
-            Text(RelayModel.explain(mode))
+            Text(RelayModel.explain(mode, servers: servers))
+        }
+    }
+
+    static func serversName(_ servers: RelayServers) -> String {
+        switch RelayModel.ServerChoice(servers) {
+        case .relays: "Relay's"
+        case .own: "Your Own"
+        case .none: "None"
         }
     }
 }
@@ -161,6 +202,8 @@ struct RelaySettingsSection: View {
     let core: RelayCore
     @State private var policy: PairingPolicy = .askToPair
     @State private var mode: ConnectionMode = .hybrid
+    @State private var servers = RelayServers(relayUrl: nil, lookupUrl: nil)
+    @State private var health: ServerHealth = .off
 
     var body: some View {
         PairingPolicySection(policy: policy) { chosen in
@@ -174,7 +217,7 @@ struct RelaySettingsSection: View {
             }
         }
         .onAppear { policy = core.pairingPolicy() }
-        ConnectionModeSection(mode: mode) { chosen in
+        ConnectionModeSection(mode: mode, servers: servers, health: health) { chosen in
             mode = chosen
             Task {
                 do {
@@ -183,37 +226,108 @@ struct RelaySettingsSection: View {
                     mode = core.connectionMode()
                 }
             }
+        } chooseServers: { chosen in
+            servers = chosen
+            Task {
+                do {
+                    try await core.setServers(servers: chosen)
+                } catch {
+                    servers = core.servers()
+                }
+            }
         }
-        .onAppear { mode = core.connectionMode() }
-        RelayServersSection(core: core)
+        .onAppear {
+            mode = core.connectionMode()
+            servers = core.servers()
+        }
+        // The relay can still be connecting after a change, or go down
+        // and come back: read it again while Settings is on screen.
+        .task {
+            while !Task.isCancelled {
+                health = core.serverHealth()
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
     }
 }
 
-/// Whether Relay uses its own relay and lookup server, so trusted devices
-/// find each other away from any shared network. Off until turned on.
-struct RelayServersSection: View {
-    let core: RelayCore
-    @State private var on = false
+/// Advanced, under Everywhere: Relay's servers (the default), your own
+/// relay and lookup server, or none. Applies at once (N2).
+struct RelayServersView: View {
+    let choose: (RelayServers) -> Void
+    @State private var choice: RelayModel.ServerChoice
+    @State private var relayURL: String
+    @State private var lookupURL: String
+
+    init(servers: RelayServers, choose: @escaping (RelayServers) -> Void) {
+        self.choose = choose
+        let choice = RelayModel.ServerChoice(servers)
+        _choice = State(initialValue: choice)
+        _relayURL = State(initialValue: choice == .own ? servers.relayUrl ?? "" : "")
+        _lookupURL = State(initialValue: choice == .own ? servers.lookupUrl ?? "" : "")
+    }
 
     var body: some View {
-        Section {
-            Toggle("Use Relay's Servers", isOn: Binding(get: { on }, set: { chosen in
-                on = chosen
-                Task {
-                    do {
-                        try await core.setServers(servers: chosen ? ownRelayServers() : RelayServers(relayUrl: nil, lookupUrl: nil))
-                    } catch {
-                        on = core.servers() == ownRelayServers()
-                    }
+        Form {
+            Section {
+                Picker("Servers", selection: $choice) {
+                    Text("Relay's Servers").tag(RelayModel.ServerChoice.relays)
+                    Text("Your Own Servers").tag(RelayModel.ServerChoice.own)
+                    Text("No Servers").tag(RelayModel.ServerChoice.none)
                 }
-            }))
-            .accessibilityIdentifier("settings.relayServers")
-        } footer: {
-            Text(on
-                 ? "Trusted devices can find each other from anywhere, through relay.avedeus.ovh. What they send stays encrypted end to end. Takes effect the next time Relay opens."
-                 : "Relay reaches trusted devices on local and private networks, such as Tailscale, only.")
+                .pickerStyle(.inline)
+                .labelsHidden()
+                .accessibilityIdentifier("servers.choice")
+            } footer: {
+                Text(footer)
+            }
+            if choice == .own {
+                Section("Your Own Servers") {
+                    TextField("Relay, https://…", text: $relayURL)
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("servers.relayURL")
+                    TextField("Lookup, https://…/pkarr", text: $lookupURL)
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("servers.lookupURL")
+                    Button("Use These Servers") { choose(ownServers) }
+                        .disabled(ownServers.relayUrl == nil && ownServers.lookupUrl == nil)
+                        .accessibilityIdentifier("servers.useOwn")
+                }
+            }
         }
-        .onAppear { on = core.servers() == ownRelayServers() }
+        .navigationTitle("Servers")
+        .onChange(of: choice) { _, chosen in
+            switch chosen {
+            case .relays: choose(ownRelayServers())
+            case .none: choose(RelayServers(relayUrl: nil, lookupUrl: nil))
+            case .own: break
+            }
+        }
+    }
+
+    private var ownServers: RelayServers {
+        func url(_ text: String) -> String? {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return RelayServers(relayUrl: url(relayURL), lookupUrl: url(lookupURL))
+    }
+
+    private var footer: String {
+        switch choice {
+        case .relays:
+            "relay.avedeus.ovh passes on what no direct way reaches, and lookup.avedeus.ovh tells your trusted devices where to find this one. Both see that your devices connect, never what they send."
+        case .own:
+            "A relay and lookup server you run (iroh-relay and a pkarr server). The command line sets them with relay servers."
+        case .none:
+            "Your devices reach each other only when one can connect straight to the other."
+        }
     }
 }
 

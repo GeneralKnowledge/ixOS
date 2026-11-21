@@ -301,7 +301,7 @@ struct ChatView: View {
             .alert("Microphone Access Is Off", isPresented: $microphoneDenied) {
                 microphoneAlertButtons
             } message: {
-                Text("To record voice messages, allow Chat to use the microphone in Settings.")
+                Text("To record voice messages, allow Relay to use the microphone in Settings.")
             }
     }
 
