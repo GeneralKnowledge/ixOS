@@ -123,7 +123,7 @@ fn an_older_builds_files_move_in_once() {
     older_build(dir.path());
 
     let core = open(dir.path());
-    assert_eq!(core.identity().device_id, "0011223344556677");
+    assert_eq!(core.identity().name, "laptop");
     let devices = core.devices();
     assert_eq!(devices.len(), 1);
     assert_eq!(devices[0].name, "Phone");
@@ -138,6 +138,15 @@ fn an_older_builds_files_move_in_once() {
         ("lost".to_string(), Failed),
     ];
     assert_eq!(bodies(&core), messages);
+    // The older build's random device id is retired (P4): its own messages
+    // are this device's, by the local label, not by that id.
+    let authors: Vec<String> = core
+        .device_messages(PHONE)
+        .unwrap()
+        .into_iter()
+        .map(|m| m.author_id)
+        .collect();
+    assert_eq!(authors, [PHONE, "relay:me", "relay:me"]);
     // The JSON files are kept, renamed, never read again.
     assert!(!dir.path().join("relay.json").exists());
     assert!(dir.path().join("relay.json.migrated").exists());
@@ -182,6 +191,15 @@ fn an_unreadable_record_is_set_aside_and_the_key_kept() {
     let core = open(dir.path());
     let id = block_on(core.device_service()).unwrap().endpoint_id;
     close(core);
+    // The last Arc can drop on another thread, so the connection may still
+    // be closing: SQLite then checkpoints the WAL into relay.db, which would
+    // write over the damage below. It removes the WAL once it has closed.
+    let wal = dir.path().join("relay.db-wal");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while wal.exists() {
+        assert!(Instant::now() < deadline, "relay.db didn't close");
+        std::thread::sleep(Duration::from_millis(20));
+    }
 
     // The database is damaged.
     std::fs::write(
@@ -226,7 +244,7 @@ fn an_unreadable_record_is_set_aside_and_the_key_kept() {
     assert!(core.saved_data_notice().is_some());
     block_on(core.dismiss_saved_data_notice()).unwrap();
     assert!(core.saved_data_notice().is_none());
-    assert!(!core.identity().device_id.is_empty());
+    assert!(!core.identity().name.is_empty());
     close(core);
 }
 

@@ -71,7 +71,8 @@ use relay_core::{
 const USAGE: &str = "usage: relay listen | devices | send PATH... | receive <code> | \
 send <device> (--text TEXT | PATH...) [--to host:port] | \
 messages <device> | status <device> | revoke <device> | forget <device> | \
-trust <device> | asks <device> on|off | policy [codes-only | ask | automatic] | \
+trust <device> | asks <device> on|off | introduces <device> on|off | \
+sees-devices <device> on|off | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
 connections [local | private | any] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] | \
@@ -234,12 +235,28 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 } else {
                     ""
                 };
+                let introduces = if d.trusted && d.introduces {
+                    ", introduces devices"
+                } else {
+                    ""
+                };
+                let sees = if d.trusted && d.sees_devices {
+                    ", sees your devices"
+                } else {
+                    ""
+                };
                 out += &format!(
-                    "{}  {state}{takes}{asks}  {}  {}\n",
+                    "{}  {state}{takes}{asks}{introduces}{sees}  {}  {}\n",
                     d.name,
                     where_now(&d),
                     d.endpoint_id
                 );
+                if let Some(by) = &d.introduced_by {
+                    out += &format!("  introduced by {by}\n");
+                }
+                if let Some(by) = &d.revoked_by {
+                    out += &format!("  revoked by {by}\n");
+                }
                 if let Some(route) = &d.route {
                     out += &format!("  last connected: {route}\n");
                 }
@@ -302,6 +319,78 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 .map_err(|e| e.to_string())?;
             let what = if on { "may ask" } else { "may not ask" };
             out += &format!("{}: {what} this device's AI.\n", device.name);
+            Ok(())
+        })(),
+        // My Devices, step 1: a device that introduces devices here, and
+        // one that may see the devices trusted here. Both off when trusted.
+        "introduces" | "sees-devices" => (|| {
+            let (who, on) = match rest {
+                [who, on] if on == "on" => (who, true),
+                [who, off] if off == "off" => (who, false),
+                _ => return Err(USAGE.to_string()),
+            };
+            let device = find_device(core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            let id = device.endpoint_id.clone();
+            let what = if command == "introduces" {
+                block_on(core.set_introduces(id, on)).map_err(|e| e.to_string())?;
+                if on {
+                    "introduces devices here; `relay sync` asks it now"
+                } else {
+                    "doesn't introduce devices here"
+                }
+            } else {
+                block_on(core.set_sees_devices(id, on)).map_err(|e| e.to_string())?;
+                if on {
+                    "may see the devices trusted here"
+                } else {
+                    "may not see the devices trusted here"
+                }
+            };
+            out += &format!("{}: {what}.\n", device.name);
+            Ok(())
+        })(),
+        // Asks an introducer for its devices: new ones are listed (and
+        // trusted with --accept), revoked ones are revoked here.
+        "sync" => (|| {
+            let (who, accept) = match rest {
+                [who] => (who, false),
+                [who, flag] if flag == "--accept" => (who, true),
+                _ => return Err(USAGE.to_string()),
+            };
+            let device = find_device(core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            let synced = block_on(core.sync_devices(device.endpoint_id.clone()))
+                .map_err(|e| e.to_string())?;
+            if synced.revoked > 0 {
+                out += &format!(
+                    "{} revoked here: {} revoked them.\n",
+                    synced.revoked, device.name
+                );
+            }
+            let mut offered = 0;
+            while let Some(offer) = core.trust_offer() {
+                if offer.introducer_id.as_deref() != Some(device.endpoint_id.as_str()) {
+                    break;
+                }
+                offered += 1;
+                if accept {
+                    block_on(core.trust_device(offer.endpoint_id.clone()))
+                        .map_err(|e| e.to_string())?;
+                    out += &format!("Trusted {} ({}).\n", offer.name, offer.endpoint_id);
+                } else {
+                    core.dismiss_trust_offer();
+                    out += &format!(
+                        "{} introduces {} ({}).\n",
+                        device.name, offer.name, offer.endpoint_id
+                    );
+                }
+            }
+            if offered == 0 && synced.revoked == 0 {
+                out += &format!("Nothing new from {}.\n", device.name);
+            } else if offered > 0 && !accept {
+                out += "Trust them with `relay sync <device> --accept`.\n";
+            }
             Ok(())
         })(),
         "policy" => match rest.first().map(String::as_str) {

@@ -67,7 +67,7 @@ fn listed(record: &Record) -> HashSet<String> {
 
 /// What the conversations need from `record`.
 fn moves(record: &Record) -> Vec<Move> {
-    let me = (record.name.clone(), format!("relay:{}", record.device_id));
+    let me = (record.name.clone(), crate::device_chat::ME.to_string());
     let listed = listed(record);
     let mut moves = Vec::new();
     for d in &record.deliveries {

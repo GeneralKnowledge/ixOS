@@ -4,7 +4,9 @@
 // are exposed as resource ids, so UI Automator finds them too.
 package org.forgemobile.pocketlibrary.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,8 +29,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,6 +54,11 @@ import org.forgemobile.pocketlibrary.LibraryModel
 import org.forgemobile.pocketlibrary.kit.ForgeAlert
 import org.forgemobile.pocketlibrary.kit.ForgeAlertDialog
 import org.forgemobile.pocketlibrary.kit.ForgeLoadView
+import org.forgemobile.pocketlibrary.ui.theme.Forge
+import org.forgemobile.pocketlibrary.ui.theme.ForgeAccent
+import org.forgemobile.pocketlibrary.ui.theme.ForgeTextRole
+import org.forgemobile.pocketlibrary.ui.theme.ForgeTheme
+import org.forgemobile.pocketlibrary.ui.theme.toColor
 import uniffi.pocket_library_core.Book
 
 /** The screens, as typed routes. A route survives rotation and process death. */
@@ -69,12 +74,20 @@ private data class BookRoute(val id: Long) {
     val bookId: ULong get() = id.toULong()
 }
 
+/**
+ * The app. [dark] forces an appearance (screenshot tests); by default it follows the system.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun PocketLibraryApp(model: LibraryModel) {
-    val colors = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
-    MaterialTheme(colorScheme = colors) {
-        Box(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
+fun PocketLibraryApp(model: LibraryModel, dark: Boolean = isSystemInDarkTheme()) {
+    // ForgeUI's palette with the iPhone app's accent: ForgeTheme(accent: .orange).
+    ForgeTheme(accent = ForgeAccent.ORANGE, dark = dark) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .semantics { testTagsAsResourceId = true },
+        ) {
             val opening by model.opening.collectAsState()
             ForgeLoadView(
                 opening,
@@ -128,8 +141,8 @@ private fun LibraryScreen(model: LibraryModel, onAdd: () -> Unit, onOpen: (ULong
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("No Books Yet", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("library.empty"))
-                    Text("Add a book you're reading or want to read.", style = MaterialTheme.typography.bodyMedium)
+                    Text("No Books Yet", style = Forge.text(ForgeTextRole.SECTION_TITLE), modifier = Modifier.testTag("library.empty"))
+                    Text("Add a book you're reading or want to read.", style = Forge.text(ForgeTextRole.METADATA))
                     Button(onClick = onAdd, modifier = Modifier.testTag("library.empty.add")) { Text("Add Book") }
                 }
             }
@@ -151,11 +164,11 @@ private fun BookRow(book: Book, onClick: () -> Unit) {
             .fillMaxWidth()
             .clickable(onClickLabel = "Open ${book.title}", onClick = onClick)
             .testTag("library.book.${book.id}")
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = Forge.spacing.l.dp, vertical = Forge.spacing.m.dp),
     ) {
-        Text(book.title, style = MaterialTheme.typography.titleMedium)
+        Text(book.title, style = Forge.text(ForgeTextRole.ROW_TITLE))
         if (book.author.isNotBlank()) {
-            Text(book.author, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(book.author, style = Forge.text(ForgeTextRole.METADATA))
         }
     }
 }
@@ -191,13 +204,9 @@ private fun BookDetailScreen(model: LibraryModel, id: ULong, onClose: () -> Unit
             Modifier.padding(padding).padding(16.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(book.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.testTag("bookDetail.title"))
-            if (book.author.isNotBlank()) Text(book.author, style = MaterialTheme.typography.titleMedium)
-            Text(
-                LibraryModel.statusLabel(book.status),
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.testTag("bookDetail.status"),
-            )
+            Text(book.title, style = Forge.text(ForgeTextRole.SCREEN_TITLE), modifier = Modifier.testTag("bookDetail.title"))
+            if (book.author.isNotBlank()) Text(book.author, style = Forge.text(ForgeTextRole.METADATA))
+            StatusBadge(LibraryModel.statusLabel(book.status), Modifier.testTag("bookDetail.status"))
             OutlinedButton(
                 onClick = {
                     alert = ForgeAlert.confirm(
@@ -225,6 +234,20 @@ private fun BookDetailScreen(model: LibraryModel, id: ULong, onClose: () -> Unit
             }
         }
     }
+}
+
+/** The reading status as an accent badge (ForgeBadge on iOS). */
+@Composable
+private fun StatusBadge(label: String, modifier: Modifier = Modifier) {
+    val accent = Forge.colors.accent
+    Text(
+        label,
+        style = MaterialTheme.typography.labelLarge,
+        color = accent.text.toColor(),
+        modifier = modifier
+            .background(accent.soft.compositedOver(Forge.colors.background).toColor(), RoundedCornerShape(Forge.radius.s.dp))
+            .padding(horizontal = Forge.spacing.s.dp, vertical = Forge.spacing.xs.dp),
+    )
 }
 
 @Composable

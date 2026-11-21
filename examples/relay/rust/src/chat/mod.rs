@@ -1086,8 +1086,7 @@ impl ChatCore {
     fn device_client(&self, endpoint_id: &str) -> Result<(ChatClient, String), ChatError> {
         self.ensure_running()?;
         let relay = self.relay().ok_or(ChatError::NotSignedIn)?;
-        let identity = relay.identity();
-        let user_id = format!("relay:{}", identity.device_id);
+        let user_id = crate::device_chat::ME.to_string();
         if let Some(client) = self.devices_lock().clients.get(endpoint_id) {
             return Ok((client.clone(), user_id));
         }
@@ -1109,7 +1108,7 @@ impl ChatCore {
             reason: format!("create {}: {err}", directory.display()),
         })?;
         let config = ChatConfig {
-            user: identity.name,
+            user: relay.identity().name,
             user_id: user_id.clone(),
             ..ChatConfig::default()
         };

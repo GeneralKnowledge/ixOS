@@ -212,10 +212,9 @@ impl RelayCore {
             *record = next;
             Ok(())
         };
-        if record.device_id.is_empty() {
+        if record.name.is_empty() {
             let name = model::clean_name(&device_name).unwrap_or_else(|_| "Relay".into());
             opening(&mut record, &mut |r, _| {
-                r.device_id = hex::hex(&hex::random()[..16]);
                 r.name = name.clone();
                 Ok(())
             })?;
@@ -249,6 +248,17 @@ impl RelayCore {
         // Notes become messages, once (review step 4).
         if !record.notes_are_messages {
             opening(&mut record, &mut |r, c| migrate::run(r, c))?;
+        }
+        // The endpoint id is the only device id (P4): the random id an
+        // older build made is retired, and its own messages are authored
+        // by this device's local label instead, in the same transaction.
+        if !record.device_id.is_empty() {
+            let old = format!("relay:{}", record.device_id);
+            opening(&mut record, &mut |r, c| {
+                c.reauthor_own(&old)?;
+                r.device_id.clear();
+                Ok(())
+            })?;
         }
         // A message the conversation shows queued that the outbox doesn't
         // hold (saved by a build before one transaction held both) failed,
@@ -531,7 +541,6 @@ impl RelayCore {
     pub fn identity(&self) -> Identity {
         let r = self.record.get();
         Identity {
-            device_id: r.device_id.clone(),
             name: r.name.clone(),
         }
     }
@@ -655,6 +664,16 @@ pub struct Device {
     pub receives_from: bool,
     /// Whether it may ask this device's AI (off until turned on).
     pub may_ask: bool,
+    /// Whether it introduces devices here (My Devices): the devices it
+    /// trusts are offered, and the ones it revokes are revoked here.
+    pub introduces: bool,
+    /// Whether it may see the devices trusted here, to be introduced to
+    /// them.
+    pub sees_devices: bool,
+    /// The name of the introducer that recommended it, if one did.
+    pub introduced_by: Option<String>,
+    /// The name of the introducer that revoked it, when the person didn't.
+    pub revoked_by: Option<String>,
     /// Whether the app sees it on this network now.
     pub nearby: bool,
     /// Nearby, reachable (a trusted connection worked in the last few
@@ -688,6 +707,20 @@ pub struct TrustOffer {
     pub endpoint_id: String,
     /// What it calls itself: not proof of anything.
     pub name: String,
+    /// The name of the trusted device that introduced it (My Devices), when
+    /// the offer comes from an introducer rather than a code transfer.
+    pub introduced_by: Option<String>,
+    /// That introducer's endpoint id.
+    pub introducer_id: Option<String>,
+}
+
+/// What one introducer's list did here (My Devices, step 1).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct DevicesSynced {
+    /// Devices it trusts that were offered to the person.
+    pub offered: u32,
+    /// Devices it revoked that were revoked here.
+    pub revoked: u32,
 }
 
 /// A trusted device the app found nearby with Bonjour.
@@ -721,6 +754,7 @@ impl RelayCore {
         let node = self.node().await?;
         self.watch_network(&node);
         self.deliver_waiting();
+        self.sync_introducers();
         Ok(DeviceService {
             endpoint_id: node.id().to_string(),
             port: node.port()?,
@@ -743,6 +777,13 @@ impl RelayCore {
         let reached = lock(&self.reached).clone();
         let now = now_ms();
         let record = self.record.get();
+        let name_of = |id: &str| {
+            record
+                .devices
+                .get(id)
+                .map(|d| d.name.clone())
+                .unwrap_or_else(|| "a device no longer listed".into())
+        };
         let mut list: Vec<Device> = record
             .devices
             .listed()
@@ -760,6 +801,10 @@ impl RelayCore {
                     since_ms: d.since_ms,
                     receives_from: d.receives_from,
                     may_ask: d.may_ask,
+                    introduces: d.introduces,
+                    sees_devices: d.sees_devices,
+                    introduced_by: d.introduced_by.as_deref().map(name_of),
+                    revoked_by: d.revoked_by.as_deref().map(name_of),
                     nearby: is_nearby,
                     presence: if trusted {
                         presence::presence(is_nearby, last_seen_ms, now)
@@ -809,6 +854,9 @@ impl RelayCore {
             })
             .await
             .unwrap_or_else(|e| Err(code::connection(e)))?;
+        if saved.introduces {
+            self.sync_later(endpoint_id.clone());
+        }
         let id = endpoint_id.clone();
         self.rt
             .command("device-status", move |state| {
@@ -944,6 +992,7 @@ impl RelayCore {
             let at = offers.iter().position(|o| o.endpoint_id == endpoint_id);
             at.and_then(|at| offers.remove(at))
         };
+        let introducer = offered.as_ref().and_then(|o| o.introducer_id.clone());
         let name = match offered {
             Some(o) => o.name,
             None => match self.record.get().devices.get(&endpoint_id) {
@@ -961,7 +1010,12 @@ impl RelayCore {
         self.rt
             .command("trust-device", move |state| {
                 state.change(|r| {
-                    r.devices.trust(&endpoint_id, &name, now_ms());
+                    match &introducer {
+                        Some(by) => r
+                            .devices
+                            .trust_introduced(&endpoint_id, &name, by, now_ms()),
+                        None => r.devices.trust(&endpoint_id, &name, now_ms()),
+                    }
                     Ok(())
                 })
             })
@@ -1027,6 +1081,116 @@ impl RelayCore {
 
     /// Whether a trusted device may ask this device's AI. Off when a
     /// device is trusted; trust never turns it on.
+    /// Whether `endpoint_id` introduces devices here (My Devices, step 1):
+    /// the devices it trusts are offered to the person, and the ones it
+    /// revokes are revoked here, marked with its name. Turning it on asks
+    /// for its list at once when it can be reached.
+    pub async fn set_introduces(&self, endpoint_id: String, on: bool) -> Result<(), RelayError> {
+        let id = endpoint_id.clone();
+        self.rt
+            .command("introduces", move |state| {
+                state.change(|r| {
+                    if r.devices.set_introduces(&id, on) {
+                        Ok(())
+                    } else {
+                        Err(RelayError::UnknownPeer { id })
+                    }
+                })
+            })
+            .await?;
+        if on {
+            self.sync_later(endpoint_id);
+        }
+        Ok(())
+    }
+
+    /// Whether `endpoint_id` may see the devices trusted here, so this
+    /// device can introduce them to it. Off until the person turns it on.
+    pub async fn set_sees_devices(&self, endpoint_id: String, on: bool) -> Result<(), RelayError> {
+        self.rt
+            .command("sees-devices", move |state| {
+                state.change(|r| {
+                    if r.devices.set_sees_devices(&endpoint_id, on) {
+                        Ok(())
+                    } else {
+                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                    }
+                })
+            })
+            .await
+    }
+
+    /// Asks `endpoint_id`, a device that introduces devices here, which
+    /// devices it trusts and has revoked, and applies the answer: new ones
+    /// are offered (the person decides), revoked ones are revoked here.
+    pub async fn sync_devices(&self, endpoint_id: String) -> Result<DevicesSynced, RelayError> {
+        let saved = self
+            .record
+            .get()
+            .devices
+            .get(&endpoint_id)
+            .filter(|d| d.trust == SavedTrust::Trusted)
+            .cloned()
+            .ok_or_else(|| RelayError::UnknownPeer {
+                id: endpoint_id.clone(),
+            })?;
+        if !saved.introduces {
+            return Err(RelayError::Declined {
+                reason: format!("{} isn't set to introduce devices here", saved.name),
+            });
+        }
+        let Some((addr, _)) = self.dial(&saved) else {
+            return Err(RelayError::Unreachable {
+                reason: self.problem_of(&endpoint_id).unwrap_or_default(),
+            });
+        };
+        let node = Arc::clone(&self.node);
+        let my_name = self.identity().name;
+        let (list, me) = code::TOKIO
+            .spawn(async move {
+                let node = node.get().await?;
+                let me = node.id().to_string();
+                device::ask_devices(&node, addr, my_name)
+                    .await
+                    .map(|list| (list, me))
+            })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)))?;
+        let offers = self.trust_offers.clone();
+        let introducer = endpoint_id.clone();
+        let done = self
+            .rt
+            .command("sync-devices", move |state| {
+                let done = state.change(|r| Ok(r.devices.introduced(&introducer, &me, &list)))?;
+                // Set within the command, so the change the app hears
+                // about already carries the offers.
+                let mut waiting = lock(&offers);
+                for (id, name) in &done.offers {
+                    offer(
+                        &mut waiting,
+                        TrustOffer {
+                            endpoint_id: id.clone(),
+                            name: name.clone(),
+                            introduced_by: Some(saved.name.clone()),
+                            introducer_id: Some(introducer.clone()),
+                        },
+                    );
+                }
+                Ok::<_, RelayError>(done)
+            })
+            .await?;
+        for id in &done.revoked {
+            lock(&self.nearby).remove(id);
+            lock(&self.reached).remove(id);
+            // What waited for it ends: No longer trusted.
+            self.wake(id);
+        }
+        Ok(DevicesSynced {
+            offered: done.offers.len() as u32,
+            revoked: done.revoked.len() as u32,
+        })
+    }
+
     pub async fn set_may_ask(&self, endpoint_id: String, on: bool) -> Result<(), RelayError> {
         self.rt
             .command("may-ask", move |state| {
@@ -1111,7 +1275,7 @@ impl RelayCore {
         let message = chat_core::Message {
             id: device_chat::files_message_id(&delivery),
             author: me.name,
-            author_id: format!("relay:{}", me.device_id),
+            author_id: device_chat::ME.into(),
             attachments: vec![attachment],
             status: chat_core::MessageStatus::Queued,
             ..chat_core::Message::default()
@@ -1271,13 +1435,48 @@ impl RelayCore {
                 // Set within the command, so the change the app hears
                 // about already carries the offer.
                 if decided == AfterCode::Offer {
-                    offer(&mut lock(&offers), TrustOffer { endpoint_id, name });
+                    offer(
+                        &mut lock(&offers),
+                        TrustOffer {
+                            endpoint_id,
+                            name,
+                            introduced_by: None,
+                            introducer_id: None,
+                        },
+                    );
                 }
                 Ok(decided)
             })
             .await;
         if let Err(err) = decided {
             forge_runtime::logging::warn!("relay couldn't apply the pairing policy: {err}")
+        }
+    }
+
+    /// Asks the introducer `endpoint_id` for its list in the background;
+    /// a failure is only logged (the next open, or Ask Again, tries again).
+    fn sync_later(&self, endpoint_id: String) {
+        let me = self.me.clone();
+        code::TOKIO.spawn(async move {
+            let Some(core) = me.upgrade() else { return };
+            if let Err(err) = core.sync_devices(endpoint_id).await {
+                forge_runtime::logging::info!("relay: an introducer's list wasn't read: {err}");
+            }
+        });
+    }
+
+    /// Asks every device that introduces devices here for its list.
+    fn sync_introducers(&self) {
+        let introducers: Vec<String> = self
+            .record
+            .get()
+            .devices
+            .listed()
+            .filter(|d| d.trust == SavedTrust::Trusted && d.introduces)
+            .map(|d| d.endpoint_id.clone())
+            .collect();
+        for id in introducers {
+            self.sync_later(id);
         }
     }
 
@@ -1417,6 +1616,7 @@ impl device::DeviceInbound for CoreDevices {
         let rights = trust::may_connect(Some(saved.trust)).then_some(device::Rights {
             receives_from: saved.receives_from,
             may_ask: saved.may_ask,
+            sees_devices: saved.sees_devices,
         })?;
         // It is here: anything waiting for it goes now.
         core.try_now(from);
@@ -1462,6 +1662,13 @@ impl device::DeviceInbound for CoreDevices {
             report.elapsed.as_millis(),
             report.error,
         );
+    }
+
+    fn device_list(&self, asker: &str) -> trust::DeviceList {
+        self.core
+            .upgrade()
+            .map(|core| core.record.get().devices.list_for(asker))
+            .unwrap_or_default()
     }
 
     fn status(&self) -> device::StatusReport {

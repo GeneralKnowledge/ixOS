@@ -40,7 +40,7 @@ final class WeatherViewModelTests: XCTestCase {
             storageDirectory: url.path,
             configuration: WeatherConfig(
                 forecastBaseUrl: "http://127.0.0.1:9", geocodingBaseUrl: "http://127.0.0.1:9",
-                requestTimeoutMs: 5_000))
+                airQualityBaseUrl: "http://127.0.0.1:9", requestTimeoutMs: 5_000))
     }
 
     @MainActor
@@ -94,7 +94,7 @@ final class WeatherViewModelTests: XCTestCase {
         let client = try WeatherClient(
             storageDirectory: url.path,
             configuration: WeatherConfig(
-                forecastBaseUrl: base, geocodingBaseUrl: base, requestTimeoutMs: 5_000))
+                forecastBaseUrl: base, geocodingBaseUrl: base, airQualityBaseUrl: base, requestTimeoutMs: 5_000))
         let model = WeatherViewModel(
             client: client, location: FakeLocation(result: .failure(.denied)))
         await model.start()
@@ -116,6 +116,12 @@ final class WeatherViewModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
         XCTAssertFalse(model.isRefreshing)
         XCTAssertNotNil(model.selectedPage?.overview)
+        // The fixture answers the air-quality API with a forecast: it has
+        // no pollen or air quality there, which the page says rather than
+        // showing zero, and the forecast is unaffected.
+        XCTAssertEqual(model.selectedPage?.overview?.pollen.state, .notAvailableHere)
+        XCTAssertEqual(model.selectedPage?.overview?.airQuality.state, .notAvailableHere)
+        XCTAssertEqual(model.selectedPage?.overview?.credits.first?.id, "open-meteo")
         model.close()
     }
 
@@ -147,6 +153,37 @@ final class WeatherViewModelTests: XCTestCase {
         XCTAssertEqual(model.pages.map { $0.place?.name }, [nil, "Düsseldorf"], "My Location stays")
         XCTAssertEqual(client.savedPlaces.map(\.name), ["Düsseldorf"])
         XCTAssertNotNil(model.selectedPage)
+        model.close()
+    }
+
+    @MainActor
+    func testUnreadableSavedPlacesAreKeptUntilThePersonStartsANewList() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("forge-weather-vm-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let file = url.appendingPathComponent("forge-weather-saved-places.json")
+        try Data("{ damaged".utf8).write(to: file)
+        let client = try WeatherClient(
+            storageDirectory: url.path,
+            configuration: WeatherConfig(
+                forecastBaseUrl: "http://127.0.0.1:9", geocodingBaseUrl: "http://127.0.0.1:9",
+                airQualityBaseUrl: "http://127.0.0.1:9", requestTimeoutMs: 5_000))
+        let model = WeatherViewModel(client: client, location: FakeLocation(result: .failure(.denied)))
+        await model.start()
+        XCTAssertEqual(model.placesProblem, .unreadable)
+        XCTAssertThrowsError(
+            try client.save(
+                Place(
+                    name: "Prague", region: nil, country: nil, countryCode: nil,
+                    coordinate: Coordinate(latitude: 50.09, longitude: 14.42), timezone: nil,
+                    population: nil, source: .search(geocodingId: nil)))
+        ) { XCTAssertEqual($0 as? WeatherClientError, .savedDataUnreadable) }
+        XCTAssertEqual(try Data(contentsOf: file), Data("{ damaged".utf8), "never written over")
+
+        model.startNewSavedPlaces()
+        XCTAssertNil(model.placesProblem)
+        XCTAssertNil(model.placesError)
         model.close()
     }
 
@@ -198,7 +235,7 @@ final class WeatherViewModelTests: XCTestCase {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         let base = "http://127.0.0.1:\(server.port)"
-        let config = WeatherConfig(forecastBaseUrl: base, geocodingBaseUrl: base, requestTimeoutMs: 5_000)
+        let config = WeatherConfig(forecastBaseUrl: base, geocodingBaseUrl: base, airQualityBaseUrl: base, requestTimeoutMs: 5_000)
         let paris = LocationReading(
             coordinate: Coordinate(latitude: 48.86, longitude: 2.34), placeName: "Paris")
 
@@ -289,9 +326,31 @@ final class WeatherViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testUnitsAreSavedAndUsedForEveryValue() throws {
+        let client = try offlineClient()
+        let model = WeatherViewModel(
+            client: client, location: FakeLocation(result: .failure(.denied)),
+            units: defaultUnits(regionCode: "FR"))
+        XCTAssertEqual(model.format(.temperature(celsius: 0)), "0°")
+        XCTAssertEqual(model.format(.speed(kmh: 36)), "36 km/h")
+        model.setUnits(defaultUnits(regionCode: "US"))
+        XCTAssertNil(model.unitsError)
+        XCTAssertEqual(model.format(.temperature(celsius: 0)), "32°")
+        XCTAssertEqual(model.format(.speed(kmh: 36)), "22 mph")
+        XCTAssertEqual(model.format(.distance(metres: 24_140)), "15 mi")
+        // Saved in the core: a new model on it starts in the chosen units.
+        XCTAssertEqual(client.units(regionCode: "FR"), defaultUnits(regionCode: "US"))
+        let next = WeatherViewModel(client: client, location: FakeLocation(result: .failure(.denied)))
+        XCTAssertEqual(next.units, defaultUnits(regionCode: "US"))
+    }
+
+    @MainActor
     func testFormatting() {
-        XCTAssertEqual(WeatherFormat.temperature(9.6), "10°")
-        XCTAssertEqual(WeatherFormat.temperature(-0.4), "0°")
+        let metric = defaultUnits(regionCode: "FR")
+        let us = defaultUnits(regionCode: "US")
+        XCTAssertEqual(WeatherFormat.temperature(9.6, metric), "10°")
+        XCTAssertEqual(WeatherFormat.temperature(-0.4, metric), "0°")
+        XCTAssertEqual(WeatherFormat.temperature(0, us), "32°")
         XCTAssertEqual(WeatherFormat.hour("2026-11-04T20:00"), "20:00")
         XCTAssertEqual(WeatherFormat.weekday("2026-11-04", isFirst: true), "Today")
         XCTAssertEqual(WeatherFormat.compass(315), "NW")
@@ -305,8 +364,11 @@ final class WeatherViewModelTests: XCTestCase {
         XCTAssertEqual(WeatherFormat.describe(.unknown(code: 4)).text, "Unknown (code 4)")
         XCTAssertEqual(WeatherFormat.describe(.clear, isDay: false).symbol, "moon.stars.fill")
         XCTAssertEqual(WeatherFormat.describe(.mainlyClear, isDay: true).text, "Mostly sunny")
-        XCTAssertEqual(WeatherFormat.speed(kmh: 32.2, unit: .milesPerHour), "20 mph")
-        XCTAssertEqual(WeatherFormat.speed(kmh: 32.2, unit: .kilometresPerHour), "32 km/h")
+        XCTAssertEqual(WeatherFormat.speed(kmh: 32.2, units: us), "20 mph")
+        XCTAssertEqual(WeatherFormat.speed(kmh: 32.2, units: metric), "32 km/h")
+        XCTAssertEqual(WeatherFormat.quantity(.pressure(hpa: 1013.25), us), "29.92 inHg")
+        XCTAssertEqual(WeatherFormat.problem(.timedOut), "the service took too long")
+        XCTAssertEqual(WeatherFormat.moonName(.waxingGibbous), "Waxing gibbous")
         XCTAssertEqual(WeatherFormat.uvLevel(6.4), "High")
         XCTAssertTrue(WeatherFormat.isWet(.rainShowers(intensity: .light)))
         XCTAssertFalse(WeatherFormat.isWet(.overcast))

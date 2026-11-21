@@ -5236,7 +5236,13 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     /**
      * Whether a trusted device may ask this device's AI. Off when a
      * device is trusted; trust never turns it on.
+     * Whether `endpoint_id` introduces devices here (My Devices, step 1):
+     * the devices it trusts are offered to the person, and the ones it
+     * revokes are revoked here, marked with its name. Turning it on asks
+     * for its list at once when it can be reached.
      */
+    func setIntroduces(endpointId: String, on: Bool) async throws 
+    
     func setMayAsk(endpointId: String, on: Bool) async throws 
     
     func setPairingPolicy(policy: PairingPolicy) async throws 
@@ -5252,6 +5258,12 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func setReceivesFrom(endpointId: String, on: Bool) async throws 
     
     /**
+     * Whether `endpoint_id` may see the devices trusted here, so this
+     * device can introduce them to it. Off until the person turns it on.
+     */
+    func setSeesDevices(endpointId: String, on: Bool) async throws 
+    
+    /**
      * Sets Relay's servers. They are used from the next time Relay opens.
      */
     func setServers(servers: RelayServers) async throws 
@@ -5261,6 +5273,13 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * streams. Commands already accepted still finish and save.
      */
     func shutdown() 
+    
+    /**
+     * Asks `endpoint_id`, a device that introduces devices here, which
+     * devices it trusts and has revoked, and applies the answer: new ones
+     * are offered (the person decides), revoked ones are revoked here.
+     */
+    func syncDevices(endpointId: String) async throws  -> DevicesSynced
     
     /**
      * Everything sent and received, newest first, with progress for what
@@ -5887,7 +5906,27 @@ open func setConnectionMode(mode: ConnectionMode)async throws   {
     /**
      * Whether a trusted device may ask this device's AI. Off when a
      * device is trusted; trust never turns it on.
+     * Whether `endpoint_id` introduces devices here (My Devices, step 1):
+     * the devices it trusts are offered to the person, and the ones it
+     * revokes are revoked here, marked with its name. Turning it on asks
+     * for its list at once when it can be reached.
      */
+open func setIntroduces(endpointId: String, on: Bool)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_set_introduces(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterBool.lower(on)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
 open func setMayAsk(endpointId: String, on: Bool)async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -5952,6 +5991,26 @@ open func setReceivesFrom(endpointId: String, on: Bool)async throws   {
 }
     
     /**
+     * Whether `endpoint_id` may see the devices trusted here, so this
+     * device can introduce them to it. Off until the person turns it on.
+     */
+open func setSeesDevices(endpointId: String, on: Bool)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_set_sees_devices(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterBool.lower(on)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
      * Sets Relay's servers. They are used from the next time Relay opens.
      */
 open func setServers(servers: RelayServers)async throws   {
@@ -5980,6 +6039,27 @@ open func shutdown()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Asks `endpoint_id`, a device that introduces devices here, which
+     * devices it trusts and has revoked, and applies the answer: new ones
+     * are offered (the person decides), revoked ones are revoked here.
+     */
+open func syncDevices(endpointId: String)async throws  -> DevicesSynced  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_sync_devices(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeDevicesSynced_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
 }
     
     /**
@@ -8281,6 +8361,24 @@ public struct Device: Equatable, Hashable {
      */
     public var mayAsk: Bool
     /**
+     * Whether it introduces devices here (My Devices): the devices it
+     * trusts are offered, and the ones it revokes are revoked here.
+     */
+    public var introduces: Bool
+    /**
+     * Whether it may see the devices trusted here, to be introduced to
+     * them.
+     */
+    public var seesDevices: Bool
+    /**
+     * The name of the introducer that recommended it, if one did.
+     */
+    public var introducedBy: String?
+    /**
+     * The name of the introducer that revoked it, when the person didn't.
+     */
+    public var revokedBy: String?
+    /**
      * Whether the app sees it on this network now.
      */
     public var nearby: Bool
@@ -8328,6 +8426,20 @@ public struct Device: Equatable, Hashable {
          * Whether it may ask this device's AI (off until turned on).
          */mayAsk: Bool, 
         /**
+         * Whether it introduces devices here (My Devices): the devices it
+         * trusts are offered, and the ones it revokes are revoked here.
+         */introduces: Bool, 
+        /**
+         * Whether it may see the devices trusted here, to be introduced to
+         * them.
+         */seesDevices: Bool, 
+        /**
+         * The name of the introducer that recommended it, if one did.
+         */introducedBy: String?, 
+        /**
+         * The name of the introducer that revoked it, when the person didn't.
+         */revokedBy: String?, 
+        /**
          * Whether the app sees it on this network now.
          */nearby: Bool, 
         /**
@@ -8354,6 +8466,10 @@ public struct Device: Equatable, Hashable {
         self.sinceMs = sinceMs
         self.receivesFrom = receivesFrom
         self.mayAsk = mayAsk
+        self.introduces = introduces
+        self.seesDevices = seesDevices
+        self.introducedBy = introducedBy
+        self.revokedBy = revokedBy
         self.nearby = nearby
         self.presence = presence
         self.lastSeenMs = lastSeenMs
@@ -8385,6 +8501,10 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
                 sinceMs: FfiConverterInt64.read(from: &buf), 
                 receivesFrom: FfiConverterBool.read(from: &buf), 
                 mayAsk: FfiConverterBool.read(from: &buf), 
+                introduces: FfiConverterBool.read(from: &buf), 
+                seesDevices: FfiConverterBool.read(from: &buf), 
+                introducedBy: FfiConverterOptionString.read(from: &buf), 
+                revokedBy: FfiConverterOptionString.read(from: &buf), 
                 nearby: FfiConverterBool.read(from: &buf), 
                 presence: FfiConverterTypePresence.read(from: &buf), 
                 lastSeenMs: FfiConverterOptionInt64.read(from: &buf), 
@@ -8402,6 +8522,10 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
         FfiConverterInt64.write(value.sinceMs, into: &buf)
         FfiConverterBool.write(value.receivesFrom, into: &buf)
         FfiConverterBool.write(value.mayAsk, into: &buf)
+        FfiConverterBool.write(value.introduces, into: &buf)
+        FfiConverterBool.write(value.seesDevices, into: &buf)
+        FfiConverterOptionString.write(value.introducedBy, into: &buf)
+        FfiConverterOptionString.write(value.revokedBy, into: &buf)
         FfiConverterBool.write(value.nearby, into: &buf)
         FfiConverterTypePresence.write(value.presence, into: &buf)
         FfiConverterOptionInt64.write(value.lastSeenMs, into: &buf)
@@ -8495,6 +8619,75 @@ public func FfiConverterTypeDeviceService_lift(_ buf: RustBuffer) throws -> Devi
 #endif
 public func FfiConverterTypeDeviceService_lower(_ value: DeviceService) -> RustBuffer {
     return FfiConverterTypeDeviceService.lower(value)
+}
+
+
+/**
+ * What one introducer's list did here (My Devices, step 1).
+ */
+public struct DevicesSynced: Equatable, Hashable {
+    /**
+     * Devices it trusts that were offered to the person.
+     */
+    public var offered: UInt32
+    /**
+     * Devices it revoked that were revoked here.
+     */
+    public var revoked: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Devices it trusts that were offered to the person.
+         */offered: UInt32, 
+        /**
+         * Devices it revoked that were revoked here.
+         */revoked: UInt32) {
+        self.offered = offered
+        self.revoked = revoked
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DevicesSynced: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDevicesSynced: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DevicesSynced {
+        return
+            try DevicesSynced(
+                offered: FfiConverterUInt32.read(from: &buf), 
+                revoked: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DevicesSynced, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.offered, into: &buf)
+        FfiConverterUInt32.write(value.revoked, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDevicesSynced_lift(_ buf: RustBuffer) throws -> DevicesSynced {
+    return try FfiConverterTypeDevicesSynced.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDevicesSynced_lower(_ value: DevicesSynced) -> RustBuffer {
+    return FfiConverterTypeDevicesSynced.lower(value)
 }
 
 
@@ -8787,19 +8980,11 @@ public func FfiConverterTypeHttpStreamHead_lower(_ value: HttpStreamHead) -> Rus
  * This device, as other devices see it.
  */
 public struct Identity: Equatable, Hashable {
-    /**
-     * Random, made once; 32 hex characters.
-     */
-    public var deviceId: String
     public var name: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(
-        /**
-         * Random, made once; 32 hex characters.
-         */deviceId: String, name: String) {
-        self.deviceId = deviceId
+    public init(name: String) {
         self.name = name
     }
 
@@ -8819,13 +9004,11 @@ public struct FfiConverterTypeIdentity: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Identity {
         return
             try Identity(
-                deviceId: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf)
         )
     }
 
     public static func write(_ value: Identity, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.deviceId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
     }
 }
@@ -9570,15 +9753,33 @@ public struct TrustOffer: Equatable, Hashable {
      * What it calls itself: not proof of anything.
      */
     public var name: String
+    /**
+     * The name of the trusted device that introduced it (My Devices), when
+     * the offer comes from an introducer rather than a code transfer.
+     */
+    public var introducedBy: String?
+    /**
+     * That introducer's endpoint id.
+     */
+    public var introducerId: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(endpointId: String, 
         /**
          * What it calls itself: not proof of anything.
-         */name: String) {
+         */name: String, 
+        /**
+         * The name of the trusted device that introduced it (My Devices), when
+         * the offer comes from an introducer rather than a code transfer.
+         */introducedBy: String?, 
+        /**
+         * That introducer's endpoint id.
+         */introducerId: String?) {
         self.endpointId = endpointId
         self.name = name
+        self.introducedBy = introducedBy
+        self.introducerId = introducerId
     }
 
     
@@ -9598,13 +9799,17 @@ public struct FfiConverterTypeTrustOffer: FfiConverterRustBuffer {
         return
             try TrustOffer(
                 endpointId: FfiConverterString.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf)
+                name: FfiConverterString.read(from: &buf), 
+                introducedBy: FfiConverterOptionString.read(from: &buf), 
+                introducerId: FfiConverterOptionString.read(from: &buf)
         )
     }
 
     public static func write(_ value: TrustOffer, into buf: inout [UInt8]) {
         FfiConverterString.write(value.endpointId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
+        FfiConverterOptionString.write(value.introducedBy, into: &buf)
+        FfiConverterOptionString.write(value.introducerId, into: &buf)
     }
 }
 
@@ -14360,7 +14565,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_set_connection_mode() != 22027) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_set_may_ask() != 27909) {
+    if (uniffi_relay_core_checksum_method_relaycore_set_introduces() != 19564) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_set_may_ask() != 61080) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_set_pairing_policy() != 5214) {
@@ -14372,10 +14580,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_set_receives_from() != 48202) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_set_sees_devices() != 53785) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_set_servers() != 37385) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_shutdown() != 23618) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_sync_devices() != 4640) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_transfers() != 41260) {
