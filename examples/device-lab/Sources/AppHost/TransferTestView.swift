@@ -92,7 +92,7 @@ private struct TransferRowView: View {
                 .font(.subheadline)
             }
         }
-        .swipeActions {
+        .forgeRowActions {
             if row.canCancel {
                 Button("Cancel", role: .destructive) { model.cancel(row) }
                     .accessibilityIdentifier("transfers.swipeCancel")

@@ -863,6 +863,26 @@ def rule_share_file(app):
     return True, ""
 
 
+# A swipe action is hidden: someone who doesn't know to swipe, or uses
+# Voice Control or a pointer, never finds it. Rows get their actions with
+# ForgeUI's forgeRowActions, which gives the same buttons as swipe actions
+# and as a long-press menu. Seven screens in six apps were swipe-only (app
+# UI review, November 2026). A file whose rows already have a hand-made
+# `.contextMenu` twin passes.
+def rule_row_actions(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        if ".contextMenu" in code:
+            continue
+        for m in re.finditer(r"\.swipeActions\b", code):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "has swipe-only row actions; use ForgeUI's forgeRowActions (swipe and menu): " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -883,6 +903,7 @@ RULES = [
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
+    ("row-actions", "Row actions through ForgeUI's `forgeRowActions`: a swipe and a long-press menu, never swipe-only", rule_row_actions),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),

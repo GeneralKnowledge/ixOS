@@ -46,7 +46,7 @@ struct TripDetailView: View {
                     }
                     ForEach(notes) { note in
                         NoteRow(note: note)
-                            .swipeActions {
+                            .forgeRowActions {
                                 Button("Delete", systemImage: "trash", role: .destructive) {
                                     Task { await model.removeNote(note) }
                                 }

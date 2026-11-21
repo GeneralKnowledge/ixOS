@@ -331,6 +331,27 @@ Button("Export Subscriptions") { Task { exported = await model.exportSubscriptio
 
 The `share-file` [parity rule](app-parity.md) catches a `ShareLink` on a written file (`file.url`, `exportURL`).
 
+### Row actions
+
+Give a row its actions (Delete, Rename, Mark as Read) with `forgeRowActions`. The same buttons become swipe actions and the menu a long press opens, so someone who doesn't know to swipe, or uses Voice Control or a pointer, still finds them.
+
+```swift
+TripRow(trip: trip)
+    .forgeRowActions {
+        Button("Delete", systemImage: "trash", role: .destructive) { model.askToDelete(trip) }
+            .accessibilityIdentifier("trips.delete")
+    }
+
+ArticleRow(article: article)
+    .forgeRowActions {
+        Button("Mark as Read", systemImage: "checkmark.circle") { … }   // swipe from the left
+    } trailing: {
+        Button("Bookmark", systemImage: "bookmark") { … }               // swipe from the right
+    }
+```
+
+The `row-actions` [parity rule](app-parity.md) fails a file with `.swipeActions` and no `.contextMenu`.
+
 ### Visual language
 
 ForgeUI keeps the ixOS apps a recognisable family without making them identical:

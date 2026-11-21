@@ -32,7 +32,7 @@ struct TripListView: View {
                             TripRow(trip: trip)
                         }
                         .accessibilityIdentifier("trips.row")
-                        .swipeActions {
+                        .forgeRowActions {
                             Button("Delete", systemImage: "trash", role: .destructive) {
                                 model.askToDelete(trip)
                             }
