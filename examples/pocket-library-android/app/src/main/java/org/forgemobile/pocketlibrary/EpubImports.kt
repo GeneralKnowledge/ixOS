@@ -28,8 +28,10 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.forgemobile.pocketlibrary.host.ForgeEnvironment
+import org.forgemobile.pocketlibrary.host.ForgeHost
 import uniffi.pocket_library_core.Book
 import uniffi.pocket_library_core.LibraryException
 
@@ -73,6 +75,8 @@ class EpubImports(private val app: PocketLibraryApplication) {
      * empty, imports a short sample EPUB, through a job like any import.
      */
     suspend fun addSampleBook() {
+        // Only once it is open: opening a throwaway library empties its folder, imports and all.
+        app.host.status.first { it == ForgeHost.Status.Ready || it is ForgeHost.Status.Failed }
         val folder = newFolder() ?: return
         val file = File(folder, "Sample Book.epub")
         try {
@@ -90,6 +94,7 @@ class EpubImports(private val app: PocketLibraryApplication) {
 
     /** A new folder for one import, beside the open library's data; null while none is open. */
     private fun newFolder(): File? {
+        if (app.host.core == null) return null
         val env = app.host.openedEnvironment ?: return null
         return File(pendingFolder(env), UUID.randomUUID().toString())
     }
