@@ -370,7 +370,7 @@ impl RelayCore {
         text: String,
     ) -> Result<Message, RelayError> {
         let body = crate::model::clean_note(&text)?;
-        let id = crate::wire::hex(&crate::outbox::new_id());
+        let id = crate::hex::hex(&crate::outbox::new_id());
         let message = PeerMessage {
             id: id.clone(),
             body: body.clone(),

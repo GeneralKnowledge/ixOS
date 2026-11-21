@@ -49,7 +49,7 @@ bluetooth = "Device Lab shows whether Bluetooth is on. It does not connect to an
 # text for each.
 local_network = "Relay connects to your chat server and finds your paired devices and sends to them, Commonplace reads feeds, and Soundscape plays songs from your computer, on your local network."
 microphone = "Relay records voice messages for you to send."
-camera = "Relay scans another device's pairing code."
+camera = "Relay scans the QR code of a code someone sends you."
 
 [ios.signing]
 # Everything here works with a free Apple account: no paid-only entitlements.

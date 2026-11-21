@@ -115,16 +115,31 @@ fn a_device_is_found_again_without_bonjour_and_says_why_when_it_isnt() {
     let laptop_id = laptop_on(&phone).endpoint_id;
     let service = block_on(laptop.device_service()).unwrap();
     let port = service.port;
-    // What it tells devices it meets: its interfaces' addresses on its port,
-    // never loopback.
+    // What it tells devices it meets: its interfaces' addresses, never
+    // loopback. IPv4 ones are on its port; IPv6 has its own socket, so its
+    // own port (seen on a host with a global IPv6 address), one for all.
+    let addresses: Vec<std::net::SocketAddr> = service
+        .addresses
+        .iter()
+        .map(|a| a.parse().expect("an address"))
+        .collect();
     assert!(
-        service
-            .addresses
-            .iter()
-            .all(|a| a.ends_with(&format!(":{port}")) && !a.starts_with("127.")),
-        "{:?}",
-        service.addresses
+        addresses.iter().all(|a| !a.ip().is_loopback()),
+        "{addresses:?}"
     );
+    assert!(
+        addresses
+            .iter()
+            .filter(|a| a.is_ipv4())
+            .all(|a| a.port() == port),
+        "{addresses:?}"
+    );
+    let v6: std::collections::BTreeSet<u16> = addresses
+        .iter()
+        .filter(|a| a.is_ipv6())
+        .map(|a| a.port())
+        .collect();
+    assert!(v6.len() <= 1, "{addresses:?}");
 
     // Together: the phone sees the laptop with Bonjour, and a note goes.
     sees(&phone, &laptop);

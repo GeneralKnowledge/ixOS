@@ -5,67 +5,30 @@ import ForgeKit
 import Foundation
 import XCTest
 
-/// Two devices, each a real Rust core on its own temporary folder, talking
-/// over localhost: pair by code, then send a note.
+/// The screens' model, on real Rust cores in temporary folders talking
+/// over localhost where two devices are needed.
 @MainActor
 final class RelayModelTests: XCTestCase {
-    func testPairAndSendANote() async throws {
-        let hostA = makeTemporaryAppHost()
-        let hostB = makeTemporaryAppHost()
-        await hostA.start()
-        await hostB.start()
-        let a = RelayModel(core: try XCTUnwrap(hostA.core))
-        let b = RelayModel(core: try XCTUnwrap(hostB.core))
-        defer {
-            a.stopListening()
-            b.stopListening()
-        }
-
-        let port = try XCTUnwrap(a.startListening())
-        let invitation = try XCTUnwrap(a.makeInvitation(hosts: ["127.0.0.1"]))
-        let peer = try await b.pair(code: invitation.code)
-        XCTAssertEqual(peer.deviceId, a.identity.deviceId)
-        XCTAssertEqual(b.peers.count, 1)
-        XCTAssertEqual(b.feedback.kind, .success)
-
-        let sent = await b.send(note: "Hello from B", to: peer, addresses: [RelayFormat.address(host: "127.0.0.1", port: port)])
-        XCTAssertTrue(sent)
-        XCTAssertEqual(b.transfers.first.map { RelayFormat.status($0) }, "Sent")
-
-        a.reload()
-        XCTAssertEqual(a.peers.count, 1)
-        let received = try XCTUnwrap(a.transfers.first)
-        XCTAssertEqual(received.direction, .received)
-        XCTAssertEqual(RelayFormat.title(received.item), "Hello from B")
-        // The note arrived by itself: a tap on A, once.
-        XCTAssertEqual(a.feedback.kind, .success)
-        let count = a.feedback.count
-        a.reload()
-        XCTAssertEqual(a.feedback.count, count)
-    }
-
-    /// The background closes Relay's port; coming back tells the screens
-    /// to open it and advertise again, with how long the app was away. The
-    /// model follows the host's phases, so no view has to watch for them.
-    func testTheBackgroundClosesThePortAndComingBackReopens() async throws {
+    /// The background tells the screens to withdraw Relay's adverts;
+    /// coming back tells them to advertise again, with how long the app was
+    /// away. The model follows the host's phases, so no view has to watch
+    /// for them.
+    func testTheBackgroundWithdrawsAndComingBackAdvertisesAgain() async throws {
         let host = makeTemporaryAppHost()
         await host.start()
         var now = Date(timeIntervalSince1970: 1_000)
         host.clock = { now }
         let model = RelayModel(core: try XCTUnwrap(host.core))
         model.follow(host)
-        defer { model.stopListening() }
-        XCTAssertNotNil(model.startListening())
 
         host.report(.inactive)
         host.report(.background)
         XCTAssertTrue(model.isAway)
-        XCTAssertNil(model.port, "the port is closed while away")
         XCTAssertNil(host.lastResume)
 
         now += 90
         host.report(.inactive)
-        XCTAssertFalse(model.isAway, "the screens open the port and adverts again")
+        XCTAssertFalse(model.isAway, "the screens advertise again")
         XCTAssertEqual(model.returns, 1, "an open send code is advertised again")
         XCTAssertEqual(host.lastResume?.away, 90)
         host.report(.active)
@@ -75,7 +38,6 @@ final class RelayModelTests: XCTestCase {
         host.report(.inactive)
         host.report(.active)
         XCTAssertEqual(model.returns, 1)
-        XCTAssertNotNil(model.startListening())
     }
 
     /// Which haptic a new read of the history plays: received items that

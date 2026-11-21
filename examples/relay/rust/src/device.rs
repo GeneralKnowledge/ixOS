@@ -27,6 +27,8 @@ use iroh::{EndpointAddr, EndpointId};
 use iroh_blobs::{Hash, HashAndFormat};
 use serde::{Deserialize, Serialize};
 
+use forge_services::ai::{AiError, ChatRequest, LanguageModel, TextOut};
+
 use crate::code::{connection, get_within, put, CodeProgress, STEP};
 use crate::model::{RelayError, MAX_FILE_BYTES};
 use crate::node::{lock, Node};
@@ -41,9 +43,14 @@ const TICK: Duration = Duration::from_secs(2);
 const SILENCE: Duration = Duration::from_secs(30);
 /// The close code for a device that isn't trusted.
 const NOT_TRUSTED: u32 = 403;
+/// How long an asker waits for the next piece of an answer: a big model on
+/// a laptop's CPU can take minutes to read a long prompt.
+pub(crate) const ANSWER_GAP: Duration = Duration::from_secs(300);
+/// How often a waiting asker checks whether it should say stop.
+const STOP_CHECK: Duration = Duration::from_millis(100);
 
 /// Everything said on `relay/device/1`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub(crate) enum DeviceMsg {
     /// First from each side: the protocol version, the device's name and
     /// where it can be reached ("host:port", for the resolver; added in M2
@@ -92,6 +99,19 @@ pub(crate) enum DeviceMsg {
         platform: String,
         offers: Vec<String>,
     },
+    /// Instead of an item: asks this device's language model (Forge AI's
+    /// request, OpenAI chat-completions shaped). Answered with `Delta`s,
+    /// then `Answered` or `Failed`; or `Refused` when it answers no asks.
+    /// Moved here from the old TCP protocol unchanged (M1 PR 3b).
+    Ask { request: ChatRequest },
+    /// More of the answer.
+    Delta { text: String },
+    /// The answer is complete; `model` is the model that wrote it.
+    Answered { model: String },
+    /// The model gave no answer.
+    Failed { error: AiError },
+    /// The asker wants no more of the answer: stop the model.
+    Stop,
 }
 
 impl DeviceMsg {
@@ -152,6 +172,12 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     /// A trusted device said where it can be reached, and connected over
     /// `route`.
     fn met(&self, _from: &str, _addresses: Vec<String>, _route: Option<RouteKind>) {}
+    /// The model this device answers asks with, if it answers any.
+    fn model(&self) -> Option<Arc<dyn LanguageModel>> {
+        None
+    }
+    /// An ask from `from` ended (for the log).
+    fn answered(&self, _from: &str, _report: &AskReport) {}
     /// Where received files go.
     fn folder(&self) -> PathBuf;
     /// Whether the item `id` from `from` is here already: a retry whose
@@ -217,6 +243,18 @@ pub(crate) struct StatusReport {
     pub offers: Vec<String>,
 }
 
+/// How an answered ask went, for the answering side's log.
+#[derive(Clone, Debug)]
+pub struct AskReport {
+    /// The model that answered.
+    pub model: String,
+    /// How many pieces of text it wrote.
+    pub pieces: u64,
+    pub elapsed: Duration,
+    /// Why it gave no answer, if it didn't.
+    pub error: Option<String>,
+}
+
 /// What a trusted device may do here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Rights {
@@ -261,6 +299,96 @@ impl ProtocolHandler for DeviceHandler {
 }
 
 impl DeviceHandler {
+    /// Runs one ask: the model writes on a blocking thread while its text
+    /// goes out as it comes, and a listener waits for the asker's `Stop`.
+    /// If the asker hangs up, the model is stopped too.
+    async fn answer_ask(
+        &self,
+        mut send: SendStream,
+        mut recv: RecvStream,
+        them: &str,
+        request: ChatRequest,
+    ) -> Result<(), RelayError> {
+        let host = Arc::clone(&self.host);
+        let Some(model) = tokio::task::spawn_blocking(move || host.model())
+            .await
+            .map_err(connection)?
+        else {
+            let reason = "The other device doesn't answer asks".into();
+            say(&mut send, &DeviceMsg::Refused { reason }).await?;
+            send.finish().ok();
+            return Ok(());
+        };
+        let started = std::time::Instant::now();
+        let name = model.describe().id;
+        let stop = Arc::new(AtomicBool::new(false));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let pipe = Arc::new(Pipe {
+            tx,
+            stop: Arc::clone(&stop),
+        });
+        let mut worker = tokio::task::spawn_blocking(move || model.generate(request, pipe));
+        // The asker's only word now is Stop; anything else, or hanging up,
+        // stops the model too.
+        let listener = tokio::spawn({
+            let stop = Arc::clone(&stop);
+            async move {
+                let _ = hear(&mut recv, Duration::from_secs(24 * 3600)).await;
+                stop.store(true, Ordering::SeqCst);
+            }
+        });
+        let mut pieces = 0u64;
+        let mut gone = false;
+        let result = loop {
+            tokio::select! {
+                biased;
+                Some(text) = rx.recv() => {
+                    pieces += 1;
+                    if !gone && say(&mut send, &DeviceMsg::Delta { text }).await.is_err() {
+                        stop.store(true, Ordering::SeqCst);
+                        gone = true;
+                    }
+                }
+                done = &mut worker => break done,
+            }
+        };
+        listener.abort();
+        while let Ok(text) = rx.try_recv() {
+            pieces += 1;
+            if !gone && say(&mut send, &DeviceMsg::Delta { text }).await.is_err() {
+                gone = true;
+            }
+        }
+        let result = result.unwrap_or_else(|_| {
+            Err(AiError::Engine {
+                reason: "the model crashed".into(),
+            })
+        });
+        let result = match result {
+            Ok(()) if stop.load(Ordering::SeqCst) => Err(AiError::Stopped),
+            other => other,
+        };
+        self.host.answered(
+            them,
+            &AskReport {
+                model: name.clone(),
+                pieces,
+                elapsed: started.elapsed(),
+                error: result.as_ref().err().map(|e| e.to_string()),
+            },
+        );
+        if gone {
+            return Err(connection("the asker went away"));
+        }
+        let last = match result {
+            Ok(()) => DeviceMsg::Answered { model: name },
+            Err(error) => DeviceMsg::Failed { error },
+        };
+        say(&mut send, &last).await?;
+        send.finish().ok();
+        Ok(())
+    }
+
     async fn answer(
         &self,
         conn: &Connection,
@@ -299,7 +427,11 @@ impl DeviceHandler {
         )
         .await?;
         self.host.reached(them);
-        let item = hear(&mut recv, STEP).await?;
+        let item = match hear(&mut recv, STEP).await? {
+            // Any trusted device may ask, as with the old TCP pairing.
+            DeviceMsg::Ask { request } => return self.answer_ask(send, recv, them, request).await,
+            other => other,
+        };
         // Status is read-only: a device that may not send here may still ask.
         if item == DeviceMsg::StatusAsk {
             let host = Arc::clone(&self.host);
@@ -542,30 +674,9 @@ pub(crate) async fn ask_status(
     to: EndpointAddr,
     my_name: String,
 ) -> Result<StatusReport, RelayError> {
-    let conn = tokio::time::timeout(STEP, node.endpoint.connect(to, DEVICE_ALPN))
-        .await
-        .map_err(|_| RelayError::Unreachable {
-            reason: "the other device didn't answer".into(),
-        })?
-        .map_err(|e| RelayError::Unreachable {
-            reason: e.to_string(),
-        })?;
+    let conn = connect(node, to).await?;
     let result = async {
-        let (mut send, mut recv) = conn.open_bi().await.map_err(connection)?;
-        say(
-            &mut send,
-            &DeviceMsg::Hello {
-                version: VERSION,
-                name: my_name,
-                addresses: node.addresses(),
-            },
-        )
-        .await?;
-        match hear(&mut recv, STEP).await? {
-            DeviceMsg::Hello { .. } => {}
-            DeviceMsg::Refused { reason } => return Err(RelayError::Declined { reason }),
-            _ => return Err(connection("no hello")),
-        }
+        let (mut send, mut recv) = hello(node, &conn, my_name).await?;
         say(&mut send, &DeviceMsg::StatusAsk).await?;
         let answer = hear(&mut recv, STEP).await;
         send.finish().ok();
@@ -589,14 +700,124 @@ pub(crate) async fn ask_status(
         }
     }
     .await;
-    let result = match result {
-        // The listener closed the connection without a word: it doesn't
-        // trust this device.
+    let result = not_trusted(&conn, result);
+    conn.close(0u32.into(), b"bye");
+    result
+}
+
+/// Where the answering model writes: its text goes to the sending loop,
+/// and it stops when the asker says so.
+struct Pipe {
+    tx: tokio::sync::mpsc::UnboundedSender<String>,
+    stop: Arc<AtomicBool>,
+}
+
+impl TextOut for Pipe {
+    fn push(&self, delta: &str) -> bool {
+        !self.stop.load(Ordering::SeqCst) && self.tx.send(delta.to_string()).is_ok()
+    }
+
+    fn is_stopped(&self) -> bool {
+        self.stop.load(Ordering::SeqCst)
+    }
+}
+
+/// Connects to a trusted device at `to` and says Hello.
+async fn hello(
+    node: &Node,
+    conn: &Connection,
+    my_name: String,
+) -> Result<(SendStream, RecvStream), RelayError> {
+    let (mut send, mut recv) = conn.open_bi().await.map_err(connection)?;
+    say(
+        &mut send,
+        &DeviceMsg::Hello {
+            version: VERSION,
+            name: my_name,
+            addresses: node.addresses(),
+        },
+    )
+    .await?;
+    match hear(&mut recv, STEP).await? {
+        DeviceMsg::Hello { .. } => Ok((send, recv)),
+        DeviceMsg::Refused { reason } => Err(RelayError::Declined { reason }),
+        _ => Err(connection("no hello")),
+    }
+}
+
+async fn connect(node: &Node, to: EndpointAddr) -> Result<Connection, RelayError> {
+    tokio::time::timeout(STEP, node.endpoint.connect(to, DEVICE_ALPN))
+        .await
+        .map_err(|_| RelayError::Unreachable {
+            reason: "the other device didn't answer".into(),
+        })?
+        .map_err(|e| RelayError::Unreachable {
+            reason: e.to_string(),
+        })
+}
+
+/// A connection error, read again: when the listener closed without a
+/// word, it doesn't trust this device.
+fn not_trusted<T>(conn: &Connection, result: Result<T, RelayError>) -> Result<T, RelayError> {
+    match result {
         Err(RelayError::Connection { .. }) if matches!(conn.close_reason(), Some(iroh::endpoint::ConnectionError::ApplicationClosed(ref c)) if c.error_code == NOT_TRUSTED.into()) => {
             Err(RelayError::Refused)
         }
         other => other,
-    };
+    }
+}
+
+/// Asks a trusted device's model. Its text goes to `pieces` as it comes;
+/// once `stop` is set the other device is told to stop. The outer result
+/// is the connection's, the inner the model's (`Ok` with its name).
+pub(crate) async fn ask(
+    node: &Node,
+    to: EndpointAddr,
+    my_name: String,
+    request: ChatRequest,
+    pieces: std::sync::mpsc::Sender<String>,
+    stop: Arc<AtomicBool>,
+) -> Result<Result<String, AiError>, RelayError> {
+    let conn = connect(node, to).await?;
+    let result = async {
+        let (mut send, mut recv) = hello(node, &conn, my_name).await?;
+        say(&mut send, &DeviceMsg::Ask { request }).await?;
+        // Says Stop once asked to, while the loop below listens.
+        let stopper = tokio::spawn({
+            let stop = Arc::clone(&stop);
+            async move {
+                while !stop.load(Ordering::SeqCst) {
+                    tokio::time::sleep(STOP_CHECK).await;
+                }
+                let _ = say(&mut send, &DeviceMsg::Stop).await;
+                send
+            }
+        });
+        let answer = loop {
+            match hear(&mut recv, ANSWER_GAP).await {
+                Ok(DeviceMsg::Delta { text }) => {
+                    if pieces.send(text).is_err() {
+                        stop.store(true, Ordering::SeqCst);
+                    }
+                }
+                Ok(DeviceMsg::Answered { .. } | DeviceMsg::Failed { .. })
+                    if stop.load(Ordering::SeqCst) =>
+                {
+                    break Ok(Err(AiError::Stopped))
+                }
+                Ok(DeviceMsg::Answered { model }) => break Ok(Ok(model)),
+                Ok(DeviceMsg::Failed { error }) => break Ok(Err(error)),
+                Ok(DeviceMsg::Refused { reason }) => break Err(RelayError::Declined { reason }),
+                Ok(_) => break Err(connection("expected an answer")),
+                Err(_) if stop.load(Ordering::SeqCst) => break Ok(Err(AiError::Stopped)),
+                Err(err) => break Err(err),
+            }
+        };
+        stopper.abort();
+        answer
+    }
+    .await;
+    let result = not_trusted(&conn, result);
     conn.close(0u32.into(), b"bye");
     result
 }
