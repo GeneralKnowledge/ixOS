@@ -847,8 +847,12 @@ def rule_rename(app):
 # apps had their own "your file is ready" sheet or row with a ShareLink on
 # it, one tap more and each with its own words and identifiers (app UI
 # review, November 2026). A ShareLink for something already there (a link,
-# a book's details) is fine; a written file is a URL held in a variable.
+# a book's details) is fine. A static check can't see a value's type, so
+# this matches the names apps give a written file: `<name>.url` or an
+# identifier containing `URL`, unless the name says it is a link (`webURL`,
+# `siteURL`, `linkURL`, `pageURL`).
 WRITTEN_FILE_SHARE = re.compile(r"\bShareLink\(\s*item:\s*(\w+\.url|\w*URL)\b")
+LINK_NAME = re.compile(r"web|site|link|page", re.I)
 
 
 def rule_share_file(app):
@@ -857,6 +861,8 @@ def rule_share_file(app):
         text = read(path)
         code = swift_code_mask(text)
         for m in WRITTEN_FILE_SHARE.finditer(code):
+            if LINK_NAME.search(m.group(1)):
+                continue
             bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
     if bad:
         return False, "shares a written file from its own sheet or row; use ForgeUI's forgeShareFile: " + ", ".join(bad)

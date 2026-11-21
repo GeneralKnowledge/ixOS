@@ -329,7 +329,7 @@ Button("Export Subscriptions") { Task { exported = await model.exportSubscriptio
 - A `ShareLink` stays right for something already there: a link, a book's details, a log on screen.
 - A model alert on the same screen is held back while the share sheet is up (the `alerts-over-sheets` rule counts it as a sheet).
 
-The `share-file` [parity rule](app-parity.md) catches a `ShareLink` on a written file (`file.url`, `exportURL`).
+The `share-file` [parity rule](app-parity.md) catches a `ShareLink` whose item is named like a written file: `<name>.url` or an identifier containing `URL` (`exportURL`), unless the name says it is a link (`websiteURL`, `linkURL`). It can't see types, so a file under another name passes.
 
 ### Row actions
 
