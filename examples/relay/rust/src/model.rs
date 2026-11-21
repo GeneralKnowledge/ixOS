@@ -13,8 +13,6 @@ pub const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// This device, as other devices see it.
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
 pub struct Identity {
-    /// Random, made once; 32 hex characters.
-    pub device_id: String,
     pub name: String,
 }
 
