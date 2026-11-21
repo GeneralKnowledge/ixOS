@@ -65,81 +65,125 @@ struct DevicesView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if !model.trustedDevices.isEmpty {
-                    Section {
-                        ForEach(model.trustedDevices) { device in
-                            NavigationLink(value: TrustedRoute(endpointID: device.endpointId)) {
-                                TrustedDeviceRow(device: device)
-                            }
-                            .accessibilityIdentifier("devices.trusted")
+            notices(deviceList)
+            .onChange(of: anySheet) { if !anySheet { model.refreshTrustOffer() } }
+            .quickLookPreview($preview)
+            .forgeFeedback(model.feedback)
+            // Progress of what is on its way, twice a second; what waits in
+            // the outbox, every two seconds, to see it go.
+            .task(id: model.isTransferring || model.isWaiting) {
+                while model.isTransferring || model.isWaiting,
+                      (try? await Task.sleep(for: .milliseconds(model.isTransferring ? 500 : 2000))) != nil {
+                    model.reload()
+                }
+            }
+            // Presence ages: "reachable" turns "offline" a few minutes after
+            // the last connection, with nothing else changing.
+            .task {
+                while (try? await Task.sleep(for: .seconds(30))) != nil {
+                    model.refreshDevices()
+                }
+            }
+        }
+        // On the stack, not its first screen: the device screen it pushes asks
+        // to forget a device, and an alert on the root showed behind it.
+        // While a sheet is up, the sheet shows the alerts.
+        .forgeAlert(Binding(
+            get: { receivingCode || sendingCode ? nil : model.alert },
+            set: { model.alert = $0 }
+        )) { action in Task { await model.handle(action) } }
+        .onAppear(perform: open)
+        .onDisappear(perform: close)
+        // The model follows the app's phases: iOS suspends the adverts and
+        // browsing in the background anyway.
+        .onChange(of: model.isAway) { _, away in
+            if away { close() } else { open() }
+        }
+    }
+
+    /// The list, its toolbar, the code sheets and renaming, apart from
+    /// `body` so the compiler can type-check each part in time.
+    private var deviceList: some View {
+        List {
+            if !model.trustedDevices.isEmpty {
+                Section {
+                    ForEach(model.trustedDevices) { device in
+                        NavigationLink(value: TrustedRoute(endpointID: device.endpointId)) {
+                            TrustedDeviceRow(device: device)
                         }
-                    } header: {
-                        Text("Trusted Devices")
-                    } footer: {
-                        Text("“\(model.identity.name)” is open to trusted devices while Relay is on screen.")
+                        .accessibilityIdentifier("devices.trusted")
                     }
+                } header: {
+                    Text("Trusted Devices")
+                } footer: {
+                    Text("“\(model.identity.name)” is open to trusted devices while Relay is on screen.")
                 }
-                if !model.revokedDevices.isEmpty {
-                    Section("Revoked") {
-                        ForEach(model.revokedDevices) { device in
-                            RevokedDeviceRow(device: device, model: model)
-                        }
-                    }
-                }
-                if !isEmpty {
-                    PairingPolicySection(model: model)
-                    ConnectionModeSection(model: model)
-                }
-                if !model.transfers.isEmpty {
-                    Section("History") {
-                        ForEach(model.transfers) { transfer in
-                            TransferRow(transfer: transfer, model: model, preview: $preview)
-                        }
+            }
+            if !model.revokedDevices.isEmpty {
+                Section("Revoked") {
+                    ForEach(model.revokedDevices) { device in
+                        RevokedDeviceRow(device: device, model: model)
                     }
                 }
             }
-            .overlay { emptyState }
-            .navigationTitle("Relay")
-            .navigationDestination(for: TrustedRoute.self) { route in
-                TrustedDeviceView(model: model, endpointID: route.endpointID, preview: $preview)
+            if !isEmpty {
+                PairingPolicySection(model: model)
+                ConnectionModeSection(model: model)
             }
-            .toolbar {
-                // Send and Receive work with anyone on this Wi-Fi, by word
-                // code; trusted devices are reached from their own screen.
-                ToolbarItemGroup(placement: .bottomBar) {
-                    Button("Receive", systemImage: "arrow.down.circle") { receivingCode = true }
-                        .labelStyle(.titleAndIcon)
-                        .accessibilityIdentifier("relay.receive")
-                    Spacer()
-                    Button("Send", systemImage: "arrow.up.circle") { sendingCode = true }
-                        .labelStyle(.titleAndIcon)
-                        .accessibilityIdentifier("relay.send")
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Rename This Device", systemImage: "pencil") {
-                        newName = model.identity.name
-                        renaming = true
+            if !model.transfers.isEmpty {
+                Section("History") {
+                    ForEach(model.transfers) { transfer in
+                        TransferRow(transfer: transfer, model: model, preview: $preview)
                     }
-                    .accessibilityIdentifier("devices.rename")
                 }
             }
-            .sheet(isPresented: $receivingCode) {
-                ReceiveCodeSheet(model: model, network: network, preview: $preview)
+        }
+        .overlay { emptyState }
+        .navigationTitle("Relay")
+        .navigationDestination(for: TrustedRoute.self) { route in
+            TrustedDeviceView(model: model, endpointID: route.endpointID, preview: $preview)
+        }
+        .toolbar {
+            // Send and Receive work with anyone on this Wi-Fi, by word
+            // code; trusted devices are reached from their own screen.
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button("Receive", systemImage: "arrow.down.circle") { receivingCode = true }
+                    .labelStyle(.titleAndIcon)
+                    .accessibilityIdentifier("relay.receive")
+                Spacer()
+                Button("Send", systemImage: "arrow.up.circle") { sendingCode = true }
+                    .labelStyle(.titleAndIcon)
+                    .accessibilityIdentifier("relay.send")
             }
-            .sheet(isPresented: $sendingCode) {
-                SendCodeSheet(model: model, network: network)
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Rename This Device", systemImage: "pencil") {
+                    newName = model.identity.name
+                    renaming = true
+                }
+                .accessibilityIdentifier("devices.rename")
             }
-            .alert("Rename This Device", isPresented: $renaming) {
-                TextField("Name", text: $newName)
-                    .accessibilityIdentifier("rename.name")
-                Button("Rename") { rename() }
-                    .accessibilityIdentifier("rename.save")
-                Button("Cancel", role: .cancel) {}
-                    .accessibilityIdentifier("rename.cancel")
-            } message: {
-                Text("Other devices see this name.")
-            }
+        }
+        .sheet(isPresented: $receivingCode) {
+            ReceiveCodeSheet(model: model, network: network, preview: $preview)
+        }
+        .sheet(isPresented: $sendingCode) {
+            SendCodeSheet(model: model, network: network)
+        }
+        .alert("Rename This Device", isPresented: $renaming) {
+            TextField("Name", text: $newName)
+                .accessibilityIdentifier("rename.name")
+            Button("Rename") { rename() }
+                .accessibilityIdentifier("rename.save")
+            Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier("rename.cancel")
+        } message: {
+            Text("Other devices see this name.")
+        }
+    }
+
+    /// What Relay tells the person once the screen is clear.
+    private func notices(_ content: some View) -> some View {
+        content
             // "Trust this device?" after a code transfer, once no sheet is up
             // (the code sheets end first; the offer waits for them).
             .alert(
@@ -191,39 +235,6 @@ struct DevicesView: View {
             } message: { notice in
                 Text(notice)
             }
-            .onChange(of: anySheet) { if !anySheet { model.refreshTrustOffer() } }
-            .quickLookPreview($preview)
-            .forgeFeedback(model.feedback)
-            // Progress of what is on its way, twice a second; what waits in
-            // the outbox, every two seconds, to see it go.
-            .task(id: model.isTransferring || model.isWaiting) {
-                while model.isTransferring || model.isWaiting,
-                      (try? await Task.sleep(for: .milliseconds(model.isTransferring ? 500 : 2000))) != nil {
-                    model.reload()
-                }
-            }
-            // Presence ages: "reachable" turns "offline" a few minutes after
-            // the last connection, with nothing else changing.
-            .task {
-                while (try? await Task.sleep(for: .seconds(30))) != nil {
-                    model.refreshDevices()
-                }
-            }
-        }
-        // On the stack, not its first screen: the device screen it pushes asks
-        // to forget a device, and an alert on the root showed behind it.
-        // While a sheet is up, the sheet shows the alerts.
-        .forgeAlert(Binding(
-            get: { receivingCode || sendingCode ? nil : model.alert },
-            set: { model.alert = $0 }
-        )) { action in Task { await model.handle(action) } }
-        .onAppear(perform: open)
-        .onDisappear(perform: close)
-        // The model follows the app's phases: iOS suspends the adverts and
-        // browsing in the background anyway.
-        .onChange(of: model.isAway) { _, away in
-            if away { close() } else { open() }
-        }
     }
 
     private var isEmpty: Bool {
