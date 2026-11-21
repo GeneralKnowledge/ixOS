@@ -15,6 +15,7 @@ import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.Operation
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -67,7 +68,8 @@ class EpubImports(private val app: PocketLibraryApplication) {
         // document is still being copied stops waiting, and the import goes ahead.
         staging.launch {
             try {
-                enqueue(copy(app, uri, folder))
+                // Waits for WorkManager to save the job, so a failure reaches the screen.
+                enqueue(copy(app, uri, folder)).result.get()
             } catch (e: Throwable) {
                 folder.deleteRecursively()
                 result.completeExceptionally(e)
@@ -109,7 +111,7 @@ class EpubImports(private val app: PocketLibraryApplication) {
         return File(pendingFolder(env), UUID.randomUUID().toString())
     }
 
-    private fun enqueue(file: File) {
+    private fun enqueue(file: File): Operation {
         val request = OneTimeWorkRequestBuilder<EpubImportWorker>()
             .setInputData(
                 workDataOf(
@@ -125,7 +127,7 @@ class EpubImports(private val app: PocketLibraryApplication) {
                 }
             }
             .build()
-        WorkManager.getInstance(app).enqueueUniqueWork(
+        return WorkManager.getInstance(app).enqueueUniqueWork(
             "epub-import-${file.parentFile?.name}",
             ExistingWorkPolicy.KEEP,
             request,
