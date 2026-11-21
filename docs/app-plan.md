@@ -132,7 +132,7 @@ The smallest app on the runtime. It has no plan of its own yet; this is its list
 
 ### Pocket Library
 
-The reference app. Plans: [README](../examples/pocket-library/README.md), [ACCEPTANCE.md](../examples/pocket-library/ACCEPTANCE.md), and the [Android parity plan](roadmap.md#android--work-in-progress) (A1 to A8, A4 in progress).
+The reference app. Plans: [README](../examples/pocket-library/README.md), [ACCEPTANCE.md](../examples/pocket-library/ACCEPTANCE.md), and the [Android parity plan](roadmap.md#android--work-in-progress) (A1 to A8; A1 to A5 done, A6 next).
 
 1. Step 0: the P4 sitting, every requirement PL-1 to PL-10 on the iPhone, and Read Aloud's chapters and lock-screen details.
 2. **Full-text search inside books and notes**: matching passages, jumping to the place in the book, filters. Wave 5, step 1.2: the second user of full-text search after Commonplace.
@@ -174,7 +174,7 @@ Framework it touches: llama.cpp stays in Device Lab (`LlamaCppModel`) until a se
 
 ### Other tracks, summarised
 
-- **Android**: Pocket Library only, one milestone at a time; A4 (http and the catalogue) is in progress ([roadmap](roadmap.md#android--work-in-progress)).
+- **Android**: Pocket Library only, one milestone at a time; A1 to A5 are done (PL-1 to PL-10 on the emulator) and A6 (background work, settings, backups) is next ([roadmap](roadmap.md#android--work-in-progress)).
 - **Android ports**: Feeder into Commonplace, OpenTracks into FieldKit, AntennaPod into Soundscape, in that order, clean room for GPL apps ([android-ports.md](research/android-ports.md)). Their phases are folded into the app lists above.
 - **VPN app with eSIM and Travel Hub**: a separate product in the VPN repository, not part of this plan. Its native tunnel needs a paid organisation team **(paid)**.
 

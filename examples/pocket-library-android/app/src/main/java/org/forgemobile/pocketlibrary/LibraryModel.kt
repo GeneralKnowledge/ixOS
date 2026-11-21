@@ -14,10 +14,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.util.Log
+import java.io.File
 import org.forgemobile.pocketlibrary.host.ForgeCore
 import org.forgemobile.pocketlibrary.host.ForgeHost
 import org.forgemobile.pocketlibrary.kit.ForgeFailure
@@ -36,6 +39,10 @@ import uniffi.pocket_library_core.LibraryQuery
 import uniffi.pocket_library_core.LibrarySort
 import uniffi.pocket_library_core.PocketLibrary
 import uniffi.pocket_library_core.ReadingStatus
+import uniffi.pocket_library_core.ReaderChapter
+import uniffi.pocket_library_core.ReaderContents
+import uniffi.pocket_library_core.ReaderLocation
+import uniffi.pocket_library_core.writeSampleEpub
 
 /** Pocket Library's Rust core, as the host sees it. */
 class LibraryCore(val library: PocketLibrary) : ForgeCore {
@@ -216,7 +223,69 @@ class LibraryModel(
         withRustCancellation { core.importFromCatalogue(key, it) }
     }
 
+    // Reading EPUBs
+
+    /**
+     * Imports an EPUB. [path] is a file Rust can read: the screen copies the document the person
+     * picked, and may delete its copy afterwards (Rust keeps its own). A book already in the
+     * library without an EPUB gets this one, keeping its progress.
+     */
+    suspend fun importEpub(path: String): Book = run { it.importEpub(path) }
+
+    /** Opens a book's saved EPUB: its chapters and where to start. */
+    suspend fun openReader(id: ULong): ReaderContents {
+        val core = library ?: throw LibraryException.ShutDown()
+        return withContext(RUST_CALLS) { core.openReader(id) }
+    }
+
+    /** One chapter's text, from the book [openReader] opened, with its saved place the first time. */
+    suspend fun chapter(id: ULong, index: UInt): ReaderChapter {
+        val core = library ?: throw LibraryException.ShutDown()
+        return withContext(RUST_CALLS) { core.readerChapter(id, index) }
+    }
+
+    /**
+     * Saves where the reader is: a block of the chapter loaded last, which Rust keeps as an
+     * anchor. Rust moves the book's page to match, so the library and the book's screen update.
+     */
+    suspend fun saveReadingPosition(id: ULong, chapter: UInt, block: Int): Book = run {
+        it.saveReadingPosition(id, chapter, ReaderLocation(block.coerceAtLeast(0).toUInt(), 0.0))
+    }
+
+    /**
+     * Saves the reader's place as the reader closes, in the model's scope so leaving doesn't
+     * cancel it. A failure is only logged: the reader is gone, and its last regular save stands.
+     */
+    fun saveReadingPositionOnLeave(id: ULong, chapter: UInt, block: Int): Job = scope.launch {
+        try {
+            saveReadingPosition(id, chapter, block)
+        } catch (e: Exception) {
+            Log.w(TAG, "reading position not saved on leaving the reader: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * Test data only (iOS `-PocketLibrarySampleBook`): once the library is open, and only if it is
+     * empty, imports a short sample EPUB so a UI test has a book to read. [file] is a scratch
+     * path for the EPUB, deleted afterwards.
+     */
+    suspend fun addSampleBook(file: File) {
+        host.status.first { it == ForgeHost.Status.Ready || it is ForgeHost.Status.Failed }
+        val core = library ?: return
+        if (core.books(ALL_BOOKS).isNotEmpty()) return
+        try {
+            withContext(RUST_CALLS) { writeSampleEpub(file.path) }
+            importEpub(file.path)
+        } catch (e: Exception) {
+            Log.w(TAG, "sample book not added: ${e.javaClass.simpleName}")
+        } finally {
+            file.delete()
+        }
+    }
+
     companion object {
+        private const val TAG = "PocketLibrary"
+
         /**
          * Where the model awaits Rust's async calls. UniFFI resumes the Kotlin coroutine from
          * Rust's waker; on a dispatcher that resumes in place (Compose's, in UI tests) the next

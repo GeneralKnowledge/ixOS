@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -70,7 +71,7 @@ private enum class DetailAction { DELETE }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun BookDetailScreen(model: LibraryModel, id: ULong, onEdit: () -> Unit, onClose: () -> Unit) {
+internal fun BookDetailScreen(model: LibraryModel, id: ULong, onEdit: () -> Unit, onRead: () -> Unit, onClose: () -> Unit) {
     // Every book, not the filtered list: a change here may take the book out of the list.
     val books by model.all.collectAsState()
     val book = books.firstOrNull { it.id == id }
@@ -130,6 +131,7 @@ internal fun BookDetailScreen(model: LibraryModel, id: ULong, onEdit: () -> Unit
             verticalArrangement = Arrangement.spacedBy(Forge.spacing.m.dp),
         ) {
             Header(book)
+            ReadSection(book, onRead)
 
             Section("Progress")
             Progress(book, onPage = { page -> run { model.updateProgress(book.id, page) } }, onInvalid = {
@@ -194,6 +196,26 @@ internal fun BookDetailScreen(model: LibraryModel, id: ULong, onEdit: () -> Unit
                 }
             }
         }
+    }
+}
+
+/**
+ * Read or Continue Reading for a book with a saved EPUB; for an imported book from before EPUBs
+ * were kept, how to make it readable.
+ */
+@Composable
+private fun ReadSection(book: Book, onRead: () -> Unit) {
+    if (book.canRead) {
+        Button(onClick = onRead, modifier = Modifier.fillMaxWidth().testTag("bookDetail.read")) {
+            Text(if (book.readingPosition == null) "Read" else "Continue Reading")
+        }
+    } else if (book.source is BookSource.Epub) {
+        Text(
+            "Import this book's EPUB again to read it here. Your progress is kept.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("bookDetail.reimport"),
+        )
     }
 }
 
