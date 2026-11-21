@@ -141,7 +141,13 @@ class CatalogueFlowTest {
     fun pl8_leavingASearchStopsIt() {
         openCatalogue()
         search("tolkien")
-        if (!transport.held.await(20, TimeUnit.SECONDS)) throw AssertionError("the search didn't go out: ${screen()}")
+        // Wait through Compose, not on the latch: the test clock only runs frames (and so
+        // starts the screen's search) while the test waits on Compose.
+        try {
+            compose.waitUntil(20_000) { transport.held.count == 0L }
+        } catch (e: Throwable) {
+            throw AssertionError("the search didn't go out: ${screen()}", e)
+        }
         compose.onNodeWithTag("catalogue.searching").assertIsDisplayed()
         compose.onNodeWithTag("catalogue.cancel").performClick()
 

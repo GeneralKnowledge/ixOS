@@ -139,19 +139,31 @@ class ForgeHttpTransport : HttpTransport {
                 System.err.println("[forge] http: requests go through HttpURLConnection")
             }
         }
+        val file = request.bodyFile?.let(::File)
+        when {
+            file != null -> {
+                connection.doOutput = true
+                connection.setFixedLengthStreamingMode(file.length())
+            }
+            request.body.isNotEmpty() -> {
+                connection.doOutput = true
+                connection.setFixedLengthStreamingMode(request.body.size)
+            }
+        }
+        onRegistered?.invoke(request.id)
         try {
-            val file = request.bodyFile?.let(::File)
+            // Connect now, then look again: a cancel that came before the connection existed
+            // could not disconnect it (it is a no-op until then), so it is caught here, and one
+            // that comes later disconnects it.
+            connection.connect()
+            if (synchronized(lock) { request.id in cancelled }) {
+                connection.disconnect()
+                finished(request.id)
+                throw HttpTransportException.Cancelled()
+            }
             when {
-                file != null -> {
-                    connection.doOutput = true
-                    connection.setFixedLengthStreamingMode(file.length())
-                    connection.outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
-                }
-                request.body.isNotEmpty() -> {
-                    connection.doOutput = true
-                    connection.setFixedLengthStreamingMode(request.body.size)
-                    connection.outputStream.use { it.write(request.body) }
-                }
+                file != null -> connection.outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
+                request.body.isNotEmpty() -> connection.outputStream.use { it.write(request.body) }
             }
         } catch (e: IOException) {
             connection.disconnect()
@@ -162,6 +174,9 @@ class ForgeHttpTransport : HttpTransport {
     }
 
     private var announced = false
+
+    /** Tests only: runs once a request is registered for [cancel], before it connects. */
+    internal var onRegistered: ((ULong) -> Unit)? = null
 
     private fun finished(id: ULong) {
         synchronized(lock) {

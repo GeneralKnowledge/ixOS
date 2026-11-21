@@ -28,6 +28,9 @@ class ForgeHttpTransportTest {
     private val socket = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
     private val port get() = socket.localPort
 
+    /** The paths the server was asked for, in order. */
+    private val paths = java.util.concurrent.CopyOnWriteArrayList<String>()
+
     /** What the server answers for a path: status, body, extra headers. */
     private fun answer(method: String, path: String, body: ByteArray): Triple<Int, ByteArray, List<Pair<String, String>>> =
         when (path) {
@@ -76,6 +79,7 @@ class ForgeHttpTransportTest {
                 if (name.equals("Content-Length", ignoreCase = true)) length = value.toInt()
             }
             val body = ByteArray(length).also { var read = 0; while (read < length) read += input.read(it, read, length - read) }
+            paths.add(path)
             val (status, reply, headers) = answer(method, path, body)
             val head = StringBuilder("HTTP/1.1 $status X\r\nContent-Length: ${reply.size}\r\nConnection: close\r\n")
             for ((name, value) in headers) head.append("$name: $value\r\n")
@@ -174,6 +178,13 @@ class ForgeHttpTransportTest {
             transport.cancel(slow.id)
         }.start()
         assertFails<HttpTransportException.Cancelled> { transport.send(slow) }
+
+        // Cancelled after it was registered but before it connected: never sent.
+        val between = request("/hello")
+        transport.onRegistered = { if (it == between.id) transport.cancel(it) }
+        assertFails<HttpTransportException.Cancelled> { transport.send(between) }
+        transport.onRegistered = null
+        assertEquals(listOf("/slow"), paths.toList())
 
         // Cancelled before it began: never sent.
         val early = request("/hello")

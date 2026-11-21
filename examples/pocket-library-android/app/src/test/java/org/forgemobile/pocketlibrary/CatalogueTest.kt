@@ -9,7 +9,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.forgemobile.pocketlibrary.host.ForgeEnvironment
 import org.forgemobile.pocketlibrary.host.ForgeHost
 import org.junit.After
@@ -136,7 +138,9 @@ class CatalogueTest {
         host.report(AppPhase.BACKGROUND)
         host.close()
         start()
-        assertFalse(model.settings.value.catalogueEnabled)
+        // The model reads the settings once the library is open, on its own coroutine.
+        withTimeout(5_000) { model.settings.first { !it.catalogueEnabled } }
+        Unit
     }
 
     /** PL-8: leaving a search (its coroutine is cancelled) stops Rust, which stops the request. */
