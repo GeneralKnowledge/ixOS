@@ -74,7 +74,9 @@ There are two routes to the same services ([native-services.md](../native-servic
 
 **Not in scope:** Android adapters, and splitting ForgeKit into several packages (these are products inside the one package).
 
-## Open questions for Reuben
+## Decided (Reuben, 2026-11-21)
 
-1. **Grouping.** Should services with no privacy prompt (http, connectivity, background, device status, transfers) join the core `ForgeNative` instead of getting a product each? That means fewer products, at the cost of every app linking those frameworks. My recommendation: keep them separate, because it's the same work per service, and the core stays small.
-2. **When.** Step 1 can go into the PR after #363. Steps 2 and 3 touch every app's launch code, so the earlier plan said to start them "when no app PR is mid-flight". Is the week after the ForgeKit 0.7 release right?
+Reuben said to go with the recommendations:
+
+1. **Grouping.** Every optional service gets its own crate and product, including the ones with no privacy prompt. The core `ForgeNative` stays small.
+2. **When.** Step 1 goes into the PR after #363. Steps 2 and 3 start the week after the ForgeKit 0.7 release.
