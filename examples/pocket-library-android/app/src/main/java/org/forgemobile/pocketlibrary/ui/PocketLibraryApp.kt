@@ -239,7 +239,7 @@ private fun LibraryScreen(
     var alert by remember { mutableStateOf<ForgeAlert<Nothing>?>(null) }
     var importing by remember { mutableStateOf(false) }
     // An imported book opens, as on the iPhone.
-    val onImport = rememberEpubImport(model, onImported = onOpen, onFailure = { alert = it }, onImporting = { importing = it })
+    val onImport = rememberEpubImport(onImported = onOpen, onFailure = { alert = it }, onImporting = { importing = it })
     Scaffold(
         topBar = {
             TopAppBar(
@@ -407,7 +407,7 @@ private fun FilterAndSortMenu(model: LibraryModel) {
     }
 }
 
-private fun LibrarySort.key(): String = when (this) {
+internal fun LibrarySort.key(): String = when (this) {
     LibrarySort.RECENTLY_ADDED -> "recentlyAdded"
     LibrarySort.TITLE -> "title"
     LibrarySort.AUTHOR -> "author"

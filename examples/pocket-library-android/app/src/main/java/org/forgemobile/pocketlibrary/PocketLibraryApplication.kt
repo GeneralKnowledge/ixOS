@@ -8,11 +8,15 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import org.forgemobile.pocketlibrary.host.ForgeEnvironment
 import org.forgemobile.pocketlibrary.host.ForgeHost
 import org.forgemobile.pocketlibrary.host.ForgeHttpTransport
+import org.forgemobile.pocketlibrary.host.WorkManagerBackgroundTime
 import uniffi.forge_app.AppPhase
 
 /**
@@ -27,9 +31,14 @@ class PocketLibraryApplication : Application() {
 
     private val opener = LibraryOpener()
 
+    /** Whether an activity has launched in this process (and so chose the library). */
+    private var launched = false
+
     lateinit var host: ForgeHost<LibraryCore>
         private set
     lateinit var model: LibraryModel
+        private set
+    lateinit var imports: EpubImports
         private set
 
     override fun onCreate() {
@@ -57,7 +66,10 @@ class PocketLibraryApplication : Application() {
             },
             open = opener::open,
         )
+        // Imports, exports and saves finish after the app leaves the screen.
+        host.backgroundTime = WorkManagerBackgroundTime(this)
         model = LibraryModel(host, scope, opener)
+        imports = EpubImports(this)
         // The process's lifecycle is the app's: the runtime stops on-screen work when every
         // activity has left the screen, and re-reads on return.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
@@ -74,6 +86,8 @@ class PocketLibraryApplication : Application() {
      * unless it keeps the last launch's; the person's own library is never opened.
      */
     fun launch(data: TestData) {
+        launched = true
+        imports.firstRunHold = data.importHoldSeconds * 1000L
         if (data.temporary) {
             // A new launch in the same process: open the test library again, as a relaunch.
             if (host.core != null) host.close()
@@ -82,8 +96,26 @@ class PocketLibraryApplication : Application() {
         }
         model.open()
         if (data.temporary && data.sampleBook) {
-            scope.launch { model.addSampleBook(File(cacheDir, "Sample Book.epub")) }
+            scope.launch { imports.addSampleBook() }
         }
+    }
+
+    /**
+     * For a WorkManager job, which may run in a process no activity has started (it was ended
+     * with the job still to do): opens the library the job belongs to, [temporary] test data or
+     * the person's own, unless an activity has opened one. True once a library is open.
+     */
+    suspend fun openForWork(temporary: Boolean): Boolean {
+        withContext(Dispatchers.Main.immediate) {
+            if (host.core != null) return@withContext
+            // Keeps the test library the job came from, as a relaunch with keepTestData does.
+            if (!launched) testData = if (temporary) TestData(temporary = true, keep = true) else TestData.NONE
+            host.start()
+        }
+        val status = withTimeoutOrNull(30_000) {
+            host.status.first { it == ForgeHost.Status.Ready || it is ForgeHost.Status.Failed }
+        }
+        return status == ForgeHost.Status.Ready && host.core != null
     }
 
     /** The launch extras UI tests pass, as iOS's launch arguments. */
@@ -96,6 +128,8 @@ class PocketLibraryApplication : Application() {
         val unreadable: Boolean = false,
         /** [SAMPLE_BOOK_EXTRA]: an empty throwaway library starts with a sample EPUB in it. */
         val sampleBook: Boolean = false,
+        /** [IMPORT_HOLD_EXTRA]: seconds each import waits before it starts, in this process. */
+        val importHoldSeconds: Int = 0,
     ) {
         fun reopened() = if (temporary) copy(keep = true, unreadable = false) else this
 
@@ -111,6 +145,7 @@ class PocketLibraryApplication : Application() {
                     keep = keep,
                     unreadable = !keep && intent.getBooleanExtra(UNREADABLE_TEST_DATA_EXTRA, false),
                     sampleBook = intent.getBooleanExtra(SAMPLE_BOOK_EXTRA, false),
+                    importHoldSeconds = intent.getIntExtra(IMPORT_HOLD_EXTRA, 0).coerceIn(0, 120),
                 )
             }
         }
@@ -122,5 +157,11 @@ class PocketLibraryApplication : Application() {
 
         /** iOS's `-PocketLibrarySampleBook`: a book to open in the reader. */
         const val SAMPLE_BOOK_EXTRA = "pocketLibrary.sampleBook"
+
+        /**
+         * Test data only: imports wait this many seconds before they start, so a test can end
+         * the process while one is still to do (Android only; iOS has no such test).
+         */
+        const val IMPORT_HOLD_EXTRA = "pocketLibrary.holdImportSeconds"
     }
 }

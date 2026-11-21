@@ -6,9 +6,9 @@
 // build of the Rust library. It lives in this app until a second Android app needs it
 // (docs/architecture.md#framework-principles); then it moves into a ForgeKit for Android.
 //
-// Not here yet, compared with the Swift host: asking the system for time to finish work in
-// the background (iOS beginBackgroundTask). Android has no direct equivalent; that is part of
-// the services stage of the Android plan.
+// Time to finish work in the background (iOS beginBackgroundTask) comes through
+// [ForgeBackgroundTime]: the app installs one built on WorkManager, which keeps the process
+// running while Rust still has imports, exports or saves to finish.
 package org.forgemobile.pocketlibrary.host
 
 import java.io.File
@@ -40,6 +40,8 @@ interface ForgeCore : AutoCloseable {
     fun setPhase(phase: AppPhase)
     fun events(): RuntimeEvents?
     fun revision(): ULong
+    fun backgroundWorkPending(): Boolean
+    fun backgroundTimeExpired()
     fun launchReport(): LaunchReport
     fun shutdown()
 
@@ -49,6 +51,17 @@ interface ForgeCore : AutoCloseable {
      * still holds its data directory, and opening it again would fail.
      */
     override fun close()
+}
+
+/**
+ * Asks the system for time to finish work after the app leaves the screen (ForgeKit's
+ * `ForgeBackgroundTime`). The app installs one built on WorkManager; tests install a fake. The
+ * time is best effort: when the system takes it back, [begin]'s `onExpiry` must be called (the
+ * host then stops finishing work in Rust and calls [end]). Both may be called from any thread.
+ */
+interface ForgeBackgroundTime {
+    fun begin(onExpiry: () -> Unit)
+    fun end()
 }
 
 /** Directories the runtime gives the core. */
@@ -129,12 +142,25 @@ class ForgeHost<Core : ForgeCore>(
     var revision: ULong = 0u
         private set
 
+    @Volatile
     var phase: AppPhase = AppPhase.LAUNCHING
         private set
 
-    /** What the runtime found when the core opened. */
+    /**
+     * What the runtime found when the core opened. When `unfinishedBackgroundWork` is true, the
+     * previous run was ended while work was still finishing in the background.
+     */
     var launch: LaunchReport? = null
         private set
+
+    /** The directories of the open core (or the last one opened). */
+    @Volatile
+    var openedEnvironment: ForgeEnvironment? = null
+        private set
+
+    /** How the host asks for time to finish work in the background; null never asks. */
+    @Volatile
+    var backgroundTime: ForgeBackgroundTime? = null
 
     @Volatile
     var core: Core? = null
@@ -166,7 +192,10 @@ class ForgeHost<Core : ForgeCore>(
                 return
             }
             val opened = try {
-                withContext(io) { open(environment()) }
+                withContext(io) {
+                    val env = environment()
+                    open(env).also { openedEnvironment = env }
+                }
             } catch (e: CancellationException) {
                 // Whoever started it went away; that isn't a failure to open. Start again later.
                 _status.value = Status.Closed
@@ -196,11 +225,54 @@ class ForgeHost<Core : ForgeCore>(
             close()
             return
         }
+        val core = core
         core?.setPhase(phase)
+        when (phase) {
+            // Commands still saving, or finishing work: ask for time now, while the process is
+            // still running. Later changes come as BackgroundWork events.
+            AppPhase.BACKGROUND -> if (core?.backgroundWorkPending() == true) holdBackgroundTime()
+            AppPhase.ACTIVE, AppPhase.INACTIVE -> releaseBackgroundTime()
+            else -> Unit
+        }
+    }
+
+    /** Whether the host is holding background time now. */
+    val holdsBackgroundTime: Boolean
+        @Synchronized get() = hold != null
+
+    /** The background time held now: one token per [ForgeBackgroundTime.begin]. */
+    private var hold: Any? = null
+
+    @Synchronized
+    private fun holdBackgroundTime() {
+        val time = backgroundTime
+        if (hold != null || time == null) return
+        val token = Any()
+        hold = token
+        time.begin { expire(token) }
+    }
+
+    /**
+     * Time is up: finishing work in Rust stops (Interrupted), and the system gets its time
+     * back. Only for the hold that ran out, not one that began after it ended.
+     */
+    @Synchronized
+    private fun expire(token: Any) {
+        if (hold !== token) return
+        core?.backgroundTimeExpired()
+        releaseBackgroundTime()
+    }
+
+    @Synchronized
+    private fun releaseBackgroundTime() {
+        if (hold == null) return
+        hold = null
+        backgroundTime?.end()
     }
 
     /** Ends the event loop and shuts the core down. Committed work is already on disk. */
     fun close() {
+        releaseBackgroundTime()
         val events = stream
         // Cleared first, so a listener that finds the stream freed knows it was closed.
         stream = null
@@ -233,16 +305,26 @@ class ForgeHost<Core : ForgeCore>(
                     // close() freed the stream between two reads; anything else is a real error.
                     if (stream !== events) break else throw e
                 } ?: break
-                when (event) {
-                    is RuntimeEvent.Changed -> {
-                        revision = event.revision
-                        _changes.value += 1
-                    }
-                    is RuntimeEvent.EventsDropped -> reconcile()
-                    is RuntimeEvent.PhaseChanged -> if (event.resumed) reconcile()
-                    is RuntimeEvent.BackgroundWork -> Unit
-                }
+                handle(event)
             }
+        }
+    }
+
+    /** What the event loop does with each event; tests send events straight here. */
+    internal fun handle(event: RuntimeEvent) {
+        when (event) {
+            is RuntimeEvent.Changed -> {
+                revision = event.revision
+                _changes.value += 1
+            }
+            is RuntimeEvent.EventsDropped -> reconcile()
+            is RuntimeEvent.PhaseChanged -> if (event.resumed) reconcile()
+            is RuntimeEvent.BackgroundWork ->
+                if (event.pending && phase == AppPhase.BACKGROUND) {
+                    holdBackgroundTime()
+                } else if (!event.pending) {
+                    releaseBackgroundTime()
+                }
         }
     }
 }

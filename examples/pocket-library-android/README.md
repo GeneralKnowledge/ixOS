@@ -10,10 +10,12 @@ the process lifecycle, Kotlin counterparts of ForgeAppKit's patterns, the iPhone
 text), A2 (ForgeUI's tokens and look), A3 (the complete library: the full book form and
 editing, progress, status and rating on a book's screen, search, filter and sort, and starting
 an unreadable library fresh), A4 (the online catalogue through Android's own HTTP stack,
-with its on/off setting) and A5 (importing EPUBs, the reader, and Read Aloud on Android's
-`TextToSpeech`). Requirements met on the emulator: **PL-1** to **PL-10**. Everything else in
-[Pocket Library](../pocket-library/README.md) (summaries, the rest of Settings, backups,
-statistics) is iOS only for now.
+with its on/off setting), A5 (importing EPUBs, the reader, and Read Aloud on Android's
+`TextToSpeech`) and A6 (work that finishes in the background, imports that survive the process
+being killed, and Settings with backups, spreadsheets and erasing). Requirements met on the
+emulator: **PL-1** to **PL-10**, and PL-1 after a process death. Everything else in
+[Pocket Library](../pocket-library/README.md) (summaries, statistics, the voice picker) is iOS
+only for now.
 
 Read Aloud is not yet like the iPhone's in three ways: it has no lock-screen or notification
 controls and stops when the reader closes (iOS keeps reading with the screen locked), it speaks
@@ -53,11 +55,26 @@ PocketLibraryApp (Compose, Material 3, Navigation) → LibraryModel → ForgeHos
 - `host/ForgeHost.kt` is the Android counterpart of ForgeKit's `ForgeHost`: it opens the core
   off the main thread, checks the runtime contract version, reports the lifecycle and re-reads
   when Rust announces a change. It stays in this app until a second Android app needs it.
+- Background time (iOS `beginBackgroundTask`): when the app leaves the screen while Rust still
+  has an import, export or save to finish, the host asks its `ForgeBackgroundTime` for time, and
+  `host/WorkManagerBackgroundTime.kt` runs a WorkManager job until the work ends or the app comes
+  back, so Android doesn't freeze or end the process as an idle one. If the system stops the
+  job first, Rust stops its finishing work cleanly (`Interrupted`). Expedited from Android 12;
+  ordinary work before, which needs no notification.
+- `EpubImports.kt`: an EPUB import is a WorkManager job. The picked document is copied beside
+  the library (`<files>/PocketLibrary/imports`, not the cache), and the job imports it, so an
+  import whose process is killed runs again when the process next starts, and the book still
+  arrives. Rust matches a book by title and author, so a job that runs twice adds it once.
+- `ui/SettingsScreen.kt` is the iPhone app's Settings: the library's default order, online
+  search, what the library holds, Back Up Library and Export as Spreadsheet (saved where the
+  person chooses, through the system's Save dialog, where iOS shares the file), Restore from
+  Backup and Import from Spreadsheet (the system's document picker; restoring asks first), and
+  Erase Library (asks first). Backups are the iPhone app's own format, so one restores on either.
 - `reader/` is Read Aloud: `ReadAloud` (plain Kotlin, tested on the JVM with a stand-in
   speaker) reads a chapter block by block and reports the block and word being said;
   `SystemSpeaker` is its speaker on `TextToSpeech`. `ui/ReaderScreen.kt` is the reader (the
   iPhone app's `ReaderView` and ForgeReader's block views), `ui/EpubImport.kt` the document picker
-  that copies the chosen EPUB for Rust to import.
+  that hands the chosen EPUB to `EpubImports`.
 - `uniffi.toml` renames the core's `Library` to `PocketLibrary` in Kotlin (it clashes with
   JNA's `Library`) and leaves out `Library.open_fresh`, which UniFFI 0.32 can't rename.
 - Controls carry the iOS app's identifiers as test tags (`library.add.manual`,
@@ -93,7 +110,9 @@ they need no network and see every request Rust sends and every one it stops. `f
 library, for a relaunch that checks something was saved, and `pocketLibrary.unreadableTestData`
 (iOS `-PocketLibraryUnreadableTestData`) starts it as a file that isn't a library, to reach
 Start Fresh, and `pocketLibrary.sampleBook` (iOS `-PocketLibrarySampleBook`) starts it with a
-short sample EPUB to read. The reader tests make Read Aloud speak through a stand-in that records
+short sample EPUB to read (imported through the import job, like any EPUB).
+`pocketLibrary.holdImportSeconds` makes imports wait that long before they start, in that
+process only, so a test can end the process with an import still to do. The reader tests make Read Aloud speak through a stand-in that records
 each utterance (`ReadAloudSpeaker.make`), so they check that what would be said is the text on
 the screen whatever voices the emulator has. UI tests are named by requirement (`pl4_...`); a requirement counts as met on Android
 only when its test passes on the CI emulator. `ThemeScreenshotTest` saves the library in light,
@@ -101,5 +120,15 @@ dark and at 200% text, and the requirement tests save the screens they check (`p
 `pl3-search`, `pl5-cannot-open`, `pl9-reading-aloud`, ...), to `app/build/outputs/connected_android_test_additional_output/`; CI
 uploads them as the `pocket-library-android-screenshots` artifact.
 
-CI runs both on every push to main that touches Android or shared Rust (`.github/workflows/android.yml`,
+`scripts/check-process-death.sh` checks plan milestone A6 on a running emulator with the debug
+build installed: it starts an import that waits, sends the app to the background, kills its
+process (`am kill`, or `kill -9` as the low-memory killer would when `am kill` won't end a
+process running a job), opens the app again and waits for the book, then stops and reopens the
+app and checks the library is still there (PL-1 after a process death).
+
+```bash
+./gradlew :app:installDebug && ./scripts/check-process-death.sh
+```
+
+CI runs all three on every push to main that touches Android or shared Rust (`.github/workflows/android.yml`,
 job `pocket-library-emulator`). No physical Android phone has run it.

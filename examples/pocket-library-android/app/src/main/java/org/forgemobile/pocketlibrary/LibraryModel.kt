@@ -33,6 +33,8 @@ import uniffi.forge_app.LaunchReport
 import uniffi.forge_app.RuntimeEvents
 import uniffi.pocket_library_core.Book
 import uniffi.pocket_library_core.CatalogueBook
+import uniffi.pocket_library_core.CsvImportSummary
+import uniffi.pocket_library_core.StorageInfo
 import uniffi.pocket_library_core.ImportedBook
 import uniffi.pocket_library_core.LibrarySettings
 import uniffi.pocket_library_core.BookInput
@@ -51,6 +53,8 @@ class LibraryCore(val library: PocketLibrary) : ForgeCore {
     override fun setPhase(phase: AppPhase) = library.setPhase(phase)
     override fun events(): RuntimeEvents? = library.events()
     override fun revision(): ULong = library.revision()
+    override fun backgroundWorkPending(): Boolean = library.backgroundWorkPending()
+    override fun backgroundTimeExpired() = library.backgroundTimeExpired()
     override fun launchReport(): LaunchReport = library.launchReport()
     override fun shutdown() = library.shutdown()
     override fun close() = library.destroy()
@@ -125,6 +129,13 @@ class LibraryModel(
 
     private val library: PocketLibrary?
         get() = host.core?.library
+
+    /**
+     * Whether the last run ended while an import or export was still finishing in the
+     * background, so it may not have happened.
+     */
+    val lastRunWasCutShort: Boolean
+        get() = host.launch?.unfinishedBackgroundWork == true
 
     /** Opens the library, or tries again after a failure. Does nothing once open. */
     fun open() {
@@ -205,6 +216,12 @@ class LibraryModel(
         _settings.value = run { it.updateSettings(settings) }
     }
 
+    /** Settings' default order: saved in Rust, and the library list follows it straight away. */
+    suspend fun setDefaultSort(sort: LibrarySort) {
+        updateSettings(_settings.value.copy(defaultSort = sort))
+        setSort(sort)
+    }
+
     /** Switches online search on or off (Settings' Online Catalogue). */
     suspend fun setCatalogueEnabled(enabled: Boolean) = updateSettings(_settings.value.copy(catalogueEnabled = enabled))
 
@@ -224,6 +241,47 @@ class LibraryModel(
     suspend fun importFromCatalogue(key: String): ImportedBook = run { core ->
         withRustCancellation { core.importFromCatalogue(key, it) }
     }
+
+    /**
+     * Runs [block] in the model's scope: work the person started that finishes even if the
+     * screen that started it goes (a backup, a restore), as a Swift `Task` does.
+     */
+    fun finish(block: suspend () -> Unit): Job = scope.launch { block() }
+
+    // Your data: backups, spreadsheets, erasing. Each is finishing work in Rust, so it
+    // completes when the person leaves the app (the host holds background time).
+
+    /** How much the library holds, for Settings; null while it isn't open. */
+    fun storageInfo(): StorageInfo? = library?.storageInfo()
+
+    /**
+     * Writes a backup of the whole library (books, notes, history, settings, covers and EPUBs)
+     * and returns its path, for the screen to copy where the person chose.
+     */
+    suspend fun backupLibrary(): String = run { it.backupLibrary() }
+
+    /**
+     * Replaces the library with the backup at [path]. A file that isn't a backup, or a damaged
+     * one, is refused and the library is left as it was. Returns how many books it has.
+     */
+    suspend fun restoreLibrary(path: String): UInt {
+        val books = run { it.restoreLibrary(path) }
+        // The backup brought its own settings.
+        library?.let {
+            _settings.value = it.settings()
+            setSort(_settings.value.defaultSort)
+        }
+        return books
+    }
+
+    /** Writes every book as a spreadsheet (CSV) and returns its path. */
+    suspend fun exportBooksCsv(): String = run { it.exportBooksCsv() }
+
+    /** Adds the books in a CSV file; rows that can't be read are skipped and listed by line. */
+    suspend fun importBooksCsv(path: String): CsvImportSummary = run { it.importBooksCsv(path) }
+
+    /** Deletes every book, the history and saved covers and EPUBs. Settings stay. */
+    suspend fun eraseLibrary() = run { it.eraseLibrary() }
 
     // Reading EPUBs
 
@@ -283,17 +341,25 @@ class LibraryModel(
      * path for the EPUB, deleted afterwards.
      */
     suspend fun addSampleBook(file: File) {
-        host.status.first { it == ForgeHost.Status.Ready || it is ForgeHost.Status.Failed }
-        val core = library ?: return
-        if (core.books(ALL_BOOKS).isNotEmpty()) return
         try {
-            withContext(RUST_CALLS) { writeSampleEpub(file.path) }
-            importEpub(file.path)
+            if (writeSampleBook(file)) importEpub(file.path)
         } catch (e: Exception) {
             Log.w(TAG, "sample book not added: ${e.javaClass.simpleName}")
         } finally {
             file.delete()
         }
+    }
+
+    /**
+     * Test data only: once the library is open, and only if it is empty, writes the sample EPUB
+     * to [file] for an import. False when there is nothing to import.
+     */
+    suspend fun writeSampleBook(file: File): Boolean {
+        host.status.first { it == ForgeHost.Status.Ready || it is ForgeHost.Status.Failed }
+        val core = library ?: return false
+        if (core.books(ALL_BOOKS).isNotEmpty()) return false
+        withContext(RUST_CALLS) { writeSampleEpub(file.path) }
+        return true
     }
 
     companion object {

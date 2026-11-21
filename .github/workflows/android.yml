@@ -181,7 +181,11 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           working-directory: examples/pocket-library-android
           # On a failure, the app's log (the Rust core logs through logcat) shows why.
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon || { adb logcat -d -b crash; adb logcat -d | grep -E "AndroidRuntime|TestRunner|DEBUG|libc|forge|jna|uniffi" | tail -120; exit 1; }
+          # Then plan milestone A6's check: an import survives its process being killed.
+          script: |
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon || { adb logcat -d -b crash; adb logcat -d | grep -E "AndroidRuntime|TestRunner|DEBUG|libc|forge|jna|uniffi" | tail -120; exit 1; }
+            ./gradlew :app:installDebug --no-daemon
+            ./scripts/check-process-death.sh
 
       - name: Upload test reports
         if: failure()
