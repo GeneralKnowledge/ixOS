@@ -168,8 +168,15 @@ chat-core, so that waits until it is needed.
 
 - On the iPhone, the key goes into the Keychain with "this device only";
   Linux keeps the 0600 file.
-- The endpoint id becomes the only device id: own messages are authored
-  by it, and `device_id` is retired.
+- The endpoint id becomes the only device id, and `device_id` is
+  retired. Done on 2026-11-21, with one difference from this line: own
+  messages are authored by a local label, `relay:me`, not by the endpoint
+  id. The author of our own messages is never sent (the other device
+  knows the sender by the connection), and a label keeps history this
+  device's own after a backup restore, which is a new key and so a new
+  identity. An older build's own messages move to the label once at
+  open, in one transaction, each with a new stamp so Chats' cache sees
+  the change.
 - The migration matrix from the review's refinement 4: fresh install,
   upgrade (same key), backup restore (new identity), reinstall, a lost
   phone, revocation.

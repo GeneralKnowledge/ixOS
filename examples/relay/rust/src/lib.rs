@@ -212,10 +212,9 @@ impl RelayCore {
             *record = next;
             Ok(())
         };
-        if record.device_id.is_empty() {
+        if record.name.is_empty() {
             let name = model::clean_name(&device_name).unwrap_or_else(|_| "Relay".into());
             opening(&mut record, &mut |r, _| {
-                r.device_id = hex::hex(&hex::random()[..16]);
                 r.name = name.clone();
                 Ok(())
             })?;
@@ -249,6 +248,17 @@ impl RelayCore {
         // Notes become messages, once (review step 4).
         if !record.notes_are_messages {
             opening(&mut record, &mut |r, c| migrate::run(r, c))?;
+        }
+        // The endpoint id is the only device id (P4): the random id an
+        // older build made is retired, and its own messages are authored
+        // by this device's local label instead, in the same transaction.
+        if !record.device_id.is_empty() {
+            let old = format!("relay:{}", record.device_id);
+            opening(&mut record, &mut |r, c| {
+                c.reauthor_own(&old)?;
+                r.device_id.clear();
+                Ok(())
+            })?;
         }
         // A message the conversation shows queued that the outbox doesn't
         // hold (saved by a build before one transaction held both) failed,
@@ -531,7 +541,6 @@ impl RelayCore {
     pub fn identity(&self) -> Identity {
         let r = self.record.get();
         Identity {
-            device_id: r.device_id.clone(),
             name: r.name.clone(),
         }
     }
@@ -1111,7 +1120,7 @@ impl RelayCore {
         let message = chat_core::Message {
             id: device_chat::files_message_id(&delivery),
             author: me.name,
-            author_id: format!("relay:{}", me.device_id),
+            author_id: device_chat::ME.into(),
             attachments: vec![attachment],
             status: chat_core::MessageStatus::Queued,
             ..chat_core::Message::default()
