@@ -2633,7 +2633,9 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     /**
      * The local file of an attachment, if it is on this iPhone already
      * (sent from here, or fetched before). Its name is the attachment id,
-     * without an extension.
+     * without an extension. An attachment in a device conversation is
+     * where Relay keeps it: the saved file or folder (a folder opens in
+     * Files).
      */
     func attachmentFile(attachmentId: String)  -> String?
     
@@ -3006,7 +3008,9 @@ open func assistant() -> AssistantCore  {
     /**
      * The local file of an attachment, if it is on this iPhone already
      * (sent from here, or fetched before). Its name is the attachment id,
-     * without an extension.
+     * without an extension. An attachment in a device conversation is
+     * where Relay keeps it: the saved file or folder (a folder opens in
+     * Files).
      */
 open func attachmentFile(attachmentId: String) -> String?  {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
@@ -5032,11 +5036,6 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func cancelCodeSend() 
     
     /**
-     * Withdraws the open pairing code.
-     */
-    func cancelInvitation() 
-    
-    /**
      * Stops a send to a trusted device that is still going, or takes it
      * off the outbox if it is waiting.
      */
@@ -5065,14 +5064,6 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * Which routes trusted devices are reached by.
      */
     func connectionMode()  -> ConnectionMode
-    
-    /**
-     * A pairing code for the other device to scan, valid once for five
-     * minutes. `hosts` are this device's addresses on the local network
-     * (the app reads them from `NWPathMonitor`); the listening port is
-     * added. Start listening first.
-     */
-    func createInvitation(hosts: [String]) throws  -> Invitation
     
     /**
      * Tries every trusted device something waits for, now: Relay came
@@ -5109,7 +5100,12 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func devicesNearby(devices: [NearbyDevice]) 
     
     /**
-     * The person said Not Now.
+     * The person has read the notice.
+     */
+    func dismissSavedDataNotice() async throws 
+    
+    /**
+     * The person said Not Now to the offer `trust_offer` gave.
      */
     func dismissTrustOffer() 
     
@@ -5126,12 +5122,6 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func forgetDevice(endpointId: String) async throws 
     
     /**
-     * Unpairs a device: its secret is deleted, so it can't connect again
-     * until it pairs again. Its history stays.
-     */
-    func forgetPeer(deviceId: String) async throws 
-    
-    /**
      * This device, as others see it.
      */
     func identity()  -> Identity
@@ -5142,29 +5132,12 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func launchReport()  -> LaunchReport
     
     /**
-     * The port Relay listens on, if it does.
-     */
-    func listeningPort()  -> UInt16?
-    
-    /**
      * The network changed (another Wi-Fi, Wi-Fi to mobile data): Relay
      * looks for its routes again and tries what waits.
      */
     func networkChanged() 
     
-    /**
-     * Pairs with the device whose code was scanned: connects to it, proves
-     * both hold the code's secret, and keeps the other device. Expires
-     * with the code (the other device refuses it).
-     */
-    func pair(code: String, cancellation: Cancellation?) async throws  -> Peer
-    
     func pairingPolicy()  -> PairingPolicy
-    
-    /**
-     * Paired devices, by name.
-     */
-    func peers()  -> [Peer]
     
     /**
      * The phase last reported.
@@ -5214,23 +5187,11 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func revokeDevice(endpointId: String) async throws 
     
     /**
-     * Sends the file at `path` to a paired device. The file must stay put
-     * until the transfer ends.
+     * What Relay couldn't read of its saved data when it opened, and
+     * where that is kept, for the app to show until the person dismisses
+     * it. `None` normally.
      */
-    func sendFile(deviceId: String, path: String, addresses: [String], cancellation: Cancellation?) async throws  -> Transfer
-    
-    /**
-     * Sends a note to a paired device at `addresses` ("host:port", from
-     * Bonjour), or where it was last reached when there are none.
-     */
-    func sendNote(deviceId: String, text: String, addresses: [String], cancellation: Cancellation?) async throws  -> Transfer
-    
-    /**
-     * Sends a note to a trusted device, with no code. It waits in the
-     * outbox until the device is reached: the transfer comes back Done,
-     * or Waiting when the device wasn't reached. A refusal is an error.
-     */
-    func sendNoteToDevice(endpointId: String, text: String) async throws  -> Transfer
+    func savedDataNotice()  -> SavedDataNotice?
     
     /**
      * Starts sending several files and folders as one transfer with a new
@@ -5263,7 +5224,20 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      */
     func servers()  -> RelayServers
     
+    /**
+     * Only Hybrid uses the relay server. Leaving Hybrid lets go of the
+     * relay at once, and any connection that still finds a relay path is
+     * refused; Relay opens without the relay from then on. Coming back to
+     * Hybrid takes the relay up again (fully from the next open, when
+     * Relay opened outside Hybrid).
+     */
     func setConnectionMode(mode: ConnectionMode) async throws 
+    
+    /**
+     * Whether a trusted device may ask this device's AI. Off when a
+     * device is trusted; trust never turns it on.
+     */
+    func setMayAsk(endpointId: String, on: Bool) async throws 
     
     func setPairingPolicy(policy: PairingPolicy) async throws 
     
@@ -5289,19 +5263,6 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func shutdown() 
     
     /**
-     * Opens a TCP port for paired devices (and pairing) on every
-     * interface; returns the port. `port` 0 takes any free one. Advertise
-     * it with Bonjour as [`SERVICE_TYPE`]. Stop it when the app leaves the
-     * screen: iOS suspends it anyway.
-     */
-    func startListening(port: UInt16) throws  -> UInt16
-    
-    /**
-     * Closes the port. Transfers already arriving finish.
-     */
-    func stopListening() 
-    
-    /**
      * Everything sent and received, newest first, with progress for what
      * is still going. Never waits for a command.
      */
@@ -5315,8 +5276,9 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func trustDevice(endpointId: String) async throws 
     
     /**
-     * The device the last code transfer was with, when the pairing policy
-     * asks whether to trust it. Ask on both sides; each decides for itself.
+     * The oldest device a code transfer was with that the pairing policy
+     * asks whether to trust. Ask on both sides; each decides for itself.
+     * Once it is answered, the next one (if any) is offered.
      */
     func trustOffer()  -> TrustOffer?
     
@@ -5441,17 +5403,6 @@ open func cancelCodeSend()  {try! rustCall() {
 }
     
     /**
-     * Withdraws the open pairing code.
-     */
-open func cancelInvitation()  {try! rustCall() {
-        uniffiCallStatus in
-    uniffi_relay_core_fn_method_relaycore_cancel_invitation(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-}
-}
-    
-    /**
      * Stops a send to a trusted device that is still going, or takes it
      * off the outbox if it is waiting.
      */
@@ -5512,22 +5463,6 @@ open func connectionMode() -> ConnectionMode  {
         uniffiCallStatus in
     uniffi_relay_core_fn_method_relaycore_connection_mode(
             self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * A pairing code for the other device to scan, valid once for five
-     * minutes. `hosts` are this device's addresses on the local network
-     * (the app reads them from `NWPathMonitor`); the listening port is
-     * added. Start listening first.
-     */
-open func createInvitation(hosts: [String])throws  -> Invitation  {
-    return try  FfiConverterTypeInvitation_lift(try rustCallWithError(FfiConverterTypeRelayError_lift) {
-        uniffiCallStatus in
-    uniffi_relay_core_fn_method_relaycore_create_invitation(
-            self.uniffiCloneHandle(),
-        FfiConverterSequenceString.lower(hosts),uniffiCallStatus
     )
 })
 }
@@ -5615,7 +5550,26 @@ open func devicesNearby(devices: [NearbyDevice])  {try! rustCall() {
 }
     
     /**
-     * The person said Not Now.
+     * The person has read the notice.
+     */
+open func dismissSavedDataNotice()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_dismiss_saved_data_notice(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * The person said Not Now to the offer `trust_offer` gave.
      */
 open func dismissTrustOffer()  {try! rustCall() {
         uniffiCallStatus in
@@ -5659,26 +5613,6 @@ open func forgetDevice(endpointId: String)async throws   {
 }
     
     /**
-     * Unpairs a device: its secret is deleted, so it can't connect again
-     * until it pairs again. Its history stays.
-     */
-open func forgetPeer(deviceId: String)async throws   {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_relay_core_fn_method_relaycore_forget_peer(
-                        self.uniffiCloneHandle(),FfiConverterString.lower(deviceId)
-                )
-            },
-            pollFunc: ffi_relay_core_rust_future_poll_void,
-            completeFunc: ffi_relay_core_rust_future_complete_void,
-            freeFunc: ffi_relay_core_rust_future_free_void,
-            liftFunc: { $0 },
-            errorHandler: FfiConverterTypeRelayError_lift
-        )
-}
-    
-    /**
      * This device, as others see it.
      */
 open func identity() -> Identity  {
@@ -5703,18 +5637,6 @@ open func launchReport() -> LaunchReport  {
 }
     
     /**
-     * The port Relay listens on, if it does.
-     */
-open func listeningPort() -> UInt16?  {
-    return try!  FfiConverterOptionUInt16.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_relay_core_fn_method_relaycore_listening_port(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-    
-    /**
      * The network changed (another Wi-Fi, Wi-Fi to mobile data): Relay
      * looks for its routes again and tries what waits.
      */
@@ -5726,43 +5648,10 @@ open func networkChanged()  {try! rustCall() {
 }
 }
     
-    /**
-     * Pairs with the device whose code was scanned: connects to it, proves
-     * both hold the code's secret, and keeps the other device. Expires
-     * with the code (the other device refuses it).
-     */
-open func pair(code: String, cancellation: Cancellation?)async throws  -> Peer  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_relay_core_fn_method_relaycore_pair(
-                        self.uniffiCloneHandle(),FfiConverterString.lower(code),FfiConverterOptionTypeCancellation.lower(cancellation)
-                )
-            },
-            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypePeer_lift,
-            errorHandler: FfiConverterTypeRelayError_lift
-        )
-}
-    
 open func pairingPolicy() -> PairingPolicy  {
     return try!  FfiConverterTypePairingPolicy_lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_relay_core_fn_method_relaycore_pairing_policy(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * Paired devices, by name.
-     */
-open func peers() -> [Peer]  {
-    return try!  FfiConverterSequenceTypePeer.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_relay_core_fn_method_relaycore_peers(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -5893,64 +5782,17 @@ open func revokeDevice(endpointId: String)async throws   {
 }
     
     /**
-     * Sends the file at `path` to a paired device. The file must stay put
-     * until the transfer ends.
+     * What Relay couldn't read of its saved data when it opened, and
+     * where that is kept, for the app to show until the person dismisses
+     * it. `None` normally.
      */
-open func sendFile(deviceId: String, path: String, addresses: [String], cancellation: Cancellation?)async throws  -> Transfer  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_relay_core_fn_method_relaycore_send_file(
-                        self.uniffiCloneHandle(),FfiConverterString.lower(deviceId),FfiConverterString.lower(path),FfiConverterSequenceString.lower(addresses),FfiConverterOptionTypeCancellation.lower(cancellation)
-                )
-            },
-            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeTransfer_lift,
-            errorHandler: FfiConverterTypeRelayError_lift
-        )
-}
-    
-    /**
-     * Sends a note to a paired device at `addresses` ("host:port", from
-     * Bonjour), or where it was last reached when there are none.
-     */
-open func sendNote(deviceId: String, text: String, addresses: [String], cancellation: Cancellation?)async throws  -> Transfer  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_relay_core_fn_method_relaycore_send_note(
-                        self.uniffiCloneHandle(),FfiConverterString.lower(deviceId),FfiConverterString.lower(text),FfiConverterSequenceString.lower(addresses),FfiConverterOptionTypeCancellation.lower(cancellation)
-                )
-            },
-            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeTransfer_lift,
-            errorHandler: FfiConverterTypeRelayError_lift
-        )
-}
-    
-    /**
-     * Sends a note to a trusted device, with no code. It waits in the
-     * outbox until the device is reached: the transfer comes back Done,
-     * or Waiting when the device wasn't reached. A refusal is an error.
-     */
-open func sendNoteToDevice(endpointId: String, text: String)async throws  -> Transfer  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_relay_core_fn_method_relaycore_send_note_to_device(
-                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterString.lower(text)
-                )
-            },
-            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeTransfer_lift,
-            errorHandler: FfiConverterTypeRelayError_lift
-        )
+open func savedDataNotice() -> SavedDataNotice?  {
+    return try!  FfiConverterOptionTypeSavedDataNotice.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_saved_data_notice(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -6019,12 +5861,39 @@ open func servers() -> RelayServers  {
 })
 }
     
+    /**
+     * Only Hybrid uses the relay server. Leaving Hybrid lets go of the
+     * relay at once, and any connection that still finds a relay path is
+     * refused; Relay opens without the relay from then on. Coming back to
+     * Hybrid takes the relay up again (fully from the next open, when
+     * Relay opened outside Hybrid).
+     */
 open func setConnectionMode(mode: ConnectionMode)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_relay_core_fn_method_relaycore_set_connection_mode(
                         self.uniffiCloneHandle(),FfiConverterTypeConnectionMode_lower(mode)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Whether a trusted device may ask this device's AI. Off when a
+     * device is trusted; trust never turns it on.
+     */
+open func setMayAsk(endpointId: String, on: Bool)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_set_may_ask(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterBool.lower(on)
                 )
             },
             pollFunc: ffi_relay_core_rust_future_poll_void,
@@ -6114,33 +5983,6 @@ open func shutdown()  {try! rustCall() {
 }
     
     /**
-     * Opens a TCP port for paired devices (and pairing) on every
-     * interface; returns the port. `port` 0 takes any free one. Advertise
-     * it with Bonjour as [`SERVICE_TYPE`]. Stop it when the app leaves the
-     * screen: iOS suspends it anyway.
-     */
-open func startListening(port: UInt16)throws  -> UInt16  {
-    return try  FfiConverterUInt16.lift(try rustCallWithError(FfiConverterTypeRelayError_lift) {
-        uniffiCallStatus in
-    uniffi_relay_core_fn_method_relaycore_start_listening(
-            self.uniffiCloneHandle(),
-        FfiConverterUInt16.lower(port),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * Closes the port. Transfers already arriving finish.
-     */
-open func stopListening()  {try! rustCall() {
-        uniffiCallStatus in
-    uniffi_relay_core_fn_method_relaycore_stop_listening(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-}
-}
-    
-    /**
      * Everything sent and received, newest first, with progress for what
      * is still going. Never waits for a command.
      */
@@ -6175,8 +6017,9 @@ open func trustDevice(endpointId: String)async throws   {
 }
     
     /**
-     * The device the last code transfer was with, when the pairing policy
-     * asks whether to trust it. Ask on both sides; each decides for itself.
+     * The oldest device a code transfer was with that the pairing policy
+     * asks whether to trust. Ask on both sides; each decides for itself.
+     * Once it is answered, the next one (if any) is offered.
      */
 open func trustOffer() -> TrustOffer?  {
     return try!  FfiConverterOptionTypeTrustOffer.lift(try! rustCall() {
@@ -8434,6 +8277,10 @@ public struct Device: Equatable, Hashable {
      */
     public var receivesFrom: Bool
     /**
+     * Whether it may ask this device's AI (off until turned on).
+     */
+    public var mayAsk: Bool
+    /**
      * Whether the app sees it on this network now.
      */
     public var nearby: Bool
@@ -8478,6 +8325,9 @@ public struct Device: Equatable, Hashable {
          * Whether it may send files and notes here.
          */receivesFrom: Bool, 
         /**
+         * Whether it may ask this device's AI (off until turned on).
+         */mayAsk: Bool, 
+        /**
          * Whether the app sees it on this network now.
          */nearby: Bool, 
         /**
@@ -8503,6 +8353,7 @@ public struct Device: Equatable, Hashable {
         self.trusted = trusted
         self.sinceMs = sinceMs
         self.receivesFrom = receivesFrom
+        self.mayAsk = mayAsk
         self.nearby = nearby
         self.presence = presence
         self.lastSeenMs = lastSeenMs
@@ -8533,6 +8384,7 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
                 trusted: FfiConverterBool.read(from: &buf), 
                 sinceMs: FfiConverterInt64.read(from: &buf), 
                 receivesFrom: FfiConverterBool.read(from: &buf), 
+                mayAsk: FfiConverterBool.read(from: &buf), 
                 nearby: FfiConverterBool.read(from: &buf), 
                 presence: FfiConverterTypePresence.read(from: &buf), 
                 lastSeenMs: FfiConverterOptionInt64.read(from: &buf), 
@@ -8549,6 +8401,7 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
         FfiConverterBool.write(value.trusted, into: &buf)
         FfiConverterInt64.write(value.sinceMs, into: &buf)
         FfiConverterBool.write(value.receivesFrom, into: &buf)
+        FfiConverterBool.write(value.mayAsk, into: &buf)
         FfiConverterBool.write(value.nearby, into: &buf)
         FfiConverterTypePresence.write(value.presence, into: &buf)
         FfiConverterOptionInt64.write(value.lastSeenMs, into: &buf)
@@ -8990,64 +8843,6 @@ public func FfiConverterTypeIdentity_lift(_ buf: RustBuffer) throws -> Identity 
 #endif
 public func FfiConverterTypeIdentity_lower(_ value: Identity) -> RustBuffer {
     return FfiConverterTypeIdentity.lower(value)
-}
-
-
-/**
- * A QR code's worth of pairing: show `code` as a QR code (or text) on
- * this device and scan it on the other. Valid once, until `expires_ms`.
- */
-public struct Invitation: Equatable, Hashable {
-    public var code: String
-    public var expiresMs: Int64
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(code: String, expiresMs: Int64) {
-        self.code = code
-        self.expiresMs = expiresMs
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension Invitation: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeInvitation: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Invitation {
-        return
-            try Invitation(
-                code: FfiConverterString.read(from: &buf), 
-                expiresMs: FfiConverterInt64.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: Invitation, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.code, into: &buf)
-        FfiConverterInt64.write(value.expiresMs, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeInvitation_lift(_ buf: RustBuffer) throws -> Invitation {
-    return try FfiConverterTypeInvitation.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeInvitation_lower(_ value: Invitation) -> RustBuffer {
-    return FfiConverterTypeInvitation.lower(value)
 }
 
 
@@ -9500,77 +9295,6 @@ public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResp
 
 
 /**
- * A device this one is paired with.
- */
-public struct Peer: Equatable, Hashable {
-    public var deviceId: String
-    public var name: String
-    public var pairedMs: Int64
-    /**
-     * Where it was last reached ("host:port"), a hint for next time.
-     */
-    public var lastAddress: String?
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(deviceId: String, name: String, pairedMs: Int64, 
-        /**
-         * Where it was last reached ("host:port"), a hint for next time.
-         */lastAddress: String?) {
-        self.deviceId = deviceId
-        self.name = name
-        self.pairedMs = pairedMs
-        self.lastAddress = lastAddress
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension Peer: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypePeer: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Peer {
-        return
-            try Peer(
-                deviceId: FfiConverterString.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf), 
-                pairedMs: FfiConverterInt64.read(from: &buf), 
-                lastAddress: FfiConverterOptionString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: Peer, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.deviceId, into: &buf)
-        FfiConverterString.write(value.name, into: &buf)
-        FfiConverterInt64.write(value.pairedMs, into: &buf)
-        FfiConverterOptionString.write(value.lastAddress, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePeer_lift(_ buf: RustBuffer) throws -> Peer {
-    return try FfiConverterTypePeer.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePeer_lower(_ value: Peer) -> RustBuffer {
-    return FfiConverterTypePeer.lower(value)
-}
-
-
-/**
  * One `name=value` pair of a URL query, decoded.
  */
 public struct QueryItem: Equatable, Hashable {
@@ -9698,6 +9422,64 @@ public func FfiConverterTypeRelayServers_lift(_ buf: RustBuffer) throws -> Relay
 #endif
 public func FfiConverterTypeRelayServers_lower(_ value: RelayServers) -> RustBuffer {
     return FfiConverterTypeRelayServers.lower(value)
+}
+
+
+/**
+ * Saved data Relay couldn't read when it opened: what happened, in words,
+ * and where it is kept on this device.
+ */
+public struct SavedDataNotice: Equatable, Hashable {
+    public var message: String
+    public var kept: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(message: String, kept: [String]) {
+        self.message = message
+        self.kept = kept
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedDataNotice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedDataNotice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedDataNotice {
+        return
+            try SavedDataNotice(
+                message: FfiConverterString.read(from: &buf), 
+                kept: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedDataNotice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.message, into: &buf)
+        FfiConverterSequenceString.write(value.kept, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedDataNotice_lift(_ buf: RustBuffer) throws -> SavedDataNotice {
+    return try FfiConverterTypeSavedDataNotice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedDataNotice_lower(_ value: SavedDataNotice) -> RustBuffer {
+    return FfiConverterTypeSavedDataNotice.lower(value)
 }
 
 
@@ -11468,11 +11250,13 @@ public enum ConnectionMode: Equatable, Hashable {
      */
     case local
     /**
-     * The local network, then private networks such as Tailscale.
+     * The local network, then private networks such as Tailscale. Never
+     * over the open internet, and never through a relay server.
      */
     case `private`
     /**
-     * Every route Relay has: local, private, then direct over the internet.
+     * Every route Relay has: local, private, direct over the internet, and
+     * Relay's own relay server. The only mode that uses a relay.
      */
     case hybrid
 
@@ -12637,8 +12421,6 @@ enum RelayError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case NoteTooLong(max: UInt32
     )
     case FileTooLarge
-    case BadCode
-    case CodeExpired
     /**
      * A transfer code (`7-acid-tidy-rug`) that can't be right as typed.
      */
@@ -12657,7 +12439,6 @@ enum RelayError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case File(reason: String
     )
-    case AlreadyListening
     case InUse
     case Corrupt(reason: String
     )
@@ -12708,40 +12489,37 @@ public struct FfiConverterTypeRelayError: FfiConverterRustBuffer {
             max: try FfiConverterUInt32.read(from: &buf)
             )
         case 5: return .FileTooLarge
-        case 6: return .BadCode
-        case 7: return .CodeExpired
-        case 8: return .WordCode(
+        case 6: return .WordCode(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 9: return .UnknownPeer(
+        case 7: return .UnknownPeer(
             id: try FfiConverterString.read(from: &buf)
             )
-        case 10: return .NotFound(
+        case 8: return .NotFound(
             id: try FfiConverterUInt64.read(from: &buf)
             )
-        case 11: return .Unreachable(
+        case 9: return .Unreachable(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 12: return .Refused
-        case 13: return .Declined(
+        case 10: return .Refused
+        case 11: return .Declined(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 14: return .Connection(
+        case 12: return .Connection(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 15: return .File(
+        case 13: return .File(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 16: return .AlreadyListening
-        case 17: return .InUse
-        case 18: return .Corrupt(
+        case 14: return .InUse
+        case 15: return .Corrupt(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 19: return .NewerData
-        case 20: return .Storage(
+        case 16: return .NewerData
+        case 17: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 21: return .Stopped(
+        case 18: return .Stopped(
             kind: try FfiConverterTypeErrorKind.read(from: &buf)
             )
 
@@ -12778,77 +12556,65 @@ public struct FfiConverterTypeRelayError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(5))
         
         
-        case .BadCode:
-            writeInt(&buf, Int32(6))
-        
-        
-        case .CodeExpired:
-            writeInt(&buf, Int32(7))
-        
-        
         case let .WordCode(reason):
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .UnknownPeer(id):
-            writeInt(&buf, Int32(9))
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(id, into: &buf)
             
         
         case let .NotFound(id):
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(8))
             FfiConverterUInt64.write(id, into: &buf)
             
         
         case let .Unreachable(reason):
-            writeInt(&buf, Int32(11))
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .Refused:
-            writeInt(&buf, Int32(12))
+            writeInt(&buf, Int32(10))
         
         
         case let .Declined(reason):
-            writeInt(&buf, Int32(13))
+            writeInt(&buf, Int32(11))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .Connection(reason):
-            writeInt(&buf, Int32(14))
+            writeInt(&buf, Int32(12))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .File(reason):
+            writeInt(&buf, Int32(13))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .InUse:
+            writeInt(&buf, Int32(14))
+        
+        
+        case let .Corrupt(reason):
             writeInt(&buf, Int32(15))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .AlreadyListening:
+        case .NewerData:
             writeInt(&buf, Int32(16))
         
         
-        case .InUse:
-            writeInt(&buf, Int32(17))
-        
-        
-        case let .Corrupt(reason):
-            writeInt(&buf, Int32(18))
-            FfiConverterString.write(reason, into: &buf)
-            
-        
-        case .NewerData:
-            writeInt(&buf, Int32(19))
-        
-        
         case let .Storage(reason):
-            writeInt(&buf, Int32(20))
+            writeInt(&buf, Int32(17))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .Stopped(kind):
-            writeInt(&buf, Int32(21))
+            writeInt(&buf, Int32(18))
             FfiConverterTypeErrorKind.write(kind, into: &buf)
             
         }
@@ -13151,30 +12917,6 @@ public func FfiConverterTypeTransferStatus_lower(_ value: TransferStatus) -> Rus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionUInt16: FfiConverterRustBuffer {
-    typealias SwiftType = UInt16?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterUInt16.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterUInt16.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
     typealias SwiftType = UInt64?
 
@@ -13263,30 +13005,6 @@ fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterData.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionTypeCancellation: FfiConverterRustBuffer {
-    typealias SwiftType = Cancellation?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeCancellation.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeCancellation.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -13503,6 +13221,30 @@ fileprivate struct FfiConverterOptionTypeCodeSize: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeCodeSize.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeSavedDataNotice: FfiConverterRustBuffer {
+    typealias SwiftType = SavedDataNotice?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSavedDataNotice.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSavedDataNotice.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -13983,31 +13725,6 @@ fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypePeer: FfiConverterRustBuffer {
-    typealias SwiftType = [Peer]
-
-    public static func write(_ value: [Peer], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypePeer.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Peer] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [Peer]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypePeer.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
     typealias SwiftType = [QueryItem]
 
@@ -14254,6 +13971,18 @@ public func chatMessageLink(conversationId: String, messageId: String) -> String
 })
 }
 /**
+ * The conversation in Chats of the trusted device `endpoint_id` (its
+ * device screen's Message button opens it).
+ */
+public func deviceConversationId(endpointId: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_device_conversation_id(
+        FfiConverterString.lower(endpointId),uniffiCallStatus
+    )
+})
+}
+/**
  * The delivery state of `message` in `conversation`: `Read` once another
  * account's read cursor has passed one of our sent messages. Only
  * meaningful for our own messages.
@@ -14472,6 +14201,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_func_chat_message_link() != 46272) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_func_device_conversation_id() != 5838) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_func_chat_delivery() != 64205) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14535,9 +14267,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_cancel_code_send() != 14930) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_cancel_invitation() != 53288) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_relay_core_checksum_method_relaycore_cancel_transfer() != 49543) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14551,9 +14280,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_connection_mode() != 5394) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_relay_core_checksum_method_relaycore_create_invitation() != 11711) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_deliver_waiting() != 17342) {
@@ -14571,7 +14297,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_devices_nearby() != 37105) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_dismiss_trust_offer() != 41948) {
+    if (uniffi_relay_core_checksum_method_relaycore_dismiss_saved_data_notice() != 49479) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_dismiss_trust_offer() != 41745) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_events() != 39843) {
@@ -14580,28 +14309,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_forget_device() != 22676) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_forget_peer() != 9976) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_relay_core_checksum_method_relaycore_identity() != 54317) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_launch_report() != 33685) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_listening_port() != 28817) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_relay_core_checksum_method_relaycore_network_changed() != 22393) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_pair() != 15375) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_relay_core_checksum_method_relaycore_pairing_policy() != 47710) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_relay_core_checksum_method_relaycore_peers() != 53307) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_phase() != 61654) {
@@ -14625,13 +14342,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_revoke_device() != 64705) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_send_file() != 55394) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_relay_core_checksum_method_relaycore_send_note() != 59564) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_relay_core_checksum_method_relaycore_send_note_to_device() != 51989) {
+    if (uniffi_relay_core_checksum_method_relaycore_saved_data_notice() != 22012) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_send_paths_with_code() != 4107) {
@@ -14646,7 +14357,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_servers() != 62920) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_set_connection_mode() != 58690) {
+    if (uniffi_relay_core_checksum_method_relaycore_set_connection_mode() != 22027) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_set_may_ask() != 27909) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_set_pairing_policy() != 5214) {
@@ -14664,19 +14378,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_shutdown() != 23618) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_start_listening() != 13212) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_relay_core_checksum_method_relaycore_stop_listening() != 20377) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_relay_core_checksum_method_relaycore_transfers() != 41260) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_trust_device() != 54559) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_trust_offer() != 13088) {
+    if (uniffi_relay_core_checksum_method_relaycore_trust_offer() != 46070) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_account() != 28427) {
@@ -14688,7 +14396,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_chatcore_assistant() != 43466) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_chatcore_attachment_file() != 40445) {
+    if (uniffi_relay_core_checksum_method_chatcore_attachment_file() != 14718) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_background_time_expired() != 36868) {

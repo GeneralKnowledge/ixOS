@@ -338,7 +338,9 @@ pub(crate) fn conversation(c: chat_core::Conversation, user_id: &str) -> ChatCon
 impl From<chat_core::MessageStatus> for ChatMessageStatus {
     fn from(status: chat_core::MessageStatus) -> Self {
         match status {
-            chat_core::MessageStatus::Sending => Self::Sending,
+            // Waiting in Relay's outbox for a trusted device: the bubble
+            // says Sending until the device has it.
+            chat_core::MessageStatus::Sending | chat_core::MessageStatus::Queued => Self::Sending,
             chat_core::MessageStatus::Sent => Self::Sent,
             chat_core::MessageStatus::Failed => Self::Failed,
         }

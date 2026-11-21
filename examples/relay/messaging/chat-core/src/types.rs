@@ -115,6 +115,11 @@ pub enum MessageStatus {
     /// when it can, also after the app was killed and launched again.
     #[default]
     Sending,
+    /// Handed to a repo that delivers it itself, from a durable queue of
+    /// its own (Relay's outbox, for a trusted device): not resent from
+    /// this outbox. The repo's stream moves it on to `Sent` once the
+    /// other side has it, or `Failed`.
+    Queued,
     /// The server has it.
     Sent,
     /// The server refused it (not a network problem, which keeps it

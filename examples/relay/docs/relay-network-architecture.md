@@ -3,7 +3,7 @@
 Status: Reuben's direction, 2026-11-21. This is the centre that the other
 Relay idea docs refer back to. It changes no commitment: the Relay 1.0
 foundations come first and stay small
-(the audit doc, relay-audit-2026-11.md, step 5, which lands with the 1.0 PRs), and nothing below is built
+([audit, step 5](relay-audit-2026-11.md)), and nothing below is built
 until Reuben says so. Everything past "What exists today" is a
 hypothesis in the sense of the
 [open-ended design principles](relay-open-ended-design-principles.md):
@@ -27,7 +27,7 @@ together, and services that compose.
 
 ## What exists today
 
-Written from the code, so this part doesn't go stale. "Main" is merged;
+Written from the code on main (all of the 1.0 foundations are merged), so
 the PR numbers are the 1.0 foundations still open.
 
 | Primitive | Today | Where |
@@ -75,7 +75,7 @@ same way.
 - **Grows from:** the grants, one ALPN per job, presence's "what it
   offers".
 - **Proved by:** two small capabilities on the same machinery: Sites
-  (parked in the audit doc) and transcription on the laptop.
+  (parked in the [audit](relay-audit-2026-11.md)) and transcription on the laptop.
 
 ### 2. Tasks and cooperation
 
@@ -146,7 +146,7 @@ personal network in the existing docs and PRs.
 
 | Stage | Focus | What it unlocks |
 |---|---|---|
-| 1.0 | Device foundations | A trusted, persistent device network |
+| 1.0 | Device foundations | A trusted, persistent device network ([audit, step 5](relay-audit-2026-11.md)) |
 | N1 | My Devices | One identity for your devices: learn, trust and revoke once |
 | N2 | Away from home and the mailbox | Reliable reach beyond the home network; work waits while a device is away |
 | N3 | Capabilities | Services devices offer and who may use them (Sites first) |
@@ -208,7 +208,7 @@ These are design explorations that refer back here:
   rationale.
 - [relay-future-directions.md](relay-future-directions.md): longer-term
   applications and the earlier milestones.
-- The audit doc (relay-audit-2026-11.md): the 1.0 plan and Sites over
+- [relay-audit-2026-11.md](relay-audit-2026-11.md): the 1.0 plan and Sites over
   Relay.
 
 Relay Workshop is the first substantial app that uses several shared

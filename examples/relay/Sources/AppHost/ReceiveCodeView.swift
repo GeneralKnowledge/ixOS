@@ -2,10 +2,12 @@
 @preconcurrency import RelayFFI
 import ForgeUI
 import SwiftUI
+import VisionKit
 
 /// Receive with a word code: files, photos or a folder from a sender on this
 /// Wi-Fi (Relay M1). The sender is another Relay, or `relay send` on a
-/// computer, showing a code such as `37-grasp-gag-drum`. Bonjour finds it
+/// computer, showing a code such as `37-grasp-gag-drum`, typed or scanned
+/// from its QR code. Bonjour finds it
 /// by the code's number, Rust does the rest. What arrives is in the Files
 /// app, and in the history.
 struct ReceiveCodeSheet: View {
@@ -17,6 +19,10 @@ struct ReceiveCodeSheet: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @FocusState private var typing: Bool
+
+    private var canScan: Bool {
+        DataScannerViewController.isSupported && DataScannerViewController.isAvailable
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,6 +42,20 @@ struct ReceiveCodeSheet: View {
                     Text("Code")
                 } footer: {
                     Text("The number and three words the sender shows. Both devices need to be on the same Wi-Fi. What you receive is in the Files app, under On My iPhone.")
+                }
+                if canScan, !model.isReceivingCode {
+                    Section {
+                        CodeScanner { scanned in
+                            code = scanned
+                            start()
+                        }
+                        .frame(height: 240)
+                        .listRowInsets(EdgeInsets())
+                        .accessibilityLabel("Camera, looking for a code's QR")
+                        .accessibilityIdentifier("receiveCode.scan")
+                    } footer: {
+                        Text("Or point the camera at the QR code on the sender's screen.")
+                    }
                 }
                 Section {
                     status

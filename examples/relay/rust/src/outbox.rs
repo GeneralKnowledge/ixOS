@@ -1,7 +1,9 @@
 //! The delivery outbox (Relay M1 stage 3,
 //! examples/relay/docs/relay-reliable-delivery.md and
-//! relay-delivery-outbox.md): notes and files for a trusted device wait
-//! here until it is reachable, survive a relaunch, and arrive once.
+//! relay-delivery-outbox.md; one queue since review step 4,
+//! relay-unified-delivery.md): conversation messages and files for a
+//! trusted device wait here until it is reachable, survive a relaunch, and
+//! arrive once, in the order they were sent.
 //!
 //! - **The queue.** Every item sent to a trusted device is saved in
 //!   `Record::deliveries` before anything is dialled, with a 128-bit id it
@@ -15,12 +17,14 @@
 //!   here (which also resets the backoff), when Relay comes to the
 //!   foreground ([`RelayCore::deliver_waiting`]), and on a backoff of 1 s
 //!   doubling to 5 minutes, with jitter (forge-net's `Backoff`).
-//! - **Two state machines.** A note is Waiting, then Sending, then
-//!   Delivered. A file is Waiting, then Sending while the recipient
-//!   fetches what it doesn't have yet (so a retry resumes), then Delivered
-//!   once the recipient has verified and saved it. Either ends Failed with
-//!   a cause: refused or declined by the recipient, no longer trusted here,
-//!   cancelled, or not delivered within 30 days.
+//! - **Two lifecycles.** A message is Queued in its conversation until the
+//!   device has it, then Sent; it has no history entry. A file is Waiting,
+//!   then Sending while the recipient fetches what it doesn't have yet (so
+//!   a retry resumes), then Done once the recipient has verified and saved
+//!   it. Either ends Failed with a cause: refused or declined by the
+//!   recipient, no longer trusted here, cancelled, or not delivered within
+//!   30 days. A failed message can be sent again from its conversation.
+//!   (Notes queued before step 4 still go as notes.)
 //! - **Exactly once.** The recipient saves an item, then remembers its id
 //!   for 45 days, longer than any sender keeps it pending (30), before it
 //!   answers. A retry whose answer was lost finds the id and is answered
@@ -39,11 +43,12 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
 use crate::code_send::Offer;
+use crate::device_chat::Conversations;
+use crate::hex::{hex, unhex};
 use crate::model::{RelayError, Transfer};
 use crate::record::{Record, SavedItem, SavedStatus};
 use crate::resolver::{self, Whereabouts};
 use crate::trust::{SavedDevice, SavedTrust};
-use crate::wire::{hex, unhex};
 use crate::{code, device, RelayCore};
 
 /// A pending item ends unsent after this long.
@@ -64,7 +69,8 @@ pub struct SavedDelivery {
     pub id: String,
     /// The recipient's endpoint id.
     pub to: String,
-    /// Its history entry.
+    /// Its history entry; 0 for a message, which is in its device's
+    /// conversation instead.
     pub transfer: u64,
     pub payload: Payload,
     pub queued_ms: i64,
@@ -74,6 +80,14 @@ pub struct SavedDelivery {
 pub enum Payload {
     Note {
         text: String,
+    },
+    /// A message in the device's conversation, by its own id there (the
+    /// receiver keeps it once by that id).
+    Message {
+        id: String,
+        body: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_to: Option<String>,
     },
     /// Files and folders as one item, in the blob store: a raw blob, or a
     /// collection. `hashes` are every blob the recipient may fetch.
@@ -131,7 +145,7 @@ impl Payload {
     /// What the blob store holds for it.
     fn content(&self) -> Option<HashAndFormat> {
         match self {
-            Payload::Note { .. } => None,
+            Payload::Note { .. } | Payload::Message { .. } => None,
             Payload::Files {
                 hash, collection, ..
             } => {
@@ -152,9 +166,7 @@ fn parse_hash(text: &str) -> Option<Hash> {
 }
 
 pub(crate) fn new_id() -> [u8; 16] {
-    forge_devproto::new_secret()[..16]
-        .try_into()
-        .expect("16 bytes")
+    crate::hex::random()[..16].try_into().expect("16 bytes")
 }
 
 pub(crate) fn tag_name(id: &str) -> String {
@@ -188,6 +200,27 @@ impl Record {
             queued_ms: now_ms,
         });
         transfer
+    }
+
+    /// Queues a message for `to`. It has no history entry: it is in the
+    /// device's conversation.
+    pub fn queue_message(&mut self, id: &[u8; 16], to: &str, payload: Payload, now_ms: i64) {
+        self.deliveries.push(SavedDelivery {
+            id: hex(id),
+            to: to.into(),
+            transfer: 0,
+            payload,
+            queued_ms: now_ms,
+        });
+    }
+
+    /// The pending delivery of the conversation message `message_id`.
+    pub fn message_delivery(&self, message_id: &str) -> Option<&SavedDelivery> {
+        self.deliveries.iter().find(|d| match &d.payload {
+            Payload::Message { id, .. } => id == message_id,
+            Payload::Files { .. } => crate::device_chat::files_message_id(&d.id) == message_id,
+            Payload::Note { .. } => false,
+        })
     }
 
     /// The oldest item for `to`: the next to send.
@@ -263,8 +296,8 @@ pub(crate) struct Outbox {
     /// Per recipient that wasn't reached: its backoff, and when the next
     /// pass is due.
     backoff: Mutex<HashMap<String, (Backoff, i64)>>,
-    /// Sends waiting for their item's first attempt, by history id.
-    pub(crate) waiters: Arc<Mutex<HashMap<u64, Vec<Waiter>>>>,
+    /// Sends waiting for their item's first attempt, by delivery id.
+    pub(crate) waiters: Arc<Mutex<HashMap<String, Vec<Waiter>>>>,
     /// Tests: the next answers to lose, as if the connection broke after
     /// the recipient saved the item.
     lose_answers: AtomicU32,
@@ -293,17 +326,33 @@ impl RelayCore {
         item: SavedItem,
         payload: Payload,
     ) -> Result<Transfer, RelayError> {
+        self.queue_with(id, to, item, payload, None).await
+    }
+
+    /// [`queue`](Self::queue), with `message` (and where its attachment
+    /// is) added to the device's conversation in the same transaction.
+    pub(crate) async fn queue_with(
+        &self,
+        id: [u8; 16],
+        to: String,
+        item: SavedItem,
+        payload: Payload,
+        message: Option<(chat_core::Message, Option<std::path::PathBuf>)>,
+    ) -> Result<Transfer, RelayError> {
         let (tx, rx) = oneshot::channel();
         let waiters = Arc::clone(&self.outbox.waiters);
         let recipient = to.clone();
         let transfer = self
             .rt
             .command("queue", move |state| {
-                state.change(|r| {
+                state.change_with(|r, c| {
+                    if let Some((message, path)) = message {
+                        c.add_files(&recipient, message, path.as_deref())?;
+                    }
                     let transfer = r.queue(&id, &recipient, item, payload, now_ms());
                     // Before the change is published, so the worker can't
                     // finish the item before anyone waits for it.
-                    lock(&waiters).entry(transfer).or_default().push(tx);
+                    lock(&waiters).entry(hex(&id)).or_default().push(tx);
                     Ok(transfer)
                 })
             })
@@ -357,15 +406,15 @@ impl RelayCore {
         let record = self.record.get();
         let mut waiters = lock(&self.outbox.waiters);
         for d in record.deliveries.iter().filter(|d| d.to == to) {
-            for tx in waiters.remove(&d.transfer).unwrap_or_default() {
+            for tx in waiters.remove(&d.id).unwrap_or_default() {
                 let _ = tx.send(Ok(()));
             }
         }
     }
 
-    fn answer(&self, transfer: u64, result: Result<(), RelayError>) {
+    fn answer(&self, delivery: &str, result: Result<(), RelayError>) {
         for tx in lock(&self.outbox.waiters)
-            .remove(&transfer)
+            .remove(delivery)
             .unwrap_or_default()
         {
             let _ = tx.send(result.clone());
@@ -383,19 +432,25 @@ impl RelayCore {
             Outcome::Retry => (SavedStatus::Waiting, Ok(()), None),
         };
         let (id, to) = (d.id.clone(), d.to.clone());
+        let (d_for_end, delivered) = (d.clone(), answer.is_ok());
         let saved = self
             .rt
             .command("delivery", move |state| {
-                state.change(|r| {
+                // The delivery's end and its message's status: one
+                // transaction (P3).
+                state.change_with(|r, c| {
                     if let Some(sent) = seen {
                         remember_reached(r, &to, &sent);
                     }
-                    Ok(if status == SavedStatus::Waiting {
+                    if status == SavedStatus::Waiting {
                         r.delivery_status(&id, status);
-                        false
-                    } else {
-                        r.end_delivery(&id, status)
-                    })
+                        return Ok(false);
+                    }
+                    let ended = r.end_delivery(&id, status);
+                    if ended {
+                        message_ended(c, &d_for_end, delivered)?;
+                    }
+                    Ok(ended)
                 })
             })
             .await;
@@ -405,7 +460,7 @@ impl RelayCore {
         if matches!(saved, Ok(true)) {
             self.let_go(&d).await;
         }
-        self.answer(d.transfer, answer);
+        self.answer(&d.id, answer);
         let mut backoff = lock(&self.outbox.backoff);
         if reached {
             lock(&self.problems).remove(&d.to);
@@ -449,6 +504,13 @@ impl RelayCore {
         };
         let outgoing = match &d.payload {
             Payload::Note { text } => device::Outgoing::Note(text.clone()),
+            Payload::Message { id, body, reply_to } => {
+                device::Outgoing::Message(crate::device_chat::PeerMessage {
+                    id: id.clone(),
+                    body: body.clone(),
+                    reply_to: reply_to.clone(),
+                })
+            }
             files => match files.offer() {
                 Some(offer) => device::Outgoing::Stored(offer),
                 None => {
@@ -477,7 +539,11 @@ impl RelayCore {
             return Outcome::Gone;
         }
         let stop = Arc::new(AtomicBool::new(false));
-        lock(&self.device_stops).insert(transfer, Arc::clone(&stop));
+        // A message has no history entry: nothing shows its progress, and
+        // it isn't stopped once on its way.
+        if transfer != 0 {
+            lock(&self.device_stops).insert(transfer, Arc::clone(&stop));
+        }
         let node = Arc::clone(&self.node);
         let mode = self.record.get().devices.mode;
         let my_name = self.identity().name;
@@ -486,6 +552,9 @@ impl RelayCore {
             .spawn(async move {
                 let node = node.get().await?;
                 let report = |done: u64| {
+                    if transfer == 0 {
+                        return;
+                    }
                     if let Some(core) = weak.upgrade() {
                         lock(&core.progress).insert(transfer, done);
                     }
@@ -494,8 +563,10 @@ impl RelayCore {
             })
             .await
             .unwrap_or_else(|e| Err(code::connection(e)));
-        lock(&self.device_stops).remove(&transfer);
-        lock(&self.progress).remove(&transfer);
+        if transfer != 0 {
+            lock(&self.device_stops).remove(&transfer);
+            lock(&self.progress).remove(&transfer);
+        }
         let result = match result {
             Ok(_) if self.lose_answer() => Err(code::connection("the answer was lost")),
             other => other,
@@ -552,30 +623,68 @@ impl RelayCore {
         else {
             return false;
         };
-        let id = d.id.clone();
+        let ending = d.clone();
         let ended = self
             .rt
             .command("cancel-delivery", move |state| {
-                state.change(|r| {
-                    Ok(r.end_delivery(
-                        &id,
+                state.change_with(|r, c| {
+                    let ended = r.end_delivery(
+                        &ending.id,
                         SavedStatus::Failed {
                             reason: "Cancelled".into(),
                         },
-                    ))
+                    );
+                    if ended {
+                        message_ended(c, &ending, false)?;
+                    }
+                    Ok(ended)
                 })
             })
             .await;
         if matches!(ended, Ok(true)) {
             self.let_go(&d).await;
             self.answer(
-                transfer,
+                &d.id,
                 Err(RelayError::Stopped {
                     kind: forge_app::ErrorKind::Cancelled,
                 }),
             );
         }
         true
+    }
+}
+
+/// A message or files delivery ended: its conversation shows it sent, or
+/// failed (the person can send a message again). In the transaction that
+/// ends the delivery.
+fn message_ended(
+    c: &mut Conversations<'_>,
+    d: &SavedDelivery,
+    delivered: bool,
+) -> Result<(), RelayError> {
+    let id = match &d.payload {
+        Payload::Message { id, .. } => id.clone(),
+        Payload::Files { .. } => crate::device_chat::files_message_id(&d.id),
+        Payload::Note { .. } => return Ok(()),
+    };
+    let status = if delivered {
+        chat_core::MessageStatus::Sent
+    } else {
+        chat_core::MessageStatus::Failed
+    };
+    c.set_status(&d.to, &id, status)
+}
+
+/// At open: a message a conversation shows queued that the outbox doesn't
+/// hold failed, so the person can send it again. Since P3 the two are
+/// saved together; this settles what an older build left.
+pub(crate) fn settle_messages(r: &Record, c: &mut Conversations<'_>) {
+    for to in r.devices.listed().map(|d| d.endpoint_id.clone()) {
+        for m in c.queued(&to).unwrap_or_default() {
+            if r.message_delivery(&m.id).is_none() {
+                let _ = c.set_status(&to, &m.id, chat_core::MessageStatus::Failed);
+            }
+        }
     }
 }
 
@@ -665,58 +774,75 @@ impl RelayCore {
         lock(&self.problems).get(to).cloned()
     }
 
-    /// Sends one conversation message to a trusted device now, by its
-    /// own id (`device_chat`): the caller's outbox keeps it while the
-    /// device can't be reached.
-    pub(crate) async fn deliver_message(
+    /// Puts one of our conversation messages in `to`'s queue, after the
+    /// messages and files already waiting for it, and returns it `Queued`
+    /// with what answers its first attempt. Sending a message again (a
+    /// retry after it failed) queues it again; one already queued or sent
+    /// comes back as it is.
+    pub(crate) async fn queue_message(
         &self,
         to: &str,
-        message: crate::device_chat::PeerMessage,
-    ) -> Result<(), RelayError> {
-        let saved = self.record.get().devices.get(to).cloned();
-        let Some(saved) = saved.filter(|s| s.trust == SavedTrust::Trusted) else {
+        message: chat_core::Message,
+    ) -> Result<
+        (
+            chat_core::Message,
+            oneshot::Receiver<Result<(), RelayError>>,
+        ),
+        RelayError,
+    > {
+        use chat_core::MessageStatus;
+        let (tx, rx) = oneshot::channel();
+        let trusted = self
+            .record
+            .get()
+            .devices
+            .get(to)
+            .is_some_and(|d| d.trust == SavedTrust::Trusted);
+        if !trusted {
             return Err(RelayError::UnknownPeer { id: to.into() });
-        };
-        let Some((addr, plan)) = self.dial(&saved) else {
-            return Err(RelayError::Unreachable {
-                reason: self.problem_of(to).unwrap_or_default(),
-            });
-        };
-        let node = Arc::clone(&self.node);
-        let mode = self.record.get().devices.mode;
-        let my_name = self.identity().name;
-        let stop = Arc::new(AtomicBool::new(false));
-        let sent = code::TOKIO
-            .spawn(async move {
-                let node = node.get().await?;
-                let outgoing = device::Outgoing::Message(message);
-                device::send(&node, addr, mode, my_name, new_id(), outgoing, |_| {}, stop).await
-            })
-            .await
-            .unwrap_or_else(|e| Err(code::connection(e)))
-            .inspect_err(|e| {
-                if matches!(
-                    e,
-                    RelayError::Unreachable { .. } | RelayError::Connection { .. }
-                ) {
-                    self.problem(to, resolver::no_answer(&saved.name, &plan));
-                }
-            })?;
-        if self.lose_answer() {
-            return Err(code::connection("the answer was lost"));
         }
-        lock(&self.problems).remove(to);
-        let to = to.to_string();
-        let _ = self
+        let id = new_id();
+        let waiters = Arc::clone(&self.outbox.waiters);
+        let recipient = to.to_string();
+        // The message, Queued, and its delivery: one transaction (P3).
+        let message = self
             .rt
-            .command("message-reached", move |state| {
-                state.change(|r| {
-                    remember_reached(r, &to, &sent);
-                    Ok(())
+            .command("queue-message", move |state| {
+                state.change_with(|r, c| {
+                    let message = match c.get(&recipient, &message.id)? {
+                        Some(found) if found.status == MessageStatus::Failed => {
+                            c.set_status(&recipient, &found.id, MessageStatus::Queued)?;
+                            c.get(&recipient, &found.id)?.unwrap_or(found)
+                        }
+                        Some(found) => {
+                            let _ = tx.send(Ok(()));
+                            return Ok(found);
+                        }
+                        None => c.add(
+                            &recipient,
+                            chat_core::Message {
+                                status: MessageStatus::Queued,
+                                ..message
+                            },
+                        )?,
+                    };
+                    if r.message_delivery(&message.id).is_none() {
+                        let payload = Payload::Message {
+                            id: message.id.clone(),
+                            body: message.body.clone(),
+                            reply_to: message.reply_to.clone(),
+                        };
+                        r.queue_message(&id, &recipient, payload, now_ms());
+                        lock(&waiters).entry(hex(&id)).or_default().push(tx);
+                    } else {
+                        let _ = tx.send(Ok(()));
+                    }
+                    Ok(message)
                 })
             })
-            .await;
-        Ok(())
+            .await?;
+        self.wake(to);
+        Ok((message, rx))
     }
 
     /// Sets what wakes device conversations when their device is reached.
