@@ -11,6 +11,11 @@
 #     lib/python3.15/                     the standard library, without its
 #                                         tests, IDLE, Tk and ensurepip
 #     lib/python3.15/lib-dynload/*.fwork  where each extension module's binary is
+#     etc/cacert.pem                      the CA certificates Python's ssl
+#                                         checks HTTPS against (Mozilla's, from
+#                                         certifi): iOS has no OpenSSL trust
+#                                         store, so without it every HTTPS
+#                                         request fails to verify
 #     Frameworks/<module>.framework       the extension modules (math, _json,
 #                                         _sqlite3, _ssl ...), one framework
 #                                         each, as CPython's iOS support
@@ -18,14 +23,18 @@
 #                                         binaries in an app); xtool signs them
 #
 # forge runs it before every iOS build ([ios] prepare in forge.toml); with
-# everything in place it exits at once. Uses curl, tar and sha256sum (or
-# shasum on macOS).
+# everything in place it exits at once. Uses curl, tar, python3 (to read
+# certifi's wheel) and sha256sum (or shasum on macOS).
 set -euo pipefail
 
 VERSION="3.15.0"
 MINOR="3.15"
 URL="https://www.python.org/ftp/python/${VERSION}/python-${VERSION}-iOS-XCframework.tar.gz"
 SHA256="68e98ab35cc0643ba3a227a8c7768da45c2a5e67dbe1bc26598537e96680fd19"
+# Mozilla's CA certificates, from certifi's wheel (a release at least a few
+# weeks old; bump both lines together).
+CERTIFI_URL="https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl"
+CERTIFI_SHA256="e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1"
 # The extension modules' framework bundle ids start with this.
 BUNDLE_PREFIX="org.forgemobile.devicelab.python"
 
@@ -55,6 +64,19 @@ if [[ ! -f "$tarball" || "$(sha256 "$tarball")" != "$SHA256" ]]; then
     exit 1
   fi
   mv "$tarball.part" "$tarball"
+fi
+
+wheel="$cache/$(basename "$CERTIFI_URL")"
+if [[ ! -f "$wheel" || "$(sha256 "$wheel")" != "$CERTIFI_SHA256" ]]; then
+  echo "[python] Downloading certifi's CA certificates from PyPI"
+  curl -fL --retry 3 -o "$wheel.part" "$CERTIFI_URL"
+  got="$(sha256 "$wheel.part")"
+  if [[ "$got" != "$CERTIFI_SHA256" ]]; then
+    rm -f "$wheel.part"
+    echo "[python] certifi's SHA-256 is $got, not $CERTIFI_SHA256: not using it" >&2
+    exit 1
+  fi
+  mv "$wheel.part" "$wheel"
 fi
 
 echo "[python] Laying out CPython ${VERSION} in Generated/Python"
@@ -108,6 +130,10 @@ mkdir -p "$home/lib" "$home/Frameworks"
 cp -R "$src/lib/python${MINOR}" "$home/lib/"
 cp -R "$src/ios-arm64/lib-arm64/python${MINOR}/." "$lib/"
 rm -rf "$lib"/{test,idlelib,tkinter,turtledemo,ensurepip,turtle.py,site-packages}
+# PythonBridge points OpenSSL at this file (SSL_CERT_FILE) before Python starts.
+mkdir -p "$home/etc"
+python3 -I -c 'import sys, zipfile; sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read("certifi/cacert.pem"))' \
+  "$wheel" > "$home/etc/cacert.pem"
 find "$lib" -name __pycache__ -type d -prune -exec rm -rf {} +
 # CPython's own test modules.
 rm -f "$lib"/lib-dynload/{_test,xx,_ctypes_test,_xxtestfuzz}*.so

@@ -1644,6 +1644,301 @@ public func FfiConverterTypeBluetoothSink_lower(_ value: BluetoothSink) -> UInt6
 
 
 /**
+ * The harness the host opens once, over Python Lab. Thread-safe.
+ */
+public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
+    
+    func files()  -> [ProjectFile]
+    
+    func ladder()  -> [HarnessTask]
+    
+    /**
+     * Opens a project's journal for the screen (the last task and its
+     * steps). A task the app closed during is marked stopped.
+     */
+    func openProject(name: String) throws 
+    
+    /**
+     * The open project's files.
+     * The folder of the project on screen, for its images
+     * (`project_artifacts`).
+     */
+    func projectFolder()  -> String?
+    
+    func snapshot()  -> HarnessSnapshot
+    
+    /**
+     * Starts a task in the person's own words, in the scratch project
+     * (kept between tasks).
+     */
+    func startCustom(model: HarnessModel, request: String) throws 
+    
+    /**
+     * Starts a ladder task in a fresh project of its own (the last run's
+     * journal is kept in the projects folder's `.runs`).
+     */
+    func startLadder(model: HarnessModel, taskId: String) throws 
+    
+    /**
+     * Runs a ladder task with the Scripted model: known-good answers
+     * instead of a real model, to prove the tools, guard, evidence checks
+     * and journal on this device apart from any model.
+     */
+    func startLadderScripted(taskId: String) throws 
+    
+    /**
+     * Stops the model at its next token, or the Python run at its next
+     * instruction; the task ends Stopped.
+     */
+    func stop() 
+    
+    /**
+     * The last task as text, to copy as evidence.
+     */
+    func transcript()  -> String
+    
+}
+/**
+ * The harness the host opens once, over Python Lab. Thread-safe.
+ */
+open class BonsaiHarness: BonsaiHarnessProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_bonsaiharness(self.handle, $0) }
+    }
+    /**
+     * `projects_folder` holds one folder per project (iOS: Application
+     * Support/Python Lab/Projects).
+     */
+public convenience init(python: PythonHost, projectsFolder: String) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_constructor_bonsaiharness_new(
+        FfiConverterTypePythonHost_lower(python),
+        FfiConverterString.lower(projectsFolder),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_bonsaiharness(handle, $0) }
+    }
+
+    
+
+    
+open func files() -> [ProjectFile]  {
+    return try!  FfiConverterSequenceTypeProjectFile.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_files(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func ladder() -> [HarnessTask]  {
+    return try!  FfiConverterSequenceTypeHarnessTask.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_ladder(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Opens a project's journal for the screen (the last task and its
+     * steps). A task the app closed during is marked stopped.
+     */
+open func openProject(name: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_open_project(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The open project's files.
+     * The folder of the project on screen, for its images
+     * (`project_artifacts`).
+     */
+open func projectFolder() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_project_folder(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func snapshot() -> HarnessSnapshot  {
+    return try!  FfiConverterTypeHarnessSnapshot_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Starts a task in the person's own words, in the scratch project
+     * (kept between tasks).
+     */
+open func startCustom(model: HarnessModel, request: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHarnessModel_lower(model),
+        FfiConverterString.lower(request),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Starts a ladder task in a fresh project of its own (the last run's
+     * journal is kept in the projects folder's `.runs`).
+     */
+open func startLadder(model: HarnessModel, taskId: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_start_ladder(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHarnessModel_lower(model),
+        FfiConverterString.lower(taskId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Runs a ladder task with the Scripted model: known-good answers
+     * instead of a real model, to prove the tools, guard, evidence checks
+     * and journal on this device apart from any model.
+     */
+open func startLadderScripted(taskId: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_start_ladder_scripted(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(taskId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Stops the model at its next token, or the Python run at its next
+     * instruction; the task ends Stopped.
+     */
+open func stop()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_stop(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The last task as text, to copy as evidence.
+     */
+open func transcript() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_transcript(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBonsaiHarness: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = BonsaiHarness
+
+    public static func lift(_ handle: UInt64) throws -> BonsaiHarness {
+        return BonsaiHarness(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: BonsaiHarness) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BonsaiHarness {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BonsaiHarness, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBonsaiHarness_lift(_ handle: UInt64) throws -> BonsaiHarness {
+    return try FfiConverterTypeBonsaiHarness.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBonsaiHarness_lower(_ value: BonsaiHarness) -> UInt64 {
+    return FfiConverterTypeBonsaiHarness.lower(value)
+}
+
+
+
+
+
+
+/**
  * Implemented by the host (iOS: `NWPathMonitor`).
  */
 public protocol ConnectivityMonitor: AnyObject, Sendable {
@@ -2739,6 +3034,275 @@ public func FfiConverterTypeDeviceStatusSink_lift(_ handle: UInt64) throws -> De
 #endif
 public func FfiConverterTypeDeviceStatusSink_lower(_ value: DeviceStatusSink) -> UInt64 {
     return FfiConverterTypeDeviceStatusSink.lower(value)
+}
+
+
+
+
+
+
+/**
+ * A model the harness can drive, implemented by the host (iOS: llama.cpp's
+ * `LlamaCppModel`). `grammar` is a GBNF grammar the answer must follow.
+ * Rust calls `generate` from a thread of its own, one request at a time.
+ */
+public protocol HarnessModel: AnyObject, Sendable {
+    
+    func describe()  -> AiModelInfo
+    
+    func generate(request: AiRequest, grammar: String?, sink: TextSink) async throws 
+    
+}
+/**
+ * A model the harness can drive, implemented by the host (iOS: llama.cpp's
+ * `LlamaCppModel`). `grammar` is a GBNF grammar the answer must follow.
+ * Rust calls `generate` from a thread of its own, one request at a time.
+ */
+open class HarnessModelImpl: HarnessModel, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_harnessmodel(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_harnessmodel(handle, $0) }
+    }
+
+    
+
+    
+open func describe() -> AiModelInfo  {
+    return try!  FfiConverterTypeAiModelInfo_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_harnessmodel_describe(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func generate(request: AiRequest, grammar: String?, sink: TextSink)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_harnessmodel_generate(
+                        self.uniffiCloneHandle(),FfiConverterTypeAiRequest_lower(request),FfiConverterOptionString.lower(grammar),FfiConverterTypeTextSink_lower(sink)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_void,
+            completeFunc: ffi_forge_ffi_rust_future_complete_void,
+            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAiModelError_lift
+        )
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceHarnessModel {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceHarnessModel = UniffiVTableCallbackInterfaceHarnessModel(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeHarnessModel.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface HarnessModel: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeHarnessModel.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface HarnessModel: handle missing in uniffiClone")
+            }
+        },
+        describe: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> AiModelInfo in
+                guard let uniffiObj = try? FfiConverterTypeHarnessModel.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.describe(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeAiModelInfo_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        generate: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            grammar: RustBuffer,
+            sink: UInt64,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteVoid,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHarnessModel.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try await uniffiObj.generate(
+                     request: try FfiConverterTypeAiRequest_lift(request),
+                     grammar: try FfiConverterOptionString.lift(grammar),
+                     sink: try FfiConverterTypeTextSink_lift(sink)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: ()) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsyncWithError(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                lowerError: FfiConverterTypeAiModelError_lower,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceHarnessModel> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceHarnessModel>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitHarnessModel() {
+    uniffi_forge_ffi_fn_init_callback_vtable_harnessmodel(UniffiCallbackInterfaceHarnessModel.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessModel: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<HarnessModel>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = HarnessModel
+
+    public static func lift(_ handle: UInt64) throws -> HarnessModel {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return HarnessModelImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: HarnessModel) -> UInt64 {
+         if let rustImpl = value as? HarnessModelImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessModel {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: HarnessModel, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessModel_lift(_ handle: UInt64) throws -> HarnessModel {
+    return try FfiConverterTypeHarnessModel.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessModel_lower(_ value: HarnessModel) -> UInt64 {
+    return FfiConverterTypeHarnessModel.lower(value)
 }
 
 
@@ -4331,6 +4895,282 @@ public func FfiConverterTypePermissionProvider_lift(_ handle: UInt64) throws -> 
 #endif
 public func FfiConverterTypePermissionProvider_lower(_ value: PermissionProvider) -> UInt64 {
     return FfiConverterTypePermissionProvider.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The app's Python (iOS: `PythonRuntime` over PythonBridge). Rust calls
+ * `run` from a thread of its own, one script at a time.
+ */
+public protocol PythonHost: AnyObject, Sendable {
+    
+    /**
+     * Starts the interpreter if needed and runs `code` as a script.
+     */
+    func run(code: String) async throws  -> PythonOutcome
+    
+    /**
+     * Stops the running script (a KeyboardInterrupt in it).
+     */
+    func interrupt() 
+    
+}
+/**
+ * The app's Python (iOS: `PythonRuntime` over PythonBridge). Rust calls
+ * `run` from a thread of its own, one script at a time.
+ */
+open class PythonHostImpl: PythonHost, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_pythonhost(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_pythonhost(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Starts the interpreter if needed and runs `code` as a script.
+     */
+open func run(code: String)async throws  -> PythonOutcome  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_pythonhost_run(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(code)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePythonOutcome_lift,
+            errorHandler: FfiConverterTypePythonHostError_lift
+        )
+}
+    
+    /**
+     * Stops the running script (a KeyboardInterrupt in it).
+     */
+open func interrupt()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_pythonhost_interrupt(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfacePythonHost {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfacePythonHost = UniffiVTableCallbackInterfacePythonHost(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypePythonHost.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface PythonHost: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypePythonHost.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface PythonHost: handle missing in uniffiClone")
+            }
+        },
+        run: { (
+            uniffiHandle: UInt64,
+            code: RustBuffer,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> PythonOutcome in
+                guard let uniffiObj = try? FfiConverterTypePythonHost.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try await uniffiObj.run(
+                     code: try FfiConverterString.lift(code)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: PythonOutcome) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterTypePythonOutcome_lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsyncWithError(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                lowerError: FfiConverterTypePythonHostError_lower,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        interrupt: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypePythonHost.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.interrupt(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfacePythonHost> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfacePythonHost>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitPythonHost() {
+    uniffi_forge_ffi_fn_init_callback_vtable_pythonhost(UniffiCallbackInterfacePythonHost.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePythonHost: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<PythonHost>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = PythonHost
+
+    public static func lift(_ handle: UInt64) throws -> PythonHost {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return PythonHostImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: PythonHost) -> UInt64 {
+         if let rustImpl = value as? PythonHostImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PythonHost {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: PythonHost, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonHost_lift(_ handle: UInt64) throws -> PythonHost {
+    return try FfiConverterTypePythonHost.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonHost_lower(_ value: PythonHost) -> UInt64 {
+    return FfiConverterTypePythonHost.lower(value)
 }
 
 
@@ -7125,6 +7965,466 @@ public func FfiConverterTypeDeviceStatus_lower(_ value: DeviceStatus) -> RustBuf
 
 
 /**
+ * The limits a task runs under (shown on screen).
+ */
+public struct HarnessLimits: Equatable, Hashable {
+    /**
+     * Model answers per task.
+     */
+    public var maxSteps: UInt32
+    /**
+     * One Python run.
+     */
+    public var runSeconds: UInt32
+    /**
+     * The whole task.
+     */
+    public var taskSeconds: UInt32
+    /**
+     * The longest model answer.
+     */
+    public var turnTokens: UInt32
+    /**
+     * The longest result sent back to the model.
+     */
+    public var resultChars: UInt32
+    /**
+     * Invalid answers in a row before the task fails.
+     */
+    public var invalidInARow: UInt32
+    /**
+     * The same failing call this many times gets a nudge; once more fails.
+     */
+    public var sameFailureNudge: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Model answers per task.
+         */maxSteps: UInt32, 
+        /**
+         * One Python run.
+         */runSeconds: UInt32, 
+        /**
+         * The whole task.
+         */taskSeconds: UInt32, 
+        /**
+         * The longest model answer.
+         */turnTokens: UInt32, 
+        /**
+         * The longest result sent back to the model.
+         */resultChars: UInt32, 
+        /**
+         * Invalid answers in a row before the task fails.
+         */invalidInARow: UInt32, 
+        /**
+         * The same failing call this many times gets a nudge; once more fails.
+         */sameFailureNudge: UInt32) {
+        self.maxSteps = maxSteps
+        self.runSeconds = runSeconds
+        self.taskSeconds = taskSeconds
+        self.turnTokens = turnTokens
+        self.resultChars = resultChars
+        self.invalidInARow = invalidInARow
+        self.sameFailureNudge = sameFailureNudge
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HarnessLimits: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessLimits: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessLimits {
+        return
+            try HarnessLimits(
+                maxSteps: FfiConverterUInt32.read(from: &buf), 
+                runSeconds: FfiConverterUInt32.read(from: &buf), 
+                taskSeconds: FfiConverterUInt32.read(from: &buf), 
+                turnTokens: FfiConverterUInt32.read(from: &buf), 
+                resultChars: FfiConverterUInt32.read(from: &buf), 
+                invalidInARow: FfiConverterUInt32.read(from: &buf), 
+                sameFailureNudge: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HarnessLimits, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.maxSteps, into: &buf)
+        FfiConverterUInt32.write(value.runSeconds, into: &buf)
+        FfiConverterUInt32.write(value.taskSeconds, into: &buf)
+        FfiConverterUInt32.write(value.turnTokens, into: &buf)
+        FfiConverterUInt32.write(value.resultChars, into: &buf)
+        FfiConverterUInt32.write(value.invalidInARow, into: &buf)
+        FfiConverterUInt32.write(value.sameFailureNudge, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessLimits_lift(_ buf: RustBuffer) throws -> HarnessLimits {
+    return try FfiConverterTypeHarnessLimits.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessLimits_lower(_ value: HarnessLimits) -> RustBuffer {
+    return FfiConverterTypeHarnessLimits.lower(value)
+}
+
+
+public struct HarnessSnapshot: Equatable, Hashable {
+    public var running: Bool
+    public var phase: HarnessPhase
+    public var project: String?
+    public var task: HarnessTaskRecord?
+    public var steps: [HarnessStep]
+    /**
+     * The model's answer as it streams in.
+     */
+    public var draft: String
+    public var elapsedMs: UInt64
+    public var limits: HarnessLimits
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(running: Bool, phase: HarnessPhase, project: String?, task: HarnessTaskRecord?, steps: [HarnessStep], 
+        /**
+         * The model's answer as it streams in.
+         */draft: String, elapsedMs: UInt64, limits: HarnessLimits) {
+        self.running = running
+        self.phase = phase
+        self.project = project
+        self.task = task
+        self.steps = steps
+        self.draft = draft
+        self.elapsedMs = elapsedMs
+        self.limits = limits
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HarnessSnapshot: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessSnapshot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessSnapshot {
+        return
+            try HarnessSnapshot(
+                running: FfiConverterBool.read(from: &buf), 
+                phase: FfiConverterTypeHarnessPhase.read(from: &buf), 
+                project: FfiConverterOptionString.read(from: &buf), 
+                task: FfiConverterOptionTypeHarnessTaskRecord.read(from: &buf), 
+                steps: FfiConverterSequenceTypeHarnessStep.read(from: &buf), 
+                draft: FfiConverterString.read(from: &buf), 
+                elapsedMs: FfiConverterUInt64.read(from: &buf), 
+                limits: FfiConverterTypeHarnessLimits.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HarnessSnapshot, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.running, into: &buf)
+        FfiConverterTypeHarnessPhase.write(value.phase, into: &buf)
+        FfiConverterOptionString.write(value.project, into: &buf)
+        FfiConverterOptionTypeHarnessTaskRecord.write(value.task, into: &buf)
+        FfiConverterSequenceTypeHarnessStep.write(value.steps, into: &buf)
+        FfiConverterString.write(value.draft, into: &buf)
+        FfiConverterUInt64.write(value.elapsedMs, into: &buf)
+        FfiConverterTypeHarnessLimits.write(value.limits, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessSnapshot_lift(_ buf: RustBuffer) throws -> HarnessSnapshot {
+    return try FfiConverterTypeHarnessSnapshot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessSnapshot_lower(_ value: HarnessSnapshot) -> RustBuffer {
+    return FfiConverterTypeHarnessSnapshot.lower(value)
+}
+
+
+/**
+ * One executor step.
+ */
+public struct HarnessStep: Equatable, Hashable {
+    public var index: UInt32
+    public var thought: String
+    /**
+     * The tool, or "invalid" for an answer that wasn't a call.
+     */
+    public var tool: String
+    /**
+     * The call as the model wrote it (long contents shortened).
+     */
+    public var call: String
+    public var ok: Bool?
+    public var result: String
+    public var modelMs: UInt64
+    public var toolMs: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(index: UInt32, thought: String, 
+        /**
+         * The tool, or "invalid" for an answer that wasn't a call.
+         */tool: String, 
+        /**
+         * The call as the model wrote it (long contents shortened).
+         */call: String, ok: Bool?, result: String, modelMs: UInt64, toolMs: UInt64) {
+        self.index = index
+        self.thought = thought
+        self.tool = tool
+        self.call = call
+        self.ok = ok
+        self.result = result
+        self.modelMs = modelMs
+        self.toolMs = toolMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HarnessStep: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessStep: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessStep {
+        return
+            try HarnessStep(
+                index: FfiConverterUInt32.read(from: &buf), 
+                thought: FfiConverterString.read(from: &buf), 
+                tool: FfiConverterString.read(from: &buf), 
+                call: FfiConverterString.read(from: &buf), 
+                ok: FfiConverterOptionBool.read(from: &buf), 
+                result: FfiConverterString.read(from: &buf), 
+                modelMs: FfiConverterUInt64.read(from: &buf), 
+                toolMs: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HarnessStep, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.index, into: &buf)
+        FfiConverterString.write(value.thought, into: &buf)
+        FfiConverterString.write(value.tool, into: &buf)
+        FfiConverterString.write(value.call, into: &buf)
+        FfiConverterOptionBool.write(value.ok, into: &buf)
+        FfiConverterString.write(value.result, into: &buf)
+        FfiConverterUInt64.write(value.modelMs, into: &buf)
+        FfiConverterUInt64.write(value.toolMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessStep_lift(_ buf: RustBuffer) throws -> HarnessStep {
+    return try FfiConverterTypeHarnessStep.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessStep_lower(_ value: HarnessStep) -> RustBuffer {
+    return FfiConverterTypeHarnessStep.lower(value)
+}
+
+
+/**
+ * A ready-made task (the ladder).
+ */
+public struct HarnessTask: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var request: String
+    /**
+     * What proves it done, in words.
+     */
+    public var acceptance: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, request: String, 
+        /**
+         * What proves it done, in words.
+         */acceptance: [String]) {
+        self.id = id
+        self.title = title
+        self.request = request
+        self.acceptance = acceptance
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HarnessTask: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessTask: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessTask {
+        return
+            try HarnessTask(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                request: FfiConverterString.read(from: &buf), 
+                acceptance: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HarnessTask, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.request, into: &buf)
+        FfiConverterSequenceString.write(value.acceptance, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessTask_lift(_ buf: RustBuffer) throws -> HarnessTask {
+    return try FfiConverterTypeHarnessTask.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessTask_lower(_ value: HarnessTask) -> RustBuffer {
+    return FfiConverterTypeHarnessTask.lower(value)
+}
+
+
+/**
+ * The task record, as the screen shows it.
+ */
+public struct HarnessTaskRecord: Equatable, Hashable {
+    public var id: String
+    public var description: String
+    public var status: TaskStatus
+    public var dependencies: [String]
+    public var acceptance: [String]
+    /**
+     * How many times the executor said it was done.
+     */
+    public var attempts: UInt32
+    /**
+     * The evidence for Completed, or why it failed or stopped.
+     */
+    public var result: String?
+    public var modelId: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, description: String, status: TaskStatus, dependencies: [String], acceptance: [String], 
+        /**
+         * How many times the executor said it was done.
+         */attempts: UInt32, 
+        /**
+         * The evidence for Completed, or why it failed or stopped.
+         */result: String?, modelId: String) {
+        self.id = id
+        self.description = description
+        self.status = status
+        self.dependencies = dependencies
+        self.acceptance = acceptance
+        self.attempts = attempts
+        self.result = result
+        self.modelId = modelId
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HarnessTaskRecord: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessTaskRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessTaskRecord {
+        return
+            try HarnessTaskRecord(
+                id: FfiConverterString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                status: FfiConverterTypeTaskStatus.read(from: &buf), 
+                dependencies: FfiConverterSequenceString.read(from: &buf), 
+                acceptance: FfiConverterSequenceString.read(from: &buf), 
+                attempts: FfiConverterUInt32.read(from: &buf), 
+                result: FfiConverterOptionString.read(from: &buf), 
+                modelId: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HarnessTaskRecord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterTypeTaskStatus.write(value.status, into: &buf)
+        FfiConverterSequenceString.write(value.dependencies, into: &buf)
+        FfiConverterSequenceString.write(value.acceptance, into: &buf)
+        FfiConverterUInt32.write(value.attempts, into: &buf)
+        FfiConverterOptionString.write(value.result, into: &buf)
+        FfiConverterString.write(value.modelId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessTaskRecord_lift(_ buf: RustBuffer) throws -> HarnessTaskRecord {
+    return try FfiConverterTypeHarnessTaskRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessTaskRecord_lower(_ value: HarnessTaskRecord) -> RustBuffer {
+    return FfiConverterTypeHarnessTaskRecord.lower(value)
+}
+
+
+/**
  * Where the top of the device points.
  */
 public struct Heading: Equatable, Hashable {
@@ -8320,6 +9620,335 @@ public func FfiConverterTypePowerStats_lift(_ buf: RustBuffer) throws -> PowerSt
 #endif
 public func FfiConverterTypePowerStats_lower(_ value: PowerStats) -> RustBuffer {
     return FfiConverterTypePowerStats.lower(value)
+}
+
+
+/**
+ * An image file in a project.
+ */
+public struct ProjectArtifact: Equatable, Hashable {
+    /**
+     * Relative to the project, like "charts/sales.png".
+     */
+    public var path: String
+    /**
+     * "png", "jpeg", "gif" or "svg".
+     */
+    public var kind: String
+    public var bytes: UInt64
+    public var modifiedMs: Int64
+    /**
+     * From the PNG header; none for other kinds.
+     */
+    public var width: UInt32?
+    public var height: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Relative to the project, like "charts/sales.png".
+         */path: String, 
+        /**
+         * "png", "jpeg", "gif" or "svg".
+         */kind: String, bytes: UInt64, modifiedMs: Int64, 
+        /**
+         * From the PNG header; none for other kinds.
+         */width: UInt32?, height: UInt32?) {
+        self.path = path
+        self.kind = kind
+        self.bytes = bytes
+        self.modifiedMs = modifiedMs
+        self.width = width
+        self.height = height
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ProjectArtifact: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProjectArtifact: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProjectArtifact {
+        return
+            try ProjectArtifact(
+                path: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                bytes: FfiConverterUInt64.read(from: &buf), 
+                modifiedMs: FfiConverterInt64.read(from: &buf), 
+                width: FfiConverterOptionUInt32.read(from: &buf), 
+                height: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ProjectArtifact, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+        FfiConverterInt64.write(value.modifiedMs, into: &buf)
+        FfiConverterOptionUInt32.write(value.width, into: &buf)
+        FfiConverterOptionUInt32.write(value.height, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProjectArtifact_lift(_ buf: RustBuffer) throws -> ProjectArtifact {
+    return try FfiConverterTypeProjectArtifact.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProjectArtifact_lower(_ value: ProjectArtifact) -> RustBuffer {
+    return FfiConverterTypeProjectArtifact.lower(value)
+}
+
+
+/**
+ * A file of the project, for the screen.
+ */
+public struct ProjectFile: Equatable, Hashable {
+    public var path: String
+    public var bytes: UInt64
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(path: String, bytes: UInt64, text: String) {
+        self.path = path
+        self.bytes = bytes
+        self.text = text
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ProjectFile: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProjectFile: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProjectFile {
+        return
+            try ProjectFile(
+                path: FfiConverterString.read(from: &buf), 
+                bytes: FfiConverterUInt64.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ProjectFile, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProjectFile_lift(_ buf: RustBuffer) throws -> ProjectFile {
+    return try FfiConverterTypeProjectFile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProjectFile_lower(_ value: ProjectFile) -> RustBuffer {
+    return FfiConverterTypeProjectFile.lower(value)
+}
+
+
+/**
+ * What a `python_lab_script` run printed, made readable: whether it
+ * succeeded, and the output with the project folder's paths removed.
+ */
+public struct PythonLabOutput: Equatable, Hashable {
+    public var ok: Bool
+    public var output: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(ok: Bool, output: String) {
+        self.ok = ok
+        self.output = output
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PythonLabOutput: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePythonLabOutput: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PythonLabOutput {
+        return
+            try PythonLabOutput(
+                ok: FfiConverterBool.read(from: &buf), 
+                output: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PythonLabOutput, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.ok, into: &buf)
+        FfiConverterString.write(value.output, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonLabOutput_lift(_ buf: RustBuffer) throws -> PythonLabOutput {
+    return try FfiConverterTypePythonLabOutput.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonLabOutput_lower(_ value: PythonLabOutput) -> RustBuffer {
+    return FfiConverterTypePythonLabOutput.lower(value)
+}
+
+
+/**
+ * A sample script for Python Lab's Examples menu.
+ */
+public struct PythonLabSampleCode: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var code: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, code: String) {
+        self.id = id
+        self.title = title
+        self.code = code
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PythonLabSampleCode: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePythonLabSampleCode: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PythonLabSampleCode {
+        return
+            try PythonLabSampleCode(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                code: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PythonLabSampleCode, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.code, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonLabSampleCode_lift(_ buf: RustBuffer) throws -> PythonLabSampleCode {
+    return try FfiConverterTypePythonLabSampleCode.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonLabSampleCode_lower(_ value: PythonLabSampleCode) -> RustBuffer {
+    return FfiConverterTypePythonLabSampleCode.lower(value)
+}
+
+
+/**
+ * What one Python run printed, and whether it finished without an
+ * exception.
+ */
+public struct PythonOutcome: Equatable, Hashable {
+    public var ok: Bool
+    public var output: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(ok: Bool, output: String) {
+        self.ok = ok
+        self.output = output
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PythonOutcome: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePythonOutcome: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PythonOutcome {
+        return
+            try PythonOutcome(
+                ok: FfiConverterBool.read(from: &buf), 
+                output: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PythonOutcome, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.ok, into: &buf)
+        FfiConverterString.write(value.output, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonOutcome_lift(_ buf: RustBuffer) throws -> PythonOutcome {
+    return try FfiConverterTypePythonOutcome.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonOutcome_lower(_ value: PythonOutcome) -> RustBuffer {
+    return FfiConverterTypePythonOutcome.lower(value)
 }
 
 
@@ -9591,6 +11220,186 @@ public func FfiConverterTypeDeferReason_lift(_ buf: RustBuffer) throws -> DeferR
 #endif
 public func FfiConverterTypeDeferReason_lower(_ value: DeferReason) -> RustBuffer {
     return FfiConverterTypeDeferReason.lower(value)
+}
+
+
+
+public 
+enum HarnessError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case Busy
+    case EmptyTask
+    case UnknownTask(id: String
+    )
+    case Storage(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension HarnessError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessError: FfiConverterRustBuffer {
+    typealias SwiftType = HarnessError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Busy
+        case 2: return .EmptyTask
+        case 3: return .UnknownTask(
+            id: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .Storage(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HarnessError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case .Busy:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .EmptyTask:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .UnknownTask(id):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .Storage(reason):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessError_lift(_ buf: RustBuffer) throws -> HarnessError {
+    return try FfiConverterTypeHarnessError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessError_lower(_ value: HarnessError) -> RustBuffer {
+    return FfiConverterTypeHarnessError.lower(value)
+}
+
+
+/**
+ * What the harness is doing now.
+ */
+
+public enum HarnessPhase: Equatable, Hashable {
+    
+    case idle
+    case thinking
+    case acting
+    case verifying
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension HarnessPhase: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessPhase: FfiConverterRustBuffer {
+    typealias SwiftType = HarnessPhase
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessPhase {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .thinking
+        
+        case 3: return .acting
+        
+        case 4: return .verifying
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HarnessPhase, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .thinking:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .acting:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .verifying:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessPhase_lift(_ buf: RustBuffer) throws -> HarnessPhase {
+    return try FfiConverterTypeHarnessPhase.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessPhase_lower(_ value: HarnessPhase) -> RustBuffer {
+    return FfiConverterTypeHarnessPhase.lower(value)
 }
 
 
@@ -10923,6 +12732,81 @@ public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) ->
 
 
 
+public 
+enum PythonHostError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case Unavailable(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension PythonHostError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePythonHostError: FfiConverterRustBuffer {
+    typealias SwiftType = PythonHostError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PythonHostError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Unavailable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PythonHostError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Unavailable(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonHostError_lift(_ buf: RustBuffer) throws -> PythonHostError {
+    return try FfiConverterTypePythonHostError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePythonHostError_lower(_ value: PythonHostError) -> RustBuffer {
+    return FfiConverterTypePythonHostError.lower(value)
+}
+
+
 /**
  * Whether the device can reach the network now.
  */
@@ -11104,6 +12988,109 @@ public func FfiConverterTypeShareItem_lower(_ value: ShareItem) -> RustBuffer {
 
 
 /**
+ * A task's status, owned by the harness.
+ */
+
+public enum TaskStatus: Equatable, Hashable {
+    
+    case ready
+    case running
+    /**
+     * The executor said it was done; the harness is checking the evidence.
+     */
+    case verifying
+    /**
+     * The evidence met every acceptance criterion.
+     */
+    case completed
+    case failed
+    case stopped
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension TaskStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTaskStatus: FfiConverterRustBuffer {
+    typealias SwiftType = TaskStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TaskStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .ready
+        
+        case 2: return .running
+        
+        case 3: return .verifying
+        
+        case 4: return .completed
+        
+        case 5: return .failed
+        
+        case 6: return .stopped
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TaskStatus, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .ready:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .running:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .verifying:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .completed:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .stopped:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTaskStatus_lift(_ buf: RustBuffer) throws -> TaskStatus {
+    return try FfiConverterTypeTaskStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTaskStatus_lower(_ value: TaskStatus) -> RustBuffer {
+    return FfiConverterTypeTaskStatus.lower(value)
+}
+
+
+
+/**
  * How hot the device is, as the system judges it. At
  * `Serious` the system slows the CPU; at `Critical` apps
  * should stop optional work.
@@ -11275,6 +13262,30 @@ public func FfiConverterTypeTransferTestError_lower(_ value: TransferTestError) 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = UInt32?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt32.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionInt32: FfiConverterRustBuffer {
     typealias SwiftType = Int32?
 
@@ -11363,6 +13374,30 @@ fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterDouble.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionBool: FfiConverterRustBuffer {
+    typealias SwiftType = Bool?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterBool.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterBool.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -11531,6 +13566,30 @@ fileprivate struct FfiConverterOptionTypeDeviceStatus: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeDeviceStatus.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHarnessTaskRecord: FfiConverterRustBuffer {
+    typealias SwiftType = HarnessTaskRecord?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHarnessTaskRecord.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHarnessTaskRecord.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -11857,6 +13916,56 @@ fileprivate struct FfiConverterSequenceTypeConnectivityChange: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeHarnessStep: FfiConverterRustBuffer {
+    typealias SwiftType = [HarnessStep]
+
+    public static func write(_ value: [HarnessStep], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHarnessStep.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HarnessStep] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HarnessStep]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHarnessStep.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHarnessTask: FfiConverterRustBuffer {
+    typealias SwiftType = [HarnessTask]
+
+    public static func write(_ value: [HarnessTask], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHarnessTask.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HarnessTask] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HarnessTask]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHarnessTask.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLogLine: FfiConverterRustBuffer {
     typealias SwiftType = [LogLine]
 
@@ -11924,6 +14033,81 @@ fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRus
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeNotificationCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeProjectArtifact: FfiConverterRustBuffer {
+    typealias SwiftType = [ProjectArtifact]
+
+    public static func write(_ value: [ProjectArtifact], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeProjectArtifact.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ProjectArtifact] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ProjectArtifact]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeProjectArtifact.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeProjectFile: FfiConverterRustBuffer {
+    typealias SwiftType = [ProjectFile]
+
+    public static func write(_ value: [ProjectFile], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeProjectFile.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ProjectFile] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ProjectFile]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeProjectFile.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePythonLabSampleCode: FfiConverterRustBuffer {
+    typealias SwiftType = [PythonLabSampleCode]
+
+    public static func write(_ value: [PythonLabSampleCode], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePythonLabSampleCode.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PythonLabSampleCode] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PythonLabSampleCode]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePythonLabSampleCode.read(from: &buf))
         }
         return seq
     }
@@ -12241,6 +14425,56 @@ public func crashTestRustPanic()  {try! rustCall() {
 }
 }
 /**
+ * The images in the project folder `project`, newest first, for Python
+ * Lab's Artifacts section and Bonsai Harness's project files.
+ */
+public func projectArtifacts(project: String) -> [ProjectArtifact]  {
+    return try!  FfiConverterSequenceTypeProjectArtifact.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_project_artifacts(
+        FfiConverterString.lower(project),uniffiCallStatus
+    )
+})
+}
+public func pythonLabOutput(project: String, ok: Bool, output: String) -> PythonLabOutput  {
+    return try!  FfiConverterTypePythonLabOutput_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_lab_output(
+        FfiConverterString.lower(project),
+        FfiConverterBool.lower(ok),
+        FfiConverterString.lower(output),uniffiCallStatus
+    )
+})
+}
+/**
+ * A script Python Lab runs for the person, in the project folder
+ * `project`: the harness's wrapper (the folder, `sys.path`, the project's
+ * modules forgotten, tracebacks cut to the project's frames, writes kept
+ * inside the project) with the network allowed, since the person wrote
+ * the code. If the last line is an expression its value is printed, as
+ * before. Run it with PythonBridge, then pass the output through
+ * `python_lab_output`.
+ */
+public func pythonLabScript(project: String, code: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_lab_script(
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(code),uniffiCallStatus
+    )
+})
+}
+/**
+ * The graphics samples, for the end of Python Lab's Examples menu.
+ */
+public func pythonLabGraphicsSamples() -> [PythonLabSampleCode]  {
+    return try!  FfiConverterSequenceTypePythonLabSampleCode.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_lab_graphics_samples(uniffiCallStatus
+    )
+})
+}
+/**
  * The records as plain text, one per line, for sharing:
  * `2026-11-17 15:02:11.042 WARN [soundscape::player] message`.
  */
@@ -12460,6 +14694,18 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_crash_test_rust_panic() != 23512) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_project_artifacts() != 21958) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_lab_output() != 28712) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_lab_script() != 46242) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_lab_graphics_samples() != 19001) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_logs_as_text() != 31571) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -12563,6 +14809,48 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_ailab_update_external() != 57909) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_files() != 19690) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_ladder() != 57880) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_open_project() != 56134) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_project_folder() != 25723) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_snapshot() != 53706) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom() != 36010) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder() != 34402) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder_scripted() != 32607) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_stop() != 60454) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_transcript() != 40883) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_harnessmodel_describe() != 62607) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_harnessmodel_generate() != 60381) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_pythonhost_run() != 55223) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_pythonhost_interrupt() != 20683) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_localnotifier_schedule() != 55943) {
@@ -12706,15 +14994,20 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_constructor_ailab_new() != 39479) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_constructor_bonsaiharness_new() != 59862) {
+        return InitializationResult.apiChecksumMismatch
+    }
 
     uniffiCallbackInitAiModel()
     uniffiCallbackInitBluetoothMonitor()
     uniffiCallbackInitConnectivityMonitor()
     uniffiCallbackInitDeviceStatusProvider()
+    uniffiCallbackInitHarnessModel()
     uniffiCallbackInitLocalNotifier()
     uniffiCallbackInitLocationSource()
     uniffiCallbackInitMotionSensors()
     uniffiCallbackInitPermissionProvider()
+    uniffiCallbackInitPythonHost()
     uniffiCallbackInitSecureStore()
     uniffiCallbackInitTransferSession()
     return InitializationResult.ok

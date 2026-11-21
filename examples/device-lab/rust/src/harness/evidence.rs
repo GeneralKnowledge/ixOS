@@ -1,0 +1,488 @@
+//! Evidence and acceptance: what the environment saw happen, and the rules
+//! that decide from it whether a task is complete. The model's own word
+//! never counts.
+
+use serde::{Deserialize, Serialize};
+
+/// Something a tool call did, recorded by the environment.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Evidence {
+    /// A file was written; `syntax_ok` is false when Python couldn't parse it.
+    Wrote { path: String, syntax_ok: bool },
+    /// A program ran; `ok` is false when it raised, or ran out of time.
+    Ran {
+        path: String,
+        ok: bool,
+        output: String,
+    },
+    /// The tests ran.
+    Tests {
+        ran: u32,
+        failures: u32,
+        errors: u32,
+    },
+    /// A run made or changed an image file (PNG size from its header).
+    Produced {
+        path: String,
+        format: String,
+        bytes: u64,
+        width: Option<u32>,
+        height: Option<u32>,
+    },
+}
+
+impl Evidence {
+    fn is_change(&self) -> bool {
+        matches!(self, Evidence::Wrote { .. })
+    }
+}
+
+/// One acceptance criterion, checked by the harness.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Criterion {
+    /// The last test run after the last change ran at least one test, and
+    /// all passed.
+    TestsPass,
+    /// Running `path` after the last change printed `text` and ended
+    /// without an error.
+    RunPrints { path: String, text: String },
+    /// `path` still holds exactly `content` (a fix must not edit the test
+    /// that caught the bug).
+    FileUnchanged { path: String, content: String },
+    /// For a task in the person's own words: the last run or test run after
+    /// the last change succeeded.
+    WorkRuns,
+    /// A run after the last change made `path` as a `format` image ("png",
+    /// "svg" ...), at least `min_width` pixels wide when its size is known.
+    /// An SVG must also contain an <svg> element.
+    ProducesImage {
+        path: String,
+        format: String,
+        min_width: u32,
+    },
+}
+
+impl Criterion {
+    /// For the screen and the model.
+    pub fn describe(&self) -> String {
+        match self {
+            Criterion::TestsPass => "the tests pass (run after the last change)".into(),
+            Criterion::RunPrints { path, text } => {
+                format!("running {path} prints \u{201c}{text}\u{201d}")
+            }
+            Criterion::FileUnchanged { path, .. } => format!("{path} is left unchanged"),
+            Criterion::WorkRuns => {
+                "the last run or test run after the last change succeeded".into()
+            }
+            Criterion::ProducesImage {
+                path,
+                format: kind,
+                min_width,
+            } => {
+                if *min_width > 0 {
+                    format!("running it makes {path} ({kind}, at least {min_width} pixels wide)")
+                } else {
+                    format!("running it makes {path} ({kind})")
+                }
+            }
+        }
+    }
+
+    /// Ok with what proves it, or Err with what is missing.
+    pub fn check(
+        &self,
+        evidence: &[Evidence],
+        read: &dyn Fn(&str) -> Option<String>,
+    ) -> Result<String, String> {
+        // Only what happened after the last change counts.
+        let since = evidence
+            .iter()
+            .rposition(Evidence::is_change)
+            .map_or(0, |i| i + 1);
+        let fresh = &evidence[since..];
+        match self {
+            Criterion::TestsPass => match fresh
+                .iter()
+                .rev()
+                .find(|e| matches!(e, Evidence::Tests { .. }))
+            {
+                Some(&Evidence::Tests {
+                    ran,
+                    failures: 0,
+                    errors: 0,
+                }) if ran > 0 => Ok(format!("{ran} tests ran and all passed")),
+                Some(Evidence::Tests { ran: 0, .. }) => {
+                    Err("the last test run found no tests".into())
+                }
+                Some(Evidence::Tests {
+                    failures, errors, ..
+                }) => Err(format!(
+                    "the last test run had {failures} failures and {errors} errors"
+                )),
+                _ => Err("the tests have not been run since the last change".into()),
+            },
+            Criterion::RunPrints { path, text } => {
+                let run = fresh.iter().rev().find_map(|e| match e {
+                    Evidence::Ran {
+                        path: p,
+                        ok,
+                        output,
+                    } if p == path => Some((ok, output)),
+                    _ => None,
+                });
+                match run {
+                    Some((true, output)) if output.contains(text.as_str()) => {
+                        Ok(format!("{path} printed \u{201c}{text}\u{201d}"))
+                    }
+                    Some((true, _)) => Err(format!(
+                        "{path} ran but did not print \u{201c}{text}\u{201d}"
+                    )),
+                    Some((false, _)) => Err(format!("{path} ended with an error")),
+                    None => Err(format!("{path} has not been run since the last change")),
+                }
+            }
+            Criterion::FileUnchanged { path, content } => match read(path) {
+                Some(now) if &now == content => Ok(format!("{path} is unchanged")),
+                Some(_) => Err(format!("{path} was changed; put it back as it was")),
+                None => Err(format!("{path} is missing")),
+            },
+            Criterion::WorkRuns => match fresh
+                .iter()
+                .rev()
+                .find(|e| matches!(e, Evidence::Ran { .. } | Evidence::Tests { .. }))
+            {
+                Some(Evidence::Ran { path, ok: true, .. }) => {
+                    Ok(format!("{path} ran without an error"))
+                }
+                Some(&Evidence::Tests {
+                    ran,
+                    failures: 0,
+                    errors: 0,
+                }) if ran > 0 => Ok(format!("{ran} tests ran and all passed")),
+                Some(_) => Err("the last run after the last change failed".into()),
+                None => Err("nothing has been run since the last change".into()),
+            },
+            Criterion::ProducesImage {
+                path,
+                format: kind,
+                min_width,
+            } => {
+                let made = fresh.iter().rev().find_map(|e| match e {
+                    Evidence::Produced {
+                        path: p,
+                        format: k,
+                        width,
+                        ..
+                    } if p == path => Some((k, *width)),
+                    _ => None,
+                });
+                match made {
+                    None => Err(format!(
+                        "no run since the last change has made {path}; run the program that saves it"
+                    )),
+                    Some((k, _)) if k != kind => {
+                        Err(format!("{path} is not a {kind} file (it looks like {k})"))
+                    }
+                    Some((_, Some(width))) if width < *min_width => Err(format!(
+                        "{path} is {width} pixels wide; it should be at least {min_width}"
+                    )),
+                    Some((_, None)) if kind == "png" && *min_width > 0 => {
+                        Err(format!("{path} is not a valid PNG (no size in its header)"))
+                    }
+                    Some(_) if kind == "svg"
+                        && !read(path).is_some_and(|text| text.contains("<svg")) =>
+                    {
+                        Err(format!("{path} does not contain an <svg> element"))
+                    }
+                    Some((_, width)) => Ok(match width {
+                        Some(width) => format!("running it made {path} ({kind}, {width} pixels wide)"),
+                        None => format!("running it made {path} ({kind})"),
+                    }),
+                }
+            }
+        }
+    }
+}
+
+/// A seed file a task starts from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SeedFile {
+    pub path: &'static str,
+    pub content: &'static str,
+}
+
+/// One task of the ladder: the same request every time, so runs compare.
+#[derive(Clone, Debug)]
+pub struct LadderTask {
+    pub id: &'static str,
+    pub title: &'static str,
+    pub request: &'static str,
+    pub seed: Vec<SeedFile>,
+    pub criteria: Vec<Criterion>,
+}
+
+const AVERAGE_PY: &str = "def average(numbers):\n    \"\"\"The mean of a list of numbers.\"\"\"\n    return sum(numbers) / (len(numbers) + 1)\n";
+
+const TEST_AVERAGE_PY: &str = "import unittest\n\nfrom average import average\n\n\nclass AverageTest(unittest.TestCase):\n    def test_three_numbers(self):\n        self.assertEqual(average([2, 4, 6]), 4)\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n";
+
+const INVENTORY_PY: &str = "stock = {\"apples\": 3, \"pears\": 0, \"plums\": 5}\n\n\ndef report(stock):\n    lines = []\n    for name, count in stock.items():\n        lines.append(name + \": \" + count)\n    return lines\n\n\nfor line in report(stock):\n    print(line)\n";
+
+/// The ladder (docs/bonsai-harness-plan.md): T1 to T3 are H1's, T4 and
+/// T5 are H2's.
+pub fn ladder() -> Vec<LadderTask> {
+    vec![
+        LadderTask {
+            id: "t1-hello",
+            title: "T1 Hello",
+            request: "Write hello.py that prints Hello from Bonsai, then run it.",
+            seed: vec![],
+            criteria: vec![Criterion::RunPrints {
+                path: "hello.py".into(),
+                text: "Hello from Bonsai".into(),
+            }],
+        },
+        LadderTask {
+            id: "t2-one-test",
+            title: "T2 One file, one test",
+            request: "Write mathutil.py with a function add(a, b) that returns the sum, and \
+                      test_mathutil.py with a unittest test for it. Then run the tests.",
+            seed: vec![],
+            criteria: vec![Criterion::TestsPass],
+        },
+        LadderTask {
+            id: "t3-one-fix",
+            title: "T3 One fix",
+            request: "This project has average.py and a test for it that fails. Run the tests, \
+                      find the bug in average.py and fix it. Do not change the test.",
+            seed: vec![
+                SeedFile {
+                    path: "average.py",
+                    content: AVERAGE_PY,
+                },
+                SeedFile {
+                    path: "test_average.py",
+                    content: TEST_AVERAGE_PY,
+                },
+            ],
+            criteria: vec![
+                Criterion::TestsPass,
+                Criterion::FileUnchanged {
+                    path: "test_average.py".into(),
+                    content: TEST_AVERAGE_PY.into(),
+                },
+            ],
+        },
+        LadderTask {
+            id: "t4-two-modules",
+            title: "T4 Two modules",
+            request: "Write shapes.py with rectangle_area(width, height) and circle_area(radius) \
+                      (use math.pi), and main.py that imports shapes and prints the area of a 3 by 5 \
+                      rectangle and of a circle of radius 2, each rounded to 2 decimals. Then run main.py.",
+            seed: vec![],
+            criteria: vec![
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "15".into(),
+                },
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "12.57".into(),
+                },
+            ],
+        },
+        LadderTask {
+            id: "tp1-svg-chart",
+            title: "T-P1 An SVG chart",
+            request: "Write chart.py that draws a bar chart of the numbers [3, 7, 5] as chart.svg, \
+                      using only the standard library (write the SVG as text), with each bar's value \
+                      as a label. Then run chart.py.",
+            seed: vec![],
+            criteria: vec![Criterion::ProducesImage {
+                path: "chart.svg".into(),
+                format: "svg".into(),
+                min_width: 0,
+            }],
+        },
+        LadderTask {
+            id: "t5-fix-from-traceback",
+            title: "T5 Fix from a traceback",
+            request: "Run inventory.py. It crashes. Fix the bug so it prints each item and its count, \
+                      like \"apples: 3\". There are no tests: the traceback is your guide. Change only \
+                      what is broken.",
+            seed: vec![SeedFile {
+                path: "inventory.py",
+                content: INVENTORY_PY,
+            }],
+            criteria: vec![
+                Criterion::RunPrints {
+                    path: "inventory.py".into(),
+                    text: "apples: 3".into(),
+                },
+                Criterion::RunPrints {
+                    path: "inventory.py".into(),
+                    text: "plums: 5".into(),
+                },
+            ],
+        },
+    ]
+}
+
+/// One answer of a known-good run: the JSON a model would write.
+fn answer(thought: &str, tool: &str, args: &[(&str, &str)]) -> String {
+    let mut text = format!(
+        "{{\"thought\": {}, \"tool\": {}",
+        serde_json::to_string(thought).unwrap_or_default(),
+        serde_json::to_string(tool).unwrap_or_default()
+    );
+    for (name, value) in args {
+        text.push_str(&format!(
+            ", {}: {}",
+            serde_json::to_string(name).unwrap_or_default(),
+            serde_json::to_string(value).unwrap_or_default()
+        ));
+    }
+    text.push('}');
+    text
+}
+
+/// Scripted T-P1's chart.py: three labelled bars as SVG text.
+const SCRIPTED_CHART_PY: &str = "values = [3, 7, 5]\nbars = []\nfor i, v in enumerate(values):\n    x = 20 + i * 60\n    h = v * 20\n    bars.append(f'<rect x=\"{x}\" y=\"{160 - h}\" width=\"40\" height=\"{h}\" fill=\"teal\"/>')\n    bars.append(f'<text x=\"{x + 20}\" y=\"175\" text-anchor=\"middle\">{v}</text>')\nsvg = '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"180\">' + ''.join(bars) + '</svg>'\nwith open('chart.svg', 'w') as f:\n    f.write(svg)\nprint('Wrote chart.svg')\n";
+
+/// A probe the scripted T1 runs first: on the phone it shows the guard
+/// blocking a write outside the project and a network connection.
+const GUARD_PROBE: &str = "import socket\n\nattempts = [\n    (\"write outside the project\", lambda: open(\"../escape.txt\", \"w\")),\n    (\"network\", lambda: socket.create_connection((\"example.com\", 80), 2)),\n]\nfor name, attempt in attempts:\n    try:\n        attempt()\n        print(name, \"ALLOWED\")\n    except Exception as error:\n        print(name, \"blocked:\", type(error).__name__)\n";
+
+/// The answers of a known-good run of a ladder task, for the Scripted
+/// model: it proves the tools, the guard, the evidence checks and the
+/// journal on the phone apart from any real model (an idea from
+/// Terrarium's self-test). T3 claims done too early once, to show the
+/// harness sending it back.
+pub fn script(task_id: &str) -> Vec<String> {
+    let finish = |summary: &str| answer("Done.", super::calls::FINISH, &[("summary", summary)]);
+    match task_id {
+        "t1-hello" => vec![
+            answer(
+                "Check the guard first.",
+                "write_file",
+                &[("path", "probe.py"), ("content", GUARD_PROBE)],
+            ),
+            answer("Run the probe.", "run_python", &[("path", "probe.py")]),
+            answer(
+                "Write the program.",
+                "write_file",
+                &[
+                    ("path", "hello.py"),
+                    ("content", "print(\"Hello from Bonsai\")\n"),
+                ],
+            ),
+            answer("Run it.", "run_python", &[("path", "hello.py")]),
+            finish("hello.py prints Hello from Bonsai."),
+        ],
+        "t2-one-test" => vec![
+            answer(
+                "Write the function.",
+                "write_file",
+                &[
+                    ("path", "mathutil.py"),
+                    ("content", "def add(a, b):\n    return a + b\n"),
+                ],
+            ),
+            answer(
+                "Write its test.",
+                "write_file",
+                &[
+                    ("path", "test_mathutil.py"),
+                    (
+                        "content",
+                        "import unittest\n\nfrom mathutil import add\n\n\nclass AddTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n",
+                    ),
+                ],
+            ),
+            answer("Run the tests.", "run_tests", &[]),
+            finish("add and its test pass."),
+        ],
+        "t3-one-fix" => vec![
+            finish("Fixed the bug."),
+            answer("See what fails.", "run_tests", &[]),
+            answer(
+                "Divide by the count.",
+                "write_file",
+                &[
+                    ("path", "average.py"),
+                    (
+                        "content",
+                        "def average(numbers):\n    \"\"\"The mean of a list of numbers.\"\"\"\n    return sum(numbers) / len(numbers)\n",
+                    ),
+                ],
+            ),
+            answer("Check the fix.", "run_tests", &[]),
+            finish("average divides by the count; the test passes."),
+        ],
+        "t4-two-modules" => vec![
+            answer(
+                "Write the module.",
+                "write_file",
+                &[
+                    ("path", "shapes.py"),
+                    (
+                        "content",
+                        "import math\n\n\ndef rectangle_area(width, height):\n    return width * height\n\n\ndef circle_area(radius):\n    return math.pi * radius ** 2\n",
+                    ),
+                ],
+            ),
+            answer(
+                "Write the program that uses it.",
+                "write_file",
+                &[
+                    ("path", "main.py"),
+                    (
+                        "content",
+                        "import shapes\n\nprint(\"Rectangle:\", round(shapes.rectangle_area(3, 5), 2))\nprint(\"Circle:\", round(shapes.circle_area(2), 2))\n",
+                    ),
+                ],
+            ),
+            answer("Run it.", "run_python", &[("path", "main.py")]),
+            finish("main.py prints both areas."),
+        ],
+        "tp1-svg-chart" => vec![
+            answer(
+                "Write the chart as SVG text.",
+                "write_file",
+                &[
+                    ("path", "chart.py"),
+                    ("content", SCRIPTED_CHART_PY),
+                ],
+            ),
+            answer("Run it to make chart.svg.", "run_python", &[("path", "chart.py")]),
+            finish("chart.py writes chart.svg with three labelled bars."),
+        ],
+        // The first edit copies the line wrongly (single quotes), to show
+        // the "did you mean" answer; the second copies it exactly.
+        "t5-fix-from-traceback" => vec![
+            answer("See the crash.", "run_python", &[("path", "inventory.py")]),
+            answer(
+                "Convert the count to text.",
+                "edit_file",
+                &[
+                    ("path", "inventory.py"),
+                    ("old", "        lines.append(name + ': ' + count)\n"),
+                    ("new", "        lines.append(name + ': ' + str(count))\n"),
+                ],
+            ),
+            answer(
+                "Copy the line exactly.",
+                "edit_file",
+                &[
+                    ("path", "inventory.py"),
+                    ("old", "        lines.append(name + \": \" + count)\n"),
+                    ("new", "        lines.append(name + \": \" + str(count))\n"),
+                ],
+            ),
+            answer("Run it again.", "run_python", &[("path", "inventory.py")]),
+            finish("count is converted with str(); every item prints."),
+        ],
+        _ => vec![],
+    }
+}
