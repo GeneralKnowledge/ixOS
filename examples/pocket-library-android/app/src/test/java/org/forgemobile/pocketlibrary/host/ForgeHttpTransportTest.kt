@@ -126,7 +126,7 @@ class ForgeHttpTransportTest {
 
     private inline fun <reified E : HttpTransportException> assertFails(block: () -> Unit): E {
         val error = runCatching(block).exceptionOrNull()
-        assertTrue("expected ${E::class.simpleName}, got $error", error is E)
+        if (error !is E) throw AssertionError("expected ${E::class.simpleName}, got $error", error)
         return error as E
     }
 

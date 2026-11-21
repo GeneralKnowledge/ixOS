@@ -15,6 +15,7 @@ import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -199,11 +200,12 @@ class ForgeHost<Core : ForgeCore>(
 
     /** Ends the event loop and shuts the core down. Committed work is already on disk. */
     fun close() {
+        // Cancelling ends the listener's loop, and the listener frees the stream once it is out
+        // of `next()`: freeing it here could race a `next()` the loop is about to make.
         stream?.cancel()
         listener?.cancel()
         core?.shutdown()
         core?.close()
-        stream?.close()
         stream = null
         listener = null
         core = null
@@ -219,18 +221,23 @@ class ForgeHost<Core : ForgeCore>(
     private fun listen(events: RuntimeEvents) {
         // Awaited on a pool thread, not the caller's (often main) dispatcher: UniFFI resumes
         // from Rust's waker, and a dispatcher that resumes in place re-enters Rust there.
-        listener = scope.launch(io) {
-            while (true) {
-                val event = events.next() ?: break
-                when (event) {
-                    is RuntimeEvent.Changed -> {
-                        revision = event.revision
-                        _changes.value += 1
+        // ATOMIC: the body runs even if cancelled first, so the stream is always freed here.
+        listener = scope.launch(io, start = CoroutineStart.ATOMIC) {
+            try {
+                while (true) {
+                    val event = events.next() ?: break
+                    when (event) {
+                        is RuntimeEvent.Changed -> {
+                            revision = event.revision
+                            _changes.value += 1
+                        }
+                        is RuntimeEvent.EventsDropped -> reconcile()
+                        is RuntimeEvent.PhaseChanged -> if (event.resumed) reconcile()
+                        is RuntimeEvent.BackgroundWork -> Unit
                     }
-                    is RuntimeEvent.EventsDropped -> reconcile()
-                    is RuntimeEvent.PhaseChanged -> if (event.resumed) reconcile()
-                    is RuntimeEvent.BackgroundWork -> Unit
                 }
+            } finally {
+                events.close()
             }
         }
     }

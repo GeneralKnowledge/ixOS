@@ -8,7 +8,6 @@
 package org.forgemobile.pocketlibrary.host
 
 import java.io.File
-import java.io.IOException
 import java.io.InputStream
 import java.net.ConnectException
 import java.net.HttpURLConnection
@@ -57,7 +56,8 @@ class ForgeHttpTransport : HttpTransport {
             }
             val body = body(connection, status)?.use { read(it, request.maxBodyBytes) } ?: ByteArray(0)
             return HttpResponse(status.toUShort(), headers(connection), body)
-        } catch (e: IOException) {
+        } catch (e: Exception) {
+            if (e is HttpTransportException) throw e
             throw failure(request.id, e)
         } finally {
             connection.disconnect()
@@ -70,7 +70,7 @@ class ForgeHttpTransport : HttpTransport {
         val head = try {
             val status = connection.responseCode
             HttpStreamHead(status.toUShort(), headers(connection))
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             throw closed(connection, request.id, e)
         }
         // The headers came within the request's timeout; a stream may then be quiet for long
@@ -87,8 +87,8 @@ class ForgeHttpTransport : HttpTransport {
                     }
                 }
                 body.finish()
-            } catch (e: IOException) {
-                body.fail(failure(request.id, e))
+            } catch (e: Exception) {
+                body.fail(e as? HttpTransportException ?: failure(request.id, e))
             } finally {
                 connection.disconnect()
                 finished(request.id)
@@ -168,7 +168,8 @@ class ForgeHttpTransport : HttpTransport {
                 file != null -> connection.outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
                 request.body.isNotEmpty() -> connection.outputStream.use { it.write(request.body) }
             }
-        } catch (e: IOException) {
+        } catch (e: Exception) {
+            if (e is HttpTransportException) throw e
             throw closed(connection, request.id, e)
         }
         return connection
@@ -183,7 +184,7 @@ class ForgeHttpTransport : HttpTransport {
      * Closes a request that failed and says why. The failure is read first: [finished] forgets
      * that the request was cancelled.
      */
-    private fun closed(connection: HttpURLConnection, id: ULong, e: IOException): HttpTransportException {
+    private fun closed(connection: HttpURLConnection, id: ULong, e: Exception): HttpTransportException {
         val error = failure(id, e)
         connection.disconnect()
         finished(id)
@@ -198,7 +199,7 @@ class ForgeHttpTransport : HttpTransport {
     }
 
     /** What went wrong, in Rust's terms: a cancelled request is `Cancelled` however it failed. */
-    private fun failure(id: ULong, e: IOException): HttpTransportException {
+    private fun failure(id: ULong, e: Exception): HttpTransportException {
         if (synchronized(lock) { id in cancelled }) return HttpTransportException.Cancelled()
         return classify(e)
     }
@@ -207,7 +208,7 @@ class ForgeHttpTransport : HttpTransport {
         /** Installs this transport for Rust's `HttpService` (iOS: `ForgeServices.install()`). */
         fun install() = installNativeHttp(ForgeHttpTransport())
 
-        internal fun classify(e: IOException): HttpTransportException = when {
+        internal fun classify(e: Exception): HttpTransportException = when {
             e is SocketTimeoutException -> HttpTransportException.Timeout()
             e is UnknownHostException || e is ConnectException || e is NoRouteToHostException ->
                 HttpTransportException.Offline(e.message ?: e.toString())
