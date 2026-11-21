@@ -5,6 +5,10 @@ import Foundation
 // lists and dates as `Date`. Rules stay in Rust.
 
 extension Feed: Identifiable {}
+extension Folder: Identifiable {}
+extension OpmlFeed: Identifiable {
+    public var id: UInt32 { index }
+}
 extension ArticleSummary: Identifiable {}
 
 extension ArticleSummary {
@@ -25,6 +29,8 @@ extension Feed {
 public enum Route: Hashable {
     case timeline(Timeline)
     case article(Int64)
+    /// A folder's screen: its feeds and folders.
+    case folder(Int64)
 }
 
 extension Timeline {
@@ -36,6 +42,7 @@ extension Timeline {
         case .unread: return "All Unread"
         case .bookmarked: return "Bookmarks"
         case .feed(let feedId): return model.feed(id: feedId)?.title ?? "Feed"
+        case .folder(let folderId): return model.folder(id: folderId)?.name ?? "Folder"
         }
     }
 
@@ -46,6 +53,7 @@ extension Timeline {
         case .unread: return "unread"
         case .bookmarked: return "bookmarks"
         case .feed: return "feed"
+        case .folder: return "folder"
         }
     }
 

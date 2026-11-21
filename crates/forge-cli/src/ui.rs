@@ -291,21 +291,41 @@ fn connect(
 }
 
 /// The installed bundle id for `app`. A session's app list is from when it
-/// started, so an app installed since is looked up on the phone again.
+/// started, so an app installed since is looked up on the phone again. An app
+/// that came with iOS (Calculator) isn't in that list, so it is looked for
+/// among the system apps last; the any-app policy still decides what Forge
+/// may do in it.
 fn resolve(
     phone: &Phone,
     apps: &mut Vec<String>,
     held: &Held,
     app: &str,
 ) -> Result<String, String> {
-    match resolve_app(apps, app) {
-        Ok(id) => Ok(id.to_owned()),
+    let missing = match resolve_app(apps, app) {
+        Ok(id) => return Ok(id.to_owned()),
         Err(_) if matches!(held, Held::Session(_)) => {
             *apps = phone.user_apps().map_err(err)?;
-            resolve_app(apps, app).map(str::to_owned)
+            match resolve_app(apps, app) {
+                Ok(id) => return Ok(id.to_owned()),
+                Err(e) => e,
+            }
         }
-        Err(e) => Err(e),
+        Err(e) => e,
+    };
+    if !missing.ends_with("is not installed on the phone") {
+        return Err(missing);
     }
+    let system = phone.system_apps().map_err(err)?;
+    if is_system_app(&system, app) {
+        Ok(app.to_owned())
+    } else {
+        Err(missing)
+    }
+}
+
+/// Whether `app` is one of the apps that came with iOS, by exact bundle id.
+fn is_system_app(system: &[String], app: &str) -> bool {
+    system.iter().any(|id| id == app)
 }
 
 fn start(
@@ -1160,6 +1180,18 @@ fn scenario_of(run_dir: &Path) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn system_apps_match_by_exact_bundle_id() {
+        let system = vec![
+            "com.apple.Preferences".to_owned(),
+            "com.apple.calculator".to_owned(),
+        ];
+        assert!(is_system_app(&system, "com.apple.calculator"));
+        assert!(!is_system_app(&system, "com.apple.Calculator"));
+        assert!(!is_system_app(&system, "com.apple.calc"));
+        assert!(!is_system_app(&[], "com.apple.calculator"));
+    }
 
     #[test]
     fn points_are_x_comma_y() {

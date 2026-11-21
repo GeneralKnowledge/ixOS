@@ -24,6 +24,8 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
     /// What one request has received so far.
     private final class Pending: @unchecked Sendable {
         let limit: UInt64
+        /// `false`: a redirect answer is the response, not followed.
+        let followRedirects: Bool
         var data = Data()
         var response: URLResponse?
         var error: Error?
@@ -35,8 +37,9 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
         let stream: HttpStreamBody?
         var headersDelivered = false
 
-        init(limit: UInt64, stream: HttpStreamBody? = nil) {
+        init(limit: UInt64, followRedirects: Bool, stream: HttpStreamBody? = nil) {
             self.limit = limit
+            self.followRedirects = followRedirects
             self.stream = stream
         }
     }
@@ -67,7 +70,7 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
     // MARK: HttpTransport
 
     public func send(request: HttpRequest) throws -> HttpResponse {
-        let state = Pending(limit: request.maxBodyBytes)
+        let state = Pending(limit: request.maxBodyBytes, followRedirects: request.followRedirects)
         _ = try start(request, state: state, idleTimeout: nil)
         state.done.wait()
         finished(request.id)
@@ -88,7 +91,7 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
     }
 
     public func openStream(request: HttpRequest, body: HttpStreamBody) throws -> HttpStreamHead {
-        let state = Pending(limit: .max, stream: body)
+        let state = Pending(limit: .max, followRedirects: request.followRedirects, stream: body)
         // URLSession's timeout is an idle timeout, and a stream may be
         // quiet for long stretches: give the body a day, and bound the
         // wait for the headers here instead.
@@ -180,6 +183,24 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
             task.cancel()
         } else {
             cancelledEarly.insert(id)
+        }
+    }
+
+    // MARK: URLSessionTaskDelegate
+
+    /// A request that asked not to follow redirects gets the 3xx answer
+    /// itself (URLSession then delivers it as the response), so Rust can
+    /// check where it points before asking there.
+    public func urlSession(
+        _ session: URLSession, task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        if let state = state(of: task), !state.followRedirects {
+            completionHandler(nil)
+        } else {
+            completionHandler(request)
         }
     }
 

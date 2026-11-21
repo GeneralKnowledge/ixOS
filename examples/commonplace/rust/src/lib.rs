@@ -35,12 +35,14 @@ use forge_net::{CancelHandle, HttpClient, Request, UreqClient};
 use forge_runtime::now_ms;
 
 mod feed;
+mod full;
 mod model;
+mod opml;
 mod store;
 mod suggested;
 
 pub use model::*;
-use store::{FetchResult, Fetched, Flag, Searcher, Snapshot, Store};
+use store::{folder_subtree, FetchResult, Fetched, Flag, Importing, Searcher, Snapshot, Store};
 pub use suggested::{SuggestedCategory, SuggestedFeed};
 
 // No namespace argument: UniFFI takes the library's name (commonplace_core), so this
@@ -75,6 +77,8 @@ forge_runtime::log_export!();
 
 /// How long one feed may take to answer.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+/// The most full articles one refresh fetches; the rest wait for the next.
+const FULL_ARTICLES_PER_REFRESH: u32 = 10;
 
 /// What the command thread owns: the database, and where it publishes.
 struct State {
@@ -124,6 +128,8 @@ pub struct AppCore {
     http: Arc<dyn HttpClient>,
     storage_directory: PathBuf,
     searcher: Arc<Searcher>,
+    /// How full-article pages are fetched (the resolver is a fake in tests).
+    pages: full::Policy,
     /// Set by `new`: tells the refresh log whether URLSession or ureq ran.
     transport: std::sync::OnceLock<Arc<native::http::PreferInstalled>>,
 }
@@ -140,7 +146,7 @@ impl AppCore {
             Arc::new(UreqClient::new()),
             |c| c,
         ));
-        let core = Self::open(storage_directory, http.clone())?;
+        let core = Self::open(storage_directory, http.clone(), full::system_lookup)?;
         // Only for the log line saying which transport fetched the feeds.
         let _ = core.transport.set(http);
         core.register_background_refresh();
@@ -159,11 +165,13 @@ impl AppCore {
     pub fn timeline(&self, timeline: Timeline) -> Vec<ArticleSummary> {
         let snapshot = self.snapshot.get();
         let hide_read = snapshot.settings.hide_read;
+        let in_folder = feeds_in(&snapshot, &timeline);
         let articles = snapshot.articles.iter().filter(|a| match &timeline {
             Timeline::All => !(hide_read && a.read),
             Timeline::Unread => !a.read,
             Timeline::Bookmarked => a.bookmarked,
             Timeline::Feed { feed_id } => a.feed_id == *feed_id && !(hide_read && a.read),
+            Timeline::Folder { .. } => in_folder.contains(&a.feed_id) && !(hide_read && a.read),
         });
         ordered(articles.cloned(), &snapshot.settings)
     }
@@ -172,6 +180,7 @@ impl AppCore {
     /// (whatever "hide read" leaves out of the list).
     pub fn counts(&self, timeline: Timeline) -> TimelineCounts {
         let snapshot = self.snapshot.get();
+        let in_folder = feeds_in(&snapshot, &timeline);
         let articles: Vec<_> = snapshot
             .articles
             .iter()
@@ -180,6 +189,7 @@ impl AppCore {
                 Timeline::Unread => !a.read,
                 Timeline::Bookmarked => a.bookmarked,
                 Timeline::Feed { feed_id } => a.feed_id == *feed_id,
+                Timeline::Folder { .. } => in_folder.contains(&a.feed_id),
             })
             .collect();
         TimelineCounts {
@@ -332,7 +342,60 @@ impl AppCore {
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<RefreshReport, AppError> {
         let work = self.rt.foreground(cancellation.as_deref());
-        self.refresh_in(work).await
+        let (mut report, _) = self.refresh_in(work).await?;
+        report.full_articles = self
+            .fetch_full_articles(self.rt.foreground(cancellation.as_deref()))
+            .await;
+        Ok(report)
+    }
+
+    /// Whether a feed's articles are fetched in full from their web pages
+    /// (for feeds that send only a summary). Turning it on fetches its
+    /// articles with the next refresh.
+    pub async fn set_feed_full_text(&self, feed_id: i64, on: bool) -> Result<(), AppError> {
+        self.rt
+            .command("set-feed-full-text", move |state| {
+                state.store.set_feed_full_text(feed_id, on)?;
+                state.publish();
+                Ok(())
+            })
+            .await
+    }
+
+    /// Fetches one article's page now, saves its readable text and returns
+    /// the article with it. On-screen work: `cancellation`, the background
+    /// or shutdown stop it, and nothing is saved.
+    pub async fn load_full_article(
+        &self,
+        article_id: i64,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<ArticleText, AppError> {
+        let (url, feed_url) = self
+            .rt
+            .command("article-url", move |state| {
+                state.store.article_url(article_id)
+            })
+            .await?;
+        let url = url.ok_or_else(|| AppError::NoReadableText {
+            reason: "the article has no address".into(),
+        })?;
+        let http = Arc::clone(&self.http);
+        let pages = self.pages;
+        let work = self.rt.foreground(cancellation.as_deref());
+        let html = self
+            .rt
+            .run("fetch-full-article", work, move |cancel| {
+                full::fetch_article(&*http, &url, Some(&feed_url), &pages, cancel)
+            })
+            .await?;
+        self.rt
+            .command("save-full-article", move |state| {
+                state.store.save_full_articles(&[(article_id, Ok(html))])?;
+                let text = state.store.article_text(article_id)?;
+                state.publish();
+                Ok(text)
+            })
+            .await
     }
 
     /// Waits until the network comes back after being unavailable, so the
@@ -388,7 +451,8 @@ fn wait_until_back_online(
 
 impl AppCore {
     /// Fetches every feed as `work` and applies the result.
-    async fn refresh_in(&self, work: Work) -> Result<RefreshReport, AppError> {
+    /// Also returns how many new articles are from feeds that notify.
+    async fn refresh_in(&self, work: Work) -> Result<(RefreshReport, u32), AppError> {
         let sources = self.snapshot.get().sources.clone();
         let http = Arc::clone(&self.http);
         let fetched = self
@@ -420,6 +484,7 @@ impl AppCore {
             unchanged: 0,
             new_articles: 0,
             failures: Vec::new(),
+            full_articles: 0,
         };
         let mut apply = Vec::with_capacity(fetched.len());
         for (source, result) in fetched {
@@ -437,7 +502,7 @@ impl AppCore {
                 result,
             });
         }
-        report.new_articles = self
+        let (added, notifying) = self
             .rt
             .command("apply-refresh", move |state| {
                 let added = state.store.apply(&apply, now_ms())?;
@@ -445,6 +510,7 @@ impl AppCore {
                 Ok::<_, AppError>(added)
             })
             .await?;
+        report.new_articles = added;
         // Error kinds only: feed titles and addresses are the user's.
         let kinds: Vec<&str> = report.failures.iter().map(|f| f.error.kind()).collect();
         let transport = match self.transport.get() {
@@ -461,7 +527,61 @@ impl AppCore {
             report.failures.len(),
             kinds
         );
-        Ok(report)
+        Ok((report, notifying))
+    }
+
+    /// Fetches full articles for feeds that want them, a few per refresh,
+    /// and saves each one's text or why it failed. Never fails the refresh:
+    /// stopping it keeps what was fetched, and the rest wait for next time.
+    /// Returns how many were saved.
+    async fn fetch_full_articles(&self, work: Work) -> u32 {
+        let wanted = match self
+            .rt
+            .command("full-articles-wanted", |state| {
+                state.store.full_articles_wanted(FULL_ARTICLES_PER_REFRESH)
+            })
+            .await
+        {
+            Ok(wanted) if !wanted.is_empty() => wanted,
+            Ok(_) => return 0,
+            Err(e) => {
+                forge_runtime::logging::warn!("full articles not listed: {}", e.kind());
+                return 0;
+            }
+        };
+        let http = Arc::clone(&self.http);
+        let pages = self.pages;
+        let fetched = self
+            .rt
+            .run("fetch-full-articles", work, move |cancel| {
+                let mut results = Vec::with_capacity(wanted.len());
+                for (id, url, feed_url) in wanted {
+                    if cancel.is_cancelled() {
+                        break;
+                    }
+                    let result = full::fetch_article(&*http, &url, Some(&feed_url), &pages, cancel);
+                    if cancel.is_cancelled() {
+                        break;
+                    }
+                    results.push((id, result));
+                }
+                Ok::<_, AppError>(results)
+            })
+            .await
+            .unwrap_or_default();
+        let tried = fetched.len();
+        let saved = self
+            .rt
+            .command("save-full-articles", move |state| {
+                let saved = state.store.save_full_articles(&fetched)?;
+                state.publish();
+                Ok::<_, AppError>(saved)
+            })
+            .await
+            .unwrap_or(0);
+        // Counts only: addresses are the person's.
+        forge_runtime::logging::info!("full articles: {saved} of {tried} fetched");
+        saved
     }
 
     /// Asks iOS to refresh the feeds in the background about hourly, while
@@ -488,8 +608,10 @@ impl AppCore {
                     // Not on-screen work: it lives until iOS ends the window.
                     let work = core.rt.lifetime(Some(&*cancellation));
                     match core.refresh_in(work).await {
-                        Ok(report) => {
-                            core.announce_new_articles(report.new_articles).await;
+                        Ok((_, notifying)) => {
+                            core.announce_new_articles(notifying).await;
+                            core.fetch_full_articles(core.rt.lifetime(Some(&*cancellation)))
+                                .await;
                             true
                         }
                         Err(_) => false,
@@ -511,9 +633,16 @@ impl AppCore {
         let Ok(services) = native::NativeServices::installed() else {
             return;
         };
+        let notifying: std::collections::HashSet<i64> = self
+            .feeds()
+            .iter()
+            .filter(|f| f.notify)
+            .map(|f| f.id)
+            .collect();
         let titles: Vec<String> = self
             .timeline(Timeline::Unread)
             .into_iter()
+            .filter(|a| notifying.contains(&a.feed_id))
             .take(new_articles.min(3) as usize)
             .map(|a| a.title)
             .collect();
@@ -651,17 +780,7 @@ impl AppCore {
         self.rt
             .command("mark-all-read", move |state| {
                 let ids = state.store.mark_all_read(feed_id)?;
-                state.publish();
-                state.next_undo += 1;
-                let marked = MarkedRead {
-                    count: ids.len() as u32,
-                    undo_token: state.next_undo,
-                };
-                state.undo = Some(ReadUndo {
-                    token: state.next_undo,
-                    articles: ids.into_iter().collect(),
-                });
-                Ok(marked)
+                Ok(state.marked_read(ids))
             })
             .await
     }
@@ -686,6 +805,270 @@ impl AppCore {
     }
 }
 
+/// Folders, per-feed options and OPML (slice C3).
+#[uniffi::export]
+impl AppCore {
+    /// Every folder, as a tree (each followed by the folders inside it).
+    pub fn folders(&self) -> Vec<Folder> {
+        self.snapshot.get().folders.clone()
+    }
+
+    /// Makes a folder in `parent_id` (at the top with nil), or returns the
+    /// one of that name already there.
+    pub async fn create_folder(
+        &self,
+        name: String,
+        parent_id: Option<i64>,
+    ) -> Result<Folder, AppError> {
+        self.rt
+            .command("create-folder", move |state| {
+                let id = state.store.create_folder(&name, parent_id, now_ms())?;
+                state.publish();
+                state
+                    .published
+                    .get()
+                    .folders
+                    .iter()
+                    .find(|f| f.id == id)
+                    .cloned()
+                    .ok_or(AppError::NotFound)
+            })
+            .await
+    }
+
+    pub async fn rename_folder(&self, folder_id: i64, name: String) -> Result<(), AppError> {
+        self.rt
+            .command("rename-folder", move |state| {
+                state.store.rename_folder(folder_id, &name)?;
+                state.publish();
+                Ok(())
+            })
+            .await
+    }
+
+    /// Deletes a folder; what it holds moves up a level. No feed is lost.
+    pub async fn delete_folder(&self, folder_id: i64) -> Result<(), AppError> {
+        self.rt
+            .command("delete-folder", move |state| {
+                state.store.delete_folder(folder_id)?;
+                state.publish();
+                Ok(())
+            })
+            .await
+    }
+
+    /// Puts a feed in a folder, or at the top with nil.
+    pub async fn move_feed(&self, feed_id: i64, folder_id: Option<i64>) -> Result<(), AppError> {
+        self.rt
+            .command("move-feed", move |state| {
+                state.store.move_feed(feed_id, folder_id)?;
+                state.publish();
+                Ok(())
+            })
+            .await
+    }
+
+    /// Whether a feed's new articles count for the new-articles
+    /// notification (when that is on at all).
+    pub async fn set_feed_notify(&self, feed_id: i64, notify: bool) -> Result<(), AppError> {
+        self.rt
+            .command("set-feed-notify", move |state| {
+                state.store.set_feed_notify(feed_id, notify)?;
+                state.publish();
+                Ok(())
+            })
+            .await
+    }
+
+    /// Marks every article in a folder (and the folders inside it) read,
+    /// with Undo like `mark_all_read`.
+    pub async fn mark_folder_read(&self, folder_id: i64) -> Result<MarkedRead, AppError> {
+        let feeds: Vec<i64> = {
+            let snapshot = self.snapshot.get();
+            feeds_in(&snapshot, &Timeline::Folder { folder_id })
+                .into_iter()
+                .collect()
+        };
+        self.rt
+            .command("mark-folder-read", move |state| {
+                let ids = state.store.mark_feeds_read(Some(feeds))?;
+                Ok(state.marked_read(ids))
+            })
+            .await
+    }
+
+    /// Reads an OPML file's text and says what importing it would do.
+    /// Changes nothing.
+    pub fn preview_opml(&self, contents: String) -> Result<OpmlPreview, AppError> {
+        let doc = read_opml(&contents)?;
+        let snapshot = self.snapshot.get();
+        let plan = plan_import(&doc, &snapshot.feeds);
+        let mut folders: Vec<String> = Vec::new();
+        for entry in &doc.entries {
+            for depth in 1..=entry.folder.len() {
+                let path = entry.folder[..depth].join(" / ");
+                if !folders.contains(&path) {
+                    folders.push(path);
+                }
+            }
+        }
+        Ok(OpmlPreview {
+            feeds: doc
+                .entries
+                .iter()
+                .zip(plan)
+                .enumerate()
+                .map(|(index, (entry, (status, url)))| OpmlFeed {
+                    index: index as u32,
+                    title: entry
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| url.clone().unwrap_or_else(|| entry.url.clone())),
+                    url: url.unwrap_or_else(|| entry.url.clone()),
+                    folder: entry.folder.clone(),
+                    status,
+                    not_used: entry.not_used.clone(),
+                })
+                .collect(),
+            folders,
+            filters: doc.filters.len() as u32,
+            rejected_filters: doc.rejected_filters,
+            settings_not_used: doc.settings_not_used,
+        })
+    }
+
+    /// Imports the feeds at `selected` (indexes from `preview_opml`) and
+    /// the file's filter patterns. Never duplicates or changes a
+    /// subscription the library has (its name, folder and options stay
+    /// as they are); feeds listed twice or with a bad
+    /// address are skipped. New feeds get their articles with the next
+    /// refresh.
+    pub async fn import_opml(
+        &self,
+        contents: String,
+        selected: Vec<u32>,
+    ) -> Result<OpmlImport, AppError> {
+        self.rt
+            .command("import-opml", move |state| {
+                let doc = read_opml(&contents)?;
+                let feeds = state.published.get().feeds.clone();
+                let plan = plan_import(&doc, &feeds);
+                let mut picked = Vec::new();
+                let mut skipped = 0;
+                for (index, (entry, (status, url))) in doc.entries.iter().zip(plan).enumerate() {
+                    if !selected.contains(&(index as u32)) {
+                        continue;
+                    }
+                    // A feed listed twice counts once: the first picked.
+                    match (status, url) {
+                        (OpmlFeedStatus::BadAddress, _) | (_, None) => skipped += 1,
+                        (_, Some(url)) if picked.iter().any(|p: &Importing<'_>| same_address(&p.url, &url)) => {
+                            skipped += 1
+                        }
+                        (_, Some(url)) => picked.push(Importing { url, entry }),
+                    }
+                }
+                let existing = |url: &str| feeds.iter().find(|f| same_address(&f.url, url)).map(|f| f.id);
+                let done = state.store.import(&picked, &existing, &doc.filters, now_ms())?;
+                state.publish();
+                // Counts only: names and addresses are the person's.
+                forge_runtime::logging::info!(
+                    "OPML import: {} added, {} already subscribed, {} skipped, {} folders, {} filters",
+                    done.added,
+                    done.already_subscribed,
+                    skipped,
+                    done.folders_created,
+                    done.filters_added
+                );
+                Ok(OpmlImport {
+                    added: done.added,
+                    already_subscribed: done.already_subscribed,
+                    folders_created: done.folders_created,
+                    filters_added: done.filters_added,
+                    skipped,
+                })
+            })
+            .await
+    }
+
+    /// The library's subscriptions as OPML 2.0 text: folders, feeds, their
+    /// options, and the filter patterns.
+    pub async fn export_opml(&self) -> Result<String, AppError> {
+        self.rt
+            .command("export-opml", move |state| {
+                let tree = state.store.export_tree()?;
+                let filters = state.store.filters()?;
+                Ok(opml::write(&tree, &filters))
+            })
+            .await
+    }
+}
+
+impl State {
+    /// Keeps what a Mark All as Read changed, for Undo.
+    fn marked_read(&mut self, ids: Vec<i64>) -> MarkedRead {
+        self.publish();
+        self.next_undo += 1;
+        let marked = MarkedRead {
+            count: ids.len() as u32,
+            undo_token: self.next_undo,
+        };
+        self.undo = Some(ReadUndo {
+            token: self.next_undo,
+            articles: ids.into_iter().collect(),
+        });
+        marked
+    }
+}
+
+/// The feeds a folder timeline covers (empty for other timelines).
+fn feeds_in(snapshot: &Snapshot, timeline: &Timeline) -> std::collections::HashSet<i64> {
+    let Timeline::Folder { folder_id } = timeline else {
+        return Default::default();
+    };
+    let inside = folder_subtree(*folder_id, &snapshot.folders);
+    snapshot
+        .feeds
+        .iter()
+        .filter(|f| f.folder_id.is_some_and(|id| inside.contains(&id)))
+        .map(|f| f.id)
+        .collect()
+}
+
+fn read_opml(contents: &str) -> Result<opml::Document, AppError> {
+    opml::parse(contents).map_err(|e| AppError::NotOpml {
+        reason: match e {
+            opml::OpmlError::TooLarge => format!("larger than {} bytes", opml::MAX_BYTES),
+            opml::OpmlError::NotOpml { reason } => reason,
+        },
+    })
+}
+
+/// For each entry of a file: what importing it would do, and the address
+/// it would be subscribed at.
+fn plan_import(doc: &opml::Document, feeds: &[Feed]) -> Vec<(OpmlFeedStatus, Option<String>)> {
+    let mut seen: Vec<String> = Vec::new();
+    doc.entries
+        .iter()
+        .map(|entry| {
+            let Ok(url) = normalise_url(&entry.url) else {
+                return (OpmlFeedStatus::BadAddress, None);
+            };
+            if seen.iter().any(|s| same_address(s, &url)) {
+                return (OpmlFeedStatus::ListedTwice, Some(url));
+            }
+            seen.push(url.clone());
+            match feeds.iter().find(|f| same_address(&f.url, &url)) {
+                Some(f) => (
+                    OpmlFeedStatus::AlreadySubscribed { feed_id: f.id },
+                    Some(url),
+                ),
+                None => (OpmlFeedStatus::New, Some(url)),
+            }
+        })
+        .collect()
+}
+
 /// What Mark All as Read did.
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
 pub struct MarkedRead {
@@ -707,8 +1090,13 @@ pub struct TimelineCounts {
 }
 
 impl AppCore {
-    /// Opens the core with `http` for its requests (a test double in tests).
-    fn open(storage_directory: String, http: Arc<dyn HttpClient>) -> Result<Arc<Self>, AppError> {
+    /// Opens the core with `http` for its requests and `lookup` for the
+    /// host names of full-article pages (test doubles in tests).
+    fn open(
+        storage_directory: String,
+        http: Arc<dyn HttpClient>,
+        lookup: full::Lookup,
+    ) -> Result<Arc<Self>, AppError> {
         forge_runtime::logging::init();
         if storage_directory.is_empty() {
             return Err(AppError::InvalidInput {
@@ -740,6 +1128,7 @@ impl AppCore {
             http,
             storage_directory,
             searcher,
+            pages: full::Policy::new(lookup),
             transport: std::sync::OnceLock::new(),
         }))
     }

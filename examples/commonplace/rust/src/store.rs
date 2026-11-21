@@ -7,10 +7,11 @@ use forge_storage::rusqlite::{params, OptionalExtension, Transaction};
 use forge_storage::{Database, Opened, Reader};
 
 use crate::feed::{self, ParsedFeed};
-use crate::model::{AppError, AppSettings, ArticleSummary, ArticleText, Feed};
+use crate::model::{AppError, AppSettings, ArticleSummary, ArticleText, Feed, Folder};
+use crate::opml;
 
 /// Schema steps: step `i` brings the file from version `i` to `i + 1`.
-const MIGRATIONS: &[&str] = &[
+pub(crate) const MIGRATIONS: &[&str] = &[
     "
     CREATE TABLE feeds (
         id INTEGER PRIMARY KEY,
@@ -54,6 +55,36 @@ const MIGRATIONS: &[&str] = &[
     -- The person's settings (AppSettings), one row per setting.
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ",
+    "
+    -- Folders (C3): a folder can sit in a folder. Deleting one moves what
+    -- it holds up a level (Rust does that first; the cascade is a backstop).
+    CREATE TABLE folders (
+        id INTEGER PRIMARY KEY,
+        parent_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        added_at_ms INTEGER NOT NULL
+    );
+    ALTER TABLE feeds ADD COLUMN folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL;
+    -- Per-feed options: counts for the new-articles notification; fetch
+    -- whole articles (used once full-article fetching exists).
+    ALTER TABLE feeds ADD COLUMN notify INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE feeds ADD COLUMN full_text INTEGER NOT NULL DEFAULT 0;
+    -- Attributes an OPML import found and Commonplace doesn't use, as JSON
+    -- ([{namespace, name, value}]), written back by an export.
+    ALTER TABLE feeds ADD COLUMN opml_extras TEXT;
+    -- Filter patterns (plain text, never run), from an import for now.
+    CREATE TABLE filters (
+        id INTEGER PRIMARY KEY,
+        pattern TEXT NOT NULL UNIQUE,
+        added_at_ms INTEGER NOT NULL
+    );
+",
+    "
+    -- Full articles (C4): the readable part of the article's page, and what
+    -- fetching it did: NULL (not tried), 'ok', or the kind of failure.
+    ALTER TABLE articles ADD COLUMN full_html TEXT;
+    ALTER TABLE articles ADD COLUMN full_status TEXT;
+",
 ];
 
 /// The most results a search returns.
@@ -87,6 +118,9 @@ pub enum FetchResult {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Snapshot {
     pub feeds: Vec<Feed>,
+    /// Every folder, as a tree: each followed by the folders inside it, by
+    /// name.
+    pub folders: Vec<Folder>,
     /// Every article, newest first.
     pub articles: Vec<ArticleSummary>,
     pub settings: AppSettings,
@@ -199,7 +233,8 @@ impl Store {
         let mut feeds = c.prepare(
             "SELECT f.id, f.url, COALESCE(f.custom_title, f.title), f.site_url,
                     f.refreshed_at_ms, f.last_error,
-                    COUNT(a.id), COALESCE(SUM(a.read = 0), 0)
+                    COUNT(a.id), COALESCE(SUM(a.read = 0), 0),
+                    f.folder_id, f.notify, f.full_text
              FROM feeds f LEFT JOIN articles a ON a.feed_id = f.id
              GROUP BY f.id
              ORDER BY COALESCE(f.custom_title, f.title) COLLATE NOCASE, f.id",
@@ -215,6 +250,9 @@ impl Store {
                     last_error: r.get(5)?,
                     article_count: r.get(6)?,
                     unread_count: r.get(7)?,
+                    folder_id: r.get(8)?,
+                    notify: r.get(9)?,
+                    full_text: r.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -240,12 +278,59 @@ impl Store {
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
+        let folders = self.folders(&feeds)?;
         Ok(Snapshot {
             feeds,
+            folders,
             articles,
             sources: self.sources()?,
             settings: self.settings()?,
         })
+    }
+
+    /// Every folder in tree order, with its feed and unread counts
+    /// (including the folders inside it).
+    fn folders(&self, feeds: &[Feed]) -> Result<Vec<Folder>, AppError> {
+        let mut q = self
+            .db
+            .connection()
+            .prepare("SELECT id, parent_id, name FROM folders ORDER BY name COLLATE NOCASE, id")?;
+        let rows: Vec<(i64, Option<i64>, String)> = q
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut out = Vec::with_capacity(rows.len());
+        fn walk(
+            parent: Option<i64>,
+            depth: u32,
+            rows: &[(i64, Option<i64>, String)],
+            feeds: &[Feed],
+            out: &mut Vec<Folder>,
+        ) {
+            for (id, parent_id, name) in rows.iter().filter(|r| r.1 == parent) {
+                let at = out.len();
+                out.push(Folder {
+                    id: *id,
+                    parent_id: *parent_id,
+                    name: name.clone(),
+                    depth,
+                    feed_count: 0,
+                    unread_count: 0,
+                });
+                // A loop in the file (never written by Commonplace) stops here.
+                if depth < 64 {
+                    walk(Some(*id), depth + 1, rows, feeds, out);
+                }
+                let inside = folder_subtree(*id, out);
+                let (count, unread) = feeds
+                    .iter()
+                    .filter(|f| f.folder_id.is_some_and(|f| inside.contains(&f)))
+                    .fold((0, 0), |(c, u), f| (c + 1, u + f.unread_count));
+                out[at].feed_count = count;
+                out[at].unread_count = unread;
+            }
+        }
+        walk(None, 0, &rows, feeds, &mut out);
+        Ok(out)
     }
 
     pub fn sources(&self) -> Result<Vec<FeedSource>, AppError> {
@@ -303,10 +388,12 @@ impl Store {
 
     /// Applies a refresh: new articles in, changed ones updated (read and
     /// bookmark state kept), validators and errors recorded. Returns how
-    /// many articles were new.
-    pub fn apply(&mut self, fetched: &[Fetched], now_ms: i64) -> Result<u32, AppError> {
+    /// many articles were new, and how many of those are from feeds that
+    /// notify.
+    pub fn apply(&mut self, fetched: &[Fetched], now_ms: i64) -> Result<(u32, u32), AppError> {
         self.db.transaction(|tx| {
             let mut added = 0;
+            let mut notify = 0;
             for f in fetched {
                 match &f.result {
                     // Unsubscribed while it was being fetched: nothing to do.
@@ -328,7 +415,16 @@ impl Store {
                              WHERE id = ?1",
                             params![f.feed_id, feed.title, feed.site_url, etag, last_modified, now_ms],
                         )?;
-                        added += merge_articles(tx, f.feed_id, feed, now_ms)?;
+                        let new = merge_articles(tx, f.feed_id, feed, now_ms)?;
+                        added += new;
+                        let notifies: bool = tx.query_row(
+                            "SELECT notify FROM feeds WHERE id = ?1",
+                            [f.feed_id],
+                            |r| r.get(0),
+                        )?;
+                        if notifies {
+                            notify += new;
+                        }
                         forget_old_articles(tx, f.feed_id, feed, now_ms)?;
                     }
                     Err(e) => {
@@ -341,7 +437,7 @@ impl Store {
                     }
                 }
             }
-            Ok(added)
+            Ok((added, notify))
         })
     }
 
@@ -386,18 +482,27 @@ impl Store {
     /// Marks every unread article of a feed (or of all feeds) read, and
     /// returns the ones that changed, so the change can be undone.
     pub fn mark_all_read(&mut self, feed: Option<i64>) -> Result<Vec<i64>, AppError> {
+        self.mark_feeds_read(feed.map(|f| vec![f]))
+    }
+
+    /// Marks every unread article of these feeds (of all, with None) read,
+    /// and returns the ones that changed.
+    pub fn mark_feeds_read(&mut self, feeds: Option<Vec<i64>>) -> Result<Vec<i64>, AppError> {
         self.db.transaction(|tx| {
             let ids = {
-                let mut statement = tx.prepare(
-                    "SELECT id FROM articles WHERE read = 0 AND (?1 IS NULL OR feed_id = ?1) ORDER BY id",
-                )?;
-                let rows = statement.query_map([feed], |row| row.get::<_, i64>(0))?;
+                let mut statement =
+                    tx.prepare("SELECT id, feed_id FROM articles WHERE read = 0 ORDER BY id")?;
+                let rows = statement
+                    .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?;
                 rows.collect::<Result<Vec<_>, _>>()?
+                    .into_iter()
+                    .filter(|(_, feed)| feeds.as_ref().is_none_or(|f| f.contains(feed)))
+                    .map(|(id, _)| id)
+                    .collect::<Vec<_>>()
             };
-            tx.execute(
-                "UPDATE articles SET read = 1 WHERE read = 0 AND (?1 IS NULL OR feed_id = ?1)",
-                [feed],
-            )?;
+            for id in &ids {
+                tx.execute("UPDATE articles SET read = 1 WHERE id = ?1", [id])?;
+            }
             Ok(ids)
         })
     }
@@ -422,7 +527,8 @@ impl Store {
             .connection()
             .query_row(
                 "SELECT a.id, COALESCE(f.custom_title, f.title), a.title, a.author, a.url,
-                        a.published_at_ms, a.html, a.read, a.bookmarked
+                        a.published_at_ms, COALESCE(a.full_html, a.html), a.read, a.bookmarked,
+                        a.full_html IS NOT NULL
                  FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE a.id = ?1",
                 [id],
                 |r| {
@@ -447,12 +553,425 @@ impl Store {
                         },
                         read: r.get(7)?,
                         bookmarked: r.get(8)?,
+                        full: r.get(9)?,
                     })
                 },
             )
             .optional()?
             .ok_or(AppError::NotFound)
     }
+}
+
+/// A subscription to add from an OPML file: its address already checked.
+pub struct Importing<'a> {
+    pub url: String,
+    pub entry: &'a opml::Entry,
+}
+
+/// What `Store::import` did.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Imported {
+    pub added: u32,
+    pub already_subscribed: u32,
+    pub folders_created: u32,
+    pub filters_added: u32,
+}
+
+impl Store {
+    /// Makes a folder in `parent` (at the top with None), or returns the
+    /// one of that name already there (names match ignoring case).
+    pub fn create_folder(
+        &mut self,
+        name: &str,
+        parent: Option<i64>,
+        now_ms: i64,
+    ) -> Result<i64, AppError> {
+        let name = folder_name(name)?;
+        self.db.transaction(|tx| {
+            if let Some(parent) = parent {
+                folder_exists(tx, parent)?;
+            }
+            Ok(ensure_folder(tx, parent, &name, now_ms)?.0)
+        })
+    }
+
+    /// Renames a folder. Another folder beside it with that name is refused.
+    pub fn rename_folder(&mut self, id: i64, name: &str) -> Result<(), AppError> {
+        let name = folder_name(name)?;
+        self.db.transaction(|tx| {
+            let parent: Option<i64> = tx
+                .query_row("SELECT parent_id FROM folders WHERE id = ?1", [id], |r| {
+                    r.get(0)
+                })
+                .optional()?
+                .ok_or(AppError::NotFound)?;
+            if let Some(other) = find_folder(tx, parent, &name)? {
+                if other != id {
+                    return Err(AppError::InvalidInput {
+                        reason: "a folder beside it already has that name".into(),
+                    });
+                }
+            }
+            tx.execute(
+                "UPDATE folders SET name = ?2 WHERE id = ?1",
+                params![id, name],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Deletes a folder. Its feeds and folders move up into its parent (or
+    /// to the top); no subscription is lost.
+    pub fn delete_folder(&mut self, id: i64) -> Result<(), AppError> {
+        self.db.transaction(|tx| {
+            let parent: Option<i64> = tx
+                .query_row("SELECT parent_id FROM folders WHERE id = ?1", [id], |r| {
+                    r.get(0)
+                })
+                .optional()?
+                .ok_or(AppError::NotFound)?;
+            tx.execute(
+                "UPDATE feeds SET folder_id = ?2 WHERE folder_id = ?1",
+                params![id, parent],
+            )?;
+            tx.execute(
+                "UPDATE folders SET parent_id = ?2 WHERE parent_id = ?1",
+                params![id, parent],
+            )?;
+            tx.execute("DELETE FROM folders WHERE id = ?1", [id])?;
+            Ok(())
+        })
+    }
+
+    /// Puts a feed in a folder (at the top with None).
+    pub fn move_feed(&mut self, feed: i64, folder: Option<i64>) -> Result<(), AppError> {
+        self.db.transaction(|tx| {
+            if let Some(folder) = folder {
+                folder_exists(tx, folder)?;
+            }
+            if tx.execute(
+                "UPDATE feeds SET folder_id = ?2 WHERE id = ?1",
+                params![feed, folder],
+            )? == 0
+            {
+                return Err(AppError::NotFound);
+            }
+            Ok(())
+        })
+    }
+
+    /// Whether a feed's new articles count for the notification.
+    pub fn set_feed_notify(&mut self, feed: i64, notify: bool) -> Result<(), AppError> {
+        self.db.transaction(|tx| {
+            if tx.execute(
+                "UPDATE feeds SET notify = ?2 WHERE id = ?1",
+                params![feed, notify],
+            )? == 0
+            {
+                return Err(AppError::NotFound);
+            }
+            Ok(())
+        })
+    }
+
+    /// Whether a feed's articles are fetched in full from their pages.
+    /// Turning it on leaves its existing articles to be fetched next time.
+    pub fn set_feed_full_text(&mut self, feed: i64, on: bool) -> Result<(), AppError> {
+        self.db.transaction(|tx| {
+            if tx.execute("UPDATE feeds SET full_text = ?2 WHERE id = ?1", params![feed, on])? == 0 {
+                return Err(AppError::NotFound);
+            }
+            if on {
+                // Failures get another try now the person asked again.
+                tx.execute(
+                    "UPDATE articles SET full_status = NULL WHERE feed_id = ?1 AND full_html IS NULL",
+                    [feed],
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Up to `limit` articles of feeds that want full articles and haven't
+    /// been tried, newest first: their ids and addresses.
+    /// Each with its page's address and its feed's.
+    pub fn full_articles_wanted(&self, limit: u32) -> Result<Vec<(i64, String, String)>, AppError> {
+        let mut q = self.db.connection().prepare(
+            "SELECT a.id, a.url, f.url FROM articles a JOIN feeds f ON f.id = a.feed_id
+             WHERE f.full_text = 1 AND a.full_status IS NULL AND a.url IS NOT NULL
+             ORDER BY a.published_at_ms DESC, a.id DESC LIMIT ?1",
+        )?;
+        let rows = q
+            .query_map([limit], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// The address of one article's page, and of its feed.
+    pub fn article_url(&self, id: i64) -> Result<(Option<String>, String), AppError> {
+        self.db
+            .connection()
+            .query_row(
+                "SELECT a.url, f.url FROM articles a JOIN feeds f ON f.id = a.feed_id
+                 WHERE a.id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or(AppError::NotFound)
+    }
+
+    /// Saves what fetching full articles did: the article's text (also put
+    /// in the search index), or the kind of failure, so it isn't tried
+    /// again on every refresh. Articles deleted since are skipped. Returns
+    /// how many were saved in full.
+    pub fn save_full_articles(
+        &mut self,
+        results: &[(i64, Result<String, AppError>)],
+    ) -> Result<u32, AppError> {
+        self.db.transaction(|tx| {
+            let mut saved = 0;
+            for (id, result) in results {
+                match result {
+                    Ok(html) => {
+                        let title: Option<String> = tx
+                            .query_row("SELECT title FROM articles WHERE id = ?1", [id], |r| {
+                                r.get(0)
+                            })
+                            .optional()?;
+                        let Some(title) = title else { continue };
+                        tx.execute(
+                            "UPDATE articles SET full_html = ?2, full_status = 'ok' WHERE id = ?1",
+                            params![id, html],
+                        )?;
+                        index_article(tx, *id, &title, html)?;
+                        saved += 1;
+                    }
+                    // Stopped before it finished: tried again next time.
+                    Err(AppError::Cancelled | AppError::Interrupted | AppError::ShutDown) => {}
+                    Err(e) => {
+                        tx.execute(
+                            "UPDATE articles SET full_status = ?2 WHERE id = ?1",
+                            params![id, e.problem()],
+                        )?;
+                    }
+                }
+            }
+            Ok(saved)
+        })
+    }
+
+    /// The filter patterns, in the order they were added.
+    pub fn filters(&self) -> Result<Vec<String>, AppError> {
+        let mut q = self
+            .db
+            .connection()
+            .prepare("SELECT pattern FROM filters ORDER BY id")?;
+        let rows = q
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Adds the picked subscriptions from an OPML file, in one transaction,
+    /// without changing anything the library already has: a feed already
+    /// subscribed keeps its name, folder and options. `existing` says which address is
+    /// already which feed (the caller matches addresses).
+    pub fn import(
+        &mut self,
+        picked: &[Importing<'_>],
+        existing: &dyn Fn(&str) -> Option<i64>,
+        filters: &[String],
+        now_ms: i64,
+    ) -> Result<Imported, AppError> {
+        self.db.transaction(|tx| {
+            let mut done = Imported::default();
+            for item in picked {
+                let entry = item.entry;
+                if existing(&item.url).is_some() {
+                    done.already_subscribed += 1;
+                    continue;
+                }
+                let folder = ensure_path(tx, &entry.folder, now_ms, &mut done.folders_created)?;
+                let extras = (!entry.extras.is_empty())
+                    .then(|| serde_json::to_string(&entry.extras))
+                    .transpose()
+                    .map_err(|e| AppError::Storage {
+                        reason: e.to_string(),
+                    })?;
+                tx.execute(
+                    "INSERT INTO feeds (url, title, custom_title, site_url, added_at_ms, folder_id,
+                                        notify, full_text, opml_extras)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![
+                        item.url,
+                        entry.title.clone().unwrap_or_else(|| host_of(&item.url)),
+                        // The name the person knew it by in the other app.
+                        entry.title,
+                        entry.site_url,
+                        now_ms,
+                        folder,
+                        entry.options.notify.unwrap_or(true),
+                        entry.options.full_text.unwrap_or(false),
+                        extras,
+                    ],
+                )?;
+                done.added += 1;
+            }
+            for pattern in filters {
+                done.filters_added += tx.execute(
+                    "INSERT OR IGNORE INTO filters (pattern, added_at_ms) VALUES (?1, ?2)",
+                    params![pattern, now_ms],
+                )? as u32;
+            }
+            Ok(done)
+        })
+    }
+
+    /// The library as an OPML tree: folders by name, feeds by title.
+    pub fn export_tree(&self) -> Result<opml::ExportFolder, AppError> {
+        let c = self.db.connection();
+        let folders: Vec<(i64, Option<i64>, String)> = c
+            .prepare("SELECT id, parent_id, name FROM folders ORDER BY name COLLATE NOCASE, id")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let feeds: Vec<(Option<i64>, opml::ExportFeed)> = c
+            .prepare(
+                "SELECT folder_id, COALESCE(custom_title, title), url, site_url, notify, full_text, opml_extras
+                 FROM feeds ORDER BY COALESCE(custom_title, title) COLLATE NOCASE, id",
+            )?
+            .query_map([], |r| {
+                let extras: Option<String> = r.get(6)?;
+                Ok((
+                    r.get(0)?,
+                    opml::ExportFeed {
+                        title: r.get(1)?,
+                        url: r.get(2)?,
+                        site_url: r.get(3)?,
+                        notify: r.get(4)?,
+                        full_text: r.get(5)?,
+                        // Unreadable kept text is dropped, not fatal.
+                        extras: extras
+                            .and_then(|e| serde_json::from_str(&e).ok())
+                            .unwrap_or_default(),
+                    },
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut feeds: Vec<Option<(Option<i64>, opml::ExportFeed)>> =
+            feeds.into_iter().map(Some).collect();
+        let ids: std::collections::HashSet<i64> = folders.iter().map(|f| f.0).collect();
+        fn build(
+            id: Option<i64>,
+            name: String,
+            depth: u32,
+            folders: &[(i64, Option<i64>, String)],
+            feeds: &mut [Option<(Option<i64>, opml::ExportFeed)>],
+        ) -> opml::ExportFolder {
+            let mine = feeds
+                .iter_mut()
+                .filter(|f| f.as_ref().is_some_and(|(folder, _)| *folder == id))
+                .filter_map(|f| f.take().map(|(_, feed)| feed))
+                .collect();
+            let subs = if depth < 64 {
+                folders
+                    .iter()
+                    .filter(|f| f.1 == id)
+                    .map(|f| build(Some(f.0), f.2.clone(), depth + 1, folders, feeds))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            opml::ExportFolder {
+                name,
+                folders: subs,
+                feeds: mine,
+            }
+        }
+        // A feed whose folder is gone (never, with the foreign key) goes at the top.
+        for (folder, _) in feeds.iter_mut().flatten() {
+            if folder.is_some_and(|f| !ids.contains(&f)) {
+                *folder = None;
+            }
+        }
+        Ok(build(None, String::new(), 0, &folders, &mut feeds))
+    }
+}
+
+/// The ids of a folder and every folder inside it.
+pub fn folder_subtree(id: i64, folders: &[Folder]) -> std::collections::HashSet<i64> {
+    let mut inside = std::collections::HashSet::from([id]);
+    loop {
+        let before = inside.len();
+        for f in folders {
+            if f.parent_id.is_some_and(|p| inside.contains(&p)) {
+                inside.insert(f.id);
+            }
+        }
+        if inside.len() == before {
+            return inside;
+        }
+    }
+}
+
+/// A folder name the person typed: cleaned, and not empty.
+fn folder_name(raw: &str) -> Result<String, AppError> {
+    opml::clean_name(raw).ok_or_else(|| AppError::InvalidInput {
+        reason: "a folder needs a name".into(),
+    })
+}
+
+fn folder_exists(tx: &Transaction<'_>, id: i64) -> Result<(), AppError> {
+    tx.query_row("SELECT 1 FROM folders WHERE id = ?1", [id], |_| Ok(()))
+        .optional()?
+        .ok_or(AppError::NotFound)
+}
+
+fn find_folder(
+    tx: &Transaction<'_>,
+    parent: Option<i64>,
+    name: &str,
+) -> Result<Option<i64>, AppError> {
+    Ok(tx
+        .query_row(
+            "SELECT id FROM folders WHERE parent_id IS ?1 AND name = ?2 COLLATE NOCASE ORDER BY id",
+            params![parent, name],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+/// The folder called `name` in `parent`, made if missing. True when made.
+fn ensure_folder(
+    tx: &Transaction<'_>,
+    parent: Option<i64>,
+    name: &str,
+    now_ms: i64,
+) -> Result<(i64, bool), AppError> {
+    if let Some(id) = find_folder(tx, parent, name)? {
+        return Ok((id, false));
+    }
+    tx.execute(
+        "INSERT INTO folders (parent_id, name, added_at_ms) VALUES (?1, ?2, ?3)",
+        params![parent, name, now_ms],
+    )?;
+    Ok((tx.last_insert_rowid(), true))
+}
+
+/// The folder at `path` (outermost first), made where missing.
+fn ensure_path(
+    tx: &Transaction<'_>,
+    path: &[String],
+    now_ms: i64,
+    created: &mut u32,
+) -> Result<Option<i64>, AppError> {
+    let mut parent = None;
+    for name in path {
+        let (id, made) = ensure_folder(tx, parent, name, now_ms)?;
+        *created += made as u32;
+        parent = Some(id);
+    }
+    Ok(parent)
 }
 
 /// The article flags a person sets.

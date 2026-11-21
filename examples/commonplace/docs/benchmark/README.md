@@ -13,7 +13,7 @@
 | Interactions | Read and unread, bookmark (NetNewsWire calls it starring), mark all read, refresh | 1 (done) |
 | Persistence | SQLite on the device, survives relaunch | 1 (done) |
 | Reader | Article text, images and links, text size and font | 2 (done), on [ForgeReader](../../../../docs/forge-reader.md) |
-| Organise | Folders, OPML import and export | 3 |
+| Organise | Folders, OPML import and export (with Feeder's OPML as a second reference) | 3 (built; phone check pending) |
 | Search | Search saved articles (SQLite FTS5) | 2 (done) |
 | Settings | Timeline order, hide read, summaries, where links open, font | 2 (done) |
 | Web view | The original page and links inside the app | 2 (done; Show Original Page was in slice 1) |
@@ -28,7 +28,7 @@ A person walks both apps side by side with [walk.md](walk.md): about ten minutes
 2. **Walk** the steps in [walk.md](walk.md), doing each in NetNewsWire and then in Commonplace, and mark each Same, Different (one line on how) or Missing.
 3. **Record** the result: rows of [spec.md](spec.md) move from Expected to Seen with the date, differences become records in [gaps.toml](gaps.toml) (a finding about ixOS) or accepted differences in the spec, and what was reused goes in [patterns.toml](patterns.toml).
 
-Commonplace's own flows still run as UI tests on the phone when the cable is in (`forge ui run examples/commonplace/uitests/subscribe-and-read.toml`). Walking NetNewsWire with the explorer (`forge-lab explore --app com.ranchero.NetNewsWire-iOS --any-app`) still works, but it is frozen and not needed for this comparison.
+Commonplace's own flows still run as UI tests on the phone when the cable is in (`forge ui run examples/commonplace/uitests/subscribe-and-read.toml`). The explorer that once walked NetNewsWire is parked in forge-lab and has no command today; it is not needed for this comparison. Whether to bring it back is the open question in [the app-as-specification plan](../../../../docs/research/app-as-specification.md#the-decision-the-explorer).
 
 ## Limits
 

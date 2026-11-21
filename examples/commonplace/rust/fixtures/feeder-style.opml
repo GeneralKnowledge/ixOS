@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Written for Commonplace's tests from Feeder's public OPML notes (2.5.0):
+     its namespace, per-feed notify/fullTextByDefault/openArticlesWith and
+     global settings with block-list patterns. Not copied from Feeder. -->
+<opml version="2.0" xmlns:feeder="https://nononsenseapps.com/feeder">
+  <head>
+    <title>Feeder</title>
+    <feeder:settings>
+      <feeder:setting key="pref_theme" value="night"/>
+      <feeder:setting key="pref_article_style" value="serif"/>
+      <feeder:blocked pattern="sponsored"/>
+      <feeder:blocked pattern="  giveaway  "/>
+      <feeder:blocked pattern=""/>
+    </feeder:settings>
+  </head>
+  <body>
+    <outline text="Loose Feed" title="Loose Feed" type="rss" xmlUrl="https://loose.example/feed.xml" htmlUrl="https://loose.example/"/>
+    <outline text="News" title="News">
+      <outline text="World &amp; Politics" title="World &amp; Politics" type="rss" xmlUrl="https://world.example/rss"
+               feeder:notify="true" feeder:fullTextByDefault="true" feeder:openArticlesWith="reader" feeder:alternateId="false"/>
+      <outline text="Tech" title="Tech">
+        <outline text="Gadgets" type="rss" xmlUrl="feed://gadgets.example/atom" feeder:notify="false"/>
+      </outline>
+    </outline>
+    <outline text="Podcasts and Odd Things" title="Podcasts and Odd Things">
+      <outline text="Listed Twice" type="rss" xmlUrl="https://WORLD.example/rss/"/>
+      <outline text="Not a Web Address" type="rss" xmlUrl="ftp://files.example/feed"/>
+      <outline text="Weird Notify" type="rss" xmlUrl="https://weird.example/feed" feeder:notify="sometimes"/>
+    </outline>
+  </body>
+</opml>

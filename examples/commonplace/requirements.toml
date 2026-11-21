@@ -43,3 +43,14 @@ device = ["uitests/suggested-feeds.toml"]
 id = "CP-7"
 statement = "Stop, or leaving the screen, ends a refresh in Rust as well as on screen: it returns at once, nothing is saved or reported, and no alert says it was cancelled."
 twin = ["LibraryModelTests.testStopEndsARefreshInRust", "LibraryModelTests.testCancellingTheTaskEndsARefreshInRust"]
+
+[[requirement]]
+id = "CP-8"
+statement = "Folders hold feeds and folders; a folder's timeline and Mark All as Read cover everything inside it; deleting a folder moves what it holds up a level and removes no subscription."
+twin = ["LibraryModelTests.testImportingTwiceAddsNothingAndFoldersHoldTheirFeeds"]
+
+[[requirement]]
+id = "CP-9"
+statement = "Import Subscriptions reads an OPML file (including Feeder's per-feed settings) into a preview that changes nothing, picks only new feeds, names settings it doesn't carry, and importing the same file twice adds nothing and leaves existing feeds as they were. Export writes OPML that imports again with the same folders and settings."
+twin = ["LibraryModelTests.testAnOPMLPreviewPicksOnlyNewFeedsAndNamesWhatIsNotCarried", "LibraryModelTests.testImportingTwiceAddsNothingAndFoldersHoldTheirFeeds", "LibraryModelTests.testAnExportIsAnOPMLFileThatImportsAgain"]
+

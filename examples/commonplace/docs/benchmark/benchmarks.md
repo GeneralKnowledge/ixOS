@@ -4,7 +4,9 @@ A replication benchmark takes a real iOS app as a behavioural reference and rebu
 
 | Benchmark | Reference | Our app | Status |
 |---|---|---|---|
-| [netnewswire/](README.md) | NetNewsWire (MIT, App Store) | [Commonplace](../../README.md) | B0: slice 1 built, reference not yet walked |
+| [netnewswire/](README.md) | NetNewsWire (MIT, App Store) | [Commonplace](../../README.md) | B0: slices 1 and 2 built, reference not yet walked |
+
+The next benchmark, a small one to prove the method first, is planned in [docs/research/app-as-specification.md](../../../../docs/research/app-as-specification.md).
 
 ## Rules
 

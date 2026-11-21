@@ -1,0 +1,48 @@
+# Sums: the Calculator expedition's recreation
+# (docs/research/app-as-specification.md). This crate owns the calculator's
+# rules (src/engine.rs) and the UniFFI API the SwiftUI app calls (src/lib.rs);
+# the reference's recorded answers are its test (tests/reference.rs).
+[package]
+name = "sums-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[lib]
+# Named after the app, so another app can link this crate (Device Lab hosts
+# the example apps that way). Forge stages it as libforge_ffi.a whatever its
+# name; the Swift bindings are the module forge.toml's [swift]
+# bindings_module names. No cdylib: Cargo would link one for iOS when another
+# crate depends on this one; `forge bindings generate` builds its own.
+name = "sums_core"
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+# The Forge framework. `forge init` pins every Forge crate to one framework
+# release (git, at the ixOS commit that release was made from), matching the
+# ForgeKit version in Package.swift; apps made inside a Forge checkout with
+# unreleased changes use the checkout's crates instead.
+# The application runtime: one core per process, serial commands, revisions,
+# lifecycle, cancellation, shutdown (docs/app-model-review.md).
+forge-app = { path = "../../../crates/forge-app" }
+forge-runtime = { path = "../../../crates/forge-runtime" }
+forge-storage = { path = "../../../crates/forge-storage" }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+# Decimal arithmetic: the reference says 0.1 + 0.2 = 0.3 (finding 26).
+rust_decimal = { version = "1.36", default-features = false, features = ["std"] }
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+toml = "0.8"
+
+# Its own workspace: the app builds the same inside or outside the Forge checkout.
+[workspace]
+
+[profile.release]
+# Smaller app binaries; Rust panics still reach the host as errors via UniFFI.
+lto = true
+codegen-units = 1
