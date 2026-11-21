@@ -37,6 +37,19 @@ pub(crate) fn aqi_reading(value: u16, scale: AirQualityScale) -> AqiReading {
     }
 }
 
+/// Where `value` sits along the scale's six bands, 0 to 1: each band takes
+/// a sixth, so a marker lines up with a six-colour bar.
+pub(crate) fn scale_position(value: u16, scale: AirQualityScale) -> f64 {
+    let edges: [f64; 7] = match scale {
+        AirQualityScale::European => [0.0, 20.0, 40.0, 60.0, 80.0, 100.0, 150.0],
+        AirQualityScale::UnitedStates => [0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 500.0],
+    };
+    let v = f64::from(value).min(edges[6]);
+    let band = (0..6).find(|&i| v < edges[i + 1]).unwrap_or(5);
+    let within = (v - edges[band]) / (edges[band + 1] - edges[band]);
+    ((band as f64 + within) / 6.0).clamp(0.0, 1.0)
+}
+
 /// The hour's index on `scale`, if the source has one.
 pub(crate) fn hour_reading(hour: &AirQualityHour, scale: AirQualityScale) -> Option<AqiReading> {
     let value = match scale {
