@@ -17,7 +17,7 @@ can be a Linux machine running the `relay` command, so one iPhone is enough.
 
 ## Where it is
 
-The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay-reliable-delivery.md). Ideas beyond it are in [relay-future-directions.md](docs/relay-future-directions.md). A review of the product and architecture (2026-11-18): [relay-review-2026-11.md](docs/relay-review-2026-11.md).
+The current milestone is [Relay M1: Reliable Trusted-Device Delivery](docs/relay-reliable-delivery.md). Ideas beyond it are in [relay-future-directions.md](docs/relay-future-directions.md). A review of the product and architecture (2026-11-18): [relay-review-2026-11.md](docs/relay-review-2026-11.md). How the ideas fit one network: [relay-network-architecture.md](docs/relay-network-architecture.md).
 
 | Step | What | State |
 |---|---|---|
