@@ -5,9 +5,9 @@ being brought to parity with the iPhone app one milestone at a time, as a capped
 ([roadmap](../../docs/roadmap.md#android--work-in-progress)): parity means meeting the same
 requirements (PL-1 to PL-10 in [requirements.toml](../pocket-library/requirements.toml)).
 
-Done: stage 0 (the shared core, the Kotlin host, add, open, delete) and A1 (typed navigation,
+Done: stage 0 (the shared core, the Kotlin host, add, open, delete), A1 (typed navigation,
 the process lifecycle, Kotlin counterparts of ForgeAppKit's patterns, the iPhone app's error
-text). Requirements met on the emulator: **PL-4** and **PL-10**. Everything else in
+text) and A2 (ForgeUI's tokens and look). Requirements met on the emulator: **PL-4** and **PL-10**. Everything else in
 [Pocket Library](../pocket-library/README.md) (search, progress, catalogue, EPUB, reader, read
 aloud, settings, backups) is iOS only for now.
 
@@ -24,6 +24,12 @@ PocketLibraryApp (Compose, Material 3, Navigation) → LibraryModel → ForgeHos
   app until a second Android app needs them.
 - `ErrorText.kt` has the iPhone app's words for every Rust error; failures, alerts and failed
   loads all use it.
+- `ui/theme/` is the Forge look: `ForgeTokens.kt` is **generated** from ForgeUI's Swift tokens
+  (`forgekit/Sources/ForgeUI/Tokens`) by `scripts/android-tokens.py`, so the palette, accents,
+  text roles, spacing and radii match the iPhone app; `ForgeTheme.kt` turns them into a
+  Material 3 colour scheme and type. Don't edit `ForgeTokens.kt`: change the Swift and run the
+  script (`make check-android-tokens` fails when they differ). The app uses the orange accent,
+  as on iOS.
 
 - `rust/` is a thin crate: Pocket Library's crate has no `cdylib` (it would then be linked for
   iOS too), so this one links it into the library Android loads. It exports nothing of its own.
@@ -46,7 +52,7 @@ FORGE_ANDROID_ABIS=x86_64 ./scripts/package-android-library.sh examples/pocket-l
 
 cd examples/pocket-library-android
 ./gradlew :app:installDebug                 # on a running emulator
-./gradlew :app:connectedDebugAndroidTest    # Compose UI tests: PL-4, PL-10, add/open/delete
+./gradlew :app:connectedDebugAndroidTest    # Compose UI tests: PL-4, PL-10, add/open/delete, screenshots
 ```
 
 JVM unit tests run the host and model against the real core, with no emulator:
@@ -59,7 +65,9 @@ cd examples/pocket-library-android && ./gradlew :app:testDebugUnitTest
 The UI tests start the app with the `forge.temporaryData` extra, the Android form of iOS's
 `-ForgeTemporaryData`: each launch gets an empty, throwaway library, so your own books are never
 touched. UI tests are named by requirement (`pl4_...`); a requirement counts as met on Android
-only when its test passes on the CI emulator.
+only when its test passes on the CI emulator. `ThemeScreenshotTest` saves the library in light,
+dark and at 200% text to `app/build/outputs/connected_android_test_additional_output/`; CI
+uploads them as the `pocket-library-android-screenshots` artifact.
 
 CI runs both on every push to main that touches Android or shared Rust (`.github/workflows/android.yml`,
 job `pocket-library-emulator`). No physical Android phone has run it.
