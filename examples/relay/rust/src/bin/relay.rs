@@ -432,7 +432,7 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                         .map_err(|e| e.to_string())?;
                     out += &format!("Trusted {} ({}).\n", offer.name, offer.endpoint_id);
                 } else {
-                    core.dismiss_trust_offer();
+                    dismiss_offer(core, &offer.endpoint_id);
                     out += &format!(
                         "{} introduces {} ({}).\n",
                         device.name, offer.name, offer.endpoint_id
@@ -880,9 +880,24 @@ fn offer_trust(core: &RelayCore, io: &dyn Io) -> Result<(), String> {
         block_on(core.trust_device(offer.endpoint_id)).map_err(|e| e.to_string())?;
         io.say("Trusted. `relay devices` lists it.");
     } else {
-        core.dismiss_trust_offer();
+        dismiss_offer(core, &offer.endpoint_id);
     }
     Ok(())
+}
+
+/// Several terminals can see the same offer while one is asked about it.
+static OFFERS: Mutex<()> = Mutex::new(());
+
+/// Dismisses the offer for `endpoint_id` if it is still the one waiting,
+/// never the next one: another terminal may have answered it already.
+fn dismiss_offer(core: &RelayCore, endpoint_id: &str) {
+    let _gate = OFFERS.lock().unwrap_or_else(|p| p.into_inner());
+    if core
+        .trust_offer()
+        .is_some_and(|o| o.endpoint_id == endpoint_id)
+    {
+        core.dismiss_trust_offer();
+    }
 }
 
 /// `send <device> (--text TEXT | PATH...) [--to host:port]`: to a trusted
@@ -1010,9 +1025,12 @@ fn send_code(core: &Arc<RelayCore>, paths: &[String], io: &dyn Io) -> Result<(),
     // One terminal owns the send from start to end, so its status and a
     // cancel when it closes are never another terminal's send.
     let _owner = own(&SEND_OWNER).ok_or("already sending")?;
-    core.send_paths_with_code(paths.to_vec())
-        .map_err(|e| e.to_string())?;
+    // The daemon first: a send started without it would run unadvertised.
     let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
+    if let Err(err) = core.send_paths_with_code(paths.to_vec()) {
+        let _ = mdns.shutdown();
+        return Err(err.to_string());
+    }
     let done = Arc::new(AtomicBool::new(false));
     let watcher = watch_senders(Arc::clone(core), Arc::clone(&done));
     let mut advertised: Option<String> = None;
