@@ -8,6 +8,11 @@ struct ForecastPage: View {
     let page: WeatherPage
     @Bindable var model: WeatherViewModel
     let showLocations: () -> Void
+    /// How far the page has scrolled, in points.
+    @State private var scrolled: CGFloat = 0
+    /// The height of the short "2° | Mostly Sunny" line, which is where
+    /// cards pin their titles.
+    @State private var condensedHeight: CGFloat = 0
 
     var body: some View {
         let overview = page.overview
@@ -17,30 +22,47 @@ struct ForecastPage: View {
                 .animation(.easeInOut(duration: 0.8), value: overview?.scene)
             if let report = page.report, let overview {
                 let palette = SkyPalette(scene: overview.scene, isDay: overview.isDay)
-                ScrollView {
-                    VStack(spacing: 12) {
-                        Header(page: page, report: report, overview: overview)
-                        if let message = model.notice(for: page) {
-                            Notice(text: message, systemImage: noticeSymbol(report), palette: palette)
+                // The place's name stays at the top; under it the big
+                // temperature fades as the page scrolls and a short line takes
+                // its place, and each card keeps its title pinned under that
+                // line while its contents slide away beneath it.
+                VStack(spacing: 0) {
+                    PlaceTitle(page: page, report: report)
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            Header(report: report, overview: overview)
+                                .opacity(1 - min(max(scrolled / 120, 0), 1))
+                            if let message = model.notice(for: page) {
+                                Notice(text: message, systemImage: noticeSymbol(report), palette: palette)
+                            }
+                            if !overview.timeline.isEmpty || !overview.summary.isEmpty {
+                                HourlyCard(overview: overview, palette: palette)
+                            }
+                            if !overview.days.isEmpty {
+                                DailyCard(overview: overview, current: report.current.temperatureC, palette: palette)
+                            }
+                            AirQualityCard(overview: overview.airQuality, palette: palette)
+                            PollenCard(overview: overview.pollen, palette: palette)
+                            DetailsSection(details: overview.details, palette: palette)
+                            Footer(credits: overview.credits)
                         }
-                        if !overview.timeline.isEmpty || !overview.summary.isEmpty {
-                            HourlyCard(overview: overview, palette: palette)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 24)
+                        .frame(maxWidth: 640)
+                        .frame(maxWidth: .infinity)
+                        .onGeometryChange(for: CGFloat.self) { -$0.frame(in: .scrollView).minY } action: {
+                            scrolled = $0
                         }
-                        if !overview.days.isEmpty {
-                            DailyCard(overview: overview, current: report.current.temperatureC, palette: palette)
-                        }
-                        AirQualityCard(overview: overview.airQuality, palette: palette)
-                        PollenCard(overview: overview.pollen, palette: palette)
-                        DetailsSection(details: overview.details, palette: palette)
-                        Footer(credits: overview.credits)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 24)
-                    .frame(maxWidth: 640)
-                    .frame(maxWidth: .infinity)
+                    .scrollIndicators(.hidden)
+                    .refreshable { await model.refresh(page.id).value }
+                    .environment(\.cardPinTop, condensedHeight)
+                    .overlay(alignment: .top) {
+                        CondensedHeader(report: report, overview: overview)
+                            .opacity(min(max((scrolled - 90) / 40, 0), 1))
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { condensedHeight = $0 }
+                    }
                 }
-                .scrollIndicators(.hidden)
-                .refreshable { await model.refresh(page.id).value }
             } else if page.isRefreshing {
                 VStack(spacing: 16) {
                     if page.isMyLocation {
@@ -69,14 +91,12 @@ extension ForecastPage {
 
 // MARK: Header
 
-private struct Header: View {
+/// "MY LOCATION" and the place's name, which stay at the top of the page.
+private struct PlaceTitle: View {
     let page: WeatherPage
     let report: WeatherReport
-    let overview: WeatherOverview
-    @Environment(\.weatherUnits) private var units
 
     var body: some View {
-        let described = WeatherFormat.describe(report.current.condition, isDay: overview.isDay)
         VStack(spacing: 2) {
             if page.isMyLocation {
                 Text("MY LOCATION")
@@ -87,6 +107,49 @@ private struct Header: View {
                 .font(.system(.largeTitle, weight: .regular))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
+        }
+        .multilineTextAlignment(.center)
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.18), radius: 6, y: 1)
+        .padding(.horizontal, 16)
+        .padding(.top, 24)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// "2° | Mostly Sunny": what the big header shrinks to once it has
+/// scrolled away. VoiceOver already has it from the big header.
+private struct CondensedHeader: View {
+    let report: WeatherReport
+    let overview: WeatherOverview
+    @Environment(\.weatherUnits) private var units
+
+    var body: some View {
+        let described = WeatherFormat.describe(report.current.condition, isDay: overview.isDay)
+        Text("\(WeatherFormat.temperature(report.current.temperatureC, units))  |  \(described.text)")
+            .font(.title3.weight(.medium))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.18), radius: 6, y: 1)
+            .lineLimit(1)
+            .padding(.top, 2)
+            .padding(.bottom, 10)
+            .frame(maxWidth: .infinity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The big temperature, the condition and today's high and low; fades as
+/// the page scrolls.
+private struct Header: View {
+    let report: WeatherReport
+    let overview: WeatherOverview
+    @Environment(\.weatherUnits) private var units
+
+    var body: some View {
+        let described = WeatherFormat.describe(report.current.condition, isDay: overview.isDay)
+        VStack(spacing: 2) {
             BigTemperature(celsius: report.current.temperatureC)
             Text(described.text)
                 .font(.title3.weight(.medium))
@@ -98,7 +161,6 @@ private struct Header: View {
         .multilineTextAlignment(.center)
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.18), radius: 6, y: 1)
-        .padding(.top, 36)
         .padding(.bottom, 28)
         .accessibilityElement(children: .combine)
     }
@@ -129,26 +191,89 @@ private struct BigTemperature: View {
 
 // MARK: Cards
 
+/// Where cards pin their titles, in the scroll view's coordinates: the
+/// bottom of the short header line over the page.
+private struct CardPinTopKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    fileprivate var cardPinTop: CGFloat {
+        get { self[CardPinTopKey.self] }
+        set { self[CardPinTopKey.self] = newValue }
+    }
+}
+
 /// The frosted rounded card every section sits on, tinted by the sky.
+///
+/// When its top scrolls up to the pin line, the title stays there and the
+/// card shrinks from the top, its contents sliding away under the title,
+/// until only the title is left; then the whole card scrolls off.
 private struct Card<Content: View>: View {
     let title: String?
     let systemImage: String?
+    /// A tile's smaller title, without the rule under it.
+    let compact: Bool
     let palette: SkyPalette
     let content: Content
+    @Environment(\.cardPinTop) private var pinTop
+    @State private var top: CGFloat = .greatestFiniteMagnitude
+    @State private var height: CGFloat = 0
+    @State private var titleHeight: CGFloat = 0
 
     init(
-        _ title: String? = nil, systemImage: String? = nil, palette: SkyPalette,
+        _ title: String? = nil, systemImage: String? = nil, compact: Bool = false, palette: SkyPalette,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.systemImage = systemImage
+        self.compact = compact
         self.palette = palette
         self.content = content()
     }
 
     var body: some View {
+        // How much of the card has gone under the pin line.
+        let pushed = min(max(0, pinTop - top), max(0, height - titleHeight))
         VStack(alignment: .leading, spacing: 0) {
             if let title {
+                titleView(title)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { titleHeight = $0 }
+                    .offset(y: pushed)
+                    .zIndex(1)
+            }
+            content
+                .mask(alignment: .top) { Rectangle().padding(.top, pushed) }
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(palette.cardTint))
+                .padding(.top, pushed)
+        }
+        .mask { RoundedRectangle(cornerRadius: 20, style: .continuous).padding(.top, pushed) }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .scrollView) } action: {
+            top = $0.minY
+            height = $0.height
+        }
+    }
+
+    @ViewBuilder private func titleView(_ title: String) -> some View {
+        if compact {
+            Label(title.uppercased(), systemImage: systemImage ?? "circle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.6))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
                 Label(title.uppercased(), systemImage: systemImage ?? "circle")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.6))
@@ -158,16 +283,8 @@ private struct Card<Content: View>: View {
                     .accessibilityAddTraits(.isHeader)
                 Divider().overlay(.white.opacity(0.25)).padding(.leading, 16)
             }
-            content
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .foregroundStyle(.white)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(palette.cardTint))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -520,9 +637,8 @@ private struct DetailTile<Graphic: View>: View {
     }
 
     var body: some View {
-        Card(palette: palette) {
+        Card(title, systemImage: systemImage, compact: true, palette: palette) {
             VStack(alignment: .leading, spacing: 6) {
-                DetailTitle(title: title, systemImage: systemImage)
                 if let value {
                     Text(value)
                         .font(.system(.title, weight: .regular))
@@ -538,8 +654,8 @@ private struct DetailTile<Graphic: View>: View {
                     .font(.footnote)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+            .padding([.horizontal, .bottom], 14)
+            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel([title, value ?? spokenValue, caption, note].compactMap { $0 }.joined(separator: ", "))
@@ -556,19 +672,6 @@ extension DetailTile where Graphic == EmptyView {
             title, systemImage: systemImage, palette: palette, value: value, caption: caption, note: note,
             identifier: identifier
         ) { EmptyView() }
-    }
-}
-
-private struct DetailTitle: View {
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        Label(title.uppercased(), systemImage: systemImage)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.6))
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
     }
 }
 
@@ -608,9 +711,8 @@ private struct WindCard: View {
         let measured = splitUnit(WeatherFormat.speed(kmh: wind.speedKmh, units: units))
         let speed = measured.0
         let unit = measured.1
-        Card(palette: palette) {
+        Card("Wind", systemImage: "wind", compact: true, palette: palette) {
             VStack(alignment: .leading, spacing: 8) {
-                DetailTitle(title: "Wind", systemImage: "wind")
                 HStack(alignment: .center, spacing: 16) {
                     VStack(spacing: 0) {
                         MeasureRow(number: speed, unit: unit, label: "Wind")
@@ -632,7 +734,7 @@ private struct WindCard: View {
                     .font(.footnote)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(14)
+            .padding([.horizontal, .bottom], 14)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
@@ -647,9 +749,8 @@ private struct MoonCard: View {
 
     var body: some View {
         let name = WeatherFormat.moonName(moon.phase.name)
-        Card(palette: palette) {
+        Card(name, systemImage: WeatherFormat.moonSymbol(moon.phase.name), compact: true, palette: palette) {
             VStack(alignment: .leading, spacing: 8) {
-                DetailTitle(title: name, systemImage: WeatherFormat.moonSymbol(moon.phase.name))
                 HStack(alignment: .center, spacing: 16) {
                     VStack(spacing: 0) {
                         row("Illumination", "\(moon.phase.illuminationPct)%")
@@ -664,7 +765,7 @@ private struct MoonCard: View {
                         .frame(width: 110)
                 }
             }
-            .padding(14)
+            .padding([.horizontal, .bottom], 14)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
