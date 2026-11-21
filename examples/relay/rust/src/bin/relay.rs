@@ -553,7 +553,46 @@ mod control {
     enum Wire {
         Say(String),
         Ask(String),
+        /// Nothing to say: only checks the asking process is still there.
+        Tick,
         Done(Result<String, String>),
+    }
+
+    /// What a `relay` process asks the listener: its arguments, and the
+    /// folder it runs in, so relative paths mean what they mean there.
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Request {
+        args: Vec<String>,
+        cwd: Option<std::path::PathBuf>,
+    }
+
+    /// `args` with each relative path that names something in `cwd` made
+    /// absolute: a device name, and the values of `--to`, `--text` and
+    /// `--note`, stay as they are.
+    fn resolve(core: &RelayCore, cwd: Option<&std::path::Path>, args: Vec<String>) -> Vec<String> {
+        let Some(cwd) = cwd else {
+            return args;
+        };
+        if args.first().map(String::as_str) != Some("send") {
+            return args;
+        }
+        let mut out = Vec::with_capacity(args.len());
+        let mut takes_value = false;
+        for (i, arg) in args.into_iter().enumerate() {
+            let keep = i == 0
+                || takes_value
+                || arg.starts_with("--")
+                || (i == 1 && super::find_device(core, &arg).is_some())
+                || std::path::Path::new(&arg).is_absolute()
+                || !cwd.join(&arg).exists();
+            takes_value = matches!(arg.as_str(), "--to" | "--text" | "--note");
+            out.push(if keep {
+                arg
+            } else {
+                cwd.join(&arg).to_string_lossy().into_owned()
+            });
+        }
+        out
     }
 
     fn send(stream: &UnixStream, wire: &Wire) -> std::io::Result<()> {
@@ -566,15 +605,33 @@ mod control {
     struct Remote {
         stream: UnixStream,
         reader: std::sync::Mutex<BufReader<UnixStream>>,
+        /// Set once a write fails: the asking process has gone.
+        gone: std::sync::atomic::AtomicBool,
+    }
+
+    impl Remote {
+        fn send(&self, wire: &Wire) -> bool {
+            let ok = send(&self.stream, wire).is_ok();
+            if !ok {
+                self.gone.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            ok
+        }
     }
 
     impl super::Io for Remote {
         fn say(&self, line: &str) {
-            let _ = send(&self.stream, &Wire::Say(line.to_string()));
+            self.send(&Wire::Say(line.to_string()));
+        }
+
+        fn alive(&self) -> bool {
+            !self.gone.load(std::sync::atomic::Ordering::SeqCst) && self.send(&Wire::Tick)
         }
 
         fn ask(&self, question: &str) -> Option<String> {
-            send(&self.stream, &Wire::Ask(question.to_string())).ok()?;
+            if !self.send(&Wire::Ask(question.to_string())) {
+                return None;
+            }
             let mut line = String::new();
             forge_runtime::lock(&self.reader)
                 .read_line(&mut line)
@@ -592,26 +649,29 @@ mod control {
         if reader.read_line(&mut line).is_err() {
             return;
         }
-        let reply = match serde_json::from_str::<Vec<String>>(&line) {
-            Ok(args) => match args.split_first() {
-                Some((command, rest)) => match super::shared(core, command, rest) {
-                    Some(reply) => reply,
-                    // A word-code transfer runs here, talking to the
-                    // other process's terminal.
-                    None if matches!(command.as_str(), "send" | "receive") => {
-                        let Ok(talking) = stream.try_clone() else {
-                            return;
-                        };
-                        let io = Remote {
-                            stream: talking,
-                            reader: std::sync::Mutex::new(reader),
-                        };
-                        super::code_transfer(core, command, rest, &io).map(|()| String::new())
-                    }
-                    None => Err(busy(command)),
-                },
-                None => Err(super::USAGE.into()),
-            },
+        let reply = match serde_json::from_str::<Request>(&line) {
+            Ok(request) => {
+                match resolve(core, request.cwd.as_deref(), request.args).split_first() {
+                    Some((command, rest)) => match super::shared(core, command, rest) {
+                        Some(reply) => reply,
+                        // A word-code transfer runs here, talking to the
+                        // other process's terminal.
+                        None if matches!(command.as_str(), "send" | "receive") => {
+                            let Ok(talking) = stream.try_clone() else {
+                                return;
+                            };
+                            let io = Remote {
+                                stream: talking,
+                                reader: std::sync::Mutex::new(reader),
+                                gone: Default::default(),
+                            };
+                            super::code_transfer(core, command, rest, &io).map(|()| String::new())
+                        }
+                        None => Err(busy(command)),
+                    },
+                    None => Err(super::USAGE.into()),
+                }
+            }
             Err(_) => Err("a garbled command".into()),
         };
         let _ = send(&stream, &Wire::Done(reply));
@@ -626,7 +686,11 @@ mod control {
         let command = args.first().map(String::as_str).unwrap_or("");
         let mut stream = UnixStream::connect(path())
             .map_err(|_| "Relay's data is in use by another relay process".to_string())?;
-        let line = serde_json::to_string(args).map_err(|e| e.to_string())? + "\n";
+        let request = Request {
+            args: args.to_vec(),
+            cwd: std::env::current_dir().ok(),
+        };
+        let line = serde_json::to_string(&request).map_err(|e| e.to_string())? + "\n";
         stream
             .write_all(line.as_bytes())
             .map_err(|e| e.to_string())?;
@@ -639,6 +703,7 @@ mod control {
             }
             match serde_json::from_str::<Wire>(&line) {
                 Ok(Wire::Say(said)) => println!("{said}"),
+                Ok(Wire::Tick) => {}
                 Ok(Wire::Ask(question)) => {
                     let answer = super::Io::ask(&super::Terminal, &question);
                     let line = serde_json::to_string(&answer).map_err(|e| e.to_string())? + "\n";
@@ -751,6 +816,11 @@ trait Io: Send + Sync {
     /// The person's answer to `question`, or `None` when nobody can
     /// answer (not a terminal).
     fn ask(&self, question: &str) -> Option<String>;
+    /// Whether whoever started the transfer is still there: a `relay`
+    /// process that ended takes its transfer with it.
+    fn alive(&self) -> bool {
+        true
+    }
 }
 
 struct Terminal;
@@ -931,6 +1001,10 @@ fn send_code(core: &Arc<RelayCore>, paths: &[String], io: &dyn Io) -> Result<(),
     let mut advertised: Option<String> = None;
     let mut last = CodeSend::Idle;
     let result = loop {
+        if !io.alive() {
+            core.cancel_code_send();
+            break Err("the terminal that started it closed".into());
+        }
         let now = core.code_send_status();
         if now != last {
             match &now {
@@ -1092,6 +1166,9 @@ fn receive_code(core: &Arc<RelayCore>, code: &str, io: &dyn Io) -> Result<(), St
     let mut last = Instant::now();
     while !receiving.is_finished() {
         std::thread::sleep(Duration::from_millis(200));
+        if !io.alive() {
+            core.cancel_code_receive();
+        }
         if last.elapsed() < Duration::from_secs(2) {
             continue;
         }

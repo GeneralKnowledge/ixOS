@@ -224,6 +224,9 @@ impl RelayCore {
         // One database (P3); the JSON files move into it on the first open.
         let (store, saved, found) = store::Store::open(directory.path())?;
         let store = Arc::new(store);
+        // Whether this folder held Relay before: a fresh install hears
+        // nothing about the servers being on.
+        let existed = saved.is_some();
         let mut record = saved.unwrap_or_default();
         // Each change at open is a transaction of its own.
         let opening = |record: &mut Record,
@@ -291,7 +294,7 @@ impl RelayCore {
             let turn_on = record.devices.mode == ConnectionMode::Hybrid
                 && record.devices.servers == RelayServers::default()
                 && default_servers != RelayServers::default();
-            let used_before = !record.devices.list.is_empty();
+            let used_before = existed;
             opening(&mut record, &mut |r, _| {
                 if turn_on {
                     r.devices.servers = default_servers.clone();
@@ -1542,10 +1545,18 @@ impl RelayCore {
 
     /// The endpoint uses the servers the current mode allows, from now on.
     async fn apply_servers(&self) {
-        let servers = self.servers().in_mode(self.connection_mode());
         let node = Arc::clone(&self.node);
+        let me = self.me.clone();
+        // The servers are read once the node's gate is held, so the latest
+        // saved choice is the one applied, whatever order changes land in.
         let _ = code::TOKIO
-            .spawn(async move { node.use_servers(servers).await })
+            .spawn(async move {
+                node.use_servers(move || {
+                    me.upgrade()
+                        .map(|core| core.servers().in_mode(core.connection_mode()))
+                })
+                .await
+            })
             .await;
     }
 

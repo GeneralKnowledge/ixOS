@@ -268,6 +268,10 @@ pub(crate) struct NodeCell {
     /// Relay's servers in the current mode: what the node starts with, and
     /// what it is told when they change.
     servers: Mutex<RelayServers>,
+    /// Held while the node starts and while servers change, so a change
+    /// never lands between reading the servers and the node existing, and
+    /// two changes never interleave their relay swaps.
+    gate: tokio::sync::Mutex<()>,
     cell: OnceCell<Arc<Node>>,
 }
 
@@ -283,6 +287,7 @@ impl NodeCell {
             store_dir,
             devices,
             servers: Mutex::new(servers),
+            gate: tokio::sync::Mutex::new(()),
             cell: OnceCell::new(),
         }
     }
@@ -292,9 +297,15 @@ impl NodeCell {
         self.cell.get().cloned()
     }
 
-    /// The servers to use from now on, in the current mode; a running
-    /// node changes over at once.
-    pub async fn use_servers(&self, servers: RelayServers) {
+    /// The servers to use from now on, in the current mode, read by
+    /// `latest` once no other change or start is in progress (so the
+    /// newest saved choice wins); a running node changes over at once.
+    /// `None` from `latest` (Relay is closing) changes nothing.
+    pub async fn use_servers(&self, latest: impl FnOnce() -> Option<RelayServers>) {
+        let _gate = self.gate.lock().await;
+        let Some(servers) = latest() else {
+            return;
+        };
         *forge_runtime::lock(&self.servers) = servers.clone();
         if let Some(node) = self.started() {
             node.use_servers(servers).await;
@@ -305,6 +316,7 @@ impl NodeCell {
     pub async fn get(&self) -> Result<Arc<Node>, RelayError> {
         self.cell
             .get_or_try_init(|| async {
+                let _gate = self.gate.lock().await;
                 let link = NodeLink::default();
                 let servers = forge_runtime::lock(&self.servers).clone();
                 let node = Arc::new(

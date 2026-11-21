@@ -239,7 +239,14 @@ struct RelaySettingsSection: View {
         .onAppear {
             mode = core.connectionMode()
             servers = core.servers()
-            health = core.serverHealth()
+        }
+        // The relay can still be connecting after a change, or go down
+        // and come back: read it again while Settings is on screen.
+        .task {
+            while !Task.isCancelled {
+                health = core.serverHealth()
+                try? await Task.sleep(for: .seconds(3))
+            }
         }
     }
 }

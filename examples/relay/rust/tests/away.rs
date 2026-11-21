@@ -126,3 +126,19 @@ fn turning_them_off_is_never_undone() {
     assert_eq!(core.servers(), RelayServers::default());
     close(core);
 }
+
+#[test]
+fn an_upgrade_with_no_trusted_devices_is_still_told() {
+    // Someone who only ever used word codes: a saved record, no devices.
+    let dir = tempfile::tempdir().unwrap();
+    let record = serde_json::json!({
+        "schema_version": 1,
+        "data": { "name": "laptop", "next_id": 1, "notes_are_messages": true,
+                  "devices": { "policy": "CodesOnly" } }
+    });
+    std::fs::write(dir.path().join("relay.json"), record.to_string()).unwrap();
+    let core = open(dir.path());
+    assert_eq!(core.servers(), defaults());
+    assert!(core.away_from_home_notice().is_some());
+    close(core);
+}

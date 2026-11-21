@@ -241,6 +241,8 @@ public final class RelayModel {
     /// "offline" a few minutes after the last connection).
     public func refreshDevices() {
         devices = core.devices()
+        // The relay can go down or come back while nothing else changes.
+        serverHealth = core.serverHealth()
     }
 
     /// "Nearby", "Reachable, seen 2 min ago" or "Offline, seen 3 h ago".
