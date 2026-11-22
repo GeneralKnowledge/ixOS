@@ -100,6 +100,30 @@ As built: `PythonBridge` registers a built-in module `_devicelab_io` (`write(kin
 
 As built: `BonsaiHarness.start_custom(model, request, project)` runs in the chosen project (named as Python Lab names them; only `scratch` is made when missing, any other missing project is refused). Bonsai Harness gets a Project picker over Python Lab's projects and "Open in Python Lab", which opens that project there. `PythonActivity.bonsaiProject` says which project Bonsai is working in; Python Lab shows it read-only with a banner (the editor, Run, the file actions, examples and import refuse), saves any edits the moment Bonsai starts, and reads the files again when it finishes (edits it couldn't save are kept on screen, never replaced). The harness's `PythonLab` keeps each file's SHA-256 as Bonsai last read or wrote it; a write or edit over a file whose contents changed since is refused, while what Bonsai's own runs change counts as Bonsai's. Its writes are atomic now (`forge_storage::write_atomic`). Import is `Workspace.import_file(project, folder, source)` (its own name, or "name 2.csv" when taken; text up to 1 MB, other files up to 20 MB), from the Files picker in the file browser's + menu; Export Project writes `<project>.zip` with forge-storage's backup archive (hidden folders, so Bonsai's journal and the editor state, left out) and offers it to share. Tests (Linux): the refused write and edit, Bonsai's own run not counting, a request in a chosen project (and refused names), import naming and limits, and the export's contents.
 
+## What PL2 builds (started 2026-11-22)
+
+Reuben asked for bigger strides overnight, so PL2 started straight after PL1e, in the order that answers his packages question first. Each part is tested on Linux; the Swift is checked in the combined Device Lab build.
+
+### PL2a. Pure-Python packages — built
+
+**Packages** in Python Lab's Interpreter section: type a name, Install. Rust's `packages.rs` does the work Swift can't test on Linux: `package_choose_wheel` takes PyPI's JSON (`https://pypi.org/pypi/<name>/json`) and picks the newest release's pure wheel (`py3-none-any`, at most 50 MB); `package_install_wheel` checks the download's SHA-256 against PyPI's, refuses compiled code (`.so`, `.dylib`, a wheel that isn't `Root-Is-Purelib`, `platlib` data) and paths that leave the folder, unpacks beside `site-packages` and then moves it in, replacing an older version of the same package but never another package's files; it returns the requirements this phone needs (PEP 508 markers evaluated for CPython 3.15 on iOS, extras left out, an unreadable marker left out). Swift downloads the JSON and wheel and installs requirements in turn (at most 40). Packages built into the app (the numpy spike's) are listed apart and can't be replaced. Removing uses the package's `RECORD`. A package already imported keeps its old version until Device Lab restarts, which the screen says.
+
+Checked on Linux: five tests with wheels built in the test (install, upgrade, uninstall, a bad checksum, compiled code, a non-pure wheel, another package's files, markers), plus an `#[ignore]` test that installed the real PyPI wheels of rich (with markdown-it-py, pygments and mdurl), attrs and six from a folder downloaded beforehand.
+
+Not in PL2a: version pins (always the newest release), per-project environments (PL4), and source-only packages (no build tools on the phone).
+
+### PL2b. Tracebacks you can tap — built
+
+After a failed run, each of the project's lines in the traceback is a button under the console ("helper.py, line 2 in half"); tapping it opens the file and puts the cursor on that line. Rust's `python_traceback_frames(output)` reads the console's stderr (the last traceback; the standard library's and packages' frames are left out, since only the project's files open). Debugging with breakpoints stays later in PL2.
+
+### PL2c. Run history — built
+
+Each run is recorded in the project's hidden `.workspace/runs.json` (the newest 30, each with the file, when, how long, how it ended and the last 16 KB of its output). History, beside Clear under the console, lists them; a run opens its output; Clear History forgets them. `Workspace.runs`, `record_run` and `clear_runs`, tested on Linux.
+
+### Still in PL2
+
+Several open files and bracket matching in the editor, a general artifact browser, and debugging (stepping, variables).
+
 ## Decided: projects live in Files
 
 **Reuben, 2026-11-22: projects move to `Documents/Python Lab`.** Device Lab already shows its `Documents` folder in the Files app (Relay's received files are there), so every project is a normal folder under On My iPhone ▸ Device Lab ▸ Python Lab: import, export and opening a file in another app need no screens of ours. Built in PL1a: `PythonLabProjects.folder` points there, and on first use `workspace_move_projects` moves the old `Application Support/Python Lab/Projects` across once (only while the new folder holds nothing but an empty `scratch`, so it never overwrites work). The cost: the person, or another app through Files, can change a project while Bonsai works in it; PL1e's write check (above) refuses a Bonsai write over a file changed outside it, so an outside edit is caught unless it lands in the moment between the check and the save. PL1e keeps in-app import and export for convenience.

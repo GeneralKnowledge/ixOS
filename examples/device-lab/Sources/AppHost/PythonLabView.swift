@@ -26,7 +26,8 @@ struct PythonLabView: View {
                 PythonCodeEditor(
                     text: $model.code,
                     isEditable: !(model.hasWorkspace && model.openFile == nil) && !model.isLockedByBonsai,
-                    accessibilityLabel: model.openFile.map { "Python file \($0)" } ?? "Python script")
+                    accessibilityLabel: model.openFile.map { "Python file \($0)" } ?? "Python script",
+                    goTo: model.lineRequest)
                     .frame(minHeight: 320)
                     .listRowInsets(EdgeInsets())
                 Menu {
@@ -75,6 +76,14 @@ struct PythonLabView: View {
                     Text(unavailable).font(.footnote).forgeForeground(.danger)
                         .accessibilityIdentifier("pythonLab.unavailable")
                 }
+                if let packages = model.packages {
+                    NavigationLink {
+                        PythonPackagesView(model: packages)
+                    } label: {
+                        LabeledContent("Packages", value: "\(packages.installed.count)")
+                    }
+                    .accessibilityIdentifier("pythonLab.packages")
+                }
             } header: {
                 Text("Interpreter")
             }
@@ -121,6 +130,19 @@ struct PythonLabView: View {
                 Text("Tap Run to see the output here.")
                     .foregroundStyle(.secondary)
             }
+            // Where the error happened, to open: the last line is where it
+            // was raised.
+            ForEach(Array(model.errorFrames.reversed().enumerated()), id: \.offset) { index, frame in
+                Button {
+                    model.show(frame)
+                } label: {
+                    Label(
+                        "\(frame.file), line \(frame.line)\(frame.function == "<module>" || frame.function.isEmpty ? "" : " in \(frame.function)")",
+                        systemImage: index == 0 ? "exclamationmark.triangle" : "arrow.turn.down.right")
+                }
+                .accessibilityHint("Opens the file at this line")
+                .accessibilityIdentifier("pythonLab.frame.\(index)")
+            }
             if model.waitingForInput {
                 HStack {
                     TextField("Your answer", text: $answer)
@@ -151,6 +173,17 @@ struct PythonLabView: View {
                     .accessibilityIdentifier("pythonLab.rerun")
                 }
                 Spacer()
+                if model.hasWorkspace {
+                    NavigationLink {
+                        PythonRunHistoryView(model: model)
+                    } label: {
+                        Label("History", systemImage: "clock")
+                    }
+                    .fixedSize()
+                    .accessibilityLabel("Run history, \(model.runs.count) runs")
+                    .accessibilityIdentifier("pythonLab.history")
+                    Spacer()
+                }
                 Button("Clear", systemImage: "trash") { model.clearConsole() }
                     .disabled(model.console.isEmpty)
                     .accessibilityIdentifier("pythonLab.clear")
@@ -573,5 +606,138 @@ struct BonsaiLockBanner: View {
         .font(.footnote)
         .forgeForeground(.warning)
         .accessibilityIdentifier("pythonLab.bonsaiWorking")
+    }
+}
+
+/// Pure-Python packages from PyPI (PL2a): install by name, with what it
+/// needs; remove with a swipe.
+struct PythonPackagesView: View {
+    @Bindable var model: PythonPackagesModel
+
+    var body: some View {
+        List {
+            Section {
+                TextField("Package name, like rich or attrs", text: $model.name)
+                    .noAutocapitalization()
+                    .autocorrectionDisabled()
+                    .submitLabel(.go)
+                    .onSubmit { Task { await model.install() } }
+                    .disabled(model.isWorking)
+                    .accessibilityIdentifier("pythonLab.packages.name")
+                if model.isWorking {
+                    ProgressView("Installing…")
+                        .accessibilityIdentifier("pythonLab.packages.working")
+                } else {
+                    Button("Install", systemImage: "arrow.down.circle") {
+                        Task { await model.install() }
+                    }
+                    .disabled(model.name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityIdentifier("pythonLab.packages.install")
+                }
+                ForEach(model.log, id: \.self) { line in
+                    Text(line).font(.footnote)
+                }
+                if let error = model.error {
+                    Text(error).font(.footnote).forgeForeground(.danger)
+                        .accessibilityIdentifier("pythonLab.packages.error")
+                }
+            } footer: {
+                Text("Pure-Python packages from PyPI, with the packages they need. Packages with compiled code (numpy, pandas) can't be installed here: iOS runs compiled code only when it's built into the app. A package already imported keeps its old version until Device Lab restarts.")
+            }
+            Section {
+                if model.installed.isEmpty {
+                    Text("None yet.").foregroundStyle(.secondary)
+                }
+                ForEach(model.installed, id: \.name) { package in
+                    row(package)
+                        .forgeRowActions {
+                            Button("Remove", systemImage: "trash", role: .destructive) {
+                                model.remove(package)
+                            }
+                            .accessibilityIdentifier("pythonLab.packages.remove")
+                        }
+                }
+            } header: {
+                Text("Installed")
+            }
+            if !model.bundled.isEmpty {
+                Section {
+                    ForEach(model.bundled, id: \.name) { row($0) }
+                } header: {
+                    Text("Built into this app")
+                }
+            }
+        }
+        .groupedList()
+        .navigationTitle("Packages")
+        .inlineNavigationTitle()
+        .onAppear { model.reload() }
+    }
+
+    private func row(_ package: InstalledPackage) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledContent(package.name, value: package.version)
+            if !package.summary.isEmpty {
+                Text(package.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("pythonLab.packages.row.\(package.name)")
+    }
+}
+
+/// The open project's last runs (PL2c): which file, when, how it ended and
+/// what it printed.
+struct PythonRunHistoryView: View {
+    @Bindable var model: PythonLabModel
+
+    var body: some View {
+        List {
+            if model.runs.isEmpty {
+                Text("No runs in \(model.project) yet.").foregroundStyle(.secondary)
+            }
+            ForEach(Array(model.runs.enumerated()), id: \.offset) { index, run in
+                NavigationLink {
+                    ScrollView {
+                        Text(run.output.isEmpty ? "(no output)" : run.output)
+                            .font(.system(.footnote, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .navigationTitle(run.file)
+                    .inlineNavigationTitle()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: run.ok ? "checkmark.circle" : "xmark.octagon")
+                            .forgeForeground(run.ok ? .success : .danger)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(run.file)
+                            Text(Self.summary(run)).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityValue(run.ok ? "Finished" : "Ended with an error")
+                }
+                .accessibilityIdentifier("pythonLab.history.\(index)")
+            }
+        }
+        .groupedList()
+        .navigationTitle("History")
+        .inlineNavigationTitle()
+        .toolbar {
+            Button("Clear History", systemImage: "trash", role: .destructive) { model.clearRuns() }
+                .disabled(model.runs.isEmpty)
+                .accessibilityIdentifier("pythonLab.history.clear")
+        }
+        .onAppear { model.loadRuns() }
+    }
+
+    static func summary(_ run: RunRecord) -> String {
+        let date = Date(timeIntervalSince1970: Double(run.startedMs) / 1000)
+        let when = date.formatted(date: .abbreviated, time: .shortened)
+        let how = run.timedOut ? "stopped at the time limit" : run.ok ? "finished" : "error"
+        return "\(when), \(Format.number(run.seconds, digits: 2)) s, \(how)"
     }
 }

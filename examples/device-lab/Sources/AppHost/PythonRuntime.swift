@@ -20,11 +20,17 @@ final class PythonRuntime: PythonRunning, @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "org.forgemobile.devicelab.python")
 
+    /// Where the person's packages go (pure Python only; PL2a), on the
+    /// import path of every run.
+    static let sitePackages = URL.applicationSupportDirectory
+        .appendingPathComponent("Python/site-packages", isDirectory: true)
+    /// The packages built into the app (scripts/prepare-python.sh).
+    static let bundledSitePackages = Bundle.main.bundleURL
+        .appendingPathComponent("python/lib/python3.15/site-packages", isDirectory: true)
+
     func start() async throws -> String {
         let home = Bundle.main.bundleURL.appendingPathComponent("python").path
-        // Packages a script installs or saves (pure Python only) go here.
-        let site = URL.applicationSupportDirectory
-            .appendingPathComponent("Python/site-packages", isDirectory: true)
+        let site = Self.sitePackages
         try? FileManager.default.createDirectory(at: site, withIntermediateDirectories: true)
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
@@ -252,9 +258,14 @@ extension PythonLabModel {
     /// Projects in the same folder as Bonsai Harness's, so a file either
     /// of them writes is the other's to read.
     static func live() -> PythonLabModel {
+        try? FileManager.default.createDirectory(
+            at: PythonRuntime.sitePackages, withIntermediateDirectories: true)
         let model = PythonLabModel(
             runtime: PythonRuntime.shared,
-            workspace: try? Workspace(projectsFolder: PythonLabProjects.folder.path))
+            workspace: try? Workspace(projectsFolder: PythonLabProjects.folder.path),
+            packages: PythonPackagesModel(
+                sitePackages: PythonRuntime.sitePackages.path,
+                bundledSite: PythonRuntime.bundledSitePackages.path))
         if let reason = PythonLabProjects.moveFailed {
             model.error = "Your projects couldn't move to the Files app (\(reason)), so they stay inside the app for now. Device Lab tries again next time it opens."
         }

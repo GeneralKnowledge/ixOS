@@ -1018,3 +1018,49 @@ pub(crate) mod testing {
         Command::new("python3").arg("--version").output().is_ok()
     }
 }
+
+/// A line of a traceback that names a file of the project, for Python Lab
+/// to open there (PL2b).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TracebackFrame {
+    /// Relative to the project, like `lib/helper.py`.
+    pub file: String,
+    pub line: u32,
+    /// The function, or `<module>`.
+    pub function: String,
+}
+
+/// The project's frames in the last traceback of a console run's output,
+/// outermost first, so the last is where the error happened. Frames of
+/// other files (the standard library, a package) are left out: only the
+/// project's files can be opened. A console traceback already names them
+/// relative to the project (`python_lab_console_script`).
+#[uniffi::export]
+pub fn python_traceback_frames(output: String) -> Vec<TracebackFrame> {
+    let Some(start) = output.rfind("Traceback (most recent call last):") else {
+        return Vec::new();
+    };
+    output[start..]
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim_start().strip_prefix("File \"")?;
+            let (file, rest) = rest.split_once('"')?;
+            let rest = rest.strip_prefix(", line ")?;
+            let (number, function) = match rest.split_once(", in ") {
+                Some((number, function)) => (number, function.trim()),
+                None => (rest, ""),
+            };
+            let line: u32 = number.trim().parse().ok()?;
+            // Only a project file: relative, not `<string>` or a full path.
+            if file.starts_with('/') || file.starts_with('<') || file.split('/').any(|p| p == "..")
+            {
+                return None;
+            }
+            Some(TracebackFrame {
+                file: file.to_string(),
+                line,
+                function: function.to_string(),
+            })
+        })
+        .collect()
+}

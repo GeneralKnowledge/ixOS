@@ -18,6 +18,36 @@ public enum PythonConsoleEvent: Sendable, Equatable {
     case inputEnded(String?)
 }
 
+/// Asks the editor to show a line (1 is the first), once per request.
+public struct PythonLineRequest: Equatable, Sendable {
+    public let id = UUID()
+    public let line: Int
+
+    public init(line: Int) {
+        self.line = line
+    }
+
+    /// Where line `line` is in `text`, in UTF-16 units; the end of the
+    /// text when it has fewer lines.
+    public static func range(ofLine line: Int, in text: NSString) -> NSRange {
+        var start = 0
+        var current = 1
+        while current < line, start < text.length {
+            let rest = NSRange(location: start, length: text.length - start)
+            let newline = text.range(of: "\n", options: [], range: rest)
+            if newline.location == NSNotFound {
+                return NSRange(location: text.length, length: 0)
+            }
+            start = newline.location + 1
+            current += 1
+        }
+        let end = text.range(
+            of: "\n", options: [], range: NSRange(location: start, length: text.length - start))
+        let length = (end.location == NSNotFound ? text.length : end.location) - start
+        return NSRange(location: start, length: length)
+    }
+}
+
 /// A stretch of the console in one style.
 public struct ConsoleSegment: Identifiable, Equatable, Sendable {
     public enum Kind: Sendable, Equatable {

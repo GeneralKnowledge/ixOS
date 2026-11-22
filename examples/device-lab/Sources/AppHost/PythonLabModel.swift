@@ -85,6 +85,13 @@ public final class PythonLabModel {
     public private(set) var waitingForInput = false
     /// The run waits for a Bonsai Harness run to finish first.
     public private(set) var queuedBehindBonsai = false
+    /// The project's lines in the last run's traceback, outermost first,
+    /// to open where the error happened (PL2b).
+    public private(set) var errorFrames: [TracebackFrame] = []
+    /// The line the editor should show next.
+    public private(set) var lineRequest: PythonLineRequest?
+    /// The open project's runs, newest first (PL2c).
+    public private(set) var runs: [RunRecord] = []
     /// Whether the last run finished without an exception (nil before one).
     public private(set) var succeeded: Bool?
     public private(set) var isRunning = false
@@ -130,6 +137,8 @@ public final class PythonLabModel {
     /// Remembers the last project between launches.
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let activity: PythonActivity
+    /// Pure-Python packages from PyPI (PL2a); nil in a build with no Python.
+    @ObservationIgnored public let packages: PythonPackagesModel?
     static let lastProjectKey = "pythonLab.lastProject"
 
     /// `workspace` nil keeps the code in memory only (a build or test with
@@ -137,10 +146,11 @@ public final class PythonLabModel {
     public init(
         runtime: (any PythonRunning)?, workspace: Workspace? = nil,
         timeLimit: Duration = .seconds(30), defaults: UserDefaults = .standard,
-        activity: PythonActivity = .shared
+        activity: PythonActivity = .shared, packages: PythonPackagesModel? = nil
     ) {
         self.runtime = runtime
         self.activity = activity
+        self.packages = packages
         self.workspace = workspace
         self.timeLimit = timeLimit
         self.defaults = defaults
@@ -292,6 +302,7 @@ public final class PythonLabModel {
             createFirstFile()
         }
         loadArtifacts()
+        loadRuns()
         madeByLastRun = []
         if !isRunning {
             succeeded = nil
@@ -602,6 +613,7 @@ public final class PythonLabModel {
             return
         }
         console = PythonConsoleText()
+        errorFrames = []
         succeeded = nil
         error = nil
         let id = UUID()
@@ -639,6 +651,10 @@ public final class PythonLabModel {
         // A run whose project is no longer open shows its output, but its
         // images and file list belong to that project, not this one.
         if let folder, project == startedIn {
+            if !result.ok {
+                let stderr = console.segments.filter { $0.kind == .error }.map(\.text).joined()
+                errorFrames = pythonTracebackFrames(output: stderr)
+            }
             artifacts = projectArtifacts(project: folder)
             madeByLastRun = artifacts.filter { artifact in
                 guard let old = before[artifact.path] else { return true }
@@ -658,7 +674,40 @@ public final class PythonLabModel {
         lastSeconds = Double(elapsed.components.seconds)
             + Double(elapsed.components.attoseconds) / 1e18
         succeeded = result.ok
+        if let workspace, let file {
+            let record = RunRecord(
+                file: file,
+                startedMs: Int64(Date().timeIntervalSince1970 * 1000 - (lastSeconds ?? 0) * 1000),
+                seconds: lastSeconds ?? 0, ok: result.ok, timedOut: result.timedOut,
+                output: console.plainText)
+            // In the project it ran in, even if another is open now.
+            try? workspace.recordRun(project: startedIn, run: record)
+            if project == startedIn { loadRuns() }
+        }
         isRunning = false
+    }
+
+    /// Reads the open project's run history again.
+    public func loadRuns() {
+        runs = (try? workspace?.runs(project: project)) ?? []
+    }
+
+    /// Forgets the open project's runs.
+    public func clearRuns() {
+        do {
+            try workspace?.clearRuns(project: project)
+        } catch {
+            self.error = Self.message(error)
+        }
+        loadRuns()
+    }
+
+    /// Opens a traceback's file at its line.
+    public func show(_ frame: TracebackFrame) {
+        open(file: frame.file)
+        if openFile == frame.file {
+            lineRequest = PythonLineRequest(line: Int(frame.line))
+        }
     }
 
     /// Shows what the run sent since the last batch.

@@ -1486,3 +1486,18 @@ fn a_request_runs_in_the_chosen_project() {
     assert!(dir.path().join("My Work").join(Journal::FILE).is_file());
     assert!(!dir.path().join("scratch").exists());
 }
+
+#[test]
+fn a_tracebacks_project_frames_are_found_for_opening() {
+    let output = "before\nTraceback (most recent call last):\n  File \"old.py\", line 1, in <module>\nValueError\nTraceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    helper.half(4)\n  File \"lib/helper.py\", line 2, in half\n    return n / 0\n  File \"/usr/lib/python3.15/fractions.py\", line 9, in f\n  File \"<string>\", line 1, in <module>\nZeroDivisionError: division by zero\n";
+    let frames = super::python_lab::python_traceback_frames(output.into());
+    let found: Vec<_> = frames
+        .iter()
+        .map(|f| (f.file.as_str(), f.line, f.function.as_str()))
+        .collect();
+    assert_eq!(
+        found,
+        [("main.py", 3, "<module>"), ("lib/helper.py", 2, "half")]
+    );
+    assert!(super::python_lab::python_traceback_frames("all fine\n".into()).is_empty());
+}

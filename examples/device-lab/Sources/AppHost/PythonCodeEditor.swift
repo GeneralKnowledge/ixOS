@@ -13,6 +13,8 @@ struct PythonCodeEditor: UIViewRepresentable {
     @Binding var text: String
     var isEditable: Bool
     var accessibilityLabel: String
+    /// A line to show and put the cursor at (a traceback's line, PL2b).
+    var goTo: PythonLineRequest? = nil
 
     @Environment(\.forgeTheme) private var theme
 
@@ -57,6 +59,13 @@ struct PythonCodeEditor: UIViewRepresentable {
             view.textChanged()
             coordinator.colourNow()
         }
+        if let goTo, goTo.id != coordinator.lastGoTo {
+            coordinator.lastGoTo = goTo.id
+            let range = PythonLineRequest.range(ofLine: goTo.line, in: view.text as NSString)
+            view.selectedRange = NSRange(location: range.location, length: 0)
+            view.scrollRangeToVisible(range)
+            view.flashScrollIndicators()
+        }
     }
 
     /// The colours from the ForgeUI theme. They follow light and dark mode
@@ -99,6 +108,8 @@ struct PythonCodeEditor: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         var text: Binding<String>
         weak var view: CodeTextView?
+        /// The last `goTo` done, so it happens once.
+        var lastGoTo: UUID?
         private var colours: EditorColours?
         private var theme: ForgeTheme?
         private var colouring: Task<Void, Never>?
@@ -460,6 +471,8 @@ struct PythonCodeEditor: View {
     @Binding var text: String
     var isEditable: Bool
     var accessibilityLabel: String
+    /// A line to show and put the cursor at (a traceback's line, PL2b).
+    var goTo: PythonLineRequest? = nil
 
     var body: some View {
         TextEditor(text: $text)

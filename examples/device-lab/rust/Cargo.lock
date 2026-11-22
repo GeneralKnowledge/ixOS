@@ -961,6 +961,7 @@ dependencies = [
  "uniffi",
  "urdu-naturally-core",
  "weather-app",
+ "zip",
 ]
 
 [[package]]
