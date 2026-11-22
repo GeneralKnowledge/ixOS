@@ -18,6 +18,8 @@
 #                                         request fails to verify
 #     lib/python3.15/site-packages/numpy  numpy, built for iOS by
 #                                         scripts/build-numpy.sh (cached)
+#     lib/python3.15/site-packages/PIL    Pillow, from its official iOS
+#                                         wheel on PyPI (WHEELS below)
 #     Frameworks/<module>.framework       the extension modules (math, _json,
 #                                         _sqlite3, _ssl ..., and numpy's as
 #                                         numpy._core._multiarray_umath ...),
@@ -39,6 +41,14 @@ SHA256="68e98ab35cc0643ba3a227a8c7768da45c2a5e67dbe1bc26598537e96680fd19"
 # weeks old; bump both lines together).
 CERTIFI_URL="https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl"
 CERTIFI_SHA256="e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1"
+# Packages with official iOS wheels on PyPI (iphoneos arm64, CPython 3.15),
+# unpacked into site-packages as they are: "<url> <sha256>", one per line.
+WHEELS="
+https://files.pythonhosted.org/packages/6e/eb/e86a41962a3a31ad495a3d6a912d9002b01bba4a6fa71c28703abdca7f69/pillow-13.0.0-cp315-cp315-ios_13_0_arm64_iphoneos.whl 7d5e097eabd5d4915c27ac9f6e9325bb1e01a7c94d7348b5c4451d3fc30e8521
+"
+# Wheel files left out of the app: typing stubs, and modules for a desktop
+# toolkit iOS doesn't have (Pillow's Tk bridge).
+WHEEL_SKIP='\.pyi$|/py\.typed$|^PIL/_imagingtk\.|^PIL/ImageTk\.py$'
 # The extension modules' framework bundle ids start with this.
 BUNDLE_PREFIX="org.forgemobile.devicelab.python"
 
@@ -148,6 +158,31 @@ numpy_cache="${XDG_CACHE_HOME:-$HOME/.cache}/forge/python-packages/numpy-ios-cp3
 "$numpy_script" "$home" "$xcf" "$numpy_cache"
 mkdir -p "$lib/site-packages"
 cp -R "$numpy_cache/numpy" "$lib/site-packages/"
+
+# The wheels: downloaded once (checked against their SHA-256) and unpacked.
+while read -r url want; do
+  [[ -n "$url" ]] || continue
+  whl="$cache/$(basename "$url")"
+  if [[ ! -f "$whl" || "$(sha256 "$whl")" != "$want" ]]; then
+    echo "[python] Downloading $(basename "$url") from PyPI"
+    curl -fL --retry 3 -o "$whl.part" "$url"
+    got="$(sha256 "$whl.part")"
+    if [[ "$got" != "$want" ]]; then
+      rm -f "$whl.part"
+      echo "[python] $(basename "$url")'s SHA-256 is $got, not $want: not using it" >&2
+      exit 1
+    fi
+    mv "$whl.part" "$whl"
+  fi
+  python3 -I -c '
+import re, sys, zipfile
+wheel, dest, skip = sys.argv[1:4]
+with zipfile.ZipFile(wheel) as z:
+    for name in z.namelist():
+        if not re.search(skip, name):
+            z.extract(name, dest)
+' "$whl" "$lib/site-packages" "$WHEEL_SKIP"
+done <<< "$WHEELS"
 
 # Each extension module becomes Frameworks/<module>.framework/<module>, named
 # by its full dotted name (numpy/_core/_multiarray_umath.<suffix>.so is

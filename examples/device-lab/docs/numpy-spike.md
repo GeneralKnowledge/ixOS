@@ -50,6 +50,25 @@ print(np.fft.fft([1, 0, 0, 0]))      # [1.+0.j 1.+0.j 1.+0.j 1.+0.j]
 
 It passes if every line prints without an error and the values match the comments. Record the import time: numpy's `.py` files are compiled at each launch, because the signed bundle is read-only.
 
+## Pillow
+
+Pillow 13.0.0 publishes official iOS wheels on PyPI (`cp315-ios_13_0_arm64_iphoneos`), so nothing is compiled. `prepare-python.sh` downloads the wheel once and checks its SHA-256 (the `WHEELS` list). It unpacks the wheel into site-packages, and the same loop turns its 7 extension modules into frameworks (`PIL._imaging` and others). Pillow's own copies of libjpeg, libpng, FreeType, WebP, AVIF and LittleCMS are built into those modules, so they depend only on Python.framework, libSystem and libbz2. The Tk bridge (`_imagingtk`, `ImageTk`) is left out. The bundle grows by about 11 MB.
+
+Phone check, in Python Lab:
+
+```python
+import io
+from PIL import Image, ImageDraw, ImageFont, features
+img = Image.new("RGB", (200, 100), "white")
+d = ImageDraw.Draw(img)
+d.ellipse((10, 10, 90, 90), fill="red")
+d.text((110, 40), "Hi", fill="black", font=ImageFont.load_default(size=24))
+for fmt in ("PNG", "JPEG", "WEBP"):
+    buf = io.BytesIO(); img.save(buf, fmt); print(fmt, len(buf.getvalue()), "bytes")
+print(Image.open(io.BytesIO(buf.getvalue())).size)   # (200, 100)
+print(features.check("freetype2"), features.check("jpg"), features.check("webp"))  # True True True
+```
+
 ## Open questions
 
 - Python's iOS frameworks use the `APPL` package type and a relative install name, the same as the standard library ones that already pass on the phone. App Store validation may want `FMWK` and `@rpath` ids. That doesn't matter for sideloading.
