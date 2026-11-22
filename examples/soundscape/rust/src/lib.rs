@@ -1024,7 +1024,9 @@ impl SoundscapeCore {
         self.library_track(into)
     }
 
-    /// Brings a merged song back as a song of its own, as it was. Returns
+    /// Brings a merged song back as a song of its own, with its own
+    /// recordings. Favourites, playlist entries, history and offline
+    /// choices moved at the merge stay with the kept song. Returns
     /// the library.
     pub async fn separate_song(&self, id: String) -> Result<Library, SoundscapeError> {
         self.rt

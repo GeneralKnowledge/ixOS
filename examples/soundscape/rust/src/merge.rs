@@ -119,9 +119,14 @@ pub fn move_collection(collection: &mut CollectionFile, from: &str, to: &str) {
         *kept = (*kept).min(at);
     }
     for playlist in &mut collection.playlists {
-        for id in &mut playlist.track_ids {
-            if id == from {
-                *id = to.to_string();
+        if playlist.track_ids.iter().any(|id| id == to) {
+            // Already there: the merged song isn't listed twice.
+            playlist.track_ids.retain(|id| id != from);
+        } else {
+            for id in &mut playlist.track_ids {
+                if id == from {
+                    *id = to.to_string();
+                }
             }
         }
     }

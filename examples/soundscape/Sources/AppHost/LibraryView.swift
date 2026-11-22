@@ -949,7 +949,7 @@ extension TrackView {
             } header: {
                 Text("Merged Sources")
             } footer: {
-                Text("Their recordings are listed with this song's. Separate one to bring it back as its own song.")
+                Text("Their recordings are listed with this song's. Separate one to bring it back as its own song; favourites and playlists stay with this one.")
             }
         }
     }

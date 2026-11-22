@@ -455,3 +455,25 @@ fn nothing_moves_to_a_merged_song_that_has_gone() {
     assert!(!soundscape_core::merge::repair_offline(&file, &mut offline));
     assert!(offline.wanted.contains_key("a"));
 }
+
+#[test]
+fn a_playlist_with_both_songs_lists_the_merged_song_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, imported, _) = ready(&dir);
+    let night = track_id("ah-one-more-night");
+    let anchor = track_id("lb-anchor");
+    let list = block(core.create_playlist(
+        "Both".into(),
+        vec![imported.clone(), anchor.clone(), night.clone()],
+    ))
+    .unwrap();
+    block(core.merge_songs(night.clone(), vec![imported.clone()])).unwrap();
+    let ids: Vec<String> = core
+        .playlist(list.playlist.id)
+        .unwrap()
+        .entries
+        .into_iter()
+        .map(|e| e.track.id)
+        .collect();
+    assert_eq!(ids, vec![anchor, night]);
+}
