@@ -1,6 +1,6 @@
 # Urdu, Naturally: the plan
 
-Status: 2026-11-22. 0.1 (milestone M1) is merged and runs inside Device Lab. M2's first step, free chat with lines from the course, is built and waiting for the phone. Everything after that is a plan.
+Status: 2026-11-22. 0.1 (milestone M1) is merged and runs inside Device Lab. M2's first step, free chat with lines from the course, works on the phone in general use (Reuben, 2026-11-22, Device Lab 1.29922473); its individual checks were not run one by one. Everything after that is a plan.
 
 **Course correction (2026-11-19).** The original ask was to learn a bunch of basic Urdu to say conversational things, not to be boring like Duolingo, and to skip the textbook way. By 2026-11-18 the app had drifted into a curriculum: vocabulary lists first, flashcards, five conversations. Reuben chose a conversation-first redesign: the conversations are the course, words are picked up inside them, the word lists are for looking things up, and free conversation with the characters comes next instead of last.
 
@@ -74,7 +74,7 @@ Phone check: open the first conversation, take a turn, relaunch, find it counted
 
 What stops it being boring, so it comes next rather than last.
 
-**Step 1, built (2026-11-22): free chat with lines from the course.** Talk has a "Just chat" section: pick someone and say anything, in Roman Urdu or English. They answer with lines from the conversations, chosen by what you said, so a chat can go from your day to food to the match in any order, and never goes the same way twice. The curriculum stays the truth: the characters never say Urdu that a model wrote, because Apple's on-device model can't write Pakistani Urdu reliably, and nothing unchecked reaches you as Urdu.
+**Step 1, built and working on the phone (2026-11-22): free chat with lines from the course.** Talk has a "Just chat" section: pick someone and say anything, in Roman Urdu or English. They answer with lines from the conversations, chosen by what you said, so a chat can go from your day to food to the match in any order, and never goes the same way twice. The curriculum stays the truth: the characters never say Urdu that a model wrote, because Apple's on-device model can't write Pakistani Urdu reliably, and nothing unchecked reaches you as Urdu.
 
 - **Said it**: what you typed is one of your lines (the same strict check as everywhere else; nearly right only counts for a line that fits there). It counts as speaking that line.
 - **Meant it**: you said it in English or other words. Apple's on-device model, when the phone has Apple Intelligence, picks which of your lines you meant from a numbered list; it answers with a number, never with Urdu. Typing a line's English exactly works without the model. You see "Say it like this" with the Urdu, and that line comes back in Practise the next day.
