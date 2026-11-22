@@ -2605,8 +2605,13 @@ fn a_request_runs_in_the_chosen_project() {
     assert!(!dir.path().join("scratch").exists());
     // A name with spaces around it is the same project, and the screen
     // is told its saved name.
-    h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), "  My Work ")
-        .unwrap();
+    h.start_request(
+        scripted(&[FINISH_CALL]),
+        "Say hi".into(),
+        "  My Work ",
+        false,
+    )
+    .unwrap();
     assert_eq!(wait(&h).project.as_deref(), Some("My Work"));
 }
 
