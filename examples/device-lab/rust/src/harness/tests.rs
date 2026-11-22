@@ -274,6 +274,112 @@ fn a_syntax_error_is_the_writes_result() {
 }
 
 #[test]
+fn double_quotes_inside_a_string_get_a_hint() {
+    if !has_python() {
+        return;
+    }
+    let (_dir, lab) = seeded("t1-hello");
+    // What Bonsai 4B wrote five times running on the T-P1 phone run.
+    let out = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "chart.py", "content": "x = 1\ns = f\"<rect x=\"{x}\"/>\n"}"#,
+    ));
+    assert!(!out.ok);
+    assert!(
+        out.text.contains("wrap the string in single quotes"),
+        "{}",
+        out.text
+    );
+    // Other syntax errors don't get it.
+    let out = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "bad.py", "content": "def f(:\n    pass\n"}"#,
+    ));
+    assert!(!out.text.contains("single quotes"), "{}", out.text);
+}
+
+#[test]
+fn an_svg_chart_must_draw_the_values() {
+    let check = |svg: &str| {
+        let svg = svg.to_string();
+        Criterion::SvgBars {
+            path: "chart.svg".into(),
+            values: vec!["3".into(), "7".into(), "5".into()],
+        }
+        .check(&[], &|_| Some(svg.clone()))
+    };
+    let bar = |h: u32, label: &str| {
+        format!("<rect x='0' y='0' width='40' height='{h}' fill='teal'/><text x='1' y='2'>{label}</text>")
+    };
+    let svg = |body: String| {
+        format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"300\">{body}</svg>"
+        )
+    };
+    // The phone run's chart: every bar 150 high.
+    let flat = svg(bar(150, "3") + &bar(150, "7") + &bar(150, "5"));
+    assert!(check(&flat)
+        .unwrap_err()
+        .contains("don't follow the values"));
+    // Sized by value, after a full-size background.
+    let good = svg(
+        "<rect width=\"400\" height=\"300\" fill=\"white\"/>".to_string()
+            + &bar(60, "3")
+            + &bar(140, "7")
+            + &bar(100, "5"),
+    );
+    assert!(check(&good).is_ok(), "{:?}", check(&good));
+    // Bars across: the widths carry the values.
+    let across = svg(
+        "<rect y='0' height='20' width='30'/><rect y='30' height='20' width='70'/>\
+         <rect y='60' height='20' width='50'/><text>3</text><text>7</text><text>Value: 5</text>"
+            .into(),
+    );
+    assert!(check(&across).is_ok(), "{:?}", check(&across));
+    // Bars of no width don't show.
+    let thin = svg(
+        "<rect width='0' height='60'/><rect width='0' height='140'/><rect width='0' height='100'/>\
+         <text>3</text><text>7</text><text>5</text>"
+            .into(),
+    );
+    assert!(check(&thin).is_err());
+    // Bars only inside <defs> aren't drawn.
+    let hidden = svg(format!(
+        "<defs>{}</defs><rect width='400' height='300'/>",
+        bar(60, "3") + &bar(140, "7") + &bar(100, "5")
+    ));
+    assert!(check(&hidden).is_err());
+    // Bars after a closing tag with a space in it still count.
+    let spaced = svg(format!(
+        "<defs><linearGradient id='g'/></defs >{}",
+        bar(60, "3") + &bar(140, "7") + &bar(100, "5")
+    ));
+    assert!(check(&spaced).is_ok(), "{:?}", check(&spaced));
+    // Lengths in percent.
+    let percent = svg(
+        "<rect width='10%' height='60'/><rect width='10%' height='140'/><rect width='10%' height='100'/>\
+         <text>3</text><text>7</text><text>5</text>"
+            .into(),
+    );
+    assert!(check(&percent).is_ok(), "{:?}", check(&percent));
+    // Lengths in em: the e isn't an exponent.
+    let em = svg(
+        "<rect width='2em' height='3em'/><rect width='2em' height='7em'/><rect width='2em' height='5em'/>\
+         <text>3</text><text>7</text><text>5</text>"
+            .into(),
+    );
+    assert!(check(&em).is_ok(), "{:?}", check(&em));
+    // A label missing.
+    let unlabelled = svg(bar(60, "3") + &bar(140, "7") + &bar(100, ""));
+    assert!(check(&unlabelled).unwrap_err().contains("5"));
+    // Missing file.
+    let gone = Criterion::SvgBars {
+        path: "chart.svg".into(),
+        values: vec!["3".into()],
+    }
+    .check(&[], &|_| None);
+    assert!(gone.is_err());
+}
+
+#[test]
 fn a_program_that_raises_shows_only_the_projects_frames() {
     if !has_python() {
         return;
@@ -704,6 +810,19 @@ fn the_scripted_model_completes_every_ladder_task() {
         if task.id == "t3-one-fix" {
             assert!(snapshot.steps[0].result.contains("Not done yet"));
         }
+        if task.id == "tp1-svg-chart" {
+            // The finished task can be stepped back through, whole files and all.
+            let first = h.replay(snapshot.steps[0].index).unwrap();
+            assert_eq!(first.tool.as_deref(), Some("write_file"));
+            assert_eq!(first.path.as_deref(), Some("chart.py"));
+            assert!(
+                first.code.starts_with("values = [3, 7, 5]\n"),
+                "{}",
+                first.code
+            );
+            assert!(!first.writing && first.thought_done);
+            assert!(h.replay(99).is_none());
+        }
         if task.id == "t5-fix-from-traceback" {
             assert!(snapshot.steps[0].result.contains("TypeError"));
             let missed = &snapshot.steps[1].result;
@@ -1004,4 +1123,56 @@ fn replay_skips_a_line_cut_inside_a_character() {
             ..
         }
     ));
+}
+
+#[test]
+fn the_live_view_reads_a_half_written_answer() {
+    let full = r#"{"thought": "Write the \"hello\" file.", "tool": "write_file", "path": "hello.py", "content": "print(\"Hello from Bonsai\")\nprint('é \u00e9')\n"}"#;
+    // Partway through the thought.
+    let live = super::live::read(&full[..full.find("hello").unwrap() + 1]);
+    assert_eq!(live.thought, "Write the \"h");
+    assert!(!live.thought_done);
+    assert_eq!(live.tool, None);
+    // Partway through the tool name: not shown until complete.
+    let cut = full.find("write_f").unwrap() + 5;
+    let live = super::live::read(&full[..cut]);
+    assert!(live.thought_done);
+    assert_eq!(live.thought, "Write the \"hello\" file.");
+    assert_eq!(live.tool, None);
+    // Partway through the file: path known, code growing.
+    let cut = full.find("Bonsai").unwrap();
+    let live = super::live::read(&full[..cut]);
+    assert_eq!(live.tool.as_deref(), Some("write_file"));
+    assert_eq!(live.path.as_deref(), Some("hello.py"));
+    assert_eq!(live.code, "print(\"Hello from ");
+    assert!(live.writing);
+    // A cut inside an escape or a \u sequence doesn't break anything.
+    let cut = full.find("\\u00e9").unwrap() + 3;
+    let live = super::live::read(&full[..cut]);
+    assert!(live.code.ends_with("print('é "), "{:?}", live.code);
+    // The whole answer.
+    let live = super::live::read(full);
+    assert_eq!(live.code, "print(\"Hello from Bonsai\")\nprint('é é')\n");
+    assert!(!live.writing);
+    // A key name inside the content is not taken for the key.
+    let tricky = r#"{"thought": "t", "tool": "write_file", "path": "a.py", "content": "x = '\"path\": \"no'"#;
+    let live = super::live::read(tricky);
+    assert_eq!(live.path.as_deref(), Some("a.py"));
+    assert_eq!(live.code, "x = '\"path\": \"no'");
+    // edit_file shows the new lines, with the old ones apart.
+    let edit = r#"{"thought": "Fix.", "tool": "edit_file", "path": "average.py", "old": "len(numbers) + 1", "new": "len(num"#;
+    let live = super::live::read(edit);
+    assert_eq!(live.replacing, "len(numbers) + 1");
+    assert_eq!(live.code, "len(num");
+    assert!(live.writing);
+    // A surrogate pair becomes one character; half a pair waits.
+    let emoji = r#"{"thought": "t", "tool": "write_file", "path": "a.py", "content": "print('\uD83D\uDE00')"#;
+    assert_eq!(super::live::read(emoji).code, "print('😀')");
+    let half = &emoji[..emoji.find("\\uDE00").unwrap() + 2];
+    assert_eq!(super::live::read(half).code, "print('");
+    // A lone high surrogate right before the closing quote is finished.
+    let lone = r#"{"thought": "t", "tool": "write_file", "path": "a.py", "content": "x\uD83D""#;
+    let live = super::live::read(lone);
+    assert_eq!(live.code, "x\u{FFFD}");
+    assert!(!live.writing);
 }

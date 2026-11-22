@@ -43,7 +43,9 @@ use forge_net::UreqClient;
 use forge_runtime::{lock, now_ms};
 
 pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
-use domain::{fold, validate, LibraryData, StoredBookRun, StoredBookSynopsis, StoredSynopsis};
+use domain::{
+    fit_imported, fold, validate, LibraryData, StoredBookRun, StoredBookSynopsis, StoredSynopsis,
+};
 pub use error::LibraryError;
 use forge_storage::Staged;
 pub use model::*;
@@ -369,7 +371,7 @@ impl Library {
                         }
                     },
                 };
-                let input = validate(BookInput {
+                let input = validate(fit_imported(BookInput {
                     title: hit.title.clone(),
                     author: hit.author.clone(),
                     description,
@@ -379,7 +381,7 @@ impl Library {
                     rating: None,
                     notes: String::new(),
                     cover_url: hit.cover_url.clone(),
-                })?;
+                }))?;
                 Ok((input, cover_file, warnings))
             })
             .await?;
@@ -434,8 +436,21 @@ impl Library {
                 // Check now that the reader can open it, so an import never
                 // promises a book that cannot be read.
                 EpubText::open(std::io::Cursor::new(&bytes))?;
+                // Compared and saved as it will be stored, so a long title found again
+                // is the same book (defect hunt finding 3).
+                let fitted = fit_imported(BookInput {
+                    title: meta.title,
+                    author: meta.author,
+                    description: meta.description,
+                    status: ReadingStatus::WantToRead,
+                    current_page: 0,
+                    total_pages: meta.estimated_pages,
+                    rating: None,
+                    notes: String::new(),
+                    cover_url: None,
+                });
                 let existing = {
-                    let (title, author) = (fold(&meta.title), fold(&meta.author));
+                    let (title, author) = (fold(&fitted.title), fold(&fitted.author));
                     data.get()
                         .books
                         .iter()
@@ -459,17 +474,7 @@ impl Library {
                             None => None,
                         };
                         let epub_file = store.stage_book_file(&stem, &bytes)?;
-                        let input = validate(BookInput {
-                            title: meta.title,
-                            author: meta.author,
-                            description: meta.description,
-                            status: ReadingStatus::WantToRead,
-                            current_page: 0,
-                            total_pages: meta.estimated_pages,
-                            rating: None,
-                            notes: String::new(),
-                            cover_url: None,
-                        })?;
+                        let input = validate(fitted)?;
                         Ok(EpubPlan::Add {
                             input: Box::new(input),
                             file_name,

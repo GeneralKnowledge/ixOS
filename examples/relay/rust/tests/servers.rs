@@ -109,6 +109,7 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
     let servers = RelayServers {
         relay_url: Some(format!("http://{}", relay_server.http_addr().unwrap())),
         lookup_url: Some(server.pkarr_url().to_string()),
+        mailbox: None,
     };
     let dir = tempfile::tempdir().unwrap();
     let phone = device(dir.path(), "phone");
@@ -120,6 +121,7 @@ fn a_trusted_device_is_found_by_key_through_the_lookup_server() {
         assert!(block_on(core.set_servers(RelayServers {
             relay_url: Some("not a url".into()),
             lookup_url: None,
+            mailbox: None,
         }))
         .is_err());
         block_on(core.set_servers(servers.clone())).unwrap();
@@ -214,6 +216,7 @@ fn in_private_a_device_found_only_through_the_servers_is_not_reached() {
     let servers = RelayServers {
         relay_url: Some(format!("http://{}", relay_server.http_addr().unwrap())),
         lookup_url: Some(server.pkarr_url().to_string()),
+        mailbox: None,
     };
     let dir = tempfile::tempdir().unwrap();
     let phone = device(dir.path(), "phone");
@@ -277,6 +280,7 @@ fn a_relay_that_doesnt_answer_is_said_to_be_down() {
     block_on(phone.set_servers(RelayServers {
         relay_url: Some(format!("http://127.0.0.1:{port}")),
         lookup_url: None,
+        mailbox: None,
     }))
     .unwrap();
     eventually("the relay to count as down", || {

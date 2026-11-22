@@ -44,19 +44,158 @@ pub fn clean_client_id(text: &str) -> Result<Option<String>, SoundscapeError> {
     Ok(Some(text.to_string()))
 }
 
+/// What to ask Jamendo's `/tracks` for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ask {
+    /// Tracks matching the text; this week's most popular when it is empty.
+    Search(String),
+    /// One artist's tracks (Jamendo's artist id), most played first.
+    Artist(String),
+    /// One genre's tracks (a Jamendo tag such as `jazz`), this week's most
+    /// popular first.
+    Genre(String),
+    /// One track (Jamendo's track id), for its artist and genres.
+    Track(String),
+}
+
+/// What "more from Jamendo" means for a track that is playing.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JamendoMore {
+    /// More by the same artist.
+    Artist,
+    /// More in the track's (first) genre.
+    Genre,
+}
+
+/// Jamendo's tracks related to one track.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct JamendoMoreTracks {
+    /// The artist's name, or the genre's.
+    pub name: String,
+    /// The tracks, best first, without the track asked about.
+    pub tracks: Vec<CatalogueTrack>,
+}
+
+/// A genre to browse: Jamendo's tag and the name to show.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct JamendoGenre {
+    pub tag: String,
+    pub name: String,
+}
+
+/// The genres Discover offers, in the order shown. Tags are Jamendo's own
+/// (`musicinfo.tags.genres`); `tags=jazz` was checked live on 2026-11-18.
+pub const GENRES: &[(&str, &str)] = &[
+    ("pop", "Pop"),
+    ("rock", "Rock"),
+    ("electronic", "Electronic"),
+    ("hiphop", "Hip-Hop"),
+    ("jazz", "Jazz"),
+    ("classical", "Classical"),
+    ("ambient", "Ambient"),
+    ("chillout", "Chillout"),
+    ("lounge", "Lounge"),
+    ("folk", "Folk"),
+    ("indie", "Indie"),
+    ("metal", "Metal"),
+    ("punk", "Punk"),
+    ("blues", "Blues"),
+    ("reggae", "Reggae"),
+    ("latin", "Latin"),
+    ("world", "World"),
+    ("soundtrack", "Soundtrack"),
+    ("dance", "Dance"),
+    ("relaxation", "Relaxation"),
+];
+
+/// Jamendo's `type` for singles and album tracks both.
+const BOTH_TYPES: &str = "single%20albumtrack";
+
+/// The longest genre tag accepted.
+const MAX_TAG_CHARS: usize = 32;
+
+/// The genres to browse.
+pub fn genres() -> Vec<JamendoGenre> {
+    GENRES
+        .iter()
+        .map(|(tag, name)| JamendoGenre {
+            tag: (*tag).into(),
+            name: (*name).into(),
+        })
+        .collect()
+}
+
+/// A genre tag's name to show: Discover's own name for it, else the tag
+/// with a capital (`newage` is "New Age", `darkwave` is "Darkwave").
+pub fn genre_name(tag: &str) -> String {
+    match tag {
+        "newage" => "New Age".into(),
+        "rnb" => "R&B".into(),
+        _ => GENRES
+            .iter()
+            .find(|(t, _)| *t == tag)
+            .map(|(_, name)| (*name).to_string())
+            .unwrap_or_else(|| capitalise(tag)),
+    }
+}
+
+/// A genre tag as given, checked: lowercase letters, digits and dashes.
+pub fn clean_tag(tag: &str) -> Result<String, SoundscapeError> {
+    let tag = tag.trim().to_lowercase();
+    if tag.is_empty()
+        || tag.chars().count() > MAX_TAG_CHARS
+        || !tag
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return Err(SoundscapeError::BadAddress {
+            reason: "that isn't a Jamendo genre".into(),
+        });
+    }
+    Ok(tag)
+}
+
+/// Jamendo's own id from `jamendo:<id>` (or a bare id): digits only.
+pub fn track_number(id: &str) -> Option<&str> {
+    let id = id.strip_prefix(PREFIX).unwrap_or(id);
+    (!id.is_empty() && id.len() <= 20 && id.chars().all(|c| c.is_ascii_digit())).then_some(id)
+}
+
 /// The search request: tracks matching `query`, or this week's most
-/// popular when it is empty. Streams are asked for as MP3 at the higher
-/// quality Jamendo offers (`mp32`).
+/// popular when it is empty.
 pub fn search_url(client_id: &str, query: &str) -> String {
-    let query: String = query.trim().chars().take(MAX_QUERY_CHARS).collect();
-    let what = if query.is_empty() {
-        "order=popularity_week".to_string()
-    } else {
-        format!("search={}", crate::listen::encode(&query, false))
+    tracks_url(client_id, &Ask::Search(query.into()))
+}
+
+/// The `/tracks` request for `ask`. Streams are asked for as MP3 at the
+/// higher quality Jamendo offers (`mp32`).
+pub fn tracks_url(client_id: &str, ask: &Ask) -> String {
+    use crate::listen::encode;
+    let what = match ask {
+        Ask::Search(query) => {
+            // cut: a search; the first 200 characters find the same tracks, and nothing is kept
+            let query: String = query.trim().chars().take(MAX_QUERY_CHARS).collect();
+            if query.is_empty() {
+                "order=popularity_week".to_string()
+            } else {
+                format!("search={}", encode(&query, false))
+            }
+        }
+        // Singles too, not only album tracks: an artist's other songs may
+        // all be singles.
+        Ask::Artist(id) => format!(
+            "artist_id={}&order=popularity_total&type={BOTH_TYPES}",
+            encode(id, false)
+        ),
+        Ask::Genre(tag) => format!(
+            "tags={}&order=popularity_week&type={BOTH_TYPES}",
+            encode(tag, false)
+        ),
+        Ask::Track(id) => format!("id={}&type={BOTH_TYPES}", encode(id, false)),
     };
     format!(
         "{API}/tracks/?client_id={}&format=json&limit={PAGE}&{what}&include=musicinfo&audioformat=mp32&imagesize=300",
-        crate::listen::encode(client_id, false)
+        encode(client_id, false)
     )
 }
 
@@ -67,12 +206,87 @@ pub fn search(
     query: &str,
     cancel: &CancelHandle,
 ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
-    // Jamendo sometimes answers "success" with no results to a request
-    // that finds tracks a moment later (seen live, 2026-11-18), so an empty
-    // answer is asked again before it counts as none.
+    tracks(http, client_id, &Ask::Search(query.into()), cancel)
+}
+
+/// The tracks Jamendo has for `ask`, best first.
+pub fn tracks(
+    http: &dyn HttpClient,
+    client_id: &str,
+    ask: &Ask,
+    cancel: &CancelHandle,
+) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+    Ok(results(http, client_id, ask, cancel)?
+        .iter()
+        .filter_map(track)
+        .collect())
+}
+
+/// More from Jamendo for the track `track_id` (`jamendo:<id>`): its
+/// artist's other tracks, or others in its genre. Jamendo is asked about
+/// the track first, so this works for a track added to the library before
+/// Soundscape kept its artist.
+pub fn more(
+    http: &dyn HttpClient,
+    client_id: &str,
+    track_id: &str,
+    by: JamendoMore,
+    cancel: &CancelHandle,
+) -> Result<JamendoMoreTracks, SoundscapeError> {
+    let number = track_number(track_id).ok_or_else(|| SoundscapeError::BadAddress {
+        reason: "this song isn't from Jamendo".into(),
+    })?;
+    let found = results(http, client_id, &Ask::Track(number.into()), cancel)?;
+    let item = found
+        .iter()
+        .find(|item| text(&item["id"]).as_deref() == Some(number))
+        .ok_or_else(|| SoundscapeError::Server {
+            reason: "Jamendo no longer has this song".into(),
+        })?;
+    let (name, ask) = match by {
+        JamendoMore::Artist => {
+            let artist = text(&item["artist_id"]).ok_or_else(|| SoundscapeError::Server {
+                reason: "Jamendo doesn't say who made this song".into(),
+            })?;
+            let name =
+                tag(text(&item["artist_name"]).as_deref()).unwrap_or_else(|| "this artist".into());
+            (name, Ask::Artist(artist))
+        }
+        JamendoMore::Genre => {
+            let genre = item["musicinfo"]["tags"]["genres"]
+                .as_array()
+                .and_then(|g| {
+                    g.iter()
+                        .filter_map(Value::as_str)
+                        .find_map(|g| clean_tag(g).ok())
+                })
+                .ok_or_else(|| SoundscapeError::Server {
+                    reason: "Jamendo gives this song no genre".into(),
+                })?;
+            (genre_name(&genre), Ask::Genre(genre))
+        }
+    };
+    let own = format!("{PREFIX}{number}");
+    let tracks = tracks(http, client_id, &ask, cancel)?
+        .into_iter()
+        .filter(|t| t.id != own)
+        .collect();
+    Ok(JamendoMoreTracks { name, tracks })
+}
+
+/// The `results` of Jamendo's answer to `ask`. Jamendo sometimes answers
+/// "success" with no results to a request that finds tracks a moment
+/// later (seen live, 2026-11-18), so an empty answer is asked again before
+/// it counts as none.
+fn results(
+    http: &dyn HttpClient,
+    client_id: &str,
+    ask: &Ask,
+    cancel: &CancelHandle,
+) -> Result<Vec<Value>, SoundscapeError> {
     let mut found = Vec::new();
     for _ in 0..ATTEMPTS {
-        found = search_once(http, client_id, query, cancel)?;
+        found = results_once(http, client_id, ask, cancel)?;
         if !found.is_empty() {
             break;
         }
@@ -83,15 +297,15 @@ pub fn search(
 /// How many times an empty answer is asked for again, in all.
 pub const ATTEMPTS: usize = 3;
 
-fn search_once(
+fn results_once(
     http: &dyn HttpClient,
     client_id: &str,
-    query: &str,
+    ask: &Ask,
     cancel: &CancelHandle,
-) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+) -> Result<Vec<Value>, SoundscapeError> {
     let response = http
         .send_cancellable(
-            &Request::get(search_url(client_id, query)).timeout(TIMEOUT),
+            &Request::get(tracks_url(client_id, ask)).timeout(TIMEOUT),
             cancel,
         )
         .map_err(|err| match SoundscapeError::from(err) {
@@ -105,13 +319,17 @@ fn search_once(
             reason: format!("Jamendo answered {}", response.status),
         });
     }
-    parse_tracks(&response.body)
+    parse_results(&response.body)
 }
 
 /// Tracks from a `/tracks` answer. A track without an id, title or stream
 /// is left out. A failed answer is an error with Jamendo's reason: Jamendo
 /// says so in `headers.status` (a wrong client ID is HTTP 200, code 5).
 pub fn parse_tracks(body: &[u8]) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+    Ok(parse_results(body)?.iter().filter_map(track).collect())
+}
+
+fn parse_results(body: &[u8]) -> Result<Vec<Value>, SoundscapeError> {
     if body.len() > MAX_ANSWER_BYTES {
         return Err(SoundscapeError::Server {
             reason: "Jamendo's answer is too large".into(),
@@ -127,8 +345,7 @@ pub fn parse_tracks(body: &[u8]) -> Result<Vec<CatalogueTrack>, SoundscapeError>
             reason: format!("Jamendo refused the search: {message}"),
         });
     }
-    let results = json["results"].as_array().cloned().unwrap_or_default();
-    Ok(results.iter().filter_map(track).collect())
+    Ok(json["results"].as_array().cloned().unwrap_or_default())
 }
 
 fn track(item: &Value) -> Option<CatalogueTrack> {
@@ -145,6 +362,8 @@ fn track(item: &Value) -> Option<CatalogueTrack> {
         .as_array()
         .and_then(|g| g.first())
         .and_then(Value::as_str)
+        // Kept as before (not `genre_name`), so songs already in the library
+        // stay in the same genre.
         .and_then(|g| tag(Some(&capitalise(g))));
     Some(CatalogueTrack {
         id: format!("{PREFIX}{id}"),
@@ -183,6 +402,7 @@ fn text(value: &Value) -> Option<String> {
         Value::Number(n) => n.to_string(),
         _ => return None,
     };
+    // cut: a field in Jamendo's answer, not typed
     (!s.is_empty()).then(|| s.chars().take(MAX_FIELD_CHARS * 4).collect())
 }
 

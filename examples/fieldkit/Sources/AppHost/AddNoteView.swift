@@ -28,23 +28,10 @@ struct AddNoteView: View {
             #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("note.cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if saving.isWorking {
-                        ProgressView().accessibilityLabel("Saving")
-                    } else {
-                        Button("Add") { Task { await add() } }
-                            .disabled(trimmed.isEmpty)
-                            .accessibilityIdentifier("note.save")
-                    }
-                }
-            }
-            .forgeSwipeGuard(!trimmed.isEmpty)
-            .forgeAlert(failure: $saving.failure)
+            .forgeFormToolbar(
+                id: "note", confirmTitle: "Add", canConfirm: !trimmed.isEmpty,
+                submission: saving, hasChanges: !trimmed.isEmpty, cancel: { dismiss() }
+            ) { Task { await add() } }
             .onAppear { isFocused = true }
         }
     }

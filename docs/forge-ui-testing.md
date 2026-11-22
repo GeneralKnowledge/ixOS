@@ -134,7 +134,7 @@ tap = { id = "library.add" }
 type = { id = "bookForm.title", text = "Hello from Forge", clear = true }
 
 [[step]]
-tap = { id = "bookForm.save" }
+tap = { id = "bookForm.confirm" }
 
 [[step]]
 expect = { label_contains = "Hello from Forge" }
@@ -256,7 +256,7 @@ forge test ios [--suite DIR|FILE] [--report DIR]
 
 `forge test` already runs an app's Rust and host tests, so M1 decides whether UI suites join it (`forge test ios --device`) or stay under `forge ui`.
 
-`forge test ios` writes a report directory: `report.json`, per-step screenshots, the UI tree at each failure, the app's log lines for the run (from Forge Device), and any new crash reports. A failing step names the locator and shows the nearest matches from the tree ("no element with id `bookForm.save`; nearby buttons: `Save` (no id), `Cancel` (no id)"). The output is readable without the screenshots.
+`forge test ios` writes a report directory: `report.json`, per-step screenshots, the UI tree at each failure, the app's log lines for the run (from Forge Device), and any new crash reports. A failing step names the locator and shows the nearest matches from the tree ("no element with id `bookForm.confirm`; nearby buttons: `Save` (no id), `Cancel` (no id)"). The output is readable without the screenshots.
 
 ### Accessibility conventions
 

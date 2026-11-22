@@ -842,6 +842,87 @@ def rule_rename(app):
     return True, ""
 
 
+# A form sheet's Cancel and confirm buttons are ForgeUI's forgeFormToolbar:
+# the confirm button turns into a labelled spinner while it saves, Cancel
+# waits, and the sheet can't be swiped away while it saves or holds changes.
+# Seven sheets in five apps built the same toolbar by hand, each with its own
+# identifiers and its own swipe guard (ForgeUI 0.2, item 1). A hand-built one
+# shows as a `.confirmationAction` toolbar item that holds a ProgressView.
+CONFIRM_ITEM = re.compile(r"\bToolbarItem\(\s*placement:\s*\.confirmationAction\s*\)")
+
+
+def rule_form_toolbar(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in CONFIRM_ITEM.finditer(code):
+            if "ProgressView" in brace_block(code, m.end()):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "builds a form toolbar by hand; use ForgeUI's forgeFormToolbar: " + ", ".join(bad)
+    return True, ""
+
+
+# A coloured tile behind a row's symbol is ForgeRow's icon tile, coloured by
+# a tone or one of ForgeUI's checked accents (decision D1, ForgeUI coverage
+# audit). Built by hand it was a symbol on a RoundedRectangle in a raw
+# colour (`.pink`, `tint.gradient`), with its own size and corner, unchecked
+# for contrast in dark mode (ForgeUI 0.2, item 2). Materials and the theme's
+# own colours are surfaces, not tiles, and are left alone. Only a background
+# whose modifier chain starts at `Image(systemName:)` counts, so a stack that
+# merely holds a symbol is not flagged.
+TILE_BACKGROUND = re.compile(r"\.background\(\s*([^,()]+(?:\([^()]*\))?[^,()]*),\s*in:\s*RoundedRectangle\b")
+SURFACE = re.compile(r"Material|theme\.|\.quaternary|\.tertiary|\.secondary|\.fill\b")
+
+
+def chain_root(code, dot):
+    """The expression a modifier chain starts from: walks back from the `.`
+    of a modifier over `.name(...)`, `.name { ... }` and `.name` links,
+    skipping balanced brackets, and returns the text from the root onwards."""
+    pairs = {")": "(", "]": "[", "}": "{"}
+    pos = dot
+    while True:
+        while pos > 0 and code[pos - 1].isspace():
+            pos -= 1
+        while pos > 0 and code[pos - 1] in pairs:
+            depth, close, open_ = 0, code[pos - 1], pairs[code[pos - 1]]
+            while pos > 0:
+                pos -= 1
+                if code[pos] == close:
+                    depth += 1
+                elif code[pos] == open_:
+                    depth -= 1
+                    if depth == 0:
+                        break
+            while pos > 0 and code[pos - 1].isspace():
+                pos -= 1
+        while pos > 0 and (code[pos - 1].isalnum() or code[pos - 1] == "_"):
+            pos -= 1
+        back = pos
+        while back > 0 and code[back - 1].isspace():
+            back -= 1
+        if back > 0 and code[back - 1] == ".":
+            pos = back - 1
+            continue
+        return code[pos:dot].lstrip()
+
+
+def rule_icon_tile(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in TILE_BACKGROUND.finditer(code):
+            if SURFACE.search(m.group(1)):
+                continue
+            if re.match(r"Image\(\s*systemName:", chain_root(code, m.start())):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws an icon tile by hand; use ForgeRow's systemImage with a tone or an accent: " + ", ".join(bad)
+    return True, ""
+
+
 # A file the app has just written (an export, a backup) goes to the system
 # share sheet with ForgeUI's forgeShareFile as soon as it is ready. Four
 # apps had their own "your file is ready" sheet or row with a ShareLink on
@@ -889,6 +970,117 @@ def rule_row_actions(app):
     return True, ""
 
 
+# Text is never cut short without a word: Urdu, Naturally's chat kept the
+# first 300 characters of a longer line and answered that, with nothing on
+# screen to say so (Reuben, 2026-11-22). Typed text over a limit is refused
+# with the limit (as Checklist, FieldKit, Good Dog and Pocket Library do), and
+# the field shows it. A cut of text nobody typed (an imported name, a summary
+# of an article, a model's answer in a prompt) says why on the line or just
+# above it with a `// cut:` comment.
+RUST_CUT = re.compile(r"\.chars\(\)\s*\.take\(")
+
+
+def rust_code_mask(text):
+    """The Rust code with the insides of comments, strings, raw strings and
+    char literals blanked (newlines kept), so `//` in a URL or a call written
+    inside a string is not taken for code."""
+    out = list(text)
+    i, n = 0, len(text)
+
+    def blank(start, end):
+        for k in range(start, end):
+            if out[k] != "\n":
+                out[k] = " "
+
+    while i < n:
+        c = text[i]
+        if text.startswith("//", i):
+            end = text.find("\n", i)
+            end = n if end == -1 else end
+            blank(i, end)
+            i = end
+        elif text.startswith("/*", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                if text.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif text.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            blank(i, j)
+            i = j
+        elif (m := re.match(r'b?r(#*)"', text[i:])) and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            close = '"' + m.group(1)
+            end = text.find(close, i + m.end())
+            end = n if end == -1 else end + len(close)
+            blank(i, end)
+            i = end
+        elif c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            blank(i, j + 1)
+            i = j + 1
+        elif c == "'" and (m := re.match(r"'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^\\'\n])'", text[i:])):
+            blank(i, i + m.end())
+            i += m.end()
+        else:
+            i += 1
+    return "".join(out)
+
+
+def without_test_items(code):
+    """Blanks each `#[cfg(test)]` item (a module, a function, a `use`) and
+    keeps scanning after it."""
+    out = list(code)
+    for m in re.finditer(r"#\[cfg\(test\)\]", code):
+        j = m.end()
+        while j < len(code) and code[j] not in "{;":
+            j += 1
+        if j < len(code) and code[j] == "{":
+            depth = 0
+            while j < len(code):
+                if code[j] == "{":
+                    depth += 1
+                elif code[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+        for k in range(m.start(), min(j + 1, len(code))):
+            if out[k] != "\n":
+                out[k] = " "
+    return "".join(out)
+
+
+def silent_cut_problems(text):
+    lines = text.splitlines()
+    code = without_test_items(rust_code_mask(text))
+    found = []
+    for m in RUST_CUT.finditer(code):
+        first = code.count("\n", 0, m.start())
+        last = code.count("\n", 0, m.end())
+        if any("// cut:" in l for l in lines[max(0, first - 3) : last + 1]):
+            continue
+        found.append(last + 1)
+    return found
+
+
+def rule_no_silent_cut(app):
+    if app.name in NO_RUST:
+        return None
+    bad = []
+    for path in rust_sources(app):
+        if path.name == "tests.rs" or "bin" in path.parts:
+            continue
+        for line in silent_cut_problems(read(path)):
+            bad.append(f"{path.name}:{line}")
+    if bad:
+        return False, "cuts text short without saying why; refuse typed text over a limit, or add a `// cut:` reason: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -907,8 +1099,11 @@ RULES = [
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
+    ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
+    ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
+    ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),
     ("row-actions", "Row actions through ForgeUI's `forgeRowActions`: a swipe and a long-press menu, never swipe-only", rule_row_actions),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
@@ -988,6 +1183,14 @@ for name in apps:
             )
         if ok and listed:
             problems.append(f"{name}: {rule_id} passes now; remove it from docs/app-parity.toml")
+
+# The Rust starter is where every app core begins: no silent cuts there either.
+for path in sorted((root / "templates" / "app-rust").rglob("*.rs")):
+    for line in silent_cut_problems(read(path)):
+        problems.append(
+            f"{path.relative_to(root)}:{line}: no-silent-cut: text cut short without "
+            "a `// cut:` reason"
+        )
 
 # The starters are where every app's screens begin, so they meet the screen
 # rules too (no lag list for them).

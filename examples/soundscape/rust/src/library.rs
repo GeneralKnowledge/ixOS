@@ -1185,6 +1185,7 @@ pub fn music_extension(file_name: &str) -> Option<String> {
 
 /// An imported file's track id from its SHA-256 (hex).
 pub fn imported_id(sha256: &str) -> String {
+    // cut: the start of a hash, as an id
     let short: String = sha256.chars().take(16).collect();
     format!("{IMPORTED_PREFIX}{short}")
 }
@@ -1195,6 +1196,7 @@ pub fn tag(text: Option<&str>) -> Option<String> {
     if text.is_empty() {
         return None;
     }
+    // cut: a tag read from a music file, not typed
     Some(text.chars().take(MAX_FIELD_CHARS).collect())
 }
 

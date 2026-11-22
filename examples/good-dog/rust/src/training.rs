@@ -190,6 +190,17 @@ impl Stored {
         self.plans.iter().position(|p| p.day == day)
     }
 
+    /// The plan holding activity `activity_id`: today's, or yesterday's, so
+    /// a session started before midnight and saved after it still counts
+    /// for the activity it was started from. Older plans are history.
+    fn plan_with_activity(&self, activity_id: u64, now: LocalTime) -> Option<usize> {
+        let today = local_day(now);
+        self.plans.iter().position(|p| {
+            (p.day == today || p.day == today - 1)
+                && p.activities.iter().any(|a| a.id == activity_id)
+        })
+    }
+
     /// Makes sure today has a plan, building one if needed. Returns whether
     /// anything changed (and so needs saving). A plan stays the same all day.
     pub fn ensure_today(&mut self, now: LocalTime) -> Result<bool, AppError> {
@@ -377,7 +388,7 @@ impl Stored {
         })?;
         if let Some(activity_id) = activity_id {
             let activity = self
-                .today_index(now)
+                .plan_with_activity(activity_id, now)
                 .and_then(|i| {
                     self.plans[i]
                         .activities
@@ -414,7 +425,9 @@ impl Stored {
         let e = self.check_recordable(exercise_id, activity_id, now)?;
         let session_id = self.take_id();
         if let Some(activity_id) = activity_id {
-            let index = self.today_index(now).expect("checked above");
+            let index = self
+                .plan_with_activity(activity_id, now)
+                .expect("checked above");
             let activity = self.plans[index]
                 .activities
                 .iter_mut()

@@ -56,6 +56,7 @@ pub fn cut(text: &str, limit: usize) -> String {
     }
     let head = limit / 3;
     let tail = limit - head;
+    // cut: the model's own text, shortened for its prompt with "…" in the middle
     let start: String = text.chars().take(head).collect();
     let end: String = text.chars().skip(count - tail).collect();
     format!(
@@ -98,6 +99,7 @@ fn turns(history: &[Entry]) -> Vec<Turn> {
                 });
             }
             Entry::Invalid { text, error, .. } => {
+                // cut: the model's invalid answer, quoted back to it
                 let shown: String = text.chars().take(300).collect();
                 let result = format!(
                     "That answer was not a valid call: {error} Answer with one JSON object, exactly like the examples."
@@ -276,6 +278,7 @@ pub fn steps(task: &[Entry]) -> Vec<HarnessStep> {
                 index: *step,
                 thought: String::new(),
                 tool: "invalid".into(),
+                // cut: the model's invalid answer, shown as a step
                 call: text.chars().take(300).collect(),
                 ok: Some(false),
                 result: error.clone(),

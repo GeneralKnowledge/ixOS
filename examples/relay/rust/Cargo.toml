@@ -83,6 +83,8 @@ n0-future = "0.3"
 libc = "=0.2.189"
 spake2 = "0.4"
 sha2 = "0.10"
+# Deriving the mailbox key and deposit passes from the device key (N3).
+hkdf = "0.12"
 hmac = "0.12"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros", "fs", "io-util"] }
 log = "0.4"

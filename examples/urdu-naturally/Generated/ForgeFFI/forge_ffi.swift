@@ -2104,6 +2104,12 @@ public protocol UrduCoreProtocol: AnyObject, Sendable {
     func chatEnd() 
     
     /**
+     * The longest line `chat_say` takes, in characters, so the field can
+     * show it.
+     */
+    func chatMaxTyped()  -> UInt32
+    
+    /**
      * You pick a line from the help, and they answer.
      */
     func chatPick(phraseId: String) async throws  -> ChatView
@@ -2339,6 +2345,19 @@ open func chatEnd()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * The longest line `chat_say` takes, in characters, so the field can
+     * show it.
+     */
+open func chatMaxTyped() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_urdu_naturally_core_fn_method_urducore_chat_max_typed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -7047,6 +7066,11 @@ enum UrduError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case NameTooLong(max: UInt32
     )
+    /**
+     * What you typed in the chat is longer than it takes.
+     */
+    case TooLong(max: UInt32
+    )
     case InUse
     case Corrupt(reason: String
     )
@@ -7093,15 +7117,18 @@ public struct FfiConverterTypeUrduError: FfiConverterRustBuffer {
         case 2: return .NameTooLong(
             max: try FfiConverterUInt32.read(from: &buf)
             )
-        case 3: return .InUse
-        case 4: return .Corrupt(
+        case 3: return .TooLong(
+            max: try FfiConverterUInt32.read(from: &buf)
+            )
+        case 4: return .InUse
+        case 5: return .Corrupt(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .NewerData
-        case 6: return .Storage(
+        case 6: return .NewerData
+        case 7: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 7: return .Stopped(
+        case 8: return .Stopped(
             kind: try FfiConverterTypeErrorKind.read(from: &buf)
             )
 
@@ -7126,26 +7153,31 @@ public struct FfiConverterTypeUrduError: FfiConverterRustBuffer {
             FfiConverterUInt32.write(max, into: &buf)
             
         
-        case .InUse:
+        case let .TooLong(max):
             writeInt(&buf, Int32(3))
+            FfiConverterUInt32.write(max, into: &buf)
+            
+        
+        case .InUse:
+            writeInt(&buf, Int32(4))
         
         
         case let .Corrupt(reason):
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .NewerData:
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(6))
         
         
         case let .Storage(reason):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .Stopped(kind):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
             FfiConverterTypeErrorKind.write(kind, into: &buf)
             
         }
@@ -8342,6 +8374,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_urdu_naturally_core_checksum_method_urducore_chat_end() != 62428) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_urdu_naturally_core_checksum_method_urducore_chat_max_typed() != 12399) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_urdu_naturally_core_checksum_method_urducore_chat_pick() != 14333) {

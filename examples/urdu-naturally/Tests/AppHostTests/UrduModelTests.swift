@@ -36,6 +36,28 @@ final class UrduModelTests: XCTestCase {
         XCTAssertTrue(scenario.turns.contains { $0.speaker == .you })
     }
 
+    /// The Settings field stops at the length Rust keeps, so a long name is
+    /// never refused when leaving the screen (defect hunt finding 7).
+    @MainActor
+    func testTheNameFieldStopsWhereRustDoes() async throws {
+        let (_, model) = try await open(try makeDirectory())
+        let longest = String(repeating: "a", count: UrduModel.maxNameChars)
+        XCTAssertTrue(UrduModel.fitsName(longest))
+        XCTAssertFalse(UrduModel.fitsName(longest + "b"))
+        // Spaces round the name don't count, as Rust trims them.
+        XCTAssertTrue(UrduModel.fitsName(" " + longest + " "))
+        // A zero-width space is not White_Space: Rust keeps and counts it.
+        XCTAssertFalse(UrduModel.fitsName("\u{200B}" + longest))
+        XCTAssertTrue(UrduModel.fitsName("\u{00A0}" + longest + "\n"))
+        await model.setName(" " + longest + " ")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.settings.name, longest)
+        // Every scalar counts: one emoji of five scalars, not one character.
+        let family = "👨‍👩‍👧"
+        XCTAssertFalse(UrduModel.fitsName(String(repeating: "a", count: UrduModel.maxNameChars - 2) + family))
+        XCTAssertTrue(UrduModel.fitsName("Sam"))
+    }
+
     @MainActor
     func testProgressAndNameSurviveARestart() async throws {
         let dir = try makeDirectory()
@@ -114,5 +136,11 @@ final class UrduModelTests: XCTestCase {
         let unheard = await model.chatSay("qwzx", model: nil)
         let missed = try XCTUnwrap(unheard)
         XCTAssertEqual(missed.lines.last?.heard, .missed)
+
+        // Too long: refused with the limit in the alert, never cut short.
+        let long = String(repeating: "a", count: model.chatMaxTyped + 1)
+        let refused = await model.chatSay(long, model: nil)
+        XCTAssertNil(refused)
+        XCTAssertEqual(model.errorMessage, "That's too long to say in one go. Keep it to \(model.chatMaxTyped) characters.")
     }
 }
