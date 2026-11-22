@@ -533,14 +533,51 @@ pub(crate) type StillTrusted = Arc<dyn Fn() -> bool + Send + Sync>;
 
 /// The browser's name for a device's site: `<id>.localhost`. Browsers send
 /// `*.localhost` to this machine, and a name per device keeps one site's
-/// cookies away from another's (cookies ignore the port).
+/// cookies away from another's (cookies ignore the port). The whole
+/// endpoint id is in the name, as one DNS label: its 32 bytes in base32
+/// (52 letters and digits), so no two devices share a name.
 pub(crate) fn site_host(endpoint_id: &str) -> String {
-    let label: String = endpoint_id
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .take(16)
-        .collect();
-    format!("{}.localhost", label.to_ascii_lowercase())
+    let label = hex_bytes(endpoint_id).map_or_else(
+        || {
+            endpoint_id
+                .chars()
+                .filter(char::is_ascii_alphanumeric)
+                .take(63)
+                .collect::<String>()
+                .to_ascii_lowercase()
+        },
+        |bytes| base32(&bytes),
+    );
+    format!("{label}.localhost")
+}
+
+fn hex_bytes(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok())
+        .collect()
+}
+
+/// RFC 4648 base32, lowercase, without padding.
+fn base32(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+    let mut out = String::new();
+    let (mut buffer, mut bits) = (0u32, 0u32);
+    for &b in bytes {
+        buffer = (buffer << 8) | u32::from(b);
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            out.push(ALPHABET[((buffer >> bits) & 31) as usize] as char);
+        }
+    }
+    if bits > 0 {
+        out.push(ALPHABET[((buffer << (5 - bits)) & 31) as usize] as char);
+    }
+    out
 }
 
 /// Opens `127.0.0.1:port` (0 picks one) on this device; each browser
@@ -1020,6 +1057,21 @@ mod tests {
         assert!(parse_response(short, false).is_err());
         let r = parse_response(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n", true).unwrap();
         assert!(r.body.is_empty());
+    }
+
+    #[test]
+    fn every_device_has_its_own_site_name() {
+        assert_eq!(base32(b"foobar"), "mzxw6ytboi");
+        let a = format!("{}{}", "ab".repeat(16), "00".repeat(16));
+        let b = format!("{}{}", "ab".repeat(16), "01".repeat(16));
+        let (ha, hb) = (site_host(&a), site_host(&b));
+        assert_ne!(ha, hb, "ids sharing a long prefix get different names");
+        let label = ha.strip_suffix(".localhost").unwrap();
+        assert_eq!(label.len(), 52);
+        assert!(label
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+        assert_eq!(site_host(&a.to_uppercase()), ha);
     }
 
     /// A device revoked while its connection was being dialled gets no

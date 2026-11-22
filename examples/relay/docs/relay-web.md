@@ -73,7 +73,8 @@ One site per device for now.
   one runs, otherwise in its own process until Ctrl-C) listens on
   `127.0.0.1:N` (never on other interfaces) and tunnels each browser
   connection's requests over `relay/web/1`. Any browser on that computer
-  then opens `http://<id>.localhost:N`, a name of the device's own:
+  then opens `http://<id>.localhost:N`, where `<id>` is the device's whole
+  endpoint id in base32, a name of the device's own:
   cookies ignore the port, so one name per device keeps one site's cookies
   from another's, and a request by any other name (127.0.0.1, or a page
   that rebinds its own name here) is answered 421. Before every request

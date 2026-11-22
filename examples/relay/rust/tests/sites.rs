@@ -246,6 +246,7 @@ fn a_computer_opens_the_site_in_any_browser_through_a_local_port() {
         .unwrap()
         .to_string();
     assert!(host.ends_with(".localhost"), "{}", port.url);
+    assert_eq!(host.len(), 52 + ".localhost".len(), "the whole id: {host}");
     for _ in 0..3 {
         let answer = http_get(port.port, &host, "/notes/today.txt");
         assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
