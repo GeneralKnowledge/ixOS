@@ -43,8 +43,11 @@ A new ALPN on the device's one iroh endpoint, beside `relay/device/1`.
   the answer back. It rewrites nothing in the body.
 - **Limits.** One target per site, always loopback (a site can't be used
   as a proxy to the host's network or the internet); request headers at
-  most 64 KB; bodies streamed, not buffered; idle streams closed after 60 s;
-  at most 32 streams per connection.
+  most 64 KB; bodies streamed, not buffered, and the answer read while the
+  body goes up; a stream where nothing moves for 60 s is closed; at most
+  32 streams per connection. Changing Connections or the servers closes
+  the viewer's kept connections, so the next request takes a route the
+  new choice allows.
 - **Not at first:** websockets, server-sent events, HTTP/2 to the target,
   uploads larger than a request body. They can follow once the basic path
   is proven.
@@ -70,12 +73,22 @@ One site per device for now.
   one runs, otherwise in its own process until Ctrl-C) listens on
   `127.0.0.1:N` (never on other interfaces) and tunnels each browser
   connection's requests over `relay/web/1`. Any browser on that computer
-  then opens `http://localhost:N`.
+  then opens `http://<id>.localhost:N`, a name of the device's own:
+  cookies ignore the port, so one name per device keeps one site's cookies
+  from another's, and a request by any other name (127.0.0.1, or a page
+  that rebinds its own name here) is answered 421. Before every request
+  it checks that the device is still trusted here, so revoking it stops an
+  open port at once.
 - **iPhone:** a web view inside Relay (`WKWebView`) whose own URL scheme,
   `relay-web://<device>/…`, is answered by a `WKURLSchemeHandler` that
   asks Rust to fetch each request over iroh (`fetch_site`, which returns
   the whole response, up to 64 MB, chunked bodies joined). Safari can't
-  open it: Safari
+  open it. A rule list blocks every load from the internet (http, https,
+  web sockets), so a page can't reach out from the viewer; a link off the
+  site opens outside Relay. A redirect to another page of the site is
+  followed (the viewer answers it with a page that moves on, since WebKit
+  doesn't follow a scheme handler's redirect); one for an image or a
+  script isn't. Safari
   doesn't speak iroh, and a localhost proxy for Safari would stop whenever
   iOS suspends Relay.
 

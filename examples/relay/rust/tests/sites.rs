@@ -238,11 +238,29 @@ fn a_computer_opens_the_site_in_any_browser_through_a_local_port() {
     block_on(laptop.set_grant(phone_id, Capability::Sites, true)).unwrap();
 
     let port = phone.open_site_port(&laptop_id, 0).unwrap();
+    let host = port
+        .url
+        .trim_start_matches("http://")
+        .split(':')
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(host.ends_with(".localhost"), "{}", port.url);
     for _ in 0..3 {
-        let answer = http_get(port.port, "/notes/today.txt");
+        let answer = http_get(port.port, &host, "/notes/today.txt");
         assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
         assert!(answer.ends_with("milk"), "{answer}");
     }
+    // Only by the site's own name, so another device's site on another
+    // port never sees its cookies.
+    let answer = http_get(port.port, "127.0.0.1", "/notes/today.txt");
+    assert!(answer.starts_with("HTTP/1.1 421"), "{answer}");
+
+    // Revoked here, the open port stops reaching it.
+    block_on(phone.revoke_device(laptop_id.clone())).unwrap();
+    let answer = http_get(port.port, &host, "/notes/today.txt");
+    assert!(answer.starts_with("HTTP/1.1 502"), "{answer}");
+    assert!(!answer.contains("milk"), "{answer}");
     drop(port);
 }
 
@@ -292,6 +310,20 @@ fn a_server_on_the_hosts_localhost_is_reached_and_told_who_asked() {
         phone_id.to_lowercase()
     );
 
+    // A server that answers without reading a big upload still gets its
+    // answer through: the answer is read while the body goes up.
+    let upload = block_on(phone.fetch_site(
+        laptop_id.clone(),
+        SiteRequest {
+            method: "POST".into(),
+            path: "/upload".into(),
+            headers: vec![],
+            body: vec![7u8; 4 * 1024 * 1024],
+        },
+    ))
+    .unwrap();
+    assert_eq!(upload.status, 200);
+
     // A server that isn't running is said plainly.
     block_on(laptop.share_site(SiteSource::Local { port: free_port() })).unwrap();
     assert_eq!(fetch(&phone, &laptop_id, "/").unwrap().status, 502);
@@ -305,14 +337,14 @@ fn free_port() -> u16 {
         .port()
 }
 
-fn http_get(port: u16, path: &str) -> String {
+fn http_get(port: u16, host: &str, path: &str) -> String {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(15)))
         .unwrap();
     write!(
         stream,
-        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+        "GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n"
     )
     .unwrap();
     let mut answer = String::new();

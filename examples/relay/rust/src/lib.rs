@@ -237,14 +237,40 @@ impl RelayCore {
         Ok((node, addr, cached))
     }
 
+    /// Closes the kept site connections: to one device, or (`None`) all.
+    fn close_site_connections(&self, endpoint_id: Option<&str>) {
+        let kept = lock(&self.site_connections);
+        for (id, cached) in kept.iter() {
+            if endpoint_id.is_none_or(|e| e == id) {
+                if let Some(c) = lock(cached).take() {
+                    c.close(0u32.into(), b"closed");
+                }
+            }
+        }
+    }
+
     /// Opens a site on this computer (N6, `relay web`): a port on
-    /// 127.0.0.1 (`port` 0 picks one) whose requests go to the trusted
-    /// device's site. It stays open until the returned tunnel is dropped.
+    /// 127.0.0.1 (`port` 0 picks one) whose requests for the device's own
+    /// name under `localhost` go to the trusted device's site. Each request
+    /// checks the device is still trusted here. It stays open until the
+    /// returned tunnel is dropped.
     pub fn open_site_port(&self, endpoint_id: &str, port: u16) -> Result<SitePort, RelayError> {
+        let me = self.me.clone();
+        let id = endpoint_id.to_string();
+        let still: web::StillTrusted = Arc::new(move || {
+            me.upgrade().is_some_and(|core| {
+                core.record
+                    .get()
+                    .devices
+                    .get(&id)
+                    .is_some_and(|d| d.trust == SavedTrust::Trusted)
+            })
+        });
+        let host = web::site_host(endpoint_id);
         forge_runtime::block_on(async {
             let (node, addr, cached) = self.site_route(endpoint_id).await?;
             code::TOKIO
-                .spawn(async move { web::open_tunnel(node, addr, cached, port).await })
+                .spawn(async move { web::open_tunnel(node, addr, cached, port, host, still).await })
                 .await
                 .unwrap_or_else(|e| Err(code::connection(e)))
         })
@@ -1205,6 +1231,8 @@ impl RelayCore {
                 })
             })
             .await?;
+        // Its site, if this device had it open, closes at once.
+        self.close_site_connections(Some(&endpoint_id));
         // What waited for it ends: No longer trusted.
         self.wake(&endpoint_id);
         Ok(())
@@ -1225,6 +1253,7 @@ impl RelayCore {
                 })
             })
             .await?;
+        self.close_site_connections(Some(&endpoint_id));
         self.wake(&endpoint_id);
         Ok(())
     }
@@ -1717,6 +1746,9 @@ impl RelayCore {
 
     /// The endpoint uses the servers the current mode allows, from now on.
     async fn apply_servers(&self) {
+        // Connections to sites were made on the routes the old choice
+        // allowed: the next request dials again under the new one.
+        self.close_site_connections(None);
         let node = Arc::clone(&self.node);
         let me = self.me.clone();
         // The servers are read once the node's gate is held, so the latest

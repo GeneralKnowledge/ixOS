@@ -446,10 +446,7 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             let opened = core
                 .open_site_port(&device.endpoint_id, port)
                 .map_err(|e| e.to_string())?;
-            out += &format!(
-                "{}'s site: http://127.0.0.1:{}/\n",
-                device.name, opened.port
-            );
+            out += &format!("{}'s site: {}\n", device.name, opened.url);
             // Kept open for as long as this process runs.
             lock_ports().push(opened);
             Ok(())
@@ -691,11 +688,17 @@ mod control {
             return args;
         };
         if args.first().map(String::as_str) == Some("site") {
-            // `relay site FOLDER`: a relative folder is the caller's.
+            // `relay site FOLDER`: a relative folder is the caller's, even
+            // one that isn't there (then it is reported missing, never
+            // looked for where the listener runs).
             return args
                 .into_iter()
-                .map(|arg| {
-                    if arg != "site" && !arg.starts_with("--") && cwd.join(&arg).is_dir() {
+                .enumerate()
+                .map(|(i, arg)| {
+                    let server = ["127.0.0.1:", "localhost:"]
+                        .iter()
+                        .any(|h| arg.starts_with(h));
+                    if i == 1 && !arg.starts_with("--") && !server {
                         cwd.join(&arg).to_string_lossy().into_owned()
                     } else {
                         arg

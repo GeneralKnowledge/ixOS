@@ -319,7 +319,11 @@ pub(crate) fn file_for(root: &Path, request_path: &str) -> Option<PathBuf> {
         return None;
     }
     if file.is_dir() {
-        file = file.join("index.html");
+        // The index may be a symlink out of the folder too.
+        file = file.join("index.html").canonicalize().ok()?;
+        if !file.starts_with(&root) {
+            return None;
+        }
     }
     file.is_file().then_some(file)
 }
@@ -392,9 +396,7 @@ async fn serve_file(send: &mut SendStream, head: &Head, root: &Path) -> Result<(
         .await
         .map_err(|e| bad(&e.to_string()))?;
     if head.method == "GET" {
-        tokio::io::copy(&mut opened, send)
-            .await
-            .map_err(|e| bad(&e.to_string()))?;
+        copy_idle(&mut opened, send).await?;
     }
     Ok(())
 }
@@ -421,12 +423,59 @@ async fn proxy(
         .write_all(&rewritten(head, Some(them)))
         .await
         .map_err(|e| bad(&e.to_string()))?;
-    copy_body(recv, &mut server, &head.extra, head.content_length).await?;
-    let (mut from_server, _to_server) = server.split();
-    tokio::io::copy(&mut from_server, send)
-        .await
-        .map_err(|e| bad(&e.to_string()))?;
-    Ok(())
+    let (mut from_server, mut to_server) = server.split();
+    // The answer is read while the body goes up: a server may answer (and
+    // stop reading) before the whole body is sent.
+    both_ways(
+        copy_body(recv, &mut to_server, &head.extra, head.content_length),
+        copy_idle(&mut from_server, send),
+    )
+    .await
+}
+
+/// Runs an upload and a download together, and ends with the download: an
+/// upload the other side stopped taking doesn't hold the answer back.
+async fn both_ways(
+    upload: impl std::future::Future<Output = Result<(), RelayError>>,
+    download: impl std::future::Future<Output = Result<u64, RelayError>>,
+) -> Result<(), RelayError> {
+    tokio::pin!(upload, download);
+    let mut uploading = true;
+    loop {
+        tokio::select! {
+            sent = &mut upload, if uploading => {
+                uploading = false;
+                if let Err(err) = sent {
+                    log::info!("web: a request body stopped early: {err}");
+                }
+            }
+            got = &mut download => return got.map(|_| ()),
+        }
+    }
+}
+
+/// Copies until the end, giving up when nothing moves for `IDLE`.
+async fn copy_idle<R, W>(from: &mut R, to: &mut W) -> Result<u64, RelayError>
+where
+    R: tokio::io::AsyncRead + Unpin + ?Sized,
+    W: tokio::io::AsyncWrite + Unpin + ?Sized,
+{
+    let mut buf = vec![0u8; 16 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = tokio::time::timeout(IDLE, from.read(&mut buf))
+            .await
+            .map_err(|_| bad("idle"))?
+            .map_err(|e| bad(&e.to_string()))?;
+        if n == 0 {
+            return Ok(total);
+        }
+        tokio::time::timeout(IDLE, to.write_all(&buf[..n]))
+            .await
+            .map_err(|_| bad("idle"))?
+            .map_err(|e| bad(&e.to_string()))?;
+        total += n as u64;
+    }
 }
 
 /// Copies a request body of `length` bytes: what came with the head, then
@@ -448,9 +497,10 @@ where
     let rest = length.saturating_sub(first as u64);
     if rest > 0 {
         let mut limited = from.take(rest);
-        tokio::io::copy(&mut limited, to)
-            .await
-            .map_err(|e| bad(&e.to_string()))?;
+        let copied = copy_idle(&mut limited, to).await?;
+        if copied < rest {
+            return Err(bad("the request body ended early"));
+        }
     }
     Ok(())
 }
@@ -459,6 +509,9 @@ where
 /// Dropping it closes the port.
 pub struct Tunnel {
     pub port: u16,
+    /// Where a browser on this machine opens the site: a name of its own
+    /// under `localhost`, so each device's site keeps its own cookies.
+    pub url: String,
     stop: Arc<AtomicBool>,
 }
 
@@ -474,13 +527,31 @@ impl Drop for Tunnel {
     }
 }
 
+/// Whether the device whose site a viewer opens is still trusted here:
+/// asked before every request, so revoking it stops the viewer at once.
+pub(crate) type StillTrusted = Arc<dyn Fn() -> bool + Send + Sync>;
+
+/// The browser's name for a device's site: `<id>.localhost`. Browsers send
+/// `*.localhost` to this machine, and a name per device keeps one site's
+/// cookies away from another's (cookies ignore the port).
+pub(crate) fn site_host(endpoint_id: &str) -> String {
+    let label: String = endpoint_id
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(16)
+        .collect();
+    format!("{}.localhost", label.to_ascii_lowercase())
+}
+
 /// Opens `127.0.0.1:port` (0 picks one) on this device; each browser
-/// connection's request goes to the site of the device at `to`.
+/// connection's request for `host` goes to the site of the device at `to`.
 pub(crate) async fn open_tunnel(
     node: Arc<Node>,
     to: EndpointAddr,
     conn: Arc<Mutex<Option<Connection>>>,
     port: u16,
+    host: String,
+    still: StillTrusted,
 ) -> Result<Tunnel, RelayError> {
     let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port)))
         .await
@@ -491,6 +562,7 @@ pub(crate) async fn open_tunnel(
         .port();
     let stop = Arc::new(AtomicBool::new(false));
     let stopped = Arc::clone(&stop);
+    let url = format!("http://{host}:{port}/");
     tokio::spawn(async move {
         while !stopped.load(Ordering::SeqCst) {
             let accepted =
@@ -501,14 +573,16 @@ pub(crate) async fn open_tunnel(
             let node = Arc::clone(&node);
             let to = to.clone();
             let conn = Arc::clone(&conn);
+            let host = host.clone();
+            let still = Arc::clone(&still);
             tokio::spawn(async move {
-                if let Err(err) = forward(&node, to, &conn, browser).await {
+                if let Err(err) = forward(&node, to, &conn, browser, &host, still.as_ref()).await {
                     log::info!("web: a page request failed: {err}");
                 }
             });
         }
     });
-    Ok(Tunnel { port, stop })
+    Ok(Tunnel { port, url, stop })
 }
 
 /// The connection to the site's device, opened once and reused.
@@ -538,34 +612,72 @@ async fn forward(
     to: EndpointAddr,
     cached: &Mutex<Option<Connection>>,
     mut browser: TcpStream,
+    host: &str,
+    still: &(dyn Fn() -> bool + Send + Sync),
 ) -> Result<(), RelayError> {
     let head = read_head(&mut browser).await?;
+    // Only the site's own name: another name (127.0.0.1, or a page
+    // rebinding its own name here) would share cookies or reach the site
+    // from somewhere else.
+    let asked_for = head
+        .header("host")
+        .map(|h| h.rsplit_once(':').map_or(h, |(name, _)| name))
+        .unwrap_or("");
+    if !asked_for.eq_ignore_ascii_case(host) {
+        let text = format!("Open this site at http://{host}:<port>/");
+        let page = format!(
+            "HTTP/1.1 421 Misdirected Request\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+            text.len()
+        );
+        let _ = browser.write_all(page.as_bytes()).await;
+        let _ = browser.shutdown().await;
+        return Ok(());
+    }
     let attempt = async {
+        if !still() {
+            // Revoked here: nothing more goes to it, on any connection.
+            if let Some(c) = lock(cached).take() {
+                c.close(0u32.into(), b"revoked");
+            }
+            return Err(RelayError::Declined {
+                reason: "That device is no longer trusted here.".into(),
+            });
+        }
         let conn = connection(node, to, cached).await?;
         let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
         send.write_all(&rewritten(&head, None))
             .await
             .map_err(|e| bad(&e.to_string()))?;
-        copy_body(&mut browser, &mut send, &head.extra, head.content_length).await?;
-        let _ = send.finish();
-        let mut first = [0u8; 1];
-        // The first byte shows the site answered at all.
-        let n = recv
-            .read(&mut first)
-            .await
-            .map_err(|e| bad(&e.to_string()))?
-            .unwrap_or(0);
-        if n == 0 {
-            return Err(RelayError::Refused);
-        }
-        browser
-            .write_all(&first[..n])
-            .await
-            .map_err(|e| bad(&e.to_string()))?;
-        tokio::io::copy(&mut recv, &mut browser)
-            .await
-            .map_err(|e| bad(&e.to_string()))?;
-        Ok(())
+        let (mut from_browser, mut to_browser) = browser.split();
+        let upload = async {
+            copy_body(
+                &mut from_browser,
+                &mut send,
+                &head.extra,
+                head.content_length,
+            )
+            .await?;
+            let _ = send.finish();
+            Ok(())
+        };
+        let download = async {
+            let mut first = [0u8; 1];
+            // The first byte shows the site answered at all.
+            let n = tokio::time::timeout(IDLE, recv.read(&mut first))
+                .await
+                .map_err(|_| bad("the site stopped answering"))?
+                .map_err(|e| bad(&e.to_string()))?
+                .unwrap_or(0);
+            if n == 0 {
+                return Err(RelayError::Refused);
+            }
+            to_browser
+                .write_all(&first[..n])
+                .await
+                .map_err(|e| bad(&e.to_string()))?;
+            copy_idle(&mut recv, &mut to_browser).await
+        };
+        both_ways(upload, download).await
     };
     let result = attempt.await;
     if let Err(err) = &result {
@@ -626,6 +738,7 @@ pub(crate) async fn fetch(
         return Err(bad("a site path starts with / and has no spaces"));
     }
     let method = request.method.to_ascii_uppercase();
+    let is_head = method == "HEAD";
     if method.is_empty() || !method.bytes().all(|b| b.is_ascii_uppercase()) {
         return Err(bad("not an HTTP method"));
     }
@@ -648,43 +761,62 @@ pub(crate) async fn fetch(
     };
     let conn = connection(node, to, cached).await?;
     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
-    send.write_all(&rewritten(&head, None))
-        .await
-        .map_err(|e| bad(&e.to_string()))?;
-    send.write_all(&request.body)
-        .await
-        .map_err(|e| bad(&e.to_string()))?;
-    let _ = send.finish();
     let mut answer = Vec::new();
-    let mut chunk = [0u8; 16 * 1024];
-    loop {
-        let n = tokio::time::timeout(IDLE, recv.read(&mut chunk))
+    let upload = async {
+        send.write_all(&rewritten(&head, None))
             .await
-            .map_err(|_| bad("the site stopped answering"))?
-            .map_err(|e| bad(&e.to_string()))?
-            .unwrap_or(0);
-        if n == 0 {
-            break;
+            .map_err(|e| bad(&e.to_string()))?;
+        send.write_all(&request.body)
+            .await
+            .map_err(|e| bad(&e.to_string()))?;
+        let _ = send.finish();
+        Ok(())
+    };
+    // Read while the body goes up: the site may answer (and stop reading)
+    // before it has the whole body.
+    let download = async {
+        let mut chunk = [0u8; 16 * 1024];
+        loop {
+            let n = tokio::time::timeout(IDLE, recv.read(&mut chunk))
+                .await
+                .map_err(|_| bad("the site stopped answering"))?
+                .map_err(|e| bad(&e.to_string()))?
+                .unwrap_or(0);
+            if n == 0 {
+                return Ok(answer.len() as u64);
+            }
+            if answer.len() + n > MAX_FETCHED {
+                return Err(bad("the page is too big to show"));
+            }
+            answer.extend_from_slice(&chunk[..n]);
         }
-        if answer.len() + n > MAX_FETCHED {
-            return Err(bad("the page is too big to show"));
-        }
-        answer.extend_from_slice(&chunk[..n]);
-    }
+    };
+    both_ways(upload, download).await?;
     if answer.is_empty() {
         return Err(RelayError::Refused);
     }
-    parse_response(&answer)
+    parse_response(&answer, is_head)
 }
 
 /// A whole HTTP/1.1 response: status, headers, and the body, unchunked.
-pub(crate) fn parse_response(answer: &[u8]) -> Result<SiteResponse, RelayError> {
+/// Informational answers (`100 Continue`, `103 Early Hints`) before it
+/// are skipped. A body shorter than its `Content-Length` is an error,
+/// except for a `HEAD` request (`head`), whose answer has none.
+pub(crate) fn parse_response(mut answer: &[u8], head: bool) -> Result<SiteResponse, RelayError> {
     let mut parsed = [httparse::EMPTY_HEADER; 100];
     let mut response = httparse::Response::new(&mut parsed);
-    let end = match response.parse(answer) {
-        Ok(httparse::Status::Complete(end)) => end,
-        _ => return Err(bad("the site's answer isn't HTTP")),
-    };
+    let mut end;
+    loop {
+        end = match response.parse(answer) {
+            Ok(httparse::Status::Complete(end)) => end,
+            _ => return Err(bad("the site's answer isn't HTTP")),
+        };
+        if !matches!(response.code, Some(100..=199)) {
+            break;
+        }
+        answer = &answer[end..];
+        response = httparse::Response::new(&mut parsed);
+    }
     let status = response.code.unwrap_or(502);
     let mut chunked = false;
     let mut length = None;
@@ -715,10 +847,13 @@ pub(crate) fn parse_response(answer: &[u8]) -> Result<SiteResponse, RelayError> 
             value: body.len().to_string(),
         });
         body
+    } else if head || matches!(status, 204 | 304) {
+        Vec::new()
     } else {
         match length {
-            Some(n) if n < rest.len() => rest[..n].to_vec(),
-            _ => rest.to_vec(),
+            Some(n) if n > rest.len() => return Err(bad("the site's answer ended early")),
+            Some(n) => rest[..n].to_vec(),
+            None => rest.to_vec(),
         }
     };
     Ok(SiteResponse {
@@ -743,7 +878,7 @@ fn unchunk(mut rest: &[u8]) -> Result<Vec<u8>, RelayError> {
         if size == 0 {
             return Ok(body);
         }
-        if rest.len() < size + 2 {
+        if size.checked_add(2).is_none_or(|need| rest.len() < need) {
             return Err(bad("a chunk ended early"));
         }
         body.extend_from_slice(&rest[..size]);
@@ -777,6 +912,16 @@ mod tests {
         {
             std::os::unix::fs::symlink(dir.path().join("secret.txt"), root.join("link")).unwrap();
             assert!(ok("/link").is_none(), "a symlink out of the folder");
+            // An index that is a symlink out of the folder too.
+            let other = dir.path().join("other");
+            std::fs::create_dir_all(&other).unwrap();
+            std::os::unix::fs::symlink(dir.path().join("secret.txt"), other.join("index.html"))
+                .unwrap();
+            assert!(file_for(&other, "/").is_none(), "a symlinked index");
+            std::fs::create_dir_all(root.join("sub")).unwrap();
+            std::os::unix::fs::symlink(dir.path().join("secret.txt"), root.join("sub/index.html"))
+                .unwrap();
+            assert!(ok("/sub/").is_none(), "a symlinked index under the folder");
         }
     }
 
@@ -820,14 +965,14 @@ mod tests {
     #[test]
     fn the_viewer_reads_plain_and_chunked_answers() {
         let plain = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello";
-        let r = parse_response(plain).unwrap();
+        let r = parse_response(plain, false).unwrap();
         assert_eq!(r.status, 200);
         assert_eq!(r.body, b"hello");
         assert!(r.headers.iter().any(|h| h.name == "Content-Type"));
         assert!(!r.headers.iter().any(|h| h.name == "Connection"));
 
         let chunked = b"HTTP/1.1 404 Not Found\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nnot \r\n5;x=1\r\nfound\r\n0\r\n\r\n";
-        let r = parse_response(chunked).unwrap();
+        let r = parse_response(chunked, false).unwrap();
         assert_eq!(r.status, 404);
         assert_eq!(r.body, b"not found");
         assert!(r
@@ -835,10 +980,29 @@ mod tests {
             .iter()
             .any(|h| h.name == "Content-Length" && h.value == "9"));
 
-        assert!(parse_response(b"nonsense").is_err());
-        assert!(
-            parse_response(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n9\r\nshort")
-                .is_err()
-        );
+        assert!(parse_response(b"nonsense", false).is_err());
+        assert!(parse_response(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n9\r\nshort",
+            false
+        )
+        .is_err());
+        // A chunk size too big to add to doesn't overflow.
+        assert!(parse_response(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nffffffffffffffff\r\nx",
+            false
+        )
+        .is_err());
+
+        // Early hints come before the real answer.
+        let hinted = b"HTTP/1.1 103 Early Hints\r\nLink: </a.css>\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+        let r = parse_response(hinted, false).unwrap();
+        assert_eq!(r.status, 200);
+        assert_eq!(r.body, b"ok");
+
+        // A body shorter than it said is an error, except for HEAD.
+        let short = b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nhalf";
+        assert!(parse_response(short, false).is_err());
+        let r = parse_response(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n", true).unwrap();
+        assert!(r.body.is_empty());
     }
 }
