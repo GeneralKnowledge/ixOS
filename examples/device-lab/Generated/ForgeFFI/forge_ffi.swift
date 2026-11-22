@@ -2048,8 +2048,9 @@ open class BonsaiHarness: BonsaiHarnessProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_forge_ffi_fn_clone_bonsaiharness(self.handle, $0) }
     }
     /**
-     * `projects_folder` holds one folder per project (iOS: Application
-     * Support/Python Lab/Projects).
+     * `projects_folder` holds one folder per project (iOS: Documents/Python
+     * Lab, shown in the Files app); ladder tasks' projects are under its
+     * `.ladder` folder.
      */
 public convenience init(python: PythonHost, projectsFolder: String) {
     let handle =
@@ -16029,6 +16030,23 @@ public func projectArtifacts(project: String) -> [ProjectArtifact]  {
     )
 })
 }
+/**
+ * A script that runs the project's file `path` for the person, as
+ * `__main__`, with the same wrapper as [`python_lab_script`]. Tracebacks
+ * name the file and line (`main.py, line 3`) after `python_lab_output`,
+ * other files of the project import normally, and if the file ends with
+ * an expression its value is printed. `path` is checked like a harness
+ * path is, but may contain spaces and any letters (the person named it).
+ */
+public func pythonLabFileScript(project: String, path: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_lab_file_script(
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
 public func pythonLabOutput(project: String, ok: Bool, output: String) -> PythonLabOutput  {
     return try!  FfiConverterTypePythonLabOutput_lift(try! rustCall() {
         uniffiCallStatus in
@@ -16304,6 +16322,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_project_artifacts() != 21958) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_lab_file_script() != 14378) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_python_lab_output() != 28712) {
@@ -16681,7 +16702,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_constructor_ailab_new() != 39479) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_bonsaiharness_new() != 59862) {
+    if (uniffi_forge_ffi_checksum_constructor_bonsaiharness_new() != 44261) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_workspace_new() != 46389) {

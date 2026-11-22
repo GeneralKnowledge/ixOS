@@ -1,6 +1,6 @@
 # Python Lab: from script runner to workspace
 
-Status: **plan agreed in outline, PL1a built** (Reuben, 2026-11-22). PL1a's Rust is tested on Linux; its one Swift change (the projects folder) is not compiled yet. Reuben's review of Python Lab found that it runs Python well but is still a script runner, not a place to work. This plan covers his first stage, **PL1 Workspace and interactive development**, in five small PRs. It checks his reading of the code first, and lists his later stages so that none of them is started early.
+Status: **plan agreed in outline; PL1a and PL1b built** (Reuben, 2026-11-22). Their Rust is tested on Linux; their Swift is not compiled yet and nothing has run on the phone. Reuben's review of Python Lab found that it runs Python well but is still a script runner, not a place to work. This plan covers his first stage, **PL1 Workspace and interactive development**, in five small PRs. It checks his reading of the code first, and lists his later stages so that none of them is started early.
 
 It builds on [visual-labs-spec.md](visual-labs-spec.md) (graphics) and [bonsai-harness-plan.md](bonsai-harness-plan.md) (Bonsai). It changes neither of their decisions.
 
@@ -55,6 +55,10 @@ A `workspace` module in the Device Lab crate (beside `harness/`), exported throu
 - Tests (Linux): every operation, refusals (escaping paths, links, names, limits), `scratch` protection, and the ladder move.
 
 ### PL1b. The project browser and autosave (Swift, one PR)
+
+Built: `PythonLabModel` over `Workspace` (projects, files, autosave a second after typing stops and on leaving or backgrounding, the open file remembered per project and the last project between launches), `PythonProjectsView` and `PythonFilesView` (ForgeUI's `forgeRename` for naming, `forgeRowActions` for rename, delete, Run This File, New File Here), and the Rust `python_lab_file_script(project, path)` with two Linux tests (a file imports its neighbours from its own folder and the project's; a traceback names `main.py, line 3` and `helper.py, line 2`; an edited module is picked up on the next run).
+
+It also fixes a fault the #367 review found: Python Lab's Stop and time limit called a global interrupt, so they could stop a Bonsai script that was running while Python Lab's waited for its turn, and the wait counted against Python Lab's limit. `PythonRuntime` now gives every run an id, interrupts only the run that asked, and starts Python Lab's limit when its script actually starts. Bonsai's harness keeps its own limit in Rust, which still counts its wait; that matters once PL1d lets a script wait for `input()`.
 
 - Python Lab opens on the **last project and file** it had open. A project list (create, rename, delete with a confirmation naming the file count) and a file browser for the project (folders, files with sizes, images opening in the existing preview, swipe to rename or delete, a + menu for a new file or folder).
 - The editor edits **a real file**. Autosave a second after typing stops, and when the screen closes or the app goes to the background, so nothing typed is lost; a small "Saved" or "Not saved: reason" line shows which.

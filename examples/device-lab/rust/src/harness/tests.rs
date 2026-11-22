@@ -1005,3 +1005,86 @@ fn replay_skips_a_line_cut_inside_a_character() {
         }
     ));
 }
+
+fn file_run(project: &std::path::Path, path: &str) -> super::python_lab::PythonLabOutput {
+    use std::process::Command;
+    let script =
+        super::python_lab::python_lab_file_script(project.display().to_string(), path.into());
+    let output = Command::new("python3")
+        .arg("-I")
+        .arg("-c")
+        .arg(&script)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr);
+    super::python_lab::python_lab_output(
+        project.display().to_string(),
+        output.status.success(),
+        text,
+    )
+}
+
+#[test]
+fn a_project_file_runs_as_main_and_imports_its_neighbours() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("lib")).unwrap();
+    std::fs::write(root.join("helper.py"), "def two():\n    return 2\n").unwrap();
+    std::fs::write(
+        root.join("main.py"),
+        "import helper\nprint(__name__, helper.two())\nhelper.two() + 1\n",
+    )
+    .unwrap();
+    let out = file_run(root, "main.py");
+    assert!(out.ok, "{}", out.output);
+    assert_eq!(out.output.trim(), "__main__ 2\n3");
+
+    // A file in a folder imports from its own folder and from the project.
+    std::fs::write(root.join("lib/util.py"), "X = 5\n").unwrap();
+    std::fs::write(
+        root.join("lib/my tool.py"),
+        "import util, helper\nprint(util.X + helper.two())\n",
+    )
+    .unwrap();
+    let out = file_run(root, "lib/my tool.py");
+    assert!(out.ok, "{}", out.output);
+    assert_eq!(out.output.trim(), "7");
+}
+
+#[test]
+fn a_project_files_traceback_names_the_file_and_line() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("helper.py"), "def boom():\n    return 1 / 0\n").unwrap();
+    std::fs::write(root.join("main.py"), "import helper\n\nhelper.boom()\n").unwrap();
+    let out = file_run(root, "main.py");
+    assert!(!out.ok);
+    assert!(
+        out.output.contains("File \"main.py\", line 3"),
+        "{}",
+        out.output
+    );
+    assert!(
+        out.output.contains("File \"helper.py\", line 2"),
+        "{}",
+        out.output
+    );
+    assert!(out.output.contains("ZeroDivisionError"), "{}", out.output);
+    // An edit is picked up on the next run (the module is forgotten).
+    std::fs::write(root.join("helper.py"), "def boom():\n    return 'fine'\n").unwrap();
+    std::fs::write(
+        root.join("main.py"),
+        "import helper\nprint(helper.boom())\n",
+    )
+    .unwrap();
+    let out = file_run(root, "main.py");
+    assert!(out.ok, "{}", out.output);
+    assert_eq!(out.output.trim(), "fine");
+}

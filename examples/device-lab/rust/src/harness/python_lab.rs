@@ -813,6 +813,21 @@ pub fn python_lab_script(project: String, code: String) -> String {
     wrapper(Path::new(&project), true, &action)
 }
 
+/// A script that runs the project's file `path` for the person, as
+/// `__main__`, with the same wrapper as [`python_lab_script`]. Tracebacks
+/// name the file and line (`main.py, line 3`) after `python_lab_output`,
+/// other files of the project import normally, and if the file ends with
+/// an expression its value is printed. `path` is checked like a harness
+/// path is, but may contain spaces and any letters (the person named it).
+#[uniffi::export]
+pub fn python_lab_file_script(project: String, path: String) -> String {
+    let action = format!(
+        "import ast\n    _name = os.path.join(_root, {path})\n    with open(_name, encoding='utf-8') as _f:\n        _source = _f.read()\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _scope = {{'__name__': '__main__', '__file__': _name, '__builtins__': __builtins__}}\n    sys.path[0] = os.path.dirname(_name)\n    if sys.path[0] != _root:\n        sys.path.insert(1, _root)\n    exec(compile(_tree, _name, 'exec'), _scope)\n    if _last is not None:\n        _value = eval(compile(_last, _name, 'eval'), _scope)\n        if _value is not None:\n            print(repr(_value))\n",
+        path = py_str(&path)
+    );
+    wrapper(Path::new(&project), true, &action)
+}
+
 /// What a `python_lab_script` run printed, made readable: whether it
 /// succeeded, and the output with the project folder's paths removed.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]

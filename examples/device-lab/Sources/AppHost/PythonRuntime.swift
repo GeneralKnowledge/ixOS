@@ -6,8 +6,9 @@ import PythonBridge
 /// The CPython interpreter embedded in Device Lab: Python.framework, with
 /// the standard library in the app bundle's `python` folder (laid out by
 /// scripts/prepare-python.sh). One interpreter for the app's lifetime;
-/// scripts run one at a time, off the main thread.
-final class PythonRuntime: PythonRunning {
+/// scripts run one at a time, off the main thread. Its mutable state is
+/// behind `lock`.
+final class PythonRuntime: PythonRunning, @unchecked Sendable {
     struct StartError: LocalizedError {
         let message: String
         var errorDescription: String? { message }
@@ -41,31 +42,78 @@ final class PythonRuntime: PythonRunning {
         }
     }
 
-    func run(_ code: String) async -> (ok: Bool, output: String) {
+    /// The run on the interpreter now, so an interrupt reaches only the
+    /// script it was meant for: Python Lab and Bonsai Harness take turns on
+    /// `queue`, and a Stop or a time limit for one must never stop the
+    /// other's script (#367 review).
+    private let lock = NSLock()
+    private var active: UUID?
+    /// Bonsai Harness's current run, for its `interrupt()`.
+    private var harnessRun: UUID?
+
+    /// Runs `code` once it has the interpreter. `limit`, if given, counts
+    /// from then, not while it waited for its turn.
+    private func run(_ code: String, id: UUID, limit: Duration?) async -> PythonRunResult {
         await withCheckedContinuation { continuation in
-            queue.async {
+            queue.async { [self] in
+                lock.withLock { active = id }
+                let timedOut = TimedOut()
+                var watchdog: DispatchWorkItem?
+                if let limit {
+                    let item = DispatchWorkItem { [self] in
+                        lock.withLock {
+                            if active == id {
+                                timedOut.value = true
+                                pybridge_interrupt()
+                            }
+                        }
+                    }
+                    let seconds = Double(limit.components.seconds)
+                        + Double(limit.components.attoseconds) / 1e18
+                    DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: item)
+                    watchdog = item
+                }
                 var ok: Int32 = 0
                 let output = pybridge_run(code, &ok)
+                watchdog?.cancel()
+                let wasTimedOut = lock.withLock {
+                    active = nil
+                    return timedOut.value
+                }
                 let text = output.map { String(cString: $0) } ?? ""
                 pybridge_free(output)
-                continuation.resume(returning: (ok == 1, text))
+                continuation.resume(
+                    returning: PythonRunResult(ok: ok == 1, output: text, timedOut: wasTimedOut))
             }
         }
     }
 
-    func interrupt() {
+    func run(_ code: String, id: UUID, limit: Duration) async -> PythonRunResult {
+        await run(code, id: id, limit: Optional(limit))
+    }
+
+    func interrupt(id: UUID) {
         // Not on `queue`: that is busy running the script.
-        DispatchQueue.global().async { pybridge_interrupt() }
+        DispatchQueue.global().async { [self] in
+            lock.withLock {
+                if active == id { pybridge_interrupt() }
+            }
+        }
     }
 }
 
+/// Set by the watchdog under `PythonRuntime.lock`.
+private final class TimedOut: @unchecked Sendable {
+    var value = false
+}
+
 extension PythonLabModel {
-    /// Scripts run in the harness's `scratch` project, so the images they
-    /// save show under Artifacts and Bonsai's own tasks see the same files.
+    /// Projects in the same folder as Bonsai Harness's, so a file either
+    /// of them writes is the other's to read.
     static func live() -> PythonLabModel {
         PythonLabModel(
             runtime: PythonRuntime.shared,
-            projectFolder: PythonLabProjects.folder.appendingPathComponent("scratch").path)
+            workspace: try? Workspace(projectsFolder: PythonLabProjects.folder.path))
     }
 }
 
@@ -94,8 +142,17 @@ extension PythonRuntime: PythonHost {
         } catch {
             throw PythonHostError.Unavailable(reason: error.localizedDescription)
         }
-        let result = await run(code)
+        // The harness keeps its own time limit (python_lab.rs) and stops a
+        // run with `interrupt()`, which reaches only this run.
+        let id = UUID()
+        lock.withLock { harnessRun = id }
+        let result = await run(code, id: id, limit: nil)
+        lock.withLock { if harnessRun == id { harnessRun = nil } }
         return PythonOutcome(ok: result.ok, output: result.output)
+    }
+
+    func interrupt() {
+        if let id = lock.withLock({ harnessRun }) { interrupt(id: id) }
     }
 }
 
