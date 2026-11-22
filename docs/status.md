@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 105 capabilities, 16 work on an iPhone, 27 partly work, 47 are built but haven't been run on an iPhone, and 15 aren't built yet.**
+**Of 105 capabilities, 17 work on an iPhone, 27 partly work, 46 are built but haven't been run on an iPhone, and 15 aren't built yet.**
 
 ## Works on an iPhone
 
@@ -20,6 +20,7 @@ A person ran an app that uses it on a physical iPhone and recorded the result.
 | Networking | Long-lived streams (SSE) with reconnect | Chat |
 | Extensions and restricted frameworks | Core ML | Qwen3.5 0.8B (copied in over USB) compiled on the phone and run, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-07 |
 | Extensions and restricted frameworks | GGUF models with llama.cpp (Metal) | Ternary-Bonsai-2 4B Q2_0 at ~29 tok/s and 9B Q2_0 at ~19 tok/s on the GPU, app memory ~400–470 MB, answers coherent, iPhone 15 Pro Max, free team, reported by Reuben 2026-11-21 |
+| Extensions and restricted frameworks | CPython in the app | Device Lab 1.29922692 on an iPhone 15 Pro Max, 2026-11-22: Python Lab ran the numpy check (import, array sum, linalg.solve, random, fft), reported by Reuben |
 | Extensions and restricted frameworks | Agent-composed native UI (A2UI 1.0) | A2UI Lab phone check passed, all seven steps (Reuben, 2026-11-22, Device Lab 1.29922371); ForgeUI adapter (A2UI-1b) passed its four-step check (Device Lab 1.29922445) |
 | Forge Device | Phone details from Linux (`forge device list`, `info`) | iPhone16,2, iOS 26.3.1, 2026-11-07 |
 | Forge Device | Live system log, filtered by app (`forge device logs`) | iPhone, iOS 26.3.1, 2026-11-07 (`--grep`, `--process`, `--limit`) |
@@ -75,7 +76,7 @@ The code exists and is tested on Linux, but nobody has recorded it working on a 
 - **Networking:** Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Bonjour advertise and browse; Device identity and encrypted channel
 - **Native services and permissions:** Keychain secrets; Notification actions and grouping; Deep links (custom URL schemes); Web pages inside the app (WebKit web view, Safari view, HTML the app has, bundled help pages); Permission interface; Location, motion and Bluetooth permissions; Microphone, camera, local network permissions; Barcode and QR scanning; Face ID app lock; Background refresh and processing tasks
 - **Media, sensors and rendering:** Waveform summaries; Background location; Heading, altitude, motion; Bluetooth on or off; Forms with Rust validation; Apple Pencil (PencilKit)
-- **Extensions and restricted frameworks:** HealthKit; CPython in the app
+- **Extensions and restricted frameworks:** HealthKit
 - **Forge Device:** Installed apps, profile expiry and free-team slots (`forge device apps`); The app's log and crash reports collected during a UI run (`forge ui run`); Which Apple team xtool signs with, free or paid (`forge doctor`, `forge run ios`); Over-the-air installs of development builds over Tailscale: one Install page with every build by branch and commit (`forge publish ios`)
 - **Forge UI Testing:** Swipe, long press, double tap, drag and keyboard keys on an element, scroll a lazy list until a row appears, and one-step `forge ui tap`, `type`, `scroll`, `swipe`, `long-press`, `double-tap`, `drag`, `key` and `expect` commands; Home, hardware buttons, open URL, system alerts and permission prompts, back, app state, permission reset, orientation, lock, settle, pickers, pinch, rotate, two-finger tap, tree filters, expect visible, hittable, selected and count, and terminal-only coordinate taps and swipes; Appearance and accessibility checks: dark or light mode at launch (`-ForgeAppearance`, `forge ui launch --appearance`), baselines per variant (`-dark`, `-ax5`), the audit of small tap targets and text cut off (`forge ui audit`); A person's acceptance: `forge verify --accept <ID> --note` records it as `kind = "human"`; `forge verify` shows twin, iPhone and person columns. (Run records moved to the forge-lab side project.)
 
