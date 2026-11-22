@@ -769,7 +769,7 @@ impl MailboxServer {
             Some(Request::Ack { from, id }) => done(self.store.ack(&caller, &from, &id)),
             Some(Request::Fetch { from, id }) => {
                 let Ok(_permit) = Arc::clone(&self.fetches).try_acquire_owned() else {
-                    put(&mut send, &encode(&Reply::Refused(Refusal::Busy))).await?;
+                    reply_within(&mut send, &encode(&Reply::Refused(Refusal::Busy))).await?;
                     send.finish().ok();
                     return Ok(());
                 };
@@ -777,7 +777,7 @@ impl MailboxServer {
                     Ok((kind, header, enc, path, len)) => {
                         match tokio::fs::File::open(&path).await {
                             Ok(file) if file.metadata().await.is_ok_and(|m| m.len() == len) => {
-                                put(
+                                reply_within(
                                     &mut send,
                                     &encode(&Reply::Item {
                                         kind,
@@ -820,7 +820,7 @@ impl MailboxServer {
                 }
             }
         };
-        put(&mut send, &encode(&reply)).await?;
+        reply_within(&mut send, &encode(&reply)).await?;
         send.finish().ok();
         let _ = tokio::time::timeout(STEP, send.stopped()).await;
         Ok(())
@@ -868,6 +868,14 @@ async fn receive(recv: &mut RecvStream, path: &Path, len: u64) -> Result<(), Rel
 
 /// Sends `file` in chunks, each within [`IDLE`]: a recipient that keeps
 /// reading gets all of it, one that stops is let go.
+/// Writes a reply, giving up on a caller that stops reading, so it can't
+/// hold a fetch's place or the connection forever.
+async fn reply_within(send: &mut SendStream, bytes: &[u8]) -> Result<(), RelayError> {
+    tokio::time::timeout(IDLE, put(send, bytes))
+        .await
+        .map_err(|_| connection("the caller stopped reading"))?
+}
+
 async fn stream_file(mut file: tokio::fs::File, send: &mut SendStream) -> Result<(), RelayError> {
     use tokio::io::AsyncReadExt;
     let mut buf = vec![0u8; 64 * 1024];
