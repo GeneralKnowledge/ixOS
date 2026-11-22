@@ -93,9 +93,10 @@ but on Relay's model:
   3. `chat-server accounts` on the server lists any account still on a
      token. Once none are left, restart it without `--http`.
 - **If the server is lost.** The phone keeps its own SQLite copy of each
-  room, which holds only the latest 500 messages per conversation (the
-  store's cap). Those stay readable, marked as read-only; anything older
-  was only on the server. `chat-server export` writes the full history
+  room. It is a cache: once a conversation passes 500 messages, the store
+  drops its oldest sent messages (unsent ones are always kept). Only the
+  messages it has retained stay readable, marked as read-only; anything
+  it dropped was only on the server. `chat-server export` writes the full history
   out, so a server you're retiring can be kept as a file.
 
 ## How N3 and N4 are built together
