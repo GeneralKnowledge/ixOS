@@ -344,6 +344,22 @@ pub fn package_install_wheel(
                 package.name, package.version
             )));
         }
+        // `site` runs `import` lines in a top-level `.pth` file (and
+        // entry points in a `.start` file) every time Python starts, before
+        // any script: code that would run with nothing asking for it.
+        let parts: Vec<&str> = target
+            .split('/')
+            .filter(|part| !part.is_empty() && *part != ".")
+            .collect();
+        if let [only] = parts.as_slice() {
+            let lower = only.to_ascii_lowercase();
+            if lower.ends_with(".pth") || lower.ends_with(".start") {
+                return Err(invalid(format!(
+                    "{} {} has a startup file ({only}) that would run code whenever Python starts, so it wasn't installed.",
+                    package.name, package.version
+                )));
+            }
+        }
         if let Some(top) = target.split('/').next() {
             tops.insert(top.to_string());
         }
@@ -358,10 +374,10 @@ pub fn package_install_wheel(
         .find(|(_, p)| normalize(&p.name) == normalize(&package.name));
     let mut owned_by_old: BTreeSet<String> = BTreeSet::new();
     let mut old_files: BTreeSet<String> = BTreeSet::new();
+    let others = other_tops(site, old.as_ref().map_or("", |(info, _)| info.as_str()));
     if let Some((old_info, _)) = &old {
         refuse_unless_ours(site, old_info, &package.name)?;
         // Never what another package lists.
-        let others = other_tops(site, old_info);
         owned_by_old = record_tops(site, old_info)
             .into_iter()
             .filter(|top| !others.contains(top))
@@ -369,13 +385,20 @@ pub fn package_install_wheel(
         owned_by_old.insert(old_info.clone());
         old_files = record_paths(site, old_info);
     }
-    for top in &tops {
-        if site.join(top).exists() && !owned_by_old.contains(top) {
+    for top in tops.clone() {
+        if fs::symlink_metadata(site.join(&top)).is_err() || owned_by_old.contains(&top) {
+            continue;
+        }
+        if others.contains(&top) {
             return Err(invalid(format!(
                 "{} would replace {top}, which another package installed, so it wasn't installed.",
                 package.name
             )));
         }
+        // No package lists it: what a removed package left behind (the
+        // files it saved itself). It moves aside like an old version, and
+        // its files are copied into the new one.
+        owned_by_old.insert(top);
     }
 
     // Unpack beside, then move into place.
@@ -644,17 +667,23 @@ fn remove_package(site: &Path, dist_info: &str) -> Result<(), PackageError> {
     // What other packages list is theirs, whatever this RECORD claims.
     let others = other_tops(site, dist_info);
     let mut folders: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut failed: Vec<String> = Vec::new();
     // Only plain relative paths inside site-packages.
     for path in record_entries(site, dist_info) {
         if path
             .split('/')
             .next()
-            .is_some_and(|top| others.contains(top))
+            .is_some_and(|top| others.contains(top) || top == dist_info)
         {
+            // Its own .dist-info goes last, as a whole.
             continue;
         }
         let full = site.join(&path);
-        let _ = fs::remove_file(&full);
+        if let Err(err) = fs::remove_file(&full) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                failed.push(format!("{path}: {err}"));
+            }
+        }
         let mut parent = full.parent();
         while let Some(dir) = parent {
             if dir == site {
@@ -682,6 +711,14 @@ fn remove_package(site: &Path, dist_info: &str) -> Result<(), PackageError> {
     folders.sort_by_key(|f| std::cmp::Reverse(f.components().count()));
     for folder in folders {
         let _ = fs::remove_dir(folder);
+    }
+    // Its RECORD stays while any file is left, so it is still listed and
+    // Remove can be tried again.
+    if let Some(first) = failed.first() {
+        return Err(invalid(format!(
+            "{} of its files couldn't be removed ({first}), so it is still installed. Try again.",
+            failed.len()
+        )));
     }
     let info = site.join(dist_info);
     if info.exists() {

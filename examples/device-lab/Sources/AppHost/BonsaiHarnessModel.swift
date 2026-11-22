@@ -40,6 +40,8 @@ public final class BonsaiHarnessModel {
     @ObservationIgnored private let harness: BonsaiHarness?
     @ObservationIgnored private let workspace: Workspace?
     @ObservationIgnored private let activity: PythonActivity
+    /// A watch is running for a task that outlived its screen.
+    @ObservationIgnored private var isWatching = false
     @ObservationIgnored private var models: [String: LlamaCppModel] = [:]
     /// The project's images when the task started, to tell what it made.
     @ObservationIgnored private var imagesBefore: [String: ProjectArtifact]?
@@ -91,6 +93,25 @@ public final class BonsaiHarnessModel {
             wasRunning = isRunning
             // Faster while Bonsai writes, so the text streams smoothly.
             try? await Task.sleep(for: .milliseconds(snapshot?.phase == .thinking ? 100 : 250))
+        }
+        // The screen closed while Bonsai still works: keep watching, more
+        // slowly, so Python Lab's project opens again when the task ends.
+        if activity.bonsaiProject != nil { watchUntilDone() }
+    }
+
+    private func watchUntilDone() {
+        guard !isWatching else { return }
+        isWatching = true
+        Task { [weak self] in
+            while true {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self else { return }
+                self.refresh()
+                if self.activity.bonsaiProject == nil {
+                    self.isWatching = false
+                    return
+                }
+            }
         }
     }
 
@@ -151,6 +172,8 @@ public final class BonsaiHarnessModel {
             self.error = "\(error)"
         }
         refresh()
+        // The last task's "before" was another project's files.
+        imagesBefore = nil
         made = []
         loadFiles()
     }
