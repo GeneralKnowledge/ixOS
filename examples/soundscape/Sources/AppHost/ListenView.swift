@@ -36,6 +36,46 @@ enum ListenRoute: Hashable {
     case artists
 }
 
+extension ListenRoute {
+    /// What the screen is, whichever way it was reached: an album opened
+    /// from Search and from its artist is the same surface. A stack goes
+    /// back to an open surface instead of opening it again
+    /// (`LayeredPath.settle`). Nil for a screen that is new each time.
+    var surfaceID: String? {
+        switch self {
+        case .artist(let artist): "artist:\(artist.id)"
+        case .album(let album): "album:\(album.id)"
+        case .track(let id): "track:\(id)"
+        case .takes(let slug): "takes:\(slug)"
+        case .favourites: "favourites"
+        case .playlists: "playlists"
+        case .playlist(let id): "playlist:\(id)"
+        case .recent: "recent"
+        case .downloads: "downloads"
+        case .toPick: "toPick"
+        case .discover: "discover"
+        // A new search is a new screen.
+        case .discoverSearch: nil
+        case .archiveItem(let item): "archive:\(item.identifier)"
+        case .jamendoGenres: "jamendoGenres"
+        case .jamendoGenre(let genre): "jamendoGenre:\(genre.tag)"
+        case .jamendoMore(let trackId, let by): "jamendoMore:\(trackId):\(by)"
+        case .songs: "songs"
+        case .albums: "albums"
+        case .artists: "artists"
+        }
+    }
+
+    /// Things (an artist, an album, a playlist) stack: they grow out of the
+    /// tile they were opened from. Lists and areas are ordinary pushes.
+    var style: SurfaceStyle {
+        switch self {
+        case .artist, .album, .playlist, .archiveItem: .stacked
+        default: .fullScreen
+        }
+    }
+}
+
 /// Soundscape's four tabs (docs/design.md).
 enum SoundscapeTab: String, Hashable {
     case listen, library, discover, search
@@ -58,6 +98,8 @@ struct ListenView: View {
     @State private var discoverPath: [ListenRoute] = []
     @State private var searchPath: [ListenRoute] = []
     @Namespace private var playerZoom
+    /// Where stacked surfaces grow from (`SurfaceSource`).
+    @Namespace private var surfaces
 
     init(core: SoundscapeCore, host: ForgeHost<SoundscapeCore>) {
         let model = ListenModel(core: core)
@@ -159,11 +201,19 @@ struct ListenView: View {
     /// One tab's stack: its first screen, every screen it can push, and
     /// (before iOS 26) the mini-player floating above the tab bar.
     private func stack<Root: View>(_ path: Binding<[ListenRoute]>, @ViewBuilder root: () -> Root) -> some View {
-        NavigationStack(path: path) {
+        // Layered Navigation: whatever pushes (a link, Now Playing's Go to
+        // Artist), a surface already open is gone back to, not copied.
+        let settled = Binding(
+            get: { path.wrappedValue },
+            set: { path.wrappedValue = LayeredPath.settle($0, identity: \.surfaceID) }
+        )
+        return NavigationStack(path: settled) {
             root().navigationDestination(for: ListenRoute.self) { route in
                 ListenDestination(model: model, player: player, route: route)
+                    .modifier(SurfaceTransition(route: route))
             }
         }
+        .environment(\.surfaceNamespace, surfaces)
         // Undo for what was just removed, above the tab bar.
         .soundscapeBanner(model: model, player: player)
         .modifier(MiniPlayerBar {
@@ -179,11 +229,14 @@ struct ListenView: View {
     /// song): close the player and push it on the tab being looked at.
     private func go(_ route: ListenRoute) {
         showingNowPlaying = false
+        func push(_ path: inout [ListenRoute]) {
+            path = LayeredPath.settle(path + [route], identity: \.surfaceID)
+        }
         switch tab {
-        case .listen: listenPath.append(route)
-        case .library: libraryPath.append(route)
-        case .discover: discoverPath.append(route)
-        case .search: searchPath.append(route)
+        case .listen: push(&listenPath)
+        case .library: push(&libraryPath)
+        case .discover: push(&discoverPath)
+        case .search: push(&searchPath)
         }
     }
 }

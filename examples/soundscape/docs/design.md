@@ -211,6 +211,45 @@ Small touches that make Soundscape feel like a finished player, with no change t
 - **Download signs** on album tiles and rows and Listen's song tiles, as song rows already had: downloaded,
   on its way, or failed (an album shows the worst of its songs).
 
+## Layered Navigation (Reuben, 2026-11-22 22:01)
+
+A design principle for all of Soundscape, set before more queue UI: **navigation adds context; it doesn't
+bury the person under screens.** Soundscape is connected, layered spaces, not a succession of unrelated
+screens. It is built from SwiftUI's own stack, sheets and transitions, not a custom navigation framework.
+
+**Three treatments.** Every destination declares one (`ListenRoute.style`):
+
+| Treatment | Where | How it looks |
+|---|---|---|
+| Full screen | Areas and lists: the tabs, Albums, Songs, Playlists, Discover, settings | An ordinary push |
+| Stacked | Things: an artist, an album, a playlist, an Archive item | Grows out of the tile or row it came from (zoom transition); pulling it back shows the surface underneath, which never moved |
+| Overlay | Up Next, Add to Playlist; later filters and quick track details | Floats over the surface that opened it, translucent so that surface shows through; Up Next half raised leaves Now Playing visible and usable |
+| Persistent | Now Playing and the mini-player | Always there, above every tab |
+
+**The rules.** Each surface has an identity that doesn't depend on how it was reached
+(`ListenRoute.surfaceID`: `artist:<id>`, `album:<id>`, `playlist:<id>` and so on), and every tab's stack
+applies one rule to its path (`LayeredPath.settle`, tested on Linux):
+
+1. Opening a surface that is already in the stack goes back to that one; nothing is copied. Artist, then
+   one of its albums, then the artist again: the artist page comes back as it was left.
+2. Opening a new surface stacks it on top.
+3. Going back reveals the surface underneath with its scroll position and state (Show All, for example),
+   because it was never closed.
+4. Closing an overlay returns to the surface that opened it.
+5. Opening the same thing again and again never makes a chain of copies.
+
+The rule sits on the stack's path, so it holds however a push happens: a link, a song menu's Go to Artist,
+or Now Playing's Go to Album. A screen that is new each time (a Discover search) has no identity and
+always stacks.
+
+**Depth, on purpose.** Translucency is a depth cue, used for overlays only, never the content itself.
+Overlays share a corner radius (`SoundscapeSurface.overlayRadius`) and a thin material. With Reduce
+Transparency they are solid; with Reduce Motion stacked surfaces use the ordinary push. Back buttons,
+Done and Close stay for every gesture, so no gesture is the only way to navigate.
+
+**Next.** Quick track details as an overlay from a playlist or album (today they push), and filters as a
+small floating overlay when Library gets them.
+
 ## Album and artist pages (S4)
 
 - **Album:** the artwork large, over a wash of its own colours that fades into the page; the artist (to go
@@ -252,6 +291,7 @@ and light and dark mode.
 | S1 | This spec; accent; `ArtworkPalette`; `SoundscapeMotion`; artwork sizes | In this PR |
 | S2 | Four tabs; Listen home; Library tab with Songs, Albums (grid) and Artists screens; Search tab; mini-player accessory | In this PR |
 | S3 | Immersive Now Playing; queue sheet; lyrics in place; scrubber; volume and AirPlay | In this PR |
+| L1 | Layered Navigation (above): surface identity, reuse an open surface, stacked zoom, translucent overlays | In this PR |
 | S3.5 | Everyday Polish (above): Save as Playlist, one song menu, mini-player heart, Undo, saved stations, recent searches, download signs | In this PR |
 | S4 | Library: album and artist pages (below) | In this PR |
 | S5 | Discover: an editorial page before a search (below) | In this PR |
@@ -279,3 +319,7 @@ and light and dark mode.
    shows Top This Week and the shelves; Start a Station from a genre tile.
 10. S6: with VoiceOver on, two-finger double tap pauses and plays; Now Playing closes with the scrub; at
     the largest accessibility size, Listen's card and Discover's top card stack their words.
+11. Layered Navigation: open an artist, one of its albums, then the album's artist link: you are back on
+    the first artist page, scrolled where you left it, with one Back to go. Albums grow out of their tiles
+    and pull back into them. Up Next half raised shows the player behind it; with Reduce Transparency on it
+    is solid.

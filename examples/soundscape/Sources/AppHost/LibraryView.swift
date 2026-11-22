@@ -426,6 +426,7 @@ struct AlbumRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Artwork(title: album.title, url: album.artworkUrl, size: 56)
+                .surfaceSource(.album(album))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(album.title).font(.headline).lineLimit(1)
@@ -452,6 +453,7 @@ struct ArtistRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Artwork(title: artist.name, url: artist.artworkUrl, size: 48, circle: true)
+                .surfaceSource(.artist(artist))
             VStack(alignment: .leading, spacing: 2) {
                 Text(artist.name).font(.headline).lineLimit(1)
                 Text(TakeFormat.artistSummary(artist))

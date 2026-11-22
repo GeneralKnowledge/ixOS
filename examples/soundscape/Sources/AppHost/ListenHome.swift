@@ -88,6 +88,7 @@ struct ListenHome: View {
                         }
                         .frame(width: SoundscapeMetrics.shelfArtwork, alignment: .leading)
                         .accessibilityElement(children: .combine)
+                        .surfaceSource(.playlist(list.id))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("listen.playlist")
@@ -97,6 +98,7 @@ struct ListenHome: View {
                     NavigationLink(value: ListenRoute.album(album)) {
                         ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: album)))
+                            .surfaceSource(.album(album))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("listen.album")
