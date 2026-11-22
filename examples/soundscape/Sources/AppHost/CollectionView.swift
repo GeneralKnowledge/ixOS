@@ -500,6 +500,74 @@ struct RecentlyPlayedView: View {
         return date.formatted(.relative(presentation: .named))
     }
 }
+
+/// Songs that look like one song reaching the library from several sources
+/// (the take server, your files, Jamendo, the Internet Archive). Merging
+/// makes one song with every source's recordings; Keep Apart stops the
+/// offer. Nothing merges by itself.
+struct DuplicatesView: View {
+    let model: ListenModel
+    let player: TakePlayer
+
+    @State private var details: String?
+
+    var body: some View {
+        let groups = model.duplicates
+        List {
+            ForEach(groups, id: \.self) { group in
+                Section {
+                    ForEach(Array(group.tracks.enumerated()), id: \.element.id) { index, track in
+                        TrackRow(model: model, player: player, track: track,
+                                 showDetails: { details = track.id }) {
+                            player.play(model.queue(group.tracks), from: index)
+                        }
+                    }
+                    if let keep = group.tracks.first {
+                        Button {
+                            Task { _ = await model.merge(group.tracks.dropFirst().map(\.id), into: keep.id) }
+                        } label: {
+                            Label("Merge into One Song", systemImage: "square.on.square")
+                        }
+                        .accessibilityIdentifier("duplicates.merge")
+                    }
+                    Button {
+                        Task { await model.keepApart(group.tracks.map(\.id)) }
+                    } label: {
+                        Label("Keep Apart", systemImage: "square.split.2x1")
+                    }
+                    .accessibilityIdentifier("duplicates.keepApart")
+                } header: {
+                    Text(group.tracks.first?.title ?? "")
+                } footer: {
+                    Text(Self.why(group))
+                }
+            }
+        }
+        .navigationTitle("Same Song")
+        .navigationDestination(item: $details) { id in
+            TrackView(model: model, player: player, id: id)
+        }
+        .overlay {
+            if groups.isEmpty {
+                ForgeStateView.empty(
+                    "Nothing to Merge", systemImage: "checkmark.circle",
+                    description: "No songs in your library look like the same song from different places."
+                )
+            }
+        }
+        .forgeFeedback(model.feedback)
+    }
+
+    static func why(_ group: DuplicateSongs) -> String {
+        let keep = group.tracks.first.map { "\(TrackView.sourceName($0))\u{2019}s details are kept" } ?? ""
+        switch group.reason {
+        case .sameRecording:
+            return "Linked to the same MusicBrainz recording. \(keep); every recording stays, and your own file plays when there is one."
+        case .sameDetails:
+            return "Same title, artist and length. \(keep); every recording stays, and your own file plays when there is one."
+        }
+    }
+}
 #endif
 
 #if os(iOS)

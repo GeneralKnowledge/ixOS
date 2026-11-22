@@ -164,11 +164,17 @@ one step:
    again: the recipient leaves a fresh receipt and acknowledges it, so
    only one is ever kept and the server deletes the copy.
 
-**Built so far (step 3, part 2).** Messages and notes go through the
-mailbox; files still wait for a direct route, and a file waiting for one
-still holds back the items queued after it for that device. An item left
-in the mailbox no longer holds up the items after it, so a device that
-stays away gets the whole queue there (up to the first file). Only
+**Built so far (step 3, part 2).** Messages, notes, files and folders go
+through the mailbox. A file or folder goes as all its blobs in one sealed
+item, up to 50 MB together for now (sealing holds it in memory a few
+times; streaming would let it reach the server's 100 MB). The receiver
+stores each blob by its own BLAKE3 hash and saves only the content the
+item names, so a blob that isn't what it claims is never saved; then it
+is in the received folder and the conversation as a direct delivery
+would leave it. Anything bigger waits for a direct route and still holds
+back the items queued after it for that device. An item left in the
+mailbox no longer holds up the items after it, so a device that stays
+away gets the whole queue there (up to the first file over 50 MB). Only
 Hybrid uses the mailbox. Relay tries it directly again whenever the device
 is seen, connects, or Relay comes to the foreground; the mailbox copy is
 then dropped on collection as a duplicate. A message left in the mailbox

@@ -48,6 +48,10 @@ struct LibraryTab: View {
                     category("To Pick", systemImage: "checkmark.circle.badge.questionmark", route: .toPick,
                              count: toPick, identifier: "library.toPick")
                 }
+                if !model.duplicates.isEmpty {
+                    category("Same Song, Several Sources", systemImage: "square.on.square", route: .duplicates,
+                             count: model.duplicates.count, identifier: "library.duplicates")
+                }
             }
             let recent = Array(library.albums.sorted { $0.updatedMs > $1.updatedMs }.prefix(12))
             if !recent.isEmpty {

@@ -34,6 +34,8 @@ enum ListenRoute: Hashable {
     case songs
     case albums
     case artists
+    /// Songs that look like one song from several sources.
+    case duplicates
 }
 
 extension ListenRoute {
@@ -63,6 +65,7 @@ extension ListenRoute {
         case .songs: "songs"
         case .albums: "albums"
         case .artists: "artists"
+        case .duplicates: "duplicates"
         }
     }
 
@@ -274,6 +277,7 @@ struct ListenDestination: View {
         case .songs: SongsView(model: model, player: player)
         case .albums: AlbumsView(model: model)
         case .artists: ArtistsView(model: model)
+        case .duplicates: DuplicatesView(model: model, player: player)
         }
     }
 }
