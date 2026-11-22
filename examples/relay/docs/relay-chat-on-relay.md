@@ -82,11 +82,21 @@ but on Relay's model:
 - The chat server listens on iroh only by default. `--http` keeps the old
   API for tests, `curl` and the frozen Android example, bound to
   localhost unless asked otherwise.
-- **Moving an existing account.** The app signs in over HTTP one last time
-  with its token, registers its endpoint key with the account, and then
-  deletes the token. Your rooms, messages and read state stay. With the
-  server gone or unreachable, the old conversations stay readable on the
-  phone, from its own SQLite copy, marked as read-only.
+- **Moving an existing account.** The order matters, because moving
+  needs the old HTTP path once:
+  1. Upgrade the server, and keep running it with `--http` on the
+     address the phone already uses (for the laptop,
+     `--http 0.0.0.0:8787`).
+  2. The new app signs in over HTTP one last time with its token,
+     registers its endpoint key with the account, and deletes the token.
+     Your rooms, messages and read state stay, on the server.
+  3. `chat-server accounts` on the server lists any account still on a
+     token. Once none are left, restart it without `--http`.
+- **If the server is lost.** The phone keeps its own SQLite copy of each
+  room, which holds only the latest 500 messages per conversation (the
+  store's cap). Those stay readable, marked as read-only; anything older
+  was only on the server. `chat-server export` writes the full history
+  out, so a server you're retiring can be kept as a file.
 
 ## How N3 and N4 are built together
 

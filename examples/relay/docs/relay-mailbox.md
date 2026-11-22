@@ -98,19 +98,35 @@ SealedItem {
 
 | Rule | Value (recommended) |
 |---|---|
-| Kept for | 7 days, then deleted unread; the sender's outbox notices and goes back to waiting for a direct route |
+| Kept for | 7 days, then deleted unread. The sender's outbox keeps the item and leaves it again or waits for a direct route (see Sending) |
 | One item | Up to 100 MB. Bigger files wait for a direct route, as today |
-| Per recipient | 1 GB held at once. A full mailbox refuses new items, and the sender keeps them |
-| Per sender | 200 items an hour, so one key can't fill everyone's mailbox |
+| Per recipient | 1 GB held at once, shared out per deposit pass (below), so one sender can use at most a quarter of it. A full mailbox refuses new items, and the sender keeps them |
+| Per deposit pass | 200 items an hour, and at most 256 MB held at once |
 | Duplicates | The same (`from`, `id`) is stored once |
 | Deleting | Only when the recipient acknowledges the item, or when it expires |
 | Storage | SQLite for the index, one file per sealed item, nothing else |
 
-Anyone with an iroh key can leave an item, but quotas bound what they
-cost. The recipient opens only what a trusted device signed, and drops
-the rest. The alternative is for each device to register its trusted
-senders with the server, but that would hand the server the whole trust
-graph. The design above shows it only the pairs that actually send.
+### Who may leave items: deposit passes
+
+Only devices the recipient trusts can leave anything. Otherwise anyone
+with an iroh key could fill a closed device's mailbox and crowd out the
+devices that matter.
+
+- For each device it trusts, the recipient makes a random 32-byte
+  **deposit pass** and sends it to that device in their Hello, over the
+  connection that is already encrypted. It registers only the pass's
+  SHA-256 with the mailbox.
+- A deposit must carry a registered pass, or the server refuses it. The
+  quotas above apply per pass, so one trusted device, even a misbehaving
+  one, can't use up the whole mailbox.
+- Revoking a device deregisters its pass at once, and forgetting a device
+  does the same. A device that rotates its mailbox key rotates its passes
+  too.
+- The server never learns the trust graph in advance: a pass is just a
+  hash until someone uses it. It learns which pairs actually send, as the
+  relay does.
+- The recipient still opens only what a trusted device signed, and drops
+  the rest. The pass is about storage; the signature is about identity.
 
 ### Sending
 
@@ -125,6 +141,11 @@ one step:
 3. The item stays in the outbox until the recipient confirms it, either
    when it next connects directly or with a receipt it leaves in the
    sender's own mailbox. Then it is Sent or Done, as today.
+   - If the item expires in the mailbox before it is collected, the
+     sender leaves it again, up to the outbox's 30 days. An item with no
+     confirmation after 30 days ends **Not confirmed**, not "Not
+     delivered": the sender can't tell a lost item from a lost receipt,
+     and the label says only what it knows.
 4. A direct route that comes back first still delivers. The recipient's
    45-day memory of ids means the copy in the mailbox is then dropped
    unopened, and only one is ever kept.
@@ -136,10 +157,17 @@ one step:
   now: push needs APNs, which needs a paid Apple team.
 - **Laptop (`relay listen`):** every 30 seconds, and straight away after a
   network change.
-- For each item: open it, check the signer is trusted, save it through
-  the same path as a direct delivery (exactly once by id), acknowledge it
-  (the server deletes it), and leave a small sealed receipt for the
-  sender.
+- For each item, in this order:
+  1. open it and check the signer is trusted;
+  2. save it through the same path as a direct delivery (exactly once by
+     id);
+  3. leave a small sealed receipt in the sender's mailbox;
+  4. only then acknowledge it, so the server deletes it.
+
+  The receipt always goes before the item is deleted. If the recipient
+  stops between any two steps, the item is still there next time; its id
+  is in the 45-day memory, so it isn't saved again, and the receipt is
+  left again (the server stores one per id) before the acknowledgement.
 - A revoked sender's items are dropped and acknowledged without being
   saved. A device that has been revoked no longer has the recipient's
   current mailbox key once that key rotates on revoke, so it can't seal
@@ -190,8 +218,9 @@ Each step is a PR, Linux-tested before the phone sees it.
 
 These go ahead as recommended unless he says otherwise:
 
-1. **Who may leave items:** anyone, with quotas (recommended), rather than
-   registering trusted senders with the server.
+1. **Who may leave items:** only trusted devices, through deposit passes
+   (above). Each pass has its own quota, so no one sender can fill a
+   mailbox.
 2. **How long items are kept:** 7 days.
 3. **Biggest item through the mailbox:** 100 MB, so photos and short
    videos fit and larger files still go direct.

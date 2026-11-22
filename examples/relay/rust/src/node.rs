@@ -193,12 +193,19 @@ impl Node {
     /// is swapped, and the lookup server is published to (and asked) or
     /// not. Nothing waits for the next time Relay opens.
     pub async fn use_servers(&self, next: RelayServers) {
-        let before = std::mem::replace(&mut *forge_runtime::lock(&self.servers), next.clone());
-        if before != next {
-            *forge_runtime::lock(&self.servers_since) = std::time::Instant::now();
-            self.relay_down
-                .store(false, std::sync::atomic::Ordering::Relaxed);
-        }
+        // The swap and the reset under one lock, the one `relay_health`
+        // holds while it reads: a read either finishes before (and its
+        // latch is cleared here) or sees the new servers.
+        let before = {
+            let mut servers = forge_runtime::lock(&self.servers);
+            let before = std::mem::replace(&mut *servers, next.clone());
+            if before != next {
+                *forge_runtime::lock(&self.servers_since) = std::time::Instant::now();
+                self.relay_down
+                    .store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+            before
+        };
         if before.relay() != next.relay() {
             if let Some(url) = before.relay() {
                 self.endpoint.remove_relay(&url).await;
@@ -241,12 +248,21 @@ impl Node {
     pub fn relay_health(&self) -> crate::resolver::ServerHealth {
         use crate::resolver::ServerHealth;
         use iroh::Watcher;
-        if forge_runtime::lock(&self.servers).relay().is_none() {
+        // Held through the latch (servers, then servers_since): see
+        // `use_servers`.
+        let servers = forge_runtime::lock(&self.servers);
+        let Some(url) = servers.relay() else {
             return ServerHealth::Off;
-        }
+        };
+        // Only the relay in use now: a relay just replaced can still be
+        // listed with its last error.
         let statuses = self.endpoint.home_relay_status().get();
-        let connected = statuses.iter().any(|s| s.is_connected());
-        let failed = statuses.iter().any(|s| s.last_error().is_some());
+        let current = statuses.iter().filter(|s| *s.url() == url);
+        let (mut connected, mut failed) = (false, false);
+        for status in current {
+            connected |= status.is_connected();
+            failed |= status.last_error().is_some();
+        }
         let settling = forge_runtime::lock(&self.servers_since).elapsed() < RELAY_GRACE;
         health_from(connected, failed, settling, &self.relay_down)
     }
