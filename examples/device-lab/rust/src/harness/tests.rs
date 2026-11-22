@@ -793,6 +793,7 @@ fn the_history_shrinks_to_fit_the_budget_oldest_first() {
         "Task",
         &[Criterion::WorkRuns],
         "",
+        "",
         &history,
         100_000,
     );
@@ -805,11 +806,20 @@ fn the_history_shrinks_to_fit_the_budget_oldest_first() {
         "Task",
         &[Criterion::WorkRuns],
         "",
+        "",
         &history[..14],
         100_000,
     );
     assert_eq!(&full[..earlier.len()], &earlier[..]);
-    let tight = prompt::messages(system, "Task", &[Criterion::WorkRuns], "", &history, 1_000);
+    let tight = prompt::messages(
+        system,
+        "Task",
+        &[Criterion::WorkRuns],
+        "",
+        "",
+        &history,
+        1_000,
+    );
     let total: usize = tight
         .iter()
         .map(|m| m.content.chars().count() / 3 + 4)
@@ -819,7 +829,15 @@ fn the_history_shrinks_to_fit_the_budget_oldest_first() {
     assert!(tight.last().unwrap().content.contains("detail detail"));
     assert!(tight[1].content.contains("earlier steps are left out"));
     // In between, older calls and results are shortened before any step goes.
-    let middle = prompt::messages(system, "Task", &[Criterion::WorkRuns], "", &history, 1_400);
+    let middle = prompt::messages(
+        system,
+        "Task",
+        &[Criterion::WorkRuns],
+        "",
+        "",
+        &history,
+        1_400,
+    );
     assert_eq!(middle.len(), 2 + 16);
     assert!(middle[2].content.contains("…(") && middle[2].content.contains("characters)"));
     assert!(middle[3].content.contains("(rest left out)"));
@@ -1816,4 +1834,153 @@ fn a_task_that_keeps_failing_ends_the_plan_after_two_recoveries() {
     );
     assert_eq!(plan.tasks[0].recoveries, 2);
     assert!(plan.can_continue);
+}
+
+// MARK: Context (H6)
+
+#[test]
+fn read_symbol_shows_one_definition_with_its_line_numbers() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    std::fs::write(
+        dir.path().join("m.py"),
+        "import math\n\n\ndef area(r):\n    return math.pi * r ** 2\n\n\nclass Box:\n    @property\n    def size(self):\n        return 1\n",
+    )
+    .unwrap();
+    let read = |name: &str| {
+        lab.execute(&call(&format!(
+            r#"{{"tool": "read_symbol", "path": "m.py", "name": "{name}"}}"#
+        )))
+    };
+    let out = read("area");
+    assert!(out.ok, "{}", out.text);
+    assert_eq!(
+        out.text,
+        "m.py, lines 4 to 5:\n  4| def area(r):\n  5|     return math.pi * r ** 2"
+    );
+    // A method, with its decorator, by its own name or as Class.method.
+    let out = read("size");
+    assert!(
+        out.ok
+            && out
+                .text
+                .starts_with("m.py, lines 9 to 11:\n  9|     @property"),
+        "{}",
+        out.text
+    );
+    assert_eq!(read("Box.size").text, out.text);
+    let out = read("volume");
+    assert!(
+        !out.ok && out.text.contains("It has: Box, Box.size, area."),
+        "{}",
+        out.text
+    );
+    std::fs::write(dir.path().join("bad.py"), "def broken(:\n").unwrap();
+    let out = lab.execute(&call(
+        r#"{"tool": "read_symbol", "path": "bad.py", "name": "broken"}"#,
+    ));
+    assert!(
+        !out.ok
+            && out
+                .text
+                .starts_with("Python can't read the definitions in bad.py"),
+        "{}",
+        out.text
+    );
+}
+
+#[test]
+fn earlier_work_is_one_line_per_finished_task_or_plan() {
+    let task = |id: &str, description: &str, plan: Option<&str>| Entry::Task {
+        task: id.into(),
+        description: description.into(),
+        criteria: vec![],
+        model: "m".into(),
+        at_ms: 1,
+        plan: plan.map(str::to_string),
+        plan_task: plan.map(|_| "x".to_string()),
+    };
+    let status = |id: &str, status: TaskStatus, reason: &str| Entry::Status {
+        task: id.into(),
+        status,
+        reason: Some(reason.into()),
+        at_ms: 2,
+    };
+    let entries = vec![
+        task("task-1", "Write hello.py", None),
+        status(
+            "task-1",
+            TaskStatus::Completed,
+            "Verified: hello.py printed Hello.",
+        ),
+        Entry::PlanRequest {
+            plan: "plan-1".into(),
+            request: "Grades and a report".into(),
+            criteria: vec![],
+            model: "m".into(),
+            at_ms: 3,
+        },
+        task("task-2", "letter", Some("plan-1")),
+        status("task-2", TaskStatus::Completed, "Verified."),
+        Entry::PlanStatus {
+            plan: "plan-1".into(),
+            status: PlanState::Failed,
+            reason: Some("Task tests: stuck.".into()),
+            at_ms: 4,
+        },
+        task("task-3", "Now add a chart", None),
+        status("task-3", TaskStatus::Running, ""),
+    ];
+    let earlier = prompt::earlier_work(&entries, &["task-3"]);
+    assert_eq!(
+        earlier,
+        "- Write hello.py (completed: Verified: hello.py printed Hello.)\n- Grades and a report (failed: Task tests: stuck.)"
+    );
+    // The task running now is never its own earlier work.
+    assert_eq!(prompt::earlier_work(&entries[..2], &["task-1"]), "");
+}
+
+#[test]
+fn a_second_request_is_told_the_earlier_work() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    let brain = scripted(
+        &evidence::script("t11-second-request")
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+    );
+    h.start(
+        Arc::clone(&brain) as Arc<dyn Brain>,
+        task("t11-second-request"),
+    )
+    .unwrap();
+    let snapshot = wait(&h);
+    assert_eq!(
+        snapshot.task.unwrap().status,
+        TaskStatus::Completed,
+        "{:?}",
+        snapshot.steps
+    );
+    let first = &brain.0.requests()[0];
+    let task_message = &first.messages[1].content;
+    assert!(
+        task_message
+            .contains("Earlier work in this project:\n- Write shapes.py with rectangle_area"),
+        "{task_message}"
+    );
+    assert!(snapshot.steps[0]
+        .result
+        .contains("def circle_area(radius):"));
+    assert!(!snapshot.steps[0].result.contains("rectangle_area"));
 }

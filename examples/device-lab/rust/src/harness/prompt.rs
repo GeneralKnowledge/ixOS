@@ -140,6 +140,7 @@ pub fn messages(
     request: &str,
     criteria: &[Criterion],
     overview: &str,
+    earlier: &str,
     history: &[Entry],
     budget: usize,
 ) -> Vec<ChatMessage> {
@@ -148,8 +149,11 @@ pub fn messages(
         .map(Criterion::describe)
         .collect::<Vec<_>>()
         .join("; ");
-    let task =
+    let mut task =
         format!("Task: {request}\nDone when: {done_when}.\n\nProject files now:\n{overview}");
+    if !earlier.is_empty() {
+        task += &format!("\n\nEarlier work in this project:\n{earlier}");
+    }
     let turns = turns(history);
     let fixed = tokens(system) + tokens(&task);
     let keep_full = 2;
@@ -436,4 +440,81 @@ pub fn plan_transcript(project: &str, entries: &[Entry]) -> String {
         text += &transcript(project, &task).replacen("# Bonsai Harness:", "## Task", 1);
     }
     text
+}
+
+/// The most earlier tasks and plans the model is told about.
+pub const EARLIER_MAX: usize = 6;
+
+/// The project's earlier work, from its journal (H6): one line per task or
+/// plan that ended before the one running now (`current`, a task or plan
+/// id, and the plan it belongs to), newest last. Tasks of a plan are
+/// covered by the plan's line. Empty when there is none.
+pub fn earlier_work(entries: &[Entry], current: &[&str]) -> String {
+    use super::plan::PlanState;
+    let mut described: std::collections::HashMap<&str, &str> = Default::default();
+    let mut lines: Vec<(String, String)> = Vec::new();
+    for entry in entries {
+        let ended = match entry {
+            Entry::Task {
+                task,
+                description,
+                plan: None,
+                ..
+            } => {
+                described.insert(task, description);
+                None
+            }
+            Entry::PlanRequest { plan, request, .. } => {
+                described.insert(plan, request);
+                None
+            }
+            Entry::Status {
+                task,
+                status,
+                reason,
+                ..
+            } if status.is_final() => Some((task, format!("{status:?}"), reason)),
+            Entry::PlanStatus {
+                plan,
+                status,
+                reason,
+                ..
+            } if status.is_final() && *status != PlanState::Discarded => {
+                Some((plan, format!("{status:?}"), reason))
+            }
+            _ => None,
+        };
+        let Some((id, status, reason)) = ended else {
+            continue;
+        };
+        if current.contains(&id.as_str()) {
+            continue;
+        }
+        let Some(description) = described.get(id.as_str()) else {
+            continue;
+        };
+        // cut: earlier work, one short line each in the model's prompt
+        let description: String = description.chars().take(160).collect();
+        // cut: the evidence or reason, shortened the same way
+        let reason: String = reason.as_deref().unwrap_or("").chars().take(120).collect();
+        lines.retain(|(seen, _)| seen != id);
+        lines.push((
+            id.clone(),
+            format!(
+                "- {description} ({}{})",
+                status.to_lowercase(),
+                if reason.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {reason}")
+                }
+            ),
+        ));
+    }
+    let start = lines.len().saturating_sub(EARLIER_MAX);
+    lines[start..]
+        .iter()
+        .map(|(_, line)| line.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }

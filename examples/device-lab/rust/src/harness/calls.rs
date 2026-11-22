@@ -179,6 +179,7 @@ pub fn example(tool: &ToolSpec) -> String {
             (_, _, ArgKind::Path) => "name.py",
             (_, "summary", _) => "what you did",
             (_, "reason", _) => "what is missing or not allowed",
+            (_, "name", _) => "function_name",
             (_, "old", _) => "    return a - b\\n",
             (_, "new", _) => "    return a + b\\n",
             _ => "…",

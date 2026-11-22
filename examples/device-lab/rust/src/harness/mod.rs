@@ -1259,6 +1259,7 @@ impl Run {
             .plan_view(plan)
             .map(|v| v.done_ids())
             .unwrap_or_default();
+        let earlier = prompt::earlier_work(&lock(&self.shared.state).entries, &[plan]);
         let mut refused: Vec<(String, String)> = Vec::new();
         loop {
             if refused.len() as u32 >= self.limits.invalid_in_a_row {
@@ -1267,7 +1268,7 @@ impl Run {
                     format!("{} plans in a row couldn't be used.", refused.len()),
                 ));
             }
-            let messages = plan::messages(request, &overview, progress, &refused);
+            let messages = plan::messages(request, &overview, &earlier, progress, &refused);
             let (text, model_ms) = self.ask(messages, &grammar)?;
             match plan::parse(&text, &done) {
                 Ok((thought, tasks)) => {
@@ -1523,6 +1524,22 @@ impl Run {
         let grammar = calls::grammar(&tools);
         let system = prompt::instructions(&tools);
         let overview = self.environment.overview();
+        let earlier = {
+            let state = lock(&self.shared.state);
+            let plan = state.entries.iter().find_map(|e| match e {
+                Entry::Task {
+                    task: id,
+                    plan: Some(plan),
+                    ..
+                } if id == task => Some(plan.clone()),
+                _ => None,
+            });
+            let mut current = vec![task];
+            if let Some(plan) = plan.as_deref() {
+                current.push(plan);
+            }
+            prompt::earlier_work(&state.entries, &current)
+        };
         let context = self.brain.describe().context_tokens;
         let limits = &self.limits;
         let mut invalid_streak = 0;
@@ -1557,8 +1574,9 @@ impl Run {
             self.phase(HarnessPhase::Thinking);
             let history = self.task_entries(task);
             let budget = prompt::budget(context, limits.turn_tokens, shrink);
-            let messages =
-                prompt::messages(&system, request, criteria, &overview, &history, budget);
+            let messages = prompt::messages(
+                &system, request, criteria, &overview, &earlier, &history, budget,
+            );
             let request_ = ChatRequest {
                 model: None,
                 messages,

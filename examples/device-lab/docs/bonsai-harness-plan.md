@@ -210,9 +210,16 @@ What was built, tested on Linux against python3; Swift not compiled yet, nothing
 - **Ladder:** T8 (seeded `report.py` imports a `stats` module no one wrote; the executor gives up, Recovery replans as "write stats.py and its test, then run the report") and T9 (download the weather from wttr.in: the network is off, so it must end Blocked with a question, not loop; answered "use a sample", it finishes). Both have Scripted answers.
 - **Phone check (next combined build):** Scripted T8 and T9 (answer T9's question on screen); then both on the 4B and 9B, recording what Recovery mode decides.
 
-### H6: context management
+### H6: context management (first part built 2026-11-22)
 
 A persistent project summary the harness keeps up to date from the journal; file excerpts retrieved by name and symbol (through the project map) instead of whole files; measuring 8,192 tokens of context if memory allows (the KV cache sits next to Python and the 9B). Interruption tested hard: iOS ending the app mid-step, low-memory warnings unloading the model. Ladder: T10 kill the app mid-plan, reopen, resume; T11 a second request on an earlier project ("now add…").
+
+What was built, tested on Linux against python3; Swift unchanged:
+
+- **Earlier work from the journal.** The project summary is derived from the journal rather than kept in a second file that could drift from it: each executor task and each plan is told "Earlier work in this project", one line per task or plan that ended before it (newest last, at most six, with its status and evidence or reason). A task inside a plan is covered by the plan's line. A second request on the scratch project now knows what the first one made.
+- **`read_symbol(path, name)`**, a new tool: one function or class (or `Class.method`, or a method by its own name when only one fits), decorators included, with line numbers, found by Python's own `ast`. The model reads one definition instead of a whole file; a name that isn't there lists the ones that are.
+- **Ladder:** T11 seeds T4's finished project with the journal of the task that made it, and asks to add `square_area` and print a 4 by 4 square while keeping the rest; done when `main.py` prints 16, 15 and 12.57. Scripted T11 reads `circle_area` with `read_symbol`, then edits.
+- **Still to do on the phone:** 8,192 tokens of context if memory allows (measured with the 9B loaded and Python running); T10 (end the app mid-plan from the app switcher, reopen, Resume from Last Verified Task; the resume logic is tested on Linux by H4's tests); a low-memory warning unloading the model.
 
 ### H7: a small multi-file project in Python Lab
 

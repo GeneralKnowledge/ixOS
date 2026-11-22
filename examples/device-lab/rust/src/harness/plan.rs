@@ -275,10 +275,14 @@ fn plan_rules() -> String {
 pub fn messages(
     request: &str,
     overview: &str,
+    earlier: &str,
     progress: Option<&str>,
     refused: &[(String, String)],
 ) -> Vec<ChatMessage> {
     let mut user = format!("Request: {request}\n\nProject files now:\n{overview}");
+    if !earlier.is_empty() {
+        user += &format!("\n\nEarlier work in this project:\n{earlier}");
+    }
     if let Some(progress) = progress {
         user += &format!(
             "\n\n{progress}\nWrite a new plan for what is left. Don't repeat the tasks done (their \

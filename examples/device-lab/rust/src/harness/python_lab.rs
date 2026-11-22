@@ -92,6 +92,9 @@ impl PythonLab {
         fs::create_dir_all(&self.root)?;
         for file in seed {
             let path = self.root.join(file.path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
             fs::write(path, file.content)?;
         }
         Ok(())
@@ -199,6 +202,73 @@ impl PythonLab {
             )),
             Err(err) => ToolOutcome::failed(format!("Could not read {path}: {err}")),
         }
+    }
+
+    /// `read_symbol`: one definition, found by Python's own `ast` (H6), so
+    /// the model reads a function instead of a whole file.
+    fn read_symbol(&self, path: &str, name: &str) -> ToolOutcome {
+        let full = match self.full(path) {
+            Ok(full) => full,
+            Err(err) => return ToolOutcome::failed(err),
+        };
+        let Ok(text) = fs::read_to_string(&full) else {
+            return ToolOutcome::failed(format!(
+                "{path} does not exist. Use list_files to see the files."
+            ));
+        };
+        if !path.ends_with(".py") {
+            return ToolOutcome::failed(format!(
+                "read_symbol reads Python files; use read_file for {path}."
+            ));
+        }
+        let script = SYMBOLS_SCRIPT.replace("__FILE__", &py_str(&full.display().to_string()));
+        let (outcome, _) = self.run_script(script);
+        let output = self.clean(&outcome.output);
+        let symbols: Option<BTreeMap<String, (usize, usize)>> = output
+            .lines()
+            .find_map(|line| line.strip_prefix(SYMBOLS_MARK))
+            .and_then(|json| serde_json::from_str(json).ok());
+        let Some(symbols) = symbols.filter(|_| outcome.ok) else {
+            return ToolOutcome::failed(format!(
+                "Python can't read the definitions in {path}: {}",
+                output.trim().lines().last().unwrap_or("it didn't parse")
+            ));
+        };
+        let name = name.trim();
+        // A method may be asked for without its class, when only one fits.
+        let found = symbols.get(name).copied().or_else(|| {
+            let matches: Vec<(usize, usize)> = symbols
+                .iter()
+                .filter(|(key, _)| key.rsplit('.').next() == Some(name) && key.contains('.'))
+                .map(|(_, range)| *range)
+                .collect();
+            match matches[..] {
+                [one] => Some(one),
+                _ => None,
+            }
+        });
+        let Some((start, end)) = found else {
+            let known: Vec<&str> = symbols.keys().map(String::as_str).collect();
+            return ToolOutcome::failed(if known.is_empty() {
+                format!("{path} defines no functions or classes. Use read_file.")
+            } else {
+                format!(
+                    "{path} has no function or class {name:?}. It has: {}.",
+                    known.join(", ")
+                )
+            });
+        };
+        let lines: Vec<String> = text
+            .lines()
+            .enumerate()
+            .skip(start.saturating_sub(1))
+            .take(end + 1 - start.max(1))
+            .map(|(i, line)| format!("{:>3}| {line}", i + 1))
+            .collect();
+        ToolOutcome::ok(format!(
+            "{path}, lines {start} to {end}:\n{}",
+            lines.join("\n")
+        ))
     }
 
     fn write(&self, path: &str, content: &str) -> ToolOutcome {
@@ -476,6 +546,11 @@ impl Environment for PythonLab {
                 "a file, with line numbers",
             ),
             ToolSpec::new(
+                "read_symbol",
+                &[("path", ArgKind::Path), ("name", ArgKind::Text)],
+                "one function or class of a Python file (or Class.method), with line numbers: less to read than the whole file",
+            ),
+            ToolSpec::new(
                 "write_file",
                 &[("path", ArgKind::Path), ("content", ArgKind::Text)],
                 "create or replace a file; always send the whole file",
@@ -537,6 +612,7 @@ impl Environment for PythonLab {
         match call.tool.as_str() {
             "list_files" => self.list(),
             "read_file" => self.read(call.arg("path")),
+            "read_symbol" => self.read_symbol(call.arg("path"), call.arg("name")),
             "write_file" => self.write(call.arg("path"), call.arg("content")),
             "edit_file" => self.edit(call.arg("path"), call.arg("old"), call.arg("new")),
             "run_python" => self.run_python(call.arg("path")),
@@ -810,6 +886,32 @@ fn syntax_script(path: &Path) -> String {
 const MAP_MAX_CHARS: usize = 1_500;
 
 /// Prints one line per file: `path (bytes)` and its definitions.
+/// What starts the line `SYMBOLS_SCRIPT` prints its JSON on.
+const SYMBOLS_MARK: &str = "__harness_symbols__";
+
+/// Each top-level function and class of a file, and each method as
+/// Class.method, with its first line (decorators included) and last line.
+const SYMBOLS_SCRIPT: &str = r#"
+import ast, json
+def _harness_symbols(full):
+    with open(full, encoding='utf-8') as f:
+        tree = ast.parse(f.read())
+    defs = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    def span(node):
+        return [min([d.lineno for d in node.decorator_list] + [node.lineno]), node.end_lineno]
+    out = {}
+    for node in tree.body:
+        if isinstance(node, defs):
+            out[node.name] = span(node)
+            if isinstance(node, ast.ClassDef):
+                for inner in node.body:
+                    if isinstance(inner, defs):
+                        out[node.name + '.' + inner.name] = span(inner)
+    print('__harness_symbols__' + json.dumps(out))
+_harness_symbols(__FILE__)
+del _harness_symbols
+"#;
+
 const MAP_SCRIPT: &str = r#"
 import ast
 def _harness_map(files):

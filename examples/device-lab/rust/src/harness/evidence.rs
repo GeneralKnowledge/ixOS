@@ -407,6 +407,15 @@ pub struct LadderTask {
     pub ends_blocked: bool,
 }
 
+/// T4's finished project, T11's seed.
+const SHAPES_PY: &str = "import math\n\n\ndef rectangle_area(width, height):\n    return width * height\n\n\ndef circle_area(radius):\n    return math.pi * radius ** 2\n";
+
+const SHAPES_MAIN_PY: &str = "import shapes\n\nprint(\"Rectangle:\", round(shapes.rectangle_area(3, 5), 2))\nprint(\"Circle:\", round(shapes.circle_area(2), 2))\n";
+
+/// T11's seed journal: the earlier task that made the project, so the
+/// harness can tell the model what was done before.
+const SHAPES_JOURNAL: &str = "{\"event\":\"task\",\"task\":\"task-1\",\"description\":\"Write shapes.py with rectangle_area(width, height) and circle_area(radius), and main.py that prints the area of a 3 by 5 rectangle and of a circle of radius 2.\",\"criteria\":[],\"model\":\"earlier\",\"at_ms\":1}\n{\"event\":\"status\",\"task\":\"task-1\",\"status\":\"completed\",\"reason\":\"Verified: main.py printed 15; main.py printed 12.57.\",\"at_ms\":2}\n";
+
 /// T8's seed: it needs a module nobody has written.
 const STATS_REPORT_PY: &str =
     "from stats import mean\n\nnumbers = [2, 4, 6]\nprint(\"Average:\", mean(numbers))\n";
@@ -418,7 +427,8 @@ const TEST_AVERAGE_PY: &str = "import unittest\n\nfrom average import average\n\
 const INVENTORY_PY: &str = "stock = {\"apples\": 3, \"pears\": 0, \"plums\": 5}\n\n\ndef report(stock):\n    lines = []\n    for name, count in stock.items():\n        lines.append(name + \": \" + count)\n    return lines\n\n\nfor line in report(stock):\n    print(line)\n";
 
 /// The ladder (docs/bonsai-harness-plan.md): T1 to T3 are H1's, T4 and
-/// T5 are H2's, T6 and T7 (planned) are H4's, T8 and T9 are H5's.
+/// T5 are H2's, T6 and T7 (planned) are H4's, T8 and T9 are H5's, T11 is
+/// H6's (T10, killing the app mid-plan, is a phone step).
 pub fn ladder() -> Vec<LadderTask> {
     vec![
         LadderTask {
@@ -595,6 +605,42 @@ pub fn ladder() -> Vec<LadderTask> {
             planned: true,
             ends_blocked: true,
         },
+        LadderTask {
+            id: "t11-second-request",
+            title: "T11 A second request on an earlier project",
+            request: "Now add square_area(side) to shapes.py, and make main.py also print the area of a \
+                      4 by 4 square. Keep what main.py prints already.",
+            seed: vec![
+                SeedFile {
+                    path: "shapes.py",
+                    content: SHAPES_PY,
+                },
+                SeedFile {
+                    path: "main.py",
+                    content: SHAPES_MAIN_PY,
+                },
+                SeedFile {
+                    path: ".harness/journal.jsonl",
+                    content: SHAPES_JOURNAL,
+                },
+            ],
+            criteria: vec![
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "16".into(),
+                },
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "15".into(),
+                },
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "12.57".into(),
+                },
+            ],
+            planned: false,
+            ends_blocked: false,
+        },
     ]
 }
 
@@ -695,10 +741,7 @@ pub fn script(task_id: &str) -> Vec<String> {
                 "write_file",
                 &[
                     ("path", "shapes.py"),
-                    (
-                        "content",
-                        "import math\n\n\ndef rectangle_area(width, height):\n    return width * height\n\n\ndef circle_area(radius):\n    return math.pi * radius ** 2\n",
-                    ),
+                    ("content", SHAPES_PY),
                 ],
             ),
             answer(
@@ -706,10 +749,7 @@ pub fn script(task_id: &str) -> Vec<String> {
                 "write_file",
                 &[
                     ("path", "main.py"),
-                    (
-                        "content",
-                        "import shapes\n\nprint(\"Rectangle:\", round(shapes.rectangle_area(3, 5), 2))\nprint(\"Circle:\", round(shapes.circle_area(2), 2))\n",
-                    ),
+                    ("content", SHAPES_MAIN_PY),
                 ],
             ),
             answer("Run it.", "run_python", &[("path", "main.py")]),
@@ -826,6 +866,40 @@ pub fn script(task_id: &str) -> Vec<String> {
             ),
             answer("Run it.", "run_python", &[("path", "report.py")]),
             finish("report.py prints every student."),
+        ],
+        // Reads one function instead of the file, then adds beside it.
+        "t11-second-request" => vec![
+            answer(
+                "See how the areas are written.",
+                "read_symbol",
+                &[("path", "shapes.py"), ("name", "circle_area")],
+            ),
+            answer(
+                "Add square_area after circle_area.",
+                "edit_file",
+                &[
+                    ("path", "shapes.py"),
+                    ("old", "    return math.pi * radius ** 2\n"),
+                    (
+                        "new",
+                        "    return math.pi * radius ** 2\n\n\ndef square_area(side):\n    return side * side\n",
+                    ),
+                ],
+            ),
+            answer(
+                "Print the square too.",
+                "edit_file",
+                &[
+                    ("path", "main.py"),
+                    ("old", "print(\"Circle:\", round(shapes.circle_area(2), 2))\n"),
+                    (
+                        "new",
+                        "print(\"Circle:\", round(shapes.circle_area(2), 2))\nprint(\"Square:\", shapes.square_area(4))\n",
+                    ),
+                ],
+            ),
+            answer("Run it.", "run_python", &[("path", "main.py")]),
+            finish("main.py prints all three areas."),
         ],
         // The plan misses a module; the executor gives up, Recovery replans.
         "t8-replan" => vec![
