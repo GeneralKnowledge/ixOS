@@ -106,7 +106,12 @@ struct SendCodeSheet: View {
             .onChange(of: model.returns) { network.readvertiseCode(model.codeAdvert) }
             .onDisappear {
                 network.stopWatchingCodeSenders()
-                if !model.isSendingCode { network.advertiseCode(nil) }
+                // A finished send no longer needs its copies, and the next
+                // sheet starts with none of its own to release.
+                if !model.isSendingCode {
+                    network.advertiseCode(nil)
+                    releaseOutgoing()
+                }
             }
             .forgeSwipeGuard(model.isSendingCode)
         }
@@ -236,6 +241,8 @@ struct SendCodeSheet: View {
                 return
             }
             releaseOutgoing()
+            // Also any an earlier sheet left behind: this send replaces it.
+            PickedPhoto.releaseAll(except: kept)
             outgoingPhotos = kept
             model.send(paths: kept.map(\.url.path), staged: pick)
         }
@@ -284,6 +291,16 @@ struct PickedPhoto: Transferable {
     /// Deletes this kept photo and the folder made for it.
     func release() {
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+
+    /// Deletes every kept photo but these.
+    static func releaseAll(except kept: [PickedPhoto]) {
+        let keep = Set(kept.map { $0.url.deletingLastPathComponent().standardizedFileURL.path })
+        let folders = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil)) ?? []
+        for folder in folders where !keep.contains(folder.standardizedFileURL.path) {
+            try? FileManager.default.removeItem(at: folder)
+        }
     }
 }
 
