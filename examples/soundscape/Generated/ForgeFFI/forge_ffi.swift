@@ -2470,7 +2470,9 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func searchLibrary(query: String)  -> LibrarySearch
     
     /**
-     * Brings a merged song back as a song of its own, as it was. Returns
+     * Brings a merged song back as a song of its own, with its own
+     * recordings. Favourites, playlist entries, history and offline
+     * choices moved at the merge stay with the kept song. Returns
      * the library.
      */
     func separateSong(id: String) async throws  -> Library
@@ -3602,7 +3604,9 @@ open func searchLibrary(query: String) -> LibrarySearch  {
 }
     
     /**
-     * Brings a merged song back as a song of its own, as it was. Returns
+     * Brings a merged song back as a song of its own, with its own
+     * recordings. Favourites, playlist entries, history and offline
+     * choices moved at the merge stay with the kept song. Returns
      * the library.
      */
 open func separateSong(id: String)async throws  -> Library  {
@@ -11693,7 +11697,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_search_library() != 65130) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_separate_song() != 12838) {
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_separate_song() != 18698) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_artwork() != 31551) {
