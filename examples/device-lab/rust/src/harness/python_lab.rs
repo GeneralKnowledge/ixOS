@@ -251,6 +251,9 @@ impl PythonLab {
                 "read_symbol reads Python files; use read_file for {path}."
             ));
         }
+        // The lookup reads these bytes, so they count as read: a later
+        // change on disk is refused until Bonsai reads the file again.
+        self.remember(path, text.as_bytes());
         // Python parses the text read above, so its line numbers fit the
         // lines shown.
         let script = SYMBOLS_SCRIPT.replace("__SOURCE__", &py_str(&text));
@@ -777,14 +780,32 @@ impl Environment for PythonLab {
                 format!("there is no checkpoint {name}"),
             ));
         }
-        // Read the whole checkpoint before touching the project, so one
-        // that can't be read leaves the files as they are.
+        // Copy the whole checkpoint aside first, one file at a time, so one
+        // that can't be read leaves the files as they are, and a large
+        // project is never held in memory at once.
         let mut listed = Vec::new();
         list_files(&source, &source, &mut listed)?;
-        let staged: Vec<(String, Vec<u8>)> = listed
-            .into_iter()
-            .map(|path| fs::read(source.join(&path)).map(|bytes| (path, bytes)))
-            .collect::<std::io::Result<_>>()?;
+        let staging = self.root.join(".harness/restore.partial");
+        if staging.exists() {
+            fs::remove_dir_all(&staging)?;
+        }
+        let mut sums = BTreeMap::new();
+        let staged = (|| {
+            for path in &listed {
+                let bytes = fs::read(source.join(path))?;
+                let to = staging.join(path);
+                if let Some(parent) = to.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(to, &bytes)?;
+                sums.insert(path.clone(), digest_bytes(&bytes));
+            }
+            Ok(())
+        })();
+        if let Err(err) = staged {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(err);
+        }
         // The files a checkpoint keeps go (never hidden ones, such as the
         // harness's records, at any depth), then the checkpoint's come back.
         let mut live = Vec::new();
@@ -793,12 +814,29 @@ impl Environment for PythonLab {
             fs::remove_file(self.root.join(&path))?;
         }
         prune_empty(&self.root, true)?;
-        for (path, bytes) in staged {
-            let to = self.root.join(&path);
+        for path in &listed {
+            let to = self.root.join(path);
             if let Some(parent) = to.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::write(to, bytes)?;
+            fs::rename(staging.join(path), to)?;
+        }
+        let _ = fs::remove_dir_all(&staging);
+        // Bonsai put these bytes back itself, so they are what it knows of
+        // each file: the digests come from the copied bytes, never from a
+        // later look at the disk. A known file the checkpoint lacks is gone.
+        let mut seen = lock_seen(&self.seen);
+        let known: Vec<String> = seen.keys().cloned().collect();
+        for path in known {
+            let key = path.trim_start_matches("./");
+            match sums.get(key) {
+                Some(sum) => {
+                    seen.insert(path, sum.clone());
+                }
+                None => {
+                    seen.remove(&path);
+                }
+            }
         }
         Ok(())
     }
@@ -1021,8 +1059,6 @@ fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String
         .filter(|&i| have[i..i + want.len()] == want[..])
         .collect();
     let [at] = found[..] else { return None };
-    // Tab-indented code is only re-indented when the edit uses tabs too:
-    // mixing tabs and spaces makes Python refuse the file.
     // Indents are runs of ASCII spaces and tabs, so every cut below falls on
     // a character boundary. Depths compare in columns (a tab to the next
     // multiple of 8, as Python counts), and the file's own indent (tabs
@@ -1055,31 +1091,40 @@ fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String
         .unwrap_or("");
     let prefix = &first_file[..indent(first_file)];
     let old_width = column(&first_old[..indent(first_old)]);
-    let shifted = new.lines().map(|line| {
-        let own = &line[..indent(line)];
-        let rest = &line[own.len()..];
-        if rest.is_empty() {
-            return String::new();
-        }
-        if column(own) >= old_width {
-            // As deep as the first old line or deeper: the file's indent,
-            // then whatever this line has beyond the old line's depth.
-            let skip = (0..=own.len())
-                .find(|&n| column(&own[..n]) >= old_width)
-                .unwrap_or(own.len());
-            format!("{prefix}{}{rest}", &own[skip..])
-        } else {
-            // Shallower: that many columns less of the file's indent.
-            let want = column(prefix).saturating_sub(old_width - column(own));
-            let keep = (0..=prefix.len())
-                .rev()
-                .find(|&n| column(&prefix[..n]) <= want)
-                .unwrap_or(0);
-            format!("{}{rest}", &prefix[..keep])
-        }
-    });
+    let shifted: Option<Vec<String>> = new
+        .lines()
+        .map(|line| {
+            let own = &line[..indent(line)];
+            let rest = &line[own.len()..];
+            if rest.is_empty() {
+                return Some(String::new());
+            }
+            if column(own) >= old_width {
+                // As deep as the first old line or deeper: the file's indent,
+                // then whatever this line has beyond the old line's depth.
+                let skip = (0..=own.len())
+                    .find(|&n| column(&own[..n]) >= old_width)
+                    .unwrap_or(own.len());
+                let deeper = &own[skip..];
+                // A tab after a file indent that stops between tab stops lands
+                // on the next stop, not the columns the edit asked for: no guess.
+                if deeper.contains('\t') && column(prefix) % 8 != 0 {
+                    return None;
+                }
+                Some(format!("{prefix}{deeper}{rest}"))
+            } else {
+                // Shallower: that many columns less of the file's indent.
+                let want = column(prefix).saturating_sub(old_width - column(own));
+                let keep = (0..=prefix.len())
+                    .rev()
+                    .find(|&n| column(&prefix[..n]) <= want)
+                    .unwrap_or(0);
+                Some(format!("{}{rest}", &prefix[..keep]))
+            }
+        })
+        .collect();
     let mut out: Vec<String> = lines[..at].iter().map(|l| l.to_string()).collect();
-    out.extend(shifted);
+    out.extend(shifted?);
     out.extend(lines[at + want.len()..].iter().map(|l| l.to_string()));
     let mut joined = out.join("\n");
     if text.ends_with('\n') {

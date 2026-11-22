@@ -2938,3 +2938,186 @@ fn a_debug_session_forgets_the_last_ones_breakpoints() {
     assert_eq!(pauses(&out).len(), 1, "{out}");
     assert_eq!(out.matches("3\n").count(), 2, "{out}");
 }
+
+// MARK: Review fixes after the Python Lab merge
+
+fn plan_entries() -> (Vec<Entry>, Vec<String>) {
+    let tasks = plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+        .unwrap()
+        .1;
+    let ids = tasks.iter().map(|t| t.id.clone()).collect();
+    let entries = vec![
+        Entry::PlanRequest {
+            plan: "plan-1".into(),
+            request: "Grades.".into(),
+            criteria: vec![],
+            model: "m".into(),
+            at_ms: 1,
+        },
+        Entry::Plan {
+            plan: "plan-1".into(),
+            thought: "t".into(),
+            tasks,
+            model_ms: 1,
+        },
+        Entry::PlanStatus {
+            plan: "plan-1".into(),
+            status: PlanState::Running,
+            reason: None,
+            at_ms: 2,
+        },
+    ];
+    (entries, ids)
+}
+
+fn ran(entries: &mut Vec<Entry>, plan_task: &str, status: TaskStatus) {
+    let task = format!("run-{plan_task}-{}", entries.len());
+    entries.push(Entry::Task {
+        task: task.clone(),
+        description: "d".into(),
+        criteria: vec![],
+        model: "m".into(),
+        at_ms: 3,
+        plan: Some("plan-1".into()),
+        plan_task: Some(plan_task.into()),
+    });
+    entries.push(Entry::Status {
+        task,
+        status,
+        reason: Some("the check failed".into()),
+        at_ms: 4,
+    });
+}
+
+#[test]
+fn a_plan_that_failed_its_final_check_is_not_offered_resume() {
+    let (mut entries, ids) = plan_entries();
+    for id in &ids {
+        ran(&mut entries, id, TaskStatus::Completed);
+    }
+    entries.push(Entry::PlanStatus {
+        plan: "plan-1".into(),
+        status: PlanState::Failed,
+        reason: Some("The request's checks failed.".into()),
+        at_ms: 5,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert!(view.next().is_none());
+    assert!(!view.can_continue());
+    // A plan that failed with a task still to do can go on.
+    let (mut entries, ids) = plan_entries();
+    ran(&mut entries, &ids[0], TaskStatus::Failed);
+    entries.push(Entry::PlanStatus {
+        plan: "plan-1".into(),
+        status: PlanState::Failed,
+        reason: Some("Task failed.".into()),
+        at_ms: 5,
+    });
+    assert!(plan::PlanView::read(&entries).unwrap().can_continue());
+}
+
+#[test]
+fn a_replan_whose_tasks_were_never_written_stays_pending() {
+    let (mut entries, ids) = plan_entries();
+    ran(&mut entries, &ids[0], TaskStatus::Failed);
+    entries.push(Entry::Recovery {
+        plan: "plan-1".into(),
+        plan_task: ids[0].clone(),
+        thought: "t".into(),
+        decision: plan::Decision::Replan {
+            diagnosis: "The data needs cleaning first.".into(),
+        },
+        model_ms: 1,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert_eq!(
+        view.replan,
+        Some((ids[0].clone(), "The data needs cleaning first.".into()))
+    );
+    // The new tasks end it.
+    let tasks = plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+        .unwrap()
+        .1;
+    entries.push(Entry::Plan {
+        plan: "plan-1".into(),
+        thought: "again".into(),
+        tasks,
+        model_ms: 1,
+    });
+    assert_eq!(plan::PlanView::read(&entries).unwrap().replan, None);
+}
+
+#[test]
+fn restoring_a_checkpoint_resets_what_bonsai_knows_of_each_file() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    let write = |path: &str, content: &str| {
+        let args = serde_json::json!({"tool": "write_file", "path": path, "content": content});
+        lab.execute(&call(&args.to_string()))
+    };
+    assert!(write("notes.txt", "one\n").ok);
+    lab.checkpoint("p0").unwrap();
+    assert!(write("notes.txt", "two\n").ok);
+    assert!(write("extra.txt", "x\n").ok);
+    lab.restore("p0").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("notes.txt")).unwrap(),
+        "one\n"
+    );
+    assert!(!dir.path().join("extra.txt").exists());
+    assert!(!dir.path().join(".harness/restore.partial").exists());
+    // Bonsai put the file back itself, so it may edit it without a reread.
+    let args =
+        serde_json::json!({"tool": "edit_file", "path": "notes.txt", "old": "one", "new": "three"});
+    let out = lab.execute(&call(&args.to_string()));
+    assert!(out.ok, "{}", out.text);
+}
+
+#[test]
+fn read_symbol_counts_as_reading_the_file() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    std::fs::write(dir.path().join("main.py"), "def f():\n    return 1\n").unwrap();
+    let read = serde_json::json!({"tool": "read_symbol", "path": "main.py", "name": "f"});
+    assert!(lab.execute(&call(&read.to_string())).ok);
+    // The person saves another version: Bonsai must read it again.
+    std::fs::write(dir.path().join("main.py"), "def f():\n    return 2\n").unwrap();
+    let write = serde_json::json!({"tool": "write_file", "path": "main.py", "content": "x = 1\n"});
+    let out = lab.execute(&call(&write.to_string()));
+    assert!(!out.ok, "{}", out.text);
+}
+
+#[test]
+fn a_forgiving_edit_refuses_a_tab_after_an_indent_between_tab_stops() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    let text = "if x:\n\t  value = 'a'\n";
+    std::fs::write(dir.path().join("t.py"), text).unwrap();
+    let outcome = edit(&lab, "t.py", "\tvalue = 'a'", "\tif y:\n\t\tvalue = 'b'");
+    assert!(!outcome.ok, "{}", outcome.text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("t.py")).unwrap(),
+        text
+    );
+}

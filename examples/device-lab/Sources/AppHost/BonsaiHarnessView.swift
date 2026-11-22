@@ -64,9 +64,15 @@ struct BonsaiHarnessView: View {
                         draft: snapshot.task == nil ? snapshot.draft : "",
                         running: snapshot.running,
                         answer: $model.planAnswer,
-                        approve: model.continuePlan,
+                        approve: {
+                            handOff(snapshot.project ?? model.project)
+                            model.continuePlan()
+                        },
                         discard: model.discardPlan,
-                        send: model.answerPlan
+                        send: {
+                            handOff(snapshot.project ?? model.project)
+                            model.answerPlan()
+                        }
                     )
                 }
                 if let snapshot = model.snapshot, let task = snapshot.task {
@@ -159,17 +165,15 @@ struct BonsaiHarnessView: View {
                 .lineLimit(2...5)
                 .accessibilityIdentifier("harness.request")
             Button("Run My Task", systemImage: "play.fill") {
-                // Python Lab's last second of typing is saved before Bonsai
-                // reads the project. A save that fails shows in Python Lab and
-                // the task still starts; the unsaved text stays on screen
-                // there and isn't written over Bonsai's work until edited again.
-                pythonLab?.flush()
-                pythonLab?.bonsaiStarting(in: model.project)
+                handOff(model.project)
                 model.runRequest()
             }
                 .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.runRequest")
-            Button("Plan My Task", systemImage: "list.number") { model.runPlan() }
+            Button("Plan My Task", systemImage: "list.number") {
+                handOff(model.project)
+                model.runPlan()
+            }
                 .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.planRequest")
             Toggle("Show Plans Before They Run", isOn: $model.approvePlans)
@@ -291,6 +295,16 @@ struct BonsaiHarnessView: View {
             Text("Project \(snapshot.project ?? "")")
         }
         .onAppear { model.loadFiles() }
+    }
+
+    /// Python Lab's last second of typing is saved before Bonsai reads or
+    /// restores `project`, for every start, approval, Resume and answer. A
+    /// save that fails shows in Python Lab and the work still starts; the
+    /// unsaved text stays on screen there and isn't written over Bonsai's
+    /// work until edited again.
+    private func handOff(_ project: String) {
+        pythonLab?.flush()
+        pythonLab?.bonsaiStarting(in: project)
     }
 
     private func phase(_ phase: HarnessPhase) -> String {

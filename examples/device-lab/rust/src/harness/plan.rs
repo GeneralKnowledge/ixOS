@@ -488,6 +488,9 @@ pub struct PlanView {
     pub recoveries: BTreeMap<String, u32>,
     /// The task Recovery mode blocked on, and its question.
     pub blocked: Option<(String, String)>,
+    /// A replan Recovery mode chose whose new tasks aren't written yet
+    /// (the app closed between the two): the task and the diagnosis.
+    pub replan: Option<(String, String)>,
     /// Whether it ever ran (its checkpoint was taken): a plan that didn't
     /// starts afresh, with no files to put back.
     pub started: bool,
@@ -522,6 +525,7 @@ impl PlanView {
             notes: BTreeMap::new(),
             recoveries: BTreeMap::new(),
             blocked: None,
+            replan: None,
             started: false,
             resume_turns: 0,
         };
@@ -552,6 +556,7 @@ impl PlanView {
                         .collect();
                     kept.extend(tasks.iter().cloned());
                     view.tasks = kept;
+                    view.replan = None;
                     view.resume_turns += 1;
                 }
                 Entry::PlanInvalid { .. } | Entry::RecoveryInvalid { .. } => view.resume_turns += 1,
@@ -578,7 +583,9 @@ impl PlanView {
                                 task.criteria = criteria.clone();
                             }
                         }
-                        Decision::Replan { .. } => {}
+                        Decision::Replan { diagnosis } => {
+                            view.replan = Some((plan_task.clone(), diagnosis.clone()));
+                        }
                         Decision::Blocked { question } => {
                             view.blocked = Some((plan_task.clone(), question.clone()));
                             // Blocked from the decision itself, so a status
@@ -643,7 +650,13 @@ impl PlanView {
     pub fn can_continue(&self) -> bool {
         // An unanswered question blocks the plan whatever its status says:
         // a failed status write can leave it Failed in memory only.
-        self.blocked.is_none() && (self.state.can_continue() || self.state == PlanState::Blocked)
+        // A plan that failed with every task done failed its final check:
+        // Resume would only run the same checks on the same work, so it
+        // ends there.
+        let finished = !self.tasks.is_empty() && self.next().is_none();
+        self.blocked.is_none()
+            && (self.state.can_continue() || self.state == PlanState::Blocked)
+            && !(self.state == PlanState::Failed && finished)
     }
 
     fn completed_owned(&self) -> Vec<String> {

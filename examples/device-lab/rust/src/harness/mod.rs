@@ -909,6 +909,9 @@ impl BonsaiHarness {
                 reason: format!("Could not write the journal: {err}"),
             });
         }
+        // The screen shows the answer at once, so a launch that fails
+        // leaves a plan to resume, not a question to answer again.
+        lock(&self.shared.state).entries.push(entry);
         let brain = Self::resume_brain(model, &project, &view);
         let lab = PythonLab::new(
             root,
@@ -1313,6 +1316,21 @@ impl Run {
                         format!("Could not go back to the last verified task: {err}"),
                     ),
                 );
+            }
+        }
+        if let Some((task, diagnosis)) = view.replan.clone() {
+            // The app closed after Recovery mode chose a replan and before
+            // the new tasks were written: write them before any task runs.
+            if let Some(failed) = view.tasks.iter().find(|t| t.id == task) {
+                let reason = view
+                    .runs
+                    .get(&task)
+                    .and_then(|(_, _, reason)| reason.clone())
+                    .unwrap_or_else(|| "it wasn't verified".into());
+                let progress = view.progress(failed, &reason, &diagnosis);
+                if let Err(end) = self.draft(plan, &view.request, Some(&progress)) {
+                    return self.end_plan(plan, end);
+                }
             }
         }
         self.run_plan(plan);
