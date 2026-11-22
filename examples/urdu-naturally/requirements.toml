@@ -39,3 +39,8 @@ id = "UN-6"
 statement = "Conversations are the course: each one lists the words, expressions and patterns it uses, offers to practise them at the end, and what you met comes back in Practise the next day."
 twin = ["UrduModelTests.testAConversationBringsItsWords"]
 device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "UN-7"
+statement = "Free chat: you say anything, in Roman Urdu or English, and the character answers only with lines from the curriculum. Saying one of your lines counts as speaking it; a line you only meant or picked from the help comes back the next day; what you type is never saved. The phone's model only picks which of your lines you meant, by number, and never writes Urdu."
+twin = ["UrduModelTests.testAFreeChatAnswersWhatYouSay"]

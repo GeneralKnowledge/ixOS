@@ -417,3 +417,87 @@ fn what_came_up_in_a_conversation_comes_back_the_next_day() {
     let summary = saved.home(DAY, 0).scenarios;
     assert!(summary.iter().all(|s| s.new_lines == s.your_lines));
 }
+
+/// Free chat: saying one of your lines counts as speaking it; a line you
+/// only meant, or picked from the help, comes back the next day; what you
+/// type is never saved.
+#[test]
+fn a_free_chat_counts_what_you_said() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    assert!(core.chat().is_none());
+    let view = block_on(core.chat_start("ali".into(), 11)).unwrap();
+    assert_eq!(view.character.name, "Ali");
+    assert_eq!(view.lines.len(), 1);
+    assert_eq!(view.lines[0].speaker, TurnSpeaker::Character);
+    let opener = view.lines[0].phrase.as_ref().unwrap().id.clone();
+    assert_eq!(core.saved.get().progress(&opener).times_seen, 1);
+
+    // Say a line that fits, as typed on a phone.
+    let line = view.suggestions[0].clone();
+    let view = block_on(core.chat_say(format!("  {}  ", line.roman.to_lowercase()), None)).unwrap();
+    let yours = &view.lines[1];
+    assert_eq!(yours.heard, Some(ChatHeard::Said));
+    assert_eq!(yours.phrase.as_ref().unwrap().id, line.id);
+    assert!(view.lines.len() >= 3, "Ali answered");
+    assert_eq!(view.lines[2].speaker, TurnSpeaker::Character);
+    let progress = core.saved.get().progress(&line.id);
+    assert!(progress.practised());
+    assert!(progress.skills.speaking > 0);
+
+    // Gibberish with no model: Ali waits, and nothing is recorded.
+    let before = core.saved.get().events.len();
+    let view = block_on(core.chat_say("qwzx".into(), None)).unwrap();
+    let last = view.lines.last().unwrap();
+    assert_eq!(last.heard, Some(ChatHeard::Missed));
+    assert!(last.phrase.is_none());
+    assert_eq!(core.saved.get().events.len(), before);
+
+    // Picking from the help: met, not practised.
+    let pick = view.suggestions[0].id.clone();
+    let view = block_on(core.chat_pick(pick.clone())).unwrap();
+    assert!(view
+        .lines
+        .iter()
+        .any(|l| l.heard == Some(ChatHeard::Picked)));
+    let progress = core.saved.get().progress(&pick);
+    assert!(progress.times_seen > 0 || progress.next_review_ms.is_some());
+
+    // Typed words stay out of the saved file.
+    drop(core);
+    let file = std::fs::read_to_string(dir.path().join(SAVE_FILE)).unwrap();
+    assert!(!file.contains("qwzx"));
+
+    let core = open(&dir);
+    assert!(core.chat().is_none(), "a chat isn't saved");
+    assert!(block_on(core.chat_say("hi".into(), None)).is_err());
+    assert!(block_on(core.chat_start("nobody".into(), 1)).is_err());
+    assert!(
+        block_on(core.chat_pick("chai-piyoge".into())).is_err(),
+        "not your line"
+    );
+}
+
+/// An answer worked out for one chat never lands in the next one.
+#[test]
+fn a_late_answer_never_lands_in_a_new_chat() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    let first = block_on(core.chat_start("ali".into(), 1)).unwrap();
+    let line = first.suggestions[0].id.clone();
+    let serial = lock(&core.chat).as_ref().unwrap().serial;
+    let second = block_on(core.chat_start("khala".into(), 2)).unwrap();
+    let late = block_on(core.chat_answer(
+        Some(serial),
+        Some("typed in Ali's chat".into()),
+        chat::Understood::picked(&line),
+    ))
+    .unwrap();
+    assert_eq!(late, second, "Khala's chat is unchanged");
+    assert!(!core.saved.get().progress(&line).practised());
+    core.chat_end();
+    let third = block_on(core.chat_start("ali".into(), 1)).unwrap();
+    let late =
+        block_on(core.chat_answer(Some(serial), None, chat::Understood::picked(&line))).unwrap();
+    assert_eq!(late, third, "a new chat with the same person is a new chat");
+}

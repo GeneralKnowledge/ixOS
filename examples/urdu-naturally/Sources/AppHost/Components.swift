@@ -5,6 +5,8 @@ import SwiftUI
 /// Where a screen can go. Every tab's stack handles all of them.
 enum Route: Hashable {
     case scenario(String)
+    /// A free chat with a character.
+    case chat(String)
     case topic(String)
     case phrase(String)
     case practice(PracticeSet)
@@ -39,6 +41,7 @@ extension View {
         navigationDestination(for: Route.self) { route in
             switch route {
             case let .scenario(id): ConversationScreen(model: model, scenarioID: id)
+            case let .chat(id): ChatScreen(model: model, characterID: id)
             case let .topic(id): TopicScreen(model: model, topicID: id)
             case let .phrase(id): PhraseScreen(model: model, phraseID: id)
             case let .practice(set): PracticeScreen(model: model, title: set.title, items: set.items)

@@ -1,6 +1,10 @@
 # Content guidelines
 
-The curriculum in `rust/content/` is the source of truth. The app teaches what is in those files and nothing else. A future AI character may add variety to a conversation, but it never adds to the curriculum and never marks anything as correct Urdu.
+The curriculum in `rust/content/` is the source of truth. The app teaches what is in those files and nothing else. In free chat the characters say only lines from these files; the phone's model may say which of the learner's lines they meant, but it never writes Urdu, never adds to the curriculum and never marks anything as correct Urdu.
+
+## Characters and free chat
+
+Each character has a `circle` (friends, family). In free chat a character answers with lines from their own conversations first, then from conversations with someone in the same circle, so Ali can say Omar's lines but never Khala's. A woman never says a line written as a man's (`speaker = "male"`). When you write a conversation, every line of theirs may come up in any chat after any of your lines that leads to it, so keep each of their lines sensible as a reply to the line before it in every conversation it appears in.
 
 ## What we teach
 

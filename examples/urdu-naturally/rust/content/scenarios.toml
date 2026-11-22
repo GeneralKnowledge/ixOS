@@ -4,6 +4,10 @@
 # A scenario's turns name phrases from phrases.toml, so the same phrase met
 # in two conversations is one phrase with one progress record. "them" is the
 # scenario's character; "you" is a line you say out loud.
+#
+# A character's circle (friends, family) is who they talk like: in free chat
+# they answer with lines from their own conversations first, then from
+# conversations with someone in the same circle, never anyone else's.
 
 [[character]]
 id = "ali"
@@ -11,6 +15,7 @@ name = "Ali"
 gender = "male"
 description = "Your friend. Relaxed, funny, says yaar a lot."
 speech_rate = 1.0
+circle = "friends"
 
 [[character]]
 id = "ayesha"
@@ -18,6 +23,7 @@ name = "Ayesha"
 gender = "female"
 description = "Warm and patient, and good at explaining what she means."
 speech_rate = 0.9
+circle = "friends"
 
 [[character]]
 id = "omar"
@@ -25,6 +31,7 @@ name = "Omar"
 gender = "male"
 description = "Talks fast, full of slang, always making plans."
 speech_rate = 1.1
+circle = "friends"
 
 [[character]]
 id = "khala"
@@ -32,6 +39,7 @@ name = "Khala"
 gender = "female"
 description = "Your aunt. Feeds you, asks after everyone, and can't believe how grown up you are."
 speech_rate = 0.85
+circle = "family"
 
 [[scenario]]
 id = "meeting-someone-new"

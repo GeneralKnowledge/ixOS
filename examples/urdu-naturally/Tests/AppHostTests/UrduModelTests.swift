@@ -93,4 +93,26 @@ final class UrduModelTests: XCTestCase {
         XCTAssertTrue(tea.words.contains { $0.id == "nahi-shukriya" })
         XCTAssertGreaterThanOrEqual(model.home.scenarios.count, 14)
     }
+
+    @MainActor
+    func testAFreeChatAnswersWhatYouSay() async throws {
+        let (_, model) = try await open(try makeDirectory())
+        XCTAssertEqual(model.characters().count, 4)
+        let started = await model.chatStart("ali")
+        let opened = try XCTUnwrap(started)
+        // The opener is random: some are one line, some two.
+        XCTAssertFalse(opened.lines.isEmpty)
+        XCTAssertTrue(opened.lines.allSatisfy { $0.speaker == .character })
+        let line = try XCTUnwrap(opened.suggestions.first)
+        // No phone model on Linux: saying one of your lines still works.
+        let said = await model.chatSay(line.roman.lowercased(), model: nil)
+        let chat = try XCTUnwrap(said)
+        let mine = try XCTUnwrap(chat.lines.first { $0.speaker == .you })
+        XCTAssertEqual(mine.heard, .said)
+        XCTAssertEqual(mine.phrase?.id, line.id)
+        XCTAssertGreaterThan(model.phrase(line.id)?.skills.speaking ?? 0, 0)
+        let unheard = await model.chatSay("qwzx", model: nil)
+        let missed = try XCTUnwrap(unheard)
+        XCTAssertEqual(missed.lines.last?.heard, .missed)
+    }
 }

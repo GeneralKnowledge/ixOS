@@ -23,6 +23,11 @@ crate-type = ["staticlib", "lib"]
 forge-app = { path = "../../../crates/forge-app" }
 forge-runtime = { path = "../../../crates/forge-runtime" }
 forge-storage = { path = "../../../crates/forge-storage" }
+# Forge AI: the phone's on-device model, which free chat asks what you
+# meant (src/chat.rs). It never writes the Urdu.
+forge-services = { path = "../../../crates/forge-services", features = ["ai"] }
+# native_services!(ai) implements the host model trait with it.
+async-trait = "0.1"
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 serde = { version = "1.0", features = ["derive"] }
