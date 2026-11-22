@@ -288,7 +288,8 @@ fn check_components(components: &Value, state: &mut GateState) -> Result<(), Ref
 }
 
 /// Only the properties the ForgeUI adapter draws, and only the forms it
-/// draws: a date picker without a time, a choice picker as chips.
+/// draws: a date picker without a time, a choice picker as chips, a
+/// primary or default button.
 fn check_properties(kind: &str, object: &Map<String, Value>) -> Result<(), Refusal> {
     let allowed = properties(kind);
     let unsupported = || {
@@ -307,6 +308,11 @@ fn check_properties(kind: &str, object: &Map<String, Value>) -> Result<(), Refus
     let ok = match kind {
         "DateTimeInput" => object.get("enableDate") == Some(&Value::Bool(true)),
         "ChoicePicker" => is("displayStyle", &Value::from("chips")),
+        // The adapter draws primary and default buttons; a borderless one
+        // would come out tinted, which isn't what was asked for.
+        "Button" => object
+            .get("variant")
+            .is_none_or(|v| v == "primary" || v == "default"),
         _ => true,
     };
     if ok {

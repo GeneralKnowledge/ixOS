@@ -244,6 +244,9 @@ fn gate_refuses_what_the_catalog_cannot_express() {
         (update(json!([{ "id": "bookPriority", "component": "ChoicePicker", "label": "Priority",
             "displayStyle": "checkbox", "options": ["high"], "value": { "@path": "priority" } }])), "unsupported_property"),
         (update(json!([{ "id": "intro", "component": "Text", "text": "x", "weight": 2 }])), "unsupported_property"),
+        (update(json!([{ "id": "review", "component": "Button", "child": "reviewLabel",
+            "variant": "borderless", "action": { "event": { "name": surface::REVIEW_EVENT,
+                "context": surface::review_context() } } }])), "unsupported_property"),
         // A bad component id.
         (update(json!([{ "id": "../x", "component": "Text", "text": "x" }])), "malformed"),
         // Two components with one id.
