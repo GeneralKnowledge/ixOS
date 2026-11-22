@@ -5,8 +5,7 @@ more useful, easier to keep tidy, portable and properly part of iOS. The player 
 product, not a bigger one.
 
 **Out of scope for now:** M14 to M17. That means no EQ expansion, no sync between devices, no recommendation
-engine and no overhaul of how sources are unified. The Apple Music-style redesign (S1 to S6, `docs/design.md`
-in #418) runs alongside in its own thread; these milestones build on its screens rather than adding their own.
+engine and no overhaul of how sources are unified. The Apple Music-style redesign (S1 to S6, [design.md](design.md)) runs alongside in its own thread; these milestones build on its screens rather than adding their own.
 
 ## Principles, for all five milestones
 
@@ -64,6 +63,26 @@ extends the existing model instead of starting a parallel one.
 - Sort order (most played, recently added, recently played, title, artist) and an optional song limit.
 
 **Deliverable:** a smart playlist editor and the four built-in smart playlists.
+
+### M10, as built
+
+- **Rules** (`rust/src/smart.rs`): text rules on title, artist, album and genre (is, is not, contains, does
+  not contain, begins with; capitals and extra spaces don't count, and "genre is" nothing finds songs without
+  one); number rules on plays and length (exactly, at least, at most); date rules on date added and last played
+  (in the last, or not in the last, so many days; a song never played was not played lately); and favourite or
+  not. All or any of up to 20 rules, a sort (title, artist, album, recently added, most played, recently played,
+  least recently played) and an optional limit.
+- **Kept:** `collection.json` gains `smart_playlists` (name and rules only; ids from the same `next_playlist` as
+  manual ones) and `plays` (per song: how many plays, first and last). Plays are counted from the history once
+  for a collection saved before. Clearing the history clears the counts too. A merge adds the merged song's
+  plays to the kept song's.
+- **Date added:** every library song has `added_ms`: an imported file's or catalogue song's time of adding, a
+  take server song's oldest take, the earliest of a merged song's sources.
+- **Built in:** Recently Added (the newest 50), Most Played (the top 25), Never Played, and Forgotten Favourites
+  (favourite songs not played for 60 days). They can't be edited; Make Your Own from These Rules copies them.
+- **Screens** (`SmartPlaylists.swift`): a Smart Playlists section at the top of Playlists, New Smart Playlist
+  under +, a smart playlist's screen with its rules in words and its songs (play counts beside Most Played), and
+  an editor that counts matching songs as you change it. Make Playlist of These Songs keeps a fixed copy.
 
 ## M12 Library Maintenance
 

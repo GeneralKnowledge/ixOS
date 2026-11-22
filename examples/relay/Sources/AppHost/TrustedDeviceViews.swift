@@ -64,8 +64,8 @@ struct RevokedDeviceRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Trust Again") {
-                Task { await model.trustAgain(device) }
+            ForgeButton("Trust Again") {
+                await model.trustAgain(device)
             }
             .buttonStyle(.borderless)
             .accessibilityIdentifier("revoked.trustAgain")

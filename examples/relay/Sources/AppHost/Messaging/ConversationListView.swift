@@ -147,7 +147,7 @@ struct ConversationListView: View {
     @ViewBuilder private func readAction(_ conversation: ChatConversation) -> some View {
         if conversation.showsUnread {
             Button("Mark as Read", systemImage: "envelope.open") {
-                Task { await model.markRead(conversation.id) }
+                model.startMarkingRead(conversation.id)
             }
             .tint(.blue)
         } else {

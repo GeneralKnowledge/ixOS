@@ -6,8 +6,8 @@ import SwiftUI
 
 /// The app's root. ForgeKit's `ForgeRoot` shows a spinner while the Rust
 /// core opens, your music once it has, or a recovery screen if it failed.
-/// Soundscape opens straight on the library, with the player under every
-/// screen (ListenView.swift).
+/// Soundscape opens on its four tabs, with the mini-player above the tab
+/// bar (ListenView.swift, docs/design.md).
 public struct ContentView: View {
     @Bindable private var host: ForgeHost<SoundscapeCore>
 
@@ -23,6 +23,6 @@ public struct ContentView: View {
             Text("Soundscape plays music on an iPhone.")
             #endif
         }
-        .forgeTheme(.standard)
+        .forgeTheme(ForgeTheme(accent: .purple))
     }
 }

@@ -24,6 +24,17 @@ public final class ListenModel {
         case forgetServer
     }
 
+    /// What Undo on the banner takes back.
+    public enum Undo: Equatable, Sendable {
+        /// A song taken out of the queue: its index in the queue's tracks
+        /// and where it was in the play order. The player puts it back.
+        case queue(index: UInt32, position: UInt32)
+        /// A playlist's songs before a removal.
+        case playlistSongs(id: UInt64, trackIds: [String])
+        case deletedPlaylist(UInt64)
+        case removedSong(String)
+    }
+
     /// The take server's address, as Rust saved it. Optional: the library
     /// also holds your own files and catalogue tracks.
     public private(set) var server: String?
@@ -58,6 +69,8 @@ public final class ListenModel {
     /// Why the last refresh failed while the kept library still shows.
     public var refreshProblem: String?
     public var alert: ForgeAlert<Action>?
+    /// "Removed …" with Undo, at the bottom of the tab.
+    public var banner: ForgeBanner<Undo>?
     /// Success after each pick or rating.
     public private(set) var feedback = ForgeFeedback()
 
@@ -163,6 +176,20 @@ public final class ListenModel {
 
     public func search(_ query: String) -> LibrarySearch { core.searchLibrary(query: query) }
 
+    /// Remembers a search for Search's Recent list.
+    public func noteSearch(_ query: String) async {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if let found = try? await core.noteSearch(query: query) { collection = found }
+    }
+
+    public func clearRecentSearches() async {
+        do {
+            collection = try await core.clearRecentSearches()
+        } catch {
+            report(error)
+        }
+    }
+
     // MARK: What was playing
 
     /// Keeps what is playing so the app opens where it was left; `nil`
@@ -253,6 +280,11 @@ public final class ListenModel {
 
     /// The genres to browse Jamendo by, in the order shown.
     public var jamendoGenres: [JamendoGenre] { core.jamendoGenres() }
+    /// Jamendo genres for Discover's shelves, the person's own first.
+    public func discoverGenres(limit: Int = 3) -> [JamendoGenre] {
+        _ = collection
+        return core.discoverGenres(limit: UInt32(limit))
+    }
 
     /// Jamendo tracks in `genre`, this week's most popular first.
     public func jamendoTracks(in genre: JamendoGenre) async -> Result<[CatalogueTrack], ListenFailure> {
@@ -316,6 +348,11 @@ public final class ListenModel {
     }
     public func albums(of artist: LibraryArtist) -> [LibraryAlbum] { core.artistAlbums(artistId: artist.id) }
     public func tracks(of artist: LibraryArtist) -> [LibraryTrack] { core.artistTracks(artistId: artist.id) }
+    /// An artist's top songs: most played, then favourites and likes.
+    public func topTracks(of artist: LibraryArtist, limit: Int = 5) -> [LibraryTrack] {
+        _ = collection
+        return core.artistTopTracks(artistId: artist.id, limit: UInt32(limit))
+    }
     public func tracks(of album: LibraryAlbum) -> [LibraryTrack] { core.albumTracks(albumId: album.id) }
 
     /// A track with its recordings, or `nil` once it has left the library.
@@ -498,6 +535,20 @@ public final class ListenModel {
 
     public func isFavourite(_ id: String) -> Bool { collection.favouriteIds.contains(id) }
 
+    /// The song playing becomes a favourite, or stops being one; a
+    /// catalogue song (a radio find) joins the library first.
+    public func toggleFavourite(queued track: QueueTrack) async {
+        if !isFavourite(track.trackId), !inLibrary(track.trackId) {
+            do {
+                library = try await core.addQueuedToLibrary(tracks: [track])
+            } catch {
+                report(error)
+                return
+            }
+        }
+        await toggleFavourite(track.trackId)
+    }
+
     /// A song, album or artist (by library id) becomes a favourite, or stops being one.
     public func toggleFavourite(_ id: String) async {
         do {
@@ -505,6 +556,75 @@ public final class ListenModel {
             feedback.play(.success)
         } catch {
             report(error)
+        }
+    }
+
+    // MARK: Radio
+
+    /// Stations to offer: the saved ones, then your genres and artists,
+    /// then Jamendo's genres.
+    public var suggestedStations: [Station] {
+        _ = stationRevision
+        return core.suggestedStations()
+    }
+
+    /// Changes when a station is saved or forgotten.
+    public private(set) var stationRevision = 0
+
+    public func isStationSaved(_ seed: StationSeed) -> Bool {
+        _ = stationRevision
+        return core.isStationSaved(seed: seed)
+    }
+
+    /// Saves a station at the front of Hear Nonstop Music, or forgets it.
+    public func toggleStationSaved(_ seed: StationSeed, title: String) async {
+        do {
+            try await core.setStationSaved(seed: seed, title: title, saved: !core.isStationSaved(seed: seed))
+            stationRevision += 1
+            feedback.play(.success)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// How the person feels about a song for the radio, if they said.
+    public func feeling(_ trackId: String) -> Feeling? { core.feeling(trackId: trackId) }
+
+    /// Likes or dislikes a song for the radio; the same again takes it back.
+    public func toggleFeeling(_ trackId: String, _ feeling: Feeling) async {
+        let new: Feeling? = core.feeling(trackId: trackId) == feeling ? nil : feeling
+        do {
+            try await core.setFeeling(trackId: trackId, feeling: new)
+            feelingRevision += 1
+            feedback.play(.success)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Changes when a song is liked or disliked, so screens read it again.
+    public private(set) var feelingRevision = 0
+
+    /// The next songs for a station (Rust mixes them).
+    public func stationBatch(
+        _ seed: StationSeed, played: [String], recentArtists: [String], size: Int = 10
+    ) async -> Result<[QueueTrack], StationFailure> {
+        do {
+            let tracks = try await withRustCancellation { cancellation in
+                try await core.stationBatch(
+                    seed: seed, played: played, recentArtists: recentArtists,
+                    size: UInt32(size), seedNumber: UInt64.random(in: 0...UInt64.max),
+                    cancellation: cancellation
+                )
+            }
+            return .success(tracks)
+        } catch {
+            if !Self.isStop(error) { log.warn("station failed: \(error)") }
+            var empty = false
+            if case SoundscapeError.NotInLibrary = error { empty = true }
+            return .failure(StationFailure(
+                message: Self.message(error), stopped: Self.isStop(error), nothingToPlay: empty
+            ))
         }
     }
 
@@ -534,9 +654,58 @@ public final class ListenModel {
         await changePlaylists { try await self.core.arrangePlaylist(id: id, places: places) }
     }
 
+    /// Deletes a playlist, with Undo on the banner.
     public func deletePlaylist(_ id: UInt64) async {
+        let name = collection.playlists.first { $0.id == id }?.name
         do {
             collection = try await core.deletePlaylist(id: id)
+            banner = .undo("Deleted \(name.map { "“\($0)”" } ?? "Playlist")",
+                           action: .deletedPlaylist(id), identifier: "undo.playlist")
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Removes songs from a playlist, keeping the order left (by place),
+    /// with Undo on the banner.
+    public func removeFromPlaylist(_ detail: PlaylistDetail, keeping places: [UInt32]) async -> PlaylistDetail? {
+        let before = detail.entries.map(\.track.id)
+        let gone = detail.entries.count - places.count
+        guard let changed = await arrangePlaylist(detail.playlist.id, places: places) else { return nil }
+        if gone > 0 {
+            banner = .undo(gone == 1 ? "Removed from “\(detail.playlist.name)”" : "Removed \(gone) songs",
+                           action: .playlistSongs(id: detail.playlist.id, trackIds: before),
+                           identifier: "undo.playlistSongs")
+        }
+        return changed
+    }
+
+    /// Makes a playlist of the queue (catalogue songs join the library).
+    /// Throws when Rust refuses the name, so the name sheet can say why.
+    @discardableResult
+    public func saveQueue(_ tracks: [QueueTrack], as name: String) async throws -> PlaylistDetail {
+        let detail = try await savePlaylists { try await self.core.saveQueueAsPlaylist(name: name, tracks: tracks) }
+        library = core.library()
+        return detail
+    }
+
+    /// Takes back what the banner offered (all but the queue, which the
+    /// player puts back).
+    public func undo(_ undo: Undo) async {
+        do {
+            switch undo {
+            case .queue:
+                return
+            case .playlistSongs(let id, let trackIds):
+                _ = try await core.setPlaylistTracks(id: id, trackIds: trackIds)
+                collection = core.collection()
+            case .deletedPlaylist(let id):
+                collection = try await core.restorePlaylist(id: id)
+            case .removedSong(let id):
+                library = try await core.restoreRemoved(trackId: id)
+                offline = core.offline()
+            }
+            feedback.play(.success)
         } catch {
             report(error)
         }
@@ -578,7 +747,50 @@ public final class ListenModel {
         return detail
     }
 
+    // MARK: Smart playlists
+
+    public func smartPlaylist(_ id: String) -> SmartPlaylistDetail? { try? core.smartPlaylist(id: id) }
+
+    /// How many songs `rules` let in now, or nil when Rust refuses them.
+    public func smartPlaylistCount(_ rules: SmartRules) -> UInt32? { try? core.smartPlaylistCount(rules: rules) }
+
+    /// Throws when Rust refuses the name or the rules, so the editor can say why.
+    @discardableResult
+    public func createSmartPlaylist(_ name: String, rules: SmartRules) async throws -> SmartPlaylistDetail {
+        let detail = try await core.createSmartPlaylist(name: name, rules: rules)
+        collection = core.collection()
+        feedback.play(.success)
+        return detail
+    }
+
+    /// Throws when Rust refuses the name or the rules, so the editor can say why.
+    @discardableResult
+    public func editSmartPlaylist(_ id: String, name: String, rules: SmartRules) async throws -> SmartPlaylistDetail {
+        let detail = try await core.editSmartPlaylist(id: id, name: name, rules: rules)
+        collection = core.collection()
+        feedback.play(.success)
+        return detail
+    }
+
+    public func deleteSmartPlaylist(_ id: String) async {
+        do {
+            collection = try await core.deleteSmartPlaylist(id: id)
+        } catch {
+            report(error)
+        }
+    }
+
     // MARK: On the phone
+
+    /// Several songs (an album) as one sign: failed if any failed, on its
+    /// way while any is, downloaded once every downloadable one is here.
+    public func downloadState(of tracks: [LibraryTrack]) -> DownloadState {
+        let states = downloadable(tracks).map { downloadState($0.id) }
+        if states.isEmpty { return .notDownloaded }
+        if states.contains(.failed) { return .failed }
+        if states.contains(where: { $0 == .downloading || $0 == .waiting }) { return .downloading }
+        return states.allSatisfy { $0 == .downloaded } ? .downloaded : .notDownloaded
+    }
 
     public func downloadState(_ trackId: String) -> DownloadState {
         downloadStates[trackId] ?? .notDownloaded
@@ -671,11 +883,15 @@ public final class ListenModel {
         }
     }
 
-    /// Takes an imported file out of the library and deletes Soundscape's copy.
+    /// Takes a song the person added out of the library (Soundscape's copy
+    /// of a file goes after the next removal), with Undo on the banner.
     public func removeImported(_ trackId: String) async {
+        let title = library.tracks.first { $0.id == trackId }?.title
         do {
             library = try await core.removeImported(trackId: trackId)
             offline = core.offline()
+            banner = .undo("Removed \(title.map { "“\($0)”" } ?? "Song") from Library",
+                           action: .removedSong(trackId), identifier: "undo.song")
         } catch {
             report(error)
         }
@@ -749,6 +965,16 @@ public final class ListenModel {
         if let error = error as? SoundscapeError { return SoundscapeErrors.describe(error) }
         return error.localizedDescription
     }
+}
+
+/// Why a station couldn't give more songs.
+public struct StationFailure: Error, Equatable {
+    public let message: String
+    /// Cancelled because the screen closed: show nothing.
+    public let stopped: Bool
+    /// Nothing fits the station at all: trying again won't help. Otherwise
+    /// the failure is worth retrying (a dropped connection, Jamendo busy).
+    public let nothingToPlay: Bool
 }
 
 public struct ListenFailure: Error, Equatable {
@@ -870,6 +1096,76 @@ public enum TakeFormat {
         return text
     }
 
+    /// "12 songs, 48 minutes" for a smart playlist.
+    public static func smartSummary(_ list: SmartPlaylist) -> String {
+        var text = "\(list.trackCount) \(list.trackCount == 1 ? "song" : "songs")"
+        let minutes = Int((list.durationSeconds / 60).rounded())
+        if minutes > 0 { text += ", \(minutes) \(minutes == 1 ? "minute" : "minutes")" }
+        return text
+    }
+
+    /// A rule as a sentence: "Artist contains “Hours”", "Plays at least 5",
+    /// "Last played not in the last 60 days", "Is a favourite".
+    public static func smartRule(_ rule: SmartRule) -> String {
+        switch rule {
+        case .text(let field, let test, let value):
+            let name = smartField(field)
+            if value.trimmingCharacters(in: .whitespaces).isEmpty {
+                return test == .doesNotEqual ? "\(name) is set" : "\(name) is empty"
+            }
+            return "\(name) \(smartTest(test)) “\(value)”"
+        case .number(let field, let test, let value):
+            let amount: String
+            switch field {
+            case .playCount: amount = "\(Int(value))"
+            case .lengthSeconds: amount = time(value)
+            }
+            let name = field == .playCount ? "Plays" : "Length"
+            switch test {
+            case .equals: return "\(name) \(amount)"
+            case .atLeast: return "\(name) at least \(amount)"
+            case .atMost: return "\(name) at most \(amount)"
+            }
+        case .date(let field, let test, let days):
+            let name = field == .added ? "Added" : "Last played"
+            let span = days == 1 ? "day" : "\(days) days"
+            return test == .inLast ? "\(name) in the last \(span)" : "\(name) not in the last \(span)"
+        case .favourite(let favourite):
+            return favourite ? "Is a favourite" : "Isn’t a favourite"
+        }
+    }
+
+    public static func smartField(_ field: SmartTextField) -> String {
+        switch field {
+        case .title: "Title"
+        case .artist: "Artist"
+        case .album: "Album"
+        case .genre: "Genre"
+        }
+    }
+
+    public static func smartTest(_ test: SmartTextTest) -> String {
+        switch test {
+        case .equals: "is"
+        case .doesNotEqual: "is not"
+        case .contains: "contains"
+        case .doesNotContain: "does not contain"
+        case .beginsWith: "begins with"
+        }
+    }
+
+    public static func smartSort(_ sort: SmartSort) -> String {
+        switch sort {
+        case .title: "Title"
+        case .artist: "Artist"
+        case .album: "Album"
+        case .recentlyAdded: "Recently Added"
+        case .mostPlayed: "Most Played"
+        case .recentlyPlayed: "Recently Played"
+        case .leastRecentlyPlayed: "Least Recently Played"
+        }
+    }
+
     /// "2 albums · 12 songs".
     public static func artistSummary(_ artist: LibraryArtist) -> String {
         let albums = "\(artist.albumCount) \(artist.albumCount == 1 ? "album" : "albums")"
@@ -877,3 +1173,5 @@ public enum TakeFormat {
         return artist.albumCount > 0 ? "\(albums) · \(songs)" : songs
     }
 }
+
+extension CatalogueTrack: Identifiable {}

@@ -33,16 +33,21 @@ longer asks for the microphone.
 | M6 | Carry on where you left off: the queue, the song and how far into it survive closing the app, and it opens paused there | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | M8 | Sleep timer: pause after 15 to 90 minutes or at the end of this song, fading out over the last 10 seconds | Swift written, not yet built with xtool or run on a phone |
 | M9 | Between songs: no gap (the next song is loaded early and starts the moment one ends) or a 2 to 12 second crossfade, kept as a setting | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| S1-S3 | The redesign ([design](docs/design.md)): four tabs (Listen, Library, Discover, Search), the mini-player above the tab bar, a Listen home of artwork shelves, the Library by kind with an album grid, and a full-screen Now Playing in the artwork's colours with lyrics in place, a queue sheet, volume and AirPlay | Swift written, not yet built with xtool or run on a phone |
+| S3.5 | Everyday Polish ([design](docs/design.md#everyday-polish-s35-reuben-2026-11-22-2128)): Save as Playlist from Up Next, one song menu everywhere, a heart on the mini-player, Undo after removing, saved stations, recent searches, download signs on albums | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| S4-S6 | Album and artist pages in their artwork's colours with Top Songs (ranked in Rust) and More by; Discover as an editorial page (Top This Week, Start a Station, New in your genres); a first native-finish pass (Magic Tap, larger text layouts) | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| M10 | Smart Playlists ([roadmap](docs/roadmap.md#m10-smart-playlists)): playlists made from rules (title, artist, album, genre, plays, length, date added, last played, favourite; all or any; a sort and a limit) that update themselves, an editor that counts the songs matching as you go, and four built in: Recently Added, Most Played, Never Played and Forgotten Favourites. Play counts are kept per song, past the history's 2,000 plays | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| R1 | Radio ([design](docs/design.md#radio-reuben-2026-11-22-2028-and-2036)): nonstop stations from a genre, a song or an artist, mixed in Rust (likes, favourites and plays weighted up, two in five songs new, no artist twice within four songs, disliked songs never), Like and Dislike in Now Playing, Hear Nonstop Music on Listen | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 
 ## How the work is split
 
 - **Rust owns the state and the rules** (`rust/src`): the library (`library.rs`),
   favourites, playlists and history (`collection.rs`), what is kept on the phone
-  (`offline.rs`), the queue (`queue.rs`) and what was playing (`playback.rs`),
+  (`offline.rs`), the queue (`queue.rs`), the radio's mix (`station.rs`) and what was playing (`playback.rs`),
   the catalogues (`jamendo.rs`, `archive.rs`, rights in `catalogue.rs`), the take
   server's client (`listen.rs`) and lyrics (`lyrics.rs`). All of it is tested on Linux.
-- **AVPlayer plays** (`TakePlayer.swift`): the queue, the mini-player and Now
-  Playing, the lock screen and interruptions, and blind A/B of two takes.
+- **AVPlayer plays** (`TakePlayer.swift`): the queue, the mini-player (`MiniPlayer.swift`) and Now
+  Playing (`NowPlaying.swift`), the lock screen and interruptions, and blind A/B of two takes.
 
 ## Rust
 
@@ -60,6 +65,9 @@ cargo test --manifest-path examples/soundscape/rust/Cargo.toml
 | `Sources/AppHost/LibraryView.swift` | Songs, albums and artists, search, a song's screen with its recordings and licence |
 | `Sources/AppHost/CollectionView.swift` | Your Music: favourites, playlists, history, To Pick |
 | `Sources/AppHost/DiscoverView.swift` | Jamendo and the Internet Archive |
+| `Sources/AppHost/DiscoverHome.swift` | Discover before a search: Top This Week and its shelves |
+| `Sources/AppHost/AlbumArtistPages.swift` | An album and an artist as pages in their artwork's colours |
+| `Sources/AppHost/SongActions.swift` | The one song menu (Play Next to Go to Artist) used everywhere |
 | `Sources/AppHost/OfflineView.swift`, `MusicImporter.swift` | Downloads, and importing your own files |
 | `Sources/AppHost/TakePlayer.swift` | AVPlayer: queue, lock screen, interruptions, saving what plays |
 | `Sources/AppHost/SoundscapeErrors.swift` | Rust's errors in words |

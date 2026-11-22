@@ -190,17 +190,7 @@ public struct ForgeStateView: View {
                 ContentUnavailableView.search(text: query)
             }
         case let .loading(label):
-            VStack(spacing: theme.spacing.m) {
-                ProgressView()
-                    .controlSize(.large)
-                if let label {
-                    label
-                        .font(.subheadline)
-                        .foregroundStyle(theme.colors.textSecondary)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityElement(children: .combine)
+            ForgeDelayedLoading(label: label)
         case let .failed(title, message):
             ContentUnavailableView {
                 Label {
@@ -250,6 +240,35 @@ public struct ForgeStateView: View {
                     .buttonStyle(style)
                     .accessibilityIdentifier(action.identifier)
             }
+        }
+    }
+}
+/// A screen still loading: nothing for the first 0.4 s (the same delay as
+/// `ForgeButton`'s spinner), so a quick load never flashes a spinner, then
+/// the spinner and its label, so a slow one is never blank.
+private struct ForgeDelayedLoading: View {
+    let label: Text?
+
+    @State private var due = false
+    @Environment(\.forgeTheme) private var theme
+
+    var body: some View {
+        VStack(spacing: theme.spacing.m) {
+            if due {
+                ProgressView()
+                    .controlSize(.large)
+                if let label {
+                    label
+                        .font(.subheadline)
+                        .foregroundStyle(theme.colors.textSecondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .task {
+            try? await Task.sleep(for: ForgeButtonState.spinnerDelay)
+            if !Task.isCancelled { due = true }
         }
     }
 }

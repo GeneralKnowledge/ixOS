@@ -161,4 +161,28 @@ final class ListenModelTests: XCTestCase {
         XCTAssertTrue(countsAsPlayed(listened: 30, length: 200))
         XCTAssertFalse(countsAsPlayed(listened: 10, length: 200))
     }
+
+    /// The smart playlist editor's draft gives Rust back the rules it was
+    /// made from (a length in minutes on screen, seconds in Rust), and each
+    /// rule reads as a sentence.
+    func testSmartPlaylistDraft() {
+        let rules = SmartRules(
+            matchAll: false,
+            rules: [
+                .text(field: .artist, test: .contains, value: "Hours"),
+                .number(field: .lengthSeconds, test: .atMost, value: 300),
+                .date(field: .lastPlayed, test: .notInLast, days: 60),
+                .favourite(favourite: true),
+            ],
+            sort: .mostPlayed,
+            limit: 25
+        )
+        let draft = SmartPlaylistDraft(name: "Mine", rules: rules)
+        XCTAssertEqual(draft.rules[1].number, 5)
+        XCTAssertEqual(draft.smartRules, rules)
+        XCTAssertEqual(TakeFormat.smartRule(rules.rules[0]), "Artist contains “Hours”")
+        XCTAssertEqual(TakeFormat.smartRule(rules.rules[1]), "Length at most 5:00")
+        XCTAssertEqual(TakeFormat.smartRule(rules.rules[2]), "Last played not in the last 60 days")
+        XCTAssertEqual(TakeFormat.smartRule(.text(field: .genre, test: .equals, value: "")), "Genre is empty")
+    }
 }

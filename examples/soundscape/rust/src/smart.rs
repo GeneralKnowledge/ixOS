@@ -43,31 +43,31 @@ pub struct SmartRules {
 pub enum SmartRule {
     /// Compares the song's details as they show (with your edits), ignoring
     /// capitals and extra spaces. A missing album or genre is empty text, so
-    /// "genre is" with nothing finds songs without one.
+    /// "genre equals" nothing finds songs without one.
     Text {
-        field: TextField,
-        test: TextTest,
+        field: SmartTextField,
+        test: SmartTextTest,
         value: String,
     },
     /// A song with no known length fails every length rule.
     Number {
-        field: NumberField,
-        test: NumberTest,
+        field: SmartNumberField,
+        test: SmartNumberTest,
         value: f64,
     },
     /// A song never played was not played "in the last" days.
     Date {
-        field: DateField,
-        test: DateTest,
+        field: SmartDateField,
+        test: SmartDateTest,
         days: u32,
     },
     /// The song itself is a favourite (not its album or artist).
-    Favourite { is: bool },
+    Favourite { favourite: bool },
 }
 
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum TextField {
+pub enum SmartTextField {
     Title,
     Artist,
     Album,
@@ -76,9 +76,9 @@ pub enum TextField {
 
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum TextTest {
-    Is,
-    IsNot,
+pub enum SmartTextTest {
+    Equals,
+    DoesNotEqual,
     Contains,
     DoesNotContain,
     BeginsWith,
@@ -86,30 +86,30 @@ pub enum TextTest {
 
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum NumberField {
+pub enum SmartNumberField {
     PlayCount,
     LengthSeconds,
 }
 
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum NumberTest {
+pub enum SmartNumberTest {
     /// The same, to the second for a length.
-    Is,
+    Equals,
     AtLeast,
     AtMost,
 }
 
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum DateField {
+pub enum SmartDateField {
     Added,
     LastPlayed,
 }
 
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum DateTest {
+pub enum SmartDateTest {
     InLast,
     NotInLast,
 }
@@ -147,7 +147,7 @@ pub fn check(rules: &SmartRules) -> Result<(), SoundscapeError> {
                     return Err(SoundscapeError::range("rule text"));
                 }
                 let empty = normalise(value).is_empty();
-                if empty && !matches!(test, TextTest::Is | TextTest::IsNot) {
+                if empty && !matches!(test, SmartTextTest::Equals | SmartTextTest::DoesNotEqual) {
                     return Err(SoundscapeError::range("rule text"));
                 }
             }
@@ -243,8 +243,8 @@ pub fn built_in() -> Vec<(String, String, SmartRules)> {
             "Most Played",
             true,
             vec![SmartRule::Number {
-                field: NumberField::PlayCount,
-                test: NumberTest::AtLeast,
+                field: SmartNumberField::PlayCount,
+                test: SmartNumberTest::AtLeast,
                 value: 1.0,
             }],
             SmartSort::MostPlayed,
@@ -255,8 +255,8 @@ pub fn built_in() -> Vec<(String, String, SmartRules)> {
             "Never Played",
             true,
             vec![SmartRule::Number {
-                field: NumberField::PlayCount,
-                test: NumberTest::Is,
+                field: SmartNumberField::PlayCount,
+                test: SmartNumberTest::Equals,
                 value: 0.0,
             }],
             SmartSort::RecentlyAdded,
@@ -267,10 +267,10 @@ pub fn built_in() -> Vec<(String, String, SmartRules)> {
             "Forgotten Favourites",
             true,
             vec![
-                SmartRule::Favourite { is: true },
+                SmartRule::Favourite { favourite: true },
                 SmartRule::Date {
-                    field: DateField::LastPlayed,
-                    test: DateTest::NotInLast,
+                    field: SmartDateField::LastPlayed,
+                    test: SmartDateTest::NotInLast,
                     days: 60,
                 },
             ],
@@ -390,47 +390,49 @@ pub fn songs(
         match rule {
             SmartRule::Text { field, test, .. } => {
                 let have = normalise(match field {
-                    TextField::Title => &track.title,
-                    TextField::Artist => &track.artist,
-                    TextField::Album => track.album.as_deref().unwrap_or(""),
-                    TextField::Genre => track.genre.as_deref().unwrap_or(""),
+                    SmartTextField::Title => &track.title,
+                    SmartTextField::Artist => &track.artist,
+                    SmartTextField::Album => track.album.as_deref().unwrap_or(""),
+                    SmartTextField::Genre => track.genre.as_deref().unwrap_or(""),
                 });
                 let want = rule_text[i].as_deref().unwrap_or("");
                 match test {
-                    TextTest::Is => have == want,
-                    TextTest::IsNot => have != want,
-                    TextTest::Contains => have.contains(want),
-                    TextTest::DoesNotContain => !have.contains(want),
-                    TextTest::BeginsWith => have.starts_with(want),
+                    SmartTextTest::Equals => have == want,
+                    SmartTextTest::DoesNotEqual => have != want,
+                    SmartTextTest::Contains => have.contains(want),
+                    SmartTextTest::DoesNotContain => !have.contains(want),
+                    SmartTextTest::BeginsWith => have.starts_with(want),
                 }
             }
             SmartRule::Number { field, test, value } => {
                 let have = match field {
-                    NumberField::PlayCount => Some(tally(&track.id).map_or(0, |t| t.count) as f64),
-                    NumberField::LengthSeconds => track.duration_seconds,
+                    SmartNumberField::PlayCount => {
+                        Some(tally(&track.id).map_or(0, |t| t.count) as f64)
+                    }
+                    SmartNumberField::LengthSeconds => track.duration_seconds,
                 };
                 let Some(have) = have else {
                     return false;
                 };
                 match test {
-                    NumberTest::Is => (have - value).abs() < 0.5,
-                    NumberTest::AtLeast => have >= *value,
-                    NumberTest::AtMost => have <= *value,
+                    SmartNumberTest::Equals => (have - value).abs() < 0.5,
+                    SmartNumberTest::AtLeast => have >= *value,
+                    SmartNumberTest::AtMost => have <= *value,
                 }
             }
             SmartRule::Date { field, test, days } => {
                 let since = now.saturating_sub(i64::from(*days) * DAY_MS);
                 let when = match field {
-                    DateField::Added => Some(track.added_ms),
-                    DateField::LastPlayed => tally(&track.id).map(|t| t.last_ms),
+                    SmartDateField::Added => Some(track.added_ms),
+                    SmartDateField::LastPlayed => tally(&track.id).map(|t| t.last_ms),
                 };
                 let recent = when.is_some_and(|w| w >= since);
                 match test {
-                    DateTest::InLast => recent,
-                    DateTest::NotInLast => !recent,
+                    SmartDateTest::InLast => recent,
+                    SmartDateTest::NotInLast => !recent,
                 }
             }
-            SmartRule::Favourite { is } => file.is_favourite(&track.id) == *is,
+            SmartRule::Favourite { favourite } => file.is_favourite(&track.id) == *favourite,
         }
     };
     let mut entries: Vec<SmartEntry> = library

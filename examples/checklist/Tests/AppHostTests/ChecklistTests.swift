@@ -90,6 +90,12 @@ final class ChecklistTests: XCTestCase {
             XCTAssertEqual(kind, .interrupted)
             XCTAssertEqual(Checklist.message(for: ChecklistError.Stopped(kind: kind)), ForgeErrors.describe(.interrupted))
         }
+        // The model's search stops quietly: a stop is not an error to show.
+        let stopped = await model.search("milk")
+        XCTAssertNil(stopped)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertTrue(ChecklistModel.isStop(CancellationError()))
+        XCTAssertFalse(ChecklistModel.isStop(ChecklistError.InUse))
         // Export may finish in the background.
         let url = await model.exportText()
         XCTAssertEqual(try String(contentsOf: try XCTUnwrap(url), encoding: .utf8), "[ ] Buy oat milk\n[ ] Call the vet\n")

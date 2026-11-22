@@ -310,6 +310,12 @@ public final class ChatModel {
         }
     }
 
+    /// Mark as Read from a swipe or menu, which closes at once: the unread
+    /// dot goes when Rust has marked it here and on the server.
+    public func startMarkingRead(_ conversationId: String) {
+        Task { await markRead(conversationId) }
+    }
+
     /// Shows the room as unread until it is opened (a swipe).
     public func markUnread(_ conversationId: String) {
         perform { try $0.setMarkedUnread(conversationId: conversationId, marked: true) }
@@ -477,6 +483,19 @@ public final class ChatModel {
 
     /// Deletes one of our messages for everyone (a "deleted" placeholder
     /// stays). One that was never sent is simply removed.
+    /// Messages being deleted right now: the confirmation dialog that asked
+    /// has closed, so the bubble shows "Deleting…" until Rust answers.
+    public private(set) var deleting: Set<String> = []
+
+    /// Delete from the confirmation dialog, which closes at once.
+    public func startDeleting(_ message: ChatMessage) {
+        deleting.insert(message.id)
+        Task {
+            await delete(message)
+            deleting.remove(message.id)
+        }
+    }
+
     public func delete(_ message: ChatMessage) async {
         guard let core else { return }
         do {

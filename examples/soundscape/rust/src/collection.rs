@@ -10,16 +10,25 @@ use serde::{Deserialize, Serialize};
 use crate::library::{Library, LibraryAlbum, LibraryArtist, LibraryTrack};
 use crate::model::{clean_name, SoundscapeError};
 use crate::smart::{self, SmartPlaylist, SmartRules};
+use crate::station::{Feeling, StationSeed};
 
 pub const COLLECTION_VERSION: u32 = 1;
 pub const MAX_PLAYLISTS: usize = 500;
 pub const MAX_PLAYLIST_TRACKS: usize = 5_000;
 /// Plays kept in the history, newest last.
 pub const MAX_HISTORY: usize = 2_000;
+/// Songs liked or disliked, at most.
+pub const MAX_FEELINGS: usize = 20_000;
 /// Different songs in Recently Played.
 pub const RECENT_SONGS: usize = 50;
 /// A song counts as played after this long, or half of it when shorter.
 pub const PLAYED_AFTER_SECONDS: f64 = 30.0;
+/// Stations saved, at most.
+pub const MAX_SAVED_STATIONS: usize = 50;
+/// Searches remembered, newest first.
+pub const RECENT_SEARCHES: usize = 10;
+/// Characters kept of a search.
+pub const MAX_SEARCH_CHARS: usize = 200;
 
 // ------------------------------------------------------------ what is kept
 
@@ -44,6 +53,18 @@ pub struct CollectionFile {
     /// `next_playlist` too.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub smart_playlists: Vec<StoredSmartPlaylist>,
+    /// Songs liked or disliked for stations (`station.rs`), by track id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub feelings: BTreeMap<String, Feeling>,
+    /// Stations the person saved, newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub saved_stations: Vec<SavedStation>,
+    /// What the person searched for lately, newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_searches: Vec<String>,
+    /// The playlist deleted last, so Undo can bring it back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_playlist: Option<StoredPlaylist>,
 }
 
 /// One song's plays.
@@ -72,6 +93,14 @@ pub struct StoredSmartPlaylist {
     pub rules: SmartRules,
     pub created_ms: i64,
     pub modified_ms: i64,
+}
+
+/// A station the person keeps at the front of the shelf.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SavedStation {
+    pub seed: StationSeed,
+    pub title: String,
+    pub saved_ms: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -152,13 +181,94 @@ impl CollectionFile {
         Ok(())
     }
 
+    /// Deletes a playlist, keeping it (only the last one) for Undo.
     pub fn delete_playlist(&mut self, id: u64) -> Result<(), SoundscapeError> {
-        let before = self.playlists.len();
-        self.playlists.retain(|p| p.id != id);
-        if self.playlists.len() == before {
-            return Err(no_playlist(id));
+        let at = self
+            .playlists
+            .iter()
+            .position(|p| p.id == id)
+            .ok_or_else(|| no_playlist(id))?;
+        self.deleted_playlist = Some(self.playlists.remove(at));
+        Ok(())
+    }
+
+    /// Brings back the playlist deleted last, under its old id, when `id`
+    /// is that playlist.
+    pub fn restore_playlist(&mut self, id: u64) -> Result<(), SoundscapeError> {
+        match self.deleted_playlist.take() {
+            Some(list) if list.id == id => {
+                if self.playlists.len() >= MAX_PLAYLISTS {
+                    self.deleted_playlist = Some(list);
+                    return Err(SoundscapeError::range("playlists"));
+                }
+                self.playlists.push(list);
+                Ok(())
+            }
+            other => {
+                self.deleted_playlist = other;
+                Err(no_playlist(id))
+            }
+        }
+    }
+
+    /// Puts back a playlist's songs as they were (Undo after a removal).
+    pub fn set_playlist_tracks(
+        &mut self,
+        id: u64,
+        track_ids: Vec<String>,
+        now: i64,
+    ) -> Result<(), SoundscapeError> {
+        if track_ids.len() > MAX_PLAYLIST_TRACKS {
+            return Err(SoundscapeError::range("playlist songs"));
+        }
+        let list = self.playlist_mut(id)?;
+        list.track_ids = track_ids;
+        list.modified_ms = now;
+        Ok(())
+    }
+
+    /// Saves a station at the front of the saved ones, or forgets it.
+    pub fn set_station_saved(
+        &mut self,
+        seed: StationSeed,
+        title: &str,
+        saved: bool,
+        now: i64,
+    ) -> Result<(), SoundscapeError> {
+        self.saved_stations.retain(|s| s.seed != seed);
+        if saved {
+            let title = clean_name(title)?;
+            if self.saved_stations.len() >= MAX_SAVED_STATIONS {
+                return Err(SoundscapeError::range("saved stations"));
+            }
+            self.saved_stations.insert(
+                0,
+                SavedStation {
+                    seed,
+                    title,
+                    saved_ms: now,
+                },
+            );
         }
         Ok(())
+    }
+
+    pub fn is_station_saved(&self, seed: &StationSeed) -> bool {
+        self.saved_stations.iter().any(|s| &s.seed == seed)
+    }
+
+    /// Remembers a search at the front, once (case ignored), keeping the
+    /// newest [`RECENT_SEARCHES`]. Blank searches are ignored.
+    pub fn note_search(&mut self, query: &str) {
+        // cut: a search to show again; the first 200 characters find the same songs
+        let query: String = query.trim().chars().take(MAX_SEARCH_CHARS).collect();
+        if query.is_empty() {
+            return;
+        }
+        let key = query.to_lowercase();
+        self.recent_searches.retain(|q| q.to_lowercase() != key);
+        self.recent_searches.insert(0, query);
+        self.recent_searches.truncate(RECENT_SEARCHES);
     }
 
     /// Adds songs at the end.
@@ -200,6 +310,29 @@ impl CollectionFile {
         }
         list.track_ids = arranged;
         list.modified_ms = now;
+        Ok(())
+    }
+
+    /// Likes or dislikes a song for stations, or forgets how you felt.
+    pub fn set_feeling(
+        &mut self,
+        track_id: &str,
+        feeling: Option<Feeling>,
+    ) -> Result<(), SoundscapeError> {
+        if track_id.trim().is_empty() || track_id.chars().count() > 512 {
+            return Err(SoundscapeError::range("track id"));
+        }
+        match feeling {
+            Some(f) => {
+                if self.feelings.len() >= MAX_FEELINGS && !self.feelings.contains_key(track_id) {
+                    return Err(SoundscapeError::range("liked and disliked songs"));
+                }
+                self.feelings.insert(track_id.into(), f);
+            }
+            None => {
+                self.feelings.remove(track_id);
+            }
+        }
         Ok(())
     }
 
@@ -377,6 +510,8 @@ pub struct MusicCollection {
     /// The built-in smart playlists first, then yours, most recently
     /// changed first, each worked out from the library now.
     pub smart_playlists: Vec<SmartPlaylist>,
+    /// What was searched for lately, newest first.
+    pub recent_searches: Vec<String>,
 }
 
 pub fn build_collection(file: &CollectionFile, library: &Library, now: i64) -> MusicCollection {
@@ -406,6 +541,7 @@ pub fn build_collection(file: &CollectionFile, library: &Library, now: i64) -> M
         playlists,
         recently_played: recently_played(file, library, RECENT_SONGS),
         smart_playlists: smart::all(file, library, now),
+        recent_searches: file.recent_searches.clone(),
     }
 }
 

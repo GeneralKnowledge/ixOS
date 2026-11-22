@@ -88,6 +88,7 @@ final class RelayModelTests: XCTestCase {
         let offerOnA = try await eventually { a.refreshCodeSend(); return a.trustOffer }
         await b.trust(offerOnB)
         await a.trust(offerOnA)
+        XCTAssertTrue(a.trusting.isEmpty, "the pending row goes once Rust answers")
         XCTAssertNil(b.trustOffer)
         XCTAssertEqual(b.trustedDevices.map(\.endpointId), [advert.endpointID])
 

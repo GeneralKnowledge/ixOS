@@ -279,26 +279,11 @@ private struct ForgeA2uiChoicePicker: View {
             Button {
                 choose(option.id)
             } label: {
-                HStack(spacing: theme.spacing.xs) {
-                    if on {
-                        Image(systemName: "checkmark")
-                            .accessibilityHidden(true)
-                    }
-                    Text(option.label)
-                }
-                .font(.forge(.metadata).weight(.semibold))
-                .foregroundStyle(on ? theme.colors.accent.onSolid : theme.colors.accent.text)
-                .padding(.horizontal, theme.spacing.m)
-                .frame(minHeight: 44)
-                .background(
-                    on ? theme.colors.accent.solid : theme.colors.accent.soft,
-                    in: Capsule()
-                )
-                .contentShape(Capsule())
+                Text(option.label)
+                    .font(.forge(.metadata))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.forgeChoice(isSelected: on))
             .accessibilityLabel(option.label)
-            .accessibilityAddTraits(on ? .isSelected : [])
             .accessibilityIdentifier("a2ui-\(node.id)-\(option.id)")
         }
     }

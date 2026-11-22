@@ -55,18 +55,26 @@ struct AlbumDownloadButton: View {
 
 /// A small sign on a song's row: on the phone, coming, or failed.
 struct DownloadBadge: View {
-    let model: ListenModel
-    let track: LibraryTrack
+    let state: DownloadState
+
+    init(model: ListenModel, track: LibraryTrack) {
+        let state = model.downloadState(track.id)
+        // As before: the downloaded sign only once the track says so.
+        self.state = state == .downloaded && !track.downloaded ? .notDownloaded : state
+    }
+
+    /// Several songs as one (an album): see `ListenModel.downloadState(of:)`.
+    init(state: DownloadState) {
+        self.state = state
+    }
 
     var body: some View {
-        switch model.downloadState(track.id) {
+        switch state {
         case .downloaded:
-            if track.downloaded {
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Downloaded")
-            }
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Downloaded")
         case .downloading:
             ProgressView()
                 .controlSize(.mini)

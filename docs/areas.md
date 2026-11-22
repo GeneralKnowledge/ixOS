@@ -76,7 +76,7 @@ The build queue, signing and `forge publish ios` are infrastructure jobs that li
 
 ### Apps
 
-Everything else under `examples/`: Pocket Library (and its Android version), Good Dog (with `good-dog-core`), Commonplace, FieldKit, Weather, Checklist, Relay (with `verification/relay`, and its messaging: `chat-core`, `chat-server`, `chat-cli`), Sketchbook and Soundscape. `scripts/pocket-library-screenshots.sh` and `weather-screenshots.sh` belong to their apps.
+Everything else under `examples/`: Pocket Library (and its Android version), Good Dog (with `good-dog-core`), Commonplace, FieldKit, Weather, Checklist, Relay (with `verification/relay`, its messaging: `chat-core`, `chat-server`, `chat-cli`, and its Android version), Sketchbook and Soundscape. `scripts/pocket-library-screenshots.sh` and `weather-screenshots.sh` belong to their apps.
 
 ## Each area's responsibilities
 

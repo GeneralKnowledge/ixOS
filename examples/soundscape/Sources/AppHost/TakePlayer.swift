@@ -311,9 +311,35 @@ final class TakePlayer {
         loadQueued(playing: true)
     }
 
-    func remove(at position: UInt32) {
-        guard let queue else { return }
+    /// Takes the song at `position` out of the play order; returns its
+    /// index among the queue's songs, for `putBack`.
+    @discardableResult
+    func remove(at position: UInt32) -> UInt32? {
+        guard let queue, queue.order.indices.contains(Int(position)) else { return nil }
+        let index = queue.order[Int(position)]
         self.queue = queueRemove(queue: queue, position: position)
+        return index
+    }
+
+    /// Undo for `remove(at:)`: back where it was, or right after the song
+    /// playing now if playback moved past that place.
+    func putBack(index: UInt32, position: UInt32) {
+        guard let queue else { return }
+        self.queue = queuePutBack(queue: queue, index: index, position: position)
+    }
+
+    /// The queue's song playing now (not while comparing takes).
+    var currentQueued: QueueTrack? {
+        guard let queue, !isComparing else { return nil }
+        return queueCurrent(queue: queue)
+    }
+
+    /// Every song in the queue, in play order (what Save as Playlist keeps).
+    var queuedInOrder: [QueueTrack] {
+        guard let queue else { return [] }
+        return queue.order.compactMap { i in
+            queue.tracks.indices.contains(Int(i)) ? queue.tracks[Int(i)] : nil
+        }
     }
 
     func toggleShuffle() {

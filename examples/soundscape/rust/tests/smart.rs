@@ -6,8 +6,9 @@ use std::sync::Arc;
 use forge_net::{Method, Response, StaticClient};
 use soundscape_core::library::track_id;
 use soundscape_core::{
-    DateField, DateTest, MusicFile, NumberField, NumberTest, SmartRule, SmartRules, SmartSort,
-    SoundscapeCore, SoundscapeError, TextField, TextTest, TrackEdit,
+    MusicFile, SmartDateField, SmartDateTest, SmartNumberField, SmartNumberTest, SmartRule,
+    SmartRules, SmartSort, SmartTextField, SmartTextTest, SoundscapeCore, SoundscapeError,
+    TrackEdit,
 };
 
 const SERVER: &str = "http://100.64.0.7:8642";
@@ -161,13 +162,13 @@ fn your_smart_playlist_keeps_its_rules_and_follows_the_library() {
         true,
         vec![
             SmartRule::Text {
-                field: TextField::Artist,
-                test: TextTest::Is,
+                field: SmartTextField::Artist,
+                test: SmartTextTest::Equals,
                 value: "  after   hours ".into(),
             },
             SmartRule::Number {
-                field: NumberField::LengthSeconds,
-                test: NumberTest::AtLeast,
+                field: SmartNumberField::LengthSeconds,
+                test: SmartNumberTest::AtLeast,
                 value: 120.0,
             },
         ],
@@ -204,13 +205,13 @@ fn your_smart_playlist_keeps_its_rules_and_follows_the_library() {
         false,
         vec![
             SmartRule::Text {
-                field: TextField::Genre,
-                test: TextTest::Contains,
+                field: SmartTextField::Genre,
+                test: SmartTextTest::Contains,
                 value: "folk".into(),
             },
             SmartRule::Date {
-                field: DateField::Added,
-                test: DateTest::InLast,
+                field: SmartDateField::Added,
+                test: SmartDateTest::InLast,
                 days: 7,
             },
         ],
@@ -240,8 +241,8 @@ fn a_genre_rule_with_nothing_finds_songs_without_one() {
     let no_genre = rules(
         true,
         vec![SmartRule::Text {
-            field: TextField::Genre,
-            test: TextTest::Is,
+            field: SmartTextField::Genre,
+            test: SmartTextTest::Equals,
             value: String::new(),
         }],
         SmartSort::Album,
@@ -312,18 +313,18 @@ fn rules_that_mean_nothing_are_refused() {
     };
     let one = |rule: SmartRule| rules(true, vec![rule], SmartSort::Title);
     assert!(refused(one(SmartRule::Text {
-        field: TextField::Title,
-        test: TextTest::Contains,
+        field: SmartTextField::Title,
+        test: SmartTextTest::Contains,
         value: "  ".into(),
     })));
     assert!(refused(one(SmartRule::Number {
-        field: NumberField::PlayCount,
-        test: NumberTest::AtLeast,
+        field: SmartNumberField::PlayCount,
+        test: SmartNumberTest::AtLeast,
         value: f64::NAN,
     })));
     assert!(refused(one(SmartRule::Date {
-        field: DateField::LastPlayed,
-        test: DateTest::InLast,
+        field: SmartDateField::LastPlayed,
+        test: SmartDateTest::InLast,
         days: 0,
     })));
     assert!(refused(SmartRules {
@@ -332,7 +333,7 @@ fn rules_that_mean_nothing_are_refused() {
     }));
     assert!(refused(rules(
         true,
-        vec![SmartRule::Favourite { is: true }; 21],
+        vec![SmartRule::Favourite { favourite: true }; 21],
         SmartSort::Title
     )));
     assert!(matches!(

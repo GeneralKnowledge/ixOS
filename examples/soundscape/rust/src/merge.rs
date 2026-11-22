@@ -112,14 +112,22 @@ pub fn repair_offline(file: &LibraryFile, offline: &mut OfflineFile) -> bool {
     offline.wanted != before
 }
 
-/// Moves favourites, playlist entries, history and play counts from `from`
-/// to `to`.
+/// Moves favourites, likes, playlist entries (the deleted playlist's too),
+/// history and play counts from `from` to `to`.
 pub fn move_collection(collection: &mut CollectionFile, from: &str, to: &str) {
     if let Some(at) = collection.favourites.remove(from) {
         let kept = collection.favourites.entry(to.to_string()).or_insert(at);
         *kept = (*kept).min(at);
     }
-    for playlist in &mut collection.playlists {
+    // A like or dislike goes with it, unless the kept song has its own.
+    if let Some(feeling) = collection.feelings.remove(from) {
+        collection.feelings.entry(to.to_string()).or_insert(feeling);
+    }
+    for playlist in collection
+        .playlists
+        .iter_mut()
+        .chain(collection.deleted_playlist.as_mut())
+    {
         if playlist.track_ids.iter().any(|id| id == to) {
             // Already there: the merged song isn't listed twice.
             playlist.track_ids.retain(|id| id != from);
