@@ -427,6 +427,19 @@ pub fn package_install_wheel(
             fs::rename(staging.join(top), site.join(top)).map_err(storage)?;
             placed.push(top.clone());
         }
+        // Files the old version didn't install (a package's own saved
+        // data) are copied into the new one, unless it brings a file of
+        // that name. Copied, so the backup stays whole if this fails.
+        for top in &set_aside {
+            if !top.ends_with(".dist-info") {
+                keep_unrecorded(&backup, site, Path::new(top), &old_files).map_err(|err| {
+                    invalid(format!(
+                        "{} couldn't keep the files {} saved ({err}), so it wasn't upgraded.",
+                        package.name, top
+                    ))
+                })?;
+            }
+        }
         Ok::<(), PackageError>(())
     })();
     if let Err(err) = published {
@@ -446,50 +459,41 @@ pub fn package_install_wheel(
         let _ = fs::remove_dir_all(&backup);
         return Err(err);
     }
-    // Files the old version didn't install (a package's own saved data)
-    // stay, unless the new version brings a file of that name.
-    for top in &set_aside {
-        if top.ends_with(".dist-info") {
-            continue;
-        }
-        keep_unrecorded(&backup, site, Path::new(top), &old_files);
-    }
     let _ = fs::remove_dir_all(&staging);
     let _ = fs::remove_dir_all(&backup);
     Ok(package)
 }
 
-/// Moves each file under `backup/rel` that `recorded` doesn't list (and
+/// Copies each file under `backup/rel` that `recorded` doesn't list (and
 /// isn't a Python cache) to the same place under `site`, if nothing is
 /// there.
-fn keep_unrecorded(backup: &Path, site: &Path, rel: &Path, recorded: &BTreeSet<String>) {
+fn keep_unrecorded(
+    backup: &Path,
+    site: &Path,
+    rel: &Path,
+    recorded: &BTreeSet<String>,
+) -> std::io::Result<()> {
     let from = backup.join(rel);
-    let Ok(meta) = fs::symlink_metadata(&from) else {
-        return;
-    };
+    let meta = fs::symlink_metadata(&from)?;
     if meta.is_dir() {
         if rel.file_name().is_some_and(|n| n == "__pycache__") {
-            return;
+            return Ok(());
         }
-        let Ok(read) = fs::read_dir(&from) else {
-            return;
-        };
-        for entry in read.filter_map(Result::ok) {
-            keep_unrecorded(backup, site, &rel.join(entry.file_name()), recorded);
+        for entry in fs::read_dir(&from)? {
+            keep_unrecorded(backup, site, &rel.join(entry?.file_name()), recorded)?;
         }
-        return;
+        return Ok(());
     }
     let key = rel.to_string_lossy().replace('\\', "/");
     let to = site.join(rel);
     if !meta.is_file() || recorded.contains(&key) || fs::symlink_metadata(&to).is_ok() {
-        return;
+        return Ok(());
     }
     if let Some(parent) = to.parent() {
-        if fs::create_dir_all(parent).is_err() {
-            return;
-        }
+        fs::create_dir_all(parent)?;
     }
-    let _ = fs::rename(&from, &to);
+    fs::copy(&from, &to)?;
+    Ok(())
 }
 
 /// The packages in `site_packages`, by name.

@@ -143,7 +143,7 @@ struct BonsaiHarnessView: View {
                 // Python Lab's last second of typing is saved before Bonsai
                 // reads the project. A save that fails shows in Python Lab and
                 // the task still starts; the unsaved text stays on screen
-                // there, and Python Lab keeps it rather than reload over it.
+                // there and isn't written over Bonsai's work until edited again.
                 pythonLab?.flush()
                 model.runRequest()
             }

@@ -456,3 +456,50 @@ fn upgrading_leaves_files_another_package_owns() {
     assert!(site.join("keeper/__init__.py").exists());
     assert!(site.join("liar-2.0.dist-info").exists());
 }
+
+#[test]
+fn an_upgrade_that_cant_keep_saved_files_is_undone() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "1.0",
+        &[("keeper/__init__.py", "X = 1\n")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    fs::create_dir_all(site.join("keeper/data")).unwrap();
+    fs::write(site.join("keeper/data/state.sqlite"), "saved").unwrap();
+    // The new version has a file where the saved file's folder was.
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "2.0",
+        &[("keeper/__init__.py", "X = 2\n"), ("keeper/data", "")],
+        &[],
+        true,
+    );
+    assert!(matches!(
+        package_install_wheel(path, sum, site_text.clone()),
+        Err(PackageError::Invalid { .. })
+    ));
+    // Version 1 is back, with its saved file.
+    assert_eq!(
+        fs::read_to_string(site.join("keeper/data/state.sqlite")).unwrap(),
+        "saved"
+    );
+    assert_eq!(
+        fs::read_to_string(site.join("keeper/__init__.py")).unwrap(),
+        "X = 1\n"
+    );
+    assert_eq!(packages_installed(site_text)[0].version, "1.0");
+    let mut entries: Vec<_> = fs::read_dir(&site)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    entries.sort();
+    assert_eq!(entries, ["keeper", "keeper-1.0.dist-info"]);
+}

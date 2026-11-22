@@ -640,6 +640,8 @@ public final class PythonLabModel {
             saveState = .saved
         } catch {
             saveState = .failed(Self.message(error))
+            // Failing while Bonsai works: not retried over its work later.
+            if isLockedByBonsai { heldBack = true }
         }
     }
 
