@@ -1339,20 +1339,42 @@ impl ChatCore {
                 ),
             });
         }
+        // And the message the caption replies to, which can have been
+        // deleted meanwhile: chat-core would refuse it after the files went.
+        if let (false, Some(target)) = (body.is_empty(), reply_to.as_deref()) {
+            let found = relay
+                .device_messages(&endpoint_id)
+                .map_err(crate::device_chat::chat_error)?
+                .iter()
+                .any(|m| m.id == target && !m.deleted);
+            if !found {
+                return Err(ChatError::InvalidInput {
+                    reason: format!("no message {target:?} to reply to"),
+                });
+            }
+        }
         // Every copy before the first send, so a copy that fails refuses
-        // the whole message rather than half of it.
+        // the whole message rather than half of it (and leaves no copies).
         let mut paths = Vec::with_capacity(files.len());
+        let mut dirs = Vec::new();
         for file in &files {
             // Under the name the person sees: Relay names an item after its
             // file, and a picked photo waits under a temporary one.
-            let staged = named_copy(file).map_err(|e| ChatError::Storage {
-                reason: e.to_string(),
-            })?;
-            paths.push(
-                staged
-                    .map(|(_, path)| path)
-                    .unwrap_or_else(|| std::path::PathBuf::from(&file.path)),
-            );
+            match named_copy(file) {
+                Ok(Some((dir, path))) => {
+                    dirs.push(dir);
+                    paths.push(path);
+                }
+                Ok(None) => paths.push(std::path::PathBuf::from(&file.path)),
+                Err(e) => {
+                    for dir in &dirs {
+                        let _ = std::fs::remove_dir_all(dir);
+                    }
+                    return Err(ChatError::Storage {
+                        reason: e.to_string(),
+                    });
+                }
+            }
         }
         for path in paths {
             // The staged copy stays in the temporary folder (the system
@@ -1401,6 +1423,9 @@ fn named_copy(
     ));
     std::fs::create_dir_all(&dir)?;
     let to = dir.join(name);
-    std::fs::copy(from, &to)?;
+    if let Err(e) = std::fs::copy(from, &to) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return Err(e);
+    }
     Ok(Some((dir, to)))
 }

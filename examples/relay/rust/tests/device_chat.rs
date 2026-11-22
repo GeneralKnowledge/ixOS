@@ -400,6 +400,23 @@ fn a_caption_too_long_sends_no_file() {
     ));
     assert!(laptop.device_messages(&phone_id).unwrap().is_empty());
     assert_eq!(laptop.transfers().len(), before);
+
+    // A caption replying to a message that isn't there: refused before the file too.
+    let refused = block_on(laptop_chat.send_files(
+        format!("device:{phone_id}"),
+        "about that".into(),
+        Some("gone".into()),
+        vec![relay_core::chat::ChatOutgoingFile {
+            path: file.to_string_lossy().into_owned(),
+            name: "a.txt".into(),
+            mime: "text/plain".into(),
+        }],
+    ));
+    assert!(matches!(
+        refused,
+        Err(relay_core::chat::ChatError::InvalidInput { .. })
+    ));
+    assert_eq!(laptop.transfers().len(), before);
 }
 
 /// A note from a device on an older build is a message in its

@@ -47,7 +47,7 @@ class DevicesFlowTest {
     private var laptop: RelayCore? = null
     private var laptopNetwork: RelayNetwork? = null
 
-    private fun launch() {
+    private fun launch(toDevices: Boolean = true) {
         val intent = Intent(context, MainActivity::class.java)
             .putExtra(ForgeEnvironment.TEMPORARY_DATA_EXTRA, true)
         scenario = ActivityScenario.launch(intent)
@@ -57,6 +57,7 @@ class DevicesFlowTest {
             val text = failure.config.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }
             throw AssertionError("Relay didn't open: $text")
         }
+        if (!toDevices) return
         compose.onNodeWithTag("tab.devices").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("devices.empty"), 10_000)
     }
@@ -76,9 +77,8 @@ class DevicesFlowTest {
 
     @Test
     fun relayOpensOnAnEmptyChats() {
-        launch()
+        launch(toDevices = false)
         // Relay opens on Chats, as on the iPhone: with no trusted devices it has none.
-        compose.onNodeWithTag("tab.chats").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("chats.empty"), 10_000)
     }
 
