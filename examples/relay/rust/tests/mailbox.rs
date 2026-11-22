@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use chat_core::MessageStatus;
 use relay_core::mailbox_server::{start, ServeOptions};
 use relay_core::{CodeSend, NearbyDevice, RelayCore, RelayServers, TransferStatus};
 
@@ -189,11 +190,25 @@ fn through_the_mailbox(meet: impl Fn(&RelayCore, &RelayCore, &str) -> Vec<String
     eventually("the note in the mailbox", || {
         mailbox_has(&mailbox, &laptop_id)
     });
+    // A message too: its bubble says it is in the mailbox.
+    let message =
+        block_on(phone.send_device_message(&laptop_id, "a message while away".into())).unwrap();
+    let mine = |phone: &RelayCore| {
+        phone
+            .device_messages(&laptop_id)
+            .unwrap()
+            .into_iter()
+            .find(|m| m.id == message.id)
+            .unwrap()
+    };
+    eventually("the message in the mailbox", || mine(&phone).in_mailbox);
+    assert_eq!(mine(&phone).status, MessageStatus::Queued);
 
     // The laptop opens again and collects it: once, with a receipt.
     let laptop = device(dir.path(), "laptop");
     block_on(laptop.device_service()).unwrap();
     expected.push("while away".into());
+    expected.push("a message while away".into());
     eventually("the note from the mailbox", || {
         notes_from(&laptop, "phone") == expected
     });
@@ -209,6 +224,14 @@ fn through_the_mailbox(meet: impl Fn(&RelayCore, &RelayCore, &str) -> Vec<String
             .find(|t| t.id == away.id)
             .is_some_and(|t| t.status == TransferStatus::Done)
     });
+    eventually("the message's receipt", || {
+        phone.collect_mailbox();
+        mine(&phone).status == MessageStatus::Sent
+    });
+    assert!(
+        !mine(&phone).in_mailbox,
+        "delivered, so no longer in the mailbox"
+    );
     // Nothing more arrives, and the mailbox is empty.
     laptop.deliver_waiting();
     std::thread::sleep(Duration::from_secs(2));

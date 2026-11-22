@@ -98,6 +98,11 @@ pub struct Message {
     /// Files it carries (M3), in order. Their bytes are fetched separately.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<crate::Attachment>,
+    /// Relay only: one of our `Queued` messages that its device couldn't
+    /// be reached for, left in that device's mailbox to collect. Cleared
+    /// once it is `Sent` (or `Failed`). Always false for a chat server.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub in_mailbox: bool,
 }
 
 impl Message {
