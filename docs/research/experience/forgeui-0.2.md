@@ -137,8 +137,8 @@ Ordered by evidence and size. Each item is one PR.
 | 4 | **`ForgeRating`**: display and input; one adjustable element for VoiceOver ("3 of 5 stars"), tap the current star to clear when `allowsClearing`, star colour from a fixed rating tone, identifier `<id>` with `<id>.star.<n>` | Component | Soundscape `Stars`, Pocket Library `StarRating` | `rating`: a `ForEach` over `star`/`star.fill` symbols | Rating |
 | 5 | **`ForgeThumbnail`**: a frame for any image content, with `shape` (`.rounded`, `.circle`, `.square`), `aspectRatio`, and placeholder, loading and failed states drawn the same everywhere; hidden from VoiceOver unless given a label. It takes a view or a phase, so it works with `ForgeRemoteImage`, a local file, or a `CGImage`, and depends on none of them | Component | Soundscape `Artwork`, Pocket Library `CoverImage`, Relay `PhotoThumbnail`, Device Lab `ArtifactThumbnail`, Sketchbook `SketchTile` frame | `thumbnail`: a `clipShape(RoundedRectangle(cornerRadius: <number>))` around an `Image` | Image (app-supplied only) |
 | 6 | **Choice style**: `.toggleStyle(.forgeChoice)` for chips that turn on and off, and `.buttonStyle(.forgeChoice(isSelected:))` for one-of-several tiles; both add the `.isSelected` trait, use the accent's `soft`/`solid`, and are at least 44 pt | Style | Relay reactions (gaining identifiers), Soundscape A/B tiles and switch, Device Lab phone-check results | `choice`: `.accessibilityAddTraits(... .isSelected ...)` outside ForgeUI | ChoicePicker |
-| 7 | **`ForgeStat`**: value, label, optional unit and `spokenValue`, optional tone; drawn with the `figure` and `figureCaption` roles; one VoiceOver element ("Distance, 4.2 kilometres"); `.forgeStatBackground(.hidden)` for apps with their own surfaces | Component | FieldKit `Stat` (two screens), Weather `MeasureRow`; Good Dog GD4 uses it from the start | `stat`: a `VStack` of a `monospacedDigit` figure over a secondary caption | Stat |
-| 8 | **Progress style**: `.progressViewStyle(.forge)` (and `.forge(tone:)`) on SwiftUI's own `ProgressView`, laying out its label and `currentValueLabel` with text roles and giving VoiceOver "n of m" | Style | Good Dog progress row and goal focus, Urdu skill bars, Pocket Library book progress | none: native `ProgressView` stays correct either way | Progress |
+| 7 | **`ForgeStat`**: value, label, optional unit and `spokenValue`, optional tone; drawn with the `figure` and `figureCaption` roles; one VoiceOver element ("Distance, 4.2 kilometres"); `.forgeStatBackground(.hidden)` for apps with their own surfaces | Component | FieldKit `Stat` (two screens), Weather `MeasureRow`; Good Dog GD4 uses it from the start. Pocket Library's `StatRow` is a row, not a stat: it moves to `ForgeRow(value:)` in item 2. Weather's `DetailTile` stays (a tile with its own graphic) | `stat`: a `VStack` of a `monospacedDigit` figure over a secondary caption | Stat |
+| 8 | **Progress style**: `.progressViewStyle(.forge)` (and `.forge(tone:)`) on SwiftUI's own `ProgressView`, laying out its label and `currentValueLabel` with text roles and giving VoiceOver "n of m" | Style | Good Dog progress row and goal focus, Urdu skill bars, Pocket Library book progress, reader and summaries, Relay receive, Device Lab transfers, downloads and storage | none, by exception: a `ProgressView` without the style is still a correct native control, so there is nothing to forbid | Progress |
 
 **Not in 0.2:** charts (0.3, after Good Dog GD4 as the second user), audio transport (0.3 at the earliest, when two apps' controls match), grids and adaptive layouts (0.3, with a second card-led screen), toasts, filters, multi-select, split views, motion and elevation tokens (no users), custom fonts (no request), and snapshot tests (0.4, see 5.4).
 
@@ -167,7 +167,7 @@ The showcase today shows each component once, in the system's appearance. 0.2 tu
 ### 5.5 Order and gates
 
 1. Items 0 to 3 first: a fix, an adoption, a parameter, an exposure. Small, and 3 unblocks A2UI-1b.
-2. Items 4 to 8, one PR each, in table order. Each moves its apps and adds its rule.
+2. Items 4 to 8, one PR each, in table order. Each moves its apps and adds its rule, except item 8 (a style on a native control, see its row).
 3. 0.2 ships as a ForgeKit release when items 0 to 8 have merged and the showcase matrix has been looked at on the phone once (light, dark, AX3, VoiceOver on rating, choice and stat). The starter's `forgeFormToolbar` move goes in with that release.
 
 Phone time: about 15 minutes for the whole of 0.2, in the combined Device Lab sitting: VoiceOver on ForgeButton working, rating, a choice chip and a stat; one form sheet's spinner; the showcase matrix at AX3.
@@ -183,7 +183,7 @@ One closed list of components an agent may use in any ixOS surface. Each entry f
 1. **The A2UI component name** (A2UI v1.0, the basic catalogue's definition where one exists).
 2. **Its Forge target**: the ForgeUI component or style, or the native SwiftUI control on ForgeUI tokens.
 3. **Its properties**, each typed and closed: text, a ForgeUI tone, accent, text role or spacing token, a number with bounds, a data-model path. Never a colour, font, size, URL or free-form style.
-4. **The accessibility it must carry**: which property becomes the VoiceOver label, and that the renderer refuses the component without it.
+4. **The accessibility it must carry**: which property becomes the VoiceOver label, and that the renderer refuses the component without it. The one exception is Image: without a label it is decorative and hidden from VoiceOver.
 5. **Its identifier**: `a2ui.<surface>.<componentId>`, which satisfies rule 4's `screen.element` shape.
 6. **The events it may send**: none, or named events registered by the app (A2UI-1's gate already refuses everything else).
 
@@ -202,8 +202,8 @@ The list is the same data in three places: the Rust gate's allow-list, the Swift
 | Badge, Status | `ForgeBadge`, `ForgeStatus` | `text`, `tone` | text | none | New |
 | Notice | `ForgeNotice` | `message`, `systemImage`, `tone` ∈ {info, warning} | message | optional registered event | New |
 | EmptyState | `ForgeStateView.empty` | `title`, `systemImage`, `message` | title + message | none | New |
-| ChoicePicker | Native `Picker` (≤ 4 options: segmented; more: menu) or chips with `.forgeChoice` (0.2 item 6) | `options` (labels + values), `selection` path, `variant` ∈ {segmented, menu, chips} | label required; selected trait | data-model edit | Basic look in #377 → item 6 |
-| DateTimeInput | Native `DatePicker` | `value` path, `mode` ∈ {date, time, dateTime}, `min`, `max` | label required | data-model edit | Basic look in #377 → A2UI-1b |
+| ChoicePicker | Native `Picker` (≤ 4 options: segmented; more: menu) or chips with `.forgeChoice` (0.2 item 6) | `label`, `options` (labels + values), `selection` path, `variant` ∈ {segmented, menu, chips} | label required; selected trait | data-model edit | Basic look in #377 → item 6 |
+| DateTimeInput | Native `DatePicker` | `label`, `value` path, `mode` ∈ {date, time, dateTime}, `min`, `max` | label required | data-model edit | Basic look in #377 → A2UI-1b |
 | TextField | `TextField` in `ForgeField`, message from Rust's validation | `label`, `value` path, `message` path | label; error read after the field | data-model edit | New |
 | Toggle | Native `Toggle`, `ForgeRow` label | `label`, `value` path | label | data-model edit | New |
 | Stat | `ForgeStat` (item 7) | `value`, `label`, `unit`, `spokenValue`, `tone` | combined; spoken value if given | none | New |
