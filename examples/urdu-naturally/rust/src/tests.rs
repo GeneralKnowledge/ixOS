@@ -502,6 +502,13 @@ fn a_late_answer_never_lands_in_a_new_chat() {
     assert_eq!(late, third, "a new chat with the same person is a new chat");
 }
 
+/// Swift mirrors this limit (`UrduModel.maxNameChars`) to stop the name
+/// field where saving would refuse it: change both together.
+#[test]
+fn the_name_limit_matches_the_swift_field() {
+    assert_eq!(crate::MAX_NAME_CHARS, 40);
+}
+
 /// A chat line longer than the limit is refused with the limit, never cut
 /// short and answered as if you'd said less; the chat is left as it was.
 #[test]
