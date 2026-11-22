@@ -177,12 +177,10 @@ fn a_note_for_a_closed_device_goes_through_the_mailbox_once_with_a_receipt() {
     eventually("the note from the mailbox", || {
         notes_from(&laptop, "phone") == ["hello", "while away"]
     });
-    // The laptop left a receipt in the phone's mailbox; the phone only
-    // collects (never tries the laptop directly), so Done comes from it.
+    // The laptop left a receipt in the phone's mailbox. The phone only
+    // collects here (it never tries the laptop directly), so Done comes
+    // from the receipt; its own collector may get there first.
     let phone_key = phone_id(&laptop);
-    eventually("the receipt in the phone's mailbox", || {
-        mailbox_has(&mailbox, &phone_key)
-    });
     eventually("the receipt", || {
         phone.collect_mailbox();
         phone
