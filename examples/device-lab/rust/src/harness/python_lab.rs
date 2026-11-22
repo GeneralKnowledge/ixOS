@@ -650,22 +650,30 @@ fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String
         })
         .collect();
     let [at] = found[..] else { return None };
-    let indent = |line: &str| line.len() - line.trim_start().len();
+    // Indents are runs of ASCII spaces and tabs, so every cut below falls on
+    // a character boundary, and the file's own indent (tabs included) is
+    // what the new lines get.
+    let indent = |line: &str| line.len() - line.trim_start_matches([' ', '\t']).len();
     let first_old = old.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     let first_file = lines[at..at + want.len()]
         .iter()
         .find(|l| !l.trim().is_empty())
         .copied()
         .unwrap_or("");
-    let shift = indent(first_file) as isize - indent(first_old) as isize;
+    let prefix = &first_file[..indent(first_file)];
+    let old_indent = indent(first_old);
     let shifted = new.lines().map(|line| {
+        let own = indent(line);
         if line.trim().is_empty() {
             String::new()
-        } else if shift >= 0 {
-            format!("{}{line}", " ".repeat(shift as usize))
+        } else if own >= old_indent {
+            // As deep as the first old line or deeper: the file's indent,
+            // then the rest.
+            format!("{prefix}{}", &line[old_indent..])
         } else {
-            let cut = (-shift as usize).min(indent(line));
-            line[cut..].to_string()
+            // Shallower: that much less of the file's indent.
+            let keep = prefix.len().saturating_sub(old_indent - own);
+            format!("{}{}", &prefix[..keep], &line[own..])
         }
     });
     let mut out: Vec<String> = lines[..at].iter().map(|l| l.to_string()).collect();
