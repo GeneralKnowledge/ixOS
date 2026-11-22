@@ -108,6 +108,9 @@ public final class UrduModel {
         await chatRun { try await self.core.chatPick(phraseId: phraseId) }
     }
 
+    /// The longest line the chat takes, in characters (Rust's limit).
+    public var chatMaxTyped: Int { Int(core.chatMaxTyped()) }
+
     /// Ends the chat; what you typed in it is forgotten.
     public func chatEnd() { core.chatEnd() }
 
@@ -150,6 +153,7 @@ public final class UrduModel {
         switch error {
         case .NotFound: return "That phrase isn't in this version of the app."
         case let .NameTooLong(max): return "Names can be up to \(max) characters."
+        case let .TooLong(max): return "That's too long to say in one go. Keep it to \(max) characters."
         case .InUse: return "Urdu, Naturally is open in another copy of the app."
         case .Corrupt: return "Your saved progress couldn't be read."
         case .NewerData: return "Your progress was saved by a newer version of the app. Update it to carry on."

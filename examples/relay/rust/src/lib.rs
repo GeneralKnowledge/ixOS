@@ -1988,6 +1988,7 @@ impl device::DeviceInbound for CoreDevices {
 
     fn answered(&self, from: &str, report: &AskReport) {
         // Timings only, never the text.
+        // cut: the start of a device id, for the log
         let short: String = from.chars().take(8).collect();
         forge_runtime::logging::info!(
             "relay answered an ask from {short}: model={} pieces={} ms={} error={:?}",

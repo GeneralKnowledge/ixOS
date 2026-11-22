@@ -889,6 +889,50 @@ def rule_row_actions(app):
     return True, ""
 
 
+# Text is never cut short without a word: Urdu, Naturally's chat kept the
+# first 300 characters of a longer line and answered that, with nothing on
+# screen to say so (Reuben, 2026-11-22). Typed text over a limit is refused
+# with the limit (as Checklist, FieldKit, Good Dog and Pocket Library do), and
+# the field shows it. A cut of text nobody typed (an imported name, a summary
+# of an article, a model's answer in a prompt) says why on the line or just
+# above it with a `// cut:` comment.
+RUST_CUT = re.compile(r"\.chars\(\)\s*\.take\(")
+
+
+def silent_cut_problems(text):
+    lines = text.splitlines()
+    end = len(lines)
+    for i, line in enumerate(lines):
+        if re.match(r"\s*#\[cfg\(test\)\]", line):
+            end = i
+            break
+    # Comments out, then the calls found across lines (`.chars()` on one
+    # line and `.take(` on the next).
+    code = "\n".join(l.split("//", 1)[0] for l in lines[:end])
+    found = []
+    for m in RUST_CUT.finditer(code):
+        first = code.count("\n", 0, m.start())
+        last = code.count("\n", 0, m.end())
+        if any("// cut:" in l for l in lines[max(0, first - 3) : last + 1]):
+            continue
+        found.append(last + 1)
+    return found
+
+
+def rule_no_silent_cut(app):
+    if app.name in NO_RUST:
+        return None
+    bad = []
+    for path in rust_sources(app):
+        if path.name == "tests.rs" or "bin" in path.parts:
+            continue
+        for line in silent_cut_problems(read(path)):
+            bad.append(f"{path.name}:{line}")
+    if bad:
+        return False, "cuts text short without saying why; refuse typed text over a limit, or add a `// cut:` reason: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -909,6 +953,7 @@ RULES = [
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
+    ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),
     ("row-actions", "Row actions through ForgeUI's `forgeRowActions`: a swipe and a long-press menu, never swipe-only", rule_row_actions),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
@@ -988,6 +1033,14 @@ for name in apps:
             )
         if ok and listed:
             problems.append(f"{name}: {rule_id} passes now; remove it from docs/app-parity.toml")
+
+# The Rust starter is where every app core begins: no silent cuts there either.
+for path in sorted((root / "templates" / "app-rust").rglob("*.rs")):
+    for line in silent_cut_problems(read(path)):
+        problems.append(
+            f"{path.relative_to(root)}:{line}: no-silent-cut: text cut short without "
+            "a `// cut:` reason"
+        )
 
 # The starters are where every app's screens begin, so they meet the screen
 # rules too (no lag list for them).
