@@ -11,10 +11,16 @@ import Observation
 @Observable
 public final class BonsaiHarnessModel {
     public private(set) var snapshot: HarnessSnapshot?
+    /// Bonsai's current step as it writes it: the thought, then the file.
+    /// Kept while the step runs, so the code stays on screen; cleared when
+    /// the task ends.
+    public private(set) var live: HarnessLive?
     public private(set) var ladder: [HarnessTask] = []
     public private(set) var files: [ProjectFile] = []
     /// The project's images, newest first, shown as thumbnails.
     public private(set) var artifacts: [ProjectArtifact] = []
+    /// The images the last task made or changed, newest first: its result.
+    public private(set) var made: [ProjectArtifact] = []
     public private(set) var error: String?
     /// The person's own task.
     public var request = ""
@@ -29,6 +35,11 @@ public final class BonsaiHarnessModel {
 
     @ObservationIgnored private let harness: BonsaiHarness?
     @ObservationIgnored private var models: [String: LlamaCppModel] = [:]
+    /// The project's images when the task started, to tell what it made.
+    @ObservationIgnored private var imagesBefore: [String: ProjectArtifact]?
+    /// A task was started: load the files when it's seen stopped, even if
+    /// it ended before a poll saw it running.
+    @ObservationIgnored private var pendingRefresh = false
 
     public init(harness: BonsaiHarness?) {
         self.harness = harness
@@ -48,7 +59,7 @@ public final class BonsaiHarnessModel {
         LlamaModelFile.catalogue.filter(\.isDownloaded)
     }
 
-    /// Copies Rust's snapshot four times a second until the calling task is
+    /// Copies Rust's snapshot four times a second (ten while Bonsai writes) until the calling task is
     /// cancelled (attach with `.task`).
     public func follow() async {
         if !isScripted, !downloadedModels.contains(where: { $0.id == modelID }) {
@@ -62,9 +73,13 @@ public final class BonsaiHarnessModel {
         var wasRunning = isRunning
         while !Task.isCancelled {
             refresh()
-            if wasRunning && !isRunning { loadFiles() }
+            if (wasRunning || pendingRefresh) && !isRunning {
+                pendingRefresh = false
+                loadFiles()
+            }
             wasRunning = isRunning
-            try? await Task.sleep(for: .milliseconds(250))
+            // Faster while Bonsai writes, so the text streams smoothly.
+            try? await Task.sleep(for: .milliseconds(snapshot?.phase == .thinking ? 100 : 250))
         }
     }
 
@@ -72,6 +87,11 @@ public final class BonsaiHarnessModel {
         guard let harness else { return }
         let next = harness.snapshot()
         if next != snapshot { snapshot = next }
+        if let current = next.live {
+            if current != live { live = current }
+        } else if !next.running, live != nil {
+            live = nil
+        }
     }
 
     public func run(_ task: HarnessTask) {
@@ -95,12 +115,21 @@ public final class BonsaiHarnessModel {
         refresh()
     }
 
+    /// A finished step's whole answer, to go back through the task.
+    public func replay(step: UInt32) -> HarnessLive? { harness?.replay(step: step) }
+
     /// The last task as Markdown, to share as evidence.
     public var transcript: String { harness?.transcript() ?? "" }
 
     public func loadFiles() {
         files = harness?.files() ?? []
         artifacts = projectFolder.map { projectArtifacts(project: $0) } ?? []
+        if !isRunning, let before = imagesBefore {
+            made = artifacts.filter { artifact in
+                guard let old = before[artifact.path] else { return true }
+                return old.bytes != artifact.bytes || old.modifiedMs != artifact.modifiedMs
+            }
+        }
     }
 
     /// The folder of the project on screen.
@@ -124,8 +153,13 @@ public final class BonsaiHarnessModel {
     }
 
     private func attempt(_ start: () throws -> Void) {
+        imagesBefore = Dictionary(
+            (projectFolder.map { projectArtifacts(project: $0) } ?? []).map { ($0.path, $0) },
+            uniquingKeysWith: { first, _ in first })
+        made = []
         do {
             try start()
+            pendingRefresh = true
             error = nil
         } catch let failure as HarnessError {
             error = failure.message

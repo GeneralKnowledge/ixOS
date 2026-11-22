@@ -62,6 +62,11 @@ pub enum Criterion {
         format: String,
         min_width: u32,
     },
+    /// The SVG at `path` draws a bar for each of `values`: <rect> elements
+    /// whose heights (or widths, for bars across) rank like the values, and
+    /// each value as the text of a label. A chart whose bars ignore the
+    /// numbers fails.
+    SvgBars { path: String, values: Vec<String> },
 }
 
 impl Criterion {
@@ -87,6 +92,10 @@ impl Criterion {
                     format!("running it makes {path} ({kind})")
                 }
             }
+            Criterion::SvgBars { path, values } => format!(
+                "{path} has a bar for each of {}, sized by its value and labelled with it",
+                values.join(", ")
+            ),
         }
     }
 
@@ -202,8 +211,177 @@ impl Criterion {
                     }),
                 }
             }
+            Criterion::SvgBars { path, values } => {
+                let Some(svg) = read(path) else {
+                    return Err(format!("{path} is missing"));
+                };
+                svg_bars(&svg, values).map(|()| {
+                    format!(
+                        "{path} has bars sized like {} and labelled with them",
+                        values.join(", ")
+                    )
+                })
+            }
         }
     }
+}
+
+/// The checks of `Criterion::SvgBars` on the SVG's text.
+fn svg_bars(svg: &str, values: &[String]) -> Result<(), String> {
+    // What's inside <defs> isn't drawn by itself.
+    let svg = &without_defs(svg);
+    let labels = svg_texts(svg);
+    let missing: Vec<&str> = values
+        .iter()
+        .filter(|value| {
+            !labels.iter().any(|label| {
+                label
+                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-'))
+                    .any(|word| word == value.as_str())
+            })
+        })
+        .map(String::as_str)
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "no <text> label shows {}; label each bar with its value",
+            missing.join(", ")
+        ));
+    }
+    let numbers: Vec<f64> = values.iter().filter_map(|v| v.parse().ok()).collect();
+    let rects = svg_rects(svg);
+    if rects.len() < numbers.len() {
+        return Err(format!(
+            "it has {} <rect> elements; it needs one bar for each of the {} values",
+            rects.len(),
+            numbers.len()
+        ));
+    }
+    let ranked = |sizes: &[f64]| {
+        (0..numbers.len()).all(|i| {
+            (i + 1..numbers.len())
+                .all(|j| numbers[i].total_cmp(&numbers[j]) == sizes[i].total_cmp(&sizes[j]))
+        })
+    };
+    // Some rects in document order (after a background, say) are the bars.
+    let heights: Vec<f64> = rects.iter().map(|r| r.0).collect();
+    let widths: Vec<f64> = rects.iter().map(|r| r.1).collect();
+    if ordered_pick(&heights, numbers.len(), &ranked)
+        || ordered_pick(&widths, numbers.len(), &ranked)
+    {
+        Ok(())
+    } else {
+        Err(
+            "the bars' sizes don't follow the values; make each bar's height (or width) \
+             proportional to its value"
+                .into(),
+        )
+    }
+}
+
+/// Whether some `n` of `sizes`, kept in order, pass `ok`. Gives up past 40
+/// rects, where a chart this small has no business going.
+fn ordered_pick(sizes: &[f64], n: usize, ok: &dyn Fn(&[f64]) -> bool) -> bool {
+    fn go(
+        sizes: &[f64],
+        n: usize,
+        from: usize,
+        picked: &mut Vec<f64>,
+        ok: &dyn Fn(&[f64]) -> bool,
+    ) -> bool {
+        if picked.len() == n {
+            return ok(picked);
+        }
+        (from..sizes.len()).any(|i| {
+            picked.push(sizes[i]);
+            let found = go(sizes, n, i + 1, picked, ok);
+            picked.pop();
+            found
+        })
+    }
+    sizes.len() <= 40 && go(sizes, n, 0, &mut Vec::new(), ok)
+}
+
+/// The SVG with every <defs> element's content left out.
+fn without_defs(svg: &str) -> String {
+    let mut out = String::new();
+    let mut rest = svg;
+    while let Some(start) = rest.find("<defs") {
+        out.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let tag_end = rest.find('>').map_or(rest.len(), |i| i + 1);
+        if rest[..tag_end].ends_with("/>") {
+            rest = &rest[tag_end..];
+        } else {
+            // `</defs>`, with any space XML allows before the `>`.
+            rest = rest
+                .find("</defs")
+                .and_then(|close| rest[close..].find('>').map(|end| close + end + 1))
+                .map_or("", |end| &rest[end..]);
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// (height, width) of each <rect> that would show: both sizes positive.
+fn svg_rects(svg: &str) -> Vec<(f64, f64)> {
+    svg.match_indices("<rect")
+        .map(|(at, _)| {
+            let tag = &svg[at..];
+            let tag = &tag[..tag.find('>').unwrap_or(tag.len())];
+            (svg_attribute(tag, "height"), svg_attribute(tag, "width"))
+        })
+        .filter(|(height, width)| {
+            height.is_finite() && width.is_finite() && *height > 0.0 && *width > 0.0
+        })
+        .collect()
+}
+
+fn svg_attribute(tag: &str, name: &str) -> f64 {
+    tag.match_indices(name)
+        .filter(|(at, _)| tag[..*at].ends_with(char::is_whitespace))
+        .find_map(|(at, _)| {
+            let rest = tag[at + name.len()..]
+                .trim_start()
+                .strip_prefix('=')?
+                .trim_start();
+            let quote = rest.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+            let rest = &rest[1..];
+            let value = &rest[..rest.find(quote)?];
+            // The number of a length ("40", "40px", "10%", "1e2", "10em"):
+            // the longest start that reads as a number. Only order
+            // matters, and bars share a unit.
+            let value = value.trim();
+            (1..=value.len())
+                .rev()
+                .filter(|&end| value.is_char_boundary(end))
+                .find_map(|end| value[..end].parse::<f64>().ok())
+        })
+        .unwrap_or(0.0)
+}
+
+/// The text inside each <text> element (tags inside it dropped).
+fn svg_texts(svg: &str) -> Vec<String> {
+    svg.match_indices("<text")
+        .filter_map(|(at, _)| {
+            let rest = &svg[at..];
+            let open = rest.find('>')? + 1;
+            let close = rest.find("</text>")?;
+            let inner = rest.get(open..close)?;
+            let mut out = String::new();
+            let mut in_tag = false;
+            for c in inner.chars() {
+                match c {
+                    '<' => in_tag = true,
+                    '>' => in_tag = false,
+                    c if !in_tag => out.push(c),
+                    _ => {}
+                }
+            }
+            Some(out)
+        })
+        .collect()
 }
 
 /// A seed file a task starts from.
@@ -299,11 +477,17 @@ pub fn ladder() -> Vec<LadderTask> {
                       using only the standard library (write the SVG as text), with each bar's value \
                       as a label. Then run chart.py.",
             seed: vec![],
-            criteria: vec![Criterion::ProducesImage {
-                path: "chart.svg".into(),
-                format: "svg".into(),
-                min_width: 0,
-            }],
+            criteria: vec![
+                Criterion::ProducesImage {
+                    path: "chart.svg".into(),
+                    format: "svg".into(),
+                    min_width: 0,
+                },
+                Criterion::SvgBars {
+                    path: "chart.svg".into(),
+                    values: vec!["3".into(), "7".into(), "5".into()],
+                },
+            ],
         },
         LadderTask {
             id: "t5-fix-from-traceback",
