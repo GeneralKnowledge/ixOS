@@ -13,13 +13,14 @@ struct SettingsScreen: View {
     var body: some View {
         Form {
             Section {
-                // Rust keeps up to 40 characters; the field stops there, so
-                // leaving the screen never loses the name. Fitted in the
-                // binding: onChange compares canonically, so it would miss
-                // the same text spelt with more scalars.
+                // Rust keeps up to 40 characters; the field takes no edit
+                // past that, so leaving the screen never loses the name and
+                // nothing already typed is cut off. Checked in the binding:
+                // onChange compares canonically, so it would miss the same
+                // text spelt with more scalars.
                 TextField("Your name", text: Binding(
                     get: { name },
-                    set: { name = UrduModel.fitName($0) }
+                    set: { if UrduModel.fitsName($0) { name = $0 } }
                 ))
                     .autocorrectionDisabled()
                     .submitLabel(.done)

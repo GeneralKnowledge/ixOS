@@ -129,18 +129,13 @@ public final class UrduModel {
     /// counts (Unicode scalars).
     public static let maxNameChars = 40
 
-    /// `name` cut to what Rust keeps, on a whole character, so the field
-    /// can't hold a name that saving would refuse (and leaving Settings
-    /// would then lose).
-    public static func fitName(_ name: String) -> String {
-        var kept = ""
-        var scalars = 0
-        for character in name {
-            scalars += character.unicodeScalars.count
-            if scalars > maxNameChars { break }
-            kept.append(character)
-        }
-        return kept
+    /// Whether Rust keeps `name`: at most `maxNameChars` scalars once the
+    /// spaces round it are trimmed, as `set_name` counts. The field takes
+    /// an edit only while this holds, so it never holds a name that saving
+    /// would refuse (and leaving Settings would then lose), and an edit
+    /// over the limit is refused rather than cutting the end off.
+    public static func fitsName(_ name: String) -> Bool {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count <= maxNameChars
     }
 
     public func setName(_ name: String) async {

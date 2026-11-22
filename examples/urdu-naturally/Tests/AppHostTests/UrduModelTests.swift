@@ -41,17 +41,18 @@ final class UrduModelTests: XCTestCase {
     @MainActor
     func testTheNameFieldStopsWhereRustDoes() async throws {
         let (_, model) = try await open(try makeDirectory())
-        let long = String(repeating: "a", count: UrduModel.maxNameChars + 5)
-        let fitted = UrduModel.fitName(long)
-        XCTAssertEqual(fitted.count, UrduModel.maxNameChars)
-        await model.setName(fitted)
+        let longest = String(repeating: "a", count: UrduModel.maxNameChars)
+        XCTAssertTrue(UrduModel.fitsName(longest))
+        XCTAssertFalse(UrduModel.fitsName(longest + "b"))
+        // Spaces round the name don't count, as Rust trims them.
+        XCTAssertTrue(UrduModel.fitsName(" " + longest + " "))
+        await model.setName(" " + longest + " ")
         XCTAssertNil(model.errorMessage)
-        XCTAssertEqual(model.settings.name, fitted)
-        // An emoji made of several scalars is kept whole or not at all.
+        XCTAssertEqual(model.settings.name, longest)
+        // Every scalar counts: one emoji of five scalars, not one character.
         let family = "👨‍👩‍👧"
-        let edge = String(repeating: "a", count: UrduModel.maxNameChars - 2) + family
-        XCTAssertEqual(UrduModel.fitName(edge), String(repeating: "a", count: UrduModel.maxNameChars - 2))
-        XCTAssertEqual(UrduModel.fitName("Sam"), "Sam")
+        XCTAssertFalse(UrduModel.fitsName(String(repeating: "a", count: UrduModel.maxNameChars - 2) + family))
+        XCTAssertTrue(UrduModel.fitsName("Sam"))
     }
 
     @MainActor
