@@ -197,16 +197,16 @@ impl Chat {
         if self.ended {
             return Vec::new();
         }
-        // Half way through what you were saying: the rest of it.
-        if let Some(Line {
-            who: Who::You,
-            phrase: Some(yours),
-            ..
-        }) = self.lines.last()
-        {
-            if let Some(rest) = graph.you_then.get(yours) {
-                return rest.clone();
-            }
+        // Half way through what you were saying: the rest of it, even after
+        // a try they didn't catch. Only since their last line.
+        let yours = self
+            .lines
+            .iter()
+            .rev()
+            .take_while(|l| l.who == Who::You)
+            .find_map(|l| l.phrase.as_ref());
+        if let Some(rest) = yours.and_then(|id| graph.you_then.get(id)) {
+            return rest.clone();
         }
         match self.last_theirs() {
             Some(theirs) => graph.replies_to(theirs).to_vec(),
@@ -615,6 +615,8 @@ mod tests {
             None
         );
         assert_eq!(chat.suggestions(), ["tum-sunao"]);
+        chat.answer(Some("qwzx".into()), &Understood::missed(None));
+        assert_eq!(chat.suggestions(), ["tum-sunao"], "still, after a miss");
         assert!(chat
             .answer(None, &Understood::picked("tum-sunao"))
             .is_some());

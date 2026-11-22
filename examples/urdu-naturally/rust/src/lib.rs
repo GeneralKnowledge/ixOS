@@ -1177,7 +1177,7 @@ impl UrduCore {
         typed: Option<String>,
         understood: chat::Understood,
     ) -> Result<ChatView, UrduError> {
-        let (theirs, yours) = {
+        let applied = {
             let mut now = lock(&self.chat);
             let now = now
                 .as_mut()
@@ -1185,13 +1185,23 @@ impl UrduCore {
             if serial.is_some_and(|s| s != now.serial) {
                 return Ok(self.saved.get().chat(now));
             }
+            let undo = (now.chat.clone(), now.note.clone());
             let before = now.chat.lines.len() + 1;
             now.chat.answer(typed, &understood);
             now.note = understood.note.clone();
             let yours = understood.phrase.clone().map(|id| (id, understood.heard));
-            (their_lines(&now.chat, before), yours)
+            (their_lines(&now.chat, before), yours, undo, now.serial)
         };
-        self.chat_record(theirs, yours).await
+        let (theirs, yours, undo, serial) = applied;
+        let recorded = self.chat_record(theirs, yours).await;
+        // Not saved: the turn didn't happen, so sending it again doesn't
+        // say it twice.
+        if recorded.is_err() {
+            if let Some(now) = lock(&self.chat).as_mut().filter(|n| n.serial == serial) {
+                (now.chat, now.note) = undo;
+            }
+        }
+        recorded
     }
 
     /// Saves what a chat turn practised: their lines (and the line you
