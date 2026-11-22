@@ -120,6 +120,7 @@ struct AlbumGrid: View {
                 NavigationLink(value: ListenRoute.album(album)) {
                     ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl, size: nil,
                                 download: model.map { $0.downloadState(of: $0.tracks(of: album)) } ?? .notDownloaded)
+                        .surfaceSource(.album(album))
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier(identifier)

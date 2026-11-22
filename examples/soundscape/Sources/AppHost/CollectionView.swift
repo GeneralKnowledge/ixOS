@@ -443,6 +443,7 @@ struct AddToPlaylistSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .soundscapeOverlay()
         .forgeFeedback(model.feedback)
     }
 }

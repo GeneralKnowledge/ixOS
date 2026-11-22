@@ -673,6 +673,10 @@ private struct QueueSheet: View {
         }
         .forgeFeedback(model.feedback)
         .presentationDetents([.medium, .large])
+        // Layered: the player stays visible, and usable, under the queue
+        // while it is half raised.
+        .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+        .soundscapeOverlay()
         .presentationDragIndicator(.visible)
     }
 

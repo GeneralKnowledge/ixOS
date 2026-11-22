@@ -156,6 +156,7 @@ struct AlbumView: View {
                     NavigationLink(value: ListenRoute.album(other)) {
                         ArtworkTile(title: other.title, subtitle: nil, url: other.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: other)))
+                            .surfaceSource(.album(other))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("album.otherAlbum")
@@ -305,6 +306,7 @@ struct ArtistView: View {
                         ArtworkTile(title: album.title, subtitle: "\(album.trackCount) \(album.trackCount == 1 ? "song" : "songs")",
                                     url: album.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: album)))
+                            .surfaceSource(.album(album))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("artist.album")
