@@ -19,8 +19,10 @@ pub mod crash_test;
 pub mod harness;
 pub mod logs;
 pub mod power;
+pub mod python_highlight;
 pub mod stats;
 pub mod transfer_test;
+pub mod workspace;
 
 use std::sync::{Arc, Mutex};
 

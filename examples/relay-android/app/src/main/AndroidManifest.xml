@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- iroh connections to other devices, and Relay's relay and lookup servers. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Which networks this device is on, for iroh's routes. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Finding code senders and trusted devices with NsdManager (mDNS). -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+    <!-- No backups: this device's key is in Relay's private files until it moves into the
+         Android Keystore (stage 4), and a copy of the identity must never leave the phone, as
+         the iPhone keeps it in the Keychain and out of backups. -->
+    <application
+        android:name=".RelayApplication"
+        android:enableOnBackInvokedCallback="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/relay_no_backup"
+        android:label="Relay"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Received files open in other apps through content URIs. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/relay_files" />
+        </provider>
+    </application>
+
+</manifest>

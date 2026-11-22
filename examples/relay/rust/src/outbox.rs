@@ -762,8 +762,13 @@ pub(crate) fn settle_messages(r: &Record, c: &mut Conversations<'_>) {
 fn remember_reached(r: &mut Record, to: &str, sent: &device::Sent) {
     let at: Vec<String> = sent.at.iter().map(|a| a.to_string()).collect();
     r.devices.seen_at(to, &at, now_ms());
-    r.devices
-        .met(to, &sent.addresses, sent.route, sent.mailbox.clone());
+    r.devices.met(
+        to,
+        &sent.addresses,
+        sent.route,
+        sent.mailbox.clone(),
+        now_ms(),
+    );
 }
 
 impl RelayCore {
@@ -961,12 +966,23 @@ impl RelayCore {
             }
         }
         let id = d.id.clone();
+        let to = d.to.clone();
+        // A message shows "In the Mailbox" in its conversation.
+        let message = match &d.payload {
+            Payload::Message { id, .. } => Some(id.clone()),
+            Payload::Files { .. } => Some(crate::device_chat::files_message_id(&d.id)),
+            Payload::Note { .. } => None,
+        };
         let saved = self
             .rt
             .command("delivery-left", move |state| {
-                state.change(|r| {
+                state.change_with(|r, c| {
                     r.delivery_status(&id, SavedStatus::Waiting);
-                    Ok(already || r.left_in_mailbox(&id, now))
+                    let left = already || r.left_in_mailbox(&id, now);
+                    if let (true, Some(message)) = (left, message) {
+                        c.set_in_mailbox(&to, &message)?;
+                    }
+                    Ok(left)
                 })
             })
             .await;

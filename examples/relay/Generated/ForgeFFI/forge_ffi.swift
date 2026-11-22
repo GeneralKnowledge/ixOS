@@ -8009,6 +8009,11 @@ public struct ChatMessage: Equatable, Hashable {
      * `ChatCore::fetch_attachment`.
      */
     public var attachments: [ChatAttachment]
+    /**
+     * Relay only: still sending, and waiting in its device's mailbox for
+     * that device to collect it (it wasn't reachable).
+     */
+    public var inMailbox: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -8046,7 +8051,11 @@ public struct ChatMessage: Equatable, Hashable {
         /**
          * Photos and documents it carries, in order (M3). Fetch the bytes with
          * `ChatCore::fetch_attachment`.
-         */attachments: [ChatAttachment]) {
+         */attachments: [ChatAttachment], 
+        /**
+         * Relay only: still sending, and waiting in its device's mailbox for
+         * that device to collect it (it wasn't reachable).
+         */inMailbox: Bool) {
         self.id = id
         self.conversationId = conversationId
         self.author = author
@@ -8060,6 +8069,7 @@ public struct ChatMessage: Equatable, Hashable {
         self.deleted = deleted
         self.reactions = reactions
         self.attachments = attachments
+        self.inMailbox = inMailbox
     }
 
     
@@ -8090,7 +8100,8 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
                 edited: FfiConverterBool.read(from: &buf), 
                 deleted: FfiConverterBool.read(from: &buf), 
                 reactions: FfiConverterSequenceTypeChatReaction.read(from: &buf), 
-                attachments: FfiConverterSequenceTypeChatAttachment.read(from: &buf)
+                attachments: FfiConverterSequenceTypeChatAttachment.read(from: &buf), 
+                inMailbox: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -8108,6 +8119,7 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
         FfiConverterBool.write(value.deleted, into: &buf)
         FfiConverterSequenceTypeChatReaction.write(value.reactions, into: &buf)
         FfiConverterSequenceTypeChatAttachment.write(value.attachments, into: &buf)
+        FfiConverterBool.write(value.inMailbox, into: &buf)
     }
 }
 
@@ -11233,6 +11245,11 @@ public func FfiConverterTypeCapability_lower(_ value: Capability) -> RustBuffer 
 public enum ChatDelivery: Equatable, Hashable {
     
     case sending
+    /**
+     * Relay only: left in its device's mailbox, which the device collects
+     * when it next opens Relay with a network.
+     */
+    case inMailbox
     case sent
     /**
      * Someone else in the room has read it (their read cursor passed it).
@@ -11262,11 +11279,13 @@ public struct FfiConverterTypeChatDelivery: FfiConverterRustBuffer {
         
         case 1: return .sending
         
-        case 2: return .sent
+        case 2: return .inMailbox
         
-        case 3: return .read
+        case 3: return .sent
         
-        case 4: return .failed
+        case 4: return .read
+        
+        case 5: return .failed
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -11280,16 +11299,20 @@ public struct FfiConverterTypeChatDelivery: FfiConverterRustBuffer {
             writeInt(&buf, Int32(1))
         
         
-        case .sent:
+        case .inMailbox:
             writeInt(&buf, Int32(2))
         
         
-        case .read:
+        case .sent:
             writeInt(&buf, Int32(3))
         
         
-        case .failed:
+        case .read:
             writeInt(&buf, Int32(4))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(5))
         
         }
     }
@@ -14961,7 +14984,8 @@ public func deviceConversationId(endpointId: String) -> String  {
 }
 /**
  * The delivery state of `message` in `conversation`: `Read` once another
- * account's read cursor has passed one of our sent messages. Only
+ * account's read cursor has passed one of our sent messages, and
+ * `InMailbox` while one waits in a Relay device's mailbox. Only
  * meaningful for our own messages.
  */
 public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) -> ChatDelivery  {
@@ -15181,7 +15205,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_func_device_conversation_id() != 5838) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_func_chat_delivery() != 64205) {
+    if (uniffi_relay_core_checksum_func_chat_delivery() != 7415) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_chat_error_kind() != 39415) {
