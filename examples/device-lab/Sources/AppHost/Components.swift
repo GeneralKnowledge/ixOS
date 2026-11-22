@@ -127,4 +127,13 @@ extension View {
             self
         #endif
     }
+
+    /// No automatic capitals, for typing code or a script's answers.
+    func noAutocapitalization() -> some View {
+        #if os(iOS)
+            textInputAutocapitalization(.never)
+        #else
+            self
+        #endif
+    }
 }

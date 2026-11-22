@@ -56,7 +56,7 @@ pub const FILE_MAX_BYTES: usize = 64 * 1024;
 pub const FILES_MAX: usize = 50;
 
 /// The line the wrapper prints when the program raised.
-const FAILED_MARK: &str = "__harness_failed__";
+pub(crate) const FAILED_MARK: &str = "__harness_failed__";
 /// The line the test wrapper prints with the counts.
 const TESTS_MARK: &str = "__harness_tests__";
 
@@ -225,9 +225,22 @@ impl PythonLab {
                     .to_string(),
             );
         }
+        let mut note = None;
         let edited = match text.matches(old).count() {
             1 => text.replacen(old, new, 1),
-            0 => match replace_lines_loosely(&text, old, new) {
+            0 => match replace_lines_loosely(&text, old, new)
+                // Small models copy a line with ' for " (writing " inside
+                // the JSON answer needs \") and with the indent off by a
+                // space. One place that fits once those are ignored is
+                // taken, re-indented, and the answer says so.
+                .or_else(|| {
+                    replace_lines_forgivingly(&text, old, new).map(|(edited, line)| {
+                        note = Some(format!(
+                            " old matched line {line} once quotes and indentation were ignored; the new lines were indented to fit."
+                        ));
+                        edited
+                    })
+                }) {
                 Some(edited) => edited,
                 None => {
                     let hint = similar_lines(&text, old)
@@ -244,7 +257,11 @@ impl PythonLab {
                 ))
             }
         };
-        self.store(path, &edited, "Edited")
+        let mut outcome = self.store(path, &edited, "Edited");
+        if let (true, Some(note)) = (outcome.ok, note) {
+            outcome.text.push_str(&note);
+        }
+        outcome
     }
 
     fn store(&self, path: &str, content: &str, verb: &str) -> ToolOutcome {
@@ -320,7 +337,8 @@ impl PythonLab {
         );
         let before = artifacts::stamps(&self.root);
         let sources = self.source_stamps();
-        let (outcome, timed_out) = self.run_script(wrapper(&self.root, self.network, &action));
+        let (outcome, timed_out) =
+            self.run_script(wrapper(&self.root, self.network, &action, false));
         let failed = !outcome.ok || outcome.output.contains(FAILED_MARK) || timed_out;
         let mut text = self.clean(&outcome.output);
         if timed_out {
@@ -399,7 +417,8 @@ impl PythonLab {
         let action = format!(
             "import unittest\n    _suite = unittest.TestLoader().discover(_root, pattern='test*.py', top_level_dir=_root)\n    _result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(_suite)\n    print('{TESTS_MARK}', _result.testsRun, len(_result.failures), len(_result.errors))\n"
         );
-        let (outcome, timed_out) = self.run_script(wrapper(&self.root, self.network, &action));
+        let (outcome, timed_out) =
+            self.run_script(wrapper(&self.root, self.network, &action, false));
         let counts = outcome
             .output
             .lines()
@@ -608,6 +627,67 @@ fn replace_lines_loosely(text: &str, old: &str, new: &str) -> Option<String> {
     Some(joined)
 }
 
+/// A line as a small model might copy it: no indent or trailing space,
+/// and one kind of quote.
+fn forgiving(line: &str) -> String {
+    line.trim().replace('"', "'")
+}
+
+/// `old` matched against `text` ignoring indentation and quote style. When
+/// exactly one run of lines fits, it is replaced by `new`, shifted so its
+/// first line takes the indent of the line it replaces. Returns the edited
+/// text and the (1-based) first line replaced.
+fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String, usize)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let want: Vec<String> = old.lines().map(forgiving).collect();
+    if want.is_empty() || want.len() > lines.len() || want.iter().all(String::is_empty) {
+        return None;
+    }
+    let found: Vec<usize> = (0..=lines.len() - want.len())
+        .filter(|&i| {
+            lines[i..i + want.len()]
+                .iter()
+                .zip(&want)
+                .all(|(a, b)| forgiving(a) == *b)
+        })
+        .collect();
+    let [at] = found[..] else { return None };
+    // Indents are runs of ASCII spaces and tabs, so every cut below falls on
+    // a character boundary, and the file's own indent (tabs included) is
+    // what the new lines get.
+    let indent = |line: &str| line.len() - line.trim_start_matches([' ', '\t']).len();
+    let first_old = old.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let first_file = lines[at..at + want.len()]
+        .iter()
+        .find(|l| !l.trim().is_empty())
+        .copied()
+        .unwrap_or("");
+    let prefix = &first_file[..indent(first_file)];
+    let old_indent = indent(first_old);
+    let shifted = new.lines().map(|line| {
+        let own = indent(line);
+        if line.trim().is_empty() {
+            String::new()
+        } else if own >= old_indent {
+            // As deep as the first old line or deeper: the file's indent,
+            // then the rest.
+            format!("{prefix}{}", &line[old_indent..])
+        } else {
+            // Shallower: that much less of the file's indent.
+            let keep = prefix.len().saturating_sub(old_indent - own);
+            format!("{}{}", &prefix[..keep], &line[own..])
+        }
+    });
+    let mut out: Vec<String> = lines[..at].iter().map(|l| l.to_string()).collect();
+    out.extend(shifted);
+    out.extend(lines[at + want.len()..].iter().map(|l| l.to_string()));
+    let mut joined = out.join("\n");
+    if text.ends_with('\n') {
+        joined.push('\n');
+    }
+    Some((joined, at + 1))
+}
+
 /// The run of lines in `text` most like `old`, numbered, when it is close
 /// enough to be worth showing.
 fn similar_lines(text: &str, old: &str) -> Option<String> {
@@ -764,31 +844,55 @@ if _guard is None:
 
 /// A harness run: `action` (indented by four spaces, in a `try`) runs in
 /// the project folder with the guard on, and everything is put back after.
-fn wrapper(root: &Path, network: bool, action: &str) -> String {
+///
+/// `console` is Python Lab's live console (PL1d): stdin is left as the
+/// host set it (PythonBridge's reader, so `input()` waits for the person),
+/// and a failure's traceback, cut to the project's frames and with the
+/// project folder taken out of its paths, goes to stderr as it happens.
+/// The exception is then raised again, marked `_devicelab_shown`, so the
+/// host knows the run failed without printing it twice. Otherwise stdin
+/// is empty and the traceback is printed to stdout with the failure mark,
+/// for `python_lab_output`.
+fn wrapper(root: &Path, network: bool, action: &str, console: bool) -> String {
+    let failed = if console {
+        "    _text = ''.join(traceback.format_list(_frames)) + ''.join(traceback.format_exception_only(type(_error), _error))\n    for _prefix in (_root, _given.rstrip(os.sep)):\n        _text = _text.replace(_prefix + os.sep, '')\n    sys.stderr.write('Traceback (most recent call last):\\n' + _text)\n    try:\n        _error._devicelab_shown = True\n    except Exception:\n        pass\n    raise".to_string()
+    } else {
+        format!("    print('Traceback (most recent call last):')\n    print(''.join(traceback.format_list(_frames)), end='')\n    print(''.join(traceback.format_exception_only(type(_error), _error)), end='')\n    print('{FAILED_MARK}')")
+    };
+    let stdin = if console {
+        "pass"
+    } else {
+        "sys.stdin = io.StringIO('')"
+    };
     format!(
         r#"{GUARD}
 import io, traceback
 _given = {root}
 _root = os.path.realpath(_given)
 _saved = (os.getcwd(), list(sys.path), sys.stdin)
+# Forget every module a run imported from a project, this one's or
+# another's, so `import helper` never finds another project's helper.
+_ran = _guard.__dict__.setdefault('project_modules', set())
 for _name, _module in list(sys.modules.items()):
     _file = getattr(_module, '__file__', None) or ''
-    if _file and os.path.realpath(_file).startswith(_root + os.sep):
-        del sys.modules[_name]
+    if _name in _ran or (_file and os.path.realpath(_file).startswith(_root + os.sep)):
+        sys.modules.pop(_name, None)
+_ran.clear()
 os.chdir(_root)
 sys.path.insert(0, _root)
-sys.stdin = io.StringIO('')
+{stdin}
 _guard.state.update(active=True, roots=[_root, os.path.realpath(tempfile.gettempdir())], network={network})
 try:
     {action}
 except BaseException as _error:
     _frames = [f for f in traceback.extract_tb(_error.__traceback__) if f.filename.startswith((_root, _given))]
-    print('Traceback (most recent call last):')
-    print(''.join(traceback.format_list(_frames)), end='')
-    print(''.join(traceback.format_exception_only(type(_error), _error)), end='')
-    print('{FAILED_MARK}')
+{failed}
 finally:
     _guard.state['active'] = False
+    for _name, _module in list(sys.modules.items()):
+        _file = getattr(_module, '__file__', None) or ''
+        if _file and os.path.realpath(_file).startswith(_root + os.sep):
+            _ran.add(_name)
     os.chdir(_saved[0])
     sys.path[:] = _saved[1]
     sys.stdin = _saved[2]
@@ -811,7 +915,35 @@ pub fn python_lab_script(project: String, code: String) -> String {
         "import ast, linecache\n    _source = {source}\n    _name = os.path.join(_root, '<script>')\n    linecache.cache[_name] = (len(_source), None, _source.splitlines(True), _name)\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _scope = {{'__name__': '__main__', '__file__': _name}}\n    exec(compile(_tree, _name, 'exec'), _scope)\n    if _last is not None:\n        _value = eval(compile(_last, _name, 'eval'), _scope)\n        if _value is not None:\n            print(repr(_value))\n",
         source = py_str(&code)
     );
-    wrapper(Path::new(&project), true, &action)
+    wrapper(Path::new(&project), true, &action, false)
+}
+
+/// A script that runs the project's file `path` for the person, as
+/// `__main__`, with the same wrapper as [`python_lab_script`]. Tracebacks
+/// name the file and line (`main.py, line 3`) after `python_lab_output`,
+/// other files of the project import normally, and if the file ends with
+/// an expression its value is printed. `path` is checked like a harness
+/// path is, but may contain spaces and any letters (the person named it).
+#[uniffi::export]
+pub fn python_lab_file_script(project: String, path: String) -> String {
+    file_script(&project, &path, false)
+}
+
+/// [`python_lab_file_script`] for Python Lab's live console (PL1d): run it
+/// with PythonBridge's streaming runner, which gives it a stdin that waits
+/// for the person. Its output is final as it streams: tracebacks already
+/// name `main.py, line 3`, on stderr, so it needs no `python_lab_output`.
+#[uniffi::export]
+pub fn python_lab_console_script(project: String, path: String) -> String {
+    file_script(&project, &path, true)
+}
+
+fn file_script(project: &str, path: &str, console: bool) -> String {
+    let action = format!(
+        "import ast, types\n    _name = os.path.join(_root, {path})\n    if not os.path.realpath(_name).startswith(_root + os.sep):\n        raise PermissionError('That file is outside the project.')\n    with open(_name, encoding='utf-8') as _f:\n        _source = _f.read()\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _main = types.ModuleType('__main__')\n    _main.__file__ = _name\n    _main.__builtins__ = __builtins__\n    sys.path[0] = os.path.dirname(_name)\n    if sys.path[0] != _root:\n        sys.path.insert(1, _root)\n    _host_main = sys.modules.get('__main__')\n    sys.modules['__main__'] = _main\n    try:\n        exec(compile(_tree, _name, 'exec'), _main.__dict__)\n        if _last is not None:\n            _value = eval(compile(_last, _name, 'eval'), _main.__dict__)\n            if _value is not None:\n                print(repr(_value))\n    finally:\n        if _host_main is None:\n            sys.modules.pop('__main__', None)\n        else:\n            sys.modules['__main__'] = _host_main\n",
+        path = py_str(path)
+    );
+    wrapper(Path::new(project), true, &action, console)
 }
 
 /// What a `python_lab_script` run printed, made readable: whether it
