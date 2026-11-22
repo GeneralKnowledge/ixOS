@@ -146,6 +146,8 @@ Button { add() } label: { Label("Add", systemImage: "plus") }
 
 Disabled and pressed states come from SwiftUI (`.disabled(...)`); there is no `isDisabled` parameter. Buttons are at least 44 points tall, and grow with Dynamic Type.
 
+`ForgeButton` is disabled while `isWorking`, so nothing can press it twice: not a tap, VoiceOver, Voice Control nor the keyboard. VoiceOver reads it as dimmed and "In progress". ForgeUI's styles keep it at full colour while it works, because the spinner already says it is busy; a button the app disables itself fades as usual.
+
 ### Text fields and form fields
 
 ```swift
@@ -378,7 +380,7 @@ The current accents: Pocket Library orange, Good Dog green, Commonplace indigo, 
 
 ## What's not in 0.1
 
-Application patterns (alerts and destinations as model values, load and submission state) are [ForgeAppKit](forgeappkit.md), a separate, optional product on top of ForgeUI. Also not in 0.1: moving the template and demos onto ForgeUI, snapshot tests, custom fonts, and Android.
+Application patterns (alerts and destinations as model values, load and submission state) are [ForgeAppKit](forgeappkit.md), a separate, optional product on top of ForgeUI. Also not in 0.1: moving the template and demos onto ForgeUI, snapshot tests, custom fonts, and Android. What 0.2 adds, and why, is proposed in the [ForgeUI 0.2 audit and specification](research/experience/forgeui-0.2.md).
 
 ## Building on Linux
 
