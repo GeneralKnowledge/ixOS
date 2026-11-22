@@ -3754,6 +3754,7 @@ dependencies = [
  "getrandom 0.3.4",
  "hmac 0.12.1",
  "hpke",
+ "httparse",
  "iroh",
  "iroh-blobs",
  "libc",

@@ -22,6 +22,7 @@
 //! The first Relay paired devices by QR code over TCP and Noise; that path
 //! is gone (M1 PR 3b). Its history stays readable.
 
+mod capability;
 pub mod chat;
 mod code;
 mod code_send;
@@ -41,6 +42,7 @@ mod hex;
 mod mailbox;
 pub mod mailbox_server;
 mod trust;
+mod web;
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -53,6 +55,7 @@ use forge_runtime::{lock, now_ms};
 use forge_services::ai::{AiError, ChatRequest, LanguageModel, ModelInfo, TextOut};
 use forge_storage::FileStore;
 
+pub use capability::Capability;
 use code::CodeProgress;
 pub use code::{CodeReceipt, CODE_SERVICE_TYPE};
 use code_send::CodeSendShared;
@@ -63,6 +66,7 @@ use node::NodeCell;
 pub use presence::Presence;
 pub use trust::PairingPolicy;
 use trust::{AfterCode, SavedTrust};
+pub use web::{SiteHeader, SiteRequest, SiteResponse, SiteSource, Tunnel as SitePort};
 
 pub use device::AskReport;
 pub use model::{
@@ -186,7 +190,99 @@ pub struct RelayCore {
     /// Wakes a device conversation's outbox when the device is reached:
     /// set by the chat core that holds those conversations.
     chat_waker: Mutex<Option<ChatWaker>>,
+    /// The site this device shares now (N6): in memory only, so on the
+    /// iPhone it lasts while Relay is open.
+    site: Mutex<Option<SiteSource>>,
+    /// One `relay/web/1` connection per device whose site this one opens.
+    site_connections: Mutex<HashMap<String, Arc<Mutex<web::Kept>>>>,
     me: Weak<RelayCore>,
+}
+
+impl RelayCore {
+    /// The way to a trusted device's site: the running node, where to dial
+    /// it, and the connection kept for it.
+    async fn site_route(
+        &self,
+        endpoint_id: &str,
+    ) -> Result<(Arc<node::Node>, iroh::EndpointAddr, Arc<Mutex<web::Kept>>), RelayError> {
+        // Trusted, before anything starts; the route is chosen once the
+        // network is known (this network's own IPv6 prefix is Local).
+        self.trusted_site_device(endpoint_id)?;
+        let node = self.node().await?;
+        self.watch_network(&node);
+        let addr = self.site_addr(endpoint_id)?;
+        let cached = Arc::clone(
+            lock(&self.site_connections)
+                .entry(endpoint_id.to_string())
+                .or_default(),
+        );
+        Ok((node, addr, cached))
+    }
+
+    /// Where a trusted device's site may be dialled now, by the route the
+    /// person's Connections allow.
+    fn site_addr(&self, endpoint_id: &str) -> Result<iroh::EndpointAddr, RelayError> {
+        let saved = self.trusted_site_device(endpoint_id)?;
+        let Some((addr, _)) = self.dial(&saved) else {
+            return Err(RelayError::Unreachable {
+                reason: self.problem_of(endpoint_id).unwrap_or_default(),
+            });
+        };
+        Ok(addr)
+    }
+
+    /// `site_addr` for `endpoint_id`, to ask before each request.
+    fn site_addr_now(&self, endpoint_id: &str) -> web::SiteRoute {
+        let me = self.me.clone();
+        let id = endpoint_id.to_string();
+        Arc::new(move || {
+            me.upgrade()
+                .ok_or(RelayError::Refused)
+                .and_then(|core| core.site_addr(&id))
+        })
+    }
+
+    /// The saved record of `endpoint_id`, if it is trusted here.
+    fn trusted_site_device(&self, endpoint_id: &str) -> Result<trust::SavedDevice, RelayError> {
+        self.record
+            .get()
+            .devices
+            .get(endpoint_id)
+            .filter(|d| d.trust == SavedTrust::Trusted)
+            .cloned()
+            .ok_or_else(|| RelayError::Declined {
+                reason: "That device is no longer trusted here.".into(),
+            })
+    }
+
+    /// Closes the kept site connections: to one device, or (`None`) all.
+    /// A dial running at the time isn't kept either.
+    fn close_site_connections(&self, endpoint_id: Option<&str>) {
+        let kept = lock(&self.site_connections);
+        for (id, cached) in kept.iter() {
+            if endpoint_id.is_none_or(|e| e == id) {
+                lock(cached).close(b"closed");
+            }
+        }
+    }
+
+    /// Opens a site on this computer (N6, `relay web`): a port on
+    /// 127.0.0.1 (`port` 0 picks one) whose requests for the device's own
+    /// name under `localhost` go to the trusted device's site. Each request
+    /// checks the device is still trusted here and dials it only by a route
+    /// Connections allow now. It stays open until the returned tunnel is
+    /// dropped.
+    pub fn open_site_port(&self, endpoint_id: &str, port: u16) -> Result<SitePort, RelayError> {
+        let route = self.site_addr_now(endpoint_id);
+        let host = web::site_host(endpoint_id);
+        forge_runtime::block_on(async {
+            let (node, _, cached) = self.site_route(endpoint_id).await?;
+            code::TOKIO
+                .spawn(async move { web::open_tunnel(node, cached, port, host, route).await })
+                .await
+                .unwrap_or_else(|e| Err(code::connection(e)))
+        })
+    }
 }
 
 #[uniffi::export]
@@ -352,6 +448,8 @@ impl RelayCore {
             outbox: outbox::Outbox::default(),
             peer_logs,
             chat_waker: Mutex::new(None),
+            site: Mutex::new(None),
+            site_connections: Mutex::new(HashMap::new()),
             me: me.clone(),
         });
         Ok(core)
@@ -765,6 +863,9 @@ pub struct Device {
     pub route: Option<String>,
     /// Why Relay couldn't reach it the last time it tried, in words.
     pub problem: Option<String>,
+    /// The capabilities granted to it here (N5): none until the person
+    /// turns one on for it.
+    pub grants: Vec<Capability>,
 }
 
 /// Saved data Relay couldn't read when it opened: what happened, in words,
@@ -894,6 +995,7 @@ impl RelayCore {
                     problem: trusted
                         .then(|| lock(&self.problems).get(&d.endpoint_id).cloned())
                         .flatten(),
+                    grants: d.capabilities(),
                 }
             })
             .collect();
@@ -1137,6 +1239,8 @@ impl RelayCore {
                 })
             })
             .await?;
+        // Its site, if this device had it open, closes at once.
+        self.close_site_connections(Some(&endpoint_id));
         // What waited for it ends: No longer trusted.
         self.wake(&endpoint_id);
         Ok(())
@@ -1157,6 +1261,7 @@ impl RelayCore {
                 })
             })
             .await?;
+        self.close_site_connections(Some(&endpoint_id));
         self.wake(&endpoint_id);
         Ok(())
     }
@@ -1306,6 +1411,8 @@ impl RelayCore {
         for id in &done.revoked {
             lock(&self.nearby).remove(id);
             lock(&self.reached).remove(id);
+            // Its site, if this device had it open, closes at once.
+            self.close_site_connections(Some(id));
             // What waited for it ends: No longer trusted.
             self.wake(id);
         }
@@ -1327,6 +1434,65 @@ impl RelayCore {
                 })
             })
             .await
+    }
+
+    /// Grants `capability` to a trusted device, or takes it away (N5).
+    /// Taking it away ends any use of it at once.
+    pub async fn set_grant(
+        &self,
+        endpoint_id: String,
+        capability: Capability,
+        on: bool,
+    ) -> Result<(), RelayError> {
+        self.rt
+            .command("grant", move |state| {
+                state.change(|r| {
+                    if r.devices.set_grant(&endpoint_id, capability, on) {
+                        Ok(())
+                    } else {
+                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                    }
+                })
+            })
+            .await
+    }
+
+    /// Shares `source` as this device's site (N6), replacing any other:
+    /// trusted devices granted `Capability::Sites` can open it while
+    /// Relay runs. A folder must exist; a server must be on this device's
+    /// localhost.
+    pub async fn share_site(&self, source: SiteSource) -> Result<(), RelayError> {
+        let source = source.checked()?;
+        // The node must be running for anyone to reach the site.
+        self.node().await?;
+        *lock(&self.site) = Some(source);
+        Ok(())
+    }
+
+    /// Stops sharing the site: open visits end at once.
+    pub fn stop_site(&self) {
+        *lock(&self.site) = None;
+    }
+
+    /// The site this device shares now, if any.
+    pub fn shared_site(&self) -> Option<SiteSource> {
+        lock(&self.site).clone()
+    }
+
+    /// Asks a trusted device's site for one request (N6), for the iPhone's
+    /// in-app viewer: refused unless that device shares a site and has
+    /// granted this one `Capability::Sites`.
+    pub async fn fetch_site(
+        &self,
+        endpoint_id: String,
+        request: SiteRequest,
+    ) -> Result<SiteResponse, RelayError> {
+        let (node, _, cached) = self.site_route(&endpoint_id).await?;
+        let route = self.site_addr_now(&endpoint_id);
+        code::TOKIO
+            .spawn(async move { web::fetch(&node, &cached, request, route.as_ref()).await })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)))
     }
 
     /// Sends files and folders to a trusted device as one transfer, with
@@ -1591,6 +1757,9 @@ impl RelayCore {
 
     /// The endpoint uses the servers the current mode allows, from now on.
     async fn apply_servers(&self) {
+        // Connections to sites were made on the routes the old choice
+        // allowed: the next request dials again under the new one.
+        self.close_site_connections(None);
         let node = Arc::clone(&self.node);
         let me = self.me.clone();
         // The servers are read once the node's gate is held, so the latest
@@ -1762,6 +1931,18 @@ impl device::DeviceInbound for CoreDevices {
         Ok(())
     }
 
+    fn granted(&self, from: &str, capability: Capability) -> bool {
+        self.core
+            .upgrade()
+            .is_some_and(|core| core.record.get().devices.granted(from, capability))
+    }
+
+    fn site(&self) -> Option<SiteSource> {
+        self.core
+            .upgrade()
+            .and_then(|core| lock(&core.site).clone())
+    }
+
     fn rights(&self, from: &str) -> Option<device::Rights> {
         let core = self.core.upgrade()?;
         let record = core.record.get();
@@ -1824,7 +2005,7 @@ impl device::DeviceInbound for CoreDevices {
             .unwrap_or_default()
     }
 
-    fn status(&self) -> device::StatusReport {
+    fn status(&self, asker: &str) -> device::StatusReport {
         let Some(core) = self.core.upgrade() else {
             return device::StatusReport::default();
         };
@@ -1834,6 +2015,11 @@ impl device::DeviceInbound for CoreDevices {
             .collect();
         if lock(&core.answers_with).is_some() {
             offers.push("ai".into());
+        }
+        // A capability is offered only to a device that may use it (N5).
+        if lock(&core.site).is_some() && core.record.get().devices.granted(asker, Capability::Sites)
+        {
+            offers.push(Capability::Sites.name().into());
         }
         device::StatusReport {
             name: core.identity().name,

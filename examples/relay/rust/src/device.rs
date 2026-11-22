@@ -195,10 +195,19 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn still_may_ask(&self, from: &str) -> bool {
         self.rights(from).is_some_and(|r| r.may_ask)
     }
+    /// Whether `from` is trusted and granted `capability` here now (N5).
+    fn granted(&self, _from: &str, _capability: crate::capability::Capability) -> bool {
+        false
+    }
+    /// The site this device shares now, if any (N6).
+    fn site(&self) -> Option<crate::web::SiteSource> {
+        None
+    }
     /// This device's name, for the reply to Hello.
     fn my_name(&self) -> String;
-    /// What this device says about itself, for a `StatusAsk`.
-    fn status(&self) -> StatusReport;
+    /// What this device says about itself to `asker`, for a `StatusAsk`:
+    /// a capability is in its offers only when `asker` may use it (N5).
+    fn status(&self, asker: &str) -> StatusReport;
     /// The devices trusted and revoked here, for `asker` (`DevicesAsk`).
     fn device_list(&self, _asker: &str) -> crate::trust::DeviceList {
         crate::trust::DeviceList::default()
@@ -260,7 +269,7 @@ impl DeviceInbound for TrustsAll {
     fn my_name(&self) -> String {
         "listener".into()
     }
-    fn status(&self) -> StatusReport {
+    fn status(&self, _: &str) -> StatusReport {
         StatusReport::default()
     }
     fn reached(&self, _: &str) {}
@@ -295,7 +304,7 @@ impl DeviceInbound for NoDevices {
     fn my_name(&self) -> String {
         "test".into()
     }
-    fn status(&self) -> StatusReport {
+    fn status(&self, _: &str) -> StatusReport {
         StatusReport::default()
     }
     fn reached(&self, _: &str) {}
@@ -579,7 +588,8 @@ impl DeviceHandler {
         // Status is read-only: a device that may not send here may still ask.
         if item == DeviceMsg::StatusAsk {
             let host = Arc::clone(&self.host);
-            let me = tokio::task::spawn_blocking(move || host.status())
+            let asker = them.to_string();
+            let me = tokio::task::spawn_blocking(move || host.status(&asker))
                 .await
                 .map_err(connection)?;
             say(
@@ -1386,7 +1396,7 @@ mod tests {
         fn my_name(&self) -> String {
             TrustsAll.my_name()
         }
-        fn status(&self) -> StatusReport {
+        fn status(&self, _: &str) -> StatusReport {
             StatusReport::default()
         }
         fn reached(&self, _: &str) {}

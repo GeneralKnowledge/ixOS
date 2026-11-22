@@ -5127,6 +5127,13 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func events()  -> RuntimeEvents?
     
     /**
+     * Asks a trusted device's site for one request (N6), for the iPhone's
+     * in-app viewer: refused unless that device shares a site and has
+     * granted this one `Capability::Sites`.
+     */
+    func fetchSite(endpointId: String, request: SiteRequest) async throws  -> SiteResponse
+    
+    /**
      * Takes the device off the list. Pair Automatically may trust it
      * again after a code transfer; a revoked device stays revoked.
      */
@@ -5252,6 +5259,12 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func setConnectionMode(mode: ConnectionMode) async throws 
     
     /**
+     * Grants `capability` to a trusted device, or takes it away (N5).
+     * Taking it away ends any use of it at once.
+     */
+    func setGrant(endpointId: String, capability: Capability, on: Bool) async throws 
+    
+    /**
      * Whether a trusted device may ask this device's AI. Off when a
      * device is trusted; trust never turns it on.
      * Whether `endpoint_id` introduces devices here (My Devices, step 1):
@@ -5295,10 +5308,28 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func setServers(servers: RelayServers) async throws 
     
     /**
+     * Shares `source` as this device's site (N6), replacing any other:
+     * trusted devices granted `Capability::Sites` can open it while
+     * Relay runs. A folder must exist; a server must be on this device's
+     * localhost.
+     */
+    func shareSite(source: SiteSource) async throws 
+    
+    /**
+     * The site this device shares now, if any.
+     */
+    func sharedSite()  -> SiteSource?
+    
+    /**
      * Refuses new commands, stops work in flight and ends event
      * streams. Commands already accepted still finish and save.
      */
     func shutdown() 
+    
+    /**
+     * Stops sharing the site: open visits end at once.
+     */
+    func stopSite() 
     
     /**
      * Asks `endpoint_id`, a device that introduces devices here, which
@@ -5686,6 +5717,27 @@ open func events() -> RuntimeEvents?  {
 }
     
     /**
+     * Asks a trusted device's site for one request (N6), for the iPhone's
+     * in-app viewer: refused unless that device shares a site and has
+     * granted this one `Capability::Sites`.
+     */
+open func fetchSite(endpointId: String, request: SiteRequest)async throws  -> SiteResponse  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_fetch_site(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterTypeSiteRequest_lower(request)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeSiteResponse_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
      * Takes the device off the list. Pair Automatically may trust it
      * again after a code transfer; a revoked device stays revoked.
      */
@@ -5992,6 +6044,26 @@ open func setConnectionMode(mode: ConnectionMode)async throws   {
 }
     
     /**
+     * Grants `capability` to a trusted device, or takes it away (N5).
+     * Taking it away ends any use of it at once.
+     */
+open func setGrant(endpointId: String, capability: Capability, on: Bool)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_set_grant(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterTypeCapability_lower(capability),FfiConverterBool.lower(on)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
      * Whether a trusted device may ask this device's AI. Off when a
      * device is trusted; trust never turns it on.
      * Whether `endpoint_id` introduces devices here (My Devices, step 1):
@@ -6140,12 +6212,57 @@ open func setServers(servers: RelayServers)async throws   {
 }
     
     /**
+     * Shares `source` as this device's site (N6), replacing any other:
+     * trusted devices granted `Capability::Sites` can open it while
+     * Relay runs. A folder must exist; a server must be on this device's
+     * localhost.
+     */
+open func shareSite(source: SiteSource)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_share_site(
+                        self.uniffiCloneHandle(),FfiConverterTypeSiteSource_lower(source)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * The site this device shares now, if any.
+     */
+open func sharedSite() -> SiteSource?  {
+    return try!  FfiConverterOptionTypeSiteSource.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_shared_site(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Refuses new commands, stops work in flight and ends event
      * streams. Commands already accepted still finish and save.
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
     uniffi_relay_core_fn_method_relaycore_shutdown(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Stops sharing the site: open visits end at once.
+     */
+open func stopSite()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_stop_site(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -8521,6 +8638,11 @@ public struct Device: Equatable, Hashable {
      * Why Relay couldn't reach it the last time it tried, in words.
      */
     public var problem: String?
+    /**
+     * The capabilities granted to it here (N5): none until the person
+     * turns one on for it.
+     */
+    public var grants: [Capability]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -8578,7 +8700,11 @@ public struct Device: Equatable, Hashable {
          */route: String?, 
         /**
          * Why Relay couldn't reach it the last time it tried, in words.
-         */problem: String?) {
+         */problem: String?, 
+        /**
+         * The capabilities granted to it here (N5): none until the person
+         * turns one on for it.
+         */grants: [Capability]) {
         self.endpointId = endpointId
         self.name = name
         self.trusted = trusted
@@ -8597,6 +8723,7 @@ public struct Device: Equatable, Hashable {
         self.offers = offers
         self.route = route
         self.problem = problem
+        self.grants = grants
     }
 
     
@@ -8632,7 +8759,8 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
                 platform: FfiConverterOptionString.read(from: &buf), 
                 offers: FfiConverterSequenceString.read(from: &buf), 
                 route: FfiConverterOptionString.read(from: &buf), 
-                problem: FfiConverterOptionString.read(from: &buf)
+                problem: FfiConverterOptionString.read(from: &buf), 
+                grants: FfiConverterSequenceTypeCapability.read(from: &buf)
         )
     }
 
@@ -8655,6 +8783,7 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
         FfiConverterSequenceString.write(value.offers, into: &buf)
         FfiConverterOptionString.write(value.route, into: &buf)
         FfiConverterOptionString.write(value.problem, into: &buf)
+        FfiConverterSequenceTypeCapability.write(value.grants, into: &buf)
     }
 }
 
@@ -9789,6 +9918,195 @@ public func FfiConverterTypeSavedDataNotice_lower(_ value: SavedDataNotice) -> R
 
 
 /**
+ * A header of a site request or response, for the iPhone's viewer.
+ */
+public struct SiteHeader: Equatable, Hashable {
+    public var name: String
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SiteHeader: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSiteHeader: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SiteHeader {
+        return
+            try SiteHeader(
+                name: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SiteHeader, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSiteHeader_lift(_ buf: RustBuffer) throws -> SiteHeader {
+    return try FfiConverterTypeSiteHeader.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSiteHeader_lower(_ value: SiteHeader) -> RustBuffer {
+    return FfiConverterTypeSiteHeader.lower(value)
+}
+
+
+/**
+ * One request the iPhone's in-app viewer makes of a device's site.
+ */
+public struct SiteRequest: Equatable, Hashable {
+    public var method: String
+    /**
+     * The path and query, starting with `/`.
+     */
+    public var path: String
+    public var headers: [SiteHeader]
+    public var body: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(method: String, 
+        /**
+         * The path and query, starting with `/`.
+         */path: String, headers: [SiteHeader], body: Data) {
+        self.method = method
+        self.path = path
+        self.headers = headers
+        self.body = body
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SiteRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSiteRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SiteRequest {
+        return
+            try SiteRequest(
+                method: FfiConverterString.read(from: &buf), 
+                path: FfiConverterString.read(from: &buf), 
+                headers: FfiConverterSequenceTypeSiteHeader.read(from: &buf), 
+                body: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SiteRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.method, into: &buf)
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterSequenceTypeSiteHeader.write(value.headers, into: &buf)
+        FfiConverterData.write(value.body, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSiteRequest_lift(_ buf: RustBuffer) throws -> SiteRequest {
+    return try FfiConverterTypeSiteRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSiteRequest_lower(_ value: SiteRequest) -> RustBuffer {
+    return FfiConverterTypeSiteRequest.lower(value)
+}
+
+
+/**
+ * The site's whole answer to a `SiteRequest`.
+ */
+public struct SiteResponse: Equatable, Hashable {
+    public var status: UInt16
+    public var headers: [SiteHeader]
+    public var body: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(status: UInt16, headers: [SiteHeader], body: Data) {
+        self.status = status
+        self.headers = headers
+        self.body = body
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SiteResponse: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSiteResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SiteResponse {
+        return
+            try SiteResponse(
+                status: FfiConverterUInt16.read(from: &buf), 
+                headers: FfiConverterSequenceTypeSiteHeader.read(from: &buf), 
+                body: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SiteResponse, into buf: inout [UInt8]) {
+        FfiConverterUInt16.write(value.status, into: &buf)
+        FfiConverterSequenceTypeSiteHeader.write(value.headers, into: &buf)
+        FfiConverterData.write(value.body, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSiteResponse_lift(_ buf: RustBuffer) throws -> SiteResponse {
+    return try FfiConverterTypeSiteResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSiteResponse_lower(_ value: SiteResponse) -> RustBuffer {
+    return FfiConverterTypeSiteResponse.lower(value)
+}
+
+
+/**
  * One note or file, sent or received.
  */
 public struct Transfer: Equatable, Hashable {
@@ -10823,6 +11141,71 @@ public func FfiConverterTypeBiometryKind_lift(_ buf: RustBuffer) throws -> Biome
 #endif
 public func FfiConverterTypeBiometryKind_lower(_ value: BiometryKind) -> RustBuffer {
     return FfiConverterTypeBiometryKind.lower(value)
+}
+
+
+
+/**
+ * A capability one device may grant another.
+ */
+
+public enum Capability: Equatable, Hashable {
+    
+    /**
+     * May open the sites this device shares (N6, `relay/web/1`).
+     */
+    case sites
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension Capability: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCapability: FfiConverterRustBuffer {
+    typealias SwiftType = Capability
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Capability {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .sites
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Capability, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .sites:
+            writeInt(&buf, Int32(1))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCapability_lift(_ buf: RustBuffer) throws -> Capability {
+    return try FfiConverterTypeCapability.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCapability_lower(_ value: Capability) -> RustBuffer {
+    return FfiConverterTypeCapability.lower(value)
 }
 
 
@@ -13245,6 +13628,87 @@ public func FfiConverterTypeShareItem_lower(_ value: ShareItem) -> RustBuffer {
 
 
 
+/**
+ * What a device shares as its site.
+ */
+
+public enum SiteSource: Equatable, Hashable {
+    
+    /**
+     * Files under a folder; `/` serves its `index.html`.
+     */
+    case folder(path: String
+    )
+    /**
+     * A web server on this device's localhost (127.0.0.1) at `port`.
+     */
+    case local(port: UInt16
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SiteSource: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSiteSource: FfiConverterRustBuffer {
+    typealias SwiftType = SiteSource
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SiteSource {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .folder(path: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .local(port: try FfiConverterUInt16.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SiteSource, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .folder(path):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(path, into: &buf)
+            
+        
+        case let .local(port):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt16.write(port, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSiteSource_lift(_ buf: RustBuffer) throws -> SiteSource {
+    return try FfiConverterTypeSiteSource.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSiteSource_lower(_ value: SiteSource) -> RustBuffer {
+    return FfiConverterTypeSiteSource.lower(value)
+}
+
+
+
 
 public enum TransferStatus: Equatable, Hashable {
     
@@ -13748,6 +14212,30 @@ fileprivate struct FfiConverterOptionTypeChatEvent: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeSiteSource: FfiConverterRustBuffer {
+    typealias SwiftType = SiteSource?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSiteSource.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSiteSource.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -14173,6 +14661,31 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeSiteHeader: FfiConverterRustBuffer {
+    typealias SwiftType = [SiteHeader]
+
+    public static func write(_ value: [SiteHeader], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSiteHeader.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SiteHeader] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SiteHeader]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSiteHeader.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeTransfer: FfiConverterRustBuffer {
     typealias SwiftType = [Transfer]
 
@@ -14190,6 +14703,31 @@ fileprivate struct FfiConverterSequenceTypeTransfer: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeTransfer.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCapability: FfiConverterRustBuffer {
+    typealias SwiftType = [Capability]
+
+    public static func write(_ value: [Capability], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCapability.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Capability] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Capability]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCapability.read(from: &buf))
         }
         return seq
     }
@@ -14735,6 +15273,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_events() != 39843) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_fetch_site() != 25669) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_forget_device() != 22676) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14792,6 +15333,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_set_connection_mode() != 22027) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_set_grant() != 60707) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_set_introduces() != 19564) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14816,7 +15360,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_set_servers() != 31730) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_share_site() != 33177) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_shared_site() != 42021) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_shutdown() != 23618) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_stop_site() != 45316) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_sync_devices() != 4640) {
