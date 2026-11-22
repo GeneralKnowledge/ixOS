@@ -52,6 +52,8 @@ pub struct Station {
     pub seed: StationSeed,
     /// Up to four covers from it, for the tile.
     pub artwork_urls: Vec<String>,
+    /// The person saved it: it comes first.
+    pub saved: bool,
 }
 
 /// A song that could play next on a station.
@@ -308,14 +310,33 @@ pub fn jamendo_tag(genre: &str) -> Option<String> {
         .or_else(|| jamendo::clean_tag(&key).ok())
 }
 
-/// Stations to offer: your most played and most kept genres, then your
-/// most played artists, then (with a Jamendo client ID and room left)
-/// Jamendo's genres, each once.
+/// Stations to offer: the saved ones, newest first, then
+/// [`SUGGESTED`] more: your most played and most kept genres, your most
+/// played artists, then (with a Jamendo client ID and room left) Jamendo's
+/// genres, each once and none already saved.
 pub fn suggested(
     library: &Library,
     collection: &CollectionFile,
     with_jamendo: bool,
 ) -> Vec<Station> {
+    let saved: Vec<Station> = collection
+        .saved_stations
+        .iter()
+        .map(|s| Station {
+            title: s.title.clone(),
+            subtitle: "Saved station".into(),
+            artwork_urls: artwork_for(&s.seed, library),
+            seed: s.seed.clone(),
+            saved: true,
+        })
+        .collect();
+    let mut more = generated(library, collection, with_jamendo);
+    more.retain(|m| !saved.iter().any(|s| s.seed == m.seed));
+    more.truncate(SUGGESTED);
+    saved.into_iter().chain(more).collect()
+}
+
+fn generated(library: &Library, collection: &CollectionFile, with_jamendo: bool) -> Vec<Station> {
     let plays = play_counts(collection);
     let mut genre_score: BTreeMap<String, (String, f64)> = BTreeMap::new();
     let mut artist_score: BTreeMap<String, (String, f64)> = BTreeMap::new();
@@ -349,6 +370,7 @@ pub fn suggested(
             subtitle: "From your library".into(),
             artwork_urls: artwork_for(&seed, library),
             seed,
+            saved: false,
         });
     }
     let mut artists: Vec<(String, (String, f64))> = artist_score
@@ -363,6 +385,7 @@ pub fn suggested(
             subtitle: "Your most played".into(),
             artwork_urls: artwork_for(&seed, library),
             seed,
+            saved: false,
         });
     }
     if with_jamendo {
@@ -376,6 +399,7 @@ pub fn suggested(
                     subtitle: "New music on Jamendo".into(),
                     seed: StationSeed::Genre { name: g.name },
                     artwork_urls: Vec::new(),
+                    saved: false,
                 });
             }
         }

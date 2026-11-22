@@ -349,14 +349,22 @@ fn own_files_join_the_library_once_and_stay_after_a_restart() {
     let copies = files_in(&dir.path().join("data/imported"));
     assert_eq!(copies.len(), 2);
 
-    // Removing one deletes its copy and leaves the other.
+    // Removing one keeps its copy for Undo until the next removal, which
+    // deletes it and keeps the newly removed one's instead.
     block(core.remove_imported(bonus_id.clone())).unwrap();
-    assert_eq!(files_in(&dir.path().join("data/imported")).len(), 1);
+    assert_eq!(files_in(&dir.path().join("data/imported")).len(), 2);
     assert!(!core.library().tracks.iter().any(|t| t.id == bonus_id));
     assert!(matches!(
-        block(core.remove_imported(bonus_id)),
+        block(core.remove_imported(bonus_id.clone())),
         Err(SoundscapeError::NotInLibrary { .. })
     ));
+    block(core.remove_imported(demo_id.clone())).unwrap();
+    assert_eq!(files_in(&dir.path().join("data/imported")).len(), 1);
+    assert!(block(core.restore_removed(bonus_id)).is_err(), "too late");
+    assert_eq!(core.collection().playlists[0].track_count, 1);
+    // Undo brings the song back with its edit, in its playlist.
+    block(core.restore_removed(demo_id)).unwrap();
+    assert!(core.library().tracks.iter().any(|t| t.title == "Demo"));
     let playlist = &core.collection().playlists[0];
     assert_eq!(playlist.track_count, 2);
 }

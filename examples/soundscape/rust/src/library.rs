@@ -56,6 +56,27 @@ pub struct LibraryFile {
     /// Songs the person linked to a MusicBrainz recording, by track id.
     #[serde(default)]
     pub musicbrainz: BTreeMap<String, MusicBrainzLink>,
+    /// The song removed last, with its file and the person's changes, so
+    /// Undo can bring it back. The next removal replaces it (and its file
+    /// goes then).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub removed: Option<RemovedTrack>,
+}
+
+/// Everything the library kept about one removed song.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct RemovedTrack {
+    pub id: String,
+    #[serde(default)]
+    pub imported: Option<ImportedFile>,
+    #[serde(default)]
+    pub catalogue: Option<CatalogueTrack>,
+    #[serde(default)]
+    pub edit: Option<TrackEdit>,
+    #[serde(default)]
+    pub artwork: Option<String>,
+    #[serde(default)]
+    pub musicbrainz: Option<MusicBrainzLink>,
 }
 
 /// A song linked to the recording MusicBrainz knows it as.
@@ -72,16 +93,74 @@ pub struct MusicBrainzLink {
 impl LibraryFile {
     /// Every artwork file the library names, for sweeping the store.
     pub fn artwork_files(&self) -> std::collections::HashSet<String> {
+        let removed = self.removed.as_ref();
         self.artwork
             .values()
             .cloned()
             .chain(self.imported.values().filter_map(|i| i.artwork.clone()))
+            .chain(removed.and_then(|r| r.artwork.clone()))
+            .chain(removed.and_then(|r| r.imported.as_ref()?.artwork.clone()))
             .collect()
     }
 
-    /// Every imported music file, by its name in the music store.
+    /// Every imported music file, by its name in the music store (the
+    /// removed song's too, until Undo can't bring it back).
     pub fn music_files(&self) -> std::collections::HashSet<String> {
-        self.imported.values().map(|i| i.file.clone()).collect()
+        self.imported
+            .values()
+            .map(|i| i.file.clone())
+            .chain(
+                self.removed
+                    .as_ref()
+                    .and_then(|r| r.imported.as_ref())
+                    .map(|i| i.file.clone()),
+            )
+            .collect()
+    }
+
+    /// Takes a song the person added out of the library, keeping it as
+    /// [`LibraryFile::removed`].
+    pub fn remove_added(&mut self, id: &str) -> Result<(), SoundscapeError> {
+        if !self.imported.contains_key(id) && !self.catalogue.contains_key(id) {
+            return Err(SoundscapeError::NotInLibrary { id: id.into() });
+        }
+        self.removed = Some(RemovedTrack {
+            id: id.into(),
+            imported: self.imported.remove(id),
+            catalogue: self.catalogue.remove(id),
+            edit: self.edits.remove(id),
+            artwork: self.artwork.remove(id),
+            musicbrainz: self.musicbrainz.remove(id),
+        });
+        Ok(())
+    }
+
+    /// Puts back the song removed last, when it is `id`.
+    pub fn restore_removed(&mut self, id: &str) -> Result<(), SoundscapeError> {
+        let removed = match self.removed.take() {
+            Some(r) if r.id == id => r,
+            other => {
+                self.removed = other;
+                return Err(SoundscapeError::NotInLibrary { id: id.into() });
+            }
+        };
+        let id = removed.id;
+        if let Some(f) = removed.imported {
+            self.imported.insert(id.clone(), f);
+        }
+        if let Some(t) = removed.catalogue {
+            self.catalogue.insert(id.clone(), t);
+        }
+        if let Some(e) = removed.edit {
+            self.edits.insert(id.clone(), e);
+        }
+        if let Some(a) = removed.artwork {
+            self.artwork.insert(id.clone(), a);
+        }
+        if let Some(m) = removed.musicbrainz {
+            self.musicbrainz.insert(id, m);
+        }
+        Ok(())
     }
 
     /// Whether the library has a track with this id now.

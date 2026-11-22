@@ -370,6 +370,81 @@ impl SoundscapeCore {
         Ok(self.collection())
     }
 
+    /// Undo for [`Self::delete_playlist`]: brings the playlist deleted
+    /// last back, under its old id.
+    pub async fn restore_playlist(&self, id: u64) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("playlist-restore", move |state| {
+                state.change_collection(|c| c.restore_playlist(id))
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    /// Puts a playlist's songs back as they were, by track id in order
+    /// (Undo after removing one).
+    pub async fn set_playlist_tracks(
+        &self,
+        id: u64,
+        track_ids: Vec<String>,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        self.rt
+            .command("playlist-set-tracks", move |state| {
+                state.change_collection(|c| c.set_playlist_tracks(id, track_ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
+    /// Makes a playlist of what is in the queue, in play order, each song
+    /// once. Catalogue songs not in the library yet are added to it (a
+    /// playlist only shows library songs); anything else the library
+    /// doesn't have, such as a take from the take server, is left out.
+    pub async fn save_queue_as_playlist(
+        &self,
+        name: String,
+        tracks: Vec<QueueTrack>,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        if tracks.len() > collection::MAX_PLAYLIST_TRACKS {
+            return Err(SoundscapeError::range("playlist songs"));
+        }
+        let id = self
+            .rt
+            .command("playlist-from-queue", move |state| {
+                let lib = state.library.value();
+                let mut seen = std::collections::HashSet::new();
+                let mut ids = Vec::new();
+                let mut adding = Vec::new();
+                for track in tracks {
+                    if !seen.insert(track.track_id.clone()) {
+                        continue;
+                    }
+                    if lib.has_track(&track.track_id) {
+                        ids.push(track.track_id);
+                    } else if let Some(found) = catalogue_track(track) {
+                        ids.push(found.id.clone());
+                        adding.push(found);
+                    }
+                }
+                if ids.is_empty() {
+                    return Err(SoundscapeError::NotInLibrary { id: "queue".into() });
+                }
+                if !adding.is_empty() {
+                    let now = now_ms();
+                    state.change_library(|lib| {
+                        for (i, mut track) in adding.into_iter().enumerate() {
+                            track.added_ms = now + i as i64;
+                            lib.catalogue.entry(track.id.clone()).or_insert(track);
+                        }
+                        Ok(())
+                    })?;
+                }
+                state.change_collection(|c| c.create_playlist(&name, ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
     /// Adds songs at the end of a playlist.
     pub async fn add_to_playlist(
         &self,
@@ -665,22 +740,23 @@ impl SoundscapeCore {
 
     /// Removes a song the person added: an imported file (deleting
     /// Soundscape's copy; the original, wherever it was, is untouched) or a
-    /// catalogue track. Its download goes on the next pass.
+    /// catalogue track. Its download goes on the next pass. Kept, file
+    /// and all, until the next removal, for [`Self::restore_removed`].
     pub async fn remove_imported(&self, track_id: String) -> Result<Library, SoundscapeError> {
         self.rt
             .command("library-remove-imported", move |state| {
-                let lib = state.library.value();
-                if !lib.imported.contains_key(&track_id) && !lib.catalogue.contains_key(&track_id) {
-                    return Err(SoundscapeError::NotInLibrary { id: track_id });
-                }
-                state.change_library(|lib| {
-                    lib.imported.remove(&track_id);
-                    lib.catalogue.remove(&track_id);
-                    lib.edits.remove(&track_id);
-                    lib.artwork.remove(&track_id);
-                    lib.musicbrainz.remove(&track_id);
-                    Ok(())
-                })
+                state.change_library(|lib| lib.remove_added(&track_id))
+            })
+            .await?;
+        Ok(self.library())
+    }
+
+    /// Undo for [`Self::remove_imported`]: puts the song removed last back,
+    /// file, changes and artwork included.
+    pub async fn restore_removed(&self, track_id: String) -> Result<Library, SoundscapeError> {
+        self.rt
+            .command("library-restore-removed", move |state| {
+                state.change_library(|lib| lib.restore_removed(&track_id))
             })
             .await?;
         Ok(self.library())
@@ -877,8 +953,52 @@ impl SoundscapeCore {
             .await
     }
 
-    /// Stations to offer on the Listen screen: your top genres and most
-    /// played artists, then Jamendo's genres when there is a client ID.
+    /// Saves a station at the front of Hear Nonstop Music, or forgets it.
+    pub async fn set_station_saved(
+        &self,
+        seed: StationSeed,
+        title: String,
+        saved: bool,
+    ) -> Result<(), SoundscapeError> {
+        self.rt
+            .command("collection-station-saved", move |state| {
+                state.change_collection(|c| c.set_station_saved(seed, &title, saved, now_ms()))
+            })
+            .await
+    }
+
+    pub fn is_station_saved(&self, seed: StationSeed) -> bool {
+        self.collection.get().is_station_saved(&seed)
+    }
+
+    /// Remembers a search for Search's Recent list.
+    pub async fn note_search(&self, query: String) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("collection-note-search", move |state| {
+                state.change_collection(|c| {
+                    c.note_search(&query);
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    pub async fn clear_recent_searches(&self) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("collection-clear-searches", move |state| {
+                state.change_collection(|c| {
+                    c.recent_searches.clear();
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    /// Stations to offer on the Listen screen: the saved ones first, then
+    /// your top genres and most played artists, then Jamendo's genres when
+    /// there is a client ID.
     pub fn suggested_stations(&self) -> Vec<Station> {
         station::suggested(
             &self.library(),
@@ -1781,3 +1901,29 @@ fn default_http() -> Arc<dyn HttpClient> {
 }
 
 forge_app::export_runtime!(SoundscapeCore, rt);
+
+/// A queued catalogue song as the catalogue track it came from, to add it
+/// to the library; `None` for anything else.
+fn catalogue_track(track: QueueTrack) -> Option<CatalogueTrack> {
+    let library::AudioSource::Catalogue { provider } = track.recording.source else {
+        return None;
+    };
+    let rights = track.recording.rights?;
+    if catalogue::provider_of(&track.track_id).is_none() || !rights.may_stream {
+        return None;
+    }
+    Some(CatalogueTrack {
+        id: track.track_id,
+        provider,
+        title: track.title,
+        artist: (track.artist != library::UNKNOWN_ARTIST).then_some(track.artist),
+        album: track.album,
+        number: None,
+        genre: None,
+        duration_seconds: track.recording.duration_seconds,
+        artwork_url: track.artwork_url,
+        audio_url: track.recording.audio_url,
+        rights,
+        added_ms: 0,
+    })
+}
