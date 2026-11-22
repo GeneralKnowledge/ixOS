@@ -358,6 +358,7 @@ impl Devices {
                     d.trust = SavedTrust::Revoked;
                     d.addresses.clear();
                     d.revoked_by = Some(introducer.to_string());
+                    d.grants.clear();
                     done.revoked.push(id.clone());
                 }
             }
@@ -517,6 +518,7 @@ mod tests {
         let mut devices = Devices::default();
         devices.trust("laptop", "Laptop", 1);
         devices.trust("tablet", "Tablet", 1);
+        assert!(devices.set_grant("tablet", Capability::Sites, true));
         let list = DeviceList {
             trusted: vec![
                 ("new".into(), "New".into()),
@@ -538,6 +540,7 @@ mod tests {
         assert_eq!(devices.standing("new"), None, "offered, not trusted");
         let tablet = devices.get("tablet").unwrap();
         assert_eq!(tablet.revoked_by.as_deref(), Some("laptop"));
+        assert!(tablet.grants.is_empty(), "revoking clears its grants");
         // A revoked device isn't offered again.
         let list = DeviceList {
             trusted: vec![("tablet".into(), "Tablet".into())],
