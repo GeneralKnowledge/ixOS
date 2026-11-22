@@ -1303,3 +1303,72 @@ fn a_worry_noted_in_a_session_holds_a_stage_until_the_owner_has_had_advice() {
     .unwrap();
     assert!(app.goal(goal, next_day).unwrap().gate.unwrap().held);
 }
+
+/// UK clocks go forward at 01:00 UTC on Sunday 28 March 2027. Set on the
+/// Saturday at 09:00 GMT, the 18:00 reminder is at 18:00 UTC on Saturday
+/// and at 17:00 UTC (18:00 BST) from Sunday on; without the change it
+/// would fire at 19:00 BST (defect hunt finding 5). In October, the
+/// other way.
+#[test]
+fn reminders_keep_local_time_across_a_clock_change() {
+    const SATURDAY_9_GMT: i64 = 1_806_138_000_000;
+    const CLOCKS_FORWARD: i64 = 1_806_195_600_000;
+    const SUNDAY_17_UTC: i64 = 1_806_253_200_000;
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let now = at(SATURDAY_9_GMT);
+    block_on(app.set_reminder(Some(18 * 60), now)).unwrap();
+    let times = |app: &AppCore| -> Vec<i64> {
+        app.reminders_now(now)
+            .iter()
+            .map(|n| match n.trigger {
+                native::NotificationTrigger::At { unix_ms } => unix_ms,
+                _ => panic!("a reminder is at a time"),
+            })
+            .collect()
+    };
+
+    // Without the change (as before): every day at 18:00 UTC.
+    let before = times(&app);
+    assert_eq!(before[1] - before[0], DAY_MS);
+
+    app.set_offset_changes(vec![OffsetChange {
+        at_ms: CLOCKS_FORWARD,
+        utc_offset_minutes: 60,
+    }]);
+    let after = times(&app);
+    assert_eq!(
+        after[0],
+        SATURDAY_9_GMT + 9 * 3_600_000,
+        "Saturday 18:00 GMT"
+    );
+    assert_eq!(after[1], SUNDAY_17_UTC, "Sunday 18:00 BST");
+    assert_eq!(after[2], SUNDAY_17_UTC + DAY_MS, "Monday 18:00 BST");
+
+    // October: clocks go back at 01:00 UTC on 31 October 2027; set on the
+    // Saturday at 09:00 BST, Sunday's reminder is at 18:00 UTC (18:00 GMT).
+    const SATURDAY_9_BST: i64 = 1_824_883_200_000;
+    const CLOCKS_BACK: i64 = 1_824_944_400_000;
+    let october = LocalTime {
+        ms: SATURDAY_9_BST,
+        utc_offset_minutes: 60,
+    };
+    app.set_offset_changes(vec![OffsetChange {
+        at_ms: CLOCKS_BACK,
+        utc_offset_minutes: 0,
+    }]);
+    let back: Vec<i64> = app
+        .reminders_now(october)
+        .iter()
+        .map(|n| match n.trigger {
+            native::NotificationTrigger::At { unix_ms } => unix_ms,
+            _ => panic!(),
+        })
+        .collect();
+    assert_eq!(
+        back[0],
+        SATURDAY_9_BST + 9 * 3_600_000,
+        "Saturday 18:00 BST"
+    );
+    assert_eq!(back[1], CLOCKS_BACK + 17 * 3_600_000, "Sunday 18:00 GMT");
+}
