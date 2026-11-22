@@ -1,6 +1,6 @@
 // Opening what arrived: a received file opens in whichever app shows its type, through a
 // FileProvider (Quick Look on the iPhone). Received files stay in Relay's private folder; saving
-// them to Downloads is stage 2 (docs/relay-android.md).
+// them to Downloads is stage 3 (docs/relay-android.md).
 package org.forgemobile.relay.ui
 
 import android.content.ActivityNotFoundException

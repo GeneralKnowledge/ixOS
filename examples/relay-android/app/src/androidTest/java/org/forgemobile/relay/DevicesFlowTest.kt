@@ -50,12 +50,16 @@ class DevicesFlowTest {
         val intent = Intent(context, MainActivity::class.java)
             .putExtra(ForgeEnvironment.TEMPORARY_DATA_EXTRA, true)
         scenario = ActivityScenario.launch(intent)
-        compose.waitUntilAtLeastOneExists(hasTestTag("devices.empty") or hasTestTag("content.failure"), 30_000)
+        compose.waitUntilAtLeastOneExists(hasTestTag("tab.devices") or hasTestTag("content.failure"), 30_000)
         val failure = compose.onAllNodes(hasTestTag("content.failure")).fetchSemanticsNodes().firstOrNull()
         if (failure != null) {
             val text = failure.config.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }
             throw AssertionError("Relay didn't open: $text")
         }
+        // Relay opens on Chats, as on the iPhone: with no trusted devices it has none.
+        compose.waitUntilAtLeastOneExists(hasTestTag("chats.empty"), 10_000)
+        compose.onNodeWithTag("tab.devices").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("devices.empty"), 10_000)
     }
 
     @After
@@ -160,6 +164,20 @@ class DevicesFlowTest {
         // Its page: it may send here until that is turned off.
         compose.onNodeWithTag("devices.list").performScrollToNode(hasTestTag("devices.trusted"))
         compose.onNodeWithTag("devices.trusted").performClick()
+
+        // Message opens its conversation in Chats; what is written waits in Relay's outbox
+        // until the laptop can be reached, and shows at once.
+        compose.onNodeWithTag("trusted.message").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("chat.composer"), 10_000)
+        compose.onNodeWithText("Test Laptop").assertIsDisplayed()
+        compose.onNodeWithTag("chat.composer").performTextInput("hello laptop")
+        compose.onNodeWithTag("chat.send").performClick()
+        compose.waitUntilAtLeastOneExists(hasText("hello laptop"), 10_000)
+        compose.onNodeWithTag("chat.back").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("chats.list"), 5_000)
+        compose.waitUntilAtLeastOneExists(hasText("You: hello laptop"), 5_000)
+        compose.onNodeWithTag("tab.devices").performClick()
+
         compose.onNodeWithTag("trusted.receivesFrom").assertIsOn()
         compose.onNodeWithTag("trusted.receivesFrom").performClick()
         compose.waitUntil(5_000) {
