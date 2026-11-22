@@ -1096,14 +1096,17 @@ impl SoundscapeCore {
     /// in the library, else the catalogue's stream.
     pub fn catalogue_queue_tracks(&self, tracks: Vec<CatalogueTrack>) -> Vec<QueueTrack> {
         let library = self.library();
+        let file = self.library.get();
         tracks
             .iter()
             .filter(|t| t.rights.may_stream)
             .map(|t| {
-                library
-                    .tracks
-                    .iter()
-                    .find(|l| l.id == t.id)
+                // A track merged into another song plays as that song.
+                let root = library::merged_root(&file, &t.id);
+                let find = |id: &str| library.tracks.iter().find(|l| l.id == id);
+                root.as_deref()
+                    .and_then(find)
+                    .or_else(|| find(&t.id))
                     .and_then(library::queue_track)
                     .unwrap_or_else(|| QueueTrack {
                         track_id: t.id.clone(),
@@ -1150,7 +1153,10 @@ impl SoundscapeCore {
         let file = self.library.get();
         playback::refresh(saved, |queued| {
             // A song merged into another since is found under that song.
+            // (Only when that song is still there: if it went, the
+            // merged song is back on its own under its own id.)
             let id = library::merged_root(&file, &queued.track_id)
+                .filter(|root| library.tracks.iter().any(|t| &t.id == root))
                 .unwrap_or_else(|| queued.track_id.clone());
             match library.tracks.iter().find(|t| t.id == id) {
                 Some(track)

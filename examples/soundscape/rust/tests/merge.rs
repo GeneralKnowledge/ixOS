@@ -404,3 +404,16 @@ fn a_saved_queue_keeps_a_song_merged_since() {
         .audio_url
         .starts_with("file:"));
 }
+
+#[test]
+fn a_catalogue_track_merged_into_your_file_plays_your_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, imported, jamendo_id) = ready(&dir);
+    let anchor = jamendo::parse_tracks(JAMENDO_ANCHOR.as_bytes()).unwrap();
+    // Discover still hands over Jamendo's track; once merged into your
+    // file, the queue plays the file.
+    block(core.merge_songs(imported.clone(), vec![jamendo_id.clone()])).unwrap();
+    let queued = core.catalogue_queue_tracks(anchor);
+    assert_eq!(queued[0].track_id, imported);
+    assert!(queued[0].recording.audio_url.starts_with("file:"));
+}
