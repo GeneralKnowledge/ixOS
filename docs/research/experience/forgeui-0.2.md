@@ -287,4 +287,4 @@ The contract is a component *specification*, not shared code: SwiftUI components
 | P2 | Keyboard and focus | Keyboard covering the field or Save, Return moving focus, tap-outside dismissal, focus restored after a sheet, hardware keyboards | Shared SwiftUI recipes |
 | P2 | Offline and connectivity | Tell apart no connection, server unavailable, timed out, still running, and unavailable offline by design. No global offline banner: show it only where the current task depends on the network | App-level patterns, shared later if they repeat |
 
-Silent waits (3.5) belong to this layer too; they went into 0.2 because Reuben hit one and the fix is a `ForgeButton` change already in scope.
+The P0 pass is [ui-finish-audit.md](ui-finish-audit.md). Silent waits (3.5) belong to this layer too; they went into 0.2 because Reuben hit one and the fix is a `ForgeButton` change already in scope.

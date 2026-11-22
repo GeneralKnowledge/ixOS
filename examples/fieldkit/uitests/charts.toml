@@ -15,7 +15,7 @@ launch = { args = ["-ForgeTemporaryData"] }
 tap = { id = "trips.recordFirst" }
 
 [[step]]
-tap = { id = "start.go" }
+tap = { id = "start.confirm" }
 
 [[step]]
 tap = { id = "recording.stop" }

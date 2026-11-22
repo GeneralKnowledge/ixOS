@@ -219,7 +219,7 @@ public struct ForgeStateView: View {
                     // prominent style on a menu left the icon in the accent
                     // colour on an accent pill (invisible, but taking space)
                     // and a paler pill (Relay, iOS 26.3, 2026-11-18).
-                    ForgeButtonChrome(label: menuLabel(action), kind: style.kind, expands: style.expands, isPressed: false)
+                    menuLabel(action).forgeButtonLook(style.kind, expands: style.expands)
                 }
                 .menuStyle(.button)
                 .buttonStyle(.plain)

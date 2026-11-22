@@ -1,7 +1,21 @@
 /// What a `ForgeButton` allows while its work runs. Plain values, so the
 /// rules are checked on Linux; `ForgeButton` draws them.
 struct ForgeButtonState: Hashable, Sendable {
+    /// Work is running: the app said so (`isWorking:`), or the button's
+    /// own async action hasn't returned.
     var isWorking: Bool
+    /// The spinner is up. With `isWorking:` it shows at once; for the
+    /// button's own async action only after `spinnerDelay`, so a fast
+    /// local write never flickers and a slow one always shows.
+    var showsSpinner: Bool
+
+    init(isWorking: Bool, showsSpinner: Bool? = nil) {
+        self.isWorking = isWorking
+        self.showsSpinner = isWorking && (showsSpinner ?? true)
+    }
+
+    /// How long an async action runs before its spinner appears.
+    static let spinnerDelay: Duration = .milliseconds(400)
 
     /// A tap runs the action only when the button isn't already working.
     var runsAction: Bool { !isWorking }
@@ -12,6 +26,30 @@ struct ForgeButtonState: Hashable, Sendable {
     /// It keeps its full colour while working: the spinner says it is busy,
     /// and a faded spinner is hard to see. A button the app disabled fades.
     var fadesWhenDisabled: Bool { !isWorking }
+    /// VoiceOver hears "In progress" only while the spinner shows.
+    var announcesProgress: Bool { showsSpinner }
+}
+
+/// Which of a ForgeUI button's looks apply: pressed, disabled, working,
+/// compact, Reduce Motion. Plain values, so the rules are checked on Linux;
+/// `forgeButtonLook` draws them, and every ForgeUI button is drawn by it.
+struct ForgeButtonLook: Hashable, Sendable {
+    var isEnabled: Bool
+    var isWorking: Bool
+    var isPressed: Bool
+    var isCompact: Bool
+    var reduceMotion: Bool
+
+    /// A disabled button fades; a working one keeps its colour (its
+    /// spinner says it is busy). A press dims it a little.
+    var opacity: Double {
+        guard isEnabled || isWorking else { return 0.4 }
+        return isPressed ? 0.7 : 1
+    }
+
+    /// A press shrinks it slightly, unless Reduce Motion is on.
+    var scale: Double { isPressed && !reduceMotion ? 0.98 : 1 }
+    var animatesPress: Bool { !reduceMotion }
 }
 
 #if canImport(SwiftUI)
@@ -62,7 +100,7 @@ public struct ForgeButtonStyle: ButtonStyle {
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        ForgeButtonChrome(label: configuration.label, kind: kind, expands: expands, isPressed: configuration.isPressed)
+        configuration.label.forgeButtonLook(kind, expands: expands, isPressed: configuration.isPressed)
     }
 }
 
@@ -77,9 +115,26 @@ extension ButtonStyle where Self == ForgeButtonStyle {
     }
 }
 
-/// What a ForgeUI button looks like, for any label: the button style draws
-/// it around a button's label, and a state view's menu around the menu's.
-struct ForgeButtonChrome<Content: View>: View {
+extension View {
+    /// ForgeUI's button look on any view, for controls that aren't a
+    /// `Button` (a `Menu`'s label, a renderer's own control). It is the one
+    /// implementation: `ForgeButtonStyle` draws its buttons with it. Pass
+    /// `isPressed` from your control; disabled comes from `.disabled(...)`,
+    /// compact from `.controlSize(.small)`, working from `ForgeButton`, and
+    /// Reduce Motion and Dynamic Type from the system, as for the style.
+    ///
+    ///     Menu { … } label: {
+    ///         Label("New", systemImage: "plus").forgeButtonLook(.primary)
+    ///     }
+    public func forgeButtonLook(
+        _ kind: ForgeButtonStyle.Kind, expands: Bool = false, isPressed: Bool = false
+    ) -> some View {
+        ForgeButtonChrome(label: self, kind: kind, expands: expands, isPressed: isPressed)
+    }
+}
+
+/// What a ForgeUI button looks like, for any label (`forgeButtonLook`).
+private struct ForgeButtonChrome<Content: View>: View {
     let label: Content
     let kind: ForgeButtonStyle.Kind
     let expands: Bool
@@ -114,7 +169,11 @@ struct ForgeButtonChrome<Content: View>: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: theme.radius.m, style: .continuous)
-        label
+        let look = ForgeButtonLook(
+            isEnabled: isEnabled, isWorking: isWorking, isPressed: isPressed,
+            isCompact: compact, reduceMotion: reduceMotion
+        )
+        return label
             .font(compact ? .subheadline.weight(.semibold) : .headline)
             .foregroundStyle(foreground)
             .tint(foreground)
@@ -125,9 +184,9 @@ struct ForgeButtonChrome<Content: View>: View {
             .frame(maxWidth: expands ? .infinity : nil, minHeight: compact ? compactHeight : minHeight)
             .background(fill, in: shape)
             .contentShape(shape)
-            .opacity(isEnabled || isWorking ? (isPressed ? 0.7 : 1) : 0.4)
-            .scaleEffect(isPressed && !reduceMotion ? 0.98 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isPressed)
+            .opacity(look.opacity)
+            .scaleEffect(look.scale)
+            .animation(look.animatesPress ? .easeOut(duration: 0.12) : nil, value: isPressed)
     }
 }
 
@@ -161,26 +220,40 @@ private struct ForgeIconButtonBody: View {
     @Environment(\.forgeTheme) private var theme
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.forgeButtonIsWorking) private var isWorking
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var size: CGFloat = 44
 
     var body: some View {
         let colors = theme.colors.tone(tone)
-        configuration.label
+        let look = ForgeButtonLook(
+            isEnabled: isEnabled, isWorking: isWorking, isPressed: configuration.isPressed,
+            isCompact: false, reduceMotion: reduceMotion
+        )
+        return configuration.label
             .labelStyle(.iconOnly)
             .font(.body.weight(.semibold))
             .foregroundStyle(colors.text)
             .frame(width: size, height: size)
             .background(colors.soft, in: Circle())
             .contentShape(Circle())
-            .opacity(isEnabled || isWorking ? (configuration.isPressed ? 0.7 : 1) : 0.4)
+            .opacity(look.opacity)
     }
 }
 
-/// A button that shows a spinner in place of its title while `isWorking`,
+/// A button that shows a spinner in place of its title while its work runs,
 /// and is disabled until it finishes: taps, VoiceOver, Voice Control and
 /// the keyboard can't press it again, and VoiceOver reads "In progress".
-/// ForgeUI's styles keep it at full colour while it works. Style it like
-/// any button:
+/// ForgeUI's styles keep it at full colour while it works.
+///
+/// Give it an async action and it tracks the work itself. The spinner
+/// appears only if the work takes longer than 0.4 s, so a fast local write
+/// doesn't flicker and a slow one is never silent:
+///
+///     ForgeButton("Trust Again") { await model.trustAgain(device) }
+///         .accessibilityIdentifier("device.trustAgain")
+///
+/// For work the model tracks itself, pass `isWorking:`; the spinner shows
+/// at once. Style it like any button:
 ///
 ///     ForgeButton("Save", isWorking: model.isSaving) { Task { await model.save() } }
 ///         .buttonStyle(.forge(.primary, expands: true))
@@ -190,7 +263,16 @@ public struct ForgeButton: View {
     private let systemImage: String?
     private let isWorking: Bool
     private let role: ButtonRole?
-    private let action: () -> Void
+    private let action: Action
+
+    private enum Action {
+        case plain(() -> Void)
+        case work(@MainActor () async -> Void)
+    }
+
+    /// The button's own async work: running, and whether its spinner is due.
+    @State private var running = false
+    @State private var spinnerDue = false
 
     public init(
         _ title: LocalizedStringKey,
@@ -203,13 +285,36 @@ public struct ForgeButton: View {
         self.systemImage = systemImage
         self.role = role
         self.isWorking = isWorking
-        self.action = action
+        self.action = .plain(action)
+    }
+
+    /// A button that runs async work and shows it: disabled at once, with a
+    /// spinner if the work takes longer than 0.4 s.
+    public init(
+        _ title: LocalizedStringKey,
+        systemImage: String? = nil,
+        role: ButtonRole? = nil,
+        action: @escaping @MainActor () async -> Void
+    ) {
+        self.title = Text(title)
+        self.systemImage = systemImage
+        self.role = role
+        self.isWorking = false
+        self.action = .work(action)
+    }
+
+    private var state: ForgeButtonState {
+        ForgeButtonState(isWorking: isWorking || running, showsSpinner: isWorking || spinnerDue)
     }
 
     public var body: some View {
-        let state = ForgeButtonState(isWorking: isWorking)
+        let state = state
         return Button(role: role) {
-            if state.runsAction { action() }
+            guard state.runsAction else { return }
+            switch action {
+            case .plain(let run): run()
+            case .work(let run): start(run)
+            }
         } label: {
             ZStack {
                 Group {
@@ -219,15 +324,31 @@ public struct ForgeButton: View {
                         title
                     }
                 }
-                .opacity(isWorking ? 0 : 1)
-                if isWorking {
+                .opacity(state.showsSpinner ? 0 : 1)
+                if state.showsSpinner {
                     ProgressView()
                 }
             }
         }
         .disabled(state.isDisabled)
         .environment(\.forgeButtonIsWorking, !state.fadesWhenDisabled)
-        .accessibilityValue(isWorking ? Text("In progress") : Text(""))
+        .accessibilityValue(state.announcesProgress ? Text("In progress") : Text(""))
+    }
+
+    private func start(_ run: @escaping @MainActor () async -> Void) {
+        // A second tap that lands before the disabled state renders does nothing.
+        guard !running else { return }
+        running = true
+        Task { @MainActor in
+            let spinner = Task { @MainActor in
+                try? await Task.sleep(for: ForgeButtonState.spinnerDelay)
+                if !Task.isCancelled { spinnerDue = true }
+            }
+            await run()
+            spinner.cancel()
+            spinnerDue = false
+            running = false
+        }
     }
 }
 #endif
