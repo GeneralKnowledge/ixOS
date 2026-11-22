@@ -43,7 +43,9 @@ use forge_net::UreqClient;
 use forge_runtime::{lock, now_ms};
 
 pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
-use domain::{fold, validate, LibraryData, StoredBookRun, StoredBookSynopsis, StoredSynopsis};
+use domain::{
+    fit_imported, fold, validate, LibraryData, StoredBookRun, StoredBookSynopsis, StoredSynopsis,
+};
 pub use error::LibraryError;
 use forge_storage::Staged;
 pub use model::*;
@@ -369,7 +371,7 @@ impl Library {
                         }
                     },
                 };
-                let input = validate(BookInput {
+                let input = validate(fit_imported(BookInput {
                     title: hit.title.clone(),
                     author: hit.author.clone(),
                     description,
@@ -379,7 +381,7 @@ impl Library {
                     rating: None,
                     notes: String::new(),
                     cover_url: hit.cover_url.clone(),
-                })?;
+                }))?;
                 Ok((input, cover_file, warnings))
             })
             .await?;
@@ -459,7 +461,7 @@ impl Library {
                             None => None,
                         };
                         let epub_file = store.stage_book_file(&stem, &bytes)?;
-                        let input = validate(BookInput {
+                        let input = validate(fit_imported(BookInput {
                             title: meta.title,
                             author: meta.author,
                             description: meta.description,
@@ -469,7 +471,7 @@ impl Library {
                             rating: None,
                             notes: String::new(),
                             cover_url: None,
-                        })?;
+                        }))?;
                         Ok(EpubPlan::Add {
                             input: Box::new(input),
                             file_name,

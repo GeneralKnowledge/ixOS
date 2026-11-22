@@ -233,6 +233,54 @@ pub struct ValidInput {
     pub cover_url: Option<String>,
 }
 
+/// Fits metadata read from an EPUB or the catalogue to the form's limits,
+/// so a valid book is never refused for a field the person can't see: a
+/// long title or description is cut (ending "…"), a long list of authors
+/// keeps the names that fit and ends "and others", and a page count past
+/// the limit is dropped. What a person types in the form is still checked
+/// by [`validate`], not cut.
+pub fn fit_imported(mut input: BookInput) -> BookInput {
+    input.title = cut(input.title.trim(), MAX_TITLE_CHARS);
+    input.author = fit_authors(input.author.trim(), MAX_AUTHOR_CHARS);
+    input.description = cut(input.description.trim(), MAX_DESCRIPTION_CHARS);
+    input.total_pages = input.total_pages.filter(|p| *p <= MAX_PAGES);
+    input
+}
+
+/// `text`, or its first `max - 1` characters and "…".
+fn cut(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(max - 1).collect();
+    format!("{}…", kept.trim_end())
+}
+
+/// "A, B, C" that fits in `max`: the first names that fit, then "and
+/// others"; a single name too long on its own is cut.
+fn fit_authors(names: &str, max: usize) -> String {
+    if names.chars().count() <= max {
+        return names.to_string();
+    }
+    const OTHERS: &str = " and others";
+    let mut kept = String::new();
+    for name in names.split(", ") {
+        let next = if kept.is_empty() {
+            name.to_string()
+        } else {
+            format!("{kept}, {name}")
+        };
+        if next.chars().count() + OTHERS.chars().count() > max {
+            break;
+        }
+        kept = next;
+    }
+    if kept.is_empty() {
+        return cut(names, max);
+    }
+    format!("{kept}{OTHERS}")
+}
+
 /// Checks the book form, field by field (`forge_app::Validator`), and
 /// tidies it. Field names are `BookInput`'s, so the form can show each
 /// problem under its own field.
@@ -916,6 +964,51 @@ pub fn sort_title(title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imported_metadata_is_fitted_to_the_form() {
+        let book = |title: &str, author: &str, description: &str, pages: Option<u32>| BookInput {
+            title: title.into(),
+            author: author.into(),
+            description: description.into(),
+            status: ReadingStatus::WantToRead,
+            current_page: 0,
+            total_pages: pages,
+            rating: None,
+            notes: String::new(),
+            cover_url: None,
+        };
+        // Within the limits: unchanged.
+        let short = book("Dune", "Frank Herbert", "Spice.", Some(412));
+        assert_eq!(fit_imported(short.clone()), short);
+
+        let names: Vec<String> = (1..=30)
+            .map(|n| format!("Contributor Number {n}"))
+            .collect();
+        let fitted = fit_imported(book(
+            &"t".repeat(MAX_TITLE_CHARS + 50),
+            &names.join(", "),
+            &"d".repeat(MAX_DESCRIPTION_CHARS + 1),
+            Some(MAX_PAGES + 1),
+        ));
+        assert_eq!(fitted.title.chars().count(), MAX_TITLE_CHARS);
+        assert!(fitted.title.ends_with('…'));
+        assert!(fitted
+            .author
+            .starts_with("Contributor Number 1, Contributor Number 2,"));
+        assert!(fitted.author.ends_with(" and others"));
+        assert!(fitted.author.chars().count() <= MAX_AUTHOR_CHARS);
+        assert_eq!(fitted.description.chars().count(), MAX_DESCRIPTION_CHARS);
+        assert_eq!(fitted.total_pages, None);
+        assert!(validate(fitted).is_ok());
+
+        // One name longer than the limit is cut.
+        let one = fit_imported(book("T", &"n".repeat(MAX_AUTHOR_CHARS + 5), "", None));
+        assert_eq!(one.author.chars().count(), MAX_AUTHOR_CHARS);
+        // Multi-byte text is cut on a character boundary.
+        let accents = fit_imported(book(&"é".repeat(MAX_TITLE_CHARS + 1), "", "", None));
+        assert_eq!(accents.title.chars().count(), MAX_TITLE_CHARS);
+    }
     use ReadingStatus::*;
 
     const HOUR: i64 = 60 * 60 * 1000;
