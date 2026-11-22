@@ -256,3 +256,17 @@ Proves the acceptance conditions on the device; only Reuben's report counts.
 5. **Send a Bad Payload**, each of the eight: each is refused with a reason and the cards don't change.
 6. VoiceOver: each card reads its book title; the priority chips read their state; the date fields and Review button are reachable and named. Largest Dynamic Type size: nothing clipped, the screen scrolls.
 7. Tools → Logs, filter `a2ui_lab`: only codes and counts, no titles, dates or payloads.
+
+**Result (Reuben, 2026-11-22, Device Lab 1.29922371 = main + #377 at `3df9ab9`): all seven steps pass.**
+
+| Step | Result |
+|---|---|
+| 1. Proposal, light and dark | Pass |
+| 2. Edit, review, confirm, saved plans | Pass. The first review listed all four books: correct, since nothing was saved yet and Rust compares with what's saved, but the sheet should say so; A2UI-1b labels first-time rows "New plan". A later single priority change showed one row |
+| 3. Review with no changes | Pass: "Nothing would change", Confirm disabled |
+| 4. Agent's update | Pass |
+| 5. Eight bad payloads | Pass: all refused, cards unchanged |
+| 6. VoiceOver and large text | Pass |
+| 7. Logs | Pass: codes and counts only |
+
+All five A2UI-1 acceptance conditions hold on the device. This passes the test of the dependency; it does not adopt it (decision 1).
