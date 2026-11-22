@@ -554,6 +554,10 @@ let MAX_ATTACHMENTS_PER_MESSAGE_SWIFT = 10
 /// The reactions offered at the top of a bubble's menu.
 let quickReactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
+/// What every trusted device's conversation id starts with (Rust's
+/// `device_conversation`).
+let deviceConversationPrefix = String(deviceConversationId(endpointId: "x").dropLast())
+
 /// What a bubble's menu and taps do.
 struct BubbleActions {
     var retry: () -> Void
@@ -955,12 +959,14 @@ private struct MessageBubble: View {
         .accessibilityActions {
             if live {
                 Button("Reply", action: actions.reply)
-                ForEach(quickReactions, id: \.self) { emoji in
-                    Button("React \(emoji)") { actions.react(emoji) }
+                if changeable {
+                    ForEach(quickReactions, id: \.self) { emoji in
+                        Button("React \(emoji)") { actions.react(emoji) }
+                    }
                 }
             }
-            if message.isMine && live { Button("Edit", action: actions.edit) }
-            if message.isMine && !message.deleted { Button("Delete", action: actions.delete) }
+            if message.isMine && live && changeable { Button("Edit", action: actions.edit) }
+            if unsendable { Button("Delete", action: actions.delete) }
             if !message.deleted {
                 ForEach(Array(message.attachments.filter(\.isAudio).enumerated()), id: \.offset) {
                     _, attachment in
@@ -1007,12 +1013,14 @@ private struct MessageBubble: View {
 
     @ViewBuilder private var menu: some View {
         if live {
-            ControlGroup {
-                ForEach(quickReactions, id: \.self) { emoji in
-                    Button(emoji) { actions.react(emoji) }
+            if changeable {
+                ControlGroup {
+                    ForEach(quickReactions, id: \.self) { emoji in
+                        Button(emoji) { actions.react(emoji) }
+                    }
                 }
+                .controlGroupStyle(.palette)
             }
-            .controlGroupStyle(.palette)
             Button("Reply", systemImage: "arrowshape.turn.up.left", action: actions.reply)
         }
         if !message.deleted && !message.body.isEmpty {
@@ -1029,15 +1037,33 @@ private struct MessageBubble: View {
                 ) { actions.open(attachment) }
             }
         }
-        if message.isMine && live {
+        if message.isMine && live && changeable {
             Button("Edit", systemImage: "pencil", action: actions.edit)
         }
         if message.status == .failed {
             Button("Try Again", systemImage: "arrow.clockwise", action: actions.retry)
         }
-        if message.isMine && !message.deleted {
+        if unsendable {
             Button("Delete", systemImage: "trash", role: .destructive, action: actions.delete)
         }
+    }
+
+    /// A trusted device's conversation goes through Relay's outbox, which
+    /// can't yet edit, react to or take back a delivered message (Rust
+    /// refuses, and for a delete says "Sign up first."), so the menu leaves
+    /// those out there. Android does the same (relay-android.md).
+    private var inDeviceConversation: Bool {
+        message.conversationId.hasPrefix(deviceConversationPrefix)
+    }
+
+    /// Whether Edit and reactions are offered.
+    private var changeable: Bool { !inDeviceConversation }
+
+    /// Whether Delete is offered: ours, and in a device's conversation only
+    /// when it never went out.
+    private var unsendable: Bool {
+        message.isMine && !message.deleted
+            && (!inDeviceConversation || message.status == .failed)
     }
 
     private var fill: Color {
@@ -1251,6 +1277,8 @@ private struct DeliveryLabel: View {
     static func text(_ delivery: ChatDelivery) -> String {
         switch delivery {
         case .sending: return String(localized: "Sending…")
+        // Its device couldn't be reached: it collects it from its mailbox.
+        case .inMailbox: return String(localized: "In the Mailbox")
         case .sent: return String(localized: "Delivered")
         case .read: return String(localized: "Read")
         case .failed: return String(localized: "Not Delivered. Tap to Try Again.")

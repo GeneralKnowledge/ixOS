@@ -174,8 +174,8 @@ pub struct RelayCore {
     /// Trusted devices the app sees nearby, with their addresses.
     nearby: Mutex<HashMap<String, Vec<String>>>,
     /// When each trusted device last got past Hello on a connection it
-    /// made here (in memory; deliveries and status answers are saved in
-    /// the record as `last_seen_ms`). For presence (`presence`).
+    /// made here (in memory; Hellos, deliveries and status answers are
+    /// saved in the record as `last_seen_ms`). For presence (`presence`).
     reached: Mutex<HashMap<String, i64>>,
     /// Whether the node's addresses are watched for network changes.
     watching_network: AtomicBool,
@@ -1936,6 +1936,50 @@ impl CoreDevices {
     }
 }
 
+impl CoreDevices {
+    /// `DeviceInbound::finish_file`, saying whether it was saved: the
+    /// mailbox acknowledges an item only once it is.
+    pub(crate) fn file_done(
+        &self,
+        id: u64,
+        from: &str,
+        delivery: [u8; 16],
+        content: [u8; 32],
+        result: Result<String, String>,
+    ) -> Result<(), RelayError> {
+        if let Some(core) = self.core.upgrade() {
+            lock(&core.progress).remove(&id);
+        }
+        // The conversation shows it as a message with the saved file.
+        let message = match &result {
+            Ok(path) => match self.files_arrived(from, delivery, content, Path::new(path)) {
+                Ok(message) => Some((message, PathBuf::from(path))),
+                Err(err) => {
+                    forge_runtime::logging::warn!("relay couldn't make a files message: {err}");
+                    None
+                }
+            },
+            Err(_) => None,
+        };
+        let (status, file) = match result {
+            Ok(path) => (SavedStatus::Done, Some(path)),
+            Err(reason) => (SavedStatus::Failed { reason }, None),
+        };
+        let from = from.to_string();
+        // Its message, its id and its history entry: one transaction (P3).
+        self.command_with("device-file-done", move |r, c| {
+            if let Some((message, path)) = message {
+                c.add_files(&from, message, Some(&path))?;
+            }
+            if status == SavedStatus::Done {
+                r.remember_received(&from, &delivery, now_ms());
+            }
+            r.finish(id, status, file);
+            Ok(())
+        })
+    }
+}
+
 impl device::DeviceInbound for CoreDevices {
     fn message(&self, from: &str, message: device_chat::PeerMessage) -> Result<(), RelayError> {
         let core = self.core.upgrade().ok_or(RelayError::Stopped {
@@ -2067,12 +2111,13 @@ impl device::DeviceInbound for CoreDevices {
         // whatever it leaves while this device is closed is taken.
         core.collect_mailbox();
         let from = from.to_string();
+        let now = now_ms();
         code::TOKIO.spawn(async move {
             let _ = core
                 .rt
                 .command("device-met", move |state| {
                     state.change(|r| {
-                        r.devices.met(&from, &addresses, route, mailbox);
+                        r.devices.met(&from, &addresses, route, mailbox, now);
                         Ok(())
                     })
                 })
@@ -2137,36 +2182,7 @@ impl device::DeviceInbound for CoreDevices {
         content: [u8; 32],
         result: Result<String, String>,
     ) {
-        if let Some(core) = self.core.upgrade() {
-            lock(&core.progress).remove(&id);
-        }
-        // The conversation shows it as a message with the saved file.
-        let message = match &result {
-            Ok(path) => match self.files_arrived(from, delivery, content, Path::new(path)) {
-                Ok(message) => Some((message, PathBuf::from(path))),
-                Err(err) => {
-                    forge_runtime::logging::warn!("relay couldn't make a files message: {err}");
-                    None
-                }
-            },
-            Err(_) => None,
-        };
-        let (status, file) = match result {
-            Ok(path) => (SavedStatus::Done, Some(path)),
-            Err(reason) => (SavedStatus::Failed { reason }, None),
-        };
-        let from = from.to_string();
-        // Its message, its id and its history entry: one transaction (P3).
-        if let Err(err) = self.command_with("device-file-done", move |r, c| {
-            if let Some((message, path)) = message {
-                c.add_files(&from, message, Some(&path))?;
-            }
-            if status == SavedStatus::Done {
-                r.remember_received(&from, &delivery, now_ms());
-            }
-            r.finish(id, status, file);
-            Ok(())
-        }) {
+        if let Err(err) = self.file_done(id, from, delivery, content, result) {
             forge_runtime::logging::warn!("relay couldn't save a transfer: {err}");
         }
     }

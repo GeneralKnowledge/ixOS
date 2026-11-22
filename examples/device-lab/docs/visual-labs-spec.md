@@ -2,6 +2,8 @@
 
 Status: **implementation spec, not started** (Reuben, 2026-11-21). Two tracks that make Device Lab's labs visual, and how Bonsai Harness operates them later. It doesn't change the [Bonsai Harness plan](bonsai-harness-plan.md); it builds on it.
 
+Python Lab's workspace (projects, files, editor, interactive console) is planned separately in [python-lab-workspace-plan.md](python-lab-workspace-plan.md), whose stage PL3 includes P2 below.
+
 ## The shape
 
 ```

@@ -16,6 +16,7 @@ The products built with Forge. Each one is its own SwiftUI app on its own Rust c
 | [Soundscape](soundscape/README.md) | Multi-track sound sketchpad | [README](soundscape/README.md) |
 | [Urdu, Naturally](urdu-naturally/README.md) | Conversational Pakistani Urdu, learnt by talking: 14 everyday conversations are the course, and the words come from them | [README](urdu-naturally/README.md), [plan](urdu-naturally/docs/plan.md), [content guidelines](urdu-naturally/docs/content-guidelines.md) |
 | [Pocket Library for Android](pocket-library-android/README.md) | Android, work in progress | [README](pocket-library-android/README.md) |
+| [Relay for Android](relay-android/README.md) | Android, work in progress: stage 1 of Relay's parity plan (Devices) | [README](relay-android/README.md), [gap list](relay/docs/relay-android.md) |
 
 Not apps, but kept here for now: [Device Lab](device-lab/README.md) (the test bed, a tool) and the [ForgeUI showcase](forgeui-showcase/README.md) (ForgeUI's gallery).
 
