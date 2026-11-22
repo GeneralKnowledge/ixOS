@@ -56,7 +56,7 @@ pub const FILE_MAX_BYTES: usize = 64 * 1024;
 pub const FILES_MAX: usize = 50;
 
 /// The line the wrapper prints when the program raised.
-const FAILED_MARK: &str = "__harness_failed__";
+pub(crate) const FAILED_MARK: &str = "__harness_failed__";
 /// The line the test wrapper prints with the counts.
 const TESTS_MARK: &str = "__harness_tests__";
 
@@ -319,7 +319,8 @@ impl PythonLab {
         );
         let before = artifacts::stamps(&self.root);
         let sources = self.source_stamps();
-        let (outcome, timed_out) = self.run_script(wrapper(&self.root, self.network, &action));
+        let (outcome, timed_out) =
+            self.run_script(wrapper(&self.root, self.network, &action, false));
         let failed = !outcome.ok || outcome.output.contains(FAILED_MARK) || timed_out;
         let mut text = self.clean(&outcome.output);
         if timed_out {
@@ -398,7 +399,8 @@ impl PythonLab {
         let action = format!(
             "import unittest\n    _suite = unittest.TestLoader().discover(_root, pattern='test*.py', top_level_dir=_root)\n    _result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(_suite)\n    print('{TESTS_MARK}', _result.testsRun, len(_result.failures), len(_result.errors))\n"
         );
-        let (outcome, timed_out) = self.run_script(wrapper(&self.root, self.network, &action));
+        let (outcome, timed_out) =
+            self.run_script(wrapper(&self.root, self.network, &action, false));
         let counts = outcome
             .output
             .lines()
@@ -763,7 +765,26 @@ if _guard is None:
 
 /// A harness run: `action` (indented by four spaces, in a `try`) runs in
 /// the project folder with the guard on, and everything is put back after.
-fn wrapper(root: &Path, network: bool, action: &str) -> String {
+///
+/// `console` is Python Lab's live console (PL1d): stdin is left as the
+/// host set it (PythonBridge's reader, so `input()` waits for the person),
+/// and a failure's traceback, cut to the project's frames and with the
+/// project folder taken out of its paths, goes to stderr as it happens.
+/// The exception is then raised again, marked `_devicelab_shown`, so the
+/// host knows the run failed without printing it twice. Otherwise stdin
+/// is empty and the traceback is printed to stdout with the failure mark,
+/// for `python_lab_output`.
+fn wrapper(root: &Path, network: bool, action: &str, console: bool) -> String {
+    let failed = if console {
+        "    _text = ''.join(traceback.format_list(_frames)) + ''.join(traceback.format_exception_only(type(_error), _error))\n    for _prefix in (_root, _given.rstrip(os.sep)):\n        _text = _text.replace(_prefix + os.sep, '')\n    sys.stderr.write('Traceback (most recent call last):\\n' + _text)\n    try:\n        _error._devicelab_shown = True\n    except Exception:\n        pass\n    raise".to_string()
+    } else {
+        format!("    print('Traceback (most recent call last):')\n    print(''.join(traceback.format_list(_frames)), end='')\n    print(''.join(traceback.format_exception_only(type(_error), _error)), end='')\n    print('{FAILED_MARK}')")
+    };
+    let stdin = if console {
+        "pass"
+    } else {
+        "sys.stdin = io.StringIO('')"
+    };
     format!(
         r#"{GUARD}
 import io, traceback
@@ -780,16 +801,13 @@ for _name, _module in list(sys.modules.items()):
 _ran.clear()
 os.chdir(_root)
 sys.path.insert(0, _root)
-sys.stdin = io.StringIO('')
+{stdin}
 _guard.state.update(active=True, roots=[_root, os.path.realpath(tempfile.gettempdir())], network={network})
 try:
     {action}
 except BaseException as _error:
     _frames = [f for f in traceback.extract_tb(_error.__traceback__) if f.filename.startswith((_root, _given))]
-    print('Traceback (most recent call last):')
-    print(''.join(traceback.format_list(_frames)), end='')
-    print(''.join(traceback.format_exception_only(type(_error), _error)), end='')
-    print('{FAILED_MARK}')
+{failed}
 finally:
     _guard.state['active'] = False
     for _name, _module in list(sys.modules.items()):
@@ -818,7 +836,7 @@ pub fn python_lab_script(project: String, code: String) -> String {
         "import ast, linecache\n    _source = {source}\n    _name = os.path.join(_root, '<script>')\n    linecache.cache[_name] = (len(_source), None, _source.splitlines(True), _name)\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _scope = {{'__name__': '__main__', '__file__': _name}}\n    exec(compile(_tree, _name, 'exec'), _scope)\n    if _last is not None:\n        _value = eval(compile(_last, _name, 'eval'), _scope)\n        if _value is not None:\n            print(repr(_value))\n",
         source = py_str(&code)
     );
-    wrapper(Path::new(&project), true, &action)
+    wrapper(Path::new(&project), true, &action, false)
 }
 
 /// A script that runs the project's file `path` for the person, as
@@ -829,11 +847,24 @@ pub fn python_lab_script(project: String, code: String) -> String {
 /// path is, but may contain spaces and any letters (the person named it).
 #[uniffi::export]
 pub fn python_lab_file_script(project: String, path: String) -> String {
+    file_script(&project, &path, false)
+}
+
+/// [`python_lab_file_script`] for Python Lab's live console (PL1d): run it
+/// with PythonBridge's streaming runner, which gives it a stdin that waits
+/// for the person. Its output is final as it streams: tracebacks already
+/// name `main.py, line 3`, on stderr, so it needs no `python_lab_output`.
+#[uniffi::export]
+pub fn python_lab_console_script(project: String, path: String) -> String {
+    file_script(&project, &path, true)
+}
+
+fn file_script(project: &str, path: &str, console: bool) -> String {
     let action = format!(
         "import ast, types\n    _name = os.path.join(_root, {path})\n    if not os.path.realpath(_name).startswith(_root + os.sep):\n        raise PermissionError('That file is outside the project.')\n    with open(_name, encoding='utf-8') as _f:\n        _source = _f.read()\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _main = types.ModuleType('__main__')\n    _main.__file__ = _name\n    _main.__builtins__ = __builtins__\n    sys.path[0] = os.path.dirname(_name)\n    if sys.path[0] != _root:\n        sys.path.insert(1, _root)\n    _host_main = sys.modules.get('__main__')\n    sys.modules['__main__'] = _main\n    try:\n        exec(compile(_tree, _name, 'exec'), _main.__dict__)\n        if _last is not None:\n            _value = eval(compile(_last, _name, 'eval'), _main.__dict__)\n            if _value is not None:\n                print(repr(_value))\n    finally:\n        if _host_main is None:\n            sys.modules.pop('__main__', None)\n        else:\n            sys.modules['__main__'] = _host_main\n",
-        path = py_str(&path)
+        path = py_str(path)
     );
-    wrapper(Path::new(&project), true, &action)
+    wrapper(Path::new(project), true, &action, console)
 }
 
 /// What a `python_lab_script` run printed, made readable: whether it

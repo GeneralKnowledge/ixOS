@@ -8,6 +8,10 @@ import ForgeUI
 struct PythonLabView: View {
     @Bindable var model: PythonLabModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.forgeTheme) private var theme
+    /// The answer being typed for the script's `input()`.
+    @State private var answer = ""
+    @FocusState private var answerFocused: Bool
 
     var body: some View {
         List {
@@ -45,7 +49,7 @@ struct PythonLabView: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     saveLine
-                    Text("Runs on this iPhone with CPython. If the last line is an expression, its value is shown. A script is stopped after \(model.timeLimit.components.seconds) s.")
+                    Text("Runs on this iPhone with CPython. If the last line is an expression, its value is shown. A script is stopped after \(model.timeLimit.components.seconds) s of running; time spent waiting for your answer to input() doesn't count.")
                 }
             }
             if let error = model.error ?? model.listError {
@@ -54,31 +58,7 @@ struct PythonLabView: View {
                         .accessibilityIdentifier("pythonLab.error")
                 }
             }
-            Section {
-                if model.isRunning {
-                    ProgressView("Running…")
-                        .accessibilityIdentifier("pythonLab.running")
-                } else if model.succeeded != nil {
-                    Text(model.output)
-                        .font(.system(.footnote, design: .monospaced))
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("pythonLab.output")
-                } else {
-                    Text("Tap Run to see the output here.")
-                        .foregroundStyle(.secondary)
-                }
-            } header: {
-                Text(model.lastRunFile.map { "Output of \($0)" } ?? "Output")
-            } footer: {
-                if let seconds = model.lastSeconds, !model.isRunning {
-                    if model.succeeded == false {
-                        Text("Ended with an error after \(Format.number(seconds, digits: 3)) s")
-                            .forgeForeground(.danger)
-                    } else {
-                        Text("Finished in \(Format.number(seconds, digits: 3)) s")
-                    }
-                }
-            }
+            consoleSection
             if model.hasWorkspace {
                 artifactsSection
             }
@@ -106,6 +86,110 @@ struct PythonLabView: View {
         .onDisappear { model.flush() }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { model.flush() }
+        }
+    }
+
+    /// The live console (PL1d): output as the script writes it, stderr in
+    /// the danger tone, your answers to input() marked, and a field for
+    /// the answer while the script waits.
+    @ViewBuilder private var consoleSection: some View {
+        Section {
+            if model.queuedBehindBonsai {
+                Label("Waiting for Bonsai Harness's run to finish first.", systemImage: "hourglass")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("pythonLab.queued")
+            }
+            if !model.console.isEmpty {
+                consoleText
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("pythonLab.output")
+            } else if model.isRunning {
+                ProgressView("Running…")
+                    .accessibilityIdentifier("pythonLab.running")
+            } else {
+                Text("Tap Run to see the output here.")
+                    .foregroundStyle(.secondary)
+            }
+            if model.waitingForInput {
+                HStack {
+                    TextField("Your answer", text: $answer)
+                        .font(.system(.body, design: .monospaced))
+                        .noAutocapitalization()
+                        .autocorrectionDisabled()
+                        .submitLabel(.send)
+                        .focused($answerFocused)
+                        .onSubmit(sendAnswer)
+                        .accessibilityLabel("Answer for the script")
+                        .accessibilityIdentifier("pythonLab.answer")
+                    Button("Send", systemImage: "return", action: sendAnswer)
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel("Send answer")
+                        .accessibilityIdentifier("pythonLab.sendAnswer")
+                }
+                .onAppear { answerFocused = true }
+            }
+            HStack {
+                if model.isRunning {
+                    Button("Stop", systemImage: "stop.fill", role: .destructive) { model.stop() }
+                        .accessibilityIdentifier("pythonLab.console.stop")
+                } else {
+                    Button("Rerun", systemImage: "arrow.clockwise") {
+                        Task { await model.run() }
+                    }
+                    .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil))
+                    .accessibilityIdentifier("pythonLab.rerun")
+                }
+                Spacer()
+                Button("Clear", systemImage: "trash") { model.clearConsole() }
+                    .disabled(model.console.isEmpty)
+                    .accessibilityIdentifier("pythonLab.clear")
+            }
+            .buttonStyle(.borderless)
+        } header: {
+            Text(model.lastRunFile.map { "Console: \($0)" } ?? "Console")
+        } footer: {
+            if model.waitingForInput {
+                Text("The script is waiting for your answer.")
+                    .accessibilityIdentifier("pythonLab.waiting")
+            } else if let seconds = model.lastSeconds, !model.isRunning {
+                if model.succeeded == false {
+                    Text("Ended with an error after \(Format.number(seconds, digits: 3)) s")
+                        .forgeForeground(.danger)
+                } else {
+                    Text("Finished in \(Format.number(seconds, digits: 3)) s")
+                }
+            }
+        }
+    }
+
+    /// The console as one text, each stretch in its colour.
+    private var consoleText: Text {
+        let colors = theme.colors
+        var text = Text("")
+        if let notice = model.console.removedNotice {
+            text = text + Text(notice + "\n").foregroundStyle(colors.textSecondary)
+        }
+        for segment in model.console.segments {
+            switch segment.kind {
+            case .output:
+                text = text + Text(segment.text)
+            case .error:
+                text = text + Text(segment.text).foregroundStyle(colors.tone(.danger).text)
+            case .input:
+                text = text + Text(segment.text).bold().foregroundStyle(colors.tone(.accent).text)
+            case .note:
+                text = text + Text(segment.text).foregroundStyle(colors.textSecondary)
+            }
+        }
+        return text
+    }
+
+    private func sendAnswer() {
+        if model.sendInput(answer) {
+            answer = ""
         }
     }
 

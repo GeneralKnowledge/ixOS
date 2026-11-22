@@ -1130,3 +1130,90 @@ fn a_project_never_imports_another_projects_module() {
     let text = String::from_utf8_lossy(&output.stdout);
     assert_eq!(text.trim(), "from a\nfrom b", "{text}");
 }
+
+/// Runs `path` as Python Lab's console does (PL1d), with `stdin` as what
+/// the person types. The host stands in for PythonBridge's streaming
+/// runner: it prints an escaping exception's traceback unless the wrapper
+/// already showed it. Returns (ok, stdout, stderr).
+fn console_run(project: &std::path::Path, path: &str, stdin: &str) -> (bool, String, String) {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    const HOST: &str = "import sys, traceback\ntry:\n    exec(compile(sys.argv[1], '<console>', 'exec'), {'__name__': '__devicelab__'})\nexcept BaseException as e:\n    if not getattr(e, '_devicelab_shown', False):\n        traceback.print_exc()\n    sys.exit(1)\n";
+    let script =
+        super::python_lab::python_lab_console_script(project.display().to_string(), path.into());
+    let mut child = Command::new("python3")
+        .arg("-I")
+        .arg("-c")
+        .arg(HOST)
+        .arg(&script)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+#[test]
+fn the_console_reads_input_and_keeps_stderr_apart() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(
+        root.join("main.py"),
+        "import sys\nname = input('Name? ')\nprint('Hello', name)\nprint('careful', file=sys.stderr)\n",
+    )
+    .unwrap();
+    let (ok, out, err) = console_run(root, "main.py", "Ada\n");
+    assert!(ok, "{out}{err}");
+    assert_eq!(out, "Name? Hello Ada\n");
+    assert_eq!(err, "careful\n");
+}
+
+#[test]
+fn a_console_traceback_goes_to_stderr_once_with_short_paths() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("helper.py"), "def half(n):\n    return n / 0\n").unwrap();
+    std::fs::write(
+        root.join("main.py"),
+        "import helper\nprint('before')\nhelper.half(4)\n",
+    )
+    .unwrap();
+    let (ok, out, err) = console_run(root, "main.py", "");
+    assert!(!ok);
+    assert_eq!(out, "before\n");
+    assert!(
+        err.starts_with("Traceback (most recent call last):\n"),
+        "{err}"
+    );
+    assert!(err.contains("File \"main.py\", line 3"), "{err}");
+    assert!(err.contains("File \"helper.py\", line 2"), "{err}");
+    assert!(
+        err.trim_end()
+            .ends_with("ZeroDivisionError: division by zero"),
+        "{err}"
+    );
+    assert_eq!(err.matches("Traceback").count(), 1, "{err}");
+    assert!(!err.contains(&root.display().to_string()), "{err}");
+    assert!(
+        !out.contains(super::python_lab::FAILED_MARK)
+            && !err.contains(super::python_lab::FAILED_MARK)
+    );
+}

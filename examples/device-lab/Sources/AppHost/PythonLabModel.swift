@@ -9,13 +9,24 @@ import Observation
 public protocol PythonRunning: Sendable {
     /// Starts the interpreter (once) and returns its version.
     func start() async throws -> String
-    /// Runs a script as the run `id`. The interpreter is shared with Bonsai
-    /// Harness, so the script may first wait for its turn; `limit` counts
-    /// only from when it starts running. `timedOut` when the limit stopped
-    /// it.
-    func run(_ code: String, id: UUID, limit: Duration) async -> PythonRunResult
-    /// Stops the run `id` (a KeyboardInterrupt in it) if it is the one
-    /// running; never another caller's script.
+    /// Runs a script as the run `id`, handing its output, and its waits for
+    /// `input()`, to `events` as they happen (on the interpreter's thread:
+    /// copy and return). The interpreter is shared with Bonsai Harness, so
+    /// the script may first wait for its turn. `limit` counts only the
+    /// time it runs: not its wait for its turn, nor its waits for an
+    /// answer. `timedOut` when the limit stopped it. Everything the script
+    /// wrote went to `events`, so `output` holds only the runtime's own
+    /// words ("Stopped before it started.").
+    func run(
+        _ code: String, id: UUID, limit: Duration,
+        events: @escaping @Sendable (PythonConsoleEvent) -> Void
+    ) async -> PythonRunResult
+    /// Answers the `input()` run `id` is waiting for. False when it isn't
+    /// waiting.
+    func send(input line: String, id: UUID) -> Bool
+    /// Stops the run `id` (a KeyboardInterrupt in it, also while it waits
+    /// for an answer) if it is the one running; never another caller's
+    /// script.
     func interrupt(id: UUID)
 }
 
@@ -65,7 +76,14 @@ public final class PythonLabModel {
         }
     }
     public private(set) var saveState: SaveState = .saved
-    public private(set) var output = ""
+    /// The last run's console: stdout, stderr, the answers given, notes.
+    public private(set) var console = PythonConsoleText()
+    /// The console as plain text.
+    public var output: String { console.plainText }
+    /// The running script waits for an answer to `input()`.
+    public private(set) var waitingForInput = false
+    /// The run waits for a Bonsai Harness run to finish first.
+    public private(set) var queuedBehindBonsai = false
     /// Whether the last run finished without an exception (nil before one).
     public private(set) var succeeded: Bool?
     public private(set) var isRunning = false
@@ -110,15 +128,18 @@ public final class PythonLabModel {
     @ObservationIgnored private var stopRequested = false
     /// Remembers the last project between launches.
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let activity: PythonActivity
     static let lastProjectKey = "pythonLab.lastProject"
 
     /// `workspace` nil keeps the code in memory only (a build or test with
     /// no projects folder).
     public init(
         runtime: (any PythonRunning)?, workspace: Workspace? = nil,
-        timeLimit: Duration = .seconds(30), defaults: UserDefaults = .standard
+        timeLimit: Duration = .seconds(30), defaults: UserDefaults = .standard,
+        activity: PythonActivity = .shared
     ) {
         self.runtime = runtime
+        self.activity = activity
         self.workspace = workspace
         self.timeLimit = timeLimit
         self.defaults = defaults
@@ -204,8 +225,10 @@ public final class PythonLabModel {
         }
         loadArtifacts()
         madeByLastRun = []
-        succeeded = nil
-        output = ""
+        if !isRunning {
+            succeeded = nil
+            console = PythonConsoleText()
+        }
     }
 
     public func createProject(_ name: String) -> String? {
@@ -484,7 +507,8 @@ public final class PythonLabModel {
         // Stop tapped while Python started: nothing runs.
         if stopRequested {
             isRunning = false
-            output = "Stopped before it started."
+            console = PythonConsoleText()
+            console.append("Stopped before it started.", as: .note)
             return
         }
         // Saved after Python started, so edits made while it started run too.
@@ -498,7 +522,7 @@ public final class PythonLabModel {
             isRunning = false
             return
         }
-        output = ""
+        console = PythonConsoleText()
         succeeded = nil
         error = nil
         let id = UUID()
@@ -509,24 +533,30 @@ public final class PythonLabModel {
         let folder = projectFolder
         let file = fileToRun
         if let folder, let file {
-            script = pythonLabFileScript(project: folder, path: file)
+            script = pythonLabConsoleScript(project: folder, path: file)
             before = Dictionary(
                 projectArtifacts(project: folder).map { ($0.path, $0) },
                 uniquingKeysWith: { first, _ in first })
         }
         lastRunFile = file
+        // Output reaches the screen at most every 50 ms.
+        let inbox = ConsoleInbox()
+        let pump = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(50))
+                self?.apply(inbox.drain())
+            }
+        }
         let clock = ContinuousClock()
         let begin = clock.now
-        let result = await runtime.run(script, id: id, limit: timeLimit)
+        let result = await runtime.run(script, id: id, limit: timeLimit) { inbox.push($0) }
         let elapsed = clock.now - begin
+        pump.cancel()
+        apply(inbox.drain())
         runID = nil
-        var ok = result.ok
-        var text = result.output
-        if let folder {
-            let readable = pythonLabOutput(project: folder, ok: result.ok, output: result.output)
-            ok = readable.ok
-            text = readable.output
-        }
+        waitingForInput = false
+        activity.labWaitingForInput = false
+        queuedBehindBonsai = false
         // A run whose project is no longer open shows its output, but its
         // images and file list belong to that project, not this one.
         if let folder, project == startedIn {
@@ -537,14 +567,63 @@ public final class PythonLabModel {
             }
             reloadEntries()
         }
+        console.append(result.output, as: .note)
         if result.timedOut {
-            text += "\n\nReached the \(timeLimit.components.seconds) s limit, so Python Lab asked the script to stop."
+            console.append(
+                "\nReached the \(timeLimit.components.seconds) s limit, so Python Lab asked the script to stop.\n",
+                as: .note)
+        }
+        if console.isEmpty {
+            console.append("(no output)", as: .note)
         }
         lastSeconds = Double(elapsed.components.seconds)
             + Double(elapsed.components.attoseconds) / 1e18
-        output = text.isEmpty ? "(no output)" : text
-        succeeded = ok
+        succeeded = result.ok
         isRunning = false
+    }
+
+    /// Shows what the run sent since the last batch.
+    private func apply(_ events: [PythonConsoleEvent]) {
+        for event in events {
+            switch event {
+            case .started:
+                queuedBehindBonsai = false
+            case .queuedBehindBonsai:
+                queuedBehindBonsai = true
+            case .output(let text):
+                console.append(text, as: .output)
+            case .error(let text):
+                console.append(text, as: .error)
+            case .waitingForInput:
+                waitingForInput = true
+                activity.labWaitingForInput = true
+            case .inputEnded(let line):
+                waitingForInput = false
+                activity.labWaitingForInput = false
+                if let line {
+                    console.append(line + "\n", as: .input)
+                }
+            }
+        }
+    }
+
+    /// Answers the running script's `input()` with `line` (its first line
+    /// only, as typed into one field). False when nothing is waiting.
+    @discardableResult
+    public func sendInput(_ line: String) -> Bool {
+        guard let runtime, let runID, waitingForInput else { return false }
+        let first = line.split(separator: "\n", omittingEmptySubsequences: false).first ?? ""
+        return runtime.send(input: String(first), id: runID)
+    }
+
+    /// Empties the console. While a script runs, its later output still
+    /// shows.
+    public func clearConsole() {
+        console = PythonConsoleText()
+        if !isRunning {
+            succeeded = nil
+            lastSeconds = nil
+        }
     }
 
     /// Reads the project's images again (after a delete, or on opening).

@@ -16226,6 +16226,21 @@ public func projectArtifacts(project: String) -> [ProjectArtifact]  {
 })
 }
 /**
+ * [`python_lab_file_script`] for Python Lab's live console (PL1d): run it
+ * with PythonBridge's streaming runner, which gives it a stdin that waits
+ * for the person. Its output is final as it streams: tracebacks already
+ * name `main.py, line 3`, on stderr, so it needs no `python_lab_output`.
+ */
+public func pythonLabConsoleScript(project: String, path: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_lab_console_script(
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
+/**
  * A script that runs the project's file `path` for the person, as
  * `__main__`, with the same wrapper as [`python_lab_script`]. Tracebacks
  * name the file and line (`main.py, line 3`) after `python_lab_output`,
@@ -16528,6 +16543,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_project_artifacts() != 21958) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_lab_console_script() != 54637) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_python_lab_file_script() != 14378) {
