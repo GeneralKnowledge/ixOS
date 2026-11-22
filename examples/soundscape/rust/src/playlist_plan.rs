@@ -115,6 +115,19 @@ pub fn check<'a>(
     Ok((name.to_string(), tracks))
 }
 
+/// A proposed name that passes [`check`]: no control characters (a
+/// catalogue's artist or genre may hold them), within the name limit.
+fn proposed_name(raw: &str) -> String {
+    let clean: String = raw
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    // cut: a proposed name from a long genre or artist, kept to the name
+    // limit; the person sees the songs in full on the surface and the review
+    let cut: String = clean.trim().chars().take(MAX_NAME_CHARS as usize).collect();
+    cut.trim_end().to_string()
+}
+
 /// The stand-in for a model: the library's most common genre with at least
 /// three songs ("Folk mix"), else its most common artist ("More of ..."),
 /// up to [`PROPOSED_TRACKS`] songs in library order. `None` for a library
@@ -147,23 +160,13 @@ pub fn propose(snapshot: &PlaylistSnapshot) -> Option<PlaylistPlan> {
     {
         if n >= 3 {
             let genre = genre.to_string();
-            // cut: a proposed name from a long genre, kept to the name
-            // limit; the person sees it in full on the surface and the review
-            let name: String = format!("{genre} mix")
-                .chars()
-                .take(MAX_NAME_CHARS as usize)
-                .collect();
+            let name = proposed_name(&format!("{genre} mix"));
             return Some(pick(name, &|t| t.genre.as_deref() == Some(genre.as_str())));
         }
     }
     let (artist, _) = most_common(snapshot.tracks.iter().map(|t| t.artist.as_str()))?;
     let artist = artist.to_string();
-    // cut: a proposed name from a long artist name, kept to the name limit;
-    // the person sees it in full on the surface and the review
-    let name: String = format!("More of {artist}")
-        .chars()
-        .take(MAX_NAME_CHARS as usize)
-        .collect();
+    let name = proposed_name(&format!("More of {artist}"));
     Some(pick(name, &|t| t.artist == artist))
 }
 
@@ -215,6 +218,17 @@ mod tests {
         }
         let plan = propose(&s).unwrap();
         assert_eq!(plan.name.chars().count(), MAX_NAME_CHARS as usize);
+        assert!(check(&s, &plan).is_ok());
+
+        // A catalogue artist with a control character still gives a name
+        // the check accepts.
+        let mut s = snap();
+        for t in &mut s.tracks {
+            t.genre = None;
+            t.artist = "Ann\nBand".into();
+        }
+        let plan = propose(&s).unwrap();
+        assert_eq!(plan.name, "More of Ann Band");
         assert!(check(&s, &plan).is_ok());
     }
 

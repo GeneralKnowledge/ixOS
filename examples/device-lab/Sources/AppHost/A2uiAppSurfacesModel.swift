@@ -57,6 +57,9 @@ final class A2uiFeedsModel: A2uiSurfaceOwner {
 
     /// A new surface from the app's data as it is now.
     func start() async {
+        // An apply in flight finishes against the surface it was confirmed
+        // on; a new surface waits for it.
+        guard !busy else { return }
         changeSet = nil
         renderer?.reset()
         started = false
@@ -118,6 +121,7 @@ final class A2uiFeedsModel: A2uiSurfaceOwner {
     }
 
     func cancelReview() {
+        guard !busy else { return }
         changeSet = nil
     }
 }
@@ -144,6 +148,9 @@ final class A2uiPlaylistModel: A2uiSurfaceOwner {
     var catalogId: String { a2uiCatalogId() }
 
     func start() async {
+        // An apply in flight finishes against the surface it was confirmed
+        // on; a new surface waits for it.
+        guard !busy else { return }
         changeSet = nil
         renderer?.reset()
         started = false
@@ -203,6 +210,7 @@ final class A2uiPlaylistModel: A2uiSurfaceOwner {
     }
 
     func cancelReview() {
+        guard !busy else { return }
         changeSet = nil
     }
 }

@@ -117,6 +117,7 @@ struct A2uiFeedsView: View {
                     A2uiSurfaceView(surface: surface, catalog: host.catalog)
                     Button("Start Over") { Task { await model.start() } }
                         .buttonStyle(.forge(.tertiary, expands: true))
+                        .disabled(model.busy)
                         .accessibilityIdentifier("a2uiFeeds.startOver")
                 } else {
                     Button("Suggest Folders") { Task { await model.start() } }
@@ -172,11 +173,13 @@ struct A2uiFolderReviewSheet: View {
                     Text("Worked out by the app from your choices. \(changeSet.unchanged) stay where they are. Commonplace checks the plan again before it moves anything.")
                 }
             }
+            .forgeSwipeGuard(busy)
             .navigationTitle("Review Folders")
             .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: cancel)
+                        .disabled(busy)
                         .accessibilityIdentifier("a2uiFeeds.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -219,6 +222,7 @@ struct A2uiPlaylistView: View {
                     A2uiSurfaceView(surface: surface, catalog: host.catalog)
                     Button("Start Over") { Task { await model.start() } }
                         .buttonStyle(.forge(.tertiary, expands: true))
+                        .disabled(model.busy)
                         .accessibilityIdentifier("a2uiPlaylist.startOver")
                 } else {
                     Button("Suggest a Playlist") { Task { await model.start() } }
@@ -268,11 +272,13 @@ struct A2uiPlaylistReviewSheet: View {
                     Text(footer)
                 }
             }
+            .forgeSwipeGuard(busy)
             .navigationTitle("Review Playlist")
             .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: cancel)
+                        .disabled(busy)
                         .accessibilityIdentifier("a2uiPlaylist.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
