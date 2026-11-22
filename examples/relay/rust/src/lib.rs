@@ -174,8 +174,8 @@ pub struct RelayCore {
     /// Trusted devices the app sees nearby, with their addresses.
     nearby: Mutex<HashMap<String, Vec<String>>>,
     /// When each trusted device last got past Hello on a connection it
-    /// made here (in memory; deliveries and status answers are saved in
-    /// the record as `last_seen_ms`). For presence (`presence`).
+    /// made here (in memory; Hellos, deliveries and status answers are
+    /// saved in the record as `last_seen_ms`). For presence (`presence`).
     reached: Mutex<HashMap<String, i64>>,
     /// Whether the node's addresses are watched for network changes.
     watching_network: AtomicBool,
@@ -2067,12 +2067,13 @@ impl device::DeviceInbound for CoreDevices {
         // whatever it leaves while this device is closed is taken.
         core.collect_mailbox();
         let from = from.to_string();
+        let now = now_ms();
         code::TOKIO.spawn(async move {
             let _ = core
                 .rt
                 .command("device-met", move |state| {
                     state.change(|r| {
-                        r.devices.met(&from, &addresses, route, mailbox);
+                        r.devices.met(&from, &addresses, route, mailbox, now);
                         Ok(())
                     })
                 })

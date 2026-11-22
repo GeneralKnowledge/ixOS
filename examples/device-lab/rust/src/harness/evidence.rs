@@ -642,17 +642,17 @@ pub fn script(task_id: &str) -> Vec<String> {
             answer("Run it to make chart.svg.", "run_python", &[("path", "chart.py")]),
             finish("chart.py writes chart.svg with three labelled bars."),
         ],
-        // The first edit copies the line wrongly (single quotes), to show
-        // the "did you mean" answer; the second copies it exactly.
+        // The first edit misremembers the line (a name that isn't there), to
+        // show the "did you mean" answer; the second copies it exactly.
         "t5-fix-from-traceback" => vec![
             answer("See the crash.", "run_python", &[("path", "inventory.py")]),
             answer(
-                "Convert the count to text.",
+                "Convert the amount to text.",
                 "edit_file",
                 &[
                     ("path", "inventory.py"),
-                    ("old", "        lines.append(name + ': ' + count)\n"),
-                    ("new", "        lines.append(name + ': ' + str(count))\n"),
+                    ("old", "        lines.append(name + ': ' + amount)\n"),
+                    ("new", "        lines.append(name + ': ' + str(amount))\n"),
                 ],
             ),
             answer(

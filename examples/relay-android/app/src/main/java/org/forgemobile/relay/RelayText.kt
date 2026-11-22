@@ -223,8 +223,11 @@ object RelayFormat {
         ConnectionMode.HYBRID -> when (ServerChoice.of(servers)) {
             ServerChoice.RELAYS ->
                 "Your devices reach each other from anywhere. When there's no direct way, an encrypted connection passes through Relay's server, which can't read it but sees that two devices are connected, when and how much."
-            ServerChoice.OWN ->
+            ServerChoice.OWN -> if (servers.relayUrl == null) {
+                "Your devices reach each other directly when they can, from anywhere: your lookup server tells trusted devices where to find this one. With no relay server, some networks keep them apart."
+            } else {
                 "Your devices reach each other from anywhere. When there's no direct way, an encrypted connection passes through your own server, which can't read it but sees that two devices are connected, when and how much."
+            }
             ServerChoice.NONE ->
                 "Your devices reach each other directly when they can, over Wi-Fi, a private network or the internet. With no server, some networks keep them apart."
         }

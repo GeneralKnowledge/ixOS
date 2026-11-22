@@ -505,9 +505,13 @@ impl Devices {
         told: &[String],
         route: Option<RouteKind>,
         mailbox: Option<PeerMailbox>,
+        now_ms: i64,
     ) {
         if let Some(d) = self.get_mut(endpoint_id) {
             if d.trust == SavedTrust::Trusted {
+                // Saved, so "seen 2 min ago" survives a restart of this
+                // device (in memory it was only `RelayCore::reached`).
+                d.last_seen_ms = Some(d.last_seen_ms.map_or(now_ms, |t| t.max(now_ms)));
                 if let Some(newer) = mailbox {
                     if d.mailbox.as_ref().is_none_or(|m| m.replaced_by(&newer)) {
                         d.mailbox = Some(newer);
@@ -551,17 +555,24 @@ mod tests {
         let id = laptop.public().to_string();
         let mut devices = Devices::default();
         // Not trusted: nothing kept.
-        devices.met(&id, &[], None, Some(told(1)));
+        devices.met(&id, &[], None, Some(told(1)), 1);
         assert!(devices.get(&id).is_none());
         devices.trust(&id, "Laptop", 1);
-        devices.met(&id, &[], None, Some(told(5)));
+        devices.met(&id, &[], None, Some(told(5)), 70);
+        // Meeting is being seen, saved with the record.
+        assert_eq!(devices.get(&id).unwrap().last_seen_ms, Some(70));
         assert_eq!(devices.get(&id).unwrap().mailbox, Some(told(5)));
         // An older one, or the same again, changes nothing.
-        devices.met(&id, &[], None, Some(told(2)));
-        devices.met(&id, &[], None, Some(told(9)));
+        devices.met(&id, &[], None, Some(told(2)), 60);
+        devices.met(&id, &[], None, Some(told(9)), 60);
+        assert_eq!(
+            devices.get(&id).unwrap().last_seen_ms,
+            Some(70),
+            "only forward"
+        );
         assert_eq!(devices.get(&id).unwrap().mailbox, Some(told(5)));
         // A Hello without one keeps what is known.
-        devices.met(&id, &[], None, None);
+        devices.met(&id, &[], None, None, 80);
         assert!(devices.get(&id).unwrap().mailbox.is_some());
         assert!(devices.revoke(&id));
         assert_eq!(devices.get(&id).unwrap().mailbox, None);

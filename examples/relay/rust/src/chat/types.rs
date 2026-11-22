@@ -75,6 +75,9 @@ pub struct ChatMessage {
     /// Photos and documents it carries, in order (M3). Fetch the bytes with
     /// `ChatCore::fetch_attachment`.
     pub attachments: Vec<ChatAttachment>,
+    /// Relay only: still sending, and waiting in its device's mailbox for
+    /// that device to collect it (it wasn't reachable).
+    pub in_mailbox: bool,
 }
 
 /// A file a message carries.
@@ -138,6 +141,9 @@ pub struct ChatReaction {
 #[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ChatDelivery {
     Sending,
+    /// Relay only: left in its device's mailbox, which the device collects
+    /// when it next opens Relay with a network.
+    InMailbox,
     Sent,
     /// Someone else in the room has read it (their read cursor passed it).
     Read,
@@ -152,11 +158,13 @@ pub fn storage_engine() -> String {
 }
 
 /// The delivery state of `message` in `conversation`: `Read` once another
-/// account's read cursor has passed one of our sent messages. Only
+/// account's read cursor has passed one of our sent messages, and
+/// `InMailbox` while one waits in a Relay device's mailbox. Only
 /// meaningful for our own messages.
 #[uniffi::export]
 pub fn chat_delivery(message: ChatMessage, conversation: Option<ChatConversation>) -> ChatDelivery {
     match message.status {
+        ChatMessageStatus::Sending if message.in_mailbox => ChatDelivery::InMailbox,
         ChatMessageStatus::Sending => ChatDelivery::Sending,
         ChatMessageStatus::Failed => ChatDelivery::Failed,
         ChatMessageStatus::Sent => {
@@ -374,6 +382,7 @@ pub(crate) fn message(m: chat_core::Message, user_id: &str) -> ChatMessage {
         author_id: m.author_id,
         body: m.body,
         sent_at: m.sent_at,
+        in_mailbox: m.in_mailbox && m.status == chat_core::MessageStatus::Queued,
         status: m.status.into(),
     }
 }
