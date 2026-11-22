@@ -264,8 +264,13 @@ pub enum ChatError {
     NotFound { conversation_id: String },
     #[error("not supported on this host: {detail}")]
     UnsupportedOnHost { detail: String },
+    /// Refused before anything was kept: the composer gives the text back.
     #[error("invalid input: {reason}")]
     InvalidInput { reason: String },
+    /// Kept on this device and shown as not sent, but it couldn't go for a
+    /// reason a retry won't fix by itself (one of its files is gone).
+    #[error("not sent: {reason}")]
+    NotSent { reason: String },
     /// No account yet: call `sign_up` first.
     #[error("not signed in")]
     NotSignedIn,
@@ -296,6 +301,7 @@ impl ChatError {
             Self::Cancelled => K::Cancelled,
             Self::NotFound { .. } => K::NotFound,
             Self::InvalidInput { .. } => K::Invalid,
+            Self::NotSent { .. } => K::Refused,
             Self::NotSignedIn | Self::Unauthorized { .. } => K::NeedsUser,
             Self::Storage { .. } | Self::Internal { .. } => K::Internal,
             Self::ShutDown => K::ShutDown,
@@ -443,6 +449,7 @@ impl From<chat_core::ChatError> for ChatError {
             Core::NotFound { conversation_id } => Self::NotFound { conversation_id },
             Core::UnsupportedOnHost { detail } => Self::UnsupportedOnHost { detail },
             Core::InvalidInput { reason } => Self::InvalidInput { reason },
+            Core::NotSent { reason } => Self::NotSent { reason },
             Core::ShutDown => Self::ShutDown,
             Core::Unauthorized { reason } => Self::Unauthorized { reason },
         }
