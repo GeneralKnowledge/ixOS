@@ -14,7 +14,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ActivityScenario
@@ -151,10 +151,14 @@ class DevicesFlowTest {
         compose.waitUntilAtLeastOneExists(hasTestTag("trustOffer.trust"), 10_000)
         compose.onNodeWithText("Trust “Test Laptop”?").assertIsDisplayed()
         compose.onNodeWithTag("trustOffer.trust").performClick()
+        // The new row shows at the top, even on a short screen.
         compose.waitUntilAtLeastOneExists(hasTestTag("devices.trusted"), 10_000)
-        compose.onNodeWithTag("history.row").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("devices.trusted").assertIsDisplayed()
+        compose.onNodeWithTag("devices.list").performScrollToNode(hasTestTag("history.row"))
+        compose.onNodeWithTag("history.row").assertIsDisplayed()
 
         // Its page: it may send here until that is turned off.
+        compose.onNodeWithTag("devices.list").performScrollToNode(hasTestTag("devices.trusted"))
         compose.onNodeWithTag("devices.trusted").performClick()
         compose.onNodeWithTag("trusted.receivesFrom").assertIsOn()
         compose.onNodeWithTag("trusted.receivesFrom").performClick()
@@ -169,7 +173,9 @@ class DevicesFlowTest {
         compose.onNodeWithTag("trusted.confirmRevoke.confirm").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("trusted.gone"), 5_000)
         compose.onNodeWithTag("trusted.back").performClick()
-        compose.waitUntilAtLeastOneExists(hasTestTag("revoked.trustAgain"), 5_000)
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNodeWithTag("devices.list").performScrollToNode(hasTestTag("revoked.trustAgain")) }.isSuccess
+        }
         assertTrue(compose.onAllNodes(hasTestTag("devices.trusted")).fetchSemanticsNodes().isEmpty())
     }
 }

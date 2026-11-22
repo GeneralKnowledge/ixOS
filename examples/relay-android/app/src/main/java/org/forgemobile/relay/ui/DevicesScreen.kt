@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -92,6 +93,16 @@ fun DevicesScreen(
     val visible by onScreen.collectAsState()
     val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     var renaming by remember { mutableStateOf(false) }
+    val list = rememberLazyListState()
+
+    // A device just trusted goes in above the rows showing, and a lazy list keeps those rows
+    // where they are, so it would land out of sight. Bring it into view.
+    val trusted = state.trustedDevices.map { it.endpointId }.toSet()
+    var shownTrusted by remember { mutableStateOf(trusted) }
+    LaunchedEffect(trusted) {
+        if (!shownTrusted.containsAll(trusted)) list.scrollToItem(0)
+        shownTrusted = trusted
+    }
 
     // Progress of what is on its way, twice a second; what waits in the outbox, every two
     // seconds, to see it go.
@@ -163,7 +174,7 @@ fun DevicesScreen(
         if (state.isEmpty) {
             EmptyDevices(Modifier.padding(padding)) { open(Route.Send) }
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+            LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("devices.list"), state = list) {
                 // At the top, not only under Connections: a relay that can't be reached is why
                 // a device away from home doesn't answer.
                 if (state.connectionMode == ConnectionMode.HYBRID && state.serverHealth == ServerHealth.UNREACHABLE) {
