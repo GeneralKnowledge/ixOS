@@ -1190,14 +1190,24 @@ impl UrduCore {
             now.chat.answer(typed, &understood);
             now.note = understood.note.clone();
             let yours = understood.phrase.clone().map(|id| (id, understood.heard));
-            (their_lines(&now.chat, before), yours, undo, now.serial)
+            (
+                their_lines(&now.chat, before),
+                yours,
+                undo,
+                now.serial,
+                now.chat.lines.len(),
+            )
         };
-        let (theirs, yours, undo, serial) = applied;
+        let (theirs, yours, undo, serial, after) = applied;
         let recorded = self.chat_record(theirs, yours).await;
         // Not saved: the turn didn't happen, so sending it again doesn't
-        // say it twice.
+        // say it twice. Only while nothing came after it: a later turn is
+        // never undone.
         if recorded.is_err() {
-            if let Some(now) = lock(&self.chat).as_mut().filter(|n| n.serial == serial) {
+            if let Some(now) = lock(&self.chat)
+                .as_mut()
+                .filter(|n| n.serial == serial && n.chat.lines.len() == after)
+            {
                 (now.chat, now.note) = undo;
             }
         }
