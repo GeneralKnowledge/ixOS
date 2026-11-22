@@ -1571,8 +1571,11 @@ fn watch_messages(core: &RelayCore, cursors: &mut HashMap<String, i64>, quiet: b
         let Ok(changed) = core.device_messages_since(&device.endpoint_id, since) else {
             continue;
         };
+        // In sent order, not change order: the cursor is the batch's
+        // greatest stamp, kept once after it.
+        let mut cursor = since;
         for m in changed {
-            cursors.insert(device.endpoint_id.clone(), m.changed_at().max(since));
+            cursor = cursor.max(m.changed_at());
             if quiet {
                 continue;
             }
@@ -1592,6 +1595,7 @@ fn watch_messages(core: &RelayCore, cursors: &mut HashMap<String, i64>, quiet: b
                 );
             }
         }
+        cursors.insert(device.endpoint_id.clone(), cursor);
     }
 }
 
