@@ -893,3 +893,49 @@ fn an_http_account_moves_onto_relay_and_another_device_joins_by_code() {
             .is_ok_and(|list| list.iter().any(|m| m.body == "hello from Bo"))
     });
 }
+
+/// N4: a move whose answer was lost (the host has the key, the device
+/// still holds the old token) finishes on the next try, with no token.
+#[test]
+fn a_move_whose_answer_was_lost_finishes_without_the_token() {
+    let state = chat_server::AppState::new(Duration::from_millis(100));
+    let server = Server::start(state.clone());
+    let _rooms = server.runtime.as_ref().unwrap().block_on(async {
+        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::Minimal)
+            .relay_mode(iroh::RelayMode::Disabled)
+            .bind()
+            .await
+            .unwrap();
+        chat_server::room::serve(state.clone(), endpoint)
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let credentials: Arc<dyn Credentials> = Arc::new(MemoryCredentials::default());
+    let ana = ChatCore::open(dir.path().join("ana-chat"), Arc::clone(&credentials)).unwrap();
+    let account = block_on(ana.sign_up(server.url.clone(), "Ana".into())).unwrap();
+    let token = credentials.load().unwrap().unwrap().token;
+    let ana_relay = crate::RelayCore::with_default_servers(
+        dir.path().join("ana").to_string_lossy().into_owned(),
+        "ana".into(),
+        crate::RelayServers::default(),
+    )
+    .unwrap();
+    block_on(ana_relay.device_service()).unwrap();
+
+    // The host moves the account, but the answer never reaches the app.
+    let (host, _) = find_room_host(&server.url).unwrap();
+    let transport = crate::rooms::RoomTransport::new(&ana_relay, host);
+    let claimed = crate::rooms::claim_with(&transport, &token).unwrap();
+    assert_eq!(claimed.user_id, account.user_id);
+    assert_eq!(credentials.load().unwrap().unwrap().token, token);
+
+    // Attached: the token is refused now, and the key alone finishes it.
+    Arc::clone(&ana).use_relay(Arc::clone(&ana_relay));
+    wait_until("the account moved", || {
+        ana.account().is_some_and(|a| a.on_relay)
+    });
+    let moved = credentials.load().unwrap().unwrap();
+    assert_eq!(moved.user_id, account.user_id);
+    assert!(moved.token.is_empty());
+    ana.shutdown();
+    ana_relay.shutdown();
+}

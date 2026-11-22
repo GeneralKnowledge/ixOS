@@ -82,12 +82,17 @@ impl RoomTransport {
 
     /// Runs `work` on Relay's runtime and waits for it here (a worker
     /// thread of the chat engine, never the runtime's own).
+    /// A cancel ends the wait at once with `Cancelled`.
     fn run<T: Send + 'static>(
         &self,
         timeout: Duration,
+        cancel: Option<&CancelHandle>,
         work: impl std::future::Future<Output = Result<T, NetError>> + Send + 'static,
     ) -> Result<T, NetError> {
         let (tx, rx) = mpsc::channel();
+        let cancelled = tx.clone();
+        let _registration =
+            cancel.map(|c| c.on_cancel(move || drop(cancelled.send(Err(NetError::Cancelled)))));
         let task = crate::code::TOKIO.spawn(async move {
             let result = tokio::time::timeout(timeout, work)
                 .await
@@ -232,26 +237,41 @@ fn headers(head: &http::HeaderMap) -> Vec<Header> {
         .collect()
 }
 
-impl HttpClient for RoomTransport {
-    fn send(&self, request: &Request) -> Result<Response, NetError> {
+impl RoomTransport {
+    /// One request and its whole answer.
+    fn exchange(
+        &self,
+        request: &Request,
+        cancel: Option<&CancelHandle>,
+    ) -> Result<Response, NetError> {
         let parts = self.parts()?;
         let hyper_request = to_hyper(request)?;
-        self.run(request.timeout.unwrap_or(DEFAULT_TIMEOUT), async move {
-            let response = parts.exchange(hyper_request).await?;
-            let status = response.status().as_u16();
-            let headers = headers(response.headers());
-            let body = http_body_util::Limited::new(response.into_body(), MAX_ANSWER)
-                .collect()
-                .await
-                .map_err(transport)?
-                .to_bytes()
-                .to_vec();
-            Ok(Response {
-                status,
-                headers,
-                body,
-            })
-        })
+        self.run(
+            request.timeout.unwrap_or(DEFAULT_TIMEOUT),
+            cancel,
+            async move {
+                let response = parts.exchange(hyper_request).await?;
+                let status = response.status().as_u16();
+                let headers = headers(response.headers());
+                let body = http_body_util::Limited::new(response.into_body(), MAX_ANSWER)
+                    .collect()
+                    .await
+                    .map_err(transport)?
+                    .to_bytes()
+                    .to_vec();
+                Ok(Response {
+                    status,
+                    headers,
+                    body,
+                })
+            },
+        )
+    }
+}
+
+impl HttpClient for RoomTransport {
+    fn send(&self, request: &Request) -> Result<Response, NetError> {
+        self.exchange(request, None)
     }
 
     fn send_cancellable(
@@ -262,11 +282,7 @@ impl HttpClient for RoomTransport {
         if cancel.is_cancelled() {
             return Err(NetError::Cancelled);
         }
-        let result = self.send(request);
-        if cancel.is_cancelled() {
-            return Err(NetError::Cancelled);
-        }
-        result
+        self.exchange(request, Some(cancel))
     }
 
     fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
@@ -283,9 +299,11 @@ impl HttpClient for RoomTransport {
         }
         let parts = self.parts()?;
         let hyper_request = to_hyper(request)?;
-        let response = self.run(request.timeout.unwrap_or(DEFAULT_TIMEOUT), async move {
-            parts.exchange(hyper_request).await
-        })?;
+        let response = self.run(
+            request.timeout.unwrap_or(DEFAULT_TIMEOUT),
+            Some(cancel),
+            async move { parts.exchange(hyper_request).await },
+        )?;
         let status = response.status().as_u16();
         let headers = headers(response.headers());
         // The body comes through a small channel, read on the runtime; a
@@ -312,7 +330,8 @@ impl HttpClient for RoomTransport {
                 }
             }
         });
-        let abort = pump.abort_handle();
+        let pump = pump.abort_handle();
+        let abort = pump.clone();
         let registration = cancel.on_cancel(move || abort.abort());
         Ok(StreamingResponse {
             status,
@@ -321,6 +340,7 @@ impl HttpClient for RoomTransport {
                 rx,
                 pending: Bytes::new(),
                 cancel: cancel.clone(),
+                pump,
                 _registration: registration,
             }),
         })
@@ -332,7 +352,15 @@ struct StreamBody {
     rx: mpsc::Receiver<Result<Bytes, String>>,
     pending: Bytes,
     cancel: CancelHandle,
+    /// Stopped when the body is dropped, even mid-wait for a frame.
+    pump: tokio::task::AbortHandle,
     _registration: forge_net::AbortRegistration,
+}
+
+impl Drop for StreamBody {
+    fn drop(&mut self) {
+        self.pump.abort();
+    }
 }
 
 impl Read for StreamBody {
@@ -397,14 +425,18 @@ pub(crate) fn join_with(
 }
 
 /// Moves an old token account to this device's key, with its rooms and
-/// history: the token goes once, encrypted, and the host deletes it.
+/// history: the token goes once, encrypted, and the host deletes it. An
+/// empty token asks which account this key already has.
 pub(crate) fn claim_with(
     transport: &RoomTransport,
     token: &str,
 ) -> Result<RoomAccount, chat_core::ChatError> {
-    let request = Request::post(format!("{ROOM_BASE_URL}/accounts/claim"), Vec::new())
-        .header("Authorization", format!("Bearer {token}"))
+    let mut request = Request::post(format!("{ROOM_BASE_URL}/accounts/claim"), Vec::new())
         .header("Accept", "application/json");
+    // No token: the host answers with the account already on this key.
+    if !token.is_empty() {
+        request = request.header("Authorization", format!("Bearer {token}"));
+    }
     answer(transport.send(&request)?)
 }
 

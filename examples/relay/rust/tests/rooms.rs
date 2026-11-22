@@ -90,15 +90,26 @@ fn devices_join_a_room_by_code_and_talk_live_over_relay() {
         .post_message(&outgoing("m1", "hello over relay"))
         .unwrap();
     assert_eq!(posted.author_id, bo.user_id);
-    let deadline = Instant::now() + Duration::from_secs(20);
+    // A watchdog cancels the stream if nothing comes in time, so a read
+    // that blocks for good still ends (and the test fails, not hangs).
+    let (arrived_tx, arrived_rx) = std::sync::mpsc::channel::<()>();
+    let watchdog = {
+        let cancel = cancel.clone();
+        std::thread::spawn(move || {
+            if arrived_rx.recv_timeout(Duration::from_secs(20)).is_err() {
+                cancel.cancel();
+            }
+        })
+    };
     let arrived = loop {
-        assert!(Instant::now() < deadline, "nothing arrived on the stream");
         match stream.next_event() {
             Some(Ok(RemoteEvent::Message(m))) if m.id == "m1" => break m,
             Some(Ok(_)) => continue,
-            other => panic!("the stream ended: {other:?}"),
+            other => panic!("nothing arrived on the stream: {other:?}"),
         }
     };
+    arrived_tx.send(()).unwrap();
+    watchdog.join().unwrap();
     assert_eq!(arrived.body, "hello over relay");
     assert!(on_phone
         .list_conversations()

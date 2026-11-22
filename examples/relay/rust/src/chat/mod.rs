@@ -239,14 +239,10 @@ impl ChatCore {
         let me = Arc::downgrade(&self);
         std::thread::Builder::new()
             .name("chat-move-account".into())
-            .spawn(move || {
-                if let Some(core) = me.upgrade() {
-                    match core.move_to_room() {
-                        Ok(true) => forge_runtime::logging::info!(target: "chat", "the account moved onto Relay"),
-                        Ok(false) => {}
-                        Err(e) => forge_runtime::logging::info!(target: "chat", "the account stays on HTTP for now: {e}"),
-                    }
-                }
+            .spawn(move || match ChatCore::move_to_room(&me) {
+                Ok(true) => forge_runtime::logging::info!(target: "chat", "the account moved onto Relay"),
+                Ok(false) => {}
+                Err(e) => forge_runtime::logging::info!(target: "chat", "the account stays on HTTP for now: {e}"),
             })
             .ok();
     }
@@ -1261,18 +1257,36 @@ impl ChatCore {
 
     /// Moves a token account to this device's key on its server's room
     /// host, keeping its rooms and history (here and on the server). False
-    /// when there is nothing to move. Blocks: call it off the main thread.
-    fn move_to_room(&self) -> Result<bool, ChatError> {
-        let Some(stored) = self.credentials.load()? else {
+    /// when there is nothing to move, or the core closed meanwhile. Blocks:
+    /// call it off the main thread. The core is held only to read and to
+    /// commit, never across the network, so closing it isn't held up.
+    fn move_to_room(me: &std::sync::Weak<ChatCore>) -> Result<bool, ChatError> {
+        let (stored, slot) = {
+            let Some(core) = me.upgrade() else {
+                return Ok(false);
+            };
+            (core.credentials.load()?, Arc::clone(&core.room_relay))
+        };
+        let Some(stored) = stored else {
             return Ok(false);
         };
         if stored.room.is_some() || stored.token.is_empty() {
             return Ok(false);
         }
+        // The host is asked the same way, and over the same connection
+        // security, as the server the token already goes to on every
+        // request: a lookup over plain HTTP is no weaker than the token's
+        // own use there.
         let (host, _) = find_room_host(&stored.server_url)?;
-        let transport =
-            crate::rooms::RoomTransport::with_slot(Arc::clone(&self.room_relay), host.clone());
-        let moved = crate::rooms::claim_with(&transport, &stored.token)?;
+        let transport = crate::rooms::RoomTransport::with_slot(slot, host.clone());
+        let moved = match crate::rooms::claim_with(&transport, &stored.token) {
+            // Moved already (the answer was lost, or saving it failed):
+            // the host knows this device's key, and no token is needed.
+            Err(chat_core::ChatError::Http { status: 401, .. }) => {
+                crate::rooms::claim_with(&transport, "")?
+            }
+            other => other?,
+        };
         if moved.user_id != stored.user_id {
             return Err(ChatError::BadResponse {
                 reason: "the room host moved a different account".into(),
@@ -1283,6 +1297,15 @@ impl ChatCore {
             room: Some(host),
             ..stored
         };
+        let Some(core) = me.upgrade() else {
+            return Ok(false);
+        };
+        core.commit_move(moved)
+    }
+
+    /// Changes the signed-in account over to its moved form, if it is
+    /// still the account that was moved.
+    fn commit_move(&self, moved: StoredAccount) -> Result<bool, ChatError> {
         self.ensure_running()?;
         let mut session = self.lock();
         // Still the account that was moved: then it changes over, its
