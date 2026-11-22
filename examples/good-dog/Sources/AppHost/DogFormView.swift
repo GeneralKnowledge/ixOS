@@ -157,35 +157,22 @@ struct EditDogView: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("dogForm.cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if saving {
-                        ProgressView()
-                            .accessibilityLabel("Saving")
-                    } else {
-                        Button("Save") {
-                            // One save at a time: the button is a spinner until it ends.
-                            saving = true
-                            Task {
-                                defer { saving = false }
-                                do {
-                                    try await model.saveDog(edited)
-                                    dismiss()
-                                } catch {
-                                    self.error = GoodDogModel.failure(error, title: "Couldn't Save")
-                                }
-                            }
-                        }
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .accessibilityIdentifier("dogForm.save")
+            .forgeFormToolbar(
+                id: "dogForm", canConfirm: !name.trimmingCharacters(in: .whitespaces).isEmpty,
+                isWorking: saving, hasChanges: edited != dog, cancel: { dismiss() }
+            ) {
+                // One save at a time: the button is a spinner until it ends.
+                saving = true
+                Task {
+                    defer { saving = false }
+                    do {
+                        try await model.saveDog(edited)
+                        dismiss()
+                    } catch {
+                        self.error = GoodDogModel.failure(error, title: "Couldn't Save")
                     }
                 }
             }
-            .forgeSwipeGuard(edited != dog)
             .forgeAlert(failure: $error)
         }
     }

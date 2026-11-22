@@ -62,6 +62,7 @@ Research PRs stay separate from implementation PRs, so nothing is changed for lo
 - [ForgeUI coverage audit](forgeui-coverage.md) (2026-11-18): which ForgeUI and ForgeAppKit pieces each app uses, duplicates or lacks, and the checks that would keep it that way.
 - [App UI review](app-ui-review-2026-11.md) (2026-11-21): what is still plain or unfinished in each app, and the three pieces (share a file, rename, notice) that three or more apps hand-build.
 - [ForgeUI 0.2: component-demand audit and specification](forgeui-0.2.md) (2026-11-22, proposal): which components the apps build by hand, what stays native, the 0.2 scope, and the Forge A2UI catalogue contract.
+- [UI Finish Audit: P0 pass](ui-finish-audit.md) (2026-11-22): errors, retry and recovery, and form validation across the apps; what ForgeUI and ForgeAppKit already cover, and the specific screens that don't use it yet.
 - [App friction and small-defect audit](https://claude.ai/artifact/HYycziassRTwYkXkwRCF4C) (2026-11-16): 23 functional and 10 visual defects, most now fixed or queued. This research does not repeat them; it links to them where they matter.
 - [better-by-default.md](../better-by-default.md): defaults and parity checks so apps get things right without per-app fixes (PR #282).
 - [forgeui.md](../../forgeui.md), [forgeappkit.md](../../forgeappkit.md), [ios-ui.md](../../ios-ui.md), [visual-regression.md](../../visual-regression.md), [ax-audit.md](../ax-audit.md).

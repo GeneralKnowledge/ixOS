@@ -16,7 +16,7 @@ screenshot = "1-trips"
 tap = { id = "trips.recordFirst" }
 
 [[step]]
-expect = { id = "start.go", enabled = true }
+expect = { id = "start.confirm", enabled = true }
 
 [[step]]
 screenshot = "2-new-trip"

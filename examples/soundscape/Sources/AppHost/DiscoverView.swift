@@ -118,6 +118,14 @@ struct DiscoverView: View {
     }
 
     @ViewBuilder private var jamendo: some View {
+        if query.isEmpty {
+            Section {
+                NavigationLink(value: ListenRoute.jamendoGenres) {
+                    Label("Browse by Genre", systemImage: "square.grid.2x2")
+                }
+                .accessibilityIdentifier("discover.genres")
+            }
+        }
         Section {
             PlayShuffleButtons(disabled: results.isEmpty) { shuffle in
                 player.play(model.queue(results), shuffle: shuffle)
@@ -451,6 +459,119 @@ struct JamendoClientIdForm: View {
                 done?()
             } catch {
                 problem = ListenModel.message(error)
+            }
+        }
+    }
+}
+
+// MARK: Jamendo by artist and genre
+
+/// Jamendo's genres, each opening its most popular tracks this week.
+struct JamendoGenresView: View {
+    let model: ListenModel
+
+    var body: some View {
+        List(model.jamendoGenres, id: \.tag) { genre in
+            NavigationLink(genre.name, value: ListenRoute.jamendoGenre(genre))
+                .accessibilityIdentifier("genres.genre")
+        }
+        .navigationTitle("Genres")
+    }
+}
+
+/// Jamendo tracks for one genre, or more like the song playing (by its
+/// artist, or in its genre), to play or add.
+struct JamendoTracksView: View {
+    enum Ask: Hashable {
+        case genre(JamendoGenre)
+        case more(trackId: String, by: JamendoMore)
+    }
+
+    let model: ListenModel
+    let player: TakePlayer
+    let ask: Ask
+
+    @State private var tracks: [CatalogueTrack]?
+    @State private var name: String?
+    @State private var problem: String?
+    @State private var attempt = 0
+
+    private var title: String {
+        switch ask {
+        case .genre(let genre): return genre.name
+        case .more(_, .artist): return name.map { "More by \($0)" } ?? "More by This Artist"
+        case .more(_, .genre): return name.map { "More \($0)" } ?? "More in This Genre"
+        }
+    }
+
+    var body: some View {
+        List {
+            if let problem, tracks != nil {
+                Section {
+                    Label(problem, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("jamendoTracks.problem")
+                }
+            }
+            if let tracks, !tracks.isEmpty {
+                Section {
+                    PlayShuffleButtons(disabled: false) { shuffle in
+                        player.play(model.queue(tracks), shuffle: shuffle)
+                    }
+                }
+                Section {
+                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                        CatalogueRow(model: model, player: player, track: track) {
+                            player.play(model.queue(tracks), from: index)
+                        }
+                    }
+                } header: {
+                    if case .genre = ask { Text("Popular This Week") }
+                } footer: {
+                    Text("Music from Jamendo, each track under its artist's Creative Commons licence.")
+                }
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: attempt) { await load() }
+        .onChange(of: model.resumes) {
+            // A lookup stopped by leaving the app starts again on return.
+            if tracks == nil && problem == nil { attempt += 1 }
+        }
+        .refreshable { attempt += 1 }
+        .overlay {
+            if let problem, tracks == nil {
+                ForgeStateView.failed(
+                    "Can't Ask Jamendo", message: problem,
+                    retry: ForgeStateAction("Try Again", identifier: "jamendoTracks.retry") { attempt += 1 }
+                )
+            } else if tracks == nil {
+                ForgeStateView.loading("Asking Jamendo")
+            } else if tracks?.isEmpty == true && problem == nil {
+                ForgeStateView.empty(
+                    "Nothing More on Jamendo", systemImage: "music.note",
+                    description: "Jamendo has no other songs here right now."
+                )
+            }
+        }
+        .forgeFeedback(model.feedback)
+    }
+
+    private func load() async {
+        problem = nil
+        switch ask {
+        case .genre(let genre):
+            switch await model.jamendoTracks(in: genre) {
+            case .success(let found): tracks = found
+            case .failure(let failure): if !failure.stopped { problem = failure.message }
+            }
+        case .more(let trackId, let by):
+            switch await model.moreFromJamendo(trackId, by: by) {
+            case .success(let found):
+                name = found.name
+                tracks = found.tracks
+            case .failure(let failure): if !failure.stopped { problem = failure.message }
             }
         }
     }

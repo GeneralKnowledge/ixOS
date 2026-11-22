@@ -711,6 +711,7 @@ mod tests {
             transfer: 0,
             payload: Payload::Note { text: id.into() },
             queued_ms: 1,
+            left_ms: None,
         }
     }
 

@@ -5072,9 +5072,10 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func connectionMode()  -> ConnectionMode
     
     /**
-     * Tries every trusted device something waits for, now: Relay came
-     * back to the foreground. (Seeing a device, or it connecting here,
-     * tries it too; so does a timer while Relay is open.)
+     * Tries every trusted device something waits for, now, and collects
+     * the mailbox: Relay came back to the foreground. (Seeing a device, or
+     * it connecting here, tries it too; so does each mailbox round, every
+     * 30 s while Relay is open, for items the mailbox has let expire.)
      */
     func deliverWaiting() 
     
@@ -5573,9 +5574,10 @@ open func connectionMode() -> ConnectionMode  {
 }
     
     /**
-     * Tries every trusted device something waits for, now: Relay came
-     * back to the foreground. (Seeing a device, or it connecting here,
-     * tries it too; so does a timer while Relay is open.)
+     * Tries every trusted device something waits for, now, and collects
+     * the mailbox: Relay came back to the foreground. (Seeing a device, or
+     * it connecting here, tries it too; so does each mailbox round, every
+     * 30 s while Relay is open, for items the mailbox has let expire.)
      */
 open func deliverWaiting()  {try! rustCall() {
         uniffiCallStatus in
@@ -9800,6 +9802,12 @@ public struct RelayServers: Equatable, Hashable {
      * key alone.
      */
     public var lookupUrl: String?
+    /**
+     * A `relay-mailbox` server's endpoint id (N3): where trusted devices
+     * leave items for this one while it can't be reached. Told to them
+     * in the Hello; Hybrid only, like the others.
+     */
+    public var mailbox: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -9811,9 +9819,15 @@ public struct RelayServers: Equatable, Hashable {
          * A pkarr lookup server: each device publishes a record of where it can
          * be reached there, signed by its key, so a trusted device finds it by
          * key alone.
-         */lookupUrl: String?) {
+         */lookupUrl: String?, 
+        /**
+         * A `relay-mailbox` server's endpoint id (N3): where trusted devices
+         * leave items for this one while it can't be reached. Told to them
+         * in the Hello; Hybrid only, like the others.
+         */mailbox: String? = nil) {
         self.relayUrl = relayUrl
         self.lookupUrl = lookupUrl
+        self.mailbox = mailbox
     }
 
     
@@ -9833,13 +9847,15 @@ public struct FfiConverterTypeRelayServers: FfiConverterRustBuffer {
         return
             try RelayServers(
                 relayUrl: FfiConverterOptionString.read(from: &buf), 
-                lookupUrl: FfiConverterOptionString.read(from: &buf)
+                lookupUrl: FfiConverterOptionString.read(from: &buf), 
+                mailbox: FfiConverterOptionString.read(from: &buf)
         )
     }
 
     public static func write(_ value: RelayServers, into buf: inout [UInt8]) {
         FfiConverterOptionString.write(value.relayUrl, into: &buf)
         FfiConverterOptionString.write(value.lookupUrl, into: &buf)
+        FfiConverterOptionString.write(value.mailbox, into: &buf)
     }
 }
 
@@ -15246,7 +15262,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_connection_mode() != 5394) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_deliver_waiting() != 17342) {
+    if (uniffi_relay_core_checksum_method_relaycore_deliver_waiting() != 53162) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_device_service() != 50466) {

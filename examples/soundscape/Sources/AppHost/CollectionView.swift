@@ -61,17 +61,10 @@ struct YourMusicSection: View {
         }
     }
 
-    private func row(_ title: String, systemImage: String, tint: Color, count: Int?) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.body)
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(tint.gradient, in: RoundedRectangle(cornerRadius: 8))
-            Text(title)
-            Spacer()
+    private func row(_ title: LocalizedStringKey, systemImage: String, tint: ForgeAccent, count: Int?) -> some View {
+        ForgeRow(title, systemImage: systemImage, accent: tint) {
             if let count, count > 0 {
-                Text("\(count)").foregroundStyle(.secondary)
+                Text(count, format: .number)
             }
         }
     }

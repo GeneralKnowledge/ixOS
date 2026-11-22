@@ -1,58 +1,93 @@
 #!/usr/bin/env bash
-# Builds numpy for the iPhone (arm64, CPython 3.15) on Linux, for Python Lab.
+# Builds a compiled Python package for the iPhone (arm64, CPython 3.15) on
+# Linux, for Python Lab: numpy, contourpy or matplotlib.
 #
-#   scripts/build-numpy.sh <PYTHONHOME> <Python.xcframework> <out dir>
+#   scripts/build-package.sh <package> <PYTHONHOME> <Python.xcframework> <out dir>
 #
-# prepare-python.sh runs it (and copies <out dir>/numpy into the app's
-# site-packages); nobody needs to run it by hand. iOS only loads native code
-# that was signed into the app, so numpy can't be pip-installed on the phone:
-# it is compiled here, at build time, and prepare-python.sh turns each of its
-# extension modules into a framework the way it does the standard library's.
+# prepare-python.sh runs it and copies what <out dir> holds into the app's
+# site-packages; nobody needs to run it by hand. iOS only loads native code
+# that was signed into the app, so these packages can't be pip-installed on
+# the phone: they are compiled here, at build time, and prepare-python.sh
+# turns each extension module into a framework the way it does the standard
+# library's. (Packages with official iOS wheels, such as Pillow and
+# kiwisolver, are not built: prepare-python.sh unpacks their wheels.)
 #
-# PyPI has no iOS wheels of numpy, and cibuildwheel builds them only on a Mac,
-# so this cross-compiles numpy's source release with the tools xtool already
+# PyPI has no iOS wheels of these, and cibuildwheel builds them only on a Mac,
+# so this cross-compiles each source release with the tools xtool already
 # installed for the app's own build: Swift's clang, the Darwin SDK from
-# Xcode.xip and its ld64.lld. Meson (numpy's own copy) is told the target is
-# iOS through a cross file; the one thing it can't ask the iPhone, "what does
-# the target's Python look like", a small wrapper answers from the iOS
-# build's sysconfig data. BLAS is left out (numpy's own fallback code), so
-# linear algebra works but is not Accelerate-fast.
+# Xcode.xip and its ld64.lld. Meson is told the target is iOS through a cross
+# file; the one thing it can't ask the iPhone, "what does the target's Python
+# look like", a small wrapper answers from the iOS build's sysconfig data.
+# numpy leaves BLAS out (numpy's own fallback code), so linear algebra works
+# but is not Accelerate-fast. matplotlib builds its own FreeType, HarfBuzz and
+# Qhull (Meson subprojects, downloaded at configure) and uses the Agg backend.
 #
-# The result is cached by numpy version and this script's hash, so only the
-# first build after a change pays for it (a few minutes). Needs python3 (3.12
-# or newer, to run numpy's code generators and Meson), and either uv or
-# python3's venv to fetch Cython and ninja into a private build environment.
+# Each result is cached by version and this script's hash, so only the first
+# build after a change pays for it (minutes). Needs python3 (3.12 or newer,
+# to run Meson and the packages' code generators), and either uv or python3's
+# venv to fetch the build tools into a private build environment.
 set -euo pipefail
 
-NUMPY_VERSION="2.5.5"
-NUMPY_URL="https://files.pythonhosted.org/packages/4e/3a/8770c288c47f0b5c2a786d3c20e79f66fd245f2d42cd232d7cd5e00e83e5/numpy-${NUMPY_VERSION}.tar.gz"
-NUMPY_SHA256="5cddc243c75114ba845f01b1f87aca1572dbf7b6c2d88636ed3e1d2bccd7f1bf"
 # Build-time tools, from PyPI into a private environment (exact versions).
-BUILD_REQUIREMENTS=(cython==3.3.1 ninja==1.13.2)
+BUILD_REQUIREMENTS=(cython==3.3.1 ninja==1.13.2 meson==1.12.1 pybind11==3.1.0
+  setuptools_scm==9.2.2 setuptools==84.2.1 meson-python==0.22.1)
 
-home="$1"
-xcframework="$2"
-out="$3"
+package="$1"
+# Each package: version, source release (URL, SHA-256), Meson setup options,
+# the top-level names it installs into site-packages, and whether it uses its
+# own copy of Meson (numpy does).
+case "$package" in
+  numpy)
+    VERSION="2.5.5"
+    URL="https://files.pythonhosted.org/packages/4e/3a/8770c288c47f0b5c2a786d3c20e79f66fd245f2d42cd232d7cd5e00e83e5/numpy-2.5.5.tar.gz"
+    SHA256="5cddc243c75114ba845f01b1f87aca1572dbf7b6c2d88636ed3e1d2bccd7f1bf"
+    MESON_OPTIONS=(-Dblas=none -Dlapack=none -Dallow-noblas=true)
+    INSTALL_TAGS=""
+    TOP_LEVEL=(numpy)
+    MESON_SCRIPT="vendored-meson/meson/meson.py" ;;
+  contourpy)
+    VERSION="1.4.0"
+    URL="https://files.pythonhosted.org/packages/83/5a/a55177dd22553a277388e8a1b3220e92de91bacb28356cdc73caa240121d/contourpy-1.4.0.tar.gz"
+    SHA256="20156f5a1ac4f8ce02656e39a61e82164a3d359796dc8026f75b062783d500e1"
+    MESON_OPTIONS=(-Dwerror=false)
+    INSTALL_TAGS=""
+    TOP_LEVEL=(contourpy)
+    MESON_SCRIPT="" ;;
+  matplotlib)
+    VERSION="3.11.2"
+    URL="https://files.pythonhosted.org/packages/e7/c8/9aa712a0afb882649424dd8de8ad9aa6235e796e84c6052e8f6dc1598d0d/matplotlib-3.11.2.tar.gz"
+    SHA256="cec596316640f2b394b8f0daa0ea61a8eae82d017b620b9f202befb972a59ea4"
+    # No Cocoa backend (macOS only); Agg draws PNGs, the phone has no GUI backend.
+    MESON_OPTIONS=(-Dmacosx=false -DrcParams-backend=Agg -Dwerror=false)
+    INSTALL_TAGS="data,python-runtime,runtime"
+    TOP_LEVEL=(matplotlib mpl_toolkits pylab.py)
+    MESON_SCRIPT="" ;;
+  *) echo "[package] error: no recipe for '$package' (numpy, contourpy, matplotlib)" >&2; exit 1 ;;
+esac
+
+home="$2"
+xcframework="$3"
+out="$4"
 
 sha256() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1
   else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
-say() { echo "[numpy] $*"; }
-fail() { echo "[numpy] error: $*" >&2; exit 1; }
+say() { echo "[$package] $*"; }
+fail() { echo "[$package] error: $*" >&2; exit 1; }
 
-stamp_want="$NUMPY_VERSION $(sha256 "$0" | cut -c1-16)"
+stamp_want="$VERSION $(sha256 "$0" | cut -c1-16)"
 if [[ -f "$out/.built" && "$(cat "$out/.built")" == "$stamp_want" ]]; then
   exit 0
 fi
 
 # What a first (uncached) build needs from this machine, named if missing.
 python3 -c 'import sys; sys.exit(sys.version_info < (3, 12))' 2>/dev/null \
-  || fail "numpy's build needs python3 3.12 or newer (to run Meson and numpy's code generators)"
+  || fail "the build needs python3 3.12 or newer (to run Meson and $package's code generators)"
 if ! command -v uv >/dev/null 2>&1 && ! python3 -c 'import venv, ensurepip' 2>/dev/null; then
-  fail "numpy's build needs uv or python3's venv module (Ubuntu: sudo apt install python3-venv)"
+  fail "the build needs uv or python3's venv module (Ubuntu: sudo apt install python3-venv)"
 fi
-command -v curl >/dev/null || fail "numpy's build needs curl (and network access to PyPI, once)"
+command -v curl >/dev/null || fail "the build needs curl (and network access to PyPI, once)"
 
 slice="$xcframework/ios-arm64"
 headers="$slice/Python.framework/Headers"
@@ -126,20 +161,20 @@ say "target: arm64-apple-ios$min_ios"
 
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/forge"
 mkdir -p "$cache/downloads"
-tarball="$cache/downloads/numpy-${NUMPY_VERSION}.tar.gz"
-if [[ ! -f "$tarball" || "$(sha256 "$tarball")" != "$NUMPY_SHA256" ]]; then
-  say "Downloading numpy ${NUMPY_VERSION}'s source from PyPI"
-  curl -fL --retry 3 -o "$tarball.part" "$NUMPY_URL"
+tarball="$cache/downloads/$(basename "$URL")"
+if [[ ! -f "$tarball" || "$(sha256 "$tarball")" != "$SHA256" ]]; then
+  say "Downloading $package ${VERSION}'s source from PyPI"
+  curl -fL --retry 3 -o "$tarball.part" "$URL"
   got="$(sha256 "$tarball.part")"
-  if [[ "$got" != "$NUMPY_SHA256" ]]; then
+  if [[ "$got" != "$SHA256" ]]; then
     rm -f "$tarball.part"
-    fail "the download's SHA-256 is $got, not $NUMPY_SHA256: not using it"
+    fail "the download's SHA-256 is $got, not $SHA256: not using it"
   fi
   mv "$tarball.part" "$tarball"
 fi
 
-# Cython and ninja, in a build environment of their own.
-venv="$cache/numpy-build-env"
+# Cython, ninja, Meson and pybind11, in a build environment of their own.
+venv="$cache/python-package-build-env"
 venv_stamp="${BUILD_REQUIREMENTS[*]}"
 if [[ ! -f "$venv/.ready" || "$(cat "$venv/.ready")" != "$venv_stamp" ]]; then
   say "Setting up the build environment (${BUILD_REQUIREMENTS[*]})"
@@ -158,7 +193,7 @@ py="$venv/bin/python"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 tar xzf "$tarball" -C "$work"
-srcdir="$work/numpy-${NUMPY_VERSION}"
+srcdir="$work/$package-$VERSION"
 
 # What Meson asks "python" about the target: python_info.py's answers from
 # this machine's Python, with the iOS build's sysconfig data, headers, version
@@ -208,6 +243,11 @@ for name in python3 "python-$py_version"; do
     "Version: $py_version" "Cflags: -I$headers" "Libs: -F$slice -framework Python" \
     > "$work/pkgconfig/$name.pc"
 done
+# pybind11 (header-only, contourpy and matplotlib) from the build environment.
+pybind11_include="$("$py" -c 'import pybind11; print(pybind11.get_include())')"
+pybind11_version="$("$py" -c 'import pybind11; print(pybind11.__version__)')"
+printf '%s\n' "Name: pybind11" "Description: pybind11 headers" \
+  "Version: $pybind11_version" "Cflags: -I$pybind11_include" > "$work/pkgconfig/pybind11.pc"
 
 q() { printf "'%s'" "$1"; }
 target="arm64-apple-ios$min_ios"
@@ -239,38 +279,53 @@ cpu = 'arm64'
 endian = 'little'
 EOF
 
-say "Configuring numpy ${NUMPY_VERSION} for iOS"
+say "Configuring $package $VERSION for iOS"
 started=$(date +%s)
 export PATH="$venv/bin:$PATH"
-(cd "$srcdir" && "$py" vendored-meson/meson/meson.py setup "$work/build" \
+if [[ -n "$MESON_SCRIPT" ]]; then meson=("$py" "$srcdir/$MESON_SCRIPT"); else meson=("$venv/bin/meson"); fi
+(cd "$srcdir" && "${meson[@]}" setup "$work/build" \
   --cross-file "$work/ios.ini" --prefix=/usr --buildtype=release -Db_ndebug=if-release \
-  -Dblas=none -Dlapack=none -Dallow-noblas=true) > "$work/configure.log" 2>&1 \
+  "${MESON_OPTIONS[@]}") > "$work/configure.log" 2>&1 \
   || { tail -60 "$work/configure.log" >&2
        log="$work/build/meson-logs/meson-log.txt"
        if [[ -f "$log" ]]; then echo "--- end of meson-log.txt" >&2; tail -120 "$log" >&2; fi
        fail "configure failed (log above)"; }
-jobs="${FORGE_NUMPY_JOBS:-4}"
+jobs="${FORGE_PACKAGE_JOBS:-${FORGE_NUMPY_JOBS:-4}}"
 say "Compiling (ninja -j$jobs)"
 "$venv/bin/ninja" -C "$work/build" -j "$jobs" > "$work/build.log" 2>&1 \
   || { tail -60 "$work/build.log" >&2; fail "compile failed (log above)"; }
-"$py" "$srcdir/vendored-meson/meson/meson.py" install -C "$work/build" --destdir "$work/stage" --quiet \
-  > "$work/install.log" 2>&1 || { tail -40 "$work/install.log" >&2; fail "install failed"; }
+install_args=(install -C "$work/build" --destdir "$work/stage" --quiet)
+[[ -n "$INSTALL_TAGS" ]] && install_args+=(--tags "$INSTALL_TAGS")
+"${meson[@]}" "${install_args[@]}" > "$work/install.log" 2>&1 \
+  || { tail -40 "$work/install.log" >&2; fail "install failed"; }
 
-pkg="$(find "$work/stage" -type d -path '*-packages/numpy' | head -1)"
-[[ -n "$pkg" ]] || fail "meson install made no numpy package"
-# Tests, typing stubs and build-only files stay off the phone.
-find "$pkg" -type d \( -name tests -o -name __pycache__ -o -name _pyinstaller \) -prune -exec rm -rf {} +
-find "$pkg" \( -name '*.pyi' -o -name '*.pxd' -o -name '*.c' -o -name '*.h' -o -name '*.a' -o -name '*.pc' \) -delete
-rm -rf "$pkg/_core/include" "$pkg/_core/lib" "$pkg/random/lib" "$pkg/random/_examples" "$pkg/f2py/tests"
-# Extension modules only numpy's own test suite imports.
-rm -f "$pkg"/_core/{_multiarray_tests,_umath_tests,_rational_tests,_struct_ufunc_tests,_operand_flag_tests,_simd}.*.so
-if [[ -n "$strip_tool" ]]; then
-  find "$pkg" -name '*.so' -exec "$strip_tool" -x {} \;
-fi
-
+site="$(find "$work/stage" -type d -path "*-packages/${TOP_LEVEL[0]}" | head -1)"
+[[ -n "$site" ]] || fail "meson install made no ${TOP_LEVEL[0]} package"
+site="$(dirname "$site")"
 rm -rf "$out"
 mkdir -p "$out"
-cp -R "$pkg" "$out/numpy"
+for name in "${TOP_LEVEL[@]}"; do
+  if [[ -e "$site/$name" ]]; then cp -R "$site/$name" "$out/"; fi
+done
+# Tests, typing stubs and build-only files stay off the phone.
+find "$out" -type d \( -name tests -o -name __pycache__ -o -name _pyinstaller \) -prune -exec rm -rf {} +
+find "$out" \( -name '*.pyi' -o -name '*.pxd' -o -name '*.c' -o -name '*.h' -o -name '*.a' -o -name '*.pc' -o -name py.typed \) -delete
+case "$package" in
+  numpy)
+    rm -rf "$out"/numpy/_core/include "$out"/numpy/_core/lib "$out"/numpy/random/lib "$out"/numpy/random/_examples
+    # Extension modules only numpy's own test suite imports.
+    rm -f "$out"/numpy/_core/{_multiarray_tests,_umath_tests,_rational_tests,_struct_ufunc_tests,_operand_flag_tests,_simd}.*.so ;;
+  matplotlib)
+    # Example data for matplotlib's own gallery.
+    rm -rf "$out"/matplotlib/mpl-data/sample_data
+    # iOS has no Tk, so the Tk backend would be one more framework to sign.
+    rm -f "$out"/matplotlib/backends/_tkagg.*.so "$out"/matplotlib/backends/_backend_tk.py \
+      "$out"/matplotlib/backends/backend_tk*.py ;;
+esac
+if [[ -n "$strip_tool" ]]; then
+  find "$out" -name '*.so' -exec "$strip_tool" -x {} \;
+fi
+
 elapsed=$(( $(date +%s) - started ))
 echo "$stamp_want" > "$out/.built"
-say "numpy ${NUMPY_VERSION}: $(du -sh "$out/numpy" | cut -f1), $(find "$out/numpy" -name '*.so' | wc -l) extension modules, built in ${elapsed}s"
+say "$package $VERSION: $(du -sh "$out" | cut -f1), $(find "$out" -name '*.so' | wc -l) extension modules, built in ${elapsed}s"

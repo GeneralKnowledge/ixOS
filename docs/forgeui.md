@@ -140,6 +140,9 @@ Button("Continue", action: next)
 ForgeButton("Save", isWorking: model.isSaving) { Task { await model.save() } }
     .buttonStyle(.forgePrimary)              // a spinner in place of the title while saving
 
+ForgeButton("Trust Again") { await model.trustAgain(device) }
+    .buttonStyle(.forgeSecondary)            // async: tracks its own work, spinner after 0.4 s
+
 Button { add() } label: { Label("Add", systemImage: "plus") }
     .buttonStyle(.forgeIcon)                 // round, icon only; VoiceOver reads "Add"
 ```
@@ -147,6 +150,14 @@ Button { add() } label: { Label("Add", systemImage: "plus") }
 Disabled and pressed states come from SwiftUI (`.disabled(...)`); there is no `isDisabled` parameter. Buttons are at least 44 points tall, and grow with Dynamic Type.
 
 `ForgeButton` is disabled while `isWorking`, so nothing can press it twice: not a tap, VoiceOver, Voice Control nor the keyboard. VoiceOver reads it as dimmed and "In progress". ForgeUI's styles keep it at full colour while it works, because the spinner already says it is busy; a button the app disables itself fades as usual.
+
+Give `ForgeButton` an async action and it tracks the work itself: it is disabled as soon as it is tapped, and its spinner (and VoiceOver's "In progress") appear only if the work takes longer than 0.4 seconds. A fast local write doesn't flicker; a slow one is never silent. Use it for any button whose action awaits something ([silent waits](research/experience/forgeui-0.2.md#35-silent-waits)); keep `isWorking:` for work the model already tracks.
+
+For a control that isn't a `Button` (a `Menu`'s label, a renderer's own control), `.forgeButtonLook(.primary, expands:, isPressed:)` draws the same look. It is the one implementation: the button styles draw with it, so pressed, disabled, working, compact, Reduce Motion and the Dynamic Type minimum height all behave the same.
+
+```swift
+Menu { … } label: { Label("New", systemImage: "plus").forgeButtonLook(.primary) }
+```
 
 ### Text fields and form fields
 
@@ -183,6 +194,8 @@ ForgeRow(task.title, subtitle: task.notes) { ForgeBadge("High", tone: .danger) }
 ```
 
 A `ForgeRow` is the label of SwiftUI's own rows, so navigation chevrons, toggles, pickers and swipe actions are the system's. Titles you pass as literals are localised; titles from your data (`task.title`) are shown as written, as with `Text`. The row reads as one element in VoiceOver.
+
+Rows that stand for different things (Favourites, Playlists, Downloaded) can give each icon tile its own colour from ForgeUI's checked accents without changing the app's accent: `ForgeRow("Favourites", systemImage: "heart.fill", accent: .pink)`. Use a tone when the colour means something (a warning, a danger) and an accent when it only tells rows apart. The `icon-tile` parity rule catches a symbol drawn by hand on a raw-coloured rectangle.
 
 ### Cards, badges, status, headers
 
@@ -253,6 +266,14 @@ ForgeStateView.empty("No Books Yet", systemImage: "books.vertical",
                          Button("Enter Details") { … }.accessibilityIdentifier("library.add.manual")
                      })
 ForgeStateView.empty("Summaries Unavailable", systemImage: "sparkles", message: info.unavailableReason)
+```
+
+When a permission the person turned off is why the state is showing, the way out is Settings, because iOS never asks again after a denial. `.openSettings(identifier:)` is that action ("Open Settings", opening the app's page in Settings); keep the app's other way forward as the second action:
+
+```swift
+ForgeStateView.failed("Weather where you are", message: message,
+                      retry: .openSettings(identifier: "forecast.openSettings"),
+                      secondary: search)
 ```
 
 The `state-views` parity rule keeps apps that use ForgeUI off `ContentUnavailableView` itself.

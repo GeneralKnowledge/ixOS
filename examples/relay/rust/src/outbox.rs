@@ -74,6 +74,11 @@ pub struct SavedDelivery {
     pub transfer: u64,
     pub payload: Payload,
     pub queued_ms: i64,
+    /// When it was left in the recipient's mailbox (N3), if it was: it
+    /// waits there for a receipt, and goes again only once the mailbox
+    /// has let it expire, or when the device is reachable again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left_ms: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -107,6 +112,14 @@ pub struct ReceivedId {
     pub from: String,
     pub id: String,
     pub at_ms: i64,
+}
+
+impl SavedDelivery {
+    /// Whether it waits in the recipient's mailbox at `now_ms`.
+    pub fn in_mailbox(&self, now_ms: i64) -> bool {
+        self.left_ms
+            .is_some_and(|left| now_ms - left < crate::mailbox_server::KEPT_MS)
+    }
 }
 
 impl Payload {
@@ -198,6 +211,7 @@ impl Record {
             transfer,
             payload,
             queued_ms: now_ms,
+            left_ms: None,
         });
         transfer
     }
@@ -211,6 +225,7 @@ impl Record {
             transfer: 0,
             payload,
             queued_ms: now_ms,
+            left_ms: None,
         });
     }
 
@@ -226,6 +241,38 @@ impl Record {
     /// The oldest item for `to`: the next to send.
     pub fn next_for(&self, to: &str) -> Option<&SavedDelivery> {
         self.deliveries.iter().find(|d| d.to == to)
+    }
+
+    /// The oldest item for `to` that isn't waiting in its mailbox (one
+    /// the mailbox has let expire is due again), or with `direct`, the
+    /// oldest of all: the device may be reachable again.
+    pub fn next_due(&self, to: &str, direct: bool, now_ms: i64) -> Option<&SavedDelivery> {
+        self.deliveries
+            .iter()
+            .find(|d| d.to == to && (direct || !d.in_mailbox(now_ms)))
+    }
+
+    /// Devices with an item the mailbox has let expire, once each: they
+    /// are due to be tried again.
+    pub fn left_expired(&self, now_ms: i64) -> Vec<String> {
+        let mut seen = HashSet::new();
+        self.deliveries
+            .iter()
+            .filter(|d| d.left_ms.is_some() && !d.in_mailbox(now_ms))
+            .filter(|d| seen.insert(d.to.clone()))
+            .map(|d| d.to.clone())
+            .collect()
+    }
+
+    /// Marks a pending delivery as left in its recipient's mailbox.
+    pub fn left_in_mailbox(&mut self, id: &str, now_ms: i64) -> bool {
+        match self.deliveries.iter_mut().find(|d| d.id == id) {
+            Some(d) => {
+                d.left_ms = Some(now_ms);
+                true
+            }
+            None => false,
+        }
     }
 
     pub fn delivery(&self, id: &str) -> Option<&SavedDelivery> {
@@ -301,6 +348,12 @@ pub(crate) struct Outbox {
     /// Tests: the next answers to lose, as if the connection broke after
     /// the recipient saved the item.
     lose_answers: AtomicU32,
+    /// Recipients whose items in their mailbox are tried directly again:
+    /// they were seen, connected, or Relay came to the foreground.
+    direct_again: Mutex<HashSet<String>>,
+    /// The mailbox collector (N3): started once, and woken to collect now.
+    pub(crate) collector_started: AtomicBool,
+    pub(crate) collect_now: Arc<tokio::sync::Notify>,
 }
 
 /// How one attempt went.
@@ -375,6 +428,7 @@ impl RelayCore {
         if self.record.get().next_for(to).is_none() {
             return;
         }
+        lock(&self.outbox.direct_again).insert(to.to_string());
         lock(&self.outbox.backoff).remove(to);
         self.wake(to);
     }
@@ -398,7 +452,8 @@ impl RelayCore {
                 return None;
             }
         }
-        self.record.get().next_for(to).cloned()
+        let direct = lock(&self.outbox.direct_again).contains(to);
+        self.record.get().next_due(to, direct, now_ms()).cloned()
     }
 
     /// Answers the sends still waiting on `to`'s items: they wait.
@@ -424,6 +479,11 @@ impl RelayCore {
     /// One attempt at `d`; returns false when the device wasn't reached.
     async fn attempt(&self, d: SavedDelivery) -> bool {
         let outcome = self.try_once(&d).await;
+        if matches!(outcome, Outcome::Retry) && self.waits_in_mailbox(&d).await {
+            // It waits in the mailbox: the next item goes on.
+            self.answer(&d.id, Ok(()));
+            return false;
+        }
         let reached = !matches!(outcome, Outcome::Retry);
         let (status, answer, seen) = match outcome {
             Outcome::Gone => return true,
@@ -433,6 +493,7 @@ impl RelayCore {
         };
         let (id, to) = (d.id.clone(), d.to.clone());
         let (d_for_end, delivered) = (d.clone(), answer.is_ok());
+        let delivered_now = seen.is_some();
         let saved = self
             .rt
             .command("delivery", move |state| {
@@ -459,6 +520,10 @@ impl RelayCore {
         }
         if matches!(saved, Ok(true)) {
             self.let_go(&d).await;
+        }
+        if delivered_now {
+            // It has just been told this device's pass (in the Hello).
+            self.collect_mailbox();
         }
         self.answer(&d.id, answer);
         let mut backoff = lock(&self.outbox.backoff);
@@ -697,7 +762,8 @@ pub(crate) fn settle_messages(r: &Record, c: &mut Conversations<'_>) {
 fn remember_reached(r: &mut Record, to: &str, sent: &device::Sent) {
     let at: Vec<String> = sent.at.iter().map(|a| a.to_string()).collect();
     r.devices.seen_at(to, &at, now_ms());
-    r.devices.met(to, &sent.addresses, sent.route);
+    r.devices
+        .met(to, &sent.addresses, sent.route, sent.mailbox.clone());
 }
 
 impl RelayCore {
@@ -749,6 +815,7 @@ impl RelayCore {
         if self.watching_network.swap(true, Ordering::SeqCst) {
             return;
         }
+        self.start_collector();
         use iroh::Watcher;
         let me = self.me.clone();
         let mut watcher = node.endpoint.watch_addr();
@@ -879,6 +946,74 @@ impl RelayCore {
     }
 }
 
+impl RelayCore {
+    /// `d` wasn't delivered directly: whether it now waits in the
+    /// recipient's mailbox, already or because it was just left there.
+    /// Either way the device isn't tried directly again for now.
+    async fn waits_in_mailbox(&self, d: &SavedDelivery) -> bool {
+        lock(&self.outbox.direct_again).remove(&d.to);
+        let now = now_ms();
+        let already = d.in_mailbox(now);
+        if !already {
+            if let Err(why) = self.leave_in_mailbox(d).await {
+                forge_runtime::logging::info!("relay: not left in the mailbox: {why}");
+                return false;
+            }
+        }
+        let id = d.id.clone();
+        let saved = self
+            .rt
+            .command("delivery-left", move |state| {
+                state.change(|r| {
+                    r.delivery_status(&id, SavedStatus::Waiting);
+                    Ok(already || r.left_in_mailbox(&id, now))
+                })
+            })
+            .await;
+        matches!(saved, Ok(true))
+    }
+
+    /// A receipt from `from` for the delivery `id`: it has the item, so the
+    /// delivery is Done, as if it had answered directly. False when that
+    /// couldn't be saved now (the receipt is kept for the next round).
+    pub(crate) async fn receipt(&self, from: &str, id: &str) -> bool {
+        let Some(d) = self
+            .record
+            .get()
+            .delivery(id)
+            .filter(|d| d.to == from)
+            .cloned()
+        else {
+            // Ended already, or not one of ours: nothing to do.
+            return true;
+        };
+        let (id, d_for_end) = (d.id.clone(), d.clone());
+        let ended = self
+            .rt
+            .command("delivery-receipt", move |state| {
+                state.change_with(|r, c| {
+                    let ended = r.end_delivery(&id, SavedStatus::Done);
+                    if ended {
+                        message_ended(c, &d_for_end, true)?;
+                    }
+                    Ok(ended)
+                })
+            })
+            .await;
+        match ended {
+            Ok(true) => {
+                self.let_go(&d).await;
+                true
+            }
+            Ok(false) => true,
+            Err(e) => {
+                forge_runtime::logging::warn!("relay: a receipt wasn't saved: {e}");
+                false
+            }
+        }
+    }
+}
+
 /// `to`'s worker: its items oldest first, until none is due.
 async fn drain(me: Weak<RelayCore>, to: String) {
     loop {
@@ -928,6 +1063,28 @@ mod tests {
             r.next_for("a").unwrap().payload,
             Payload::Note { text: "2".into() }
         );
+    }
+
+    #[test]
+    fn an_item_left_in_the_mailbox_is_due_again_when_it_expires() {
+        use crate::mailbox_server::KEPT_MS;
+        let mut r = Record::default();
+        let (item, payload) = note("1");
+        r.queue(&[1; 16], "a", item, payload, 10);
+        let id = r.next_for("a").unwrap().id.clone();
+        assert!(r.left_expired(100).is_empty(), "never left");
+        assert!(r.left_in_mailbox(&id, 100));
+        assert!(
+            r.next_due("a", false, 101).is_none(),
+            "waits in the mailbox"
+        );
+        assert!(
+            r.next_due("a", true, 101).is_some(),
+            "tried directly when seen"
+        );
+        assert!(r.left_expired(100 + KEPT_MS - 1).is_empty());
+        assert_eq!(r.left_expired(100 + KEPT_MS), vec!["a".to_string()]);
+        assert!(r.next_due("a", false, 100 + KEPT_MS).is_some());
     }
 
     #[test]

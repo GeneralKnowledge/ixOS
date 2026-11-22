@@ -232,6 +232,13 @@ private struct ButtonsPage: View {
         // A spinner in place of the title while saving:
         ForgeButton("Save", isWorking: model.isSaving, action: save)
             .buttonStyle(.forgePrimary)
+
+        // Async work: disabled at once, a spinner after 0.4 s:
+        ForgeButton("Sync") { await model.sync() }
+            .buttonStyle(.forgeSecondary)
+
+        // The look on something that isn't a Button:
+        Menu { … } label: { Label("New", systemImage: "plus").forgeButtonLook(.primary) }
         """) {
             VStack(spacing: theme.spacing.l) {
                 ForgeButton("Save Changes", systemImage: "checkmark", role: kind == .destructive ? .destructive : nil, isWorking: working) {
@@ -244,6 +251,23 @@ private struct ButtonsPage: View {
                 Text("Tapped \(taps) times")
                     .font(.footnote)
                     .foregroundStyle(theme.colors.textSecondary)
+                Divider()
+                // A fast action never shows a spinner; a slow one always does.
+                HStack(spacing: theme.spacing.m) {
+                    ForgeButton("Quick (0.1 s)") { try? await Task.sleep(for: .milliseconds(100)); taps += 1 }
+                        .buttonStyle(.forge(.secondary, expands: true))
+                        .accessibilityIdentifier("gallery.buttons.asyncQuick")
+                    ForgeButton("Slow (3 s)") { try? await Task.sleep(for: .seconds(3)); taps += 1 }
+                        .buttonStyle(.forge(.secondary, expands: true))
+                        .accessibilityIdentifier("gallery.buttons.asyncSlow")
+                }
+                Menu {
+                    Button("Note") { taps += 1 }
+                    Button("Folder") { taps += 1 }
+                } label: {
+                    Label("New", systemImage: "plus").forgeButtonLook(kind, expands: true)
+                }
+                .accessibilityIdentifier("gallery.buttons.menu")
                 Divider()
                 ForEach(ForgeButtonStyle.Kind.allCases) { each in
                     Button(each.name.capitalized) { taps += 1 }
@@ -420,6 +444,7 @@ private struct RowsPage: View {
         }
         ForgeRow("Version", value: "1.0.0")
         ForgeRow(task.title) { ForgeBadge("High", tone: .danger) }
+        ForgeRow("Favourites", systemImage: "heart.fill", accent: .pink, value: "12")
         """) {
             ForgeRow(
                 "Notifications",
@@ -433,6 +458,10 @@ private struct RowsPage: View {
                 case .badge: ForgeBadge("New", tone: .info)
                 case .status: ForgeStatus("On", tone: .success)
                 }
+            }
+            // Accent tiles tell rows apart without meaning anything.
+            ForEach(ForgeAccent.allCases) { accent in
+                ForgeRow(accent.name, systemImage: "music.note.list", accent: accent, value: "12")
             }
         } options: {
             Toggle("Icon", isOn: $icon).accessibilityIdentifier("gallery.rows.icon")
