@@ -5072,9 +5072,10 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func connectionMode()  -> ConnectionMode
     
     /**
-     * Tries every trusted device something waits for, now: Relay came
-     * back to the foreground. (Seeing a device, or it connecting here,
-     * tries it too; so does a timer while Relay is open.)
+     * Tries every trusted device something waits for, now, and collects
+     * the mailbox: Relay came back to the foreground. (Seeing a device, or
+     * it connecting here, tries it too; so does each mailbox round, every
+     * 30 s while Relay is open, for items the mailbox has let expire.)
      */
     func deliverWaiting() 
     
@@ -5573,9 +5574,10 @@ open func connectionMode() -> ConnectionMode  {
 }
     
     /**
-     * Tries every trusted device something waits for, now: Relay came
-     * back to the foreground. (Seeing a device, or it connecting here,
-     * tries it too; so does a timer while Relay is open.)
+     * Tries every trusted device something waits for, now, and collects
+     * the mailbox: Relay came back to the foreground. (Seeing a device, or
+     * it connecting here, tries it too; so does each mailbox round, every
+     * 30 s while Relay is open, for items the mailbox has let expire.)
      */
 open func deliverWaiting()  {try! rustCall() {
         uniffiCallStatus in
@@ -15260,7 +15262,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_connection_mode() != 5394) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_deliver_waiting() != 17342) {
+    if (uniffi_relay_core_checksum_method_relaycore_deliver_waiting() != 53162) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_device_service() != 50466) {
