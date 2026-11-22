@@ -95,6 +95,9 @@ pub(crate) struct Node {
     /// (`device`), kept apart from the word code's so ending one doesn't
     /// end the other.
     pub device_allowed: Allowed,
+    /// Answers for trusted devices: also told what a device says in the
+    /// Hello when this device is the one that dialled.
+    pub devices: Arc<dyn DeviceInbound>,
     router: Router,
     /// The servers the endpoint uses now (`use_servers` changes them).
     servers: Mutex<RelayServers>,
@@ -176,7 +179,7 @@ impl Node {
             .accept(
                 DEVICE_ALPN,
                 DeviceHandler {
-                    host: devices,
+                    host: Arc::clone(&devices),
                     node: link,
                 },
             )
@@ -188,6 +191,7 @@ impl Node {
             sending,
             allowed,
             device_allowed,
+            devices,
             router,
             servers: Mutex::new(servers.clone()),
             servers_since: Mutex::new(std::time::Instant::now()),
