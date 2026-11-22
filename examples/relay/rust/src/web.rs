@@ -512,12 +512,28 @@ where
         if n == 0 {
             return Ok(total);
         }
-        moving
-            .within(to.write_all(&buf[..n]))
-            .await?
-            .map_err(|e| bad(&e.to_string()))?;
+        write_moving(to, &buf[..n], moving).await?;
         total += n as u64;
     }
+}
+
+/// Writes all of `bytes`, counting every partial write as progress: a slow
+/// reader that keeps taking bytes isn't idle.
+async fn write_moving<W>(to: &mut W, mut bytes: &[u8], moving: &Activity) -> Result<(), RelayError>
+where
+    W: tokio::io::AsyncWrite + Unpin + ?Sized,
+{
+    while !bytes.is_empty() {
+        let n = moving
+            .within(to.write(bytes))
+            .await?
+            .map_err(|e| bad(&e.to_string()))?;
+        if n == 0 {
+            return Err(bad("the other side stopped taking data"));
+        }
+        bytes = &bytes[n..];
+    }
+    Ok(())
 }
 
 /// Copies a request body of `length` bytes: what came with the head, then
@@ -909,12 +925,7 @@ pub(crate) async fn fetch(
         send.write_all(&rewritten(&head, None))
             .await
             .map_err(|e| bad(&e.to_string()))?;
-        for piece in request.body.chunks(16 * 1024) {
-            moving
-                .within(send.write_all(piece))
-                .await?
-                .map_err(|e| bad(&e.to_string()))?;
-        }
+        write_moving(&mut send, &request.body, &moving).await?;
         let _ = send.finish();
         Ok(())
     };
@@ -1195,6 +1206,31 @@ mod tests {
             assert!(waited.is_ok(), "the upload kept it alive");
             // Nothing moving at all: idle after IDLE.
             assert!(moving.within(tokio::time::sleep(IDLE * 3)).await.is_err());
+        });
+
+        // A slow reader that keeps taking a byte every half IDLE isn't
+        // idle, though the whole write takes longer than IDLE.
+        rt.block_on(async {
+            let moving = Activity::new();
+            let (mut writer, mut reader) = tokio::io::duplex(1);
+            let slow_reader = async {
+                let mut got = Vec::new();
+                let mut byte = [0u8; 1];
+                while reader.read(&mut byte).await.unwrap() == 1 {
+                    got.push(byte[0]);
+                    tokio::time::sleep(IDLE / 2).await;
+                }
+                got
+            };
+            let writing = async {
+                let mut from: &[u8] = b"abcdef";
+                let copied = copy_idle(&mut from, &mut writer, &moving).await;
+                drop(writer);
+                copied
+            };
+            let (copied, got) = tokio::join!(writing, slow_reader);
+            assert_eq!(copied.unwrap(), 6);
+            assert_eq!(got, b"abcdef");
         });
     }
 
