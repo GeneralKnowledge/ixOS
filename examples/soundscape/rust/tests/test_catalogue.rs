@@ -242,3 +242,55 @@ fn decode_undoes_encode() {
     }
     assert_eq!(listen::decode("100%"), "100%");
 }
+
+#[test]
+fn the_track_without_artwork_has_none_in_the_library() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(dir.path());
+    let tracks: Vec<_> = block(core.test_catalogue(None))
+        .unwrap()
+        .into_iter()
+        .map(|t| t.track)
+        .collect();
+    block(core.add_catalogue_tracks(tracks)).unwrap();
+    let library = core.library();
+    let bare = library
+        .tracks
+        .iter()
+        .find(|t| t.id == "test:no-artwork")
+        .unwrap();
+    assert_eq!(bare.artwork_url, None);
+}
+
+#[test]
+fn a_saved_queue_of_test_tracks_not_in_the_library_follows_the_data_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let before = dir.path().join("before");
+    let core = open(&before);
+    let tracks: Vec<_> = block(core.test_catalogue(None))
+        .unwrap()
+        .into_iter()
+        .map(|t| t.track)
+        .filter(|t| t.id == "test:short-chime")
+        .collect();
+    let queued = core.catalogue_queue_tracks(tracks);
+    assert!(queued[0].recording.audio_url.starts_with("file:"));
+    let queue =
+        soundscape_core::queue::queue_start(queued, 0, false, soundscape_core::RepeatMode::Off, 1);
+    block(core.save_playback(Some(soundscape_core::SavedPlayback {
+        queue,
+        seconds: 1.0,
+        saved_ms: 1,
+    })))
+    .unwrap();
+    drop(core);
+
+    let after = dir.path().join("after");
+    std::fs::rename(&before, &after).unwrap();
+    let core = open(&after);
+    let saved = core.saved_playback().expect("the queue survives");
+    assert_eq!(saved.queue.tracks.len(), 1);
+    let url = &saved.queue.tracks[0].recording.audio_url;
+    assert!(url.contains("/after/"), "{url}");
+    assert!(path_of(url).exists());
+}
