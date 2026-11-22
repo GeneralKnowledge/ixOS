@@ -46,6 +46,14 @@ if [[ -f "$out/.built" && "$(cat "$out/.built")" == "$stamp_want" ]]; then
   exit 0
 fi
 
+# What a first (uncached) build needs from this machine, named if missing.
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 12))' 2>/dev/null \
+  || fail "numpy's build needs python3 3.12 or newer (to run Meson and numpy's code generators)"
+if ! command -v uv >/dev/null 2>&1 && ! python3 -c 'import venv, ensurepip' 2>/dev/null; then
+  fail "numpy's build needs uv or python3's venv module (Ubuntu: sudo apt install python3-venv)"
+fi
+command -v curl >/dev/null || fail "numpy's build needs curl (and network access to PyPI, once)"
+
 slice="$xcframework/ios-arm64"
 headers="$slice/Python.framework/Headers"
 [[ -f "$headers/Python.h" ]] || fail "no Python.h in $headers"
@@ -83,17 +91,27 @@ cxx="${cc%clang}clang++"
 [[ -x "$cxx" ]] || cxx="$cc"
 tools_bin="$(dirname "$cc")"
 
-ld="${FORGE_IOS_LD:-}"
-for candidate in "$toolset_dir/toolset/bin/ld64.lld" "$tools_bin/ld64.lld" "$(command -v ld64.lld || true)"; do
-  if [[ -z "$ld" && -n "$candidate" && -x "$candidate" ]]; then ld="$candidate"; fi
-done
-[[ -n "$ld" ]] || fail "no ld64.lld (xtool's Darwin SDK toolset has one)"
-
+# On Linux: ld64.lld, and -mlinker-version because Swift's clang can't ask
+# ld64.lld its version and would pass old ld64 flags (-arch,
+# -iphoneos_version_min) that lld rejects; from 520 on it passes
+# -platform_version. On macOS Xcode's own linker and ar need neither.
+ld=""
 ar=""
-for candidate in "$tools_bin/llvm-ar" "$(command -v llvm-ar || true)"; do
-  if [[ -z "$ar" && -n "$candidate" && -x "$candidate" ]]; then ar="$candidate"; fi
-done
-[[ -n "$ar" ]] || fail "no llvm-ar (GNU ar can't index Mach-O archives)"
+link_args=""
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  ar="$(xcrun --find ar 2>/dev/null || command -v ar)"
+else
+  ld="${FORGE_IOS_LD:-}"
+  for candidate in "$toolset_dir/toolset/bin/ld64.lld" "$tools_bin/ld64.lld" "$(command -v ld64.lld || true)"; do
+    if [[ -z "$ld" && -n "$candidate" && -x "$candidate" ]]; then ld="$candidate"; fi
+  done
+  [[ -n "$ld" ]] || fail "no ld64.lld (xtool's Darwin SDK toolset has one: xtool setup)"
+  link_args="'--ld-path=$ld', '-mlinker-version=907', "
+  for candidate in "$tools_bin/llvm-ar" "$(command -v llvm-ar || true)"; do
+    if [[ -z "$ar" && -n "$candidate" && -x "$candidate" ]]; then ar="$candidate"; fi
+  done
+fi
+[[ -n "$ar" ]] || fail "no llvm-ar (GNU ar can't index Mach-O archives; it comes with Swift's toolchain)"
 strip_tool=""
 for candidate in "$tools_bin/llvm-strip" "$(command -v llvm-strip || true)"; do
   if [[ -z "$strip_tool" && -n "$candidate" && -x "$candidate" ]]; then strip_tool="$candidate"; fi
@@ -103,7 +121,7 @@ done
 min_ios="${FORGE_IOS_DEPLOYMENT_TARGET:-17.0}"
 say "clang: $cc"
 say "SDK: $sdk"
-say "linker: $ld"
+say "linker: ${ld:-Xcode's}"
 say "target: arm64-apple-ios$min_ios"
 
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/forge"
@@ -203,11 +221,8 @@ cython = $(q "$venv/bin/cython")
 pkg-config = 'pkg-config'
 
 [built-in options]
-# -mlinker-version: Swift's clang can't ask ld64.lld its version and would
-# pass old ld64 flags (-arch, -iphoneos_version_min) that lld rejects; any
-# version from 520 on makes it pass -platform_version instead.
-c_link_args = [$(q "--ld-path=$ld"), '-mlinker-version=907', '-F', $(q "$slice"), '-framework', 'Python']
-cpp_link_args = [$(q "--ld-path=$ld"), '-mlinker-version=907', '-F', $(q "$slice"), '-framework', 'Python']
+c_link_args = [${link_args}'-F', $(q "$slice"), '-framework', 'Python']
+cpp_link_args = [${link_args}'-F', $(q "$slice"), '-framework', 'Python']
 
 [properties]
 # Apple arm64: long double is the same as double.
