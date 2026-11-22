@@ -1365,6 +1365,91 @@ void uniffi_forge_ffi_fn_method_transfersink_progress(uint64_t ptr, RustBuffer i
 void uniffi_forge_ffi_fn_method_transfersink_reconcile(uint64_t ptr, RustBuffer tasks, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_WORKSPACE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_WORKSPACE
+uint64_t uniffi_forge_ffi_fn_clone_workspace(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_WORKSPACE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_WORKSPACE
+void uniffi_forge_ffi_fn_free_workspace(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_WORKSPACE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_WORKSPACE_NEW
+uint64_t uniffi_forge_ffi_fn_constructor_workspace_new(RustBuffer projects_folder, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_CREATE_FILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_CREATE_FILE
+void uniffi_forge_ffi_fn_method_workspace_create_file(uint64_t ptr, RustBuffer project, RustBuffer path, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_CREATE_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_CREATE_FOLDER
+void uniffi_forge_ffi_fn_method_workspace_create_folder(uint64_t ptr, RustBuffer project, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_CREATE_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_CREATE_PROJECT
+void uniffi_forge_ffi_fn_method_workspace_create_project(uint64_t ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_DELETE_ENTRY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_DELETE_ENTRY
+void uniffi_forge_ffi_fn_method_workspace_delete_entry(uint64_t ptr, RustBuffer project, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_DELETE_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_DELETE_PROJECT
+void uniffi_forge_ffi_fn_method_workspace_delete_project(uint64_t ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_ENTRIES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_ENTRIES
+RustBuffer uniffi_forge_ffi_fn_method_workspace_entries(uint64_t ptr, RustBuffer project, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_PROJECT_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_PROJECT_FOLDER
+RustBuffer uniffi_forge_ffi_fn_method_workspace_project_folder(uint64_t ptr, RustBuffer project, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_PROJECTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_PROJECTS
+RustBuffer uniffi_forge_ffi_fn_method_workspace_projects(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_READ_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_READ_TEXT
+RustBuffer uniffi_forge_ffi_fn_method_workspace_read_text(uint64_t ptr, RustBuffer project, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_RENAME_ENTRY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_RENAME_ENTRY
+void uniffi_forge_ffi_fn_method_workspace_rename_entry(uint64_t ptr, RustBuffer project, RustBuffer from, RustBuffer to, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_RENAME_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_RENAME_PROJECT
+void uniffi_forge_ffi_fn_method_workspace_rename_project(uint64_t ptr, RustBuffer from, RustBuffer to, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_SAVE_STATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_SAVE_STATE
+void uniffi_forge_ffi_fn_method_workspace_save_state(uint64_t ptr, RustBuffer project, RustBuffer state, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_STATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_STATE
+RustBuffer uniffi_forge_ffi_fn_method_workspace_state(uint64_t ptr, RustBuffer project, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_WRITE_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_WRITE_TEXT
+void uniffi_forge_ffi_fn_method_workspace_write_text(uint64_t ptr, RustBuffer project, RustBuffer path, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_AI_LAB_EXPERIMENTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_AI_LAB_EXPERIMENTS
 RustBuffer uniffi_forge_ffi_fn_func_ai_lab_experiments(RustCallStatus *_Nonnull out_status
@@ -1380,6 +1465,16 @@ void uniffi_forge_ffi_fn_func_crash_test_rust_panic(RustCallStatus *_Nonnull out
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PROJECT_ARTIFACTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PROJECT_ARTIFACTS
 RustBuffer uniffi_forge_ffi_fn_func_project_artifacts(RustBuffer project, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_CONSOLE_SCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_CONSOLE_SCRIPT
+RustBuffer uniffi_forge_ffi_fn_func_python_lab_console_script(RustBuffer project, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_FILE_SCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_FILE_SCRIPT
+RustBuffer uniffi_forge_ffi_fn_func_python_lab_file_script(RustBuffer project, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_OUTPUT
@@ -1470,6 +1565,11 @@ void uniffi_forge_ffi_fn_func_install_native_motion(uint64_t sensors, RustCallSt
 void uniffi_forge_ffi_fn_func_install_native_transfers(uint64_t session, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_HIGHLIGHT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_HIGHLIGHT
+RustBuffer uniffi_forge_ffi_fn_func_python_highlight(RustBuffer source, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CANCEL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CANCEL
 void uniffi_forge_ffi_fn_func_transfer_test_cancel(RustBuffer id, RustCallStatus *_Nonnull out_status
@@ -1501,6 +1601,11 @@ RustBuffer uniffi_forge_ffi_fn_func_transfer_test_rows(RustCallStatus *_Nonnull 
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_START
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_START
 RustBuffer uniffi_forge_ffi_fn_func_transfer_test_start(uint32_t megabytes, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_WORKSPACE_MOVE_PROJECTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_WORKSPACE_MOVE_PROJECTS
+int8_t uniffi_forge_ffi_fn_func_workspace_move_projects(RustBuffer old, RustBuffer new, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUSTBUFFER_ALLOC
@@ -1781,6 +1886,18 @@ uint16_t uniffi_forge_ffi_checksum_func_project_artifacts(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_CONSOLE_SCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_CONSOLE_SCRIPT
+uint16_t uniffi_forge_ffi_checksum_func_python_lab_console_script(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_FILE_SCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_FILE_SCRIPT
+uint16_t uniffi_forge_ffi_checksum_func_python_lab_file_script(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_OUTPUT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_OUTPUT
 uint16_t uniffi_forge_ffi_checksum_func_python_lab_output(void
@@ -1883,6 +2000,12 @@ uint16_t uniffi_forge_ffi_checksum_func_install_native_transfers(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_HIGHLIGHT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_HIGHLIGHT
+uint16_t uniffi_forge_ffi_checksum_func_python_highlight(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_CANCEL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_CANCEL
 uint16_t uniffi_forge_ffi_checksum_func_transfer_test_cancel(void
@@ -1916,6 +2039,12 @@ uint16_t uniffi_forge_ffi_checksum_func_transfer_test_rows(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_START
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_START
 uint16_t uniffi_forge_ffi_checksum_func_transfer_test_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_WORKSPACE_MOVE_PROJECTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_WORKSPACE_MOVE_PROJECTS
+uint16_t uniffi_forge_ffi_checksum_func_workspace_move_projects(void
     
 );
 #endif
@@ -2429,6 +2558,90 @@ uint16_t uniffi_forge_ffi_checksum_method_transfersink_reconcile(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_CREATE_FILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_CREATE_FILE
+uint16_t uniffi_forge_ffi_checksum_method_workspace_create_file(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_CREATE_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_CREATE_FOLDER
+uint16_t uniffi_forge_ffi_checksum_method_workspace_create_folder(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_CREATE_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_CREATE_PROJECT
+uint16_t uniffi_forge_ffi_checksum_method_workspace_create_project(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_DELETE_ENTRY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_DELETE_ENTRY
+uint16_t uniffi_forge_ffi_checksum_method_workspace_delete_entry(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_DELETE_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_DELETE_PROJECT
+uint16_t uniffi_forge_ffi_checksum_method_workspace_delete_project(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_ENTRIES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_ENTRIES
+uint16_t uniffi_forge_ffi_checksum_method_workspace_entries(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_PROJECT_FOLDER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_PROJECT_FOLDER
+uint16_t uniffi_forge_ffi_checksum_method_workspace_project_folder(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_PROJECTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_PROJECTS
+uint16_t uniffi_forge_ffi_checksum_method_workspace_projects(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_READ_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_READ_TEXT
+uint16_t uniffi_forge_ffi_checksum_method_workspace_read_text(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_RENAME_ENTRY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_RENAME_ENTRY
+uint16_t uniffi_forge_ffi_checksum_method_workspace_rename_entry(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_RENAME_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_RENAME_PROJECT
+uint16_t uniffi_forge_ffi_checksum_method_workspace_rename_project(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_SAVE_STATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_SAVE_STATE
+uint16_t uniffi_forge_ffi_checksum_method_workspace_save_state(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_STATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_STATE
+uint16_t uniffi_forge_ffi_checksum_method_workspace_state(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_WRITE_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_WRITE_TEXT
+uint16_t uniffi_forge_ffi_checksum_method_workspace_write_text(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_DEVICELAB_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_DEVICELAB_NEW
 uint16_t uniffi_forge_ffi_checksum_constructor_devicelab_new(void
@@ -2450,6 +2663,12 @@ uint16_t uniffi_forge_ffi_checksum_constructor_ailab_new(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_BONSAIHARNESS_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_BONSAIHARNESS_NEW
 uint16_t uniffi_forge_ffi_checksum_constructor_bonsaiharness_new(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_WORKSPACE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_WORKSPACE_NEW
+uint16_t uniffi_forge_ffi_checksum_constructor_workspace_new(void
     
 );
 #endif
