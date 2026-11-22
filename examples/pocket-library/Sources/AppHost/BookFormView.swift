@@ -202,6 +202,21 @@ struct BookFormView: View {
         }
     }
 
+    /// The text fields in the order they appear, with the name Rust gives each.
+    private static let fieldOrder: [(Field, String)] = [
+        (.title, "title"), (.author, "author"), (.currentPage, "current_page"),
+        (.totalPages, "total_pages"), (.notes, "notes"), (.description, "description"),
+        (.cover, "cover_url"),
+    ]
+
+    /// After a refused save, the keyboard (and VoiceOver) goes to the first
+    /// field on screen with a problem, where its message is shown.
+    private func focusFirstProblem() {
+        if let first = Self.fieldOrder.first(where: { errors[$0.1] != nil }) {
+            focused = first.0
+        }
+    }
+
     private func save() {
         // Text that isn't a number never reaches Rust; say so where it is.
         var local = ForgeFieldErrors()
@@ -212,7 +227,7 @@ struct BookFormView: View {
             }
         }
         errors = local
-        guard local.isEmpty else { return }
+        guard local.isEmpty else { return focusFirstProblem() }
         let input = assembled()
         Task { @MainActor in
             var saved: Book?
@@ -225,6 +240,7 @@ struct BookFormView: View {
                 } catch LibraryError.InvalidFields(let fields) {
                     // Shown under the fields, not as an alert.
                     errors = ForgeFieldErrors(fields)
+                    focusFirstProblem()
                 }
             }
             if let saved {
