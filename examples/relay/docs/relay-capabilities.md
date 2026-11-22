@@ -74,8 +74,9 @@ as for trust and the device list.
 
 1. **Grants, the first capability, Linux** (this PR, with N6's step 2):
    the model above, `relay/web/1`, the CLI, tests over localhost.
-2. **iPhone:** the switch on the device screen, the in-app site viewer,
-   then sharing a folder from the phone. Swift compiled on the laptop.
+2. **iPhone, opening a site** (with step 1, PR #384): the switch on the
+   device screen and the in-app site viewer. Swift compiled on the laptop.
+   Sharing a folder from the phone is N6's step 4, a later PR.
 3. **The real check:** a small page on the laptop opened from the phone
    over Relay only, plus the refusals (no grant, grant taken away,
    revoked device). On Hetzner only with Reuben's go-ahead.

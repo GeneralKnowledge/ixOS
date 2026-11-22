@@ -63,8 +63,8 @@ the host's status answer.
 
 The host chooses what to share: `relay listen --site <folder>`, or
 `relay site <folder | 127.0.0.1:port>` while `relay listen` runs, on a
-computer; **Share as a Site** on the phone. Nothing is shared until the
-person does that, and `relay site --stop` (or stopping Relay) ends it.
+computer; later, **Share as a Site** on the phone (step 4 below, not
+built yet). Nothing is shared until the person does that, and `relay site --stop` (or stopping Relay) ends it.
 One site per device for now.
 
 ## Opening a site
@@ -92,9 +92,10 @@ One site per device for now.
   doesn't speak iroh, and a localhost proxy for Safari would stop whenever
   iOS suspends Relay.
 
-## Hosting on the phone
+## Hosting on the phone (step 4, not built yet)
 
-**Share as a Site** picks a folder (or a single HTML file) with the system
+The phone can open sites now, but can't share one. **Share as a Site**
+will pick a folder (or a single HTML file) with the system
 picker. While Relay is on screen, granted devices can open it; Relay shows
 that it is sharing and who opened what. When Relay leaves the screen the
 endpoint is suspended and the site is gone until Relay is opened again.
@@ -120,6 +121,9 @@ endpoint is suspended and the site is gone until Relay is opened again.
    revoked device, a stopped site, a path that escapes the folder, a
    browser through a local port). Then a real check: a page on the laptop
    reachable only over Relay; on Hetzner only with Reuben's go-ahead.
-3. iPhone: the "Can Open My Site" switch and the in-app viewer, then
-   Share as a Site, compiled with the iOS check; the phone test batched
-   with the others.
+3. iPhone, opening (with step 2, PR #384): the "Can Open My Site" switch
+   and the in-app viewer, compiled with the iOS check; the phone test
+   batched with the others.
+4. iPhone, hosting (a later PR): Share as a Site, above. `share_site`
+   is already in the FFI; what's missing is the folder picker, keeping
+   access to the picked folder, and the "Sharing" state on screen.
