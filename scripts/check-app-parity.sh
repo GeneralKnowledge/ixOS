@@ -869,9 +869,43 @@ def rule_form_toolbar(app):
 # audit). Built by hand it was a symbol on a RoundedRectangle in a raw
 # colour (`.pink`, `tint.gradient`), with its own size and corner, unchecked
 # for contrast in dark mode (ForgeUI 0.2, item 2). Materials and the theme's
-# own colours are surfaces, not tiles, and are left alone.
+# own colours are surfaces, not tiles, and are left alone. Only a background
+# whose modifier chain starts at `Image(systemName:)` counts, so a stack that
+# merely holds a symbol is not flagged.
 TILE_BACKGROUND = re.compile(r"\.background\(\s*([^,()]+(?:\([^()]*\))?[^,()]*),\s*in:\s*RoundedRectangle\b")
 SURFACE = re.compile(r"Material|theme\.|\.quaternary|\.tertiary|\.secondary|\.fill\b")
+
+
+def chain_root(code, dot):
+    """The expression a modifier chain starts from: walks back from the `.`
+    of a modifier over `.name(...)`, `.name { ... }` and `.name` links,
+    skipping balanced brackets, and returns the text from the root onwards."""
+    pairs = {")": "(", "]": "[", "}": "{"}
+    pos = dot
+    while True:
+        while pos > 0 and code[pos - 1].isspace():
+            pos -= 1
+        while pos > 0 and code[pos - 1] in pairs:
+            depth, close, open_ = 0, code[pos - 1], pairs[code[pos - 1]]
+            while pos > 0:
+                pos -= 1
+                if code[pos] == close:
+                    depth += 1
+                elif code[pos] == open_:
+                    depth -= 1
+                    if depth == 0:
+                        break
+            while pos > 0 and code[pos - 1].isspace():
+                pos -= 1
+        while pos > 0 and (code[pos - 1].isalnum() or code[pos - 1] == "_"):
+            pos -= 1
+        back = pos
+        while back > 0 and code[back - 1].isspace():
+            back -= 1
+        if back > 0 and code[back - 1] == ".":
+            pos = back - 1
+            continue
+        return code[pos:dot].lstrip()
 
 
 def rule_icon_tile(app):
@@ -882,8 +916,7 @@ def rule_icon_tile(app):
         for m in TILE_BACKGROUND.finditer(code):
             if SURFACE.search(m.group(1)):
                 continue
-            before = code[: m.start()].splitlines()[-6:]
-            if any("Image(systemName:" in line for line in before):
+            if chain_root(code, m.start()).startswith("Image(systemName:"):
                 bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
     if bad:
         return False, "draws an icon tile by hand; use ForgeRow's systemImage with a tone or an accent: " + ", ".join(bad)

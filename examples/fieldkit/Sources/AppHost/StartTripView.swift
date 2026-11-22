@@ -8,9 +8,19 @@ struct StartTripView: View {
     /// Called after the trip has started, to show the recording screen.
     var onStarted: () -> Void
 
-    @State private var title = TripFormat.defaultTitle()
+    @State private var title: String
+    /// The suggested name the sheet opened with; only a change from it blocks a swipe.
+    private let openingTitle: String
     @State private var starting = ForgeSubmission()
     @Environment(\.dismiss) private var dismiss
+
+    init(model: TripsModel, onStarted: @escaping () -> Void) {
+        self.model = model
+        self.onStarted = onStarted
+        let suggested = TripFormat.defaultTitle()
+        openingTitle = suggested
+        _title = State(initialValue: suggested)
+    }
 
     private var trimmed: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -29,7 +39,7 @@ struct StartTripView: View {
             #endif
             .forgeFormToolbar(
                 id: "start", confirmTitle: "Start", canConfirm: !trimmed.isEmpty,
-                submission: starting, hasChanges: !trimmed.isEmpty, cancel: { dismiss() }
+                submission: starting, hasChanges: title != openingTitle, cancel: { dismiss() }
             ) { Task { await start() } }
         }
     }

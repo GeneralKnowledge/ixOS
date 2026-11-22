@@ -20,6 +20,9 @@ struct BookFormView: View {
     @State private var currentPage: String
     @State private var totalPages: String
     @State private var coverURL: String
+    /// What the form opened with, so a swipe is blocked only once something changed.
+    private let opening: BookInput
+    private let openingText: [String]
     /// The Save button's work and its failure (ForgeAppKit).
     @State private var saving = ForgeSubmission()
     /// Rust's validation, shown under each field it names.
@@ -41,10 +44,15 @@ struct BookFormView: View {
         case .edit(let book):
             start = BookInput(book)
         }
+        let pageText = start.currentPage == 0 ? "" : String(start.currentPage)
+        let totalText = start.totalPages.map(String.init) ?? ""
+        let coverText = start.coverUrl ?? ""
+        opening = start
+        openingText = [pageText, totalText, coverText]
         _input = State(initialValue: start)
-        _currentPage = State(initialValue: start.currentPage == 0 ? "" : String(start.currentPage))
-        _totalPages = State(initialValue: start.totalPages.map(String.init) ?? "")
-        _coverURL = State(initialValue: start.coverUrl ?? "")
+        _currentPage = State(initialValue: pageText)
+        _totalPages = State(initialValue: totalText)
+        _coverURL = State(initialValue: coverText)
     }
 
     private var isEditing: Bool {
@@ -159,11 +167,11 @@ struct BookFormView: View {
         }
     }
 
+    /// Any field differs from what the form opened with, in either mode. The
+    /// number and cover fields are compared as typed too, so text that isn't
+    /// a number still counts as a change.
     private var hasChanges: Bool {
-        switch mode {
-        case .add: return !input.title.isEmpty || !input.author.isEmpty || !input.notes.isEmpty
-        case .edit(let book): return assembled() != BookInput(book)
-        }
+        input != opening || [currentPage, totalPages, coverURL] != openingText
     }
 
     private func advance() {

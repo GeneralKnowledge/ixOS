@@ -336,6 +336,8 @@ public struct ForgeButton: View {
     }
 
     private func start(_ run: @escaping @MainActor () async -> Void) {
+        // A second tap that lands before the disabled state renders does nothing.
+        guard !running else { return }
         running = true
         Task { @MainActor in
             let spinner = Task { @MainActor in
