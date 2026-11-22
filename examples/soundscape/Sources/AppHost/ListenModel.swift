@@ -105,6 +105,10 @@ public final class ListenModel {
 
     // MARK: The background
 
+    /// How many times the app has come back from the background, for
+    /// screens that start again work the background stopped.
+    public private(set) var resumes = 0
+
     /// Follows the app's phases through `host`, for as long as this model
     /// lives: each return from the background reloads the library, so picks
     /// and stars made on the computer while the phone was away show
@@ -112,6 +116,7 @@ public final class ListenModel {
     public func follow(_ host: ForgeHost<SoundscapeCore>) {
         host.onResume(self) { [weak self] _ in
             guard let self else { return }
+            self.resumes += 1
             Task { await self.loadLibrary() }
         }
     }

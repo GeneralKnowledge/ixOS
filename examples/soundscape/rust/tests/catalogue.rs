@@ -479,11 +479,14 @@ fn artist_and_genre_requests() {
     use jamendo::{tracks_url, Ask};
     let artist = tracks_url(CLIENT, &Ask::Artist("551562".into()));
     assert!(
-        artist.contains("artist_id=551562&order=popularity_total"),
+        artist.contains("artist_id=551562&order=popularity_total&type=single%20albumtrack"),
         "{artist}"
     );
     let genre = tracks_url(CLIENT, &Ask::Genre("jazz".into()));
-    assert!(genre.contains("tags=jazz&order=popularity_week"), "{genre}");
+    assert!(
+        genre.contains("tags=jazz&order=popularity_week&type=single%20albumtrack"),
+        "{genre}"
+    );
     assert_eq!(jamendo::clean_tag(" Jazz ").unwrap(), "jazz");
     assert!(jamendo::clean_tag("jazz&order=x").is_err());
     assert!(jamendo::clean_tag("").is_err());

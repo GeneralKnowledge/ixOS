@@ -507,6 +507,13 @@ struct JamendoTracksView: View {
 
     var body: some View {
         List {
+            if let problem, tracks != nil {
+                Section {
+                    Label(problem, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("jamendoTracks.problem")
+                }
+            }
             if let tracks, !tracks.isEmpty {
                 Section {
                     PlayShuffleButtons(disabled: false) { shuffle in
@@ -529,6 +536,10 @@ struct JamendoTracksView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: attempt) { await load() }
+        .onChange(of: model.resumes) {
+            // A lookup stopped by leaving the app starts again on return.
+            if tracks == nil && problem == nil { attempt += 1 }
+        }
         .refreshable { attempt += 1 }
         .overlay {
             if let problem, tracks == nil {
@@ -538,7 +549,7 @@ struct JamendoTracksView: View {
                 )
             } else if tracks == nil {
                 ForgeStateView.loading("Asking Jamendo")
-            } else if tracks?.isEmpty == true {
+            } else if tracks?.isEmpty == true && problem == nil {
                 ForgeStateView.empty(
                     "Nothing More on Jamendo", systemImage: "music.note",
                     description: "Jamendo has no other songs here right now."

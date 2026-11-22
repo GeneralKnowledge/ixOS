@@ -108,6 +108,9 @@ pub const GENRES: &[(&str, &str)] = &[
     ("relaxation", "Relaxation"),
 ];
 
+/// Jamendo's `type` for singles and album tracks both.
+const BOTH_TYPES: &str = "single%20albumtrack";
+
 /// The longest genre tag accepted.
 const MAX_TAG_CHARS: usize = 32;
 
@@ -178,8 +181,16 @@ pub fn tracks_url(client_id: &str, ask: &Ask) -> String {
                 format!("search={}", encode(&query, false))
             }
         }
-        Ask::Artist(id) => format!("artist_id={}&order=popularity_total", encode(id, false)),
-        Ask::Genre(tag) => format!("tags={}&order=popularity_week", encode(tag, false)),
+        // Singles too, not only album tracks: an artist's other songs may
+        // all be singles.
+        Ask::Artist(id) => format!(
+            "artist_id={}&order=popularity_total&type={BOTH_TYPES}",
+            encode(id, false)
+        ),
+        Ask::Genre(tag) => format!(
+            "tags={}&order=popularity_week&type={BOTH_TYPES}",
+            encode(tag, false)
+        ),
         Ask::Track(id) => format!("id={}", encode(id, false)),
     };
     format!(
