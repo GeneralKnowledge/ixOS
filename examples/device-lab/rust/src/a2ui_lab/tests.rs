@@ -232,6 +232,18 @@ fn gate_refuses_what_the_catalog_cannot_express() {
         (json!([{ "version": "1.0", "updateDataModel": { "surfaceId": surface::SURFACE_ID,
             "path": "/books", "value": [{ "id": "piranesi", "title": "Piranesi", "author": "George Eliot",
                 "priority": ["high"], "start": "2026-12-01", "finish": "2026-12-02" }] } }]).to_string(), "data"),
+        // Anything the ForgeUI adapter doesn't draw: a time picker, a filter
+        // field, a checkbox list, an unknown property, a date picker without
+        // dates.
+        (update(json!([{ "id": "bookStart", "component": "DateTimeInput", "label": "Start",
+            "enableDate": true, "enableTime": true, "value": { "@path": "start" } }])), "unsupported_property"),
+        (update(json!([{ "id": "bookStart", "component": "DateTimeInput", "label": "Start",
+            "value": { "@path": "start" } }])), "unsupported_property"),
+        (update(json!([{ "id": "bookPriority", "component": "ChoicePicker", "label": "Priority",
+            "filterable": true, "options": ["high"], "value": { "@path": "priority" } }])), "unsupported_property"),
+        (update(json!([{ "id": "bookPriority", "component": "ChoicePicker", "label": "Priority",
+            "displayStyle": "checkbox", "options": ["high"], "value": { "@path": "priority" } }])), "unsupported_property"),
+        (update(json!([{ "id": "intro", "component": "Text", "text": "x", "weight": 2 }])), "unsupported_property"),
         // A bad component id.
         (update(json!([{ "id": "../x", "component": "Text", "text": "x" }])), "malformed"),
         // Two components with one id.

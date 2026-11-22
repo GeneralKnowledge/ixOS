@@ -195,17 +195,17 @@ Three rules follow:
 
 ### Where A2UI-1 stands against this
 
-| Component | Drawn by today (#377) | Adapter target |
+| Component | A2UI-1 (#377) | A2UI-1b |
 |---|---|---|
-| Text | ForgeUI type roles (`.forge(.body)`, `.metadata`) | Done |
-| Card | `ForgeCard` | Done |
-| Button | A2UI's button with a ForgeUI style (accent, radius, 44 pt) | Done (native button styles on ForgeUI tokens are allowed) |
-| Column, Row | A2UI basic catalog stacks | Stacks on ForgeUI spacing tokens |
-| Divider | A2UI basic catalog | Divider in ForgeUI's separator colour |
-| ChoicePicker (priority) | A2UI basic catalog chips | ForgeUI chips (`ForgeBadge` look) with selected state for VoiceOver |
-| DateTimeInput | A2UI basic catalog date field | Native `DatePicker` with ForgeUI labels |
+| Text | ForgeUI type roles (`.forge(.body)`, `.metadata`) | Same |
+| Card | `ForgeCard`, through A2UI's card style hook | `ForgeCard`, drawn by the adapter |
+| Button | A2UI's button with a ForgeUI style | A native button on ForgeUI's accent, radius and 44 pt height (native button styles on ForgeUI tokens are allowed) |
+| Column, Row | A2UI basic catalog stacks | Stacks on ForgeUI spacing; a row that doesn't fit across stacks instead of clipping |
+| Divider | A2UI basic catalog | A hairline in ForgeUI's separator colour |
+| ChoicePicker (priority) | A2UI basic catalog chips | ForgeUI chips on the accent tone, ticked when selected, with the selected trait for VoiceOver |
+| DateTimeInput | A2UI basic catalog date field | Native `DatePicker` with a ForgeUI label, tinted with the accent; dates only |
 
-So three of the eight lab components resolve to ForgeUI and five still show A2UI's basic look. That is fine for the protocol questions A2UI-1 answers (build, gate, confirmation, logs). The next step, **A2UI-1b: ForgeUI adapter**, draws the remaining five through ForgeUI after the phone check passes, keeps the same gate and tests, and checks whether `BasicCatalogSwiftUI` can then be dropped from Device Lab's dependencies. ForgeUI itself doesn't change.
+A2UI-1 answered the protocol questions (build, gate, confirmation, logs) with three of the eight drawn through ForgeUI. **A2UI-1b** (`A2uiForgeCatalog.swift`) draws all eight through the adapter, so Device Lab no longer depends on `BasicCatalogSwiftUI` at all: `BasicCatalog` supplies only the v1.0 component definitions the renderer validates against. Rust's gate now also refuses any property the adapter doesn't draw (`unsupported_property`: a time picker, a filter field, a checkbox list, an unknown property), so an agent can't ask for a look the adapter lacks. ForgeUI itself doesn't change. The review sheet labels a book with no saved plan "New plan" rather than counting it as a change (phone check finding, step 2).
 
 **Longer term**, an adapter shared through ForgeKit (after a second app, per the apps-first rule) would give every ixOS app the same kind of agent-composed surface, a reading plan in Commonplace, a task flow in Checklist, a queue in Soundscape, while each still looks and behaves like an ixOS app.
 
@@ -217,15 +217,15 @@ Device Lab, Tools → **A2UI Lab**. Rust in `examples/device-lab/rust/src/a2ui_l
 |---|---|---|
 | Typed proposal | `plan.rs` | `Proposal` holds book ids, priorities and dates only (no titles, no interface). Checked: known books, no repeats, 1 to 12 books, real dates, finish not before start, at most a year. A2UI-1's proposal and the agent's revision are fixed JSON, standing in for a model |
 | Messages | `surface.rs` | The same fixed tree every time: a book card template (title, author, priority chips, start and finish dates) and one Review button. The proposal only changes data |
-| Gate | `gate.rs` | Every agent-to-renderer payload, before Swift sees it: A2UI 1.0 only, the lab's surface and catalog, the eight components, no `@call` / `functionCall` / `callRendererFunction` / `deleteSurface` / `@catalogId`, the one registered event from the one registered button with exactly its context and no `userMessage`, no change to an existing component's action, after creation no redrawing of any component but the intro text (so an update can't relabel the Review button), data only at `/books` holding known books with their own titles and authors. All or nothing: a refused payload changes nothing |
-| Rendering | `A2uiLabSurface.swift` | `MessageProcessor` with `ValidationConfig.strict` and a catalog derived from A2UI's v1.0 basic catalog: Column, Row, Card, Divider, Button, DateTimeInput, ChoicePicker, and a ForgeUI Text; no functions at all. Cards are `ForgeCard`s and buttons use ForgeUI's theme through A2UI's style hooks |
+| Gate | `gate.rs` | Every agent-to-renderer payload, before Swift sees it: A2UI 1.0 only, the lab's surface and catalog, the eight components, no `@call` / `functionCall` / `callRendererFunction` / `deleteSurface` / `@catalogId`, only the properties the ForgeUI adapter draws (dates only, chips only; since A2UI-1b), the one registered event from the one registered button with exactly its context and no `userMessage`, no change to an existing component's action, after creation no redrawing of any component but the intro text (so an update can't relabel the Review button), data only at `/books` holding known books with their own titles and authors. All or nothing: a refused payload changes nothing |
+| Rendering | `A2uiLabSurface.swift`, `A2uiForgeCatalog.swift` | `MessageProcessor` with `ValidationConfig.strict` and the lab's catalog of eight v1.0 components (Text, Column, Row, Card, Divider, Button, DateTimeInput, ChoicePicker), every one drawn by the ForgeUI adapter (since A2UI-1b); no functions at all |
 | Review | `A2uiLab::review` | The Review button's event comes back through the renderer's outbound listener. Rust checks the event name and source, the edited plan (same books as the proposal, one priority each, valid dates), and derives the change set from **its own books**: titles and authors from the library, plans from Rust's check, "Replaces" from what was saved |
 | Confirm | `A2uiReviewSheet` | App-owned sheet, outside the surface, showing only Rust's change set. Every review gets its own revision, and `confirm(revision)` applies only that review's change set, and only if nothing changed since: an agent update or an edit on the surface drops the reviewed change set, and Confirm then refuses and asks for a new review. It writes a stand-in library only |
 | Logs | `mod.rs` | Codes and counts only (`refused: action_changed`, `reviewed: 4 changes`); never a payload, a title or a date |
 
 Tests (Linux, `cargo test --manifest-path examples/device-lab/rust/Cargo.toml --lib a2ui_lab`, 16 tests): every hostile payload refused with the right code and nothing changed; the lab's own surface passes its gate with eight component types and exactly one action; titles in the change set come from the library even when the surface's data says otherwise; an update or an edit after review makes Confirm refuse; Confirm needs a review and applies once.
 
-**Wider than the proposed scope.** The proposal said `A2UISwiftCore` + `A2UISwiftUI` only. The lab also depends on `BasicCatalog` and `BasicCatalogSwiftUI` (the same package, the same official renderer), because the eight components are *derived* from A2UI's own v1.0 basic catalog rather than reimplemented, which is what "use the official renderer, not a home-grown replacement" asked for. Text, Card and Button are drawn through ForgeUI; the other five still use the basic catalog's views, which is acceptable for the spike only (see [A2UI and ForgeUI](#a2ui-and-forgeui-reuben-2026-11-22)). The build numbers below measure this wider graph.
+**Wider than the proposed scope.** The proposal said `A2UISwiftCore` + `A2UISwiftUI` only. The lab also depends on `BasicCatalog` and `BasicCatalogSwiftUI` (the same package, the same official renderer), because the eight components are *derived* from A2UI's own v1.0 basic catalog rather than reimplemented, which is what "use the official renderer, not a home-grown replacement" asked for. In A2UI-1, Text, Card and Button were drawn through ForgeUI and the other five used the basic catalog's views; A2UI-1b draws all eight through ForgeUI and drops `BasicCatalogSwiftUI` (see [A2UI and ForgeUI](#a2ui-and-forgeui-reuben-2026-11-22)). The build numbers below measure A2UI-1's wider graph.
 
 The rule that only Device Lab may use A2UI is checked: `scripts/check-boundaries.sh` fails on any third-party Swift package outside its allowlist, which holds A2UI in `examples/device-lab/Package.swift` only.
 
