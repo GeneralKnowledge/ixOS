@@ -67,10 +67,16 @@ but on Relay's model:
   on its command line). You enter it under Chats → Join a Room, and it
   pairs you with the host like a device pairing, with the room's own
   rights. No URL is typed. The Settings form "Join a Chat Server" goes.
+  The code is four words, works once and lasts ten minutes; the host keeps
+  only its SHA-256 and limits wrong guesses. The phone finds the host
+  without an address: it tries the code with the hosts it already knows,
+  its trusted devices that offer rooms and the rooms entry in Relay's
+  servers.
 - **Same features.** The repo behind Chats keeps its interface
   (`chat_core::ChatRepo`). Only its transport changes, from HTTP and SSE
-  to request/response and an event stream over `relay/room/1`. Read
-  cursors, edits, reactions, attachments and search all stay.
+  to request/response and an event stream over `relay/room/1`: each
+  iroh stream carries the same HTTP/1.1 API as before, so read cursors,
+  edits, reactions, attachments and search all stay unchanged.
 - **What the host can see** is said plainly, as for N2's servers: "The
   room's host passes on and keeps its messages. They're encrypted on the
   way, but the host can read them." End-to-end encrypted rooms, where the
@@ -83,14 +89,17 @@ but on Relay's model:
 - The chat server listens on iroh only by default. `--http` keeps the old
   API for tests, `curl` and the frozen Android example, bound to
   localhost unless asked otherwise.
-- **Moving an existing account.** The order matters, because moving
-  needs the old HTTP path once:
+- **Moving an existing account.** The order matters, so the app keeps
+  working at every step:
   1. Upgrade the server, and keep running it with `--http` on the
      address the phone already uses (for the laptop,
      `--http 0.0.0.0:8787`).
-  2. The new app signs in over HTTP one last time with its token,
-     registers its endpoint key with the account, and deletes the token.
-     Your rooms, messages and read state stay, on the server.
+  2. The new app moves its account once: over `relay/room/1`, with its
+     old token (`POST /accounts/claim`), so the token is never sent in the
+     clear again. The account becomes the device's key, the token is
+     deleted on the server and in the Keychain, and your rooms, messages
+     and read state stay, on the server. The HTTP listener from step 1 is
+     only for older apps until then.
   3. `chat-server accounts` on the server lists any account still on a
      token. Once none are left, restart it without `--http`.
 - **If the server is lost.** The phone keeps its own SQLite copy of each

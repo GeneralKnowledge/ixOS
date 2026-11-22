@@ -10,7 +10,8 @@ members = ["chat-core", "chat-server", "chat-cli"]
 [workspace.package]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.89"
+# iroh 1.x (chat-server's relay/room/1) needs 1.91.
+rust-version = "1.91"
 
 [workspace.dependencies]
 forge-net = { path = "../../../crates/forge-net" }

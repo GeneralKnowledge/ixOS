@@ -580,10 +580,14 @@ dependencies = [
  "axum",
  "futures-util",
  "getrandom 0.4.3",
+ "hyper",
+ "hyper-util",
+ "iroh",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "tower",
 ]
 
 [[package]]
