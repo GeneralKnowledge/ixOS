@@ -11,6 +11,10 @@ pub struct ChatAccount {
     pub display_name: String,
     /// The chat server this account lives on.
     pub server_url: String,
+    /// Its rooms come over Relay's encrypted connection, and the account
+    /// is this device's key there (N4); false on the old HTTP API.
+    #[uniffi(default = false)]
+    pub on_relay: bool,
 }
 
 /// One conversation as the list shows it.

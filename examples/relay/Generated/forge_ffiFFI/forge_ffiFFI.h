@@ -877,6 +877,11 @@ RustBuffer uniffi_relay_core_fn_method_chatcore_events(uint64_t ptr, RustCallSta
 uint64_t uniffi_relay_core_fn_method_chatcore_fetch_attachment(uint64_t ptr, RustBuffer attachment_id
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_JOIN_ROOM
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_JOIN_ROOM
+uint64_t uniffi_relay_core_fn_method_chatcore_join_room(uint64_t ptr, RustBuffer host, RustBuffer code, RustBuffer display_name
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_LAUNCH_REPORT
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_CHATCORE_LAUNCH_REPORT
 RustBuffer uniffi_relay_core_fn_method_chatcore_launch_report(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -2384,6 +2389,12 @@ uint16_t uniffi_relay_core_checksum_method_chatcore_events(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_FETCH_ATTACHMENT
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_FETCH_ATTACHMENT
 uint16_t uniffi_relay_core_checksum_method_chatcore_fetch_attachment(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_JOIN_ROOM
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_CHATCORE_JOIN_ROOM
+uint16_t uniffi_relay_core_checksum_method_chatcore_join_room(void
     
 );
 #endif
