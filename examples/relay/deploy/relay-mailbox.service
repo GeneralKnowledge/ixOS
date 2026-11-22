@@ -1,0 +1,39 @@
+# Relay's encrypted mailbox (N3, examples/relay/docs/relay-mailbox.md),
+# on Relay's own server next to iroh-relay and the lookup server.
+#
+# Install (see "Running it" in relay-mailbox.md):
+#   install -m 755 relay-mailbox /usr/local/bin/relay-mailbox
+#   install -m 644 relay-mailbox.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now relay-mailbox
+#   journalctl -u relay-mailbox | grep -m1 'endpoint id'
+#
+# It needs no Caddy route: devices dial it by key over iroh, directly on
+# UDP 7850 or through the relay. Its key (device.key) and the sealed
+# items live in /var/lib/relay-mailbox; keep the key, because devices
+# know the mailbox by it.
+
+[Unit]
+Description=Relay mailbox (sealed items for closed devices)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/relay-mailbox --data /var/lib/relay-mailbox --port 7850 --relay https://relay.avedeus.ovh --lookup https://lookup.avedeus.ovh/pkarr
+DynamicUser=yes
+StateDirectory=relay-mailbox
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
