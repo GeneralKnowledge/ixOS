@@ -580,7 +580,11 @@ impl PlanView {
                         }
                         Decision::Replan { .. } => {}
                         Decision::Blocked { question } => {
-                            view.blocked = Some((plan_task.clone(), question.clone()))
+                            view.blocked = Some((plan_task.clone(), question.clone()));
+                            // Blocked from the decision itself, so a status
+                            // write that failed after it still asks.
+                            view.state = PlanState::Blocked;
+                            view.reason = Some(question.clone());
                         }
                     }
                 }

@@ -1997,6 +1997,12 @@ fn an_answer_saved_before_the_app_closed_lets_the_plan_go_on() {
     let view = plan::PlanView::read(&entries).unwrap();
     assert!(view.started);
     assert!(!view.can_continue());
+    // Without the Blocked status (its write failed) it still asks.
+    let decided = &entries[..entries.len() - 1];
+    let view = plan::PlanView::read(decided).unwrap();
+    assert_eq!(view.state, PlanState::Blocked);
+    assert!(view.state.needs_answer() && view.blocked.is_some());
+    assert!(!view.can_continue());
     entries.push(Entry::PersonAnswer {
         plan: "plan-1".into(),
         plan_task: first,
