@@ -1388,11 +1388,12 @@ impl ChatCore {
             // The staged copy stays in the temporary folder (the system
             // clears it): when Relay couldn't keep its own copy, the
             // conversation opens the file from there.
-            let before = sent_files(&relay, &endpoint_id);
+            let kept = std::sync::atomic::AtomicBool::new(false);
             let result = relay
-                .send_to_device(
+                .send_to_device_kept(
                     endpoint_id.clone(),
                     vec![path.to_string_lossy().into_owned()],
+                    &kept,
                 )
                 .await;
             if let Err(e) = result {
@@ -1403,7 +1404,7 @@ impl ChatCore {
                 // so the screen keeps it all. Otherwise files are in the
                 // conversation, and sending them again would repeat them:
                 // the screen lets the message go.
-                let kept = sent_files(&relay, &endpoint_id) > before;
+                let kept = kept.load(std::sync::atomic::Ordering::SeqCst);
                 return Err(if sent == 0 && !kept {
                     ChatError::Storage {
                         reason: e.to_string(),
@@ -1459,18 +1460,4 @@ fn named_copy(
         return Err(e);
     }
     Ok(Some((dir, to)))
-}
-
-/// How many messages with files this device has in `endpoint_id`'s
-/// conversation: a failed send that added one kept its message.
-fn sent_files(relay: &crate::RelayCore, endpoint_id: &str) -> usize {
-    relay
-        .device_messages(endpoint_id)
-        .map(|messages| {
-            messages
-                .iter()
-                .filter(|m| m.author_id == crate::device_chat::ME && !m.attachments.is_empty())
-                .count()
-        })
-        .unwrap_or(0)
 }

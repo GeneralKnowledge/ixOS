@@ -379,7 +379,7 @@ impl RelayCore {
         item: SavedItem,
         payload: Payload,
     ) -> Result<Transfer, RelayError> {
-        self.queue_with(id, to, item, payload, None).await
+        self.queue_with(id, to, item, payload, None, None).await
     }
 
     /// [`queue`](Self::queue), with `message` (and where its attachment
@@ -391,6 +391,7 @@ impl RelayCore {
         item: SavedItem,
         payload: Payload,
         message: Option<(chat_core::Message, Option<std::path::PathBuf>)>,
+        kept: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<Transfer, RelayError> {
         let (tx, rx) = oneshot::channel();
         let waiters = Arc::clone(&self.outbox.waiters);
@@ -410,6 +411,9 @@ impl RelayCore {
                 })
             })
             .await?;
+        if let Some(kept) = kept {
+            kept.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
         self.wake(&to);
         rx.await.unwrap_or(Ok(()))?;
         self.transfers()
