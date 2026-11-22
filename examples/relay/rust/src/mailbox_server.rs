@@ -844,8 +844,8 @@ async fn receive(recv: &mut RecvStream, path: &Path, len: u64) -> Result<(), Rel
     let mut left = len;
     let mut buf = vec![0u8; 64 * 1024];
     while left > 0 {
-        let n = left.min(buf.len() as u64) as usize;
-        tokio::time::timeout(IDLE, recv.read_exact(&mut buf[..n]))
+        let want = left.min(buf.len() as u64) as usize;
+        let n = tokio::time::timeout(IDLE, read_some(recv, &mut buf[..want]))
             .await
             .map_err(|_| connection("the depositor stopped sending"))?
             .map_err(connection)?;
@@ -886,10 +886,23 @@ async fn stream_file(mut file: tokio::fs::File, send: &mut SendStream) -> Result
         if n == 0 {
             return Ok(());
         }
-        tokio::time::timeout(IDLE, send.write_all(&buf[..n]))
-            .await
-            .map_err(|_| connection("the recipient stopped reading"))?
-            .map_err(connection)?;
+        let mut sent = 0;
+        while sent < n {
+            sent +=
+                tokio::time::timeout(IDLE, tokio::io::AsyncWriteExt::write(send, &buf[sent..n]))
+                    .await
+                    .map_err(|_| connection("the recipient stopped reading"))?
+                    .map_err(connection)?;
+        }
+    }
+}
+
+/// Reads whatever has arrived (at least one byte), so the idle timeout
+/// around it measures silence, not the size of the buffer.
+async fn read_some(recv: &mut RecvStream, buf: &mut [u8]) -> std::io::Result<usize> {
+    match tokio::io::AsyncReadExt::read(recv, buf).await? {
+        0 => Err(std::io::ErrorKind::UnexpectedEof.into()),
+        n => Ok(n),
     }
 }
 
@@ -1056,11 +1069,13 @@ impl MailboxClient {
         // Idle time, not the whole transfer, is limited: a large item on a
         // slow link finishes as long as it keeps moving.
         let mut ciphertext = vec![0u8; len as usize];
-        for chunk in ciphertext.chunks_mut(64 * 1024) {
-            tokio::time::timeout(IDLE, recv.read_exact(chunk))
+        let mut got = 0;
+        while got < ciphertext.len() {
+            let n = tokio::time::timeout(IDLE, read_some(&mut recv, &mut ciphertext[got..]))
                 .await
                 .map_err(|_| CallError::Connection("the mailbox stopped sending".into()))?
                 .map_err(connection)?;
+            got += n;
         }
         Ok((
             kind,
