@@ -244,10 +244,17 @@ private struct ContinueCard: View {
         _palette = State(initialValue: .standIn(title: track.title))
     }
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
+        // At the accessibility sizes the words go under the artwork, so
+        // they keep their room.
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 14))
         HStack(spacing: 14) {
             Button(action: open) {
-                HStack(spacing: 14) {
+                layout {
                     Artwork(title: title, url: artworkUrl, size: 72)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(caption.uppercased())
@@ -257,7 +264,7 @@ private struct ContinueCard: View {
                         Text(title)
                             .font(.headline)
                             .foregroundStyle(.white)
-                            .lineLimit(1)
+                            .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                         Text(subtitle)
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.7))
@@ -265,6 +272,7 @@ private struct ContinueCard: View {
                     }
                     Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

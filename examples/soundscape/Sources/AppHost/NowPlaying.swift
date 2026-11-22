@@ -63,6 +63,13 @@ struct NowPlayingView: View {
             }
         }
         .environment(\.colorScheme, .dark)
+        // Everything must fit one screen: the largest sizes stop at
+        // accessibility 2, as the system's own player does.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        // VoiceOver: a two-finger scrub closes the player, a two-finger
+        // double tap plays or pauses.
+        .accessibilityAction(.escape) { dismiss() }
+        .accessibilityAction(.magicTap) { player.toggle() }
         .task(id: player.current?.artworkUrl ?? player.current?.song) {
             guard let current = player.current else { return }
             let found = await ArtworkPaletteLoader.palette(title: current.song, url: current.artworkUrl)

@@ -55,6 +55,8 @@ struct Shelf<Item: Identifiable, Cell: View>: View {
                         NavigationLink(value: seeAll) {
                             Text("See All").font(.subheadline)
                         }
+                        // "See All Recently Played", not five "See All"s.
+                        .accessibilityLabel(Text("See All ") + Text(title))
                         .accessibilityIdentifier("\(identifier).seeAll")
                     }
                 }
@@ -83,6 +85,7 @@ struct ArtworkTile: View {
     var circle = false
     /// On the phone, coming or failed, beside the title.
     var download: DownloadState = .notDownloaded
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: circle ? .center : .leading, spacing: 6) {
@@ -99,14 +102,14 @@ struct ArtworkTile: View {
                     Text(title)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                     DownloadBadge(state: download)
                 }
                 if let subtitle {
                     Text(subtitle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                 }
             }
             .multilineTextAlignment(circle ? .center : .leading)

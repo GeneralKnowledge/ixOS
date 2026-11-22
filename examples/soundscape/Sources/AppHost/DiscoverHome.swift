@@ -148,6 +148,7 @@ private struct FeaturedSong: View {
 
     @State private var palette: ArtworkPalette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     init(track: CatalogueTrack, play: @escaping () -> Void) {
         self.track = track
@@ -156,8 +157,11 @@ private struct FeaturedSong: View {
     }
 
     var body: some View {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 16))
         Button(action: play) {
-            HStack(spacing: 16) {
+            layout {
                 Artwork(title: track.title, url: track.artworkUrl, size: 112)
                     .shadow(color: .black.opacity(0.3), radius: 10, y: 6)
                 VStack(alignment: .leading, spacing: 4) {
@@ -183,6 +187,7 @@ private struct FeaturedSong: View {
                 }
                 Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
             .background {
                 LinearGradient(colors: [palette.top.color, palette.bottom.color],

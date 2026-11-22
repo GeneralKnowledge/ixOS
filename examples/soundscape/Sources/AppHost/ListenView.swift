@@ -96,6 +96,8 @@ struct ListenView: View {
                 set: { model.alert = $0 }
             )) { action in Task { await model.handle(action) } }
             .task(id: model.server) { await model.loadLibrary() }
+            // VoiceOver's two-finger double tap plays or pauses anywhere.
+            .accessibilityAction(.magicTap) { player.toggle() }
             // The radio keeps a few songs queued ahead, and ends when
             // something else plays.
             .task(id: "\(player.current?.trackId ?? "")|\(player.upcoming.count)") {

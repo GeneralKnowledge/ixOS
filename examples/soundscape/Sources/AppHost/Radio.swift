@@ -241,6 +241,9 @@ struct StationTile: View {
             }
             .frame(width: width, height: width * 0.6)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            // A picture with words on it: its size is fixed, so its text
+            // stops growing where it would no longer fit.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             Text(station.subtitle)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)

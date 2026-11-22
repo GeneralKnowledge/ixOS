@@ -211,6 +211,40 @@ Small touches that make Soundscape feel like a finished player, with no change t
 - **Download signs** on album tiles and rows and Listen's song tiles, as song rows already had: downloaded,
   on its way, or failed (an album shows the worst of its songs).
 
+## Album and artist pages (S4)
+
+- **Album:** the artwork large, over a wash of its own colours that fades into the page; the artist (to go
+  to), the album's genre; Play, Shuffle and the artist's station side by side; the songs by number; its
+  length under them; Download; and More by the artist as a shelf. Play Next, Add to Queue and Add to
+  Playlist are on its More menu.
+- **Artist:** their picture and name over its colours; Play, Shuffle and their station; Top Songs (Rust
+  ranks them: most played, then favourites and liked songs, never a disliked one) with Show All; their
+  albums as a shelf; More on Jamendo when their songs came from there.
+
+## Discover as an editorial page (S5)
+
+Before a search, Jamendo's side of Discover is a page of shelves, not a list: Top This Week as a wide card
+in its artwork's colours (it plays the week's list), Popular This Week, Start a Station (genre tiles that
+start nonstop music), New in the person's three genres (Rust ranks Jamendo's genres by the library's
+genres and plays, then Jamendo's own order), Recently Discovered (catalogue songs added lately), and
+Browse by Genre. A search, and the Internet Archive, stay lists.
+
+## Native finish, first pass (S6)
+
+Done without the phone:
+
+- VoiceOver: Magic Tap (two-finger double tap) plays or pauses anywhere; the two-finger scrub closes Now
+  Playing; See All says what it shows ("See All Recently Played").
+- Dynamic Type: at the accessibility sizes the Listen card and Top This Week put their words under the
+  artwork, and tile titles wrap instead of cutting off. Bars of fixed height (the mini-player) stop at
+  XXXL and Now Playing at accessibility 2, as the system player does; station tiles stop at
+  accessibility 1.
+- Calls, Siri and unplugged headphones already pause through ForgeKit's Now Playing helper, and the
+  radio's retries survive the screen changing (Radio owns them).
+
+Needs the phone: VoiceOver reading order on Now Playing and Listen, the largest sizes on every screen,
+and light and dark mode.
+
 ## Milestones
 
 | Step | What | State |
@@ -219,9 +253,9 @@ Small touches that make Soundscape feel like a finished player, with no change t
 | S2 | Four tabs; Listen home; Library tab with Songs, Albums (grid) and Artists screens; Search tab; mini-player accessory | In this PR |
 | S3 | Immersive Now Playing; queue sheet; lyrics in place; scrubber; volume and AirPlay | In this PR |
 | S3.5 | Everyday Polish (above): Save as Playlist, one song menu, mini-player heart, Undo, saved stations, recent searches, download signs | In this PR |
-| S4 | Library: album and artist pages with large artwork, Play / Shuffle, more shelves | Next |
-| S5 | Discover: genre tiles, Popular This Week shelf, artists, Archive collections, recently discovered | Next |
-| S6 | Native finish: Dynamic Type at the largest sizes, VoiceOver order, loading and empty states, interruptions | Next |
+| S4 | Library: album and artist pages (below) | In this PR |
+| S5 | Discover: an editorial page before a search (below) | In this PR |
+| S6 | Native finish, first pass (below); the rest needs the phone | In this PR |
 | R1 | Radio (above): station mixer in Rust, Like and Dislike, Hear Nonstop Music on Listen, continuous queue | In this PR |
 | R2 | Radio: cache songs ahead (downloadable rights only); live open radio (Radio Browser) | Next |
 
@@ -241,3 +275,7 @@ Small touches that make Soundscape feel like a finished player, with no change t
 8. Everyday Polish: in Up Next, swipe a song away and tap Undo, then Save as Playlist; long-press a song in
    Search for the full menu (Start Radio, Go to Artist); heart a radio song from the mini-player; pin a
    station and see it lead the shelf; search, clear Recent.
+9. S4 and S5: open an album and an artist (colours behind, Top Songs, More by); Discover before typing
+   shows Top This Week and the shelves; Start a Station from a genre tile.
+10. S6: with VoiceOver on, two-finger double tap pauses and plays; Now Playing closes with the scrub; at
+    the largest accessibility size, Listen's card and Discover's top card stack their words.

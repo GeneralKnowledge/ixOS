@@ -48,6 +48,8 @@ struct MiniPlayer: View {
         }
         .padding(.leading, inline ? 6 : 10)
         .padding(.trailing, inline ? 8 : 14)
+        // A bar of fixed height, like the tab bar under it.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .modifier(ZoomSource(id: Self.zoomID, namespace: zoom))
     }
 
