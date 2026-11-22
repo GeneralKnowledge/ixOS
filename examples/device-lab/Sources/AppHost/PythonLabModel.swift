@@ -129,6 +129,7 @@ public final class PythonLabModel {
     public private(set) var openFiles: [String] = []
 
     /// At most this many tabs; opening another closes the oldest.
+    // swift-only: tabs are the editor's own; Rust keeps no tab list.
     public static let maxOpenFiles = 8
 
     /// Where Debug pauses in this project (PL2f), kept with the project.
