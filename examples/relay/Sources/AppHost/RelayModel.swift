@@ -834,7 +834,7 @@ public enum RelayFormat {
         case .waiting:
             return "Waiting for \(transfer.peerName)"
         case .inMailbox:
-            return String(localized: "In the Mailbox")
+            return "In the Mailbox"
         case .inProgress(let done):
             let verb = transfer.direction == .sent ? "Sending" : "Receiving"
             if case .file(_, let size, _) = transfer.item, size > 0 {
