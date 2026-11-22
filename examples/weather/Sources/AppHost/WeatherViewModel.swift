@@ -60,6 +60,9 @@ public final class WeatherViewModel {
     public var selection: String = WeatherPage.myLocationID
     /// Why "My Location" did not work.
     public private(set) var locationMessage: String?
+    /// The person has turned location off for Weather. Asking again does
+    /// nothing after a denial, so the screen offers Settings instead.
+    public private(set) var locationDenied = false
 
     public private(set) var searchResults: [Place] = []
     public private(set) var isSearching = false
@@ -210,6 +213,7 @@ public final class WeatherViewModel {
     @discardableResult
     public func useCurrentLocation() -> Task<Void, Never> {
         locationMessage = nil
+        locationDenied = false
         update(WeatherPage.myLocationID) { $0.isRefreshing = true }
         let location = self.location
         return Task {
@@ -236,6 +240,7 @@ public final class WeatherViewModel {
                 let message = (error as? LocationError)?.userMessage
                     ?? LocationError.unavailable(detail: "\(error)").userMessage
                 locationMessage = message
+                locationDenied = Self.isDenial(error)
                 update(WeatherPage.myLocationID) { page in
                     if refreshTasks[page.id] == nil { page.isRefreshing = false }
                 }
@@ -243,6 +248,13 @@ public final class WeatherViewModel {
                 // above it (`notice(for:)`), and its forecast kept current.
                 refreshIfStale(WeatherPage.myLocationID)
             }
+        }
+    }
+
+    private static func isDenial(_ error: Error) -> Bool {
+        switch error {
+        case LocationError.denied, WeatherClientError.location(.denied): return true
+        default: return false
         }
     }
 

@@ -1040,12 +1040,14 @@ private struct EmptyPage: View {
     var body: some View {
         Group {
             if page.isMyLocation {
-                // Found nowhere yet (no permission, no fix) or the forecast
-                // failed: either way, asking for the location again is the
-                // way forward.
-                let useLocation = ForgeStateAction("Use My Location", identifier: "forecast.useLocation") {
-                    model.useCurrentLocation()
-                }
+                // Found nowhere yet (no fix) or the forecast failed: asking
+                // for the location again is the way forward. After a denial
+                // iOS won't ask again, so Settings is.
+                let useLocation = model.locationDenied
+                    ? ForgeStateAction.openSettings(identifier: "forecast.openSettings")
+                    : ForgeStateAction("Use My Location", identifier: "forecast.useLocation") {
+                        model.useCurrentLocation()
+                    }
                 if page.errorMessage != nil {
                     ForgeStateView.failed("Weather where you are", message: message, retry: useLocation, secondary: search)
                 } else {

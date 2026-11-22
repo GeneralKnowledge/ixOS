@@ -268,6 +268,14 @@ ForgeStateView.empty("No Books Yet", systemImage: "books.vertical",
 ForgeStateView.empty("Summaries Unavailable", systemImage: "sparkles", message: info.unavailableReason)
 ```
 
+When a permission the person turned off is why the state is showing, the way out is Settings, because iOS never asks again after a denial. `.openSettings(identifier:)` is that action ("Open Settings", opening the app's page in Settings); keep the app's other way forward as the second action:
+
+```swift
+ForgeStateView.failed("Weather where you are", message: message,
+                      retry: .openSettings(identifier: "forecast.openSettings"),
+                      secondary: search)
+```
+
 The `state-views` parity rule keeps apps that use ForgeUI off `ContentUnavailableView` itself.
 
 ### Bars over content

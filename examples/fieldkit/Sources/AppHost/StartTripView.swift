@@ -50,6 +50,12 @@ struct StartTripView: View {
             Label(
                 "Location is off for FieldKit, so the track won't record. Turn it on in Settings.",
                 systemImage: "location.slash")
+            #if os(iOS)
+                // iOS won't ask again after a denial, so Settings is the only
+                // way to turn it back on. The sheet re-checks on return.
+                Button("Open Settings") { ForgePermissions.openSettings() }
+                    .accessibilityIdentifier("start.openSettings")
+            #endif
         case .notDetermined:
             Label("FieldKit asks for your location when you start.", systemImage: "location")
         default:
