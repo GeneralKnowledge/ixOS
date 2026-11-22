@@ -97,7 +97,7 @@ private struct LiveCode: View {
         ScrollViewReader { proxy in
             ScrollView([.vertical, .horizontal]) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(numbered)
+                    numbered
                         .font(.system(.caption, design: .monospaced))
                         .fixedSize(horizontal: true, vertical: false)
                         .textSelection(.enabled)
