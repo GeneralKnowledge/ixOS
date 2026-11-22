@@ -84,6 +84,44 @@ public final class UrduModel {
         await run { try await self.core.seen(phraseIds: ids) }
     }
 
+    // MARK: Free chat
+
+    /// The people you can chat with.
+    public func characters() -> [CharacterView] { core.characters() }
+
+    /// Starts a new chat with a character; nil (and an alert) if it
+    /// couldn't start.
+    public func chatStart(_ characterId: String) async -> ChatView? {
+        await chatRun {
+            try await self.core.chatStart(characterId: characterId, seed: UInt64.random(in: 0...UInt64.max))
+        }
+    }
+
+    /// Says something in the chat. `model` is the phone's model, which may
+    /// work out which of your lines you meant; Rust decides everything else.
+    public func chatSay(_ text: String, model: AiModel?) async -> ChatView? {
+        await chatRun { try await self.core.chatSay(text: text, model: model) }
+    }
+
+    /// Picks a line from the help.
+    public func chatPick(_ phraseId: String) async -> ChatView? {
+        await chatRun { try await self.core.chatPick(phraseId: phraseId) }
+    }
+
+    /// Ends the chat; what you typed in it is forgotten.
+    public func chatEnd() { core.chatEnd() }
+
+    private func chatRun(_ work: () async throws -> ChatView) async -> ChatView? {
+        do {
+            let view = try await work()
+            reload()
+            return view
+        } catch {
+            errorMessage = Self.describe(error)
+            return nil
+        }
+    }
+
     public func setName(_ name: String) async {
         await run { try await self.core.setName(name: name) }
     }

@@ -73,6 +73,8 @@ struct HomeScreen: View {
     let model: UrduModel
     @Environment(\.forgeTheme) private var theme
 
+    private var characters: [CharacterView] { model.characters() }
+
     var body: some View {
         let home = model.home
         List {
@@ -89,6 +91,23 @@ struct HomeScreen: View {
 
             Section("Next") {
                 suggestion(home.suggestion)
+            }
+
+            Section {
+                ForEach(characters, id: \.id) { character in
+                    NavigationLink(value: Route.chat(character.id)) {
+                        ForgeRow(
+                            "Chat with \(character.name)",
+                            subtitle: character.description,
+                            systemImage: "text.bubble"
+                        )
+                    }
+                    .accessibilityIdentifier("home.chat.\(character.id)")
+                }
+            } header: {
+                Text("Just chat")
+            } footer: {
+                Text("Say anything, in Urdu or English. They answer with lines from the conversations, so it goes somewhere new every time.")
             }
 
             ForEach(Self.levels, id: \.difficulty) { level in

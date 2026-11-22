@@ -8,8 +8,10 @@
 //!   reviewed, field-tested).
 //! - **The learning engine is the source of progress truth**: [`schedule`],
 //!   four skills per phrase and a deterministic review schedule.
-//! - **Conversation variety** (Ali, Ayesha and Omar talking freely) comes
-//!   later, from an AI that may use the curriculum but never adds to it.
+//! - **Conversation variety** is free chat ([`chat`]): Ali, Ayesha, Omar
+//!   and Khala answer whatever you say, in lines from the curriculum only.
+//!   The phone's model may say which of your lines you meant; it never
+//!   writes Urdu and never adds to the curriculum.
 //!
 //! This file is the API the SwiftUI app calls, on the application runtime
 //! (`forge_app`): recording an attempt is a command that saves before it
@@ -18,11 +20,12 @@
 //! men and women.
 
 pub mod answer;
+pub mod chat;
 pub mod content;
 pub mod schedule;
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use forge_app::{DataDirectory, Document, ErrorKind, Published, Runtime};
 use serde::{Deserialize, Serialize};
@@ -36,6 +39,11 @@ pub use schedule::{Outcome, Skill, Skills};
 use schedule::{PhraseProgress, ReviewEvent, MAX_EVENTS};
 
 uniffi::setup_scaffolding!();
+
+// Forge AI: the phone's on-device model, which free chat asks which of your
+// lines you meant (`native::ai::AiModel`; Swift passes `ForgeAppleModel`).
+forge_services::native_services!(ai);
+use native::ai::{AiModel, HostModel};
 
 /// Version of `progress.json`. Bump it (and migrate) when [`Saved`] changes
 /// shape.
@@ -289,6 +297,48 @@ pub struct ListeningItem {
     pub answer: u32,
     /// Whose voice says it: rounds alternate, so you hear men and women.
     pub voice: Gender,
+}
+
+// MARK: Free chat
+
+/// How what you said in a chat was understood.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChatHeard {
+    /// You said the line.
+    Said,
+    /// Nearly: a letter or two out.
+    Nearly,
+    /// You meant it (in English or other words): this is how to say it.
+    Meant,
+    /// You picked it from the help.
+    Picked,
+    /// They didn't catch it.
+    Missed,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ChatLine {
+    pub speaker: TurnSpeaker,
+    /// Their line; or yours, as said or as you could have said it. None
+    /// when they didn't catch what you said.
+    pub phrase: Option<PhraseView>,
+    /// What you typed.
+    pub typed: Option<String>,
+    /// For your lines.
+    pub heard: Option<ChatHeard>,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct ChatView {
+    pub character: CharacterView,
+    pub lines: Vec<ChatLine>,
+    /// Your lines that would fit now: the help.
+    pub suggestions: Vec<PhraseView>,
+    /// Why the phone's model couldn't help with your last line, for the
+    /// screen.
+    pub note: Option<String>,
+    /// They've run out of things to talk about.
+    pub ended: bool,
 }
 
 // MARK: Errors
@@ -714,6 +764,42 @@ impl Saved {
         answer::check(typed, forms)
     }
 
+    fn chat(&self, now: &ChatNow) -> ChatView {
+        let content = Content::get();
+        let at = forge_runtime::now_ms();
+        let view = |id: &String| self.phrase(content.phrase(id).expect("checked when read"), at);
+        let chat = &now.chat;
+        ChatView {
+            character: character_view(
+                content
+                    .character(&chat.character)
+                    .expect("checked when the chat started"),
+            ),
+            lines: chat
+                .lines
+                .iter()
+                .map(|line| ChatLine {
+                    speaker: match line.who {
+                        Who::Them => TurnSpeaker::Character,
+                        Who::You => TurnSpeaker::You,
+                    },
+                    phrase: line.phrase.as_ref().map(view),
+                    typed: line.typed.clone(),
+                    heard: line.heard.map(|heard| match heard {
+                        chat::Heard::Said => ChatHeard::Said,
+                        chat::Heard::Nearly => ChatHeard::Nearly,
+                        chat::Heard::Meant => ChatHeard::Meant,
+                        chat::Heard::Picked => ChatHeard::Picked,
+                        chat::Heard::Missed => ChatHeard::Missed,
+                    }),
+                })
+                .collect(),
+            suggestions: chat.suggestions().iter().map(view).collect(),
+            note: now.note.clone(),
+            ended: chat.ended,
+        }
+    }
+
     pub fn seen(&mut self, ids: &[String], now_ms: i64) -> Result<(), UrduError> {
         for id in ids {
             Content::get()
@@ -803,6 +889,19 @@ impl State {
 pub struct UrduCore {
     rt: Runtime<State>,
     saved: Arc<Published<Saved>>,
+    /// The chat going on, if any. In memory only: what you type is never
+    /// saved; what you practised is.
+    chat: Arc<Mutex<Option<ChatNow>>>,
+}
+
+/// A chat and the note from your last line.
+struct ChatNow {
+    chat: chat::Chat,
+    note: Option<String>,
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 #[uniffi::export]
@@ -829,6 +928,7 @@ impl UrduCore {
         Ok(Arc::new(Self {
             rt: Runtime::with_directory("urdu-naturally", directory, state),
             saved: published,
+            chat: Arc::new(Mutex::new(None)),
         }))
     }
 
@@ -963,6 +1063,78 @@ impl UrduCore {
             .await
     }
 
+    // MARK: Free chat
+
+    /// Starts a free chat with a character: they open with something to
+    /// talk about. `seed` makes each chat different.
+    pub async fn chat_start(&self, character_id: String, seed: u64) -> Result<ChatView, UrduError> {
+        let chat = chat::Chat::start(&character_id, seed)
+            .ok_or(UrduError::NotFound { id: character_id })?;
+        let theirs = their_lines(&chat, 0);
+        *lock(&self.chat) = Some(ChatNow { chat, note: None });
+        self.chat_record(theirs, None).await
+    }
+
+    /// The chat going on, if any.
+    pub fn chat(&self) -> Option<ChatView> {
+        let now = lock(&self.chat);
+        now.as_ref().map(|now| self.saved.get().chat(now))
+    }
+
+    /// Ends the chat and forgets what you typed in it.
+    pub fn chat_end(&self) {
+        lock(&self.chat).take();
+    }
+
+    /// You say something (in Roman Urdu, English or both) and they answer.
+    /// `model` is the phone's model, which may say which of your lines you
+    /// meant; without one only your lines are understood. Saying one of
+    /// your lines counts as practising it.
+    pub async fn chat_say(
+        &self,
+        text: String,
+        model: Option<Arc<dyn AiModel>>,
+    ) -> Result<ChatView, UrduError> {
+        let text: String = text.trim().chars().take(chat::MAX_TYPED_CHARS).collect();
+        let current = lock(&self.chat)
+            .as_ref()
+            .map(|now| now.chat.clone())
+            .ok_or(UrduError::NotFound { id: "chat".into() })?;
+        if text.is_empty() {
+            return Ok(self.chat().expect("a chat is going on"));
+        }
+        let saved = Arc::clone(&self.saved);
+        let typed = text.clone();
+        let understood = self
+            .rt
+            .run("chat-understand", self.rt.foreground(None), move |cancel| {
+                let cancel = cancel.clone();
+                let model = model.map(HostModel);
+                let saved = saved.get();
+                Ok::<_, UrduError>(
+                    current.understand(
+                        &typed,
+                        |phrase, typed| saved.check(phrase, typed),
+                        model
+                            .as_ref()
+                            .map(|m| m as &dyn forge_services::ai::LanguageModel),
+                        move || cancel.is_cancelled(),
+                    ),
+                )
+            })
+            .await?;
+        self.chat_answer(Some(text), understood).await
+    }
+
+    /// You pick a line from the help, and they answer.
+    pub async fn chat_pick(&self, phrase_id: String) -> Result<ChatView, UrduError> {
+        if !Content::get().is_spoken(&phrase_id) {
+            return Err(UrduError::NotFound { id: phrase_id });
+        }
+        self.chat_answer(None, chat::Understood::picked(&phrase_id))
+            .await
+    }
+
     /// Forgets all progress and attempts (keeps the settings).
     pub async fn start_over(&self) -> Result<(), UrduError> {
         self.rt
@@ -979,6 +1151,69 @@ impl UrduCore {
 
 // events(), set_phase(), phase(), revision() and shutdown(), for ForgeKit.
 forge_app::export_runtime!(UrduCore, rt);
+
+impl UrduCore {
+    async fn chat_answer(
+        &self,
+        typed: Option<String>,
+        understood: chat::Understood,
+    ) -> Result<ChatView, UrduError> {
+        let (theirs, yours) = {
+            let mut now = lock(&self.chat);
+            let now = now
+                .as_mut()
+                .ok_or(UrduError::NotFound { id: "chat".into() })?;
+            let before = now.chat.lines.len() + 1;
+            now.chat.answer(typed, &understood);
+            now.note = understood.note.clone();
+            let yours = understood.phrase.clone().map(|id| (id, understood.heard));
+            (their_lines(&now.chat, before), yours)
+        };
+        self.chat_record(theirs, yours).await
+    }
+
+    /// Saves what a chat turn practised: their lines (and the line you
+    /// meant or picked) count as met; a line you said counts as speaking
+    /// it, on your own or nearly. Then shows the chat as it is now.
+    async fn chat_record(
+        &self,
+        mut seen: Vec<String>,
+        yours: Option<(String, chat::Heard)>,
+    ) -> Result<ChatView, UrduError> {
+        let spoken = match yours {
+            Some((id, chat::Heard::Said)) => Some((id, Outcome::Independent)),
+            Some((id, chat::Heard::Nearly)) => Some((id, Outcome::WithHelp)),
+            Some((id, chat::Heard::Meant | chat::Heard::Picked)) => {
+                seen.push(id);
+                None
+            }
+            Some((_, chat::Heard::Missed)) | None => None,
+        };
+        self.rt
+            .command("chat", move |state| {
+                let now = forge_runtime::now_ms();
+                state.change(|saved| {
+                    saved.seen(&seen, now)?;
+                    if let Some((id, outcome)) = &spoken {
+                        saved.attempt(id, Skill::Speaking, *outcome, None, now)?;
+                    }
+                    Ok(())
+                })
+            })
+            .await?;
+        self.chat().ok_or(UrduError::NotFound { id: "chat".into() })
+    }
+}
+
+/// Their lines from `from` on.
+fn their_lines(chat: &chat::Chat, from: usize) -> Vec<String> {
+    chat.lines
+        .iter()
+        .skip(from)
+        .filter(|l| l.who == Who::Them)
+        .filter_map(|l| l.phrase.clone())
+        .collect()
+}
 
 #[cfg(test)]
 mod tests;

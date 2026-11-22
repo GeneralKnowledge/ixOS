@@ -223,6 +223,11 @@ pub struct CharacterText {
     pub description: String,
     /// 1.0 is the voice's normal pace.
     pub speech_rate: f32,
+    /// Who they talk like (friends, family). In free chat a character also
+    /// says lines from conversations with others in the same circle, and
+    /// nobody else's. Alone in a circle when None.
+    #[serde(default)]
+    pub circle: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]

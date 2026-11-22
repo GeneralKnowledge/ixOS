@@ -1,6 +1,6 @@
 # Urdu, Naturally: the plan
 
-Status: 2026-11-19. 0.1 (milestone M1) is built and runs inside Device Lab; nothing has been tried on a phone yet. Everything after M1 is a plan.
+Status: 2026-11-22. 0.1 (milestone M1) is merged and runs inside Device Lab. M2's first step, free chat with lines from the course, is built and waiting for the phone. Everything after that is a plan.
 
 **Course correction (2026-11-19).** The original ask was to learn a bunch of basic Urdu to say conversational things, not to be boring like Duolingo, and to skip the textbook way. By 2026-11-18 the app had drifted into a curriculum: vocabulary lists first, flashcards, five conversations. Reuben chose a conversation-first redesign: the conversations are the course, words are picked up inside them, the word lists are for looking things up, and free conversation with the characters comes next instead of last.
 
@@ -70,9 +70,19 @@ Four tabs. **Talk** is the front door: the next conversation, then all of them b
 
 Phone check: open the first conversation, take a turn, relaunch, find it counted; listen to both voices in the speech check and note which Urdu voices the phone has.
 
-### M2: Free conversation with Ali, Ayesha and Omar (next)
+### M2: Free conversation with Ali, Ayesha, Omar and Khala (first step built)
 
-What stops it being boring, so it comes next rather than last. Characters hold an unscripted conversation about the same everyday things, using the words you've met and the scripted conversations as their model, never teaching from outside the curriculum. You answer by typing or speaking; when you're stuck, the app gives the line in English and the Urdu you could have said. Five measures per conversation: comprehension (did you follow), response (did you answer), fluency (how quickly), recovery (did you get back on track when lost), naturalness (did you sound like a person). On-device first (Apple's model, already working in Relay, behind a no-AI setting); a server provider only if the phone's model can't hold Urdu. Its Urdu is never marked reviewed.
+What stops it being boring, so it comes next rather than last.
+
+**Step 1, built (2026-11-22): free chat with lines from the course.** Talk has a "Just chat" section: pick someone and say anything, in Roman Urdu or English. They answer with lines from the conversations, chosen by what you said, so a chat can go from your day to food to the match in any order, and never goes the same way twice. The curriculum stays the truth: the characters never say Urdu that a model wrote, because Apple's on-device model can't write Pakistani Urdu reliably, and nothing unchecked reaches you as Urdu.
+
+- **Said it**: what you typed is one of your lines (the same strict check as everywhere else; nearly right only counts for a line that fits there). It counts as speaking that line.
+- **Meant it**: you said it in English or other words. Apple's on-device model, when the phone has Apple Intelligence, picks which of your lines you meant from a numbered list; it answers with a number, never with Urdu. Typing a line's English exactly works without the model. You see "Say it like this" with the Urdu, and that line comes back in Practise the next day.
+- **Didn't catch it**: they wait. Help shows the lines that would fit.
+- Characters speak lines from their own conversations, then from others in their circle (Ali, Ayesha and Omar are friends; Khala is family), never in a form that isn't theirs (a woman never says a man's form). When they run out, they have to go.
+- What you type stays in memory for that chat only; it is never saved, logged or sent anywhere off the phone.
+
+**Step 2, next: wider conversations.** The characters say something new, not only course lines, once that Urdu can be trusted: either a model that writes Pakistani Urdu well enough (checked against the native-speaker review, M3) or lines a reviewer has approved in advance. Five measures per conversation: comprehension (did you follow), response (did you answer), fluency (how quickly), recovery (did you get back on track when lost), naturalness (did you sound like a person). On-device first, behind a no-AI setting; a server provider only if the phone's model can't hold Urdu. Its Urdu is never marked reviewed.
 
 ### M3: Native-speaker review
 
@@ -108,7 +118,8 @@ What you say about yourself (your name, family, work, where you're from, what yo
 ## Privacy
 
 - Everything stays on the phone in 0.1: no account, no server, no analytics.
-- No-AI mode: when characters arrive, a setting keeps everything local and scripted.
+- Free chat uses only the phone's own model (Apple Intelligence), and only to pick which of your lines you meant. What you type is never saved or sent off the phone. Without Apple Intelligence it still works: only your lines (and their English, typed exactly) are understood.
+- No-AI mode: when characters say new things (M2 step 2), a setting keeps everything local and scripted.
 - If a server is added later: API keys only on the server, never in the app; no logging of keys, raw audio or what you said; no public registration until the app is meant for others.
 
 ## Not now
