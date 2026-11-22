@@ -2371,11 +2371,6 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
     func resultCardSurfaceId()  -> String
     
     /**
-     * The paths of `project`'s files, without reading them.
-     */
-    func filePaths(project: String)  -> [String]
-    
-    /**
      * The open project's files.
      */
     func files()  -> [ProjectFile]
@@ -2526,19 +2521,6 @@ open func resultCardSurfaceId() -> String  {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_bonsaiharness_result_card_surface_id(
             self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * The paths of `project`'s files, without reading them.
-     */
-open func filePaths(project: String) -> [String]  {
-    return try!  FfiConverterSequenceString.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_bonsaiharness_file_paths(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(project),uniffiCallStatus
     )
 })
 }
@@ -17710,9 +17692,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_result_card_surface_id() != 43451) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_forge_ffi_checksum_method_bonsaiharness_file_paths() != 4800) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_files() != 57235) {

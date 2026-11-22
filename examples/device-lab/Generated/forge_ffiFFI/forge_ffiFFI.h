@@ -907,11 +907,6 @@ RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_result_card(uint64_t ptr, Ru
 RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_result_card_surface_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_FILE_PATHS
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_FILE_PATHS
-RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_file_paths(uint64_t ptr, RustBuffer project, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_FILES
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_FILES
 RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_files(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -2376,12 +2371,6 @@ uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_result_card(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_RESULT_CARD_SURFACE_ID
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_RESULT_CARD_SURFACE_ID
 uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_result_card_surface_id(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_FILE_PATHS
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_FILE_PATHS
-uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_file_paths(void
     
 );
 #endif
