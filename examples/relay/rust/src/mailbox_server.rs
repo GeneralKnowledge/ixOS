@@ -206,6 +206,8 @@ pub struct MailboxStore {
     dir: PathBuf,
     /// Uploads in progress and their declared bytes (see [`UPLOADS`]).
     uploading: Mutex<(u32, u64)>,
+    /// The directory's lock (see [`MailboxStore::open`]).
+    _hold: std::fs::File,
 }
 
 /// Room held for one upload in progress; given back when dropped.
@@ -247,6 +249,21 @@ impl MailboxStore {
         let storage = |e: forge_storage::StorageError| RelayError::Storage {
             reason: e.to_string(),
         };
+        let io = |e: std::io::Error| RelayError::Storage {
+            reason: e.to_string(),
+        };
+        // One store per directory: a second would clean up the first's
+        // uploads and files. Held until the store is dropped.
+        std::fs::create_dir_all(dir).map_err(io)?;
+        let hold = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(dir.join("mailbox.lock"))
+            .map_err(io)?;
+        hold.try_lock().map_err(|_| RelayError::Storage {
+            reason: format!("another mailbox server is using {}", dir.display()),
+        })?;
         let (db, _) = Database::open(dir.join("mailbox.db"), MIGRATIONS).map_err(storage)?;
         let _ = std::fs::remove_dir_all(dir.join("partial"));
         for sub in ["partial", "items"] {
@@ -258,6 +275,7 @@ impl MailboxStore {
             db: Mutex::new(db),
             dir: dir.to_path_buf(),
             uploading: Mutex::new((0, 0)),
+            _hold: hold,
         };
         store.reconcile();
         Ok(store)
@@ -311,6 +329,9 @@ impl MailboxStore {
                     gone += 1;
                 }
             }
+            // Only an empty directory goes, so later sweeps don't keep
+            // opening the folders of past recipients.
+            let _ = std::fs::remove_dir(owner.path());
         }
         gone
     }
@@ -455,7 +476,14 @@ impl MailboxStore {
     /// have been deregistered, other uploads may have used the room, or the
     /// item may have expired while it arrived). A copy that arrived
     /// meanwhile wins, and this one is deleted.
-    pub(crate) fn keep(&self, item: Admitted, partial: &Path, now: i64) -> Result<bool, Refusal> {
+    /// `now` is read once the index's lock is held, so time spent waiting
+    /// for it counts.
+    pub(crate) fn keep(
+        &self,
+        item: Admitted,
+        partial: &Path,
+        now: impl FnOnce() -> i64,
+    ) -> Result<bool, Refusal> {
         let Admitted {
             owner,
             pass,
@@ -467,6 +495,7 @@ impl MailboxStore {
         let file = Self::item_file(&owner, &header.from, &header.id);
         let path = self.dir.join(&file);
         let mut db = lock(&self.db);
+        let now = now();
         let stored = db.transaction(|tx| {
             if header.expires_ms <= now {
                 return Err(Refusal::Expired);
@@ -782,7 +811,7 @@ impl MailboxServer {
                                 let _ = tokio::fs::remove_file(&partial).await;
                                 return Err(e);
                             }
-                            match self.store.keep(admitted, &partial, now_ms()) {
+                            match self.store.keep(admitted, &partial, now_ms) {
                                 Ok(stored) => Reply::Stored { duplicate: !stored },
                                 Err(r) => Reply::Refused(r),
                             }
@@ -1337,7 +1366,7 @@ mod tests {
         };
         let partial = store.partial();
         std::fs::write(&partial, b"sealed").unwrap();
-        store.keep(admitted, &partial, now)
+        store.keep(admitted, &partial, || now)
     }
 
     fn admit(store: &MailboxStore, pass: &DepositPass, h: Header, len: u64) -> Admitted {
@@ -1355,7 +1384,7 @@ mod tests {
     fn keep(store: &MailboxStore, admitted: Admitted, now: i64) -> Result<bool, Refusal> {
         let partial = store.partial();
         std::fs::write(&partial, b"sealed").unwrap();
-        let kept = store.keep(admitted, &partial, now);
+        let kept = store.keep(admitted, &partial, || now);
         if kept.is_err() {
             assert!(!partial.exists(), "a refused upload leaves no file");
         }
@@ -1451,6 +1480,22 @@ mod tests {
         assert_eq!(store.sweep(now), 0);
         assert!(!stray.exists());
         assert!(second.exists(), "a live item's file stays");
+
+        store.ack(&me(2), &me(1), &[1; 16]).unwrap();
+        store.sweep(now);
+        assert!(
+            !dir.path().join("items").join(hex(&me(2))).exists(),
+            "an empty recipient folder goes"
+        );
+    }
+
+    #[test]
+    fn one_store_per_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MailboxStore::open(dir.path()).unwrap();
+        assert!(MailboxStore::open(dir.path()).is_err());
+        drop(store);
+        assert!(MailboxStore::open(dir.path()).is_ok());
     }
 
     #[test]
@@ -1590,11 +1635,9 @@ mod tests {
         // Expired items are deleted unread.
         assert_eq!(store.sweep(now + SOON + 1), 4 + PER_PASS_HOURLY as usize);
         assert!(store.list(&me(2), now).unwrap().is_empty());
-        assert_eq!(
-            std::fs::read_dir(dir.path().join("items").join(hex(&me(2))))
-                .unwrap()
-                .count(),
-            0
+        assert!(
+            !dir.path().join("items").join(hex(&me(2))).exists(),
+            "its files and then its folder are gone"
         );
     }
 }
