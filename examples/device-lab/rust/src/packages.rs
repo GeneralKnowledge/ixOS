@@ -413,12 +413,18 @@ pub fn package_install_wheel(
         return Err(err);
     }
     // The old version moves aside, not away, until the new one is in place.
-    let backup = site.join(format!(
-        ".replaced-{}-{}",
-        normalize(&package.name),
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&backup);
+    // Always a fresh folder: one left by an earlier attempt that couldn't
+    // put everything back holds files nothing else has.
+    let backup = (0u32..)
+        .map(|n| {
+            site.join(format!(
+                ".replaced-{}-{}-{n}",
+                normalize(&package.name),
+                std::process::id()
+            ))
+        })
+        .find(|path| fs::symlink_metadata(path).is_err())
+        .expect("a free backup name");
     let mut set_aside: Vec<String> = Vec::new();
     let mut placed: Vec<String> = Vec::new();
     let published = (|| {

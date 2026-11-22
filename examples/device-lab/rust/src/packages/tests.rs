@@ -591,3 +591,38 @@ fn an_undone_upgrade_restores_a_folder_the_new_version_dropped() {
     entries.sort();
     assert_eq!(entries, ["assets", "keeper", "keeper-1.0.dist-info"]);
 }
+
+#[test]
+fn an_upgrade_never_reuses_a_kept_backup() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "1.0",
+        &[("keeper/__init__.py", "X = 1\n")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    // As if an earlier attempt couldn't put everything back and kept its
+    // backup under the first name this process would pick.
+    let kept = site.join(format!(".replaced-keeper-{}-0", std::process::id()));
+    fs::create_dir_all(kept.join("keeper")).unwrap();
+    fs::write(kept.join("keeper/only-copy.txt"), "saved").unwrap();
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "2.0",
+        &[("keeper/__init__.py", "X = 2\n")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    assert_eq!(packages_installed(site_text)[0].version, "2.0");
+    assert_eq!(
+        fs::read_to_string(kept.join("keeper/only-copy.txt")).unwrap(),
+        "saved"
+    );
+}
