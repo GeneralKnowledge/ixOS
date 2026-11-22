@@ -112,7 +112,8 @@ pub fn repair_offline(file: &LibraryFile, offline: &mut OfflineFile) -> bool {
     offline.wanted != before
 }
 
-/// Moves favourites, playlist entries and history from `from` to `to`.
+/// Moves favourites, playlist entries, history and play counts from `from`
+/// to `to`.
 pub fn move_collection(collection: &mut CollectionFile, from: &str, to: &str) {
     if let Some(at) = collection.favourites.remove(from) {
         let kept = collection.favourites.entry(to.to_string()).or_insert(at);
@@ -134,6 +135,13 @@ pub fn move_collection(collection: &mut CollectionFile, from: &str, to: &str) {
         if play.track_id == from {
             play.track_id = to.to_string();
         }
+    }
+    if let Some(theirs) = collection.plays.remove(from) {
+        collection
+            .plays
+            .entry(to.to_string())
+            .and_modify(|t| *t = t.join(theirs))
+            .or_insert(theirs);
     }
 }
 
