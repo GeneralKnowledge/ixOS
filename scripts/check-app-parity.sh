@@ -1115,7 +1115,9 @@ def xct_await_lines(text):
     """Lines where an XCTest assertion's arguments, however many lines they
     span, contain `await`. Comments are left out."""
     strings = re.compile(r'"(?:\\.|[^"\\\n])*"')
-    code = "\n".join(strings.sub('""', line).split("//", 1)[0] for line in text.splitlines())
+    code = "\n".join(strings.sub('""', line) for line in text.splitlines())
+    code = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), code, flags=re.S)
+    code = "\n".join(line.split("//", 1)[0] for line in code.splitlines())
     found = []
     for m in XCT_CALL.finditer(code):
         depth, j = 1, m.end()
