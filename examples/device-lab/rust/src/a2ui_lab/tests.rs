@@ -197,7 +197,7 @@ fn a_refused_payload_keeps_the_reviewed_change_set() {
 fn gate_after_start() -> GateState {
     let mut state = GateState::default();
     let entries = proposal(PROPOSAL).unwrap();
-    gate::check(&surface::create(&entries).to_string(), &mut state).unwrap();
+    surface::check(&surface::create(&entries).to_string(), &mut state).unwrap();
     state
 }
 
@@ -279,7 +279,7 @@ fn gate_refuses_what_the_catalog_cannot_express() {
         let mut state = gate_after_start();
         let before = state.actions.clone();
         let refusal =
-            gate::check(&payload, &mut state).expect_err(&payload[..payload.len().min(160)]);
+            surface::check(&payload, &mut state).expect_err(&payload[..payload.len().min(160)]);
         assert_eq!(refusal.code, want, "{}", &payload[..payload.len().min(160)]);
         assert_eq!(
             state.actions, before,
@@ -302,7 +302,7 @@ fn a_payload_is_all_or_nothing() {
         json!({ "version": "1.0", "updateComponents": { "surfaceId": surface::SURFACE_ID,
         "components": [{ "id": "web", "component": "WebView" }] } }),
     );
-    assert!(gate::check(&Value::Array(messages).to_string(), &mut state).is_err());
+    assert!(surface::check(&Value::Array(messages).to_string(), &mut state).is_err());
     assert!(!state.created);
     assert!(state.actions.is_empty());
 }
@@ -313,7 +313,7 @@ fn updates_before_the_surface_exist_are_refused() {
     let payload = json!([{ "version": "1.0", "updateComponents": {
         "surfaceId": surface::SURFACE_ID, "components": [] } }]);
     assert_eq!(
-        gate::check(&payload.to_string(), &mut state)
+        surface::check(&payload.to_string(), &mut state)
             .unwrap_err()
             .code,
         "lifecycle"

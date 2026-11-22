@@ -172,8 +172,8 @@ impl LabState {
     /// Passes `messages` through the gate; on success the surface's state
     /// moves to a new revision and any reviewed change set is dropped.
     fn accept(&mut self, messages: &str) -> Result<A2uiPayload, A2uiLabError> {
-        let accepted = gate::check(messages, &mut self.gate)?;
-        if let Some(books) = accepted.books {
+        let accepted = surface::check(messages, &mut self.gate)?;
+        if let Some(books) = accepted.data {
             self.books = books;
         }
         self.revision += 1;
