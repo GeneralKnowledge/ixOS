@@ -1982,6 +1982,9 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
      */
     func discardPlan() throws 
     
+    /**
+     * The open project's files.
+     */
     func files()  -> [ProjectFile]
     
     func ladder()  -> [HarnessTask]
@@ -2092,8 +2095,9 @@ open class BonsaiHarness: BonsaiHarnessProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_forge_ffi_fn_clone_bonsaiharness(self.handle, $0) }
     }
     /**
-     * `projects_folder` holds one folder per project (iOS: Application
-     * Support/Python Lab/Projects).
+     * `projects_folder` holds one folder per project (iOS: Documents/Python
+     * Lab, shown in the Files app); ladder tasks' projects are under its
+     * `.ladder` folder.
      */
 public convenience init(python: PythonHost, projectsFolder: String) {
     let handle =
@@ -2182,6 +2186,9 @@ open func discardPlan()throws   {try rustCallWithError(FfiConverterTypeHarnessEr
 }
 }
     
+    /**
+     * The open project's files.
+     */
 open func files() -> [ProjectFile]  {
     return try!  FfiConverterSequenceTypeProjectFile.lift(try! rustCall() {
         uniffiCallStatus in
@@ -6627,6 +6634,376 @@ public func FfiConverterTypeTransferSink_lower(_ value: TransferSink) -> UInt64 
 
 
 
+
+
+/**
+ * The person's projects. Thread-safe: every call goes to the disk.
+ */
+public protocol WorkspaceProtocol: AnyObject, Sendable {
+    
+    /**
+     * Creates an empty file; its folder must exist.
+     * Creates a file holding `text`. It never replaces a file that is
+     * already there, even one whose name differs only in case or that
+     * appeared after the list was read: the text is written beside it and
+     * linked into place, which fails if the name is taken.
+     */
+    func createFile(project: String, path: String, text: String) throws 
+    
+    /**
+     * Creates a folder; its parent must exist.
+     */
+    func createFolder(project: String, path: String) throws 
+    
+    func createProject(name: String) throws 
+    
+    /**
+     * Deletes a file, or a folder with everything in it.
+     */
+    func deleteEntry(project: String, path: String) throws 
+    
+    func deleteProject(name: String) throws 
+    
+    /**
+     * The project's files and folders, folders before files at each level,
+     * hidden ones left out.
+     */
+    func entries(project: String) throws  -> [WorkspaceEntry]
+    
+    /**
+     * The folder of a project, for running its files and showing images.
+     */
+    func projectFolder(project: String) throws  -> String
+    
+    /**
+     * The projects, scratch first, then by name.
+     */
+    func projects()  -> [WorkspaceProject]
+    
+    /**
+     * A text file's contents.
+     */
+    func readText(project: String, path: String) throws  -> String
+    
+    /**
+     * Renames or moves a file or folder inside the project.
+     */
+    func renameEntry(project: String, from: String, to: String) throws 
+    
+    func renameProject(from: String, to: String) throws 
+    
+    func saveState(project: String, state: WorkspaceState) throws 
+    
+    /**
+     * What Python Lab had open in the project (empty if nothing saved, or
+     * the saved state is unreadable). Files that no longer exist are left
+     * out.
+     */
+    func state(project: String) throws  -> WorkspaceState
+    
+    /**
+     * Saves a text file, creating it if needed. The old contents are
+     * replaced only once the new ones are safely written.
+     */
+    func writeText(project: String, path: String, text: String) throws 
+    
+}
+/**
+ * The person's projects. Thread-safe: every call goes to the disk.
+ */
+open class Workspace: WorkspaceProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_workspace(self.handle, $0) }
+    }
+    /**
+     * Opens the projects folder, creating it and the scratch project if
+     * needed, and moving ladder projects left there by older builds.
+     */
+public convenience init(projectsFolder: String)throws  {
+    let handle =
+        try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_constructor_workspace_new(
+        FfiConverterString.lower(projectsFolder),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_workspace(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Creates an empty file; its folder must exist.
+     * Creates a file holding `text`. It never replaces a file that is
+     * already there, even one whose name differs only in case or that
+     * appeared after the list was read: the text is written beside it and
+     * linked into place, which fails if the name is taken.
+     */
+open func createFile(project: String, path: String, text: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_create_file(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Creates a folder; its parent must exist.
+     */
+open func createFolder(project: String, path: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_create_folder(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+}
+}
+    
+open func createProject(name: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_create_project(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Deletes a file, or a folder with everything in it.
+     */
+open func deleteEntry(project: String, path: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_delete_entry(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+}
+}
+    
+open func deleteProject(name: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_delete_project(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The project's files and folders, folders before files at each level,
+     * hidden ones left out.
+     */
+open func entries(project: String)throws  -> [WorkspaceEntry]  {
+    return try  FfiConverterSequenceTypeWorkspaceEntry.lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_entries(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The folder of a project, for running its files and showing images.
+     */
+open func projectFolder(project: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_project_folder(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The projects, scratch first, then by name.
+     */
+open func projects() -> [WorkspaceProject]  {
+    return try!  FfiConverterSequenceTypeWorkspaceProject.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_projects(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A text file's contents.
+     */
+open func readText(project: String, path: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_read_text(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Renames or moves a file or folder inside the project.
+     */
+open func renameEntry(project: String, from: String, to: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_rename_entry(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(from),
+        FfiConverterString.lower(to),uniffiCallStatus
+    )
+}
+}
+    
+open func renameProject(from: String, to: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_rename_project(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(from),
+        FfiConverterString.lower(to),uniffiCallStatus
+    )
+}
+}
+    
+open func saveState(project: String, state: WorkspaceState)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_save_state(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterTypeWorkspaceState_lower(state),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * What Python Lab had open in the project (empty if nothing saved, or
+     * the saved state is unreadable). Files that no longer exist are left
+     * out.
+     */
+open func state(project: String)throws  -> WorkspaceState  {
+    return try  FfiConverterTypeWorkspaceState_lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_state(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Saves a text file, creating it if needed. The old contents are
+     * replaced only once the new ones are safely written.
+     */
+open func writeText(project: String, path: String, text: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_write_text(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWorkspace: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = Workspace
+
+    public static func lift(_ handle: UInt64) throws -> Workspace {
+        return Workspace(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: Workspace) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Workspace {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: Workspace, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspace_lift(_ handle: UInt64) throws -> Workspace {
+    return try FfiConverterTypeWorkspace.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspace_lower(_ value: Workspace) -> UInt64 {
+    return FfiConverterTypeWorkspace.lower(value)
+}
+
+
+
+
 /**
  * One line of a change set: what would change for one book. Titles and
  * authors come from the app's books.
@@ -9687,6 +10064,67 @@ public func FfiConverterTypeHeading_lower(_ value: Heading) -> RustBuffer {
 
 
 /**
+ * One coloured range, in UTF-16 code units from the start of the source.
+ */
+public struct HighlightSpan: Equatable, Hashable {
+    public var start: UInt32
+    public var length: UInt32
+    public var kind: HighlightKind
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(start: UInt32, length: UInt32, kind: HighlightKind) {
+        self.start = start
+        self.length = length
+        self.kind = kind
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HighlightSpan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHighlightSpan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HighlightSpan {
+        return
+            try HighlightSpan(
+                start: FfiConverterUInt32.read(from: &buf), 
+                length: FfiConverterUInt32.read(from: &buf), 
+                kind: FfiConverterTypeHighlightKind.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HighlightSpan, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.start, into: &buf)
+        FfiConverterUInt32.write(value.length, into: &buf)
+        FfiConverterTypeHighlightKind.write(value.kind, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHighlightSpan_lift(_ buf: RustBuffer) throws -> HighlightSpan {
+    return try FfiConverterTypeHighlightSpan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHighlightSpan_lower(_ value: HighlightSpan) -> RustBuffer {
+    return FfiConverterTypeHighlightSpan.lower(value)
+}
+
+
+/**
  * Everything on the dashboard.
  */
 public struct LabSnapshot: Equatable, Hashable {
@@ -11607,6 +12045,239 @@ public func FfiConverterTypeVector3_lower(_ value: Vector3) -> RustBuffer {
 }
 
 
+/**
+ * A file or folder in a project.
+ */
+public struct WorkspaceEntry: Equatable, Hashable {
+    /**
+     * Relative to the project, like "lib/helper.py".
+     */
+    public var path: String
+    public var isFolder: Bool
+    public var bytes: UInt64
+    public var modifiedMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Relative to the project, like "lib/helper.py".
+         */path: String, isFolder: Bool, bytes: UInt64, modifiedMs: Int64) {
+        self.path = path
+        self.isFolder = isFolder
+        self.bytes = bytes
+        self.modifiedMs = modifiedMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WorkspaceEntry: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWorkspaceEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WorkspaceEntry {
+        return
+            try WorkspaceEntry(
+                path: FfiConverterString.read(from: &buf), 
+                isFolder: FfiConverterBool.read(from: &buf), 
+                bytes: FfiConverterUInt64.read(from: &buf), 
+                modifiedMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WorkspaceEntry, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterBool.write(value.isFolder, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+        FfiConverterInt64.write(value.modifiedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspaceEntry_lift(_ buf: RustBuffer) throws -> WorkspaceEntry {
+    return try FfiConverterTypeWorkspaceEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspaceEntry_lower(_ value: WorkspaceEntry) -> RustBuffer {
+    return FfiConverterTypeWorkspaceEntry.lower(value)
+}
+
+
+/**
+ * A project in the list.
+ */
+public struct WorkspaceProject: Equatable, Hashable {
+    public var name: String
+    /**
+     * Files (not folders), hidden ones left out.
+     */
+    public var files: UInt32
+    /**
+     * The newest change to anything in it, in ms since 1970.
+     */
+    public var modifiedMs: Int64
+    /**
+     * Bonsai's default project, which can't be renamed or deleted.
+     */
+    public var isScratch: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, 
+        /**
+         * Files (not folders), hidden ones left out.
+         */files: UInt32, 
+        /**
+         * The newest change to anything in it, in ms since 1970.
+         */modifiedMs: Int64, 
+        /**
+         * Bonsai's default project, which can't be renamed or deleted.
+         */isScratch: Bool) {
+        self.name = name
+        self.files = files
+        self.modifiedMs = modifiedMs
+        self.isScratch = isScratch
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WorkspaceProject: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWorkspaceProject: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WorkspaceProject {
+        return
+            try WorkspaceProject(
+                name: FfiConverterString.read(from: &buf), 
+                files: FfiConverterUInt32.read(from: &buf), 
+                modifiedMs: FfiConverterInt64.read(from: &buf), 
+                isScratch: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WorkspaceProject, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterUInt32.write(value.files, into: &buf)
+        FfiConverterInt64.write(value.modifiedMs, into: &buf)
+        FfiConverterBool.write(value.isScratch, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspaceProject_lift(_ buf: RustBuffer) throws -> WorkspaceProject {
+    return try FfiConverterTypeWorkspaceProject.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspaceProject_lower(_ value: WorkspaceProject) -> RustBuffer {
+    return FfiConverterTypeWorkspaceProject.lower(value)
+}
+
+
+/**
+ * What Python Lab had open in a project, to reopen it.
+ */
+public struct WorkspaceState: Equatable, Hashable {
+    /**
+     * The file Run starts; none runs the file on screen.
+     */
+    public var runFile: String?
+    /**
+     * The file on screen.
+     */
+    public var currentFile: String?
+    /**
+     * Files open, in order.
+     */
+    public var openFiles: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The file Run starts; none runs the file on screen.
+         */runFile: String?, 
+        /**
+         * The file on screen.
+         */currentFile: String?, 
+        /**
+         * Files open, in order.
+         */openFiles: [String]) {
+        self.runFile = runFile
+        self.currentFile = currentFile
+        self.openFiles = openFiles
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WorkspaceState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWorkspaceState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WorkspaceState {
+        return
+            try WorkspaceState(
+                runFile: FfiConverterOptionString.read(from: &buf), 
+                currentFile: FfiConverterOptionString.read(from: &buf), 
+                openFiles: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WorkspaceState, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.runFile, into: &buf)
+        FfiConverterOptionString.write(value.currentFile, into: &buf)
+        FfiConverterSequenceString.write(value.openFiles, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspaceState_lift(_ buf: RustBuffer) throws -> WorkspaceState {
+    return try FfiConverterTypeWorkspaceState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspaceState_lower(_ value: WorkspaceState) -> RustBuffer {
+    return FfiConverterTypeWorkspaceState.lower(value)
+}
+
+
 public 
 enum A2uiLabError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
@@ -12677,6 +13348,106 @@ public func FfiConverterTypeHarnessPhase_lift(_ buf: RustBuffer) throws -> Harne
 #endif
 public func FfiConverterTypeHarnessPhase_lower(_ value: HarnessPhase) -> RustBuffer {
     return FfiConverterTypeHarnessPhase.lower(value)
+}
+
+
+
+
+public enum HighlightKind: Equatable, Hashable {
+    
+    case keyword
+    case string
+    case comment
+    case number
+    /**
+     * The name after `def` or `class`.
+     */
+    case definition
+    /**
+     * `@` and the dotted name after it, at the start of a line.
+     */
+    case decorator
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension HighlightKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHighlightKind: FfiConverterRustBuffer {
+    typealias SwiftType = HighlightKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HighlightKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .keyword
+        
+        case 2: return .string
+        
+        case 3: return .comment
+        
+        case 4: return .number
+        
+        case 5: return .definition
+        
+        case 6: return .decorator
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HighlightKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .keyword:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .string:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .comment:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .number:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .definition:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .decorator:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHighlightKind_lift(_ buf: RustBuffer) throws -> HighlightKind {
+    return try FfiConverterTypeHighlightKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHighlightKind_lower(_ value: HighlightKind) -> RustBuffer {
+    return FfiConverterTypeHighlightKind.lower(value)
 }
 
 
@@ -14663,6 +15434,132 @@ public func FfiConverterTypeTransferTestError_lower(_ value: TransferTestError) 
     return FfiConverterTypeTransferTestError.lower(value)
 }
 
+
+public 
+enum WorkspaceError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * A name or path the person gave that can't be used, with why.
+     */
+    case Invalid(reason: String
+    )
+    case NotFound(what: String, name: String
+    )
+    case Exists(name: String
+    )
+    case TooLarge(reason: String
+    )
+    case Protected
+    case Storage(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension WorkspaceError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWorkspaceError: FfiConverterRustBuffer {
+    typealias SwiftType = WorkspaceError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WorkspaceError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Invalid(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .NotFound(
+            what: try FfiConverterString.read(from: &buf), 
+            name: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Exists(
+            name: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .TooLarge(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .Protected
+        case 6: return .Storage(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: WorkspaceError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Invalid(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .NotFound(what,name):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(what, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            
+        
+        case let .Exists(name):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(name, into: &buf)
+            
+        
+        case let .TooLarge(reason):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Protected:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .Storage(reason):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspaceError_lift(_ buf: RustBuffer) throws -> WorkspaceError {
+    return try FfiConverterTypeWorkspaceError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWorkspaceError_lower(_ value: WorkspaceError) -> RustBuffer {
+    return FfiConverterTypeWorkspaceError.lower(value)
+}
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -15518,6 +16415,31 @@ fileprivate struct FfiConverterSequenceTypeHarnessTask: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeHighlightSpan: FfiConverterRustBuffer {
+    typealias SwiftType = [HighlightSpan]
+
+    public static func write(_ value: [HighlightSpan], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHighlightSpan.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HighlightSpan] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HighlightSpan]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHighlightSpan.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLogLine: FfiConverterRustBuffer {
     typealias SwiftType = [LogLine]
 
@@ -15793,6 +16715,56 @@ fileprivate struct FfiConverterSequenceTypeTransferRow: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeWorkspaceEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [WorkspaceEntry]
+
+    public static func write(_ value: [WorkspaceEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeWorkspaceEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [WorkspaceEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [WorkspaceEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeWorkspaceEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeWorkspaceProject: FfiConverterRustBuffer {
+    typealias SwiftType = [WorkspaceProject]
+
+    public static func write(_ value: [WorkspaceProject], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeWorkspaceProject.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [WorkspaceProject] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [WorkspaceProject]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeWorkspaceProject.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeNetworkInterface: FfiConverterRustBuffer {
     typealias SwiftType = [NetworkInterface]
 
@@ -15988,6 +16960,38 @@ public func projectArtifacts(project: String) -> [ProjectArtifact]  {
     )
 })
 }
+/**
+ * [`python_lab_file_script`] for Python Lab's live console (PL1d): run it
+ * with PythonBridge's streaming runner, which gives it a stdin that waits
+ * for the person. Its output is final as it streams: tracebacks already
+ * name `main.py, line 3`, on stderr, so it needs no `python_lab_output`.
+ */
+public func pythonLabConsoleScript(project: String, path: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_lab_console_script(
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
+/**
+ * A script that runs the project's file `path` for the person, as
+ * `__main__`, with the same wrapper as [`python_lab_script`]. Tracebacks
+ * name the file and line (`main.py, line 3`) after `python_lab_output`,
+ * other files of the project import normally, and if the file ends with
+ * an expression its value is printed. `path` is checked like a harness
+ * path is, but may contain spaces and any letters (the person named it).
+ */
+public func pythonLabFileScript(project: String, path: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_lab_file_script(
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
 public func pythonLabOutput(project: String, ok: Bool, output: String) -> PythonLabOutput  {
     return try!  FfiConverterTypePythonLabOutput_lift(try! rustCall() {
         uniffiCallStatus in
@@ -16168,6 +17172,17 @@ public func installNativeTransfers(session: TransferSession)throws   {try rustCa
     )
 }
 }
+/**
+ * The coloured ranges in `source`, in order and never overlapping.
+ */
+public func pythonHighlight(source: String) -> [HighlightSpan]  {
+    return try!  FfiConverterSequenceTypeHighlightSpan.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_highlight(
+        FfiConverterString.lower(source),uniffiCallStatus
+    )
+})
+}
 public func transferTestCancel(id: String)throws   {try rustCallWithError(FfiConverterTypeTransferTestError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_func_transfer_test_cancel(
@@ -16224,6 +17239,22 @@ public func transferTestStart(megabytes: UInt32)throws  -> String  {
     )
 })
 }
+/**
+ * Moves the projects from the folder older builds used (`Application
+ * Support/Python Lab/Projects`) to `new`, once: only when `new` doesn't
+ * exist yet or holds nothing but an empty scratch project. Returns whether
+ * it moved anything. If the rename fails (different volumes), it copies
+ * and then deletes the old folder.
+ */
+public func workspaceMoveProjects(old: String, new: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_workspace_move_projects(
+        FfiConverterString.lower(old),
+        FfiConverterString.lower(new),uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -16247,6 +17278,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_project_artifacts() != 21958) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_lab_console_script() != 54637) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_lab_file_script() != 14378) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_python_lab_output() != 28712) {
@@ -16300,6 +17337,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_install_native_transfers() != 47281) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_python_highlight() != 46371) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_transfer_test_cancel() != 22994) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -16316,6 +17356,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_transfer_test_start() != 22227) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_workspace_move_projects() != 34997) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_devicelab_refresh_permissions() != 63463) {
@@ -16408,7 +17451,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_discard_plan() != 541) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_bonsaiharness_files() != 19690) {
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_files() != 57235) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_ladder() != 57880) {
@@ -16594,6 +17637,48 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_transfersink_reconcile() != 23410) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_workspace_create_file() != 53635) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_create_folder() != 18457) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_create_project() != 43345) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_delete_entry() != 57972) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_delete_project() != 25153) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_entries() != 18400) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_project_folder() != 42712) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_projects() != 64680) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_read_text() != 38077) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_rename_entry() != 3527) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_rename_project() != 8154) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_save_state() != 44357) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_state() != 29884) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_write_text() != 20665) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_constructor_devicelab_new() != 17449) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -16603,7 +17688,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_constructor_ailab_new() != 39479) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_bonsaiharness_new() != 59862) {
+    if (uniffi_forge_ffi_checksum_constructor_bonsaiharness_new() != 44261) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_constructor_workspace_new() != 46389) {
         return InitializationResult.apiChecksumMismatch
     }
 

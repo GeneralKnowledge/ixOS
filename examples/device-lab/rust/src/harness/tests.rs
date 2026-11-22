@@ -625,7 +625,7 @@ fn t3_completes_only_once_the_evidence_shows_it() {
         .result
         .contains("not been run since the last change"));
     // A checkpoint of the verified files.
-    let checkpoints = dir.path().join("t3-one-fix/.harness/checkpoints");
+    let checkpoints = dir.path().join(".ladder/t3-one-fix/.harness/checkpoints");
     let task_dir = std::fs::read_dir(&checkpoints)
         .unwrap()
         .next()
@@ -800,7 +800,7 @@ fn a_ladder_run_keeps_the_previous_runs_journal() {
     let runs = std::fs::read_dir(dir.path().join(".runs")).unwrap().count();
     assert_eq!(runs, 1);
     // The fresh project has only its own task.
-    let entries = Journal::replay(&dir.path().join("t1-hello"));
+    let entries = Journal::replay(&dir.path().join(".ladder/t1-hello"));
     assert_eq!(
         entries
             .iter()
@@ -1289,6 +1289,218 @@ fn replay_skips_a_line_cut_inside_a_character() {
     ));
 }
 
+fn file_run(project: &std::path::Path, path: &str) -> super::python_lab::PythonLabOutput {
+    use std::process::Command;
+    let script =
+        super::python_lab::python_lab_file_script(project.display().to_string(), path.into());
+    let output = Command::new("python3")
+        .arg("-I")
+        .arg("-c")
+        .arg(&script)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr);
+    super::python_lab::python_lab_output(
+        project.display().to_string(),
+        output.status.success(),
+        text,
+    )
+}
+
+#[test]
+fn a_project_file_runs_as_main_and_imports_its_neighbours() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("lib")).unwrap();
+    std::fs::write(root.join("helper.py"), "def two():\n    return 2\n").unwrap();
+    std::fs::write(
+        root.join("main.py"),
+        "import helper\nprint(__name__, helper.two())\nhelper.two() + 1\n",
+    )
+    .unwrap();
+    let out = file_run(root, "main.py");
+    assert!(out.ok, "{}", out.output);
+    assert_eq!(out.output.trim(), "__main__ 2\n3");
+
+    // A file in a folder imports from its own folder and from the project.
+    std::fs::write(root.join("lib/util.py"), "X = 5\n").unwrap();
+    std::fs::write(
+        root.join("lib/my tool.py"),
+        "import util, helper\nprint(util.X + helper.two())\n",
+    )
+    .unwrap();
+    let out = file_run(root, "lib/my tool.py");
+    assert!(out.ok, "{}", out.output);
+    assert_eq!(out.output.trim(), "7");
+
+    // `import __main__` is the file being run, not the host.
+    std::fs::write(
+        root.join("peek.py"),
+        "import __main__\nprint(__main__.NAME)\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("entry.py"), "NAME = 'entry'\nimport peek\n").unwrap();
+    let out = file_run(root, "entry.py");
+    assert!(out.ok, "{}", out.output);
+    assert_eq!(out.output.trim(), "entry");
+}
+
+#[test]
+fn a_project_files_traceback_names_the_file_and_line() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("helper.py"), "def boom():\n    return 1 / 0\n").unwrap();
+    std::fs::write(root.join("main.py"), "import helper\n\nhelper.boom()\n").unwrap();
+    let out = file_run(root, "main.py");
+    assert!(!out.ok);
+    assert!(
+        out.output.contains("File \"main.py\", line 3"),
+        "{}",
+        out.output
+    );
+    assert!(
+        out.output.contains("File \"helper.py\", line 2"),
+        "{}",
+        out.output
+    );
+    assert!(out.output.contains("ZeroDivisionError"), "{}", out.output);
+    // An edit is picked up on the next run (the module is forgotten).
+    std::fs::write(root.join("helper.py"), "def boom():\n    return 'fine'\n").unwrap();
+    std::fs::write(
+        root.join("main.py"),
+        "import helper\nprint(helper.boom())\n",
+    )
+    .unwrap();
+    let out = file_run(root, "main.py");
+    assert!(out.ok, "{}", out.output);
+    assert_eq!(out.output.trim(), "fine");
+}
+
+/// Two projects run one after the other in one interpreter, as on the
+/// phone: the second's `import helper` gets its own helper, not the first's.
+#[test]
+fn a_project_never_imports_another_projects_module() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    for (name, word) in [("a", "from a"), ("b", "from b")] {
+        let root = dir.path().join(name);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("helper.py"), format!("WORD = {word:?}\n")).unwrap();
+        std::fs::write(root.join("main.py"), "import helper\nprint(helper.WORD)\n").unwrap();
+    }
+    let script = |name: &str| {
+        super::python_lab::python_lab_file_script(
+            dir.path().join(name).display().to_string(),
+            "main.py".into(),
+        )
+    };
+    let both = format!("{}\n{}", script("a"), script("b"));
+    let output = std::process::Command::new("python3")
+        .arg("-I")
+        .arg("-c")
+        .arg(&both)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(text.trim(), "from a\nfrom b", "{text}");
+}
+
+/// Runs `path` as Python Lab's console does (PL1d), with `stdin` as what
+/// the person types. The host stands in for PythonBridge's streaming
+/// runner: it prints an escaping exception's traceback unless the wrapper
+/// already showed it. Returns (ok, stdout, stderr).
+fn console_run(project: &std::path::Path, path: &str, stdin: &str) -> (bool, String, String) {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    const HOST: &str = "import sys, traceback\ntry:\n    exec(compile(sys.argv[1], '<console>', 'exec'), {'__name__': '__devicelab__'})\nexcept BaseException as e:\n    if not getattr(e, '_devicelab_shown', False):\n        traceback.print_exc()\n    sys.exit(1)\n";
+    let script =
+        super::python_lab::python_lab_console_script(project.display().to_string(), path.into());
+    let mut child = Command::new("python3")
+        .arg("-I")
+        .arg("-c")
+        .arg(HOST)
+        .arg(&script)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+#[test]
+fn the_console_reads_input_and_keeps_stderr_apart() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(
+        root.join("main.py"),
+        "import sys\nname = input('Name? ')\nprint('Hello', name)\nprint('careful', file=sys.stderr)\n",
+    )
+    .unwrap();
+    let (ok, out, err) = console_run(root, "main.py", "Ada\n");
+    assert!(ok, "{out}{err}");
+    assert_eq!(out, "Name? Hello Ada\n");
+    assert_eq!(err, "careful\n");
+}
+
+#[test]
+fn a_console_traceback_goes_to_stderr_once_with_short_paths() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("helper.py"), "def half(n):\n    return n / 0\n").unwrap();
+    std::fs::write(
+        root.join("main.py"),
+        "import helper\nprint('before')\nhelper.half(4)\n",
+    )
+    .unwrap();
+    let (ok, out, err) = console_run(root, "main.py", "");
+    assert!(!ok);
+    assert_eq!(out, "before\n");
+    assert!(
+        err.starts_with("Traceback (most recent call last):\n"),
+        "{err}"
+    );
+    assert!(err.contains("File \"main.py\", line 3"), "{err}");
+    assert!(err.contains("File \"helper.py\", line 2"), "{err}");
+    assert!(
+        err.trim_end()
+            .ends_with("ZeroDivisionError: division by zero"),
+        "{err}"
+    );
+    assert_eq!(err.matches("Traceback").count(), 1, "{err}");
+    assert!(!err.contains(&root.display().to_string()), "{err}");
+    assert!(
+        !out.contains(super::python_lab::FAILED_MARK)
+            && !err.contains(super::python_lab::FAILED_MARK)
+    );
+}
+
 #[test]
 fn the_live_view_reads_a_half_written_answer() {
     let full = r#"{"thought": "Write the \"hello\" file.", "tool": "write_file", "path": "hello.py", "content": "print(\"Hello from Bonsai\")\nprint('é \u00e9')\n"}"#;
@@ -1531,7 +1743,10 @@ fn a_failed_plan_resumes_from_its_last_verified_task() {
     assert_eq!(plan.tasks[1].status, TaskStatus::Failed);
     assert_eq!(plan.tasks[2].status, TaskStatus::Ready);
     assert!(plan.can_continue);
-    let root = dir.path().join("t7-plan-with-dependency");
+    let root = dir
+        .path()
+        .join(LADDER_FOLDER)
+        .join("t7-plan-with-dependency");
     assert!(root.join("test_grades.py").exists());
 
     h.continue_plan_scripted().unwrap();
@@ -1796,7 +2011,7 @@ fn a_missing_dependency_is_replanned_and_the_plan_completes() {
     assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
     let ids: Vec<&str> = plan.tasks.iter().map(|t| t.id.as_str()).collect();
     assert_eq!(ids, ["stats", "report"]);
-    let entries = Journal::replay(&dir.path().join("t8-replan"));
+    let entries = Journal::replay(&dir.path().join(LADDER_FOLDER).join("t8-replan"));
     assert!(entries.iter().any(|e| matches!(
         e,
         Entry::Recovery { plan_task, decision: plan::Decision::Replan { .. }, .. } if plan_task == "run-report"
@@ -1824,7 +2039,7 @@ fn a_task_that_cant_succeed_ends_blocked_and_the_answer_reaches_it() {
     assert!(!plan.can_continue);
     assert_eq!(plan.tasks[0].recoveries, 1);
     // Rolled back to before the task: the download program is gone.
-    let root = dir.path().join("t9-blocked");
+    let root = dir.path().join(LADDER_FOLDER).join("t9-blocked");
     assert!(!root.join("weather.py").exists());
     assert!(matches!(
         h.continue_plan_scripted(),

@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use chat_core::MessageStatus;
 use relay_core::mailbox_server::{start, ServeOptions};
 use relay_core::{CodeSend, NearbyDevice, RelayCore, RelayServers, TransferStatus};
 
@@ -104,6 +105,29 @@ fn notes_from(core: &RelayCore, from: &str) -> Vec<String> {
 
 #[test]
 fn a_note_for_a_closed_device_goes_through_the_mailbox_once_with_a_receipt() {
+    // They meet once directly: each Hello tells the other its mailbox.
+    through_the_mailbox(|phone, laptop, laptop_id| {
+        block_on(phone.send_note_as_older_build(laptop_id.into(), "hello".into())).unwrap();
+        eventually("the first note", || {
+            notes_from(laptop, "phone") == ["hello"]
+        });
+        vec!["hello".to_string()]
+    });
+}
+
+/// Asking a device anything (here, how it is) says Hello too: the asker
+/// learns its mailbox without sending it an item first.
+#[test]
+fn asking_a_device_how_it_is_is_enough_to_learn_its_mailbox() {
+    through_the_mailbox(|phone, _, laptop_id| {
+        block_on(phone.device_status(laptop_id.into())).unwrap();
+        vec![]
+    });
+}
+
+/// The phone and the laptop meet (`meet` returns the notes the laptop got
+/// from it); then a note for the closed laptop goes through the mailbox.
+fn through_the_mailbox(meet: impl Fn(&RelayCore, &RelayCore, &str) -> Vec<String>) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let lookup_url = rt.block_on(pkarr_relay());
     let mut relay = iroh_relay::server::RelayConfig::new((std::net::Ipv4Addr::LOCALHOST, 0));
@@ -149,12 +173,8 @@ fn a_note_for_a_closed_device_goes_through_the_mailbox_once_with_a_receipt() {
         .unwrap()
         .endpoint_id;
 
-    // They meet once directly: each Hello tells the other its mailbox.
     sees(&phone, &laptop);
-    block_on(phone.send_note_as_older_build(laptop_id.clone(), "hello".into())).unwrap();
-    eventually("the first note", || {
-        notes_from(&laptop, "phone") == ["hello"]
-    });
+    let mut expected = meet(&phone, &laptop, &laptop_id);
     // Having told the phone its pass, the laptop registers it, and the
     // phone the laptop's.
     eventually("both passes registered", || {
@@ -170,12 +190,27 @@ fn a_note_for_a_closed_device_goes_through_the_mailbox_once_with_a_receipt() {
     eventually("the note in the mailbox", || {
         mailbox_has(&mailbox, &laptop_id)
     });
+    // A message too: its bubble says it is in the mailbox.
+    let message =
+        block_on(phone.send_device_message(&laptop_id, "a message while away".into())).unwrap();
+    let mine = |phone: &RelayCore| {
+        phone
+            .device_messages(&laptop_id)
+            .unwrap()
+            .into_iter()
+            .find(|m| m.id == message.id)
+            .unwrap()
+    };
+    eventually("the message in the mailbox", || mine(&phone).in_mailbox);
+    assert_eq!(mine(&phone).status, MessageStatus::Queued);
 
     // The laptop opens again and collects it: once, with a receipt.
     let laptop = device(dir.path(), "laptop");
     block_on(laptop.device_service()).unwrap();
+    expected.push("while away".into());
+    expected.push("a message while away".into());
     eventually("the note from the mailbox", || {
-        notes_from(&laptop, "phone") == ["hello", "while away"]
+        notes_from(&laptop, "phone") == expected
     });
     // The laptop left a receipt in the phone's mailbox. The phone only
     // collects here (it never tries the laptop directly), so Done comes
@@ -189,10 +224,18 @@ fn a_note_for_a_closed_device_goes_through_the_mailbox_once_with_a_receipt() {
             .find(|t| t.id == away.id)
             .is_some_and(|t| t.status == TransferStatus::Done)
     });
+    eventually("the message's receipt", || {
+        phone.collect_mailbox();
+        mine(&phone).status == MessageStatus::Sent
+    });
+    assert!(
+        !mine(&phone).in_mailbox,
+        "delivered, so no longer in the mailbox"
+    );
     // Nothing more arrives, and the mailbox is empty.
     laptop.deliver_waiting();
     std::thread::sleep(Duration::from_secs(2));
-    assert_eq!(notes_from(&laptop, "phone"), ["hello", "while away"]);
+    assert_eq!(notes_from(&laptop, "phone"), expected);
     assert!(!mailbox_has(&mailbox, &laptop_id));
     assert!(!mailbox_has(&mailbox, &phone_key));
     close(laptop);

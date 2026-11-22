@@ -339,6 +339,36 @@ pub enum HarnessError {
 /// The project a task in the person's own words works in.
 pub const SCRATCH_PROJECT: &str = "scratch";
 
+/// The folder under the projects folder that holds the ladder tasks'
+/// projects. The harness wipes and reseeds them on every ladder run, so
+/// they are hidden from the person's project list (python-lab-workspace-plan.md,
+/// PL1a).
+pub const LADDER_FOLDER: &str = ".ladder";
+
+/// Whether `name` is a ladder task's id (ignoring case), which a person's
+/// project may not be called.
+pub fn is_ladder_task(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    evidence::ladder().iter().any(|task| task.id == lower)
+}
+
+/// Moves ladder projects left at the top of `projects` by builds before
+/// PL1a into [`LADDER_FOLDER`], once. Best effort: a folder that can't be
+/// moved stays where it is.
+pub fn move_old_ladder_projects(projects: &Path) {
+    for task in evidence::ladder() {
+        let old = projects.join(task.id);
+        let new = projects.join(LADDER_FOLDER).join(task.id);
+        if old.is_dir() && !new.exists() {
+            let moved = std::fs::create_dir_all(projects.join(LADDER_FOLDER))
+                .and_then(|_| std::fs::rename(&old, &new));
+            if let Err(err) = moved {
+                logging::warn!(target: "harness", "could not move ladder project {}: {err}", task.id);
+            }
+        }
+    }
+}
+
 /// The harness the host opens once, over Python Lab. Thread-safe.
 #[derive(uniffi::Object)]
 pub struct BonsaiHarness {
@@ -357,6 +387,8 @@ struct State {
     running: bool,
     phase: HarnessPhase,
     project: Option<String>,
+    /// The open project's folder (a ladder task's is under `.ladder`).
+    root: Option<PathBuf>,
     entries: Vec<Entry>,
     journal: Option<Journal>,
     out: Option<Arc<Collect>>,
@@ -368,8 +400,9 @@ struct State {
 
 #[uniffi::export]
 impl BonsaiHarness {
-    /// `projects_folder` holds one folder per project (iOS: Application
-    /// Support/Python Lab/Projects).
+    /// `projects_folder` holds one folder per project (iOS: Documents/Python
+    /// Lab, shown in the Files app); ladder tasks' projects are under its
+    /// `.ladder` folder.
     #[uniffi::constructor]
     pub fn new(python: Arc<dyn PythonHost>, projects_folder: String) -> Arc<Self> {
         Arc::new(Self::with_limits(
@@ -537,8 +570,9 @@ impl BonsaiHarness {
             reason: Some("Discarded.".into()),
             at_ms: now_ms(),
         };
-        let name = state.project.clone().unwrap_or_default();
-        let root = self.project_root(&name)?;
+        let Some(root) = state.root.clone() else {
+            return Err(HarnessError::NoPlan);
+        };
         Journal::open(&root)
             .and_then(|mut journal| journal.append(&entry))
             .map_err(|err| HarnessError::Storage {
@@ -559,6 +593,7 @@ impl BonsaiHarness {
         let entries = Journal::replay(&root);
         state.entries = entries;
         state.project = Some(name);
+        state.root = Some(root.clone());
         state.journal = None;
         state.finished_ms = 0;
         let task = journal::last_task(&state.entries);
@@ -653,17 +688,15 @@ impl BonsaiHarness {
     /// The folder of the project on screen, for its images
     /// (`project_artifacts`).
     pub fn project_folder(&self) -> Option<String> {
-        let name = lock(&self.shared.state).project.clone()?;
-        self.project_root(&name)
-            .ok()
+        lock(&self.shared.state)
+            .root
+            .as_ref()
             .map(|root| root.display().to_string())
     }
 
+    /// The open project's files.
     pub fn files(&self) -> Vec<ProjectFile> {
-        let Some(name) = lock(&self.shared.state).project.clone() else {
-            return Vec::new();
-        };
-        let Ok(root) = self.project_root(&name) else {
+        let Some(root) = lock(&self.shared.state).root.clone() else {
             return Vec::new();
         };
         let lab = PythonLab::new(root.clone(), Arc::clone(&self.python), Duration::ZERO);
@@ -686,6 +719,7 @@ impl BonsaiHarness {
         limits: HarnessLimits,
     ) -> Self {
         logging::init();
+        move_old_ladder_projects(&projects);
         Self {
             python,
             projects,
@@ -695,6 +729,7 @@ impl BonsaiHarness {
                     running: false,
                     phase: HarnessPhase::Idle,
                     project: None,
+                    root: None,
                     entries: Vec::new(),
                     journal: None,
                     out: None,
@@ -713,8 +748,14 @@ impl BonsaiHarness {
         Ok(self.projects.join(name))
     }
 
+    /// A ladder task's project, under [`LADDER_FOLDER`].
+    fn ladder_root(&self, id: &str) -> Result<PathBuf, HarnessError> {
+        calls::check_path(id).map_err(|reason| HarnessError::Storage { reason })?;
+        Ok(self.projects.join(LADDER_FOLDER).join(id))
+    }
+
     pub fn start(&self, brain: Arc<dyn Brain>, task: LadderTask) -> Result<(), HarnessError> {
-        let root = self.project_root(task.id)?;
+        let root = self.ladder_root(task.id)?;
         let lab = PythonLab::new(
             root.clone(),
             Arc::clone(&self.python),
@@ -812,15 +853,14 @@ impl BonsaiHarness {
                 return Err(HarnessError::Busy);
             }
             let view = plan::current(&state.entries).and_then(PlanView::read);
-            (state.project.clone(), view)
+            (state.project.clone().zip(state.root.clone()), view)
         };
-        let (Some(project), Some(view)) = (project, view) else {
+        let (Some((project, root)), Some(view)) = (project, view) else {
             return Err(HarnessError::NoPlan);
         };
         let Some((task, _)) = view.blocked.clone().filter(|_| view.state.needs_answer()) else {
             return Err(HarnessError::NoPlan);
         };
-        let root = self.project_root(&project)?;
         let lab = PythonLab::new(
             root.clone(),
             Arc::clone(&self.python),
@@ -852,15 +892,14 @@ impl BonsaiHarness {
         let (project, view) = {
             let state = lock(&self.shared.state);
             let view = plan::current(&state.entries).and_then(PlanView::read);
-            (state.project.clone(), view)
+            (state.project.clone().zip(state.root.clone()), view)
         };
-        let (Some(project), Some(view)) = (project, view) else {
+        let (Some((project, root)), Some(view)) = (project, view) else {
             return Err(HarnessError::NoPlan);
         };
         if !view.state.can_continue() {
             return Err(HarnessError::NoPlan);
         }
-        let root = self.project_root(&project)?;
         let lab = PythonLab::new(
             root,
             Arc::clone(&self.python),
@@ -913,6 +952,7 @@ impl BonsaiHarness {
             state.entries = Journal::replay(lab.root());
             state.journal = Some(journal);
             state.project = Some(project.to_string());
+            state.root = Some(lab.root().to_path_buf());
             state.started = Some(Instant::now());
             state.phase = HarnessPhase::Thinking;
             state.environment = Some(Arc::clone(&lab) as Arc<dyn Environment>);
