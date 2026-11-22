@@ -1136,6 +1136,13 @@ private struct EditTrackSheet: View {
                 ArtworkSheet(model: model, title: track.title, url: track.artworkUrl,
                              target: .track(id: track.id), circle: false)
             }
+            // The Listen screen's alert can't show over this sheet, so a
+            // failed save (or artwork change) says why here, and the edits
+            // stay on screen.
+            .forgeAlert(Binding(
+                get: { editingArtwork ? nil : model.alert },
+                set: { model.alert = $0 }
+            )) { action in Task { await model.handle(action) } }
         }
         .onAppear {
             title = track.title
