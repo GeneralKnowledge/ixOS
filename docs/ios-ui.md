@@ -237,6 +237,13 @@ The rule: if Rust needs the result in order to apply a rule or store it, pass th
 - The UI compiles with xtool's Swift toolchain against the iOS SDK from Xcode 26. SwiftUI APIs up to iOS 17 work, matching the template's deployment target. Wrap anything newer in `if #available`.
 - Don't use `#Preview`. Its macro plugin ships only with Xcode, not with the Swift toolchain on Linux. `@Observable` is fine, because the Observation macros ship with every Swift toolchain.
 - Keep iOS-only modifiers (`navigationBarTitleDisplayMode`, `keyboardType`, `textInputAutocapitalization`) inside `#if os(iOS)`, because the same sources also build for macOS for `swift test` and `swift run`.
+- Swift 6.2 refuses some code that looks fine, and in a view file only the iOS build shows it (the Linux checks compile models and tests, not views). Three that have cost a build ([friction log A43](research/app-friction-log.md#a43-swift-62-errors-only-the-ios-build-shows)):
+  - **A big view body stops type-checking** ("ambiguous use of init" on a `ScrollView` or `VStack`). Move parts into their own views and give numbers explicit types; don't keep growing one closure.
+  - **`await` inside an XCTest assertion** (`XCTUnwrap(await …)`): its autoclosure can't suspend. Await into a local first.
+  - **An environment key whose default is a closure** needs `nonisolated(unsafe) static let defaultValue` (or a `@Sendable` closure type), or Swift 6 can't prove it is safe to share.
+
+  The parity rule `swift6-traps` catches the last two on Linux.
+- A limit Rust enforces (a name's length, how many files a message carries) is exported from Rust as a function and read in Swift, never copied as a number; the parity rule `limits-from-rust` fails on a copy. A limit only Swift has (how far a photo is scaled down) says so with `// swift-only:`.
 
 ## Checking the result
 
