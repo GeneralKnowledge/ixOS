@@ -14,6 +14,16 @@ struct BonsaiHarnessView: View {
 
     var body: some View {
         List {
+            // Python Lab shares the interpreter, so its script waiting for
+            // an answer holds Bonsai's Python runs too.
+            if PythonActivity.shared.labWaitingForInput {
+                Section {
+                    Label("Python Lab is waiting for an answer. Bonsai's Python runs wait until it gets one or is stopped.", systemImage: "hourglass")
+                        .font(.footnote)
+                        .forgeForeground(.warning)
+                        .accessibilityIdentifier("harness.pythonLabWaiting")
+                }
+            }
             if let error = model.error {
                 Section {
                     Text(error).font(.footnote).forgeForeground(.danger)

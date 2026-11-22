@@ -170,6 +170,8 @@ Plan: bonsai-harness-plan.md ([#357](https://github.com/GeneralKnowledge/ixOS/pu
 2. **H2 a reliable model interface**, H4 planning and several tasks, H5 recovery and replanning, H6 context management.
 3. H7 a small multi-file project, then H8 the benchmark (his expenses-app task word for word).
 
+Python Lab itself: [python-lab-workspace-plan.md](../examples/device-lab/docs/python-lab-workspace-plan.md), stages PL1 (workspace and interactive console, which also delivers H7's Python Lab half) to PL4.
+
 Framework it touches: llama.cpp stays in Device Lab (`LlamaCppModel`) until a second app runs GGUF models; Urdu, Naturally's M2 is the likely one, if Apple's model can't hold Urdu.
 
 ### Other tracks, summarised

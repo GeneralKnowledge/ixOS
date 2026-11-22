@@ -137,11 +137,11 @@ Native capabilities (web view, documents, media, background tasks, identity, sys
 
 ### Android — Work in progress
 
-Decided 2026-11-07: ixOS focuses on **iOS**. Decided 2026-11-20 (Reuben): Android moves forward as a **capped side track**, following Pocket Library only.
+Decided 2026-11-07: ixOS focuses on **iOS**. Decided 2026-11-20 (Reuben): Android moves forward as a **capped side track**, following Pocket Library only. Decided 2026-11-22 (Reuben): **Relay** gets an Android version too, brought to parity with the iPhone in stages ([relay-android.md](../examples/relay/docs/relay-android.md)).
 
 - iOS comes first. One Android milestone is in progress at a time, and iPhone sittings and the [Apps first](#apps-first-prove-complete-then-extract) gates always go before it.
-- Only Pocket Library gets an Android version (`examples/pocket-library-android`). No other app is ported, and new capabilities are still designed and proven on iOS first.
-- Apps first holds on Android too: the Kotlin host, the ForgeAppKit counterparts, the theme and the service adapters live inside the Android app until a second Android app needs them.
+- Pocket Library (`examples/pocket-library-android`) and Relay (`examples/relay-android`) get Android versions. No other app is ported, and new capabilities are still designed and proven on iOS first. StreamRelay's Android recorder joins once its iPhone app is proven.
+- Apps first holds on Android too: the Kotlin host, the ForgeAppKit counterparts, the theme and the service adapters live inside each Android app. Relay is the second Android app, so they move into a shared Android ForgeKit once Relay's first stage has merged.
 - Results come from an emulator in CI. Nothing has run on a physical Android phone, and the [capability ledger](capability-ledger.md) tracks iOS only.
 - `templates/android-app`, `forge init --platform android`, `forge build android` and the `ForgeAndroid` HTTPS init stay and keep building.
 
@@ -155,9 +155,11 @@ Decided 2026-11-07: ixOS focuses on **iOS**. Decided 2026-11-20 (Reuben): Androi
 | A3 | The complete library: full book form, edit, progress, search, filter and sort, start fresh | PL-1, PL-2, PL-3, PL-5, PL-6 | 1.5 weeks | **Done** (#355) |
 | A4 | Android `http` service adapter and the catalogue | PL-7, PL-8 | 1.5 weeks | **Done** (#359) |
 | A5 | EPUB reader and read aloud (`TextToSpeech`) | PL-9 | 2 weeks | **Done** (#368) |
-| A6 | Background work (WorkManager), settings, backups | PL-1 after process death | 1 week | In progress (#371) |
+| A6 | Background work (WorkManager), settings, backups | PL-1 after process death | 1 week | **Done** (#371) |
 | A7 | AI summaries shown as unavailable (no on-device model on the emulator) | | 2 to 3 days | Planned |
 | A8 | `forge run android --emulator` and logcat | | 2 to 3 days | Planned |
+
+**Relay on Android** (started 2026-11-22). Relay's Rust core, unchanged, under Compose; the gap list and the stages are in [relay-android.md](../examples/relay/docs/relay-android.md). Stage 1, the Devices experience (word codes found with `NsdManager`, trust, trusted devices, Connections and servers, the history), is the first PR; Chats, rooms and notifications, the Keystore key and app lock, then sites and voice follow.
 
 After A8 (decided 2026-11-21, Reuben): **on-device AI for Android** as its own stage. R0 checks the candidate projects and engines, R1 compares two engines in a check app, and R2 adds the chosen one as a Kotlin `AiModel` (Forge AI's foreign trait) for Pocket Library's summaries. Speed results count only from a physical phone. Plan and findings: [research/android-local-ai.md](research/android-local-ai.md).
 
