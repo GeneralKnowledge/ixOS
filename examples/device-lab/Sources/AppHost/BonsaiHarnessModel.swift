@@ -37,6 +37,9 @@ public final class BonsaiHarnessModel {
     @ObservationIgnored private var models: [String: LlamaCppModel] = [:]
     /// The project's images when the task started, to tell what it made.
     @ObservationIgnored private var imagesBefore: [String: ProjectArtifact]?
+    /// A task was started: load the files when it's seen stopped, even if
+    /// it ended before a poll saw it running.
+    @ObservationIgnored private var pendingRefresh = false
 
     public init(harness: BonsaiHarness?) {
         self.harness = harness
@@ -70,7 +73,10 @@ public final class BonsaiHarnessModel {
         var wasRunning = isRunning
         while !Task.isCancelled {
             refresh()
-            if wasRunning && !isRunning { loadFiles() }
+            if (wasRunning || pendingRefresh) && !isRunning {
+                pendingRefresh = false
+                loadFiles()
+            }
             wasRunning = isRunning
             // Faster while Bonsai writes, so the text streams smoothly.
             try? await Task.sleep(for: .milliseconds(snapshot?.phase == .thinking ? 100 : 250))
@@ -153,6 +159,7 @@ public final class BonsaiHarnessModel {
         made = []
         do {
             try start()
+            pendingRefresh = true
             error = nil
         } catch let failure as HarnessError {
             error = failure.message

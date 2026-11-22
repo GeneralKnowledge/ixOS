@@ -347,6 +347,19 @@ fn an_svg_chart_must_draw_the_values() {
         bar(60, "3") + &bar(140, "7") + &bar(100, "5")
     ));
     assert!(check(&hidden).is_err());
+    // Bars after a closing tag with a space in it still count.
+    let spaced = svg(format!(
+        "<defs><linearGradient id='g'/></defs >{}",
+        bar(60, "3") + &bar(140, "7") + &bar(100, "5")
+    ));
+    assert!(check(&spaced).is_ok(), "{:?}", check(&spaced));
+    // Lengths in percent.
+    let percent = svg(
+        "<rect width='10%' height='60'/><rect width='10%' height='140'/><rect width='10%' height='100'/>\
+         <text>3</text><text>7</text><text>5</text>"
+            .into(),
+    );
+    assert!(check(&percent).is_ok(), "{:?}", check(&percent));
     // A label missing.
     let unlabelled = svg(bar(60, "3") + &bar(140, "7") + &bar(100, ""));
     assert!(check(&unlabelled).unwrap_err().contains("5"));

@@ -313,9 +313,11 @@ fn without_defs(svg: &str) -> String {
         if rest[..tag_end].ends_with("/>") {
             rest = &rest[tag_end..];
         } else {
+            // `</defs>`, with any space XML allows before the `>`.
             rest = rest
-                .find("</defs>")
-                .map_or("", |close| &rest[close + "</defs>".len()..]);
+                .find("</defs")
+                .and_then(|close| rest[close..].find('>').map(|end| close + end + 1))
+                .map_or("", |end| &rest[end..]);
         }
     }
     out.push_str(rest);
@@ -347,7 +349,20 @@ fn svg_attribute(tag: &str, name: &str) -> f64 {
             let quote = rest.chars().next().filter(|c| *c == '"' || *c == '\'')?;
             let rest = &rest[1..];
             let value = &rest[..rest.find(quote)?];
-            value.trim().trim_end_matches("px").parse().ok()
+            // The number of a length ("40", "40px", "10%"): only order
+            // matters, and bars share a unit.
+            let value = value.trim();
+            let number = value
+                .find(|c: char| {
+                    !(c.is_ascii_digit()
+                        || c == '.'
+                        || c == '-'
+                        || c == '+'
+                        || c == 'e'
+                        || c == 'E')
+                })
+                .map_or(value, |end| &value[..end]);
+            number.parse().ok()
         })
         .unwrap_or(0.0)
 }
