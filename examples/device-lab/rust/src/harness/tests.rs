@@ -858,6 +858,18 @@ fn the_scripted_model_completes_every_ladder_task() {
         h.set_approve_plans(false);
         h.start_ladder_scripted(task.id.into()).unwrap();
         let snapshot = wait(&h);
+        if task.ends_blocked {
+            let plan = snapshot.plan.clone().unwrap();
+            assert_eq!(plan.status, PlanState::Blocked, "{}: {plan:?}", task.id);
+            assert!(plan.question.is_some());
+            h.answer_plan_scripted("Yes, print a sample.".into())
+                .unwrap();
+        }
+        let snapshot = if task.ends_blocked {
+            wait(&h)
+        } else {
+            snapshot
+        };
         if task.planned {
             let plan = snapshot.plan.clone().unwrap();
             assert_eq!(plan.status, PlanState::Completed, "{}: {plan:?}", task.id);
@@ -920,12 +932,12 @@ fn the_scripted_model_completes_every_ladder_task() {
     // Every scripted answer parses against the tools (or the planner) it
     // will meet.
     for task in ladder() {
-        for (index, text) in super::evidence::script(task.id).into_iter().enumerate() {
-            if task.planned && index == 0 {
-                plan::parse(&text).unwrap_or_else(|e| panic!("{text}: {e:?}"));
-            } else {
-                parse(&text, &lab_tools()).unwrap_or_else(|e| panic!("{text}: {e:?}"));
-            }
+        for text in super::evidence::script(task.id) {
+            let fits = parse(&text, &lab_tools()).is_ok()
+                || (task.planned
+                    && (plan::parse(&text, &[]).is_ok()
+                        || plan::parse_recovery(&text, "x").is_ok()));
+            assert!(fits, "{}: {text}", task.id);
         }
     }
 }
@@ -1275,7 +1287,7 @@ fn the_plan_grammar_has_tasks_ids_and_the_checks_to_choose_from() {
     assert!(g.contains("id ::= \"\\\"\" [a-z] [a-z0-9-]{0,15} \"\\\"\""));
     assert!(g.contains("char ::="));
     // The instructions' example is a plan the parser takes.
-    let (thought, tasks) = plan::parse(&plan::example()).unwrap();
+    let (thought, tasks) = plan::parse(&plan::example(), &[]).unwrap();
     assert!(!thought.is_empty());
     assert_eq!(tasks.len(), 2);
     assert_eq!(tasks[1].after, vec!["area".to_string()]);
@@ -1336,7 +1348,7 @@ fn a_plan_that_cant_run_in_order_is_refused_with_a_reason() {
         ),
         ("{\"thought\": \"t\"}".to_string(), "no \"tasks\""),
     ] {
-        let err = plan::parse(&text).unwrap_err();
+        let err = plan::parse(&text, &[]).unwrap_err();
         assert!(err.contains(expected), "{text}: {err}");
     }
 }
@@ -1489,7 +1501,7 @@ fn the_executor_sees_its_task_and_one_line_per_task_done() {
         Entry::Plan {
             plan: "plan-1".into(),
             thought: "t".into(),
-            tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0])
+            tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
                 .unwrap()
                 .1,
             model_ms: 1,
@@ -1551,7 +1563,7 @@ fn a_plan_the_app_closed_during_stops_and_can_resume() {
             Entry::Plan {
                 plan: "plan-1".into(),
                 thought: "t".into(),
-                tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0])
+                tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
                     .unwrap()
                     .1,
                 model_ms: 1,
@@ -1633,4 +1645,175 @@ fn restore_puts_the_project_back_as_the_checkpoint_kept_it() {
     // The harness's own records stay.
     assert!(dir.path().join(".harness/journal.jsonl").exists());
     assert!(lab.restore("missing").is_err());
+}
+
+// MARK: Recovery (H5)
+
+#[test]
+fn recovery_decisions_follow_their_grammar_and_are_checked() {
+    let g = plan::recovery_grammar();
+    for decision in ["retry", "revise", "replan", "blocked"] {
+        assert!(
+            g.contains(&format!("\\\"{decision}\\\"")),
+            "{decision}:\n{g}"
+        );
+    }
+    assert!(g.contains("checks ::="));
+    let (thought, decision) = plan::parse_recovery(
+        r#"{"thought": "t", "decision": "revise", "do": "Write a.py.", "checks": [{"check": "work_runs"}]}"#,
+        "a",
+    )
+    .unwrap();
+    assert_eq!(thought, "t");
+    assert_eq!(
+        decision,
+        plan::Decision::Revise {
+            description: "Write a.py.".into(),
+            criteria: vec![Criterion::WorkRuns]
+        }
+    );
+    for (text, expected) in [
+        (
+            r#"{"thought": "t", "decision": "retry"}"#,
+            "needs \"diagnosis\"",
+        ),
+        (
+            r#"{"thought": "t", "decision": "blocked", "question": " "}"#,
+            "needs \"question\"",
+        ),
+        (
+            r#"{"thought": "t", "decision": "shrug"}"#,
+            "no decision called",
+        ),
+        (
+            r#"{"thought": "t", "decision": "revise", "do": "x", "checks": []}"#,
+            "at least one check",
+        ),
+        (r#"{"thought": "t"}"#, "no \"decision\""),
+    ] {
+        let err = plan::parse_recovery(text, "a").unwrap_err();
+        assert!(err.contains(expected), "{text}: {err}");
+    }
+    // Every example in the instructions is a decision the parser takes.
+    for line in plan::recovery_instructions()
+        .lines()
+        .filter(|l| l.starts_with('{'))
+    {
+        plan::parse_recovery(line, "a").unwrap_or_else(|e| panic!("{line}: {e}"));
+    }
+    // A replan may come after tasks done, never reuse their ids.
+    let done = vec!["stats".to_string()];
+    let replan = r#"{"thought": "t", "tasks": [{"id": "report", "do": "Run it.", "after": ["stats"], "checks": [{"check": "work_runs"}]}]}"#;
+    assert!(plan::parse(replan, &done).is_ok());
+    assert!(plan::parse(replan, &[])
+        .unwrap_err()
+        .contains("not an earlier task"));
+    let reuse = replan.replace("\"id\": \"report\"", "\"id\": \"stats\"");
+    assert!(plan::parse(&reuse, &done)
+        .unwrap_err()
+        .contains("already done"));
+}
+
+#[test]
+fn a_missing_dependency_is_replanned_and_the_plan_completes() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    h.set_approve_plans(false);
+    h.start_ladder_scripted("t8-replan".into()).unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
+    let ids: Vec<&str> = plan.tasks.iter().map(|t| t.id.as_str()).collect();
+    assert_eq!(ids, ["stats", "report"]);
+    let entries = Journal::replay(&dir.path().join("t8-replan"));
+    assert!(entries.iter().any(|e| matches!(
+        e,
+        Entry::Recovery { plan_task, decision: plan::Decision::Replan { .. }, .. } if plan_task == "run-report"
+    )));
+    assert!(entries.iter().any(|e| matches!(
+        e,
+        Entry::Result { tool, text, .. } if tool == "give_up" && text.starts_with("Gave up: report.py imports stats")
+    )));
+    assert!(h.transcript().contains("give_up"));
+}
+
+#[test]
+fn a_task_that_cant_succeed_ends_blocked_and_the_answer_reaches_it() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    h.set_approve_plans(false);
+    h.start_ladder_scripted("t9-blocked".into()).unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Blocked, "{plan:?}");
+    assert!(plan.question.as_deref().unwrap().contains("internet"));
+    assert!(!plan.can_continue);
+    assert_eq!(plan.tasks[0].recoveries, 1);
+    // Rolled back to before the task: the download program is gone.
+    let root = dir.path().join("t9-blocked");
+    assert!(!root.join("weather.py").exists());
+    assert!(matches!(
+        h.continue_plan_scripted(),
+        Err(HarnessError::NoPlan)
+    ));
+    assert!(matches!(
+        h.answer_plan_scripted("  ".into()),
+        Err(HarnessError::EmptyTask)
+    ));
+
+    h.answer_plan_scripted("Yes, print a sample.".into())
+        .unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
+    assert!(plan.question.is_none());
+    let entries = Journal::replay(&root);
+    let told = entries.iter().any(|e| {
+        matches!(
+            e,
+            Entry::PersonAnswer { text, .. } if text == "Yes, print a sample."
+        )
+    });
+    assert!(told);
+    // The rerun saw the question and the answer.
+    let view = plan::PlanView::read(plan::current(&entries).unwrap()).unwrap();
+    let request = view.executor_request(&view.tasks[0]);
+    assert!(
+        request.contains("They answered: Yes, print a sample."),
+        "{request}"
+    );
+    assert!(std::fs::read_to_string(root.join("weather.py"))
+        .unwrap()
+        .contains("sample"));
+}
+
+#[test]
+fn a_task_that_keeps_failing_ends_the_plan_after_two_recoveries() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    h.set_approve_plans(false);
+    let plan_text = r#"{"thought": "t", "tasks": [{"id": "a", "do": "Do it.", "after": [], "checks": [{"check": "work_runs"}]}]}"#;
+    let give_up = r#"{"thought": "t", "tool": "give_up", "reason": "can't"}"#;
+    let retry = r#"{"thought": "t", "decision": "retry", "diagnosis": "try harder"}"#;
+    h.start_request(
+        scripted(&[plan_text, give_up, retry, give_up, retry, give_up]),
+        "Do it.".into(),
+        true,
+    )
+    .unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::Failed, "{plan:?}");
+    assert_eq!(
+        plan.reason.as_deref(),
+        Some("Task a: Bonsai gave up: can't (after 2 recoveries)")
+    );
+    assert_eq!(plan.tasks[0].recoveries, 2);
+    assert!(plan.can_continue);
 }

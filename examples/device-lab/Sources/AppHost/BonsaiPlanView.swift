@@ -5,14 +5,17 @@ import ForgeUI
 /// A plan (H4): the tasks Bonsai split the request into, each with the
 /// tasks it waits for, its checks and its status, as in "2 / 3 tasks
 /// passed". Shown before anything runs when approval is on; a plan that
-/// failed or stopped resumes from its last verified task.
+/// failed or stopped resumes from its last verified task; a blocked plan
+/// (H5) asks its question here and goes on once answered.
 struct BonsaiPlanSection: View {
     let plan: HarnessPlan
     /// The plan as Bonsai writes it, before it parses.
     let draft: String
     let running: Bool
+    @Binding var answer: String
     let approve: @MainActor () -> Void
     let discard: @MainActor () -> Void
+    let send: @MainActor () -> Void
 
     var body: some View {
         Section {
@@ -35,7 +38,20 @@ struct BonsaiPlanSection: View {
             ForEach(Array(plan.tasks.enumerated()), id: \.element.id) { index, task in
                 PlanTaskRow(number: index + 1, task: task)
             }
-            if let reason = plan.reason, plan.status != .awaitingApproval {
+            if let question = plan.question {
+                Label(question, systemImage: "questionmark.bubble")
+                    .font(.subheadline)
+                    .accessibilityIdentifier("harness.plan.question")
+                if !running {
+                    TextField("Your answer", text: $answer, axis: .vertical)
+                        .lineLimit(1...4)
+                        .accessibilityIdentifier("harness.plan.answer")
+                    Button("Answer and Go On", systemImage: "arrowshape.turn.up.right") { send() }
+                        .disabled(answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("harness.plan.send")
+                }
+            }
+            if let reason = plan.reason, plan.status != .awaitingApproval, plan.status != .blocked {
                 Text(reason)
                     .font(.footnote)
                     .forgeForeground(plan.status == .completed ? .success : .danger)
@@ -89,6 +105,10 @@ private struct PlanTaskRow: View {
                 Text(result)
                     .font(.caption)
                     .forgeForeground(task.status == .completed ? .success : .danger)
+            }
+            if task.recoveries > 0 {
+                Text(task.recoveries == 1 ? "Recovered once" : "Recovered \(task.recoveries) times")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .combine)

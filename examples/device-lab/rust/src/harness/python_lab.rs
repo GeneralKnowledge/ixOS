@@ -560,6 +560,8 @@ impl Environment for PythonLab {
         if target.exists() {
             fs::remove_dir_all(&target)?;
         }
+        // Even an empty project gets its folder, so it can be restored.
+        fs::create_dir_all(&target)?;
         for (path, _) in self.files() {
             let to = target.join(&path);
             if let Some(parent) = to.parent() {

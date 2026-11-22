@@ -32,11 +32,11 @@ use std::time::{Duration, Instant};
 
 use forge_runtime::{lock, logging, now_ms};
 use forge_services::ai::{
-    AiError, ChatRequest, Collect, LanguageModel, ModelInfo, ScriptedModel, TextOut,
+    AiError, ChatMessage, ChatRequest, Collect, LanguageModel, ModelInfo, ScriptedModel, TextOut,
 };
 
 use crate::native::ai::{AiModelError, AiModelInfo, AiRequest, TextSink};
-use calls::{parse, with_finish, ToolCall, FINISH};
+use calls::{parse, with_finish, ToolCall, FINISH, GIVE_UP};
 use evidence::{Criterion, Evidence, LadderTask};
 use journal::{Entry, Journal, TaskStatus};
 use plan::{PlanState, PlanView};
@@ -218,6 +218,8 @@ pub struct HarnessTask {
     pub acceptance: Vec<String>,
     /// Bonsai plans it as several tasks first (H4).
     pub planned: bool,
+    /// It can't succeed: it passes by ending Blocked with a clear question.
+    pub ends_blocked: bool,
 }
 
 /// The task record, as the screen shows it.
@@ -296,6 +298,8 @@ pub struct HarnessPlan {
     pub acceptance: Vec<String>,
     /// Approve it, or resume it from its last verified task.
     pub can_continue: bool,
+    /// Blocked: the question to answer before it can go on.
+    pub question: Option<String>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
@@ -306,6 +310,8 @@ pub struct HarnessPlanTask {
     pub acceptance: Vec<String>,
     pub status: TaskStatus,
     pub result: Option<String>,
+    /// Times Recovery mode took it up after a failure.
+    pub recoveries: u32,
 }
 
 /// A file of the project, for the screen.
@@ -380,8 +386,13 @@ impl BonsaiHarness {
                 id: t.id.into(),
                 title: t.title.into(),
                 request: t.request.into(),
-                acceptance: t.criteria.iter().map(Criterion::describe).collect(),
+                acceptance: if t.ends_blocked {
+                    vec!["it ends Blocked with one clear question, not a loop".into()]
+                } else {
+                    t.criteria.iter().map(Criterion::describe).collect()
+                },
                 planned: t.planned,
+                ends_blocked: t.ends_blocked,
             })
             .collect()
     }
@@ -488,19 +499,24 @@ impl BonsaiHarness {
     /// [`Self::continue_plan`] with the Scripted model, which picks up its
     /// known-good answers where the plan left off.
     pub fn continue_plan_scripted(&self) -> Result<(), HarnessError> {
-        let (project, turns) = {
-            let state = lock(&self.shared.state);
-            let view = plan::current(&state.entries).and_then(PlanView::read);
-            (
-                state.project.clone(),
-                view.map(|v| v.verified_turns).unwrap_or(0),
-            )
-        };
-        let script = evidence::script(project.as_deref().unwrap_or(""))
-            .into_iter()
-            .skip(turns)
-            .collect();
-        self.continue_with(Arc::new(ScriptBrain::new(script)))
+        let brain = self.scripted_resume();
+        self.continue_with(brain)
+    }
+
+    /// Answers a blocked plan's question, then runs on from the blocked
+    /// task, which is told the answer (H5).
+    pub fn answer_plan(
+        &self,
+        model: Arc<dyn HarnessModel>,
+        answer: String,
+    ) -> Result<(), HarnessError> {
+        self.answer_with(Arc::new(HostBrain(model)), answer)
+    }
+
+    /// [`Self::answer_plan`] with the Scripted model.
+    pub fn answer_plan_scripted(&self, answer: String) -> Result<(), HarnessError> {
+        let brain = self.scripted_resume();
+        self.answer_with(brain, answer)
     }
 
     /// Discards a plan waiting for approval; nothing of it runs.
@@ -765,6 +781,72 @@ impl BonsaiHarness {
         self.launch(brain, Arc::new(lab), SCRATCH_PROJECT, job)
     }
 
+    /// The Scripted model, picking up its answers where the plan on screen
+    /// left off.
+    fn scripted_resume(&self) -> Arc<dyn Brain> {
+        let (project, turns) = {
+            let state = lock(&self.shared.state);
+            let view = plan::current(&state.entries).and_then(PlanView::read);
+            (
+                state.project.clone(),
+                view.map(|v| v.resume_turns).unwrap_or(0),
+            )
+        };
+        let script = evidence::script(project.as_deref().unwrap_or(""))
+            .into_iter()
+            .skip(turns)
+            .collect();
+        Arc::new(ScriptBrain::new(script))
+    }
+
+    /// Records the person's answer to the blocked plan on screen, then runs
+    /// on with `brain`.
+    pub fn answer_with(&self, brain: Arc<dyn Brain>, answer: String) -> Result<(), HarnessError> {
+        let answer = answer.trim().to_string();
+        if answer.is_empty() {
+            return Err(HarnessError::EmptyTask);
+        }
+        let (project, view) = {
+            let state = lock(&self.shared.state);
+            if state.running {
+                return Err(HarnessError::Busy);
+            }
+            let view = plan::current(&state.entries).and_then(PlanView::read);
+            (state.project.clone(), view)
+        };
+        let (Some(project), Some(view)) = (project, view) else {
+            return Err(HarnessError::NoPlan);
+        };
+        let Some((task, _)) = view.blocked.clone().filter(|_| view.state.needs_answer()) else {
+            return Err(HarnessError::NoPlan);
+        };
+        let root = self.project_root(&project)?;
+        let lab = PythonLab::new(
+            root.clone(),
+            Arc::clone(&self.python),
+            Duration::from_secs(self.limits.run_seconds.into()),
+        );
+        self.claim()?;
+        let entry = Entry::PersonAnswer {
+            plan: view.id.clone(),
+            plan_task: task,
+            text: answer,
+            at_ms: now_ms(),
+        };
+        if let Err(err) = Journal::open(&root).and_then(|mut journal| journal.append(&entry)) {
+            self.release();
+            return Err(HarnessError::Storage {
+                reason: format!("Could not write the journal: {err}"),
+            });
+        }
+        self.launch(
+            brain,
+            Arc::new(lab),
+            &project,
+            Job::Continue { plan: view.id },
+        )
+    }
+
     /// Approves or resumes the plan on screen with `brain`.
     pub fn continue_with(&self, brain: Arc<dyn Brain>) -> Result<(), HarnessError> {
         let (project, view) = {
@@ -874,6 +956,15 @@ impl BonsaiHarness {
     }
 }
 
+/// How a model error starts a task's end reason.
+const MODEL_FAILED: &str = "The model failed";
+
+/// Whether Recovery mode can help with a task that ended for `reason`: not
+/// when the model or the journal failed.
+fn recoverable(reason: &str) -> bool {
+    !reason.starts_with(MODEL_FAILED) && !reason.starts_with("Could not write the journal")
+}
+
 /// What a launch does.
 enum Job {
     /// One task.
@@ -921,6 +1012,7 @@ fn plan_record(view: &PlanView) -> HarnessPlan {
                 acceptance: t.criteria.iter().map(Criterion::describe).collect(),
                 status,
                 result,
+                recoveries: view.recoveries.get(&t.id).copied().unwrap_or(0),
             }
         })
         .collect();
@@ -937,6 +1029,11 @@ fn plan_record(view: &PlanView) -> HarnessPlan {
         tasks,
         acceptance: view.criteria.iter().map(Criterion::describe).collect(),
         can_continue: view.state.can_continue(),
+        question: view
+            .blocked
+            .as_ref()
+            .filter(|_| view.state.needs_answer())
+            .map(|(_, question)| question.clone()),
     }
 }
 
@@ -1081,7 +1178,7 @@ impl Run {
             return;
         }
         logging::info!(target: "harness", "{plan} started");
-        if let Err(end) = self.draft(&plan, &request) {
+        if let Err(end) = self.draft(&plan, &request, None) {
             return self.end_plan(&plan, end);
         }
         if approve {
@@ -1104,7 +1201,7 @@ impl Run {
             // It never got a plan: write one now.
             if let Err(end) = self
                 .plan_status(plan, PlanState::Planning, None)
-                .and_then(|_| self.draft(plan, &view.request))
+                .and_then(|_| self.draft(plan, &view.request, None))
             {
                 return self.end_plan(plan, end);
             }
@@ -1123,52 +1220,56 @@ impl Run {
         self.run_plan(plan);
     }
 
+    /// One model answer under `grammar`: its text and how long it took.
+    fn ask(&self, messages: Vec<ChatMessage>, grammar: &str) -> Result<(String, u64), End> {
+        if self.stopped() {
+            return Err(End(TaskStatus::Stopped, "Stopped.".into()));
+        }
+        self.phase(HarnessPhase::Thinking);
+        let request = ChatRequest {
+            model: None,
+            messages,
+            max_tokens: self.limits.turn_tokens,
+            temperature: 0.0,
+        };
+        let shared = Arc::clone(&self.shared);
+        let out = Arc::new(Collect::new().stop_when(move || shared.stop.load(Ordering::SeqCst)));
+        lock(&self.shared.state).out = Some(Arc::clone(&out));
+        let asked = Instant::now();
+        let answer =
+            self.brain
+                .generate(request, Some(grammar), Arc::clone(&out) as Arc<dyn TextOut>);
+        let model_ms = asked.elapsed().as_millis() as u64;
+        if self.stopped() {
+            return Err(End(TaskStatus::Stopped, "Stopped.".into()));
+        }
+        match answer {
+            Ok(()) => Ok((out.text(), model_ms)),
+            Err(AiError::Stopped) => Err(End(TaskStatus::Stopped, "Stopped.".into())),
+            Err(err) => Err(End(TaskStatus::Failed, format!("{MODEL_FAILED}: {err}"))),
+        }
+    }
+
     /// Asks for a plan until one can be used (or the invalid limit).
-    fn draft(&self, plan: &str, request: &str) -> Result<(), End> {
+    /// `progress` is what happened so far, when replanning.
+    fn draft(&self, plan: &str, request: &str, progress: Option<&str>) -> Result<(), End> {
         let grammar = plan::grammar();
         let overview = self.environment.overview();
+        let done = self
+            .plan_view(plan)
+            .map(|v| v.done_ids())
+            .unwrap_or_default();
         let mut refused: Vec<(String, String)> = Vec::new();
         loop {
-            if self.stopped() {
-                return Err(End(TaskStatus::Stopped, "Stopped.".into()));
-            }
             if refused.len() as u32 >= self.limits.invalid_in_a_row {
                 return Err(End(
                     TaskStatus::Failed,
                     format!("{} plans in a row couldn't be used.", refused.len()),
                 ));
             }
-            self.phase(HarnessPhase::Thinking);
-            let messages = plan::messages(request, &overview, &refused);
-            let request_ = ChatRequest {
-                model: None,
-                messages,
-                max_tokens: self.limits.turn_tokens,
-                temperature: 0.0,
-            };
-            let shared = Arc::clone(&self.shared);
-            let out =
-                Arc::new(Collect::new().stop_when(move || shared.stop.load(Ordering::SeqCst)));
-            lock(&self.shared.state).out = Some(Arc::clone(&out));
-            let asked = Instant::now();
-            let answer = self.brain.generate(
-                request_,
-                Some(&grammar),
-                Arc::clone(&out) as Arc<dyn TextOut>,
-            );
-            let model_ms = asked.elapsed().as_millis() as u64;
-            if self.stopped() {
-                return Err(End(TaskStatus::Stopped, "Stopped.".into()));
-            }
-            match answer {
-                Ok(()) => {}
-                Err(AiError::Stopped) => return Err(End(TaskStatus::Stopped, "Stopped.".into())),
-                Err(err) => {
-                    return Err(End(TaskStatus::Failed, format!("The model failed: {err}")))
-                }
-            }
-            let text = out.text();
-            match plan::parse(&text) {
+            let messages = plan::messages(request, &overview, progress, &refused);
+            let (text, model_ms) = self.ask(messages, &grammar)?;
+            match plan::parse(&text, &done) {
                 Ok((thought, tasks)) => {
                     return self.record(Entry::Plan {
                         plan: plan.into(),
@@ -1190,8 +1291,76 @@ impl Run {
         }
     }
 
+    /// Recovery mode: the failed task's evidence goes to the model, which
+    /// decides to retry, revise the task, replan or ask the person.
+    fn recover(
+        &self,
+        plan: &str,
+        task: &plan::PlanTask,
+        run: &str,
+        reason: &str,
+    ) -> Result<plan::Decision, End> {
+        let Some(view) = self.plan_view(plan) else {
+            return Err(End(TaskStatus::Failed, "The plan is gone.".into()));
+        };
+        let recent: Vec<String> = {
+            let state = lock(&self.shared.state);
+            let results: Vec<String> = state
+                .entries
+                .iter()
+                .filter_map(|e| match e {
+                    Entry::Result {
+                        task, tool, text, ..
+                    } if task == run => Some(format!("{tool}: {}", prompt::cut(text, 500))),
+                    _ => None,
+                })
+                .collect();
+            results[results.len().saturating_sub(3)..].to_vec()
+        };
+        let recent = recent.join("\n");
+        let grammar = plan::recovery_grammar();
+        let overview = self.environment.overview();
+        let mut refused: Vec<(String, String)> = Vec::new();
+        loop {
+            if refused.len() as u32 >= self.limits.invalid_in_a_row {
+                return Err(End(
+                    TaskStatus::Failed,
+                    format!(
+                        "{reason} (and {} recovery answers in a row couldn't be used)",
+                        refused.len()
+                    ),
+                ));
+            }
+            let messages =
+                plan::recovery_messages(&view, task, reason, &recent, &overview, &refused);
+            let (text, model_ms) = self.ask(messages, &grammar)?;
+            match plan::parse_recovery(&text, &task.id) {
+                Ok((thought, decision)) => {
+                    self.record(Entry::Recovery {
+                        plan: plan.into(),
+                        plan_task: task.id.clone(),
+                        thought,
+                        decision: decision.clone(),
+                        model_ms,
+                    })?;
+                    return Ok(decision);
+                }
+                Err(error) => {
+                    self.record(Entry::RecoveryInvalid {
+                        plan: plan.into(),
+                        text: text.clone(),
+                        error: error.clone(),
+                        model_ms,
+                    })?;
+                    refused.push((text, error));
+                }
+            }
+        }
+    }
+
     /// Runs the plan's ready tasks in order, one at a time, each with a
-    /// fresh context, until all are verified or one isn't.
+    /// fresh context, until all are verified, one can't be recovered, or
+    /// one needs the person.
     fn run_plan(&self, plan: &str) {
         let Some(view) = self.plan_view(plan) else {
             return;
@@ -1221,8 +1390,55 @@ impl Run {
                 next.criteria.clone(),
                 Some((plan, &next.id)),
             );
-            if status != TaskStatus::Completed {
-                return self.end_plan(plan, End(status, format!("Task {}: {reason}", next.id)));
+            if status == TaskStatus::Completed {
+                continue;
+            }
+            let failed = End(status, format!("Task {}: {reason}", next.id));
+            if status == TaskStatus::Stopped || !recoverable(&reason) {
+                return self.end_plan(plan, failed);
+            }
+            let Some(view) = self.plan_view(plan) else {
+                return;
+            };
+            let tries = view.recoveries.get(&next.id).copied().unwrap_or(0);
+            if tries >= plan::MAX_RECOVERIES {
+                return self.end_plan(
+                    plan,
+                    End(
+                        TaskStatus::Failed,
+                        format!("Task {}: {reason} (after {tries} recoveries)", next.id),
+                    ),
+                );
+            }
+            // Back to the last verified task's files before deciding.
+            if let Err(err) = self.environment.restore(&view.restart_point()) {
+                return self.end_plan(
+                    plan,
+                    End(
+                        TaskStatus::Failed,
+                        format!("Could not roll back after task {}: {err}", next.id),
+                    ),
+                );
+            }
+            let run = view
+                .runs
+                .get(&next.id)
+                .map(|(run, _, _)| run.clone())
+                .unwrap_or_default();
+            logging::info!(target: "harness", "{plan}: recovering {}", next.id);
+            match self.recover(plan, &next, &run, &reason) {
+                Err(end) => return self.end_plan(plan, end),
+                Ok(plan::Decision::Blocked { question }) => {
+                    let _ = self.plan_status(plan, PlanState::Blocked, Some(question));
+                    return;
+                }
+                Ok(plan::Decision::Replan { diagnosis }) => {
+                    let progress = view.progress(&next, &reason, &diagnosis);
+                    if let Err(end) = self.draft(plan, &view.request, Some(&progress)) {
+                        return self.end_plan(plan, end);
+                    }
+                }
+                Ok(_) => {}
             }
         }
     }
@@ -1373,9 +1589,7 @@ impl Run {
                     step -= 1;
                     continue;
                 }
-                Err(err) => {
-                    return Err(End(TaskStatus::Failed, format!("The model failed: {err}")))
-                }
+                Err(err) => return Err(End(TaskStatus::Failed, format!("{MODEL_FAILED}: {err}"))),
             }
             let text = out.text();
             let call = match parse(&text, &tools) {
@@ -1472,6 +1686,20 @@ impl Run {
                 })?;
                 self.status(task, TaskStatus::Running, Some(missing))?;
                 continue;
+            }
+
+            if call.tool == GIVE_UP {
+                let reason = call.arg("reason").trim().to_string();
+                self.record(Entry::Result {
+                    task: task.into(),
+                    step,
+                    tool: GIVE_UP.into(),
+                    ok: false,
+                    text: format!("Gave up: {reason}"),
+                    evidence: Vec::new(),
+                    tool_ms: 0,
+                })?;
+                return Err(End(TaskStatus::Failed, format!("Bonsai gave up: {reason}")));
             }
 
             self.phase(HarnessPhase::Acting);

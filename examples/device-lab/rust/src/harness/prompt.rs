@@ -29,7 +29,10 @@ pub fn instructions(tools: &[ToolSpec]) -> String {
              - Tests use unittest, in files named test_*.py. run_tests runs them all.\n\
              - Read every result. When something fails, fix the cause, then run it again.\n\
              - Call finish only when a result shows the task is done. The harness checks the \
-             evidence and tells you if anything is missing.";
+             evidence and tells you if anything is missing.\n\
+             - If the task can't be done as written (a file it needs is missing, or it needs \
+             something not allowed here, like the network), call give_up with the reason instead \
+             of trying again and again.";
     text
 }
 

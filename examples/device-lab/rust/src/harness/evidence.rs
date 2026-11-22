@@ -402,7 +402,14 @@ pub struct LadderTask {
     /// Bonsai plans it as several tasks first (H4); `criteria` are then
     /// checked once every task is verified.
     pub planned: bool,
+    /// It can't succeed: it passes by ending Blocked with a clear question
+    /// instead of looping (H5).
+    pub ends_blocked: bool,
 }
+
+/// T8's seed: it needs a module nobody has written.
+const STATS_REPORT_PY: &str =
+    "from stats import mean\n\nnumbers = [2, 4, 6]\nprint(\"Average:\", mean(numbers))\n";
 
 const AVERAGE_PY: &str = "def average(numbers):\n    \"\"\"The mean of a list of numbers.\"\"\"\n    return sum(numbers) / (len(numbers) + 1)\n";
 
@@ -411,7 +418,7 @@ const TEST_AVERAGE_PY: &str = "import unittest\n\nfrom average import average\n\
 const INVENTORY_PY: &str = "stock = {\"apples\": 3, \"pears\": 0, \"plums\": 5}\n\n\ndef report(stock):\n    lines = []\n    for name, count in stock.items():\n        lines.append(name + \": \" + count)\n    return lines\n\n\nfor line in report(stock):\n    print(line)\n";
 
 /// The ladder (docs/bonsai-harness-plan.md): T1 to T3 are H1's, T4 and
-/// T5 are H2's, T6 and T7 (planned) are H4's.
+/// T5 are H2's, T6 and T7 (planned) are H4's, T8 and T9 are H5's.
 pub fn ladder() -> Vec<LadderTask> {
     vec![
         LadderTask {
@@ -424,6 +431,7 @@ pub fn ladder() -> Vec<LadderTask> {
                 text: "Hello from Bonsai".into(),
             }],
             planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t2-one-test",
@@ -433,6 +441,7 @@ pub fn ladder() -> Vec<LadderTask> {
             seed: vec![],
             criteria: vec![Criterion::TestsPass],
             planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t3-one-fix",
@@ -457,6 +466,7 @@ pub fn ladder() -> Vec<LadderTask> {
                 },
             ],
             planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t4-two-modules",
@@ -476,6 +486,7 @@ pub fn ladder() -> Vec<LadderTask> {
                 },
             ],
             planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "tp1-svg-chart",
@@ -496,6 +507,7 @@ pub fn ladder() -> Vec<LadderTask> {
                 },
             ],
             planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t5-fix-from-traceback",
@@ -518,6 +530,7 @@ pub fn ladder() -> Vec<LadderTask> {
                 },
             ],
             planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t6-two-functions",
@@ -529,6 +542,7 @@ pub fn ladder() -> Vec<LadderTask> {
             seed: vec![],
             criteria: vec![Criterion::TestsPass],
             planned: true,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t7-plan-with-dependency",
@@ -553,6 +567,33 @@ pub fn ladder() -> Vec<LadderTask> {
                 },
             ],
             planned: true,
+            ends_blocked: false,
+        },
+        LadderTask {
+            id: "t8-replan",
+            title: "T8 A plan that must change (recovery)",
+            request: "Run report.py, which prints the average of some numbers, and make it work: it \
+                      should print \"Average: 4\". Plan it as small tasks.",
+            seed: vec![SeedFile {
+                path: "report.py",
+                content: STATS_REPORT_PY,
+            }],
+            criteria: vec![Criterion::RunPrints {
+                path: "report.py".into(),
+                text: "Average: 4".into(),
+            }],
+            planned: true,
+            ends_blocked: false,
+        },
+        LadderTask {
+            id: "t9-blocked",
+            title: "T9 A task that can't succeed (blocked)",
+            request: "Write weather.py that downloads today's weather for Edinburgh from \
+                      https://wttr.in/Edinburgh?format=3 and prints it, then run it.",
+            seed: vec![],
+            criteria: vec![],
+            planned: true,
+            ends_blocked: true,
         },
     ]
 }
@@ -786,19 +827,116 @@ pub fn script(task_id: &str) -> Vec<String> {
             answer("Run it.", "run_python", &[("path", "report.py")]),
             finish("report.py prints every student."),
         ],
+        // The plan misses a module; the executor gives up, Recovery replans.
+        "t8-replan" => vec![
+            plan_answer(
+                "Run it first and see.",
+                &[("run-report", "Run report.py and make sure it prints Average: 4.", &[], "average")],
+            ),
+            answer("Run it.", "run_python", &[("path", "report.py")]),
+            answer(
+                "Missing module.",
+                super::calls::GIVE_UP,
+                &[("reason", "report.py imports stats, but there is no stats.py in the project.")],
+            ),
+            recovery_answer(
+                "No task makes the stats module report.py needs.",
+                "replan",
+                "stats.py with mean(numbers) is missing.",
+            ),
+            plan_answer(
+                "Write the missing module and its test, then run the report.",
+                &[
+                    ("stats", "Write stats.py with mean(numbers) returning sum(numbers) / len(numbers), and test_stats.py testing it with unittest. Run the tests.", &[], "tests_pass"),
+                    ("report", "Run report.py; it should print Average: 4.", &["stats"], "average"),
+                ],
+            ),
+            answer(
+                "Write mean.",
+                "write_file",
+                &[
+                    ("path", "stats.py"),
+                    ("content", "def mean(numbers):\n    return sum(numbers) / len(numbers)\n"),
+                ],
+            ),
+            answer(
+                "Test it.",
+                "write_file",
+                &[("path", "test_stats.py"), ("content", TEST_STATS_PY)],
+            ),
+            answer("Run the tests.", "run_tests", &[]),
+            finish("mean and its test pass."),
+            answer("Run the report.", "run_python", &[("path", "report.py")]),
+            finish("report.py prints Average: 4.0."),
+        ],
+        // The network is off: it ends Blocked with a question; answered,
+        // it goes on with a sample.
+        "t9-blocked" => vec![
+            plan_answer(
+                "One small program.",
+                &[("weather", "Write weather.py that downloads https://wttr.in/Edinburgh?format=3 with urllib and prints it. Run it.", &[], "work_runs")],
+            ),
+            answer(
+                "Download and print.",
+                "write_file",
+                &[("path", "weather.py"), ("content", WEATHER_PY)],
+            ),
+            answer("Run it.", "run_python", &[("path", "weather.py")]),
+            answer(
+                "The network is blocked.",
+                super::calls::GIVE_UP,
+                &[("reason", "Python's network is blocked here, so wttr.in can't be reached.")],
+            ),
+            recovery_answer(
+                "Only the person can say what to do without the network.",
+                "blocked",
+                "Python can't reach the internet on this phone. Should I print a sample forecast instead?",
+            ),
+            answer(
+                "Print a sample, as the person said.",
+                "write_file",
+                &[
+                    ("path", "weather.py"),
+                    ("content", "print(\"Edinburgh: (sample) cloudy, 9°C\")\n"),
+                ],
+            ),
+            answer("Run it.", "run_python", &[("path", "weather.py")]),
+            finish("weather.py prints a sample forecast."),
+        ],
         _ => vec![],
     }
 }
 
+/// A recovery answer in Recovery mode's grammar: `decision` is retry,
+/// replan or blocked, and `text` its diagnosis or question.
+fn recovery_answer(thought: &str, decision: &str, text: &str) -> String {
+    let field = if decision == "blocked" {
+        "question"
+    } else {
+        "diagnosis"
+    };
+    format!(
+        "{{\"thought\": {}, \"decision\": {}, \"{field}\": {}}}",
+        serde_json::to_string(thought).unwrap_or_default(),
+        serde_json::to_string(decision).unwrap_or_default(),
+        serde_json::to_string(text).unwrap_or_default()
+    )
+}
+
+const TEST_STATS_PY: &str = "import unittest\n\nfrom stats import mean\n\n\nclass MeanTest(unittest.TestCase):\n    def test_mean(self):\n        self.assertEqual(mean([2, 4, 6]), 4)\n";
+
+const WEATHER_PY: &str = "import urllib.request\n\nwith urllib.request.urlopen(\"https://wttr.in/Edinburgh?format=3\", timeout=5) as reply:\n    print(reply.read().decode())\n";
+
 /// A plan answer in the planner grammar's shape: tasks as (id, what to do,
-/// after, check), where check is "tests_pass", "work_runs" or "report"
-/// (report.py prints "Ana: A").
+/// after, check), where check is "tests_pass", "work_runs", "report"
+/// (report.py prints "Ana: A") or "average" (report.py prints "Average: 4").
 fn plan_answer(thought: &str, tasks: &[(&str, &str, &[&str], &str)]) -> String {
     let tasks: Vec<serde_json::Value> = tasks
         .iter()
         .map(|(id, what, after, check)| {
             let check = match *check {
                 "report" => serde_json::json!({"check": "run_prints", "path": "report.py", "text": "Ana: A"}),
+                "average" => serde_json::json!({"check": "run_prints", "path": "report.py", "text": "Average: 4"}),
                 other => serde_json::json!({ "check": other }),
             };
             serde_json::json!({"id": id, "do": what, "after": after, "checks": [check]})

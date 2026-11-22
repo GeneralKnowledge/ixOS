@@ -1954,6 +1954,17 @@ public func FfiConverterTypeBluetoothSink_lower(_ value: BluetoothSink) -> UInt6
 public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
     
     /**
+     * Answers a blocked plan's question, then runs on from the blocked
+     * task, which is told the answer (H5).
+     */
+    func answerPlan(model: HarnessModel, answer: String) throws 
+    
+    /**
+     * [`Self::answer_plan`] with the Scripted model.
+     */
+    func answerPlanScripted(answer: String) throws 
+    
+    /**
      * Runs the plan on screen: approves it, or resumes it from its last
      * verified task (the project's files go back to that task's
      * checkpoint).
@@ -2107,6 +2118,32 @@ public convenience init(python: PythonHost, projectsFolder: String) {
 
     
 
+    
+    /**
+     * Answers a blocked plan's question, then runs on from the blocked
+     * task, which is told the answer (H5).
+     */
+open func answerPlan(model: HarnessModel, answer: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_answer_plan(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHarnessModel_lower(model),
+        FfiConverterString.lower(answer),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * [`Self::answer_plan`] with the Scripted model.
+     */
+open func answerPlanScripted(answer: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_answer_plan_scripted(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(answer),uniffiCallStatus
+    )
+}
+}
     
     /**
      * Runs the plan on screen: approves it, or resumes it from its last
@@ -8994,6 +9031,10 @@ public struct HarnessPlan: Equatable, Hashable {
      * Approve it, or resume it from its last verified task.
      */
     public var canContinue: Bool
+    /**
+     * Blocked: the question to answer before it can go on.
+     */
+    public var question: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -9012,7 +9053,10 @@ public struct HarnessPlan: Equatable, Hashable {
          */acceptance: [String], 
         /**
          * Approve it, or resume it from its last verified task.
-         */canContinue: Bool) {
+         */canContinue: Bool, 
+        /**
+         * Blocked: the question to answer before it can go on.
+         */question: String?) {
         self.id = id
         self.request = request
         self.status = status
@@ -9022,6 +9066,7 @@ public struct HarnessPlan: Equatable, Hashable {
         self.passed = passed
         self.acceptance = acceptance
         self.canContinue = canContinue
+        self.question = question
     }
 
     
@@ -9048,7 +9093,8 @@ public struct FfiConverterTypeHarnessPlan: FfiConverterRustBuffer {
                 tasks: FfiConverterSequenceTypeHarnessPlanTask.read(from: &buf), 
                 passed: FfiConverterUInt32.read(from: &buf), 
                 acceptance: FfiConverterSequenceString.read(from: &buf), 
-                canContinue: FfiConverterBool.read(from: &buf)
+                canContinue: FfiConverterBool.read(from: &buf), 
+                question: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -9062,6 +9108,7 @@ public struct FfiConverterTypeHarnessPlan: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.passed, into: &buf)
         FfiConverterSequenceString.write(value.acceptance, into: &buf)
         FfiConverterBool.write(value.canContinue, into: &buf)
+        FfiConverterOptionString.write(value.question, into: &buf)
     }
 }
 
@@ -9088,16 +9135,24 @@ public struct HarnessPlanTask: Equatable, Hashable {
     public var acceptance: [String]
     public var status: TaskStatus
     public var result: String?
+    /**
+     * Times Recovery mode took it up after a failure.
+     */
+    public var recoveries: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, description: String, after: [String], acceptance: [String], status: TaskStatus, result: String?) {
+    public init(id: String, description: String, after: [String], acceptance: [String], status: TaskStatus, result: String?, 
+        /**
+         * Times Recovery mode took it up after a failure.
+         */recoveries: UInt32) {
         self.id = id
         self.description = description
         self.after = after
         self.acceptance = acceptance
         self.status = status
         self.result = result
+        self.recoveries = recoveries
     }
 
     
@@ -9121,7 +9176,8 @@ public struct FfiConverterTypeHarnessPlanTask: FfiConverterRustBuffer {
                 after: FfiConverterSequenceString.read(from: &buf), 
                 acceptance: FfiConverterSequenceString.read(from: &buf), 
                 status: FfiConverterTypeTaskStatus.read(from: &buf), 
-                result: FfiConverterOptionString.read(from: &buf)
+                result: FfiConverterOptionString.read(from: &buf), 
+                recoveries: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -9132,6 +9188,7 @@ public struct FfiConverterTypeHarnessPlanTask: FfiConverterRustBuffer {
         FfiConverterSequenceString.write(value.acceptance, into: &buf)
         FfiConverterTypeTaskStatus.write(value.status, into: &buf)
         FfiConverterOptionString.write(value.result, into: &buf)
+        FfiConverterUInt32.write(value.recoveries, into: &buf)
     }
 }
 
@@ -9375,6 +9432,10 @@ public struct HarnessTask: Equatable, Hashable {
      * Bonsai plans it as several tasks first (H4).
      */
     public var planned: Bool
+    /**
+     * It can't succeed: it passes by ending Blocked with a clear question.
+     */
+    public var endsBlocked: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -9384,12 +9445,16 @@ public struct HarnessTask: Equatable, Hashable {
          */acceptance: [String], 
         /**
          * Bonsai plans it as several tasks first (H4).
-         */planned: Bool) {
+         */planned: Bool, 
+        /**
+         * It can't succeed: it passes by ending Blocked with a clear question.
+         */endsBlocked: Bool) {
         self.id = id
         self.title = title
         self.request = request
         self.acceptance = acceptance
         self.planned = planned
+        self.endsBlocked = endsBlocked
     }
 
     
@@ -9412,7 +9477,8 @@ public struct FfiConverterTypeHarnessTask: FfiConverterRustBuffer {
                 title: FfiConverterString.read(from: &buf), 
                 request: FfiConverterString.read(from: &buf), 
                 acceptance: FfiConverterSequenceString.read(from: &buf), 
-                planned: FfiConverterBool.read(from: &buf)
+                planned: FfiConverterBool.read(from: &buf), 
+                endsBlocked: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -9422,6 +9488,7 @@ public struct FfiConverterTypeHarnessTask: FfiConverterRustBuffer {
         FfiConverterString.write(value.request, into: &buf)
         FfiConverterSequenceString.write(value.acceptance, into: &buf)
         FfiConverterBool.write(value.planned, into: &buf)
+        FfiConverterBool.write(value.endsBlocked, into: &buf)
     }
 }
 
@@ -13967,6 +14034,11 @@ public enum PlanState: Equatable, Hashable {
      * The person didn't approve it.
      */
     case discarded
+    /**
+     * Recovery mode found the task can't go on without the person: the
+     * reason is the question, answered on screen.
+     */
+    case blocked
 
 
 
@@ -14002,6 +14074,8 @@ public struct FfiConverterTypePlanState: FfiConverterRustBuffer {
         
         case 7: return .discarded
         
+        case 8: return .blocked
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -14036,6 +14110,10 @@ public struct FfiConverterTypePlanState: FfiConverterRustBuffer {
         
         case .discarded:
             writeInt(&buf, Int32(7))
+        
+        
+        case .blocked:
+            writeInt(&buf, Int32(8))
         
         }
     }
@@ -16313,6 +16391,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_ailab_update_external() != 57909) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_answer_plan() != 32507) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_answer_plan_scripted() != 5638) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_continue_plan() != 6670) {

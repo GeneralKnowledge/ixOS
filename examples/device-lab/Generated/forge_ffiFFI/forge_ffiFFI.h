@@ -815,6 +815,16 @@ void uniffi_forge_ffi_fn_free_bonsaiharness(uint64_t handle, RustCallStatus *_No
 uint64_t uniffi_forge_ffi_fn_constructor_bonsaiharness_new(uint64_t python, RustBuffer projects_folder, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_ANSWER_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_ANSWER_PLAN
+void uniffi_forge_ffi_fn_method_bonsaiharness_answer_plan(uint64_t ptr, uint64_t model, RustBuffer answer, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_ANSWER_PLAN_SCRIPTED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_ANSWER_PLAN_SCRIPTED
+void uniffi_forge_ffi_fn_method_bonsaiharness_answer_plan_scripted(uint64_t ptr, RustBuffer answer, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_CONTINUE_PLAN
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_CONTINUE_PLAN
 void uniffi_forge_ffi_fn_method_bonsaiharness_continue_plan(uint64_t ptr, uint64_t model, RustCallStatus *_Nonnull out_status
@@ -2091,6 +2101,18 @@ uint16_t uniffi_forge_ffi_checksum_method_ailab_stop_requested(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_UPDATE_EXTERNAL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_UPDATE_EXTERNAL
 uint16_t uniffi_forge_ffi_checksum_method_ailab_update_external(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_ANSWER_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_ANSWER_PLAN
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_answer_plan(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_ANSWER_PLAN_SCRIPTED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_ANSWER_PLAN_SCRIPTED
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_answer_plan_scripted(void
     
 );
 #endif

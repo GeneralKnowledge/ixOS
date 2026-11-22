@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::evidence::{Criterion, Evidence};
-use super::plan::{PlanState, PlanTask};
+use super::plan::{Decision, PlanState, PlanTask};
 
 /// A task's status, owned by the harness.
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +121,28 @@ pub enum Entry {
         reason: Option<String>,
         at_ms: i64,
     },
+    /// Recovery mode's decision for a failed task (H5).
+    Recovery {
+        plan: String,
+        plan_task: String,
+        thought: String,
+        decision: Decision,
+        model_ms: u64,
+    },
+    /// A recovery answer that couldn't be used, and why.
+    RecoveryInvalid {
+        plan: String,
+        text: String,
+        error: String,
+        model_ms: u64,
+    },
+    /// The person's answer to a blocked task's question.
+    PersonAnswer {
+        plan: String,
+        plan_task: String,
+        text: String,
+        at_ms: i64,
+    },
 }
 
 impl Entry {
@@ -136,7 +158,10 @@ impl Entry {
             Entry::PlanRequest { plan, .. }
             | Entry::PlanInvalid { plan, .. }
             | Entry::Plan { plan, .. }
-            | Entry::PlanStatus { plan, .. } => plan,
+            | Entry::PlanStatus { plan, .. }
+            | Entry::Recovery { plan, .. }
+            | Entry::RecoveryInvalid { plan, .. }
+            | Entry::PersonAnswer { plan, .. } => plan,
         }
     }
 }

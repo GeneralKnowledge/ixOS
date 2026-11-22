@@ -50,6 +50,9 @@ pub enum PlanState {
     Stopped,
     /// The person didn't approve it.
     Discarded,
+    /// Recovery mode found the task can't go on without the person: the
+    /// reason is the question, answered on screen.
+    Blocked,
 }
 
 impl PlanState {
@@ -62,12 +65,148 @@ impl PlanState {
 
     /// A plan that can go on: approved, or resumed from its last verified
     /// task.
+    pub fn needs_answer(self) -> bool {
+        self == PlanState::Blocked
+    }
+
     pub fn can_continue(self) -> bool {
         matches!(
             self,
             PlanState::AwaitingApproval | PlanState::Failed | PlanState::Stopped
         )
     }
+}
+
+/// The most recoveries one task gets before the plan fails.
+pub const MAX_RECOVERIES: u32 = 2;
+
+/// What Recovery mode decided for a failed task (H5).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "decision", rename_all = "snake_case")]
+pub enum Decision {
+    /// Run the task again, told what went wrong.
+    Retry { diagnosis: String },
+    /// Run it again as a changed task.
+    Revise {
+        description: String,
+        criteria: Vec<Criterion>,
+    },
+    /// The plan itself was wrong: write a new one for what is left.
+    Replan { diagnosis: String },
+    /// Only the person can unblock it: ask them.
+    Blocked { question: String },
+}
+
+/// Recovery mode's instructions.
+pub fn recovery_instructions() -> String {
+    "You are Bonsai's recovery step. A task of a plan failed, and the project's files are back as \
+     they were before it started. From the evidence, decide one thing:\n\
+     - retry: the task is right, the work went wrong. Give a diagnosis: what to do differently.\n\
+     - revise: the task asked for something wrong or impossible to check. Give the task as it \
+     should be, with its checks.\n\
+     - replan: the plan missed something the task needs (a file or function that doesn't exist). \
+     Say what is missing; the planner writes a new plan for what is left.\n\
+     - blocked: only the person can help (it needs the network, a file they must give, a choice \
+     only they can make). Ask them one clear question.\n\
+     Never retry the same thing that failed. Answer with one JSON object, like these:\n\
+     {\"thought\": \"The test expects a rounded value.\", \"decision\": \"retry\", \"diagnosis\": \"Round the mean to 2 decimals before returning it.\"}\n\
+     {\"thought\": \"report.py imports stats, which no task makes.\", \"decision\": \"replan\", \"diagnosis\": \"stats.py with mean() is missing.\"}\n\
+     {\"thought\": \"Python has no network here.\", \"decision\": \"blocked\", \"question\": \"Python can't reach the internet on this phone. Should I use sample data instead?\"}"
+        .into()
+}
+
+/// The GBNF grammar a recovery decision must follow.
+pub fn recovery_grammar() -> String {
+    let mut text = String::from(
+        "root ::= \"{\\\"thought\\\": \" thought \", \\\"decision\\\": \" decision \"}\"\n",
+    );
+    text += "decision ::= \"\\\"retry\\\", \\\"diagnosis\\\": \" do | \"\\\"revise\\\", \\\"do\\\": \" do \", \\\"checks\\\": [\" checks \"]\" | \"\\\"replan\\\", \\\"diagnosis\\\": \" do | \"\\\"blocked\\\", \\\"question\\\": \" do\n";
+    text + &plan_rules()
+}
+
+/// The request for a recovery: the failed task, why it failed, its last
+/// results, and the project as it is now (rolled back).
+pub fn recovery_messages(
+    view: &PlanView,
+    task: &PlanTask,
+    reason: &str,
+    recent: &str,
+    overview: &str,
+    refused: &[(String, String)],
+) -> Vec<ChatMessage> {
+    let checks = task
+        .criteria
+        .iter()
+        .map(Criterion::describe)
+        .collect::<Vec<_>>()
+        .join("; ");
+    let mut user = format!(
+        "Request: {}\n\nFailed task {}: {}\nDone when: {checks}.\nWhy it failed: {reason}\n",
+        view.request, task.id, task.description
+    );
+    if !recent.is_empty() {
+        user += &format!("\nIts last results:\n{recent}\n");
+    }
+    user += &format!("\nProject files now (rolled back):\n{overview}");
+    let mut messages = vec![
+        ChatMessage::system(recovery_instructions()),
+        ChatMessage::user(user),
+    ];
+    for (text, error) in refused {
+        // cut: the model's refused decision, quoted back to it
+        let shown: String = text.chars().take(800).collect();
+        messages.push(ChatMessage::assistant(shown));
+        messages.push(ChatMessage::user(format!(
+            "That can't be used: {error} Answer with one corrected decision."
+        )));
+    }
+    messages
+}
+
+/// Parses and checks a recovery decision for task `id`.
+pub fn parse_recovery(text: &str, id: &str) -> Result<(String, Decision), String> {
+    let value: Value = serde_json::from_str(text.trim())
+        .map_err(|err| format!("The answer was not one JSON object ({err})."))?;
+    let thought = value
+        .get("thought")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let field = |name: &str| -> Result<String, String> {
+        let text = value
+            .get(name)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("");
+        if text.is_empty() {
+            return Err(format!("The decision needs \"{name}\"."));
+        }
+        if text.chars().count() > DO_MAX {
+            return Err(format!(
+                "\"{name}\" is too long (at most {DO_MAX} characters)."
+            ));
+        }
+        Ok(text.to_string())
+    };
+    let decision = match value.get("decision").and_then(Value::as_str) {
+        Some("retry") => Decision::Retry {
+            diagnosis: field("diagnosis")?,
+        },
+        Some("revise") => Decision::Revise {
+            description: description(id, &value)?,
+            criteria: checks(id, &value)?,
+        },
+        Some("replan") => Decision::Replan {
+            diagnosis: field("diagnosis")?,
+        },
+        Some("blocked") => Decision::Blocked {
+            question: field("question")?,
+        },
+        Some(other) => return Err(format!("There is no decision called {other:?}.")),
+        None => return Err("The answer has no \"decision\".".into()),
+    };
+    Ok((thought, decision))
 }
 
 /// The planner's instructions: the shape of a plan and the checks it may
@@ -113,7 +252,13 @@ pub fn grammar() -> String {
     let mut text = format!(
         "root ::= \"{{\\\"thought\\\": \" thought \", \\\"tasks\\\": [\" task (\", \" task){{0,{more}}} \"]}}\"\n"
     );
-    text += "task ::= \"{\\\"id\\\": \" id \", \\\"do\\\": \" do \", \\\"after\\\": [\" (id (\", \" id)*)? \"], \\\"checks\\\": [\" check (\", \" check){0,3} \"]}\"\n";
+    text += "task ::= \"{\\\"id\\\": \" id \", \\\"do\\\": \" do \", \\\"after\\\": [\" (id (\", \" id)*)? \"], \\\"checks\\\": [\" checks \"]}\"\n";
+    text + &plan_rules()
+}
+
+/// The rules plans and recoveries share: checks, ids, what to do.
+fn plan_rules() -> String {
+    let mut text = String::from("checks ::= check (\", \" check){0,3}\n");
     text += "check ::= \"{\\\"check\\\": \\\"tests_pass\\\"}\" | \"{\\\"check\\\": \\\"work_runs\\\"}\" | \"{\\\"check\\\": \\\"run_prints\\\", \\\"path\\\": \" path \", \\\"text\\\": \" string \"}\" | \"{\\\"check\\\": \\\"makes_image\\\", \\\"path\\\": \" path \", \\\"format\\\": \" format \"}\"\n";
     text += "format ::= \"\\\"svg\\\"\" | \"\\\"png\\\"\"\n";
     text += &format!(
@@ -125,14 +270,22 @@ pub fn grammar() -> String {
 }
 
 /// The request for a plan: the instructions, the request and the project
-/// as it is, then each refused plan and why.
-pub fn messages(request: &str, overview: &str, refused: &[(String, String)]) -> Vec<ChatMessage> {
-    let mut messages = vec![
-        ChatMessage::system(instructions()),
-        ChatMessage::user(format!(
-            "Request: {request}\n\nProject files now:\n{overview}"
-        )),
-    ];
+/// as it is, what happened so far when replanning, then each refused plan
+/// and why.
+pub fn messages(
+    request: &str,
+    overview: &str,
+    progress: Option<&str>,
+    refused: &[(String, String)],
+) -> Vec<ChatMessage> {
+    let mut user = format!("Request: {request}\n\nProject files now:\n{overview}");
+    if let Some(progress) = progress {
+        user += &format!(
+            "\n\n{progress}\nWrite a new plan for what is left. Don't repeat the tasks done (their \
+             ids may appear in \"after\") and don't reuse their ids."
+        );
+    }
+    let mut messages = vec![ChatMessage::system(instructions()), ChatMessage::user(user)];
     for (text, error) in refused {
         // cut: the model's refused plan, quoted back to it
         let shown: String = text.chars().take(1200).collect();
@@ -144,8 +297,10 @@ pub fn messages(request: &str, overview: &str, refused: &[(String, String)]) -> 
     messages
 }
 
-/// Parses and checks a plan: the thought and its tasks.
-pub fn parse(text: &str) -> Result<(String, Vec<PlanTask>), String> {
+/// Parses and checks a plan: the thought and its tasks. `done` are the ids
+/// of tasks already verified (a replan may come after them, never reuse
+/// them).
+pub fn parse(text: &str, done: &[String]) -> Result<(String, Vec<PlanTask>), String> {
     let value: Value = serde_json::from_str(text.trim())
         .map_err(|err| format!("The answer was not one JSON object ({err})."))?;
     let thought = value
@@ -187,19 +342,12 @@ pub fn parse(text: &str) -> Result<(String, Vec<PlanTask>), String> {
         if tasks.iter().any(|t| t.id == id) {
             return Err(format!("Two tasks are called {id:?}."));
         }
-        let description = item
-            .get("do")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .unwrap_or("");
-        if description.is_empty() {
-            return Err(format!("Task {id:?} doesn't say what to do."));
-        }
-        if description.chars().count() > DO_MAX {
+        if done.contains(&id) {
             return Err(format!(
-                "Task {id:?} is too long; say it in at most {DO_MAX} characters."
+                "{id:?} is a task already done; give the new task another id."
             ));
         }
+        let description = description(&id, item)?;
         let mut after = Vec::new();
         for need in item
             .get("after")
@@ -212,7 +360,7 @@ pub fn parse(text: &str) -> Result<(String, Vec<PlanTask>), String> {
             if need == id {
                 return Err(format!("Task {id:?} can't come after itself."));
             }
-            if !tasks.iter().any(|t| t.id == need) {
+            if !tasks.iter().any(|t| t.id == need) && !done.iter().any(|d| d == need) {
                 return Err(format!(
                     "Task {id:?} comes after {need:?}, which is not an earlier task."
                 ));
@@ -221,23 +369,44 @@ pub fn parse(text: &str) -> Result<(String, Vec<PlanTask>), String> {
                 after.push(need.to_string());
             }
         }
-        let checks = item
-            .get("checks")
-            .and_then(Value::as_array)
-            .filter(|c| !c.is_empty())
-            .ok_or(format!("Task {id:?} needs at least one check."))?;
-        let mut criteria = Vec::new();
-        for check in checks {
-            criteria.push(criterion(&id, check)?);
-        }
+        let criteria = checks(&id, item)?;
         tasks.push(PlanTask {
             id,
-            description: description.to_string(),
+            description,
             after,
             criteria,
         });
     }
     Ok((thought, tasks))
+}
+
+fn description(id: &str, item: &Value) -> Result<String, String> {
+    let description = item
+        .get("do")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    if description.is_empty() {
+        return Err(format!("Task {id:?} doesn't say what to do."));
+    }
+    if description.chars().count() > DO_MAX {
+        return Err(format!(
+            "Task {id:?} is too long; say it in at most {DO_MAX} characters."
+        ));
+    }
+    Ok(description.to_string())
+}
+
+fn checks(id: &str, item: &Value) -> Result<Vec<Criterion>, String> {
+    let checks = item
+        .get("checks")
+        .and_then(Value::as_array)
+        .filter(|c| !c.is_empty())
+        .ok_or(format!("Task {id:?} needs at least one check."))?;
+    if checks.len() > 4 {
+        return Err(format!("Task {id:?} has more than 4 checks."));
+    }
+    checks.iter().map(|check| criterion(id, check)).collect()
 }
 
 fn criterion(id: &str, check: &Value) -> Result<Criterion, String> {
@@ -300,13 +469,23 @@ pub struct PlanView {
     pub state: PlanState,
     pub reason: Option<String>,
     pub thought: String,
+    /// The plan as it stands: revisions applied, and after a replan the
+    /// tasks done before it followed by the new ones.
     pub tasks: Vec<PlanTask>,
     /// Each plan task's last executor task: its journal id, status and the
     /// reason or evidence.
     pub runs: BTreeMap<String, (String, TaskStatus, Option<String>)>,
-    /// Model answers that led somewhere: the plan's, and those of tasks
-    /// that ended verified (where the Scripted model picks up on resume).
-    pub verified_turns: usize,
+    /// What the executor is told on a task's next try: a diagnosis, the
+    /// person's answer.
+    pub notes: BTreeMap<String, Vec<String>>,
+    /// Recoveries each task has had.
+    pub recoveries: BTreeMap<String, u32>,
+    /// The task Recovery mode blocked on, and its question.
+    pub blocked: Option<(String, String)>,
+    /// Model answers the Scripted model has used up when the plan goes
+    /// on: all of them, except a task's that ended unverified with no
+    /// recovery after it (resuming runs that task again from scratch).
+    pub resume_turns: usize,
 }
 
 impl PlanView {
@@ -331,22 +510,73 @@ impl PlanView {
             thought: String::new(),
             tasks: Vec::new(),
             runs: BTreeMap::new(),
-            verified_turns: 0,
+            notes: BTreeMap::new(),
+            recoveries: BTreeMap::new(),
+            blocked: None,
+            resume_turns: 0,
         };
-        let mut turns: BTreeMap<String, usize> = BTreeMap::new();
         // Executor task id -> plan task id.
         let mut owner: BTreeMap<String, String> = BTreeMap::new();
+        // The last executor task and its answers since, until a recovery.
+        let mut open_turns = 0usize;
         for entry in plan {
             match entry {
                 Entry::Plan { thought, tasks, .. } => {
                     view.thought = thought.clone();
-                    view.tasks = tasks.clone();
-                    view.verified_turns += 1;
+                    // A replan keeps the tasks already done, in order.
+                    let done = view.completed_owned();
+                    let mut kept: Vec<PlanTask> = view
+                        .tasks
+                        .iter()
+                        .filter(|t| done.contains(&t.id))
+                        .cloned()
+                        .collect();
+                    kept.extend(tasks.iter().cloned());
+                    view.tasks = kept;
+                    view.resume_turns += 1;
                 }
-                Entry::PlanInvalid { .. } => view.verified_turns += 1,
-                Entry::Answer { task, .. } | Entry::Invalid { task, .. } => {
-                    *turns.entry(task.clone()).or_default() += 1
+                Entry::PlanInvalid { .. } | Entry::RecoveryInvalid { .. } => view.resume_turns += 1,
+                Entry::Recovery {
+                    plan_task,
+                    decision,
+                    ..
+                } => {
+                    view.resume_turns += 1 + open_turns;
+                    open_turns = 0;
+                    *view.recoveries.entry(plan_task.clone()).or_default() += 1;
+                    match decision {
+                        Decision::Retry { diagnosis } => view
+                            .notes
+                            .entry(plan_task.clone())
+                            .or_default()
+                            .push(format!("An earlier try failed. Diagnosis: {diagnosis}")),
+                        Decision::Revise {
+                            description,
+                            criteria,
+                        } => {
+                            if let Some(task) = view.tasks.iter_mut().find(|t| &t.id == plan_task) {
+                                task.description = description.clone();
+                                task.criteria = criteria.clone();
+                            }
+                        }
+                        Decision::Replan { .. } => {}
+                        Decision::Blocked { question } => {
+                            view.blocked = Some((plan_task.clone(), question.clone()))
+                        }
+                    }
                 }
+                Entry::PersonAnswer {
+                    plan_task, text, ..
+                } => {
+                    let question = view.blocked.take().map(|(_, q)| q).unwrap_or_default();
+                    view.notes
+                        .entry(plan_task.clone())
+                        .or_default()
+                        .push(format!(
+                            "You asked the person: {question} They answered: {text}"
+                        ));
+                }
+                Entry::Answer { .. } | Entry::Invalid { .. } => open_turns += 1,
                 Entry::PlanStatus { status, reason, .. } => {
                     view.state = *status;
                     view.reason = reason.clone();
@@ -369,18 +599,42 @@ impl PlanView {
                     if let Some(part) = owner.get(task) {
                         view.runs
                             .insert(part.clone(), (task.clone(), *status, reason.clone()));
+                        if *status == TaskStatus::Completed {
+                            view.resume_turns += open_turns;
+                            open_turns = 0;
+                        }
                     }
                 }
                 _ => {}
             }
         }
-        view.verified_turns += view
-            .runs
-            .values()
-            .filter(|(_, status, _)| *status == TaskStatus::Completed)
-            .map(|(task, _, _)| turns.get(task).copied().unwrap_or(0))
-            .sum::<usize>();
         Some(view)
+    }
+
+    fn completed_owned(&self) -> Vec<String> {
+        self.completed().into_iter().map(str::to_string).collect()
+    }
+
+    /// The ids of the tasks verified so far.
+    pub fn done_ids(&self) -> Vec<String> {
+        self.completed_owned()
+    }
+
+    /// What happened so far, for a replan.
+    pub fn progress(&self, failed: &PlanTask, reason: &str, diagnosis: &str) -> String {
+        let mut text = String::from("Done already:\n");
+        let done = self.completed();
+        for task in self.tasks.iter().filter(|t| done.contains(t.id.as_str())) {
+            text += &format!("- {}: {}\n", task.id, task.description);
+        }
+        if done.is_empty() {
+            text += "- nothing yet\n";
+        }
+        text += &format!(
+            "Task {} ({}) failed: {reason}\nWhat is missing: {diagnosis}\n",
+            failed.id, failed.description
+        );
+        text
     }
 
     pub fn status_of(&self, task: &str) -> TaskStatus {
@@ -442,6 +696,9 @@ impl PlanView {
             .collect();
         if !done.is_empty() {
             text += &format!("\nDone already:\n{}", done.join("\n"));
+        }
+        if let Some(notes) = self.notes.get(&task.id) {
+            text += &format!("\n{}", notes.join("\n"));
         }
         text
     }

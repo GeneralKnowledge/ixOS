@@ -197,9 +197,18 @@ What was built (`rust/src/harness/plan.rs`), tested on Linux against python3; Sw
 - **Ladder:** T6 (`textutil.py` with `shout` and `whisper`, a test file each, as two tasks) and T7 (`grades.py`'s `letter`, its tests, and `report.py` printing `Ana: A`, `Ben: C`, `Cy: B`, as three tasks where the tests and the report both need the function). Both have Scripted answers, plan included.
 - **Phone check (next combined build):** Scripted T6 with approval on (plan shown, Approve and Run, both tasks pass); Scripted T7 with approval off; then T6 and T7 on the 4B and 9B, recording the plan each writes.
 
-### H5: recovery and replanning
+### H5: recovery and replanning (built 2026-11-22)
 
 Failed tasks go to Recovery mode: the files roll back to the last checkpoint, and the model gets the failure's evidence and chooses retry with a diagnosis, a revised task, or blocked. Reviewer mode judges criteria a fixed rule can't. Asking the person a question or for permission (Blocked) is shown on screen and answered there. Ladder: T8 a seeded project whose plan must change halfway (a dependency is missing); T9 a task that can't succeed ends Blocked with a clear reason, not a loop.
+
+What was built, tested on Linux against python3; Swift not compiled yet, nothing run on the phone yet:
+
+- **`give_up(reason)`**, a tool every executor has beside `finish`: a task that can't be done as written (a missing module, the network) ends at once with the reason instead of using up its steps. Outside a plan the task simply fails with it.
+- **Recovery mode** takes up a plan task that failed (gave up, used its steps, got stuck, ran out of time; not a Stop, and not a model or journal failure, which Recovery can't fix). The files go back to the last verified task's checkpoint first. The model gets the task, why it failed, its last three results and the project as it now is, and answers under its own grammar with one decision: `retry` with a diagnosis (the rerun is told it), `revise` with the task rewritten and its checks, `replan` with what is missing (the planner writes a new plan for what is left; the tasks done stay, their ids can't be reused), or `blocked` with a question. A task gets at most two recoveries; the third failure ends the plan.
+- **Blocked:** the plan stops with the question on screen and a field to answer it. The answer is journaled and given to the blocked task's rerun ("You asked the person … They answered …").
+- **Not built yet: Reviewer mode** (a model judging a criterion a fixed rule can't). It comes when a ladder task needs it; every check so far is one the harness can make from Python's output.
+- **Ladder:** T8 (seeded `report.py` imports a `stats` module no one wrote; the executor gives up, Recovery replans as "write stats.py and its test, then run the report") and T9 (download the weather from wttr.in: the network is off, so it must end Blocked with a question, not loop; answered "use a sample", it finishes). Both have Scripted answers.
+- **Phone check (next combined build):** Scripted T8 and T9 (answer T9's question on screen); then both on the 4B and 9B, recording what Recovery mode decides.
 
 ### H6: context management
 

@@ -24,6 +24,8 @@ public final class BonsaiHarnessModel {
     public private(set) var error: String?
     /// The person's own task.
     public var request = ""
+    /// The person's answer to a blocked plan's question.
+    public var planAnswer = ""
     /// Which model runs the task: a `LlamaModelFile` id, or
     /// `scriptedID` for the known-good answers that test the harness itself.
     public var modelID: String = LlamaModelFile.catalogue[0].id
@@ -138,6 +140,19 @@ public final class BonsaiHarnessModel {
         }
     }
 
+    /// Answers a blocked plan's question and lets it go on.
+    public func answerPlan() {
+        let answer = planAnswer
+        if isScripted, let harness {
+            attempt { try harness.answerPlanScripted(answer: answer) }
+        } else {
+            perform { harness, model in
+                try harness.answerPlan(model: model, answer: answer)
+            }
+        }
+        if error == nil { planAnswer = "" }
+    }
+
     public func discardPlan() {
         guard let harness else { return }
         do {
@@ -247,6 +262,7 @@ extension PlanState {
         case .failed: "Failed"
         case .stopped: "Stopped"
         case .discarded: "Discarded"
+        case .blocked: "Blocked: needs your answer"
         }
     }
 }

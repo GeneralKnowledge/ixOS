@@ -50,8 +50,10 @@ struct BonsaiHarnessView: View {
                         plan: plan,
                         draft: snapshot.task == nil ? snapshot.draft : "",
                         running: snapshot.running,
+                        answer: $model.planAnswer,
                         approve: model.continuePlan,
-                        discard: model.discardPlan
+                        discard: model.discardPlan,
+                        send: model.answerPlan
                     )
                 }
                 if let snapshot = model.snapshot, let task = snapshot.task {
@@ -116,6 +118,10 @@ struct BonsaiHarnessView: View {
                             .font(.caption).foregroundStyle(.secondary)
                         if task.planned {
                             Label("Bonsai plans it as several tasks first", systemImage: "list.number")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if task.endsBlocked {
+                            Label("It can't succeed here: it should stop and ask you", systemImage: "questionmark.bubble")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
