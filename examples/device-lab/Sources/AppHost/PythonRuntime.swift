@@ -164,7 +164,13 @@ enum PythonLabProjects {
         let old = URL.applicationSupportDirectory
             .appendingPathComponent("Python Lab/Projects", isDirectory: true)
         do {
-            _ = try workspaceMoveProjects(old: old.path, new: folder.path)
+            let moved = try workspaceMoveProjects(old: old.path, new: folder.path)
+            if !moved, FileManager.default.fileExists(atPath: old.path) {
+                // Both places hold projects: the move never overwrites, so
+                // the old ones stay where they were. Say so rather than let
+                // them vanish from view.
+                PythonLabProjects.moveFailed = "the Python Lab folder in Files already has projects, so the older ones are still in the app's own storage"
+            }
         } catch {
             // Keep working where the projects are, so none of them
             // disappears; the move is tried again on the next launch.

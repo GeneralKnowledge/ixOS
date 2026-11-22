@@ -1099,3 +1099,34 @@ fn a_project_files_traceback_names_the_file_and_line() {
     assert!(out.ok, "{}", out.output);
     assert_eq!(out.output.trim(), "fine");
 }
+
+/// Two projects run one after the other in one interpreter, as on the
+/// phone: the second's `import helper` gets its own helper, not the first's.
+#[test]
+fn a_project_never_imports_another_projects_module() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    for (name, word) in [("a", "from a"), ("b", "from b")] {
+        let root = dir.path().join(name);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("helper.py"), format!("WORD = {word:?}\n")).unwrap();
+        std::fs::write(root.join("main.py"), "import helper\nprint(helper.WORD)\n").unwrap();
+    }
+    let script = |name: &str| {
+        super::python_lab::python_lab_file_script(
+            dir.path().join(name).display().to_string(),
+            "main.py".into(),
+        )
+    };
+    let both = format!("{}\n{}", script("a"), script("b"));
+    let output = std::process::Command::new("python3")
+        .arg("-I")
+        .arg("-c")
+        .arg(&both)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(text.trim(), "from a\nfrom b", "{text}");
+}

@@ -214,8 +214,12 @@ impl Workspace {
         check_text_size(&path, &text)?;
         let full = self.new_path(&project, &path)?;
         let temp = unique_temp(&full);
-        let result = write_new(&temp, text.as_bytes()).and_then(|_| fs::hard_link(&temp, &full));
-        let _ = fs::remove_file(&temp);
+        let result = write_new(&temp, text.as_bytes()).and_then(|_| {
+            // The temporary file is ours from here on; it goes either way.
+            let linked = fs::hard_link(&temp, &full);
+            let _ = fs::remove_file(&temp);
+            linked
+        });
         result.map_err(|err| match err.kind() {
             std::io::ErrorKind::AlreadyExists => WorkspaceError::Exists { name: path },
             _ => storage(err),
@@ -387,11 +391,20 @@ impl Workspace {
             return Err(WorkspaceError::Exists { name: path.into() });
         }
         self.check_room(&root)?;
-        if !full.parent().is_some_and(Path::is_dir) {
+        let Some(parent) = full.parent().filter(|p| p.is_dir()) else {
             return Err(WorkspaceError::NotFound {
                 what: "folder".into(),
                 name: parent_of(path),
             });
+        };
+        // iOS treats `Hello.py` and `hello.py` as one name; refuse it
+        // everywhere so Linux tests see the same.
+        let name = full
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if exists_any_case(parent, &name)? {
+            return Err(WorkspaceError::Exists { name: path.into() });
         }
         Ok(full)
     }
@@ -673,11 +686,11 @@ fn tree_order(a: &str, a_folder: bool, b: &str, b_folder: bool) -> std::cmp::Ord
 /// Writes to a temporary file beside `path`, then renames it over `path`.
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let temp = unique_temp(path);
-    let result = write_new(&temp, bytes).and_then(|_| fs::rename(&temp, path));
-    if result.is_err() {
+    write_new(&temp, bytes)?;
+    // Created by this call, so it is ours to remove if the rename fails.
+    fs::rename(&temp, path).inspect_err(|_| {
         let _ = fs::remove_file(&temp);
-    }
-    result
+    })
 }
 
 /// A hidden name beside `path` of its own for each save, so two saves at
@@ -692,14 +705,19 @@ fn unique_temp(path: &Path) -> PathBuf {
     path.with_file_name(format!(".{name}.{}.{n}.saving", std::process::id()))
 }
 
-/// Writes a file that must not exist yet, and syncs it.
+/// Writes a file that must not exist yet, and syncs it. If it can't be
+/// created, nothing is touched; if writing fails after that, the partial
+/// file is removed.
 fn write_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()
+    file.write_all(bytes)
+        .and_then(|_| file.sync_all())
+        .inspect_err(|_| {
+            let _ = fs::remove_file(path);
+        })
 }
 
 fn check_text_size(path: &str, text: &str) -> Result<(), WorkspaceError> {
@@ -937,6 +955,11 @@ mod tests {
         assert_eq!(
             ws.create_file(p.clone(), s("a.py"), s("print(2)\n")),
             Err(WorkspaceError::Exists { name: s("a.py") })
+        );
+        // A name that differs only in case is the same file on iOS.
+        assert_eq!(
+            ws.create_file(p.clone(), s("A.py"), s("")),
+            Err(WorkspaceError::Exists { name: s("A.py") })
         );
         // The refused create left the first text and no temporary file.
         assert_eq!(ws.read_text(p.clone(), s("a.py")).unwrap(), "print(1)\n");

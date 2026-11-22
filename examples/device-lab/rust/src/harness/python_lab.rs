@@ -770,10 +770,14 @@ import io, traceback
 _given = {root}
 _root = os.path.realpath(_given)
 _saved = (os.getcwd(), list(sys.path), sys.stdin)
+# Forget every module a run imported from a project, this one's or
+# another's, so `import helper` never finds another project's helper.
+_ran = _guard.__dict__.setdefault('project_modules', set())
 for _name, _module in list(sys.modules.items()):
     _file = getattr(_module, '__file__', None) or ''
-    if _file and os.path.realpath(_file).startswith(_root + os.sep):
-        del sys.modules[_name]
+    if _name in _ran or (_file and os.path.realpath(_file).startswith(_root + os.sep)):
+        sys.modules.pop(_name, None)
+_ran.clear()
 os.chdir(_root)
 sys.path.insert(0, _root)
 sys.stdin = io.StringIO('')
@@ -788,6 +792,10 @@ except BaseException as _error:
     print('{FAILED_MARK}')
 finally:
     _guard.state['active'] = False
+    for _name, _module in list(sys.modules.items()):
+        _file = getattr(_module, '__file__', None) or ''
+        if _file and os.path.realpath(_file).startswith(_root + os.sep):
+            _ran.add(_name)
     os.chdir(_saved[0])
     sys.path[:] = _saved[1]
     sys.stdin = _saved[2]
@@ -822,7 +830,7 @@ pub fn python_lab_script(project: String, code: String) -> String {
 #[uniffi::export]
 pub fn python_lab_file_script(project: String, path: String) -> String {
     let action = format!(
-        "import ast, types\n    _name = os.path.join(_root, {path})\n    with open(_name, encoding='utf-8') as _f:\n        _source = _f.read()\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _main = types.ModuleType('__main__')\n    _main.__file__ = _name\n    _main.__builtins__ = __builtins__\n    sys.path[0] = os.path.dirname(_name)\n    if sys.path[0] != _root:\n        sys.path.insert(1, _root)\n    _host_main = sys.modules.get('__main__')\n    sys.modules['__main__'] = _main\n    try:\n        exec(compile(_tree, _name, 'exec'), _main.__dict__)\n        if _last is not None:\n            _value = eval(compile(_last, _name, 'eval'), _main.__dict__)\n            if _value is not None:\n                print(repr(_value))\n    finally:\n        if _host_main is None:\n            sys.modules.pop('__main__', None)\n        else:\n            sys.modules['__main__'] = _host_main\n",
+        "import ast, types\n    _name = os.path.join(_root, {path})\n    if not os.path.realpath(_name).startswith(_root + os.sep):\n        raise PermissionError('That file is outside the project.')\n    with open(_name, encoding='utf-8') as _f:\n        _source = _f.read()\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _main = types.ModuleType('__main__')\n    _main.__file__ = _name\n    _main.__builtins__ = __builtins__\n    sys.path[0] = os.path.dirname(_name)\n    if sys.path[0] != _root:\n        sys.path.insert(1, _root)\n    _host_main = sys.modules.get('__main__')\n    sys.modules['__main__'] = _main\n    try:\n        exec(compile(_tree, _name, 'exec'), _main.__dict__)\n        if _last is not None:\n            _value = eval(compile(_last, _name, 'eval'), _main.__dict__)\n            if _value is not None:\n                print(repr(_value))\n    finally:\n        if _host_main is None:\n            sys.modules.pop('__main__', None)\n        else:\n            sys.modules['__main__'] = _host_main\n",
         path = py_str(&path)
     );
     wrapper(Path::new(&project), true, &action)

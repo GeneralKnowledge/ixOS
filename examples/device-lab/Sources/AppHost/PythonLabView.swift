@@ -48,7 +48,7 @@ struct PythonLabView: View {
                     Text("Runs on this iPhone with CPython. If the last line is an expression, its value is shown. A script is stopped after \(model.timeLimit.components.seconds) s.")
                 }
             }
-            if let error = model.error {
+            if let error = model.error ?? model.listError {
                 Section {
                     Text(error).font(.footnote).forgeForeground(.danger)
                         .accessibilityIdentifier("pythonLab.error")
@@ -290,7 +290,7 @@ struct PythonFilesView: View {
         List {
             // A file that wouldn't open, or a list that couldn't be read,
             // says so here, not on the screen underneath.
-            if let error = model.error {
+            if let error = model.listError ?? model.error {
                 Text(error).font(.footnote).forgeForeground(.danger)
                     .accessibilityIdentifier("pythonLab.files.error")
             } else if model.entries.isEmpty {

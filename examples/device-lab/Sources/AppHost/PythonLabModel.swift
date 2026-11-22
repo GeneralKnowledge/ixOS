@@ -77,6 +77,9 @@ public final class PythonLabModel {
     public private(set) var unavailable: String?
     /// The last action that failed, with why (cleared by the next one).
     public internal(set) var error: String?
+    /// Why the open project's files couldn't be listed, kept apart from
+    /// `error` so a later listing that works clears just this.
+    public private(set) var listError: String?
     /// A script running longer than this is stopped.
     public let timeLimit: Duration
 
@@ -103,6 +106,8 @@ public final class PythonLabModel {
     @ObservationIgnored private var started = false
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
     @ObservationIgnored private var runID: UUID?
+    /// Stop was tapped before the run had an id (while Python started).
+    @ObservationIgnored private var stopRequested = false
     /// Remembers the last project between launches.
     @ObservationIgnored private let defaults: UserDefaults
     static let lastProjectKey = "pythonLab.lastProject"
@@ -170,18 +175,26 @@ public final class PythonLabModel {
     /// first Python file, or a new main.py when it has none).
     public func open(project name: String) {
         guard let workspace, savedBeforeLeaving() else { return }
-        // The new project may have a file of the same name.
-        openFile = nil
         reloadProjects()
         let target = projects.contains { $0.name == name } ? name : "scratch"
+        // A project whose files can't be listed isn't opened: the one
+        // that's open stays, with its text and output.
+        let listed: [WorkspaceEntry]
+        do {
+            listed = try workspace.entries(project: target)
+        } catch {
+            self.error = "Couldn't open \(target): \(Self.message(error))"
+            return
+        }
+        // The new project may have a file of the same name.
+        openFile = nil
         project = target
         defaults.set(target, forKey: Self.lastProjectKey)
         let state = (try? workspace.state(project: target)) ?? WorkspaceState(
             runFile: nil, currentFile: nil, openFiles: [])
         runFile = state.runFile
-        // A project whose files can't be listed is not empty: don't start
-        // a main.py in it.
-        guard reloadEntries() else { return }
+        entries = listed
+        listError = nil
         if let current = state.currentFile {
             open(file: current)
         } else if let first = entries.first(where: { !$0.isFolder && $0.path.hasSuffix(".py") }) {
@@ -255,10 +268,11 @@ public final class PythonLabModel {
         }
         do {
             entries = try workspace.entries(project: project)
+            listError = nil
             return true
         } catch {
             entries = []
-            self.error = "Couldn't list the files in \(project): \(Self.message(error))"
+            listError = "Couldn't list the files in \(project): \(Self.message(error))"
             return false
         }
     }
@@ -294,6 +308,9 @@ public final class PythonLabModel {
     /// A new file in the project (in `folder`, if given), opened.
     public func createFile(_ name: String, in folder: String? = nil, text: String = "") -> String? {
         guard let workspace else { return nil }
+        // The new file opens next, so the open one must save first; if it
+        // can't, nothing is created.
+        guard savedBeforeLeaving() else { return error }
         let path = Self.join(folder, name)
         do {
             // Never replaces a file that's there, whatever its case.
@@ -383,6 +400,7 @@ public final class PythonLabModel {
             text = sample.code
             return
         }
+        guard savedBeforeLeaving() else { return }
         // The first free name; Rust refuses one that is taken, even when
         // the list is out of date or the case differs.
         for n in 1...100 {
@@ -461,7 +479,14 @@ public final class PythonLabModel {
         // Taken before the first wait, so a second tap can't start a
         // second run while Python starts.
         isRunning = true
+        stopRequested = false
         await prepare()
+        // Stop tapped while Python started: nothing runs.
+        if stopRequested {
+            isRunning = false
+            output = "Stopped before it started."
+            return
+        }
         // Saved after Python started, so edits made while it started run too.
         flush()
         if case .failed(let reason) = saveState {
@@ -513,7 +538,7 @@ public final class PythonLabModel {
             reloadEntries()
         }
         if result.timedOut {
-            text += "\n\nStopped after the \(timeLimit.components.seconds) s limit."
+            text += "\n\nReached the \(timeLimit.components.seconds) s limit, so Python Lab asked the script to stop."
         }
         lastSeconds = Double(elapsed.components.seconds)
             + Double(elapsed.components.attoseconds) / 1e18
@@ -540,7 +565,11 @@ public final class PythonLabModel {
 
     /// Stops this screen's running script (never Bonsai's).
     public func stop() {
-        if let runID { runtime?.interrupt(id: runID) }
+        if let runID {
+            runtime?.interrupt(id: runID)
+        } else if isRunning {
+            stopRequested = true
+        }
     }
 
     // MARK: Helpers
