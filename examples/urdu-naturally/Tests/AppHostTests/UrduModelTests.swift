@@ -132,5 +132,11 @@ final class UrduModelTests: XCTestCase {
         let unheard = await model.chatSay("qwzx", model: nil)
         let missed = try XCTUnwrap(unheard)
         XCTAssertEqual(missed.lines.last?.heard, .missed)
+
+        // Too long: refused with the limit in the alert, never cut short.
+        let long = String(repeating: "a", count: model.chatMaxTyped + 1)
+        let refused = await model.chatSay(long, model: nil)
+        XCTAssertNil(refused)
+        XCTAssertEqual(model.errorMessage, "That's too long to say in one go. Keep it to \(model.chatMaxTyped) characters.")
     }
 }

@@ -508,3 +508,30 @@ fn a_late_answer_never_lands_in_a_new_chat() {
 fn the_name_limit_matches_the_swift_field() {
     assert_eq!(crate::MAX_NAME_CHARS, 40);
 }
+
+/// A chat line longer than the limit is refused with the limit, never cut
+/// short and answered as if you'd said less; the chat is left as it was.
+#[test]
+fn a_chat_line_over_the_limit_is_refused_not_cut() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    block_on(core.chat_start("ali".into(), 11)).unwrap();
+    let max = core.chat_max_typed();
+    assert_eq!(max as usize, crate::chat::MAX_TYPED_CHARS);
+
+    let long = "a".repeat(max as usize + 1);
+    assert_eq!(
+        block_on(core.chat_say(long, None)),
+        Err(UrduError::TooLong { max })
+    );
+    assert_eq!(core.chat().unwrap().lines.len(), 1, "nothing was said");
+
+    // Exactly at the limit (in characters, not bytes, and spaces round it
+    // don't count) is taken.
+    let at_limit = format!("  {}  ", "ā".repeat(max as usize));
+    let view = block_on(core.chat_say(at_limit, None)).unwrap();
+    assert_eq!(
+        view.lines[1].typed.as_deref().map(|t| t.chars().count()),
+        Some(max as usize)
+    );
+}
