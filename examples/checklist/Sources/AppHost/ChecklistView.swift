@@ -1,5 +1,6 @@
 #if canImport(SwiftUI)
 import ChecklistFFI
+import Combine
 import ForgeKit
 import ForgeUI
 import SwiftUI
@@ -145,6 +146,10 @@ struct ChecklistScreen: View {
         // Rust committed something (or the app came back from the
         // background): re-read.
         .onChange(of: changes) { model.reload() }
+        // Midnight passed with the app open: the agenda's Today moves on.
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            model.reload()
+        }
         // Restarted on every keystroke and change; the previous search is
         // cancelled in Rust.
         .task(id: SearchKey(query: query, changes: changes)) {
