@@ -436,8 +436,21 @@ impl Library {
                 // Check now that the reader can open it, so an import never
                 // promises a book that cannot be read.
                 EpubText::open(std::io::Cursor::new(&bytes))?;
+                // Compared and saved as it will be stored, so a long title found again
+                // is the same book (defect hunt finding 3).
+                let fitted = fit_imported(BookInput {
+                    title: meta.title,
+                    author: meta.author,
+                    description: meta.description,
+                    status: ReadingStatus::WantToRead,
+                    current_page: 0,
+                    total_pages: meta.estimated_pages,
+                    rating: None,
+                    notes: String::new(),
+                    cover_url: None,
+                });
                 let existing = {
-                    let (title, author) = (fold(&meta.title), fold(&meta.author));
+                    let (title, author) = (fold(&fitted.title), fold(&fitted.author));
                     data.get()
                         .books
                         .iter()
@@ -461,17 +474,7 @@ impl Library {
                             None => None,
                         };
                         let epub_file = store.stage_book_file(&stem, &bytes)?;
-                        let input = validate(fit_imported(BookInput {
-                            title: meta.title,
-                            author: meta.author,
-                            description: meta.description,
-                            status: ReadingStatus::WantToRead,
-                            current_page: 0,
-                            total_pages: meta.estimated_pages,
-                            rating: None,
-                            notes: String::new(),
-                            cover_url: None,
-                        }))?;
+                        let input = validate(fitted)?;
                         Ok(EpubPlan::Add {
                             input: Box::new(input),
                             file_name,

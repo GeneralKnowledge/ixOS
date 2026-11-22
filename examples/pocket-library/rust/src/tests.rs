@@ -252,6 +252,15 @@ fn epub_with_a_very_long_title_is_imported() {
     assert_eq!(book.title.chars().count(), domain::MAX_TITLE_CHARS);
     assert!(book.title.starts_with("Word Word"));
     assert!(book.title.ends_with('…'));
+
+    // The same book again, under another file name, is found as the
+    // fitted copy already in the library, not added twice.
+    let again = dir.path().join("Long copy.epub");
+    std::fs::write(&again, sample_epub(title.trim(), 100, false)).unwrap();
+    assert_eq!(
+        block_on(library.import_epub(dir_string(&again))),
+        Err(LibraryError::AlreadyInLibrary { id: book.id })
+    );
 }
 
 #[test]
