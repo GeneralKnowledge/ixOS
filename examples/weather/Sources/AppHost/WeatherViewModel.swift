@@ -215,6 +215,7 @@ public final class WeatherViewModel {
     @discardableResult
     public func useCurrentLocation() -> Task<Void, Never> {
         locationMessage = nil
+        let wasDenied = locationDenied
         locationDenied = false
         update(WeatherPage.myLocationID) { $0.isRefreshing = true }
         let location = self.location
@@ -234,7 +235,9 @@ public final class WeatherViewModel {
                 recomputeOverviews()
                 await refresh(WeatherPage.myLocationID).value
             } catch is CancellationError {
-                // The app left the screen: it asks again on return.
+                // The app left the screen: it asks again on return, still
+                // knowing the last answer was a denial.
+                locationDenied = wasDenied
                 update(WeatherPage.myLocationID) { page in
                     if refreshTasks[page.id] == nil { page.isRefreshing = false }
                 }
