@@ -474,7 +474,7 @@ public final class ListenModel {
     /// The next songs for a station (Rust mixes them).
     public func stationBatch(
         _ seed: StationSeed, played: [String], recentArtists: [String], size: Int = 10
-    ) async -> Result<[QueueTrack], ListenFailure> {
+    ) async -> Result<[QueueTrack], StationFailure> {
         do {
             let tracks = try await withRustCancellation { cancellation in
                 try await core.stationBatch(
@@ -486,7 +486,11 @@ public final class ListenModel {
             return .success(tracks)
         } catch {
             if !Self.isStop(error) { log.warn("station failed: \(error)") }
-            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+            var empty = false
+            if case SoundscapeError.NotInLibrary = error { empty = true }
+            return .failure(StationFailure(
+                message: Self.message(error), stopped: Self.isStop(error), nothingToPlay: empty
+            ))
         }
     }
 
@@ -731,6 +735,16 @@ public final class ListenModel {
         if let error = error as? SoundscapeError { return SoundscapeErrors.describe(error) }
         return error.localizedDescription
     }
+}
+
+/// Why a station couldn't give more songs.
+public struct StationFailure: Error, Equatable {
+    public let message: String
+    /// Cancelled because the screen closed: show nothing.
+    public let stopped: Bool
+    /// Nothing fits the station at all: trying again won't help. Otherwise
+    /// the failure is worth retrying (a dropped connection, Jamendo busy).
+    public let nothingToPlay: Bool
 }
 
 public struct ListenFailure: Error, Equatable {

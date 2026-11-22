@@ -282,6 +282,10 @@ struct NowPlayingView: View {
             }
             .foregroundStyle(.white)
             .padding(.top, 8)
+            RadioProblem(radio: radio, model: model, player: player)
+                .foregroundStyle(.white)
+                .tint(.white)
+                .padding(.top, 6)
         }
     }
 

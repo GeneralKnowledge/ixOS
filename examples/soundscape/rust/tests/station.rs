@@ -248,3 +248,29 @@ fn suggested_stations_lead_with_your_genres() {
         .iter()
         .all(|s| s.subtitle != "New music on Jamendo"));
 }
+
+#[test]
+fn jamendo_failing_with_nothing_else_to_play_is_its_error_not_an_empty_station() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    // The test server answers nothing for Jamendo.
+    block(core.set_jamendo_client_id("abc123".into())).unwrap();
+    let seed = StationSeed::Genre {
+        name: "Polka".into(),
+    };
+    let error = block(core.station_batch(seed, vec![], vec![], 10, 1, None)).unwrap_err();
+    assert!(
+        !matches!(error, SoundscapeError::NotInLibrary { .. }),
+        "a failed request is worth retrying: {error:?}"
+    );
+    // With your own music in the genre, the station plays it anyway.
+    let seed = StationSeed::Genre {
+        name: "Jazz".into(),
+    };
+    assert_eq!(
+        block(core.station_batch(seed, vec![], vec![], 10, 1, None))
+            .unwrap()
+            .len(),
+        3
+    );
+}

@@ -2517,7 +2517,9 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * station's genre when there is a client ID). `played` are the
      * station's songs so far, `recent_artists` the last artists played
      * (newest last), `seed_number` makes the mix repeatable. Jamendo
-     * failing leaves its songs out; no song at all is `NotInLibrary`.
+     * failing leaves its songs out; with nothing else to play its error
+     * is the answer (worth retrying), and a station with nothing in it at
+     * all is `NotInLibrary`.
      * On-screen work.
      */
     func stationBatch(seed: StationSeed, played: [String], recentArtists: [String], size: UInt32, seedNumber: UInt64, cancellation: Cancellation?) async throws  -> [QueueTrack]
@@ -3737,7 +3739,9 @@ open func shutdown()  {try! rustCall() {
      * station's genre when there is a client ID). `played` are the
      * station's songs so far, `recent_artists` the last artists played
      * (newest last), `seed_number` makes the mix repeatable. Jamendo
-     * failing leaves its songs out; no song at all is `NotInLibrary`.
+     * failing leaves its songs out; with nothing else to play its error
+     * is the answer (worth retrying), and a station with nothing in it at
+     * all is `NotInLibrary`.
      * On-screen work.
      */
 open func stationBatch(seed: StationSeed, played: [String], recentArtists: [String], size: UInt32, seedNumber: UInt64, cancellation: Cancellation?)async throws  -> [QueueTrack]  {
@@ -11721,7 +11725,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_shutdown() != 30947) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_soundscape_core_checksum_method_soundscapecore_station_batch() != 7214) {
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_station_batch() != 20783) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_suggested_stations() != 41468) {

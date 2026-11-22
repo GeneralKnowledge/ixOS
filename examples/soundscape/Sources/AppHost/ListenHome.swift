@@ -40,6 +40,12 @@ struct ListenHome: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, SoundscapeMetrics.screenEdge)
                     .accessibilityIdentifier("listen.greeting")
+                if radio.problem != nil {
+                    RadioProblem(radio: radio, model: model, player: player)
+                        .padding(12)
+                        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(.horizontal, SoundscapeMetrics.screenEdge)
+                }
                 continueListening
                 Shelf(title: "Hear Nonstop Music", items: model.suggestedStations, identifier: "listen.radio") { station in
                     Button {
@@ -113,10 +119,23 @@ struct ListenHome: View {
         .task(id: model.jamendoClientId) { await loadPopular() }
         .overlay {
             if isEmpty {
-                ForgeStateView.empty(
-                    "Nothing to Play Yet", systemImage: "music.note.house",
-                    description: "Find music in Discover or Search, import your own files in Library, or add a take server."
-                )
+                // The empty state only once the library has loaded.
+                switch model.phase {
+                case .loading:
+                    ForgeStateView.loading("Asking the take server")
+                case .failed(let message):
+                    ForgeStateView.failed(
+                        "Can't Load the Library", message: message,
+                        retry: ForgeStateAction("Try Again", identifier: "listen.homeRetry") {
+                            Task { await model.loadLibrary() }
+                        }
+                    )
+                case .ready:
+                    ForgeStateView.empty(
+                        "Nothing to Play Yet", systemImage: "music.note.house",
+                        description: "Find music in Discover or Search, import your own files in Library, or add a take server."
+                    )
+                }
             }
         }
     }

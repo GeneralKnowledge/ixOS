@@ -8,14 +8,28 @@ import SwiftUI
 /// Nonstop music from a station (docs/design.md, Radio): Rust mixes a
 /// batch, the player queues it, and a new batch is asked for while a few
 /// songs are still to come, so playback never runs dry and AVPlayer always
-/// has the next song loading. Playing anything else ends the radio.
+/// has the next song loading. A failed top-up is retried with a growing
+/// wait while the station stays on; when the retries run out, or nothing
+/// fits the station, it says so with Try Again and Stop. Playing anything
+/// else ends the radio.
 @Observable
 @MainActor
 final class Radio {
+    enum Status: Equatable {
+        /// On air (or off when there is no seed).
+        case playing
+        /// A top-up failed; trying again (attempt `n` of `retries.count`).
+        case retrying(attempt: Int, message: String)
+        /// The retries ran out; the queue may end. Try Again or Stop.
+        case failed(String)
+        /// Nothing fits this station: trying again won't help.
+        case exhausted
+    }
+
     /// The station on air, with the name to show.
     private(set) var seed: StationSeed?
     private(set) var title: String?
-    private(set) var failure: String?
+    private(set) var status: Status = .playing
     private(set) var isTuning = false
 
     /// Songs given so far, so a batch never repeats them.
@@ -25,14 +39,31 @@ final class Radio {
 
     /// Ask for more while fewer than this many songs are still to come.
     static let ahead = 4
+    /// The waits between tries of a failed top-up, in seconds.
+    static let retries: [Double] = [2, 5, 10, 20, 40]
 
     var isOn: Bool { seed != nil }
+
+    var isRetrying: Bool {
+        if case .retrying = status { return true }
+        return false
+    }
+
+    /// What to tell the person about the station, if anything.
+    var problem: String? {
+        switch status {
+        case .playing: return nil
+        case .retrying(let attempt, _): return "Can't get more songs. Trying again (\(attempt) of \(Self.retries.count))…"
+        case .failed(let message): return "Can't get more songs: \(message)"
+        case .exhausted: return "Nothing more fits this station."
+        }
+    }
 
     /// Starts `seed` from its first batch.
     func start(_ seed: StationSeed, title: String, model: ListenModel, player: TakePlayer) async {
         self.seed = seed
         self.title = title
-        failure = nil
+        status = .playing
         played = []
         artists = []
         isTuning = true
@@ -43,15 +74,18 @@ final class Radio {
             note(tracks)
             player.play(tracks)
         case .failure(let f):
-            guard !f.stopped else { return }
-            failure = f.message
+            guard !f.stopped, self.seed == seed else { return }
             stop()
-            model.alert = .failure(ForgeFailure(title: "Can't Start \(title)", message: f.message))
+            let message = f.nothingToPlay
+                ? "Nothing in your library fits it yet, and there's nothing new to add. Find music in Discover, or add a Jamendo client ID."
+                : f.message
+            model.alert = .failure(ForgeFailure(title: "Can't Start \(title)", message: message))
         }
     }
 
     /// Called when the queue moves on: tops it up, or ends the radio when
-    /// something else is playing now.
+    /// something else is playing now. A failed top-up is tried again after
+    /// each wait in `retries` while the station is still on air.
     func follow(model: ListenModel, player: TakePlayer) async {
         guard let seed, !fetching, !isTuning else { return }
         if let current = player.current?.trackId, !played.contains(current) {
@@ -59,23 +93,90 @@ final class Radio {
             return
         }
         guard player.upcoming.count < Self.ahead else { return }
+        if case .exhausted = status { return }
+        if case .failed = status { return }
+        await topUp(seed, model: model, player: player)
+    }
+
+    /// Try Again after the retries ran out or the station was empty.
+    func retry(model: ListenModel, player: TakePlayer) async {
+        guard let seed, !fetching else { return }
+        status = .playing
+        await topUp(seed, model: model, player: player)
+    }
+
+    private func topUp(_ seed: StationSeed, model: ListenModel, player: TakePlayer) async {
         fetching = true
         defer { fetching = false }
-        if case .success(let tracks) = await model.stationBatch(seed, played: played, recentArtists: artists),
-           self.seed == seed {
-            note(tracks)
-            player.add(tracks, next: false)
+        var attempt = 0
+        while self.seed == seed, !Task.isCancelled {
+            switch await model.stationBatch(seed, played: played, recentArtists: artists) {
+            case .success(let tracks):
+                guard self.seed == seed else { return }
+                status = .playing
+                note(tracks)
+                player.add(tracks, next: false)
+                return
+            case .failure(let f):
+                // The screen moved on: the next follow carries on.
+                if f.stopped { return }
+                if f.nothingToPlay {
+                    status = .exhausted
+                    return
+                }
+                guard attempt < Self.retries.count else {
+                    status = .failed(f.message)
+                    return
+                }
+                attempt += 1
+                status = .retrying(attempt: attempt, message: f.message)
+                try? await Task.sleep(for: .seconds(Self.retries[attempt - 1]))
+            }
         }
     }
 
     func stop() {
         seed = nil
         title = nil
+        status = .playing
     }
 
     private func note(_ tracks: [QueueTrack]) {
         played += tracks.map(\.trackId)
         artists = Array((artists + tracks.map(\.artist)).suffix(8))
+    }
+}
+
+/// The radio's trouble, with Try Again and Stop: under Now Playing's radio
+/// row and at the top of Listen.
+struct RadioProblem: View {
+    let radio: Radio
+    let model: ListenModel
+    let player: TakePlayer
+
+    var body: some View {
+        if let problem = radio.problem {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(problem, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .accessibilityIdentifier("radio.problem")
+                if radio.isRetrying {
+                    ProgressView().controlSize(.small)
+                } else {
+                    HStack(spacing: 12) {
+                        Button("Try Again") {
+                            Task { await radio.retry(model: model, player: player) }
+                        }
+                        .accessibilityIdentifier("radio.retry")
+                        Button("Stop Radio", role: .destructive) { radio.stop() }
+                            .accessibilityIdentifier("radio.stop")
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .buttonStyle(.bordered)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 

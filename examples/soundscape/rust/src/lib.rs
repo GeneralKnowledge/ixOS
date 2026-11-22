@@ -893,7 +893,9 @@ impl SoundscapeCore {
     /// station's genre when there is a client ID). `played` are the
     /// station's songs so far, `recent_artists` the last artists played
     /// (newest last), `seed_number` makes the mix repeatable. Jamendo
-    /// failing leaves its songs out; no song at all is `NotInLibrary`.
+    /// failing leaves its songs out; with nothing else to play its error
+    /// is the answer (worth retrying), and a station with nothing in it at
+    /// all is `NotInLibrary`.
     /// On-screen work.
     pub async fn station_batch(
         &self,
@@ -908,6 +910,10 @@ impl SoundscapeCore {
         let collection = self.collection.get();
         let mut candidates = station::library_candidates(&seed, &library, &collection);
         let mut catalogue: Vec<CatalogueTrack> = Vec::new();
+        // Why Jamendo gave nothing, when it failed: the answer when nothing
+        // else can play either, so a dropped connection is told apart from
+        // a station with nothing in it.
+        let mut jamendo_failure: Option<SoundscapeError> = None;
         if let Some(client_id) = self.jamendo_client_id() {
             let genre = station::seed_genre(&seed, &library);
             let http = Arc::clone(&self.http);
@@ -940,7 +946,10 @@ impl SoundscapeCore {
                 Err(SoundscapeError::Stopped { kind }) => {
                     return Err(SoundscapeError::Stopped { kind })
                 }
-                Err(error) => forge_runtime::logging::warn!("station: Jamendo left out: {error}"),
+                Err(error) => {
+                    forge_runtime::logging::warn!("station: Jamendo left out: {error}");
+                    jamendo_failure = Some(error);
+                }
             }
         }
         let known: std::collections::HashSet<String> =
@@ -990,9 +999,9 @@ impl SoundscapeCore {
             })
             .collect();
         if tracks.is_empty() {
-            return Err(SoundscapeError::NotInLibrary {
+            return Err(jamendo_failure.unwrap_or(SoundscapeError::NotInLibrary {
                 id: "station".into(),
-            });
+            }));
         }
         Ok(tracks)
     }

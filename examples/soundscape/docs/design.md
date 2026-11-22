@@ -158,9 +158,16 @@ queued a batch at a time, so there are many stations for free. It's a smarter sh
 - **Continuous play:** the radio asks Rust for the next 10 songs while fewer than four are still to come, so
   there is always a batch in hand, and AVPlayer already loads the next song before the current one ends
   (gapless). Playing anything else ends the radio.
+- **When a top-up fails:** the station stays on and tries again after 2, 5, 10, 20 and 40 seconds, saying so
+  in Now Playing and on Listen. When the retries run out it offers Try Again and Stop Radio. A station with
+  nothing that fits (`NotInLibrary`) says so instead of retrying; a Jamendo failure with nothing else to play
+  is Jamendo's error, so it is retried, not mistaken for an empty station.
 
 **Next:**
 
+- **A smarter mix, grown in `station.rs`:** related genres and artists, tempo and energy where the
+  metadata has them, a gentler path from familiar to new, and Like / Dislike / skips steering the very next
+  batch. No separate recommendation service.
 - **Cache ahead for weak connections:** download the next few radio songs in the background when their rights
   allow it (`may_download`, as Discover's downloads already check), and drop them once played unless kept.
   Songs whose licence allows downloading also get Keep on Phone from the radio.
@@ -168,6 +175,14 @@ queued a batch at a time, so there are many stations for free. It's a smarter sh
   no key): browse by genre, country and language, search stations, play their streams through the same
   player, with categories on a Radio screen. Shown apart from generated stations, because a live stream has
   no queue, no skip and no Like.
+
+## Podcasts stay on the roadmap
+
+Podcasts are planned as a first-class listening experience, not a corner of the music tabs: the AntennaPod
+counterpart in `docs/research/android-ports.md` (P0 to P4: subscriptions, episodes, downloads, play position,
+queue). The four music tabs are not the permanent shape of the app. When podcasts arrive, the tab set is
+reviewed then: Listen can hold both (continue an episode, new episodes beside radio), and podcasts get their
+own place rather than being pushed into Library or Discover.
 
 ## Milestones
 
