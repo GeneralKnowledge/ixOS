@@ -176,6 +176,39 @@ What A2UI-1 deliberately leaves out: any model (A2UI-4), Android (A2UI-2), agent
 | Confirmation | Confirm displays a Rust-derived change set, never a summary supplied by the A2UI surface |
 | Updates | An incremental update can't silently change the meaning of an existing action, or alter the proposed change set without the confirmation view reflecting it |
 
+## A2UI and ForgeUI (Reuben, 2026-11-22)
+
+They overlap but solve different problems. **ForgeUI defines what an ixOS interface looks and feels like; A2UI defines how an agent describes an interface for the app to render.** A2UI is a possible *consumer* of ForgeUI, never a replacement and never a second design system. The rule to protect: **A2UI decides which interface to compose; ForgeUI decides how it looks and behaves.**
+
+| Layer | Owns | Where |
+|---|---|---|
+| Agent / Rust | Which interface is useful; the typed proposal; the gate | App crate (`a2ui_lab/` in Device Lab) |
+| A2UI runtime | Message processing, streaming, data binding, validation | The integration layer (A2UI's `A2UISwiftCore` / `A2UISwiftUI`, driven by the app), **not** ForgeUI |
+| ForgeUI A2UI adapter | Maps each permitted A2UI component to a ForgeUI component, or to native SwiftUI on ForgeUI's tokens where ForgeUI has no component | Device Lab for now (`A2uiLabSurface.swift`); its own module beside ForgeUI only after a second app uses it |
+| ForgeUI | Components, tokens, type, accessibility behaviour | `forgekit/Sources/ForgeUI`, unchanged, with no A2UI dependency |
+
+Three rules follow:
+
+1. **ForgeUI stays independent.** It never imports A2UI and needs nothing from it. `scripts/check-boundaries.sh` already keeps A2UI out of every package but Device Lab.
+2. **A2UI components resolve to ForgeUI.** Every component in an ixOS catalog is drawn by the adapter, not by A2UI's own views. Google's `BasicCatalog` is used for its component *definitions* (the v1.0 schema the gate and renderer validate against); `BasicCatalogSwiftUI`'s *look* is acceptable in the protocol spike only and must not ship in any surface a person relies on.
+3. **The A2UI runtime stays in the integration layer.** No message processing, data binding or validation moves into ForgeUI's core.
+
+### Where A2UI-1 stands against this
+
+| Component | Drawn by today (#377) | Adapter target |
+|---|---|---|
+| Text | ForgeUI type roles (`.forge(.body)`, `.metadata`) | Done |
+| Card | `ForgeCard` | Done |
+| Button | A2UI's button with a ForgeUI style (accent, radius, 44 pt) | Done (native button styles on ForgeUI tokens are allowed) |
+| Column, Row | A2UI basic catalog stacks | Stacks on ForgeUI spacing tokens |
+| Divider | A2UI basic catalog | Divider in ForgeUI's separator colour |
+| ChoicePicker (priority) | A2UI basic catalog chips | ForgeUI chips (`ForgeBadge` look) with selected state for VoiceOver |
+| DateTimeInput | A2UI basic catalog date field | Native `DatePicker` with ForgeUI labels |
+
+So three of the eight lab components resolve to ForgeUI and five still show A2UI's basic look. That is fine for the protocol questions A2UI-1 answers (build, gate, confirmation, logs). The next step, **A2UI-1b: ForgeUI adapter**, draws the remaining five through ForgeUI after the phone check passes, keeps the same gate and tests, and checks whether `BasicCatalogSwiftUI` can then be dropped from Device Lab's dependencies. ForgeUI itself doesn't change.
+
+**Longer term**, an adapter shared through ForgeKit (after a second app, per the apps-first rule) would give every ixOS app the same kind of agent-composed surface, a reading plan in Commonplace, a task flow in Checklist, a queue in Soundscape, while each still looks and behaves like an ixOS app.
+
 ## A2UI-1 as built
 
 Device Lab, Tools → **A2UI Lab**. Rust in `examples/device-lab/rust/src/a2ui_lab/`, Swift in `examples/device-lab/Sources/AppHost/A2uiLab*.swift`.
@@ -192,7 +225,7 @@ Device Lab, Tools → **A2UI Lab**. Rust in `examples/device-lab/rust/src/a2ui_l
 
 Tests (Linux, `cargo test --manifest-path examples/device-lab/rust/Cargo.toml --lib a2ui_lab`, 16 tests): every hostile payload refused with the right code and nothing changed; the lab's own surface passes its gate with eight component types and exactly one action; titles in the change set come from the library even when the surface's data says otherwise; an update or an edit after review makes Confirm refuse; Confirm needs a review and applies once.
 
-**Wider than the proposed scope.** The proposal said `A2UISwiftCore` + `A2UISwiftUI` only. The lab also depends on `BasicCatalog` and `BasicCatalogSwiftUI` (the same package, the same official renderer), because the eight components are *derived* from A2UI's own v1.0 basic catalog rather than reimplemented, which is what "use the official renderer, not a home-grown replacement" asked for. Only Text is redrawn in ForgeUI. The build numbers below measure this wider graph.
+**Wider than the proposed scope.** The proposal said `A2UISwiftCore` + `A2UISwiftUI` only. The lab also depends on `BasicCatalog` and `BasicCatalogSwiftUI` (the same package, the same official renderer), because the eight components are *derived* from A2UI's own v1.0 basic catalog rather than reimplemented, which is what "use the official renderer, not a home-grown replacement" asked for. Text, Card and Button are drawn through ForgeUI; the other five still use the basic catalog's views, which is acceptable for the spike only (see [A2UI and ForgeUI](#a2ui-and-forgeui-reuben-2026-11-22)). The build numbers below measure this wider graph.
 
 The rule that only Device Lab may use A2UI is checked: `scripts/check-boundaries.sh` fails on any third-party Swift package outside its allowlist, which holds A2UI in `examples/device-lab/Package.swift` only.
 
