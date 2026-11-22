@@ -16,7 +16,7 @@ The rules this audit works inside:
 ## The answer
 
 1. **Five apps have a capability worth exposing, plus one surface in Device Lab, and every one fits the eight components.** Two shapes cover all of them: a **read-only summary** built by Rust from typed data, and a **pick-and-confirm proposal** that only refers to ids the app already owns. No candidate needs a new component or a new property.
-2. **Three apps can do it with functions they already have**: Commonplace (organise feeds into folders), Soundscape (a playlist from the library) and Good Dog (choose a goal from your own words). **Two need an app feature first**: Pocket Library has no reading plan or goal to apply A2UI-1's reading plan to, and Checklist has no due dates.
+2. **Three apps can do it with functions they already have**: Commonplace (organise feeds into folders), Soundscape (a playlist from the library) and Good Dog (choose a goal from your own words). **Two need an app feature first**: Pocket Library has no per-book reading plan to apply A2UI-1's reading plan to, and Checklist has no due dates.
 3. **The capability belongs in the app's crate, the surface in Device Lab.** Each app adds a typed proposal, a check that turns it into a change set, and an apply step, in plain Rust with no A2UI in it. Device Lab's A2UI layer turns that into a surface. The app's capability is then useful without A2UI too (App Intents, a Relay agent later), and no app depends on A2UI.
 4. **The gate is written for one surface.** Before a second surface, `a2ui_lab/gate.rs` splits into the general catalogue rules and a per-surface registration (surface id, events and their context, data schema, what may be redrawn). The Bonsai **verified-task card** is the smallest second surface: read-only, no events.
 5. **Whole areas are never exposed**: security (all of Relay's trust, rights and pairing), safety (Good Dog's gates and safety notes, Weather's alerts), anything destructive, network requests the agent chooses, playback or recording side effects, and teaching content that needs a human reviewer (Urdu, Naturally).
@@ -68,9 +68,9 @@ The two shapes:
 | Data shown | `Book`: id, title, author, status, progress, page count. No covers (Image is not in the eight, and `cover_url` is remote) |
 | Proposal | Book ids, a priority each, start and finish dates (A2UI-1's `Proposal` unchanged) |
 | Applied by | **Nothing yet.** `LibrarySettings` holds only the sort and the catalogue switch; a book has a status but no plan or dates. `set_status` could apply "start reading" only |
-| Missing | A reading plan or goals in Rust: [app-plan.md](../app-plan.md#pocket-library) item 3 ("reading goals and reminders to resume"). This is the app expanding, and the A2UI surface follows it |
+| Missing | A **per-book reading plan** in Pocket Library's Rust: a priority, a start date and a finish date saved on each book (a `BookPlan` beside `Book`, in the library store and its backup), with a `set_plan(book_id, plan)` call to apply it. Nothing in [app-plan.md](../app-plan.md#pocket-library) provides this yet: item 3's "reading goals" is a yearly target, not dates per book. The plan would naturally sit with item 3, since a reminder to resume can use a planned finish date. This is the app expanding, and the A2UI surface follows it |
 | Fits the eight | Yes, exactly A2UI-1 |
-| Verdict | **Right capability, app not ready.** Build reading goals as a Pocket Library feature first; the A2UI surface is then A2UI-1 on real data |
+| Verdict | **Right capability, app not ready.** Build the per-book reading plan as a Pocket Library feature first; the A2UI surface is then A2UI-1 on real data |
 
 ### Commonplace: organise feeds into folders
 
@@ -204,13 +204,13 @@ Each step is its own PR and starts only on Reuben's go.
 | C2 | Bonsai verified-task card as the second surface, read-only | Device Lab, with the Bonsai thread | Short: the card's look, VoiceOver, large text |
 | C3 | First app capability on real data: **Commonplace "organise feeds"** (typed proposal and apply in Commonplace's crate, surface in Device Lab), with a fixed proposal standing in for a model, as A2UI-1 did | Commonplace crate + Device Lab | ~10 min: propose, change, review, confirm, folders moved in Commonplace, Undo by moving back |
 | C4 | Soundscape playlist, the second app capability. If its proposal shape matches Commonplace's, that is the evidence for 4.4's extraction question | Soundscape crate + Device Lab | ~10 min |
-| Later | Pocket Library reading plan (after reading goals are built), Checklist (after due dates), Good Dog (after GD7's go-ahead). A model filling any of these is A2UI-4 | | |
+| Later | Pocket Library reading plan (after its per-book plan is built), Checklist (after due dates), Good Dog (after GD7's go-ahead). A model filling any of these is A2UI-4 | | |
 
-Why Commonplace first rather than Pocket Library, which A2UI-1 imitated: Pocket Library has nothing to apply a reading plan to, so it would mean building reading goals first; Commonplace's folders exist and its two calls are reversible. Pocket Library's reading goals are worth building on their own merit as an app feature (app-plan item 3), and the A2UI surface then follows at little cost.
+Why Commonplace first rather than Pocket Library, which A2UI-1 imitated: Pocket Library has nothing to apply a reading plan to, so it would mean building a per-book plan first; Commonplace's folders exist and its two calls are reversible. A per-book plan is worth building on its own merit as a Pocket Library feature, alongside app-plan item 3's goals and reminders, and the A2UI surface then follows at little cost.
 
 ## 6. Decisions for Reuben
 
-1. **Order.** C1 to C4 as above, or Pocket Library's reading goals first so the A2UI-1 scenario becomes real. Recommended: C1 to C4; reading goals stay in Pocket Library's own queue.
+1. **Order.** C1 to C4 as above, or Pocket Library's per-book reading plan first so the A2UI-1 scenario becomes real. Recommended: C1 to C4; the per-book plan joins Pocket Library's own queue beside item 3.
 2. **Where the surface lives.** Capability in the app's crate, surface in Device Lab (4.2), so no app depends on A2UI. Recommended as written; the alternative, A2UI inside the app's own package, contradicts "keep it out of production apps".
 3. **Good Dog.** Leave the goal chooser behind GD7's go-ahead. Recommended.
 4. **Text field.** Not added now; revisit only after C3 or C4 has been used on the phone (4.1).
