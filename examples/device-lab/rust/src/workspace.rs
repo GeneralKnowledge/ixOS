@@ -444,8 +444,17 @@ pub fn workspace_move_projects(old: String, new: String) -> Result<bool, Workspa
         fs::create_dir_all(parent).map_err(storage)?;
     }
     if fs::rename(&old, &new).is_err() {
-        copy_tree(&old, &new).map_err(storage)?;
-        fs::remove_dir_all(&old).map_err(storage)?;
+        // Copy beside the new folder first and rename it into place only
+        // when complete, so a failed copy never leaves a half-filled
+        // projects folder that would be taken as the real one.
+        let partial = new.with_file_name(".Python Lab moving");
+        let _ = fs::remove_dir_all(&partial);
+        if let Err(err) = copy_tree(&old, &partial).and_then(|_| fs::rename(&partial, &new)) {
+            let _ = fs::remove_dir_all(&partial);
+            return Err(storage(err));
+        }
+        // The copy is in place; the old folder going too is tidiness.
+        let _ = fs::remove_dir_all(&old);
     }
     Ok(true)
 }
