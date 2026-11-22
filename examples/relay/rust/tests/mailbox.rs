@@ -177,8 +177,14 @@ fn a_note_for_a_closed_device_goes_through_the_mailbox_once_with_a_receipt() {
     eventually("the note from the mailbox", || {
         notes_from(&laptop, "phone") == ["hello", "while away"]
     });
+    // The laptop left a receipt in the phone's mailbox; the phone only
+    // collects (never tries the laptop directly), so Done comes from it.
+    let phone_key = phone_id(&laptop);
+    eventually("the receipt in the phone's mailbox", || {
+        mailbox_has(&mailbox, &phone_key)
+    });
     eventually("the receipt", || {
-        phone.deliver_waiting();
+        phone.collect_mailbox();
         phone
             .transfers()
             .iter()
@@ -190,6 +196,7 @@ fn a_note_for_a_closed_device_goes_through_the_mailbox_once_with_a_receipt() {
     std::thread::sleep(Duration::from_secs(2));
     assert_eq!(notes_from(&laptop, "phone"), ["hello", "while away"]);
     assert!(!mailbox_has(&mailbox, &laptop_id));
+    assert!(!mailbox_has(&mailbox, &phone_key));
     close(laptop);
     close(phone);
 }

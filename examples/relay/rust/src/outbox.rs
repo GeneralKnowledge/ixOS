@@ -252,6 +252,18 @@ impl Record {
             .find(|d| d.to == to && (direct || !d.in_mailbox(now_ms)))
     }
 
+    /// Devices with an item the mailbox has let expire, once each: they
+    /// are due to be tried again.
+    pub fn left_expired(&self, now_ms: i64) -> Vec<String> {
+        let mut seen = HashSet::new();
+        self.deliveries
+            .iter()
+            .filter(|d| d.left_ms.is_some() && !d.in_mailbox(now_ms))
+            .filter(|d| seen.insert(d.to.clone()))
+            .map(|d| d.to.clone())
+            .collect()
+    }
+
     /// Marks a pending delivery as left in its recipient's mailbox.
     pub fn left_in_mailbox(&mut self, id: &str, now_ms: i64) -> bool {
         match self.deliveries.iter_mut().find(|d| d.id == id) {
@@ -962,8 +974,9 @@ impl RelayCore {
     }
 
     /// A receipt from `from` for the delivery `id`: it has the item, so the
-    /// delivery is Done, as if it had answered directly.
-    pub(crate) async fn receipt(&self, from: &str, id: &str) {
+    /// delivery is Done, as if it had answered directly. False when that
+    /// couldn't be saved now (the receipt is kept for the next round).
+    pub(crate) async fn receipt(&self, from: &str, id: &str) -> bool {
         let Some(d) = self
             .record
             .get()
@@ -971,7 +984,8 @@ impl RelayCore {
             .filter(|d| d.to == from)
             .cloned()
         else {
-            return;
+            // Ended already, or not one of ours: nothing to do.
+            return true;
         };
         let (id, d_for_end) = (d.id.clone(), d.clone());
         let ended = self
@@ -986,8 +1000,16 @@ impl RelayCore {
                 })
             })
             .await;
-        if matches!(ended, Ok(true)) {
-            self.let_go(&d).await;
+        match ended {
+            Ok(true) => {
+                self.let_go(&d).await;
+                true
+            }
+            Ok(false) => true,
+            Err(e) => {
+                forge_runtime::logging::warn!("relay: a receipt wasn't saved: {e}");
+                false
+            }
         }
     }
 }
@@ -1041,6 +1063,28 @@ mod tests {
             r.next_for("a").unwrap().payload,
             Payload::Note { text: "2".into() }
         );
+    }
+
+    #[test]
+    fn an_item_left_in_the_mailbox_is_due_again_when_it_expires() {
+        use crate::mailbox_server::KEPT_MS;
+        let mut r = Record::default();
+        let (item, payload) = note("1");
+        r.queue(&[1; 16], "a", item, payload, 10);
+        let id = r.next_for("a").unwrap().id.clone();
+        assert!(r.left_expired(100).is_empty(), "never left");
+        assert!(r.left_in_mailbox(&id, 100));
+        assert!(
+            r.next_due("a", false, 101).is_none(),
+            "waits in the mailbox"
+        );
+        assert!(
+            r.next_due("a", true, 101).is_some(),
+            "tried directly when seen"
+        );
+        assert!(r.left_expired(100 + KEPT_MS - 1).is_empty());
+        assert_eq!(r.left_expired(100 + KEPT_MS), vec!["a".to_string()]);
+        assert!(r.next_due("a", false, 100 + KEPT_MS).is_some());
     }
 
     #[test]

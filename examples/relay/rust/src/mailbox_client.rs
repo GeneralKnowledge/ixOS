@@ -14,8 +14,10 @@
 //!   a device trusted here), saves it once (by the same ids a direct
 //!   delivery uses), leaves a receipt in the sender's mailbox, and only then
 //!   acknowledges it, so the server deletes it. A receipt ends the
-//!   matching delivery here as Done.
-//! - Only while Relay runs, like the outbox.
+//!   matching delivery here as Done. An item this device won't take is
+//!   deleted with no receipt. An item the mailbox let expire (7 days) is
+//!   tried directly again, then left again.
+//! - Only in Hybrid, and only while Relay runs, like the outbox.
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -31,7 +33,7 @@ use crate::mailbox_server::{CallError, Kind, MailboxClient, KEPT_MS};
 use crate::node::Node;
 use crate::outbox::{Payload, SavedDelivery};
 use crate::trust::SavedTrust;
-use crate::RelayCore;
+use crate::{ConnectionMode, RelayCore};
 
 /// How often the collector looks while Relay runs.
 const EVERY: Duration = Duration::from_secs(30);
@@ -136,6 +138,9 @@ impl RelayCore {
     /// Leaves `d` in its recipient's mailbox, if the recipient told one and
     /// the mailbox takes this kind of item.
     pub(crate) async fn leave_in_mailbox(&self, d: &SavedDelivery) -> Result<(), String> {
+        if self.connection_mode() != ConnectionMode::Hybrid {
+            return Err("only Hybrid uses the mailbox".into());
+        }
         let posted = Posted::of(&d.payload).ok_or("files wait for a direct route")?;
         let mailbox = self
             .record
@@ -178,14 +183,24 @@ impl RelayCore {
         });
     }
 
-    /// Collects now (Relay came to the foreground).
-    pub(crate) fn collect_mailbox(&self) {
+    /// Collects from this device's mailbox now, without trying any
+    /// device directly (Relay came to the foreground, or a device met).
+    pub fn collect_mailbox(&self) {
         self.outbox.collect_now.notify_one();
     }
 
     /// One round: register passes, then open, save, confirm and
     /// acknowledge everything waiting.
     async fn collect_once(&self) -> Result<(), String> {
+        // Items the mailbox has let expire are due again: their devices'
+        // workers try them directly (keeping any backoff), and leave them
+        // once more if that fails.
+        for to in self.record.get().left_expired(now_ms()) {
+            self.wake(&to);
+        }
+        if self.connection_mode() != ConnectionMode::Hybrid {
+            return Ok(());
+        }
         let Some(node) = self.node.started() else {
             return Ok(());
         };
@@ -255,47 +270,57 @@ impl RelayCore {
             };
             let from = opened.from.to_string();
             match kind {
-                Kind::Receipt => self.receipt(&from, &hex(&opened.id)).await,
-                Kind::Item => {
-                    if !self.take_posted(&from, opened.id, &opened.payload).await {
-                        // Not saved: it stays, and is tried next round.
+                Kind::Receipt => {
+                    if !self.receipt(&from, &hex(&opened.id)).await {
+                        // Not saved: it stays, and is read again next round.
                         continue;
                     }
-                    let sender = record.devices.get(&from).and_then(|d| d.mailbox.clone());
-                    if let Some(sender) = sender {
-                        if let Err(why) = leave(
-                            node,
-                            &opened.from,
-                            &sender,
-                            Kind::Receipt,
-                            opened.id,
-                            RECEIPT,
-                        )
-                        .await
-                        {
-                            // The receipt goes before the item is deleted:
-                            // both are tried again next round.
-                            forge_runtime::logging::info!("relay: no receipt left: {why}");
-                            continue;
+                }
+                Kind::Item => match self.take_posted(&from, opened.id, &opened.payload).await {
+                    // Not saved: it stays, and is tried next round.
+                    Taken::Retry => continue,
+                    // Not taken: no receipt, so the sender's delivery
+                    // doesn't end Done.
+                    Taken::Dropped => {}
+                    Taken::Saved => {
+                        // With no mailbox known for the sender there is no
+                        // receipt: its delivery ends when the two next meet
+                        // directly, and that retry is answered without saving
+                        // the item again (the same ids a direct delivery uses).
+                        let sender = record.devices.get(&from).and_then(|d| d.mailbox.clone());
+                        if let Some(sender) = sender {
+                            if let Err(why) = leave(
+                                node,
+                                &opened.from,
+                                &sender,
+                                Kind::Receipt,
+                                opened.id,
+                                RECEIPT,
+                            )
+                            .await
+                            {
+                                // The receipt goes before the item is deleted:
+                                // both are tried again next round.
+                                forge_runtime::logging::info!("relay: no receipt left: {why}");
+                                continue;
+                            }
                         }
                     }
-                }
+                },
             }
             client.ack(waiting.from, waiting.id).await?;
         }
         Ok(())
     }
 
-    /// Saves an item from `from` once, as a direct delivery would. False
-    /// when it couldn't be saved now; true when it is saved, was before,
-    /// or is one this device won't take (dropped).
-    async fn take_posted(&self, from: &str, id: [u8; 16], payload: &[u8]) -> bool {
+    /// Saves an item from `from` once, as a direct delivery would.
+    async fn take_posted(&self, from: &str, id: [u8; 16], payload: &[u8]) -> Taken {
         use crate::device::DeviceInbound as _;
         let Some(posted) = Posted::decode(payload) else {
             forge_runtime::logging::info!(
                 "relay: a mailbox item this build can't read was dropped"
             );
-            return true;
+            return Taken::Dropped;
         };
         let host = crate::CoreDevices {
             core: self.me.clone(),
@@ -304,7 +329,7 @@ impl RelayCore {
             forge_runtime::logging::info!(
                 "relay: a mailbox item from a device not taken from was dropped"
             );
-            return true;
+            return Taken::Dropped;
         }
         let from = from.to_string();
         let saved = tokio::task::spawn_blocking(move || match posted {
@@ -321,14 +346,24 @@ impl RelayCore {
         })
         .await;
         match saved {
-            Ok(Ok(())) => true,
+            Ok(Ok(())) => Taken::Saved,
             Ok(Err(e)) => {
                 forge_runtime::logging::warn!("relay: a mailbox item wasn't saved: {e}");
-                false
+                Taken::Retry
             }
-            Err(_) => false,
+            Err(_) => Taken::Retry,
         }
     }
+}
+
+/// What became of an item collected from the mailbox.
+enum Taken {
+    /// Saved now, or before: a receipt goes back.
+    Saved,
+    /// One this device won't take: deleted with no receipt.
+    Dropped,
+    /// Not saved now: it stays for the next round.
+    Retry,
 }
 
 #[cfg(test)]

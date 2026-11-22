@@ -165,14 +165,22 @@ one step:
    only one is ever kept and the server deletes the copy.
 
 **Built so far (step 3, part 2).** Messages and notes go through the
-mailbox; files still wait for a direct route. An item left in the mailbox
-no longer holds up the items after it, so a device that stays away gets
-the whole queue there. Relay tries it directly again whenever the device
+mailbox; files still wait for a direct route, and a file waiting for one
+still holds back the items queued after it for that device. An item left
+in the mailbox no longer holds up the items after it, so a device that
+stays away gets the whole queue there (up to the first file). Only
+Hybrid uses the mailbox. Relay tries it directly again whenever the device
 is seen, connects, or Relay comes to the foreground; the mailbox copy is
 then dropped on collection as a duplicate. The labels (**Left for
 <device>**, **In the mailbox**, **Not confirmed**) aren't in the app yet:
 until then the item shows as waiting, and after 30 days it ends as any
-undelivered item does.
+undelivered item does. When the mailbox lets an item expire (7 days), the
+next collecting round tries it directly and leaves it again. An item the
+recipient won't take (from a device it no longer takes from) is deleted
+with no receipt, so the sender's delivery doesn't show Sent. A recipient
+that doesn't know the sender's mailbox can't leave a receipt: the
+sender's delivery then ends when the two next meet directly, and that
+retry is answered without saving the item twice.
 
 ### Collecting
 
@@ -286,7 +294,7 @@ relay, and it publishes where it is on the lookup server.
    ```
 
 3. Read its endpoint id from
-   `journalctl -u relay-mailbox | grep -m1 'relay-mailbox [0-9a-f]'`. That id is
+   `journalctl -r -u relay-mailbox | grep -m1 'relay-mailbox [0-9a-f]'`. That id is
    the mailbox's address in Relay's Servers (step 3 compiles it in), so
    **keep `/var/lib/relay-mailbox/device.key`**: a new key is a new
    mailbox, and every device would need an update to find it.

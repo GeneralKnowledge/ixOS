@@ -5,7 +5,7 @@
 #   install -m 755 relay-mailbox /usr/local/bin/relay-mailbox
 #   install -m 644 relay-mailbox.service /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable relay-mailbox && systemctl restart relay-mailbox
-#   journalctl -u relay-mailbox | grep -m1 'relay-mailbox [0-9a-f]'
+#   journalctl -r -u relay-mailbox | grep -m1 'relay-mailbox [0-9a-f]'
 #
 # It needs no Caddy route: devices dial it by key over iroh, directly on
 # UDP 7850 or through the relay. Its key (device.key) and the sealed
