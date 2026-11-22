@@ -832,28 +832,58 @@ fn keys(lines: &[&str]) -> Vec<String> {
     lines
         .iter()
         .map(|line| {
-            let mut verbatim = open.is_some();
-            let mut rest = *line;
-            loop {
-                let next = match open {
-                    Some(quote) => rest.find(quote).map(|at| (at, None)),
-                    None => ["\"\"\"", "'''"]
-                        .iter()
-                        .filter_map(|q| rest.find(q).map(|at| (at, Some(*q))))
-                        .min(),
-                };
-                let Some((at, opens)) = next else { break };
-                verbatim = true;
-                open = opens;
-                rest = &rest[at + 3..];
-            }
-            if verbatim {
+            if in_triple_string(line, &mut open) {
                 line.trim().to_string()
             } else {
                 forgiving(line)
             }
         })
         .collect()
+}
+
+/// Whether `line` is in or touches a triple-quoted string, given the one
+/// open before it (`open`, updated for the next line). A small tokenizer:
+/// a `#` outside a string ends the line, and one-line strings are skipped,
+/// so triple quotes in a comment or in a short string don't count. Every
+/// cut is at an ASCII quote, so it falls on a character boundary.
+fn in_triple_string(line: &str, open: &mut Option<&'static str>) -> bool {
+    let bytes = line.as_bytes();
+    let mut touched = open.is_some();
+    let mut i = 0;
+    while i < bytes.len() {
+        if let Some(quote) = *open {
+            match line[i..].find(quote) {
+                Some(at) => {
+                    i += at + 3;
+                    *open = None;
+                }
+                None => break,
+            }
+            continue;
+        }
+        let c = bytes[i];
+        if c == b'#' {
+            break;
+        }
+        if c == b'"' || c == b'\'' {
+            let triple = if c == b'"' { "\"\"\"" } else { "'''" };
+            if line[i..].starts_with(triple) {
+                *open = Some(triple);
+                touched = true;
+                i += 3;
+                continue;
+            }
+            // A one-line string: to its closing quote.
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] != c {
+                j += if bytes[j] == b'\\' { 2 } else { 1 };
+            }
+            i = j + 1;
+            continue;
+        }
+        i += 1;
+    }
+    touched
 }
 
 /// `old` matched against `text` ignoring indentation and quote style. When

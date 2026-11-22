@@ -2072,6 +2072,20 @@ fn a_forgiving_edit_leaves_quotes_inside_a_docstring_alone() {
         std::fs::read_to_string(dir.path().join("d.py")).unwrap(),
         text
     );
+    // Triple quotes in a comment or a short string don't fool it.
+    let text = "# \"\"\"\nmark = '\"\"\"'\ntext = \"\"\"\nstatus = \"on\"\n\"\"\"\n";
+    std::fs::write(dir.path().join("e.py"), text).unwrap();
+    let outcome = edit(&lab, "e.py", "status = 'on'", "status = 'off'");
+    assert!(!outcome.ok, "{}", outcome.text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("e.py")).unwrap(),
+        text
+    );
+    // Code after a docstring still gets the forgiving match.
+    let text = "def f():\n    \"\"\"Doc.\"\"\"\n    return \"x\"\n";
+    std::fs::write(dir.path().join("f.py"), text).unwrap();
+    let outcome = edit(&lab, "f.py", "return 'x'", "return 'y'");
+    assert!(outcome.ok, "{}", outcome.text);
 }
 
 // MARK: Recovery (H5)
