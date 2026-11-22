@@ -116,7 +116,11 @@ devices that matter.
   **deposit pass** and sends it to that device in their Hello, over the
   connection that is already encrypted. It registers only the pass's
   SHA-256 with the mailbox.
-- A deposit must carry a registered pass, or the server refuses it. The
+- Passes are scoped to their recipient. Only the recipient can register
+  or deregister its passes: the server takes the recipient from the iroh
+  connection, never from the request. A deposit must carry a pass
+  registered by the device in the item's `to`, or the server refuses it,
+  so a pass can't be used for anyone else. The
   quotas above apply per pass, so one trusted device, even a misbehaving
   one, can't use up the whole mailbox.
 - Revoking a device deregisters its pass at once, and forgetting a device
@@ -141,8 +145,12 @@ one step:
 3. The item stays in the outbox until the recipient confirms it, either
    when it next connects directly or with a receipt it leaves in the
    sender's own mailbox. Then it is Sent or Done, as today.
-   - If the item expires in the mailbox before it is collected, the
-     sender leaves it again, up to the outbox's 30 days. An item with no
+   - If no confirmation arrives within the mailbox's 7 days, the sender
+     leaves the item again, up to the outbox's 30 days. That covers
+     both an item that expired unread and a receipt that was lost or
+     expired after the item was collected. A recipient that already
+     has the id (its 45-day memory) doesn't save it again: it leaves a
+     fresh receipt and acknowledges. An item with no
      confirmation after 30 days ends **Not confirmed**, not "Not
      delivered": the sender can't tell a lost item from a lost receipt,
      and the label says only what it knows.
@@ -183,7 +191,10 @@ Each step is a PR, Linux-tested before the phone sees it.
    is on the wire yet.
 2. **The server.** The `relay-mailbox` binary: `relay/mailbox/1`,
    deposit, list, fetch, acknowledge, expiry, quotas and duplicates, with
-   in-process tests (two endpoints and a server in one test).
+   in-process tests (two endpoints and a server in one test). The tests
+   include a device registering a pass for someone else (refused), a
+   pass used for another recipient (refused), and an acknowledgement
+   from anyone but the recipient (refused).
 3. **The client.** The mailbox key goes in the Hello, the outbox gains its
    new step, and collecting and receipts are added. The CLI gets
    `relay status` lines and `relay servers --mailbox`. An end-to-end test
