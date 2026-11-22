@@ -29,7 +29,7 @@ struct StartTripView: View {
             #endif
             .forgeFormToolbar(
                 id: "start", confirmTitle: "Start", canConfirm: !trimmed.isEmpty,
-                submission: starting, cancel: { dismiss() }
+                submission: starting, hasChanges: !trimmed.isEmpty, cancel: { dismiss() }
             ) { Task { await start() } }
         }
     }

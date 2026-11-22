@@ -56,7 +56,7 @@ struct AddFeedView: View {
             #endif
             .forgeFormToolbar(
                 id: "addFeed", confirmTitle: "Add", canConfirm: !trimmed.isEmpty,
-                submission: adding, cancel: { dismiss() }
+                submission: adding, hasChanges: !trimmed.isEmpty, cancel: { dismiss() }
             ) { Task { await add() } }
             // Straight to typing when the person has feeds; a new library
             // starts with the suggestions in view, not under the keyboard.
