@@ -360,6 +360,13 @@ fn an_svg_chart_must_draw_the_values() {
             .into(),
     );
     assert!(check(&percent).is_ok(), "{:?}", check(&percent));
+    // Lengths in em: the e isn't an exponent.
+    let em = svg(
+        "<rect width='2em' height='3em'/><rect width='2em' height='7em'/><rect width='2em' height='5em'/>\
+         <text>3</text><text>7</text><text>5</text>"
+            .into(),
+    );
+    assert!(check(&em).is_ok(), "{:?}", check(&em));
     // A label missing.
     let unlabelled = svg(bar(60, "3") + &bar(140, "7") + &bar(100, ""));
     assert!(check(&unlabelled).unwrap_err().contains("5"));

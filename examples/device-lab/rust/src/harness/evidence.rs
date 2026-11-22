@@ -349,20 +349,14 @@ fn svg_attribute(tag: &str, name: &str) -> f64 {
             let quote = rest.chars().next().filter(|c| *c == '"' || *c == '\'')?;
             let rest = &rest[1..];
             let value = &rest[..rest.find(quote)?];
-            // The number of a length ("40", "40px", "10%"): only order
+            // The number of a length ("40", "40px", "10%", "1e2", "10em"):
+            // the longest start that reads as a number. Only order
             // matters, and bars share a unit.
             let value = value.trim();
-            let number = value
-                .find(|c: char| {
-                    !(c.is_ascii_digit()
-                        || c == '.'
-                        || c == '-'
-                        || c == '+'
-                        || c == 'e'
-                        || c == 'E')
-                })
-                .map_or(value, |end| &value[..end]);
-            number.parse().ok()
+            (1..=value.len())
+                .rev()
+                .filter(|&end| value.is_char_boundary(end))
+                .find_map(|end| value[..end].parse::<f64>().ok())
         })
         .unwrap_or(0.0)
 }
