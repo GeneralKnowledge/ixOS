@@ -362,6 +362,10 @@ pub(crate) struct Outbox {
     /// The mailbox collector (N3): started once, and woken to collect now.
     pub(crate) collector_started: AtomicBool,
     pub(crate) collect_now: Arc<tokio::sync::Notify>,
+    /// History entries whose item is being left in the mailbox right now:
+    /// from the moment that is decided (in a command, so it orders with a
+    /// cancel) until `left_ms` is saved. They can't be cancelled either.
+    depositing: Arc<Mutex<HashSet<u64>>>,
 }
 
 /// How one attempt went.
@@ -689,7 +693,7 @@ impl RelayCore {
     /// withdraw, so the recipient gets it whatever this device does, and
     /// calling it Cancelled would be untrue.
     pub(crate) async fn cancel_delivery(&self, transfer: u64) -> bool {
-        if self.record.get().sent_to_mailbox(transfer, now_ms()) {
+        if self.out_of_hands(transfer) {
             return false;
         }
         if let Some(stop) = lock(&self.device_stops).get(&transfer) {
@@ -707,13 +711,16 @@ impl RelayCore {
             return false;
         };
         let ending = d.clone();
+        let depositing = Arc::clone(&self.outbox.depositing);
         let ended = self
             .rt
             .command("cancel-delivery", move |state| {
                 state.change_with(|r, c| {
                     // Checked again here: it may have been left in the
                     // mailbox since the check above.
-                    if r.sent_to_mailbox(ending.transfer, now_ms()) {
+                    if r.sent_to_mailbox(ending.transfer, now_ms())
+                        || lock(&depositing).contains(&ending.transfer)
+                    {
                         return Ok(false);
                     }
                     let ended = r.end_delivery(
@@ -979,8 +986,27 @@ impl RelayCore {
         lock(&self.outbox.direct_again).remove(&d.to);
         let now = now_ms();
         let already = d.in_mailbox(now);
+        let transfer = d.transfer;
+        let depositing = Arc::clone(&self.outbox.depositing);
         if !already {
+            // Decided in a command, so a cancel either ended it first (and
+            // it isn't left) or sees the deposit and is refused.
+            let (id, marks) = (d.id.clone(), Arc::clone(&depositing));
+            let go = self
+                .rt
+                .command("delivery-depositing", move |state| {
+                    let pending = state.record.delivery(&id).is_some();
+                    if pending {
+                        lock(&marks).insert(transfer);
+                    }
+                    Ok::<_, RelayError>(pending)
+                })
+                .await;
+            if !matches!(go, Ok(true)) {
+                return false;
+            }
             if let Err(why) = self.leave_in_mailbox(d).await {
+                lock(&depositing).remove(&transfer);
                 forge_runtime::logging::info!("relay: not left in the mailbox: {why}");
                 return false;
             }
@@ -1005,7 +1031,16 @@ impl RelayCore {
                 })
             })
             .await;
+        lock(&depositing).remove(&transfer);
         matches!(saved, Ok(true))
+    }
+
+    /// Whether the send for history entry `transfer` is out of this
+    /// device's hands: sealed in the recipient's mailbox, or being left
+    /// there now. Such a send can't be cancelled.
+    pub(crate) fn out_of_hands(&self, transfer: u64) -> bool {
+        lock(&self.outbox.depositing).contains(&transfer)
+            || self.record.get().sent_to_mailbox(transfer, now_ms())
     }
 
     /// A receipt from `from` for the delivery `id`: it has the item, so the

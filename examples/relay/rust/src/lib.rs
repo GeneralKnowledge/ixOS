@@ -1605,7 +1605,7 @@ impl RelayCore {
     /// recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
     /// anyway, so it can't be cancelled.
     pub fn cancel_transfer(&self, id: u64) {
-        if self.record.get().sent_to_mailbox(id, now_ms()) {
+        if self.out_of_hands(id) {
             return;
         }
         if let Some(stop) = lock(&self.device_stops).get(&id) {
