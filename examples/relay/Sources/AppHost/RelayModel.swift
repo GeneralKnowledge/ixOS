@@ -339,6 +339,18 @@ public final class RelayModel {
         await perform { try await $0.setPerson(endpointId: device.endpointId, person: name) }
     }
 
+    /// Grants `capability` to `device`, or takes it away (N5). Taking it
+    /// away ends any use of it at once.
+    public func setGrant(_ capability: Capability, _ on: Bool, for device: Device) async {
+        await perform { try await $0.setGrant(endpointId: device.endpointId, capability: capability, on: on) }
+    }
+
+    /// Whether `device` shares a site this device may open: it said so the
+    /// last time it was asked about itself (N6).
+    public static func sharesSite(_ device: Device) -> Bool {
+        device.offers.contains("sites")
+    }
+
     /// Whether `device` may see which devices this one trusts.
     public func setSeesDevices(_ on: Bool, for device: Device) async {
         await perform { try await $0.setSeesDevices(endpointId: device.endpointId, on: on) }

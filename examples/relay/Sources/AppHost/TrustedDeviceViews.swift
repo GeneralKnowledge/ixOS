@@ -442,6 +442,27 @@ struct TrustedDeviceView: View {
                      : "\(device.name) is still trusted, but what it sends here is declined.")
             }
             Section {
+                Toggle("Can Open My Site", isOn: Binding(
+                    get: { device.grants.contains(.sites) },
+                    set: { on in Task { await model.setGrant(.sites, on, for: device) } }
+                ))
+                .accessibilityIdentifier("trusted.opensSite")
+                if RelayModel.sharesSite(device) {
+                    NavigationLink {
+                        RelaySiteView(device: device, model: model)
+                    } label: {
+                        Label("Open Its Site", systemImage: "globe")
+                    }
+                    .accessibilityIdentifier("trusted.openSite")
+                }
+            } header: {
+                Text("Sites")
+            } footer: {
+                Text(RelayModel.sharesSite(device)
+                     ? "\(device.name) shares a site with this device. Only devices it trusts and lets in can open it, never the internet."
+                     : "When on, \(device.name) can open a site this device shares. Trust alone never lets it in.")
+            }
+            Section {
                 Toggle("This Is a Person", isOn: Binding(
                     get: { device.person != nil || namingPerson },
                     set: { on in
