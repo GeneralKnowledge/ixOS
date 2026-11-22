@@ -1353,6 +1353,13 @@ impl ChatCore {
                 });
             }
         }
+        // And the device: one that is no longer trusted would refuse the
+        // first file, with nothing sent and the screen told it was kept.
+        if relay.trusted(&endpoint_id).is_err() {
+            return Err(ChatError::InvalidInput {
+                reason: "that device is no longer trusted".into(),
+            });
+        }
         // Every copy before the first send, so a copy that fails refuses
         // the whole message rather than half of it (and leaves no copies).
         let mut paths = Vec::with_capacity(files.len());
@@ -1376,17 +1383,35 @@ impl ChatCore {
                 }
             }
         }
-        for path in paths {
+        let count = paths.len();
+        for (sent, path) in paths.into_iter().enumerate() {
             // The staged copy stays in the temporary folder (the system
             // clears it): when Relay couldn't keep its own copy, the
             // conversation opens the file from there.
-            relay
+            let result = relay
                 .send_to_device(
                     endpoint_id.clone(),
                     vec![path.to_string_lossy().into_owned()],
                 )
-                .await
-                .map_err(crate::device_chat::chat_error)?;
+                .await;
+            if let Err(e) = result {
+                // A failed send keeps nothing. Before any file went, the
+                // whole message was refused, and the screen keeps it all.
+                // After, the files that went are in the conversation and
+                // sending them again would repeat them: the error says how
+                // many went, and the screen lets the message go.
+                return Err(if sent == 0 {
+                    ChatError::Storage {
+                        reason: e.to_string(),
+                    }
+                } else {
+                    ChatError::Internal {
+                        reason: format!(
+                            "{sent} of {count} files went; the rest weren't sent ({e})"
+                        ),
+                    }
+                });
+            }
         }
         if !body.is_empty() {
             return self.send_reply(conversation_id, body, reply_to).await;
