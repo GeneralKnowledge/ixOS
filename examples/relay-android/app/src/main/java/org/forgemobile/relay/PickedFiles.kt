@@ -18,6 +18,15 @@ class PickedFiles(private val context: Context, private val folder: String) {
     /** Copies [uris] in, off the main thread. Throws when one can't be read. */
     suspend fun copy(uris: List<Uri>): List<String> = withContext(Dispatchers.IO) {
         val batch = File(root, UUID.randomUUID().toString())
+        try {
+            copyInto(batch, uris)
+        } catch (e: Exception) {
+            batch.deleteRecursively()
+            throw e
+        }
+    }
+
+    private fun copyInto(batch: File, uris: List<Uri>): List<String> =
         uris.mapIndexed { index, uri ->
             // Each in its own folder, so two picks with one name both keep it.
             val dir = File(batch, index.toString()).apply { mkdirs() }
@@ -27,11 +36,18 @@ class PickedFiles(private val context: Context, private val folder: String) {
             input.use { source -> target.outputStream().use { source.copyTo(it) } }
             target.absolutePath
         }
-    }
 
     /** Removes every copy. */
     fun release() {
         root.deleteRecursively()
+    }
+
+    /** Removes only the copies one [copy] made, given the paths it returned. */
+    fun release(paths: List<String>) {
+        paths.mapNotNull { File(it).parentFile?.parentFile }
+            .distinct()
+            .filter { it.parentFile == root }
+            .forEach { it.deleteRecursively() }
     }
 
     private fun displayName(uri: Uri): String? =

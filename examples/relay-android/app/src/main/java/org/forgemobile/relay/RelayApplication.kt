@@ -97,7 +97,12 @@ class RelayApplication : Application() {
      * (UI tests), each launch starts again on a fresh throwaway identity with no servers, as
      * `-ForgeTemporaryData` does on iOS; the person's own data is never opened.
      */
+    /** Whether [launch] ran in this process. */
+    var launched = false
+        private set
+
     fun launch(intent: Intent) {
+        launched = true
         val throwaway = intent.getBooleanExtra(ForgeEnvironment.TEMPORARY_DATA_EXTRA, false)
         if (throwaway) {
             if (host.core != null) host.close()

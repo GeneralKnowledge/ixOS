@@ -133,17 +133,11 @@ private fun DeviceDetails(model: RelayModel, device: Device, picked: PickedFiles
     val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         sending = true
-        scope.launch {
-            try {
-                val paths = picked.copy(uris)
-                // Relay copies them in, so the picked copies go once this returns.
-                model.send(paths, device)
-            } catch (e: java.io.IOException) {
-                model.report(org.forgemobile.relay.kit.ForgeFailure("Couldn't Read the File", e.message ?: "$e"))
-            } finally {
-                picked.release()
-                sending = false
-            }
+        // Relay copies them in, so the picked copies go once the send returns: only this
+        // send's, as another device's send may be copying in beside it.
+        model.sendPicked(device, copy = { picked.copy(uris) }) { paths ->
+            picked.release(paths)
+            sending = false
         }
     }
 

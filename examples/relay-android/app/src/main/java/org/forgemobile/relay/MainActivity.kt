@@ -11,8 +11,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val app = application as RelayApplication
-        // A fresh launch, not a rotation or a restore after the process was kept.
-        if (savedInstanceState == null) app.launch(intent)
+        // A fresh launch, or a restore after Android ended the process (nothing open yet); not
+        // a rotation, where the process kept Relay open.
+        if (savedInstanceState == null || !app.launched) app.launch(intent)
         setContent { RelayApp(app) }
     }
 }

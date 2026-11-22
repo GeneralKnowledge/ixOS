@@ -2,11 +2,13 @@ package org.forgemobile.relay
 
 import java.io.File
 import java.nio.file.Files
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.forgemobile.relay.host.ForgeEnvironment
@@ -117,6 +119,27 @@ class RelayModelTest {
         phone.receive("7-acid-tidy-rug") { CodeSender.None }
         val failed = phone.codeReceive.value as CodeReceive.Failed
         assertTrue(failed.message, failed.message.startsWith("No sender with code number 7"))
+    }
+
+    @Test
+    fun stoppingWhileLookingNeverReceives() = runBlocking {
+        val phone = device("Pixel")
+        val answer = CompletableDeferred<Unit>()
+        val receive = launch(Dispatchers.Default) {
+            phone.receive("7-acid-tidy-rug") {
+                answer.await()
+                CodeSender.Found(listOf("127.0.0.1:9"), "not-reached")
+            }
+        }
+        withTimeout(5_000) {
+            while (phone.codeReceive.value != CodeReceive.Finding) delay(10)
+        }
+        phone.cancelCodeReceive()
+        assertEquals(CodeReceive.Idle, phone.codeReceive.value)
+        // The sender turns up after Stop: nothing is received.
+        answer.complete(Unit)
+        receive.join()
+        assertEquals(CodeReceive.Idle, phone.codeReceive.value)
     }
 
     @Test

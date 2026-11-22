@@ -76,6 +76,18 @@ class RelayNetwork(context: Context) {
             override fun onServiceRegistered(info: NsdServiceInfo) = Unit
             override fun onRegistrationFailed(info: NsdServiceInfo, error: Int) {
                 Log.w(TAG, "advert failed ($error)")
+                // Forget it, so the next call with the same advert registers again. Only this
+                // registration's own record: a newer advert may have replaced it.
+                main.post {
+                    if (codeRegistration === this) {
+                        codeRegistration = null
+                        codeAdvertised = null
+                    }
+                    if (deviceRegistration === this) {
+                        deviceRegistration = null
+                        deviceAdvertised = null
+                    }
+                }
             }
             override fun onServiceUnregistered(info: NsdServiceInfo) = Unit
             override fun onUnregistrationFailed(info: NsdServiceInfo, error: Int) = Unit
@@ -102,6 +114,9 @@ class RelayNetwork(context: Context) {
     private val watchers = mutableMapOf<Any, () -> Unit>()
     private var discovery: NsdManager.DiscoveryListener? = null
 
+    /** Services found and not lost since: a resolve that ends after its service went is dropped. */
+    private val present = mutableSetOf<String>()
+
     private fun watch(key: Any, changed: () -> Unit) {
         watchers[key] = changed
         if (discovery == null) startDiscovery()
@@ -123,13 +138,29 @@ class RelayNetwork(context: Context) {
             override fun onDiscoveryStopped(type: String) = Unit
             override fun onStartDiscoveryFailed(type: String, error: Int) {
                 Log.w(TAG, "discovery failed ($error)")
+                // Try again shortly while anything still watches, unless discovery was
+                // stopped or started afresh meanwhile.
+                val failed = this
+                main.post {
+                    if (discovery !== failed) return@post
+                    discovery = null
+                    main.postDelayed({
+                        if (discovery == null && watchers.isNotEmpty()) startDiscovery()
+                    }, 2_000)
+                }
             }
             override fun onStopDiscoveryFailed(type: String, error: Int) = Unit
             override fun onServiceFound(info: NsdServiceInfo) {
-                main.post { resolveLater(info) }
+                main.post {
+                    if (discovery == null) return@post
+                    present += info.serviceName
+                    resolveLater(info)
+                }
             }
             override fun onServiceLost(info: NsdServiceInfo) {
                 main.post {
+                    present -= info.serviceName
+                    queue.removeAll { it.serviceName == info.serviceName }
                     if (seen.remove(info.serviceName) != null) changed()
                 }
             }
@@ -151,6 +182,7 @@ class RelayNetwork(context: Context) {
             // Discovery never started.
         }
         seen.clear()
+        present.clear()
         queue.clear()
     }
 
@@ -173,7 +205,7 @@ class RelayNetwork(context: Context) {
             override fun onResolveFailed(info: NsdServiceInfo, error: Int) {
                 main.post {
                     resolving = false
-                    if (error == NsdManager.FAILURE_ALREADY_ACTIVE) {
+                    if (error == NsdManager.FAILURE_ALREADY_ACTIVE && info.serviceName in present) {
                         // Another resolve (another app's) is running: try again shortly.
                         main.postDelayed({ resolveLater(info) }, 200)
                     }
@@ -187,7 +219,7 @@ class RelayNetwork(context: Context) {
                 val address = info.host?.hostAddress?.let { RelayFormat.address(it, info.port) }
                 main.post {
                     resolving = false
-                    if (discovery != null) {
+                    if (discovery != null && info.serviceName in present) {
                         seen[info.serviceName] = Seen(txt, address)
                         changed()
                     }

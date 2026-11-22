@@ -5,7 +5,11 @@
 // hands this model addresses.
 package org.forgemobile.relay
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -100,6 +104,12 @@ class RelayModel(
     /** Where Rust's async calls are awaited: a pool, never a dispatcher that resumes in place. */
     private val rust: CoroutineDispatcher = Dispatchers.Default,
 ) {
+    /**
+     * Where a send or a code receive runs once started: as long as the model, not the screen, so
+     * rotating the phone (which rebuilds the screens) neither drops nor strands it.
+     */
+    private val work by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
+
     /** Alerts the screens ask for: confirm, or a failure. */
     sealed interface Action {
         data class Remove(val transfer: ULong) : Action
@@ -373,10 +383,36 @@ class RelayModel(
         }
     }
 
+    /**
+     * Sends what the person picked to [device]: [copy] brings the files in, then Relay sends
+     * them, and [finished] runs either way (to remove the copies). Outlives the screen.
+     */
+    fun sendPicked(device: Device, copy: suspend () -> List<String>, finished: (List<String>) -> Unit) {
+        work.launch {
+            var paths = emptyList<String>()
+            try {
+                paths = copy()
+                send(paths, device)
+            } catch (e: java.io.IOException) {
+                report(ForgeFailure("Couldn't Read the File", e.message ?: "$e"))
+            } finally {
+                finished(paths)
+            }
+        }
+    }
+
     // Receiving with a word code
 
     val isReceivingCode: Boolean
         get() = _codeReceive.value.let { it is CodeReceive.Finding || it is CodeReceive.Receiving }
+
+    /** The code receive in hand: a stopped or older one finding its sender afterwards is dropped. */
+    private var receiving = 0L
+
+    /** [receive], as long as the model rather than the screen. */
+    fun startReceive(code: String, find: suspend (UByte) -> CodeSender) {
+        work.launch { receive(code, find) }
+    }
 
     /** Finds the sender of [code] with [find] (the network, by the code's number), then receives. */
     suspend fun receive(code: String, find: suspend (UByte) -> CodeSender) {
@@ -386,8 +422,17 @@ class RelayModel(
             _codeReceive.value = CodeReceive.Failed(RelayErrors.message(e))
             return
         }
+        val attempt = ++receiving
         _codeReceive.value = CodeReceive.Finding
-        when (val sender = find(number)) {
+        val sender = try {
+            find(number)
+        } catch (e: CancellationException) {
+            if (attempt == receiving && _codeReceive.value == CodeReceive.Finding) _codeReceive.value = CodeReceive.Idle
+            throw e
+        }
+        // Stopped while looking: nothing more.
+        if (attempt != receiving || _codeReceive.value != CodeReceive.Finding) return
+        when (sender) {
             CodeSender.None -> _codeReceive.value = CodeReceive.Failed(
                 "No sender with code number $number on this Wi-Fi. Check the sender is still waiting, on the same network.",
             )
@@ -405,6 +450,11 @@ class RelayModel(
                 } catch (e: RelayException) {
                     _codeReceive.value = CodeReceive.Failed(RelayErrors.message(e))
                     play(Feedback.FAILURE)
+                } catch (e: CancellationException) {
+                    // Waiting on Rust was given up: the receive is stopped with it.
+                    core.cancelCodeReceive()
+                    _codeReceive.value = CodeReceive.Idle
+                    throw e
                 }
             }
         }
@@ -416,7 +466,15 @@ class RelayModel(
         if (now is CodeReceive.Receiving) _codeReceive.value = now.copy(size = core.codeReceiveSize())
     }
 
-    fun cancelCodeReceive() = core.cancelCodeReceive()
+    /** Stop: while looking for the sender, stops looking; while receiving, Rust stops. */
+    fun cancelCodeReceive() {
+        if (_codeReceive.value == CodeReceive.Finding) {
+            receiving++
+            _codeReceive.value = CodeReceive.Idle
+        } else {
+            core.cancelCodeReceive()
+        }
+    }
 
     fun resetCodeReceive() {
         if (!isReceivingCode) _codeReceive.value = CodeReceive.Idle
@@ -438,19 +496,42 @@ class RelayModel(
         }
     }
 
-    /** Shows that what was picked is being copied in before Rust has it. */
-    fun preparing(name: String) {
-        _codeSend.value = CodeSend.Preparing(name, 0u)
-    }
+    /** The picked files being copied in before Rust has them (0: none); each pick its own number. */
+    private var staging = 0L
+    private var picks = 0L
 
-    fun failSend(reason: String) {
-        _codeSend.value = CodeSend.Failed(reason)
+    /**
+     * Sends with a code what the person picked: shows [name] as preparing while [copy] brings the
+     * files in, then Rust sends them. Stop while copying drops them; a newer pick replaces this
+     * one. Outlives the screen.
+     */
+    fun sendPicked(name: String, copy: suspend () -> List<String>) {
+        val pick = ++picks
+        staging = pick
+        _codeSend.value = CodeSend.Preparing(name, 0u)
+        work.launch {
+            val paths = try {
+                copy()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (staging == pick) {
+                    staging = 0
+                    _codeSend.value = CodeSend.Failed("Couldn't read what you chose: ${e.message ?: e}")
+                }
+                return@launch
+            }
+            if (staging != pick) return@launch
+            staging = 0
+            send(paths)
+        }
     }
 
     fun refreshCodeSend() {
+        // Still copying the picked files in: Rust hasn't been asked yet, and what it says is
+        // about the send before.
+        if (staging != 0L) return
         val now = core.codeSendStatus()
-        // Still copying the picked files in: Rust hasn't been asked yet.
-        if (now is CodeSend.Idle && _codeSend.value is CodeSend.Preparing) return
         _codeSend.value = now
         refreshTrustOffer()
         if (now is CodeSend.Sent) reload(announcing = false)
@@ -459,7 +540,15 @@ class RelayModel(
     /** Other code senders the network sees, so Rust avoids their numbers. */
     fun codeSendersNearby(senders: List<NearbySender>) = core.codeSendNearby(senders)
 
-    fun cancelCodeSend() = core.cancelCodeSend()
+    /** Stop: while the picked files copy in, drops them; once Rust sends, Rust stops. */
+    fun cancelCodeSend() {
+        if (staging != 0L) {
+            staging = 0
+            _codeSend.value = CodeSend.Idle
+        } else {
+            core.cancelCodeSend()
+        }
+    }
 
     /** When the screen opens: picks up a send still running in Rust, otherwise starts clean. */
     fun resetCodeSend() {

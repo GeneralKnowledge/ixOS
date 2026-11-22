@@ -47,7 +47,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,10 +62,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.util.Locale
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import org.forgemobile.relay.CodeReceive
 import org.forgemobile.relay.PickedFiles
 import org.forgemobile.relay.RelayFormat
@@ -89,22 +86,19 @@ fun SendCodeScreen(
     val send by model.codeSend.collectAsState()
     val visible by onScreen.collectAsState()
     val sending = RelayModel.isRunning(send)
-    val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     var choosing by remember { mutableStateOf(false) }
 
     fun start(uris: List<Uri>, name: String) {
         if (uris.isEmpty()) return
-        model.preparing(name)
-        scope.launch {
+        // One code send at a time, so its copies can replace the last one's.
+        model.sendPicked(name) {
             picked.release()
-            val paths = try {
+            try {
                 picked.copy(uris)
             } catch (e: Exception) {
                 picked.release()
-                model.failSend("Couldn't read what you chose: ${e.message ?: e}")
-                return@launch
+                throw e
             }
-            model.send(paths)
         }
     }
 
@@ -272,14 +266,13 @@ private fun Problem(text: String, modifier: Modifier) {
 @Composable
 fun ReceiveCodeScreen(model: RelayModel, network: RelayNetwork, close: () -> Unit) {
     val receive by model.codeReceive.collectAsState()
-    val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     var code by rememberSaveable { mutableStateOf("") }
     val busy = receive is CodeReceive.Finding || receive is CodeReceive.Receiving
 
     fun start() {
         val typed = code.trim()
         if (typed.isEmpty() || busy) return
-        scope.launch { model.receive(typed) { number -> network.findCodeSender(number) } }
+        model.startReceive(typed) { number -> network.findCodeSender(number) }
     }
 
     DisposableEffect(model) {
