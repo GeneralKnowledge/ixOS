@@ -10,7 +10,9 @@ use std::time::{Duration, Instant};
 
 use chat_core::MessageStatus;
 use relay_core::mailbox_server::{start, ServeOptions};
-use relay_core::{CodeSend, NearbyDevice, RelayCore, RelayServers, TransferStatus};
+use relay_core::{
+    CodeSend, Direction, Item, NearbyDevice, RelayCore, RelayServers, TransferStatus,
+};
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     forge_runtime::block_on(future)
@@ -98,7 +100,7 @@ fn notes_from(core: &RelayCore, from: &str) -> Vec<String> {
     core.device_messages(&device.endpoint_id)
         .unwrap()
         .into_iter()
-        .filter(|m| m.author_id == device.endpoint_id)
+        .filter(|m| m.author_id == device.endpoint_id && m.attachments.is_empty())
         .map(|m| m.body)
         .collect()
 }
@@ -203,6 +205,25 @@ fn through_the_mailbox(meet: impl Fn(&RelayCore, &RelayCore, &str) -> Vec<String
     };
     eventually("the message in the mailbox", || mine(&phone).in_mailbox);
     assert_eq!(mine(&phone).status, MessageStatus::Queued);
+    // A photo and a folder: their blobs go into the mailbox too.
+    let photo = dir.path().join("photo.jpg");
+    std::fs::write(&photo, b"a photo while away").unwrap();
+    let folder = dir.path().join("trip");
+    std::fs::create_dir_all(folder.join("day 1")).unwrap();
+    std::fs::write(folder.join("plan.txt"), b"the plan").unwrap();
+    std::fs::write(folder.join("day 1").join("map.txt"), b"a map").unwrap();
+    let mut files = Vec::new();
+    for path in [&photo, &folder] {
+        let sent = block_on(
+            phone.send_to_device(laptop_id.clone(), vec![path.to_string_lossy().into_owned()]),
+        )
+        .unwrap();
+        assert_eq!(sent.status, TransferStatus::Waiting);
+        files.push(sent.id);
+    }
+    eventually("the files in the mailbox", || {
+        mailbox.store.waiting_for(&id_bytes(&laptop_id)) == 4
+    });
 
     // The laptop opens again and collects it: once, with a receipt.
     let laptop = device(dir.path(), "laptop");
@@ -224,6 +245,26 @@ fn through_the_mailbox(meet: impl Fn(&RelayCore, &RelayCore, &str) -> Vec<String
             .find(|t| t.id == away.id)
             .is_some_and(|t| t.status == TransferStatus::Done)
     });
+    // The files are saved once, whole, in the laptop's received folder.
+    eventually("the files from the mailbox", || {
+        received_files(&laptop).len() == 2
+    });
+    let got = received_files(&laptop);
+    assert_eq!(std::fs::read(&got[0]).unwrap(), b"a photo while away");
+    assert_eq!(std::fs::read(got[1].join("plan.txt")).unwrap(), b"the plan");
+    assert_eq!(
+        std::fs::read(got[1].join("day 1").join("map.txt")).unwrap(),
+        b"a map"
+    );
+    eventually("the files' receipts", || {
+        phone.collect_mailbox();
+        let transfers = phone.transfers();
+        files.iter().all(|id| {
+            transfers
+                .iter()
+                .any(|t| t.id == *id && t.status == TransferStatus::Done)
+        })
+    });
     eventually("the message's receipt", || {
         phone.collect_mailbox();
         mine(&phone).status == MessageStatus::Sent
@@ -240,6 +281,23 @@ fn through_the_mailbox(meet: impl Fn(&RelayCore, &RelayCore, &str) -> Vec<String
     assert!(!mailbox_has(&mailbox, &phone_key));
     close(laptop);
     close(phone);
+}
+
+/// Where `core` saved the files it received, oldest first.
+fn received_files(core: &RelayCore) -> Vec<std::path::PathBuf> {
+    let mut got: Vec<_> = core
+        .transfers()
+        .into_iter()
+        .filter(|t| t.direction == Direction::Received && t.status == TransferStatus::Done)
+        .filter_map(|t| match t.item {
+            Item::File {
+                path: Some(path), ..
+            } => Some((t.id, std::path::PathBuf::from(path))),
+            _ => None,
+        })
+        .collect();
+    got.sort_by_key(|(id, _)| *id);
+    got.into_iter().map(|(_, path)| path).collect()
 }
 
 fn phone_id(laptop: &RelayCore) -> String {

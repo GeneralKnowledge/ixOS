@@ -970,7 +970,8 @@ impl RelayCore {
         // A message shows "In the Mailbox" in its conversation.
         let message = match &d.payload {
             Payload::Message { id, .. } => Some(id.clone()),
-            _ => None,
+            Payload::Files { .. } => Some(crate::device_chat::files_message_id(&d.id)),
+            Payload::Note { .. } => None,
         };
         let saved = self
             .rt
