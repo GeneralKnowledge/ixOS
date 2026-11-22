@@ -9,7 +9,9 @@ import SwiftUI
 // MARK: The Search tab
 
 /// One search for your music, Jamendo and the Internet Archive, your own
-/// music first. Before you type, genres to browse.
+/// music first. Before you type, your recent searches and genres to
+/// browse. A search is remembered when it is submitted, a result is
+/// played, or the person goes on from its results.
 struct SearchTab: View {
     let model: ListenModel
     let player: TakePlayer
@@ -34,6 +36,8 @@ struct SearchTab: View {
         .listStyle(.insetGrouped)
         .navigationTitle("Search")
         .searchable(text: $search, prompt: "Your music, Jamendo and the Archive")
+        .onSubmit(of: .search) { remember() }
+        .onDisappear { if catalogues != nil { remember() } }
         .task(id: query) {
             catalogues = nil
             cataloguesProblem = nil
@@ -60,9 +64,43 @@ struct SearchTab: View {
         }
     }
 
-    /// Before typing: Jamendo's genres as coloured tiles, or what search
-    /// covers when there is no Jamendo client ID.
+    private func remember() {
+        let query = query
+        Task { await model.noteSearch(query) }
+    }
+
+    /// Before typing: recent searches, then Jamendo's genres as coloured
+    /// tiles, or what search covers when there is no Jamendo client ID.
     @ViewBuilder private var browse: some View {
+        let recent = model.collection.recentSearches
+        if !recent.isEmpty {
+            Section {
+                ForEach(recent, id: \.self) { past in
+                    Button {
+                        search = past
+                    } label: {
+                        Label(past, systemImage: "clock.arrow.circlepath")
+                            .foregroundStyle(.primary)
+                    }
+                    .accessibilityHint("Searches for it again")
+                    .accessibilityIdentifier("search.recent")
+                }
+            } header: {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Recent")
+                        .font(.shelfTitle)
+                        .foregroundStyle(.primary)
+                        .textCase(nil)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    Button("Clear") { Task { await model.clearRecentSearches() } }
+                        .font(.subheadline)
+                        .textCase(nil)
+                        .accessibilityLabel("Clear Recent Searches")
+                        .accessibilityIdentifier("search.clearRecent")
+                }
+            }
+        }
         if model.jamendoClientId != nil {
             Section {
                 GenreGrid(genres: model.jamendoGenres)
@@ -107,6 +145,7 @@ struct SearchTab: View {
             Section("Songs") {
                 ForEach(Array(found.tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
+                        remember()
                         player.play(model.queue(found.tracks), from: index)
                     }
                 }
@@ -181,6 +220,7 @@ extension SearchTab {
                 Section {
                     ForEach(Array(jamendo.enumerated()), id: \.element.id) { index, track in
                         CatalogueRow(model: model, player: player, track: track) {
+                            remember()
                             player.play(model.queue(jamendo), from: index)
                         }
                     }
@@ -269,8 +309,8 @@ struct PlayShuffleButtons: View {
     }
 }
 
-/// A song: tap to play, the ellipsis for its details, and Play Next / Add
-/// to Queue on a long press or swipe.
+/// A song: tap to play, the ellipsis for its details, the song menu
+/// (`SongMenu`) on a long press, and Play Next / Add to Queue on a swipe.
 struct TrackRow: View {
     let model: ListenModel
     let player: TakePlayer
@@ -280,8 +320,6 @@ struct TrackRow: View {
     var remove: (() -> Void)? = nil
     let showDetails: () -> Void
     let play: () -> Void
-
-    @State private var addingToPlaylist = false
 
     private var isCurrent: Bool { player.current?.id == track.preferred?.id && !player.isComparing }
 
@@ -342,22 +380,7 @@ struct TrackRow: View {
             .accessibilityIdentifier("library.songDetails")
         }
         .contextMenu {
-            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: true)
-            }
-            .accessibilityIdentifier("library.playNext")
-            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: false)
-            }
-            .accessibilityIdentifier("library.addToQueue")
-            Button("Add to Playlist…", systemImage: "text.badge.plus") { addingToPlaylist = true }
-                .accessibilityIdentifier("library.addToPlaylist")
-            let favourite = model.isFavourite(track.id)
-            Button(favourite ? "Remove from Favourites" : "Add to Favourites",
-                   systemImage: favourite ? "heart.slash" : "heart") {
-                Task { await model.toggleFavourite(track.id) }
-            }
-            .accessibilityIdentifier("library.favouriteMenu")
+            SongMenu(model: model, player: player, song: SongRef(track, model: model), identifier: "library")
             DownloadMenuItem(model: model, tracks: [track], identifier: "library.downloadMenu")
             Button("Details", systemImage: "info.circle", action: showDetails)
                 .accessibilityIdentifier("library.detailsMenu")
@@ -365,9 +388,6 @@ struct TrackRow: View {
                 Button("Remove from Playlist", systemImage: "minus.circle", role: .destructive, action: remove)
                     .accessibilityIdentifier("playlist.removeMenu")
             }
-        }
-        .sheet(isPresented: $addingToPlaylist) {
-            AddToPlaylistSheet(model: model, trackIds: [track.id])
         }
         .swipeActions(edge: .leading) {
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
@@ -407,7 +427,10 @@ struct AlbumRow: View {
         HStack(spacing: 12) {
             Artwork(title: album.title, url: album.artworkUrl, size: 56)
             VStack(alignment: .leading, spacing: 2) {
-                Text(album.title).font(.headline).lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(album.title).font(.headline).lineLimit(1)
+                    if let model { DownloadBadge(state: model.downloadState(of: model.tracks(of: album))) }
+                }
                 Text("\(album.artist) · \(album.trackCount) \(album.trackCount == 1 ? "song" : "songs")")
                     .font(.caption)
                     .foregroundStyle(.secondary)

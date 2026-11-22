@@ -72,7 +72,7 @@ struct NowPlayingView: View {
             if none { showingLyrics = false }
         }
         .sheet(isPresented: $showingQueue) {
-            QueueSheet(player: player)
+            QueueSheet(model: model, player: player)
         }
         .sheet(isPresented: $addingToPlaylist) {
             if let trackId = player.current?.trackId {
@@ -173,7 +173,8 @@ struct NowPlayingView: View {
 
     @ViewBuilder private func titleActions(_ current: TakePlayer.Loaded) -> some View {
         if let trackId = current.trackId, !player.isComparing {
-            FavouriteButton(model: model, id: trackId, identifier: "nowPlayingSheet.favourite")
+            FavouriteButton(model: model, id: trackId, identifier: "nowPlayingSheet.favourite",
+                            queued: player.currentQueued)
                 .labelStyle(.iconOnly)
                 .tint(.white)
                 .font(.title3)
@@ -256,6 +257,19 @@ struct NowPlayingView: View {
                     .foregroundStyle(.white.opacity(0.7))
                     .lineLimit(1)
                 Spacer()
+                if let seed = radio.seed {
+                    let saved = model.isStationSaved(seed)
+                    Button {
+                        Task { await model.toggleStationSaved(seed, title: radio.title ?? "Station") }
+                    } label: {
+                        Image(systemName: saved ? "pin.fill" : "pin")
+                            .frame(width: 36, height: 36)
+                            .background(.white.opacity(0.14), in: Circle())
+                    }
+                    .accessibilityLabel(saved ? "Remove Saved Station" : "Save Station")
+                    .accessibilityHint("Keeps it first in Hear Nonstop Music")
+                    .accessibilityIdentifier("nowPlayingSheet.saveStation")
+                }
                 Button {
                     Task { await model.toggleFeeling(trackId, .dislike) }
                     if feeling != .dislike { player.next() }
@@ -568,10 +582,12 @@ private struct AirPlayButton: UIViewRepresentable {
 }
 
 /// Up Next: shuffle and repeat, then the songs to come; tap one to play it
-/// now, swipe or hold to take it out.
+/// now, swipe or hold to take it out (with Undo), and Save as Playlist.
 private struct QueueSheet: View {
+    let model: ListenModel
     let player: TakePlayer
     @Environment(\.dismiss) private var dismiss
+    @State private var naming = false
 
     var body: some View {
         NavigationStack {
@@ -615,7 +631,13 @@ private struct QueueSheet: View {
                         .accessibilityIdentifier("upNext.song")
                         .forgeRowActions {
                             Button("Remove", systemImage: "minus.circle", role: .destructive) {
-                                player.remove(at: entry.position)
+                                if let index = player.remove(at: entry.position) {
+                                    model.banner = .undo(
+                                        "Removed “\(entry.track.title)” from Up Next",
+                                        action: .queue(index: index, position: entry.position),
+                                        identifier: "undo.queue"
+                                    )
+                                }
                             }
                             .accessibilityIdentifier("upNext.remove")
                         }
@@ -625,12 +647,24 @@ private struct QueueSheet: View {
             .navigationTitle("Up Next")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Save as Playlist", systemImage: "text.badge.plus") { naming = true }
+                        .disabled(player.queuedInOrder.isEmpty)
+                        .accessibilityIdentifier("upNext.saveAsPlaylist")
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                         .accessibilityIdentifier("upNext.done")
                 }
             }
+            .forgeRename("Save as Playlist", isPresented: $naming, name: "", id: "queuePlaylistName",
+                         message: "Every song in the queue, in the order it plays. Songs from Jamendo join your library.",
+                         confirmTitle: "Save") { name in
+                _ = try await model.saveQueue(player.queuedInOrder, as: name)
+            }
+            .soundscapeBanner(model: model, player: player)
         }
+        .forgeFeedback(model.feedback)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }

@@ -370,6 +370,23 @@ impl SoundscapeCore {
         Ok(self.collection())
     }
 
+    /// Adds queued catalogue songs (a radio find) to the library, so they
+    /// can be favourites; anything else is left as it is.
+    pub async fn add_queued_to_library(
+        &self,
+        tracks: Vec<QueueTrack>,
+    ) -> Result<Library, SoundscapeError> {
+        let found: Vec<CatalogueTrack> = tracks
+            .into_iter()
+            .filter(|t| !self.in_library(t.track_id.clone()))
+            .filter_map(catalogue_track)
+            .collect();
+        if found.is_empty() {
+            return Ok(self.library());
+        }
+        self.add_catalogue_tracks(found).await
+    }
+
     /// Undo for [`Self::delete_playlist`]: brings the playlist deleted
     /// last back, under its old id.
     pub async fn restore_playlist(&self, id: u64) -> Result<MusicCollection, SoundscapeError> {

@@ -52,7 +52,7 @@ struct LibraryTab: View {
             let recent = Array(library.albums.sorted { $0.updatedMs > $1.updatedMs }.prefix(12))
             if !recent.isEmpty {
                 Section {
-                    AlbumGrid(albums: recent, identifier: "library.recentAlbum")
+                    AlbumGrid(albums: recent, identifier: "library.recentAlbum", model: model)
                         .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                         .listRowBackground(Color.clear)
                 } header: {
@@ -105,6 +105,8 @@ struct LibraryTab: View {
 struct AlbumGrid: View {
     let albums: [LibraryAlbum]
     let identifier: String
+    /// Shows each album's download sign.
+    var model: ListenModel? = nil
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 16, alignment: .top)]
 
@@ -112,7 +114,8 @@ struct AlbumGrid: View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
             ForEach(albums) { album in
                 NavigationLink(value: ListenRoute.album(album)) {
-                    ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl, size: nil)
+                    ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl, size: nil,
+                                download: model.map { $0.downloadState(of: $0.tracks(of: album)) } ?? .notDownloaded)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier(identifier)
@@ -166,7 +169,7 @@ struct AlbumsView: View {
     var body: some View {
         let albums = model.library.albums
         ScrollView {
-            AlbumGrid(albums: albums, identifier: "library.album")
+            AlbumGrid(albums: albums, identifier: "library.album", model: model)
                 .padding(.horizontal, SoundscapeMetrics.screenEdge - 4)
                 .padding(.vertical, 12)
         }

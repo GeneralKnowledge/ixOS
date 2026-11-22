@@ -21,6 +21,7 @@ extension EnvironmentValues {
 struct MiniPlayer: View {
     static let zoomID = "soundscape.nowPlaying"
 
+    let model: ListenModel
     let player: TakePlayer
     let zoom: Namespace.ID
     let open: () -> Void
@@ -90,6 +91,28 @@ struct MiniPlayer: View {
     }
 
     @ViewBuilder private var controls: some View {
+        // A heart for the song playing, without opening Now Playing.
+        if !inline, let current = player.current, let trackId = current.trackId, !player.isComparing {
+            let on = model.isFavourite(trackId)
+            Button {
+                Task {
+                    if let queued = player.currentQueued, queued.trackId == trackId {
+                        await model.toggleFavourite(queued: queued)
+                    } else {
+                        await model.toggleFavourite(trackId)
+                    }
+                }
+            } label: {
+                Image(systemName: on ? "heart.fill" : "heart")
+                    .font(.body)
+                    .foregroundStyle(on ? Color.pink : Color.primary)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(on ? "Remove from Favourites" : "Add to Favourites")
+            .accessibilityIdentifier("nowPlaying.favourite")
+        }
         Button { player.toggle() } label: {
             Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                 .font(.title3)

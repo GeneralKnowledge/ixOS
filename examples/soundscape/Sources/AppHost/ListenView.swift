@@ -50,6 +50,8 @@ struct ListenView: View {
     @State private var radio = Radio()
     @State private var editingServer = false
     @State private var showingNowPlaying = false
+    /// Songs on their way to a playlist, from a song's menu anywhere.
+    @State private var addingToPlaylist: PlaylistAdd?
     @AppStorage("soundscape.tab") private var tab: SoundscapeTab = .listen
     @State private var listenPath: [ListenRoute] = []
     @State private var libraryPath: [ListenRoute] = []
@@ -66,7 +68,7 @@ struct ListenView: View {
     var body: some View {
         tabs
             .modifier(MiniPlayerAccessory {
-                MiniPlayer(player: player, zoom: playerZoom, open: openNowPlaying)
+                MiniPlayer(model: model, player: player, zoom: playerZoom, open: openNowPlaying)
             })
             .fullScreenCover(isPresented: $showingNowPlaying) {
                 NowPlayingView(model: model, player: player, radio: radio, go: go)
@@ -78,6 +80,16 @@ struct ListenView: View {
             .sheet(isPresented: $editingServer) {
                 ServerSheet(model: model)
             }
+            .sheet(item: $addingToPlaylist) { adding in
+                AddToPlaylistSheet(model: model, trackIds: adding.trackIds)
+            }
+            .environment(\.songActions, SongActions(
+                startRadio: { [model, player, radio] seed, title in
+                    Task { await radio.start(seed, title: title, model: model, player: player) }
+                },
+                go: go,
+                addToPlaylist: { addingToPlaylist = PlaylistAdd(trackIds: $0) }
+            ))
             // Over every tab, so an alert from any screen shows above it.
             .forgeAlert(Binding(
                 get: { editingServer ? nil : model.alert },
@@ -150,8 +162,10 @@ struct ListenView: View {
                 ListenDestination(model: model, player: player, route: route)
             }
         }
+        // Undo for what was just removed, above the tab bar.
+        .soundscapeBanner(model: model, player: player)
         .modifier(MiniPlayerBar {
-            MiniPlayer(player: player, zoom: playerZoom, open: openNowPlaying)
+            MiniPlayer(model: model, player: player, zoom: playerZoom, open: openNowPlaying)
         })
     }
 
@@ -170,6 +184,12 @@ struct ListenView: View {
         case .search: searchPath.append(route)
         }
     }
+}
+
+/// Songs for the Add to Playlist sheet.
+private struct PlaylistAdd: Identifiable {
+    let id = UUID()
+    let trackIds: [String]
 }
 
 /// The screen for a route, the same in every tab.

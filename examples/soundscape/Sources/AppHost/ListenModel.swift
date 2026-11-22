@@ -24,6 +24,17 @@ public final class ListenModel {
         case forgetServer
     }
 
+    /// What Undo on the banner takes back.
+    public enum Undo: Equatable, Sendable {
+        /// A song taken out of the queue: its index in the queue's tracks
+        /// and where it was in the play order. The player puts it back.
+        case queue(index: UInt32, position: UInt32)
+        /// A playlist's songs before a removal.
+        case playlistSongs(id: UInt64, trackIds: [String])
+        case deletedPlaylist(UInt64)
+        case removedSong(String)
+    }
+
     /// The take server's address, as Rust saved it. Optional: the library
     /// also holds your own files and catalogue tracks.
     public private(set) var server: String?
@@ -52,6 +63,8 @@ public final class ListenModel {
     /// Why the last refresh failed while the kept library still shows.
     public var refreshProblem: String?
     public var alert: ForgeAlert<Action>?
+    /// "Removed …" with Undo, at the bottom of the tab.
+    public var banner: ForgeBanner<Undo>?
     /// Success after each pick or rating.
     public private(set) var feedback = ForgeFeedback()
 
@@ -155,6 +168,20 @@ public final class ListenModel {
     }
 
     public func search(_ query: String) -> LibrarySearch { core.searchLibrary(query: query) }
+
+    /// Remembers a search for Search's Recent list.
+    public func noteSearch(_ query: String) async {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if let found = try? await core.noteSearch(query: query) { collection = found }
+    }
+
+    public func clearRecentSearches() async {
+        do {
+            collection = try await core.clearRecentSearches()
+        } catch {
+            report(error)
+        }
+    }
 
     // MARK: What was playing
 
@@ -438,6 +465,20 @@ public final class ListenModel {
 
     public func isFavourite(_ id: String) -> Bool { collection.favouriteIds.contains(id) }
 
+    /// The song playing becomes a favourite, or stops being one; a
+    /// catalogue song (a radio find) joins the library first.
+    public func toggleFavourite(queued track: QueueTrack) async {
+        if !isFavourite(track.trackId), !inLibrary(track.trackId) {
+            do {
+                library = try await core.addQueuedToLibrary(tracks: [track])
+            } catch {
+                report(error)
+                return
+            }
+        }
+        await toggleFavourite(track.trackId)
+    }
+
     /// A song, album or artist (by library id) becomes a favourite, or stops being one.
     public func toggleFavourite(_ id: String) async {
         do {
@@ -450,8 +491,31 @@ public final class ListenModel {
 
     // MARK: Radio
 
-    /// Stations to offer: your genres and artists, then Jamendo's genres.
-    public var suggestedStations: [Station] { core.suggestedStations() }
+    /// Stations to offer: the saved ones, then your genres and artists,
+    /// then Jamendo's genres.
+    public var suggestedStations: [Station] {
+        _ = stationRevision
+        return core.suggestedStations()
+    }
+
+    /// Changes when a station is saved or forgotten.
+    public private(set) var stationRevision = 0
+
+    public func isStationSaved(_ seed: StationSeed) -> Bool {
+        _ = stationRevision
+        return core.isStationSaved(seed: seed)
+    }
+
+    /// Saves a station at the front of Hear Nonstop Music, or forgets it.
+    public func toggleStationSaved(_ seed: StationSeed, title: String) async {
+        do {
+            try await core.setStationSaved(seed: seed, title: title, saved: !core.isStationSaved(seed: seed))
+            stationRevision += 1
+            feedback.play(.success)
+        } catch {
+            report(error)
+        }
+    }
 
     /// How the person feels about a song for the radio, if they said.
     public func feeling(_ trackId: String) -> Feeling? { core.feeling(trackId: trackId) }
@@ -520,9 +584,58 @@ public final class ListenModel {
         await changePlaylists { try await self.core.arrangePlaylist(id: id, places: places) }
     }
 
+    /// Deletes a playlist, with Undo on the banner.
     public func deletePlaylist(_ id: UInt64) async {
+        let name = collection.playlists.first { $0.id == id }?.name
         do {
             collection = try await core.deletePlaylist(id: id)
+            banner = .undo("Deleted \(name.map { "“\($0)”" } ?? "Playlist")",
+                           action: .deletedPlaylist(id), identifier: "undo.playlist")
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Removes songs from a playlist, keeping the order left (by place),
+    /// with Undo on the banner.
+    public func removeFromPlaylist(_ detail: PlaylistDetail, keeping places: [UInt32]) async -> PlaylistDetail? {
+        let before = detail.entries.map(\.track.id)
+        let gone = detail.entries.count - places.count
+        guard let changed = await arrangePlaylist(detail.playlist.id, places: places) else { return nil }
+        if gone > 0 {
+            banner = .undo(gone == 1 ? "Removed from “\(detail.playlist.name)”" : "Removed \(gone) songs",
+                           action: .playlistSongs(id: detail.playlist.id, trackIds: before),
+                           identifier: "undo.playlistSongs")
+        }
+        return changed
+    }
+
+    /// Makes a playlist of the queue (catalogue songs join the library).
+    /// Throws when Rust refuses the name, so the name sheet can say why.
+    @discardableResult
+    public func saveQueue(_ tracks: [QueueTrack], as name: String) async throws -> PlaylistDetail {
+        let detail = try await savePlaylists { try await self.core.saveQueueAsPlaylist(name: name, tracks: tracks) }
+        library = core.library()
+        return detail
+    }
+
+    /// Takes back what the banner offered (all but the queue, which the
+    /// player puts back).
+    public func undo(_ undo: Undo) async {
+        do {
+            switch undo {
+            case .queue:
+                return
+            case .playlistSongs(let id, let trackIds):
+                _ = try await core.setPlaylistTracks(id: id, trackIds: trackIds)
+                collection = core.collection()
+            case .deletedPlaylist(let id):
+                collection = try await core.restorePlaylist(id: id)
+            case .removedSong(let id):
+                library = try await core.restoreRemoved(trackId: id)
+                offline = core.offline()
+            }
+            feedback.play(.success)
         } catch {
             report(error)
         }
@@ -565,6 +678,16 @@ public final class ListenModel {
     }
 
     // MARK: On the phone
+
+    /// Several songs (an album) as one sign: failed if any failed, on its
+    /// way while any is, downloaded once every downloadable one is here.
+    public func downloadState(of tracks: [LibraryTrack]) -> DownloadState {
+        let states = downloadable(tracks).map { downloadState($0.id) }
+        if states.isEmpty { return .notDownloaded }
+        if states.contains(.failed) { return .failed }
+        if states.contains(where: { $0 == .downloading || $0 == .waiting }) { return .downloading }
+        return states.allSatisfy { $0 == .downloaded } ? .downloaded : .notDownloaded
+    }
 
     public func downloadState(_ trackId: String) -> DownloadState {
         downloadStates[trackId] ?? .notDownloaded
@@ -657,11 +780,15 @@ public final class ListenModel {
         }
     }
 
-    /// Takes an imported file out of the library and deletes Soundscape's copy.
+    /// Takes a song the person added out of the library (Soundscape's copy
+    /// of a file goes after the next removal), with Undo on the banner.
     public func removeImported(_ trackId: String) async {
+        let title = library.tracks.first { $0.id == trackId }?.title
         do {
             library = try await core.removeImported(trackId: trackId)
             offline = core.offline()
+            banner = .undo("Removed \(title.map { "“\($0)”" } ?? "Song") from Library",
+                           action: .removedSong(trackId), identifier: "undo.song")
         } catch {
             report(error)
         }

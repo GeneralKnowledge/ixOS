@@ -2145,6 +2145,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func addCatalogueTracks(tracks: [CatalogueTrack]) async throws  -> Library
     
     /**
+     * Adds queued catalogue songs (a radio find) to the library, so they
+     * can be favourites; anything else is left as it is.
+     */
+    func addQueuedToLibrary(tracks: [QueueTrack]) async throws  -> Library
+    
+    /**
      * Adds songs at the end of a playlist.
      */
     func addToPlaylist(id: UInt64, trackIds: [String]) async throws  -> PlaylistDetail
@@ -2698,6 +2704,26 @@ open func addCatalogueTracks(tracks: [CatalogueTrack])async throws  -> Library  
             rustFutureFunc: {
                 uniffi_soundscape_core_fn_method_soundscapecore_add_catalogue_tracks(
                         self.uniffiCloneHandle(),FfiConverterSequenceTypeCatalogueTrack.lower(tracks)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLibrary_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Adds queued catalogue songs (a radio find) to the library, so they
+     * can be favourites; anything else is left as it is.
+     */
+open func addQueuedToLibrary(tracks: [QueueTrack])async throws  -> Library  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_add_queued_to_library(
+                        self.uniffiCloneHandle(),FfiConverterSequenceTypeQueueTrack.lower(tracks)
                 )
             },
             pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
@@ -11759,6 +11785,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_add_catalogue_tracks() != 7908) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_add_queued_to_library() != 40140) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_add_to_playlist() != 3879) {

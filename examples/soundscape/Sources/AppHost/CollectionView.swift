@@ -9,12 +9,21 @@ struct FavouriteButton: View {
     let model: ListenModel
     let id: String
     let identifier: String
+    /// The song playing, when it is this one: a catalogue song joins the
+    /// library before it becomes a favourite.
+    var queued: QueueTrack? = nil
 
     var body: some View {
         let on = model.isFavourite(id)
         Button(on ? "Remove from Favourites" : "Add to Favourites",
                systemImage: on ? "heart.fill" : "heart") {
-            Task { await model.toggleFavourite(id) }
+            Task {
+                if let queued, queued.trackId == id {
+                    await model.toggleFavourite(queued: queued)
+                } else {
+                    await model.toggleFavourite(id)
+                }
+            }
         }
         .tint(on ? .pink : nil)
         .accessibilityIdentifier(identifier)
@@ -287,7 +296,7 @@ struct PlaylistView: View {
                 .onDelete { offsets in
                     var entries = detail.entries
                     entries.remove(atOffsets: offsets)
-                    show(entries, of: detail)
+                    remove(keeping: entries, of: detail)
                 }
             }
         }
@@ -305,7 +314,15 @@ struct PlaylistView: View {
         var entries = detail.entries
         guard entries.indices.contains(index) else { return }
         entries.remove(at: index)
-        show(entries, of: detail)
+        remove(keeping: entries, of: detail)
+    }
+
+    /// Shows what is left at once, then saves it with Undo on the banner.
+    private func remove(keeping entries: [PlaylistEntry], of detail: PlaylistDetail) {
+        self.detail = PlaylistDetail(playlist: detail.playlist, entries: entries)
+        Task {
+            if let d = await model.removeFromPlaylist(detail, keeping: entries.map(\.place)) { self.detail = d }
+        }
     }
 
     /// Shows the new order at once, so a moved row lands where it was

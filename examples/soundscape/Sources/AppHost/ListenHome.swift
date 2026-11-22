@@ -61,6 +61,13 @@ struct ListenHome: View {
                     .buttonStyle(.plain)
                     .accessibilityHint("Starts nonstop music")
                     .accessibilityIdentifier("listen.station")
+                    .contextMenu {
+                        Button(station.saved ? "Remove Saved Station" : "Save Station",
+                               systemImage: station.saved ? "pin.slash" : "pin") {
+                            Task { await model.toggleStationSaved(station.seed, title: station.title) }
+                        }
+                        .accessibilityIdentifier("listen.saveStation")
+                    }
                 }
                 Shelf(title: "Recently Played", items: Array(recentTracks.prefix(15)), seeAll: .recent,
                       identifier: "listen.recent") { track in
@@ -88,7 +95,8 @@ struct ListenHome: View {
                 Shelf(title: "Recently Added", items: recentAlbums, seeAll: .albums,
                       identifier: "listen.albums") { album in
                     NavigationLink(value: ListenRoute.album(album)) {
-                        ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl)
+                        ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl,
+                                    download: model.downloadState(of: model.tracks(of: album)))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("listen.album")
@@ -107,6 +115,10 @@ struct ListenHome: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("listen.popularSong")
+                    .contextMenu {
+                        SongMenu(model: model, player: player, song: SongRef(track, model: model),
+                                 identifier: "listen.popularSong")
+                    }
                 }
             }
             .padding(.vertical, 8)
@@ -162,20 +174,14 @@ struct ListenHome: View {
             let index = tracks.firstIndex { $0.id == track.id } ?? 0
             player.play(model.queue(tracks), from: index)
         } label: {
-            ArtworkTile(title: track.title, subtitle: track.artist, url: track.artworkUrl)
+            ArtworkTile(title: track.title, subtitle: track.artist, url: track.artworkUrl,
+                        download: DownloadBadge(model: model, track: track).state)
         }
         .buttonStyle(.plain)
         .accessibilityHint("Plays it")
         .accessibilityIdentifier(identifier)
         .contextMenu {
-            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: true)
-            }
-            .accessibilityIdentifier("\(identifier).playNext")
-            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: false)
-            }
-            .accessibilityIdentifier("\(identifier).addToQueue")
+            SongMenu(model: model, player: player, song: SongRef(track, model: model), identifier: identifier)
         }
     }
 

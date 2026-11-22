@@ -186,6 +186,31 @@ queue). The four music tabs are not the permanent shape of the app. When podcast
 reviewed then: Listen can hold both (continue an episode, new episodes beside radio), and podcasts get their
 own place rather than being pushed into Library or Discover.
 
+## Everyday Polish (S3.5, Reuben 2026-11-22 21:28)
+
+Small touches that make Soundscape feel like a finished player, with no change to the playback engine:
+
+- **Save as Playlist** in Up Next: every song in the queue, in play order, once each. Jamendo songs (a
+  radio find) join the library, since a playlist shows library songs; takes that aren't in the library are
+  left out.
+- **One song menu everywhere** (`SongMenu`): Play Next, Add to Queue, Favourite, Add to Playlist, Start
+  Radio and Go to Artist (More by This Artist for a Jamendo song outside the library), on library rows,
+  search results, catalogue rows and Listen's tiles. A catalogue song joins the library before it becomes a
+  favourite or goes in a playlist.
+- **A heart on the mini-player** for the song playing (hidden when the tab bar minimises it). A radio find
+  joins the library first, as in Now Playing.
+- **Undo** on a banner (ForgeAppKit `ForgeBanner`) after taking a song out of Up Next, out of a playlist,
+  deleting a playlist, or removing a song from the library. Rust keeps the last deleted playlist and the
+  last removed song (with its file, edits and artwork) until the next one, so Undo also works from Rust's
+  side, not just from what the screen remembered.
+- **Saved stations**: Save Station (a pin) in Now Playing's radio row or a station tile's menu. Saved
+  stations lead Hear Nonstop Music, newest first, and are never offered twice.
+- **Recent searches**: the last ten, newest first, once each, shown before typing with Clear. A search is
+  remembered when submitted, when a result plays, or when the person goes on from its results; half-typed
+  text is not.
+- **Download signs** on album tiles and rows and Listen's song tiles, as song rows already had: downloaded,
+  on its way, or failed (an album shows the worst of its songs).
+
 ## Milestones
 
 | Step | What | State |
@@ -193,6 +218,7 @@ own place rather than being pushed into Library or Discover.
 | S1 | This spec; accent; `ArtworkPalette`; `SoundscapeMotion`; artwork sizes | In this PR |
 | S2 | Four tabs; Listen home; Library tab with Songs, Albums (grid) and Artists screens; Search tab; mini-player accessory | In this PR |
 | S3 | Immersive Now Playing; queue sheet; lyrics in place; scrubber; volume and AirPlay | In this PR |
+| S3.5 | Everyday Polish (above): Save as Playlist, one song menu, mini-player heart, Undo, saved stations, recent searches, download signs | In this PR |
 | S4 | Library: album and artist pages with large artwork, Play / Shuffle, more shelves | Next |
 | S5 | Discover: genre tiles, Popular This Week shelf, artists, Archive collections, recently discovered | Next |
 | S6 | Native finish: Dynamic Type at the largest sizes, VoiceOver order, loading and empty states, interruptions | Next |
@@ -212,3 +238,6 @@ own place rather than being pushed into Library or Discover.
 6. Lock the phone: lock-screen controls still work; the queue survives closing the app (unchanged behaviour,
    check it wasn't broken).
 7. Light and dark mode, and the largest Dynamic Type size on Listen and Now Playing.
+8. Everyday Polish: in Up Next, swipe a song away and tap Undo, then Save as Playlist; long-press a song in
+   Search for the full menu (Start Radio, Go to Artist); heart a radio song from the mini-player; pin a
+   station and see it lead the shelf; search, clear Recent.

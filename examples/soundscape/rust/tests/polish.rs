@@ -199,6 +199,10 @@ fn the_queue_saves_as_a_playlist_adding_catalogue_songs_once() {
     let got: Vec<String> = list.entries.iter().map(|e| e.track.id.clone()).collect();
     assert_eq!(got, [track_id("one"), "jamendo:7".to_string()]);
     assert!(core.in_library("jamendo:7".into()));
+    // A radio find joins the library on its own too (to favourite it).
+    let found = core.catalogue_queue_tracks(vec![jamendo(8)]);
+    block(core.add_queued_to_library(found)).unwrap();
+    assert!(core.in_library("jamendo:8".into()));
 }
 
 #[test]

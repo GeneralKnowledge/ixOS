@@ -1,5 +1,6 @@
 #if os(iOS)
 @preconcurrency import SoundscapeFFI
+import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
@@ -80,6 +81,8 @@ struct ArtworkTile: View {
     let url: String?
     var size: CGFloat? = SoundscapeMetrics.shelfArtwork
     var circle = false
+    /// On the phone, coming or failed, beside the title.
+    var download: DownloadState = .notDownloaded
 
     var body: some View {
         VStack(alignment: circle ? .center : .leading, spacing: 6) {
@@ -92,10 +95,13 @@ struct ArtworkTile: View {
                 .aspectRatio(1, contentMode: .fit)
             }
             VStack(alignment: circle ? .center : .leading, spacing: 1) {
-                Text(title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    DownloadBadge(state: download)
+                }
                 if let subtitle {
                     Text(subtitle)
                         .font(.subheadline)
@@ -138,6 +144,20 @@ enum ArtworkPaletteLoader {
             return true
         }
         return drawn ? bytes : []
+    }
+}
+
+extension View {
+    /// The model's Undo banner over this screen. The queue's Undo goes to
+    /// the player; the rest to the model.
+    func soundscapeBanner(model: ListenModel, player: TakePlayer) -> some View {
+        forgeBanner(Bindable(model).banner) { action in
+            if case .queue(let index, let position) = action {
+                player.putBack(index: index, position: position)
+            } else {
+                Task { await model.undo(action) }
+            }
+        }
     }
 }
 

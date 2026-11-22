@@ -227,7 +227,8 @@ struct StationTile: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(12)
                 VStack(alignment: .leading, spacing: 2) {
-                    Label("Radio", systemImage: "dot.radiowaves.left.and.right")
+                    Label(station.saved ? "Saved Station" : "Radio",
+                          systemImage: station.saved ? "pin.fill" : "dot.radiowaves.left.and.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.8))
                     Text(station.title.replacingOccurrences(of: " Station", with: ""))

@@ -223,6 +223,7 @@ impl CollectionFile {
     /// Remembers a search at the front, once (case ignored), keeping the
     /// newest [`RECENT_SEARCHES`]. Blank searches are ignored.
     pub fn note_search(&mut self, query: &str) {
+        // cut: a search to show again; the first 200 characters find the same songs
         let query: String = query.trim().chars().take(MAX_SEARCH_CHARS).collect();
         if query.is_empty() {
             return;
