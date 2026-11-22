@@ -347,7 +347,7 @@ struct TransferRow: View {
                 .accessibilityIdentifier("history.cancel")
             }
             Button("Remove from History", systemImage: "trash", role: .destructive) {
-                Task { await model.remove(transfer) }
+                Task { await model.askToRemove(transfer) }
             }
             .accessibilityIdentifier("history.remove")
         }
