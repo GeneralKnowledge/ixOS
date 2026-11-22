@@ -1986,7 +1986,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_relay_core_checksum_method_relaycore_connection_mode() and 0xFFFF) != 5394) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_relay_core_checksum_method_relaycore_deliver_waiting() and 0xFFFF) != 17342) {
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_deliver_waiting() and 0xFFFF) != 53162) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_method_relaycore_device_service() and 0xFFFF) != 50466) {
@@ -9480,9 +9480,10 @@ public interface RelayCoreInterface {
     fun `connectionMode`(): ConnectionMode
     
     /**
-     * Tries every trusted device something waits for, now: Relay came
-     * back to the foreground. (Seeing a device, or it connecting here,
-     * tries it too; so does a timer while Relay is open.)
+     * Tries every trusted device something waits for, now, and collects
+     * the mailbox: Relay came back to the foreground. (Seeing a device, or
+     * it connecting here, tries it too; so does each mailbox round, every
+     * 30 s while Relay is open, for items the mailbox has let expire.)
      */
     fun `deliverWaiting`()
     
@@ -10058,9 +10059,10 @@ open class RelayCore: Disposable, AutoCloseable, RelayCoreInterface
 
     
     /**
-     * Tries every trusted device something waits for, now: Relay came
-     * back to the foreground. (Seeing a device, or it connecting here,
-     * tries it too; so does a timer while Relay is open.)
+     * Tries every trusted device something waits for, now, and collects
+     * the mailbox: Relay came back to the foreground. (Seeing a device, or
+     * it connecting here, tries it too; so does each mailbox round, every
+     * 30 s while Relay is open, for items the mailbox has let expire.)
      */override fun `deliverWaiting`()
         = 
     callWithHandle {
@@ -14046,6 +14048,13 @@ data class RelayServers (
      * key alone.
      */
     var `lookupUrl`: kotlin.String?
+    , 
+    /**
+     * A `relay-mailbox` server's endpoint id (N3): where trusted devices
+     * leave items for this one while it can't be reached. Told to them
+     * in the Hello; Hybrid only, like the others.
+     */
+    var `mailbox`: kotlin.String? = null 
     
 ){
     
@@ -14064,17 +14073,20 @@ public object FfiConverterTypeRelayServers: FfiConverterRustBuffer<RelayServers>
         return RelayServers(
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
     override fun allocationSize(value: RelayServers) = (
             FfiConverterOptionalString.allocationSize(value.`relayUrl`) +
-            FfiConverterOptionalString.allocationSize(value.`lookupUrl`)
+            FfiConverterOptionalString.allocationSize(value.`lookupUrl`) +
+            FfiConverterOptionalString.allocationSize(value.`mailbox`)
     )
 
     override fun write(value: RelayServers, buf: ByteBuffer) {
             FfiConverterOptionalString.write(value.`relayUrl`, buf)
             FfiConverterOptionalString.write(value.`lookupUrl`, buf)
+            FfiConverterOptionalString.write(value.`mailbox`, buf)
     }
 }
 
