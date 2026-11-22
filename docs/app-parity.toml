@@ -21,12 +21,6 @@ wave = 4
 reason = "GD requirements without a scenario yet; written with GD2b's phone run"
 
 [[lag]]
-app = "sketchbook"
-rule = "requirements"
-wave = 4
-reason = "Written as the Soundscape and Sketchbook features are finished"
-
-[[lag]]
 app = "soundscape"
 rule = "requirements"
 wave = 4
