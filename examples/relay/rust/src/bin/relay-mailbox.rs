@@ -7,6 +7,8 @@
 //! ```
 //!
 //! Prints the endpoint id devices dial it by, then serves until stopped.
+//! `--lookup` needs `--relay`: the lookup server publishes the relay
+//! address, which is how devices away from home reach it.
 
 const USAGE: &str = "usage: relay-mailbox [--data DIR] [--port N] [--relay URL] [--lookup URL]";
 

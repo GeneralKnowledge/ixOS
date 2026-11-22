@@ -129,20 +129,76 @@ fn write_invites(path: &Path, invites: &[Invite]) -> std::io::Result<()> {
     write_private_atomically(path, &json)
 }
 
+/// Changes the invitations file under a lock shared with every process
+/// (the server and `chat-server invite`), held across the whole read,
+/// change and write, so neither undoes the other's change.
+fn with_invites<T>(
+    data_file: &Path,
+    change: impl FnOnce(&mut Vec<Invite>) -> T,
+) -> std::io::Result<T> {
+    let path = invites_file(data_file);
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path.with_extension("lock"))?;
+    lock.lock()?;
+    let mut invites = read_invites(&path);
+    let before = invites.clone();
+    let value = change(&mut invites);
+    if invites != before {
+        write_invites(&path, &invites)?;
+    }
+    Ok(value)
+}
+
 /// Adds a one-time invitation for the server whose data is `data_file`,
 /// and returns its code. Expired ones are dropped on the way.
 pub fn add_invite(data_file: &Path) -> std::io::Result<String> {
-    let path = invites_file(data_file);
     let code = new_code()?;
     let now = now_ms();
-    let mut invites = read_invites(&path);
-    invites.retain(|i| i.expires_at > now);
-    invites.push(Invite {
-        code_sha256: code_digest(&code),
-        expires_at: now + INVITE_LIFETIME_MS,
-    });
-    write_invites(&path, &invites)?;
+    with_invites(data_file, |invites| {
+        invites.retain(|i| i.expires_at > now);
+        invites.push(Invite {
+            code_sha256: code_digest(&code),
+            expires_at: now + INVITE_LIFETIME_MS,
+        });
+    })?;
     Ok(code)
+}
+
+/// Removes the live invitation `digest` names, and returns it.
+fn take(invites: &mut Vec<Invite>, digest: &str, now: i64) -> Option<Invite> {
+    invites.retain(|i| i.expires_at > now);
+    let at = invites
+        .iter()
+        .position(|i| super::constant_time_eq(&i.code_sha256, digest))?;
+    Some(invites.remove(at))
+}
+
+impl super::Inner {
+    /// Uses up `code` if it is a live invitation, and returns it so it can
+    /// be put back if the account can't be saved.
+    fn take_invite(&mut self, code: &str) -> std::io::Result<Option<Invite>> {
+        let digest = code_digest(code);
+        let now = now_ms();
+        match self.data_file.clone() {
+            Some(data_file) => with_invites(&data_file, |invites| take(invites, &digest, now)),
+            None => Ok(take(&mut self.invites, &digest, now)),
+        }
+    }
+
+    /// Puts back an invitation taken for an account that couldn't be saved.
+    fn restore_invite(&mut self, invite: Invite) {
+        match self.data_file.clone() {
+            Some(data_file) => {
+                if let Err(err) = with_invites(&data_file, |invites| invites.push(invite)) {
+                    eprintln!("error: couldn't put an invitation back: {err}");
+                }
+            }
+            None => self.invites.push(invite),
+        }
+    }
 }
 
 impl AppState {
@@ -163,41 +219,12 @@ impl AppState {
         }
     }
 
-    /// Uses up `code` if it is a live invitation.
-    fn take_invite(&self, code: &str) -> std::io::Result<bool> {
-        let digest = code_digest(code);
-        let now = now_ms();
-        let mut inner = self.lock();
-        let take = |invites: &mut Vec<Invite>| {
-            invites.retain(|i| i.expires_at > now);
-            let before = invites.len();
-            invites.retain(|i| !super::constant_time_eq(&i.code_sha256, &digest));
-            invites.len() != before
-        };
-        match inner.data_file.clone() {
-            Some(data_file) => {
-                let path = invites_file(&data_file);
-                let mut invites = read_invites(&path);
-                let taken = take(&mut invites);
-                if taken {
-                    write_invites(&path, &invites)?;
-                }
-                Ok(taken)
-            }
-            None => Ok(take(&mut inner.invites)),
-        }
-    }
-
     /// Counts a wrong code; false when too many came in the last minute.
     fn wrong_code_allowed(&self) -> bool {
         let now = now_ms();
         let mut inner = self.lock();
         inner.wrong_codes.retain(|at| *at > now - 60_000);
         inner.wrong_codes.len() < WRONG_CODES_PER_MINUTE
-    }
-
-    fn wrong_code(&self) {
-        self.lock().wrong_codes.push(now_ms());
     }
 }
 
@@ -239,20 +266,27 @@ pub(crate) async fn join(
         )
             .into_response();
     }
-    match state.take_invite(&body.code) {
-        Ok(true) => {}
-        Ok(false) => {
-            state.wrong_code();
+    // Everything that can fail without using the code comes first.
+    let id = match random_hex(8) {
+        Ok(id) => format!("u-{id}"),
+        Err(err) => return storage_failed(err),
+    };
+    // One lock from the check for an account to the new one being saved,
+    // so two joins by one key can't both use a code.
+    let mut inner = state.lock();
+    if let Some(user) = inner.user_by_key(&key) {
+        return identity(user).into_response();
+    }
+    let invite = match inner.take_invite(&body.code) {
+        Ok(Some(invite)) => invite,
+        Ok(None) => {
+            inner.wrong_codes.push(now_ms());
             return (
                 StatusCode::FORBIDDEN,
                 "that code isn't right, or it has expired",
             )
                 .into_response();
         }
-        Err(err) => return storage_failed(err),
-    }
-    let id = match random_hex(8) {
-        Ok(id) => format!("u-{id}"),
         Err(err) => return storage_failed(err),
     };
     let user = User {
@@ -262,10 +296,10 @@ pub(crate) async fn join(
         created_at: now_ms(),
         key: Some(key),
     };
-    let mut inner = state.lock();
     inner.users.push(user.clone());
     if let Err(err) = inner.save() {
         inner.users.pop();
+        inner.restore_invite(invite);
         return storage_failed(err);
     }
     (StatusCode::CREATED, identity(&user)).into_response()

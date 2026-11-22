@@ -358,3 +358,23 @@ async fn guessing_codes_is_limited() {
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
     host.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn a_code_is_given_back_when_the_account_cannot_be_saved() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = host_state(dir.path());
+    let host = room::serve(state.clone(), endpoint(100).await);
+    let code = state.invite().unwrap();
+    let (_p, phone) = dial(&host, 1).await;
+    // A directory where the data file goes makes the save fail.
+    let data = dir.path().join("server.json");
+    let _ = std::fs::remove_file(&data);
+    std::fs::create_dir_all(data.join("in-the-way")).unwrap();
+    let join = json!({"code": code, "display_name": "Phone"});
+    let (status, _) = call(&phone, "POST", "/join", Some(join.clone()), &[]).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    std::fs::remove_dir_all(&data).unwrap();
+    let (status, _) = call(&phone, "POST", "/join", Some(join), &[]).await;
+    assert_eq!(status, StatusCode::CREATED);
+    host.shutdown().await.unwrap();
+}

@@ -59,6 +59,13 @@ const PASSES_HELD: u32 = 1_000;
 const LISTED: u32 = 200;
 /// How long a stream may be idle while an item's bytes move.
 const IDLE: Duration = Duration::from_secs(60);
+/// Uploads in progress at once, across everyone.
+const UPLOADS: u32 = 16;
+/// Bytes of uploads in progress at once, before any of them counts
+/// against a quota.
+const UPLOAD_BYTES: u64 = 512 * 1024 * 1024;
+/// Fetches in progress at once, across everyone.
+const FETCHES: usize = 16;
 
 /// What is left: an item, or a receipt for one.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -129,6 +136,8 @@ pub(crate) enum Refusal {
     Malformed,
     #[error("the server can't store it now")]
     Unavailable,
+    #[error("the mailbox is busy; try again soon")]
+    Busy,
 }
 
 /// The server's answer.
@@ -195,6 +204,22 @@ const MIGRATIONS: &[&str] = &["
 pub struct MailboxStore {
     db: Mutex<Database>,
     dir: PathBuf,
+    /// Uploads in progress and their declared bytes (see [`UPLOADS`]).
+    uploading: Mutex<(u32, u64)>,
+}
+
+/// Room held for one upload in progress; given back when dropped.
+pub(crate) struct Reservation<'a> {
+    store: &'a MailboxStore,
+    len: u64,
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        let mut held = lock(&self.store.uploading);
+        held.0 -= 1;
+        held.1 -= self.len;
+    }
 }
 
 impl std::fmt::Debug for MailboxStore {
@@ -229,10 +254,65 @@ impl MailboxStore {
                 reason: e.to_string(),
             })?;
         }
-        Ok(Self {
+        let store = Self {
             db: Mutex::new(db),
             dir: dir.to_path_buf(),
-        })
+            uploading: Mutex::new((0, 0)),
+        };
+        store.reconcile();
+        Ok(store)
+    }
+
+    /// Room for an upload of `len` bytes, before its body is read, or
+    /// `Busy` when too much is arriving at once.
+    pub(crate) fn reserve(&self, len: u64) -> Result<Reservation<'_>, Refusal> {
+        let mut held = lock(&self.uploading);
+        if held.0 >= UPLOADS || held.1 + len > UPLOAD_BYTES {
+            return Err(Refusal::Busy);
+        }
+        held.0 += 1;
+        held.1 += len;
+        Ok(Reservation { store: self, len })
+    }
+
+    /// Deletes item files no row names: left by a stop between a row's
+    /// deletion and its file's, or a delete that failed. Runs at open and
+    /// with every sweep, under the index's lock, so no item being kept
+    /// can be caught half way.
+    fn reconcile(&self) -> usize {
+        let db = lock(&self.db);
+        let named: std::collections::HashSet<String> = {
+            let Ok(mut q) = db.connection().prepare("SELECT file FROM items") else {
+                return 0;
+            };
+            let Ok(rows) = q.query_map([], |r| r.get::<_, String>(0)) else {
+                return 0;
+            };
+            match rows.collect::<Result<_, _>>() {
+                Ok(named) => named,
+                Err(_) => return 0,
+            }
+        };
+        let mut gone = 0;
+        let Ok(owners) = std::fs::read_dir(self.dir.join("items")) else {
+            return 0;
+        };
+        for owner in owners.flatten() {
+            let Ok(files) = std::fs::read_dir(owner.path()) else {
+                continue;
+            };
+            for file in files.flatten() {
+                let name = format!(
+                    "items/{}/{}",
+                    owner.file_name().to_string_lossy(),
+                    file.file_name().to_string_lossy()
+                );
+                if !named.contains(&name) && std::fs::remove_file(file.path()).is_ok() {
+                    gone += 1;
+                }
+            }
+        }
+        gone
     }
 
     fn sql<T>(
@@ -337,74 +417,18 @@ impl MailboxStore {
         }
         let digest = DepositPass::from_bytes(pass).digest();
         let owner = header.to;
-        self.sql(|c| {
-            let registered: Option<Vec<u8>> = c
-                .query_row(
-                    "SELECT owner FROM passes WHERE digest = ?1",
-                    params![&digest[..]],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            if registered.as_deref() != Some(&owner[..]) {
-                return Ok(Err(Refusal::NoPass));
-            }
-            let duplicate = c
-                .query_row(
-                    "SELECT 1 FROM items WHERE owner = ?1 AND sender = ?2 AND id = ?3",
-                    params![&owner[..], &header.from[..], &header.id[..]],
-                    |_| Ok(()),
-                )
-                .optional()?
-                .is_some();
-            if duplicate {
-                return Ok(Ok(None));
-            }
-            match kind {
-                Kind::Receipt => {
-                    let held: u32 = c.query_row(
-                        "SELECT COUNT(*) FROM items WHERE owner = ?1 AND kind = 1",
-                        params![&owner[..]],
-                        |r| r.get(0),
-                    )?;
-                    if held >= RECEIPTS_HELD {
-                        return Ok(Err(Refusal::Full));
-                    }
-                }
-                Kind::Item => {
-                    let hourly: u32 = c.query_row(
-                        "SELECT COUNT(*) FROM deposits WHERE pass = ?1 AND at_ms > ?2",
-                        params![&digest[..], now - 3600 * 1000],
-                        |r| r.get(0),
-                    )?;
-                    if hourly >= PER_PASS_HOURLY {
-                        return Ok(Err(Refusal::TooMany));
-                    }
-                    let held = |column: &str, key: &[u8]| -> forge_storage::rusqlite::Result<u64> {
-                        c.query_row(
-                            &format!(
-                                "SELECT COALESCE(SUM(size), 0) FROM items WHERE {column} = ?1 AND kind = 0"
-                            ),
-                            params![key],
-                            |r| r.get::<_, i64>(0),
-                        )
-                        .map(|n| n as u64)
-                    };
-                    if held("pass", &digest)? + len > PER_PASS
-                        || held("owner", &owner)? + len > PER_RECIPIENT
-                    {
-                        return Ok(Err(Refusal::Full));
-                    }
-                }
-            }
-            Ok(Ok(Some(Admitted {
-                owner,
-                pass: digest,
-                kind,
-                header,
-                enc,
-                len,
-            })))
-        })?
+        let duplicate = self.sql(|c| rules(c, &owner, &digest, kind, &header, len, now))??;
+        if duplicate {
+            return Ok(None);
+        }
+        Ok(Some(Admitted {
+            owner,
+            pass: digest,
+            kind,
+            header,
+            enc,
+            len,
+        }))
     }
 
     /// A new partial file for an admitted item's bytes.
@@ -414,12 +438,23 @@ impl MailboxStore {
             .join(hex(&crate::hex::random()[..16]))
     }
 
+    /// A file name of its own for each item kept, so deleting an earlier
+    /// copy of the same item can never remove a later one.
     fn item_file(owner: &[u8; 32], from: &[u8; 32], id: &[u8; 16]) -> String {
-        format!("items/{}/{}-{}", hex(owner), hex(from), hex(id))
+        format!(
+            "items/{}/{}-{}-{}",
+            hex(owner),
+            hex(from),
+            hex(id),
+            hex(&crate::hex::random()[..8])
+        )
     }
 
-    /// Keeps an admitted item whose bytes are in `partial`. A copy that
-    /// arrived meanwhile wins, and this one is deleted.
+    /// Keeps an admitted item whose bytes are in `partial`. Every rule is
+    /// checked again in the same transaction as the insert (the pass may
+    /// have been deregistered, other uploads may have used the room, or the
+    /// item may have expired while it arrived). A copy that arrived
+    /// meanwhile wins, and this one is deleted.
     pub(crate) fn keep(&self, item: Admitted, partial: &Path, now: i64) -> Result<bool, Refusal> {
         let Admitted {
             owner,
@@ -433,16 +468,10 @@ impl MailboxStore {
         let path = self.dir.join(&file);
         let mut db = lock(&self.db);
         let stored = db.transaction(|tx| {
-            let duplicate = tx
-                .query_row(
-                    "SELECT 1 FROM items WHERE owner = ?1 AND sender = ?2 AND id = ?3",
-                    params![&owner[..], &header.from[..], &header.id[..]],
-                    |_| Ok(()),
-                )
-                .optional()
-                .map_err(unavailable)?
-                .is_some();
-            if duplicate {
+            if header.expires_ms <= now {
+                return Err(Refusal::Expired);
+            }
+            if rules(tx, &owner, &pass, kind, &header, len, now).map_err(unavailable)?? {
                 return Ok(false);
             }
             if let Some(parent) = path.parent() {
@@ -577,8 +606,8 @@ impl MailboxStore {
         Ok(())
     }
 
-    /// Deletes expired items unread, and deposit times older than an hour.
-    /// Returns how many items went.
+    /// Deletes expired items unread, and deposit times older than an hour,
+    /// then any file no row names. Returns how many items went.
     pub fn sweep(&self, now: i64) -> usize {
         let files: Vec<String> = self
             .sql(|c| {
@@ -587,29 +616,109 @@ impl MailboxStore {
                     .query_map(params![now], |r| r.get(0))?
                     .collect::<Result<Vec<String>, _>>()?;
                 c.execute("DELETE FROM items WHERE expires_ms <= ?1", params![now])?;
-                c.execute(
-                    "DELETE FROM deposits WHERE at_ms <= ?1",
-                    params![now - 3600 * 1000],
-                )?;
                 Ok(files)
             })
             .unwrap_or_default();
         for file in &files {
             let _ = std::fs::remove_file(self.dir.join(file));
         }
+        let _ = self.sql(|c| {
+            c.execute(
+                "DELETE FROM deposits WHERE at_ms <= ?1",
+                params![now - 3600 * 1000],
+            )
+        });
+        self.reconcile();
         files.len()
     }
+}
+
+/// The rules a deposit must meet, against the index as it is now: the
+/// pass is registered by the item's recipient, and (unless it is a
+/// duplicate, `Ok(true)`) the limits hold. Checked when a deposit is
+/// admitted and again in the transaction that keeps it.
+fn rules(
+    c: &forge_storage::rusqlite::Connection,
+    owner: &[u8; 32],
+    digest: &[u8; 32],
+    kind: Kind,
+    header: &Header,
+    len: u64,
+    now: i64,
+) -> forge_storage::rusqlite::Result<Result<bool, Refusal>> {
+    let registered: Option<Vec<u8>> = c
+        .query_row(
+            "SELECT owner FROM passes WHERE digest = ?1",
+            params![&digest[..]],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if registered.as_deref() != Some(&owner[..]) {
+        return Ok(Err(Refusal::NoPass));
+    }
+    let duplicate = c
+        .query_row(
+            "SELECT 1 FROM items WHERE owner = ?1 AND sender = ?2 AND id = ?3",
+            params![&owner[..], &header.from[..], &header.id[..]],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if duplicate {
+        return Ok(Ok(true));
+    }
+    match kind {
+        Kind::Receipt => {
+            let held: u32 = c.query_row(
+                "SELECT COUNT(*) FROM items WHERE owner = ?1 AND kind = 1",
+                params![&owner[..]],
+                |r| r.get(0),
+            )?;
+            if held >= RECEIPTS_HELD {
+                return Ok(Err(Refusal::Full));
+            }
+        }
+        Kind::Item => {
+            let hourly: u32 = c.query_row(
+                "SELECT COUNT(*) FROM deposits WHERE pass = ?1 AND at_ms > ?2",
+                params![&digest[..], now - 3600 * 1000],
+                |r| r.get(0),
+            )?;
+            if hourly >= PER_PASS_HOURLY {
+                return Ok(Err(Refusal::TooMany));
+            }
+            let held = |column: &str, key: &[u8]| -> forge_storage::rusqlite::Result<u64> {
+                c.query_row(
+                    &format!(
+                        "SELECT COALESCE(SUM(size), 0) FROM items WHERE {column} = ?1 AND kind = 0"
+                    ),
+                    params![key],
+                    |r| r.get::<_, i64>(0),
+                )
+                .map(|n| n as u64)
+            };
+            if held("pass", digest)? + len > PER_PASS || held("owner", owner)? + len > PER_RECIPIENT
+            {
+                return Ok(Err(Refusal::Full));
+            }
+        }
+    }
+    Ok(Ok(false))
 }
 
 /// The `relay/mailbox/1` handler.
 #[derive(Debug, Clone)]
 pub struct MailboxServer {
     store: Arc<MailboxStore>,
+    fetches: Arc<tokio::sync::Semaphore>,
 }
 
 impl MailboxServer {
     pub fn new(store: Arc<MailboxStore>) -> Self {
-        Self { store }
+        Self {
+            store,
+            fetches: Arc::new(tokio::sync::Semaphore::new(FETCHES)),
+        }
     }
 
     async fn answer(
@@ -629,47 +738,56 @@ impl MailboxServer {
                 Err(r) => Reply::Refused(r),
             },
             Some(Request::Ack { from, id }) => done(self.store.ack(&caller, &from, &id)),
-            Some(Request::Fetch { from, id }) => match self.store.fetch(&caller, &from, &id, now) {
-                Ok((kind, header, enc, path, len)) => {
-                    let file = tokio::fs::read(&path).await;
-                    match file {
-                        Ok(bytes) if bytes.len() as u64 == len => {
-                            put(
-                                &mut send,
-                                &encode(&Reply::Item {
-                                    kind,
-                                    header,
-                                    enc,
-                                    len,
-                                }),
-                            )
-                            .await?;
-                            send.write_all(&bytes).await.map_err(connection)?;
-                            send.finish().ok();
-                            let _ = tokio::time::timeout(IDLE, send.stopped()).await;
-                            return Ok(());
+            Some(Request::Fetch { from, id }) => {
+                let Ok(_permit) = Arc::clone(&self.fetches).try_acquire_owned() else {
+                    put(&mut send, &encode(&Reply::Refused(Refusal::Busy))).await?;
+                    send.finish().ok();
+                    return Ok(());
+                };
+                match self.store.fetch(&caller, &from, &id, now) {
+                    Ok((kind, header, enc, path, len)) => {
+                        match tokio::fs::File::open(&path).await {
+                            Ok(file) if file.metadata().await.is_ok_and(|m| m.len() == len) => {
+                                put(
+                                    &mut send,
+                                    &encode(&Reply::Item {
+                                        kind,
+                                        header,
+                                        enc,
+                                        len,
+                                    }),
+                                )
+                                .await?;
+                                stream_file(file, &mut send).await?;
+                                send.finish().ok();
+                                let _ = tokio::time::timeout(IDLE, send.stopped()).await;
+                                return Ok(());
+                            }
+                            _ => Reply::Refused(Refusal::NotFound),
                         }
-                        _ => Reply::Refused(Refusal::NotFound),
                     }
+                    Err(r) => Reply::Refused(r),
                 }
-                Err(r) => Reply::Refused(r),
-            },
+            }
             Some(Request::Deposit(deposit)) => {
                 let len = deposit.len;
                 match self.store.admit(&caller, deposit, now) {
                     Err(r) => Reply::Refused(r),
                     Ok(None) => Reply::Stored { duplicate: true },
-                    Ok(Some(admitted)) => {
-                        let partial = self.store.partial();
-                        if let Err(e) = receive(&mut recv, &partial, len).await {
-                            let _ = tokio::fs::remove_file(&partial).await;
-                            return Err(e);
+                    Ok(Some(admitted)) => match self.store.reserve(len) {
+                        Err(r) => Reply::Refused(r),
+                        Ok(_room) => {
+                            let partial = self.store.partial();
+                            if let Err(e) = receive(&mut recv, &partial, len).await {
+                                let _ = tokio::fs::remove_file(&partial).await;
+                                return Err(e);
+                            }
+                            match self.store.keep(admitted, &partial, now_ms()) {
+                                Ok(stored) => Reply::Stored { duplicate: !stored },
+                                Err(r) => Reply::Refused(r),
+                            }
                         }
-                        match self.store.keep(admitted, &partial, now_ms()) {
-                            Ok(stored) => Reply::Stored { duplicate: !stored },
-                            Err(r) => Reply::Refused(r),
-                        }
-                    }
+                    },
                 }
             }
         };
@@ -709,9 +827,33 @@ async fn receive(recv: &mut RecvStream, path: &Path, len: u64) -> Result<(), Rel
             })?;
         left -= n as u64;
     }
+    // A write error can wait for the next flush: flush first, so a short
+    // file fails the upload rather than being kept.
+    file.flush().await.map_err(|e| RelayError::File {
+        reason: e.to_string(),
+    })?;
     file.sync_all().await.map_err(|e| RelayError::File {
         reason: e.to_string(),
     })
+}
+
+/// Sends `file` in chunks, each within [`IDLE`]: a recipient that keeps
+/// reading gets all of it, one that stops is let go.
+async fn stream_file(mut file: tokio::fs::File, send: &mut SendStream) -> Result<(), RelayError> {
+    use tokio::io::AsyncReadExt;
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf).await.map_err(|e| RelayError::File {
+            reason: e.to_string(),
+        })?;
+        if n == 0 {
+            return Ok(());
+        }
+        tokio::time::timeout(IDLE, send.write_all(&buf[..n]))
+            .await
+            .map_err(|_| connection("the recipient stopped reading"))?
+            .map_err(connection)?;
+    }
 }
 
 impl ProtocolHandler for MailboxServer {
@@ -781,7 +923,12 @@ impl MailboxClient {
         let (mut send, mut recv) = self.conn.open_bi().await.map_err(connection)?;
         put(&mut send, &encode(request)).await?;
         if let Some(body) = body {
-            send.write_all(body).await.map_err(connection)?;
+            // A server that refuses (or already has the item) answers
+            // without reading the body, which can stop this write: its
+            // answer is still read below.
+            if let Err(e) = send.write_all(body).await {
+                log::info!("mailbox: the body wasn't all taken: {e}");
+            }
         }
         send.finish().ok();
         let reply = get_within(&mut recv, IDLE).await?;
@@ -869,11 +1016,15 @@ impl MailboxClient {
                 "an item bigger than the mailbox takes".into(),
             ));
         }
+        // Idle time, not the whole transfer, is limited: a large item on a
+        // slow link finishes as long as it keeps moving.
         let mut ciphertext = vec![0u8; len as usize];
-        tokio::time::timeout(IDLE, recv.read_exact(&mut ciphertext))
-            .await
-            .map_err(|_| CallError::Connection("the mailbox stopped sending".into()))?
-            .map_err(connection)?;
+        for chunk in ciphertext.chunks_mut(64 * 1024) {
+            tokio::time::timeout(IDLE, recv.read_exact(chunk))
+                .await
+                .map_err(|_| CallError::Connection("the mailbox stopped sending".into()))?
+                .map_err(connection)?;
+        }
         Ok((
             kind,
             SealedItem {
@@ -894,7 +1045,8 @@ pub struct ServeOptions {
     pub port: u16,
     /// Relay's relay server, so devices behind NAT reach it.
     pub relay: Option<url::Url>,
-    /// Relay's lookup server, where it publishes its address.
+    /// Relay's lookup server, where it publishes its relay address. Needs
+    /// `relay`.
     pub lookup: Option<url::Url>,
 }
 
@@ -904,6 +1056,13 @@ pub struct ServeOptions {
 pub fn serve(options: ServeOptions) -> Result<std::convert::Infallible, RelayError> {
     use iroh::endpoint::presets;
     use iroh::RelayMode;
+    // The lookup server publishes relay addresses only: without a relay,
+    // it would publish nothing devices could dial.
+    if options.lookup.is_some() && options.relay.is_none() {
+        return Err(RelayError::Connection {
+            reason: "--lookup needs --relay: the lookup server publishes the relay address".into(),
+        });
+    }
     crate::code::TOKIO.block_on(async move {
         std::fs::create_dir_all(&options.dir).map_err(|e| RelayError::Storage {
             reason: e.to_string(),
@@ -1179,6 +1338,119 @@ mod tests {
         let partial = store.partial();
         std::fs::write(&partial, b"sealed").unwrap();
         store.keep(admitted, &partial, now)
+    }
+
+    fn admit(store: &MailboxStore, pass: &DepositPass, h: Header, len: u64) -> Admitted {
+        let by = h.from;
+        let deposit = Deposit {
+            pass: pass.bytes(),
+            kind: Kind::Item,
+            header: h,
+            enc: vec![0; 32],
+            len,
+        };
+        store.admit(&by, deposit, now_ms()).unwrap().unwrap()
+    }
+
+    fn keep(store: &MailboxStore, admitted: Admitted, now: i64) -> Result<bool, Refusal> {
+        let partial = store.partial();
+        std::fs::write(&partial, b"sealed").unwrap();
+        let kept = store.keep(admitted, &partial, now);
+        if kept.is_err() {
+            assert!(!partial.exists(), "a refused upload leaves no file");
+        }
+        kept
+    }
+
+    /// What was true when an upload began is checked again when it ends:
+    /// room used by uploads that finished first, a pass deregistered, an
+    /// item that expired on the way.
+    #[test]
+    fn the_rules_are_checked_again_when_an_upload_ends() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MailboxStore::open(dir.path()).unwrap();
+        let now = now_ms();
+        let mb = 1024 * 1024;
+        let pass = DepositPass::from_bytes([1; 32]);
+        store.register(&me(2), &[pass.digest()]).unwrap();
+        assert_eq!(
+            leave(
+                &store,
+                &pass,
+                Kind::Item,
+                header(1, 2, 1, now + SOON),
+                100 * mb
+            ),
+            Ok(true)
+        );
+        // Two more 100 MB uploads both fit when they begin...
+        let first = admit(&store, &pass, header(1, 2, 2, now + SOON), 100 * mb);
+        let second = admit(&store, &pass, header(1, 2, 3, now + SOON), 100 * mb);
+        // ...but only one fits when they end.
+        assert_eq!(keep(&store, first, now), Ok(true));
+        assert_eq!(keep(&store, second, now), Err(Refusal::Full));
+
+        let late = admit(&store, &pass, header(1, 2, 4, now + 1000), 1);
+        assert_eq!(keep(&store, late, now + 1000), Err(Refusal::Expired));
+
+        let revoked = admit(&store, &pass, header(1, 2, 5, now + SOON), 1);
+        store.deregister(&me(2), &[pass.digest()]).unwrap();
+        assert_eq!(keep(&store, revoked, now), Err(Refusal::NoPass));
+    }
+
+    #[test]
+    fn uploads_in_progress_are_limited_and_given_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MailboxStore::open(dir.path()).unwrap();
+        let big = store.reserve(UPLOAD_BYTES).unwrap();
+        assert_eq!(
+            store.reserve(1).err(),
+            Some(Refusal::Busy),
+            "all the bytes are held"
+        );
+        drop(big);
+        let held: Vec<_> = (0..UPLOADS).map(|_| store.reserve(1).unwrap()).collect();
+        assert_eq!(
+            store.reserve(1).err(),
+            Some(Refusal::Busy),
+            "all the slots are held"
+        );
+        drop(held);
+        assert!(store.reserve(UPLOAD_BYTES).is_ok());
+    }
+
+    /// A file no row names (a stop between deleting a row and its file)
+    /// is deleted by the next sweep; an item kept again after an
+    /// acknowledgement gets a file of its own.
+    #[test]
+    fn files_left_behind_are_cleaned_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MailboxStore::open(dir.path()).unwrap();
+        let now = now_ms();
+        let pass = DepositPass::from_bytes([1; 32]);
+        store.register(&me(2), &[pass.digest()]).unwrap();
+        assert_eq!(
+            leave(&store, &pass, Kind::Item, header(1, 2, 1, now + SOON), 6),
+            Ok(true)
+        );
+        let (_, _, _, first, _) = store.fetch(&me(2), &me(1), &[1; 16], now).unwrap();
+        store.ack(&me(2), &me(1), &[1; 16]).unwrap();
+        assert_eq!(
+            leave(&store, &pass, Kind::Item, header(1, 2, 1, now + SOON), 6),
+            Ok(true)
+        );
+        let (_, _, _, second, _) = store.fetch(&me(2), &me(1), &[1; 16], now).unwrap();
+        assert_ne!(first, second);
+
+        let stray = dir
+            .path()
+            .join("items")
+            .join(hex(&me(2)))
+            .join("left-behind");
+        std::fs::write(&stray, b"x").unwrap();
+        assert_eq!(store.sweep(now), 0);
+        assert!(!stray.exists());
+        assert!(second.exists(), "a live item's file stays");
     }
 
     #[test]
