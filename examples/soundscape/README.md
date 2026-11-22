@@ -32,6 +32,7 @@ longer asks for the microphone.
 | M6 | Carry on where you left off: the queue, the song and how far into it survive closing the app, and it opens paused there | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | M8 | Sleep timer: pause after 15 to 90 minutes or at the end of this song, fading out over the last 10 seconds | Swift written, not yet built with xtool or run on a phone |
 | M9 | Between songs: no gap (the next song is loaded early and starts the moment one ends) or a 2 to 12 second crossfade, kept as a setting | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| S1-S3 | The redesign ([design](docs/design.md)): four tabs (Listen, Library, Discover, Search), the mini-player above the tab bar, a Listen home of artwork shelves, the Library by kind with an album grid, and a full-screen Now Playing in the artwork's colours with lyrics in place, a queue sheet, volume and AirPlay | Swift written, not yet built with xtool or run on a phone |
 
 ## How the work is split
 
@@ -40,8 +41,8 @@ longer asks for the microphone.
   (`offline.rs`), the queue (`queue.rs`) and what was playing (`playback.rs`),
   the catalogues (`jamendo.rs`, `archive.rs`, rights in `catalogue.rs`), the take
   server's client (`listen.rs`) and lyrics (`lyrics.rs`). All of it is tested on Linux.
-- **AVPlayer plays** (`TakePlayer.swift`): the queue, the mini-player and Now
-  Playing, the lock screen and interruptions, and blind A/B of two takes.
+- **AVPlayer plays** (`TakePlayer.swift`): the queue, the mini-player (`MiniPlayer.swift`) and Now
+  Playing (`NowPlaying.swift`), the lock screen and interruptions, and blind A/B of two takes.
 
 ## Rust
 

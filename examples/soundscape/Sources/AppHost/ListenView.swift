@@ -4,7 +4,7 @@ import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
-/// Where the Listen stack can go.
+/// Where each tab's stack can go.
 enum ListenRoute: Hashable {
     case artist(LibraryArtist)
     case album(LibraryAlbum)
@@ -28,16 +28,33 @@ enum ListenRoute: Hashable {
     /// Jamendo's genres, then one genre's tracks.
     case jamendoGenres
     case jamendoGenre(JamendoGenre)
+    /// More from Jamendo like a song: by its artist or in its genre.
+    case jamendoMore(trackId: String, by: JamendoMore)
+    /// All of the library's songs, albums (a grid) or artists.
+    case songs
+    case albums
+    case artists
 }
 
-/// The Listen tab: your music library (artists, albums, songs, each song
-/// with its recordings), from the take server and kept on the phone, with
-/// the player under every screen.
+/// Soundscape's four tabs (docs/design.md).
+enum SoundscapeTab: String, Hashable {
+    case listen, library, discover, search
+}
+
+/// The app: Listen, Library, Discover and Search, each its own stack, with
+/// the mini-player above the tab bar and Now Playing opening out of it. One
+/// model and one player serve every tab.
 struct ListenView: View {
     @State private var model: ListenModel
     @State private var player = TakePlayer()
     @State private var editingServer = false
     @State private var showingNowPlaying = false
+    @AppStorage("soundscape.tab") private var tab: SoundscapeTab = .listen
+    @State private var listenPath: [ListenRoute] = []
+    @State private var libraryPath: [ListenRoute] = []
+    @State private var discoverPath: [ListenRoute] = []
+    @State private var searchPath: [ListenRoute] = []
+    @Namespace private var playerZoom
 
     init(core: SoundscapeCore, host: ForgeHost<SoundscapeCore>) {
         let model = ListenModel(core: core)
@@ -46,72 +63,148 @@ struct ListenView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Library")
-                .navigationDestination(for: ListenRoute.self) { route in
-                    switch route {
-                    case .artist(let artist): ArtistView(model: model, player: player, artist: artist)
-                    case .album(let album): AlbumView(model: model, player: player, album: album)
-                    case .track(let id): TrackView(model: model, player: player, id: id)
-                    case .takes(let slug): SongView(model: model, player: player, slug: slug)
-                    case .favourites: FavouritesView(model: model, player: player)
-                    case .playlists: PlaylistsView(model: model, player: player)
-                    case .playlist(let id): PlaylistView(model: model, player: player, id: id)
-                    case .recent: RecentlyPlayedView(model: model, player: player)
-                    case .downloads: DownloadsView(model: model, player: player)
-                    case .toPick: ToPickView(model: model, player: player)
-                    case .discover: DiscoverView(model: model, player: player)
-                    case .discoverSearch(let query): DiscoverView(model: model, player: player, search: query)
-                    case .archiveItem(let item): ArchiveItemView(model: model, player: player, item: item)
-                    case .jamendoGenres: JamendoGenresView(model: model)
-                    case .jamendoGenre(let genre): JamendoTracksView(model: model, player: player, ask: .genre(genre))
-                    }
-                }
-                .toolbar {
-                    ToolbarItem(placement: .secondaryAction) {
-                        Button(model.server == nil ? "Add Take Server" : "Take Server", systemImage: "server.rack") {
-                            editingServer = true
-                        }
-                        .accessibilityIdentifier("listen.server")
-                    }
-                }
-                .sheet(isPresented: $editingServer) {
-                    ServerSheet(model: model)
-                }
-        }
-        // The bar floats over every screen of the stack, and ForgeUI gives
-        // each one room below its content, pushed screens included (an
-        // inset on the stack alone hid a long album's last song).
-        .forgeBar {
-            NowPlayingBar(player: player) { showingNowPlaying = true }
-        }
-        .sheet(isPresented: $showingNowPlaying) {
-            NowPlayingView(model: model, player: player)
-        }
-        .onChange(of: player.current == nil) { _, stopped in
-            if stopped { showingNowPlaying = false }
-        }
-        // On the stack, so an alert from a song's screen shows above it.
-        .forgeAlert(Binding(
-            get: { editingServer ? nil : model.alert },
-            set: { model.alert = $0 }
-        )) { action in Task { await model.handle(action) } }
-        .task(id: model.server) { await model.loadLibrary() }
-        .onAppear {
-            player.onPlayed = { [model] trackId, recordingId in
-                Task { await model.recordPlay(trackId: trackId, recordingId: recordingId) }
+        tabs
+            .modifier(MiniPlayerAccessory {
+                MiniPlayer(player: player, zoom: playerZoom, open: openNowPlaying)
+            })
+            .fullScreenCover(isPresented: $showingNowPlaying) {
+                NowPlayingView(model: model, player: player, go: go)
+                    .modifier(ZoomedFrom(id: MiniPlayer.zoomID, namespace: playerZoom))
             }
-            player.onSave = { [model] saved in
-                Task { await model.savePlayback(saved) }
+            .onChange(of: player.current == nil) { _, stopped in
+                if stopped { showingNowPlaying = false }
             }
-            player.crossfade = Double(model.crossfadeSeconds)
-            // Where the app was left: the same queue and song, paused.
-            if let saved = model.savedPlayback() { player.restore(saved) }
+            .sheet(isPresented: $editingServer) {
+                ServerSheet(model: model)
+            }
+            // Over every tab, so an alert from any screen shows above it.
+            .forgeAlert(Binding(
+                get: { editingServer ? nil : model.alert },
+                set: { model.alert = $0 }
+            )) { action in Task { await model.handle(action) } }
+            .task(id: model.server) { await model.loadLibrary() }
+            .onAppear {
+                player.onPlayed = { [model] trackId, recordingId in
+                    Task { await model.recordPlay(trackId: trackId, recordingId: recordingId) }
+                }
+                player.onSave = { [model] saved in
+                    Task { await model.savePlayback(saved) }
+                }
+                player.crossfade = Double(model.crossfadeSeconds)
+                // Where the app was left: the same queue and song, paused.
+                if let saved = model.savedPlayback() { player.restore(saved) }
+            }
+    }
+
+    @ViewBuilder private var tabs: some View {
+        if #available(iOS 18.0, *) {
+            TabView(selection: $tab) {
+                Tab("Listen", systemImage: "play.circle.fill", value: SoundscapeTab.listen) { listen }
+                Tab("Library", systemImage: "square.stack.fill", value: SoundscapeTab.library) { library }
+                Tab("Discover", systemImage: "sparkles", value: SoundscapeTab.discover) { discover }
+                Tab("Search", systemImage: "magnifyingglass", value: SoundscapeTab.search, role: .search) { search }
+            }
+        } else {
+            TabView(selection: $tab) {
+                listen.tabItem { Label("Listen", systemImage: "play.circle.fill") }.tag(SoundscapeTab.listen)
+                library.tabItem { Label("Library", systemImage: "square.stack.fill") }.tag(SoundscapeTab.library)
+                discover.tabItem { Label("Discover", systemImage: "sparkles") }.tag(SoundscapeTab.discover)
+                search.tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(SoundscapeTab.search)
+            }
         }
     }
 
-    @ViewBuilder private var content: some View {
+    private var listen: some View {
+        stack($listenPath) {
+            ListenHome(model: model, player: player, openNowPlaying: openNowPlaying)
+        }
+    }
+
+    private var library: some View {
+        stack($libraryPath) {
+            LibraryGate(model: model, editServer: { editingServer = true }) {
+                LibraryTab(model: model, player: player, editServer: { editingServer = true })
+            }
+        }
+    }
+
+    private var discover: some View {
+        stack($discoverPath) { DiscoverView(model: model, player: player) }
+    }
+
+    private var search: some View {
+        stack($searchPath) { SearchTab(model: model, player: player) }
+    }
+
+    /// One tab's stack: its first screen, every screen it can push, and
+    /// (before iOS 26) the mini-player floating above the tab bar.
+    private func stack<Root: View>(_ path: Binding<[ListenRoute]>, @ViewBuilder root: () -> Root) -> some View {
+        NavigationStack(path: path) {
+            root().navigationDestination(for: ListenRoute.self) { route in
+                ListenDestination(model: model, player: player, route: route)
+            }
+        }
+        .modifier(MiniPlayerBar {
+            MiniPlayer(player: player, zoom: playerZoom, open: openNowPlaying)
+        })
+    }
+
+    private func openNowPlaying() {
+        if player.current != nil { showingNowPlaying = true }
+    }
+
+    /// From Now Playing to a screen (an album, an artist, more like this
+    /// song): close the player and push it on the tab being looked at.
+    private func go(_ route: ListenRoute) {
+        showingNowPlaying = false
+        switch tab {
+        case .listen: listenPath.append(route)
+        case .library: libraryPath.append(route)
+        case .discover: discoverPath.append(route)
+        case .search: searchPath.append(route)
+        }
+    }
+}
+
+/// The screen for a route, the same in every tab.
+struct ListenDestination: View {
+    let model: ListenModel
+    let player: TakePlayer
+    let route: ListenRoute
+
+    var body: some View {
+        switch route {
+        case .artist(let artist): ArtistView(model: model, player: player, artist: artist)
+        case .album(let album): AlbumView(model: model, player: player, album: album)
+        case .track(let id): TrackView(model: model, player: player, id: id)
+        case .takes(let slug): SongView(model: model, player: player, slug: slug)
+        case .favourites: FavouritesView(model: model, player: player)
+        case .playlists: PlaylistsView(model: model, player: player)
+        case .playlist(let id): PlaylistView(model: model, player: player, id: id)
+        case .recent: RecentlyPlayedView(model: model, player: player)
+        case .downloads: DownloadsView(model: model, player: player)
+        case .toPick: ToPickView(model: model, player: player)
+        case .discover: DiscoverView(model: model, player: player)
+        case .discoverSearch(let query): DiscoverView(model: model, player: player, search: query)
+        case .archiveItem(let item): ArchiveItemView(model: model, player: player, item: item)
+        case .jamendoGenres: JamendoGenresView(model: model)
+        case .jamendoGenre(let genre): JamendoTracksView(model: model, player: player, ask: .genre(genre))
+        case .jamendoMore(let trackId, let by): JamendoTracksView(model: model, player: player, ask: .more(trackId: trackId, by: by))
+        case .songs: SongsView(model: model, player: player)
+        case .albums: AlbumsView(model: model)
+        case .artists: ArtistsView(model: model)
+        }
+    }
+}
+
+/// The library's screens wait for the first load from the take server, or
+/// say why it failed.
+struct LibraryGate<Content: View>: View {
+    let model: ListenModel
+    let editServer: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
         switch model.phase {
         case .loading:
             ForgeStateView.loading("Asking the take server")
@@ -124,12 +217,69 @@ struct ListenView: View {
             )
             .toolbar {
                 ToolbarItem(placement: .secondaryAction) {
-                    Button("Change Server", systemImage: "server.rack") { editingServer = true }
+                    Button("Change Server", systemImage: "server.rack", action: editServer)
                         .accessibilityIdentifier("listen.changeServer")
                 }
             }
         case .ready:
-            LibraryHome(model: model, player: player)
+            content()
+        }
+    }
+}
+
+/// The mini-player as the tab bar's bottom accessory on iOS 26, where it
+/// shrinks into the tab bar as a list scrolls (the system's own music
+/// pattern). Before iOS 26 `MiniPlayerBar` floats it in each tab instead.
+private struct MiniPlayerAccessory<Bar: View>: ViewModifier {
+    @ViewBuilder let bar: () -> Bar
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .tabViewBottomAccessory { AccessoryPlacement { bar() } }
+                .tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
+        }
+    }
+}
+
+/// Tells the mini-player whether the accessory is full width or tucked
+/// into the minimised tab bar.
+@available(iOS 26.0, *)
+private struct AccessoryPlacement<Bar: View>: View {
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+    @ViewBuilder let bar: () -> Bar
+
+    var body: some View {
+        bar().environment(\.miniPlayerInline, placement == .inline)
+    }
+}
+
+/// Before iOS 26: the mini-player floats over each tab's screens, above the
+/// tab bar, through ForgeUI's forgeBar (which gives lists room below).
+private struct MiniPlayerBar<Bar: View>: ViewModifier {
+    @ViewBuilder let bar: () -> Bar
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content.forgeBar { bar().miniPlayerCard() }
+        }
+    }
+}
+
+/// Now Playing grows out of the mini-player (iOS 18 and later).
+private struct ZoomedFrom: ViewModifier {
+    let id: String
+    let namespace: Namespace.ID
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.navigationTransition(.zoom(sourceID: id, in: namespace))
+        } else {
+            content
         }
     }
 }
@@ -554,76 +704,6 @@ private struct Scrubber: View {
     }
 }
 
-/// What's playing, under every Listen screen; tap it for Now Playing.
-private struct NowPlayingBar: View {
-    let player: TakePlayer
-    let open: () -> Void
-
-    var body: some View {
-        if let current = player.current {
-            VStack(spacing: 0) {
-                ProgressView(value: min(player.time, max(player.duration, 1)), total: max(player.duration, 1))
-                    .progressViewStyle(.linear)
-                    .tint(.accentColor)
-                    .accessibilityHidden(true)
-                HStack(spacing: 12) {
-                    Button(action: open) {
-                        HStack(spacing: 10) {
-                            Artwork(title: current.song, url: current.artworkUrl, size: 40)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(player.isComparing ? "Comparing · \(player.active == .a ? "A" : "B")" : current.song)
-                                    .font(.subheadline.bold())
-                                    .lineLimit(1)
-                                Text(player.isComparing ? current.song : [current.artist, current.label].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Now Playing: \(current.song), \(current.label)")
-                    .accessibilityHint("Opens the player")
-                    .accessibilityIdentifier("nowPlaying.open")
-                    if player.isBuffering { ProgressView() }
-                    Button { player.toggle() } label: {
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title2)
-                    }
-                    .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-                    .accessibilityIdentifier("nowPlaying.playPause")
-                    if player.isComparing {
-                        Button { player.stop() } label: {
-                            Image(systemName: "xmark").font(.body.bold())
-                        }
-                        .accessibilityLabel("Stop")
-                        .accessibilityIdentifier("nowPlaying.stop")
-                    } else {
-                        Button { player.next() } label: {
-                            Image(systemName: "forward.fill").font(.title3)
-                        }
-                        .disabled(!player.hasNext)
-                        .accessibilityLabel("Next")
-                        .accessibilityIdentifier("nowPlaying.next")
-                    }
-                }
-                .buttonStyle(.borderless)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                if let failure = player.failure {
-                    Text(failure)
-                        .font(.caption)
-                        .forgeForeground(.danger)
-                        .padding(.horizontal)
-                        .padding(.bottom, 6)
-                }
-            }
-            .background(.bar)
-        }
-    }
-}
-
 /// A picture for an artist, album or track: its artwork when it has some
 /// (from the server or chosen on the phone), else a stand-in, the title's
 /// initial on a colour taken from the title, so each keeps its colour.
@@ -652,7 +732,7 @@ struct Artwork: View {
     }
 
     private var standIn: some View {
-        let hue = Double(title.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF } % 360) / 360
+        let hue = ArtworkPalette.standInHue(title)
         return LinearGradient(
             colors: [Color(hue: hue, saturation: 0.55, brightness: 0.85),
                      Color(hue: hue, saturation: 0.75, brightness: 0.45)],
@@ -666,234 +746,6 @@ struct Artwork: View {
     }
 }
 
-/// The full player: artwork, the position, previous/play/next, shuffle and
-/// repeat, and Up Next. In a comparison, the A and B switch instead.
-private struct NowPlayingView: View {
-    let model: ListenModel
-    let player: TakePlayer
-    @Environment(\.dismiss) private var dismiss
-    @State private var addingToPlaylist = false
-    @State private var showingLyrics = false
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if let current = player.current {
-                    Section {
-                        VStack(spacing: 16) {
-                            Artwork(title: current.song, url: current.artworkUrl, size: 260)
-                                .shadow(radius: 12, y: 6)
-                                .padding(.top, 8)
-                            VStack(spacing: 4) {
-                                Text(current.song).font(.title2.bold()).multilineTextAlignment(.center)
-                                Text([current.artist, current.album, current.label].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .accessibilityElement(children: .combine)
-                            Scrubber(player: player, showsButtons: false)
-                            if player.isComparing { abSwitch } else { transport }
-                            if !player.isComparing, let trackId = current.trackId,
-                               let recording = model.track(trackId)?.recordings.first(where: { $0.id == current.id }),
-                               recording.kind == .generated {
-                                ForgeRating("Rate this take", value: Int(recording.stars), identifier: "nowPlayingSheet.rating") { n in
-                                    Task { _ = await model.rate(recording, of: trackId, stars: n ?? 0) }
-                                }
-                                .font(.title3)
-                            }
-                            if let lyrics = current.lyrics, !lyricLines(lyrics: lyrics).isEmpty {
-                                Button {
-                                    showingLyrics = true
-                                } label: {
-                                    Label("Lyrics", systemImage: "quote.bubble")
-                                        .font(.subheadline.weight(.semibold))
-                                }
-                                .buttonStyle(.bordered)
-                                .buttonBorderShape(.capsule)
-                                .accessibilityIdentifier("nowPlayingSheet.lyrics")
-                                .sheet(isPresented: $showingLyrics) {
-                                    LyricsView(title: current.song, subtitle: current.artist, lyrics: lyrics, player: player)
-                                }
-                            }
-                            if let failure = player.failure {
-                                Text(failure).font(.caption).forgeForeground(.danger)
-                            }
-                            if let sleepNote {
-                                Label(sleepNote, systemImage: "moon.zzz")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .accessibilityIdentifier("nowPlayingSheet.sleepNote")
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .listRowBackground(Color.clear)
-                    }
-                    if !player.isComparing, let trackId = current.trackId,
-                       trackId.hasPrefix("jamendo:"), model.jamendoClientId != nil {
-                        Section("On Jamendo") {
-                            NavigationLink {
-                                JamendoTracksView(model: model, player: player, ask: .more(trackId: trackId, by: .artist))
-                            } label: {
-                                Label(current.artist.map { "More by \($0)" } ?? "More by This Artist",
-                                      systemImage: "music.mic")
-                            }
-                            .accessibilityIdentifier("nowPlayingSheet.moreByArtist")
-                            NavigationLink {
-                                JamendoTracksView(model: model, player: player, ask: .more(trackId: trackId, by: .genre))
-                            } label: {
-                                Label("More in This Genre", systemImage: "guitars")
-                            }
-                            .accessibilityIdentifier("nowPlayingSheet.moreInGenre")
-                        }
-                    }
-                    if !player.upcoming.isEmpty {
-                        Section("Up Next") {
-                            ForEach(player.upcoming) { entry in
-                                Button {
-                                    player.jump(to: entry.position)
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Artwork(title: entry.track.title, url: entry.track.artworkUrl, size: 40)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(entry.track.title).font(.body).foregroundStyle(.primary)
-                                            Text(entry.track.artist).font(.caption).foregroundStyle(.secondary)
-                                        }
-                                    }
-                                }
-                                .accessibilityIdentifier("upNext.song")
-                                .swipeActions {
-                                    Button("Remove", systemImage: "minus.circle", role: .destructive) {
-                                        player.remove(at: entry.position)
-                                    }
-                                    .accessibilityIdentifier("upNext.remove")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Now Playing")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "chevron.down") { dismiss() }
-                        .accessibilityIdentifier("nowPlayingSheet.close")
-                }
-                if let trackId = player.current?.trackId, !player.isComparing {
-                    ToolbarItem(placement: .primaryAction) {
-                        FavouriteButton(model: model, id: trackId, identifier: "nowPlayingSheet.favourite")
-                    }
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Add to Playlist", systemImage: "text.badge.plus") { addingToPlaylist = true }
-                            .accessibilityIdentifier("nowPlayingSheet.addToPlaylist")
-                    }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    SleepTimerMenu(player: player)
-                }
-                if !player.isComparing {
-                    ToolbarItem(placement: .primaryAction) {
-                        CrossfadeMenu(model: model, player: player)
-                    }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Stop", systemImage: "stop.fill") {
-                        player.stop()
-                        dismiss()
-                    }
-                    .accessibilityIdentifier("nowPlayingSheet.stop")
-                }
-            }
-            .sheet(isPresented: $addingToPlaylist) {
-                if let trackId = player.current?.trackId {
-                    AddToPlaylistSheet(model: model, trackIds: [trackId])
-                }
-            }
-        }
-        .forgeFeedback(model.feedback)
-        .presentationDragIndicator(.visible)
-    }
-
-    private var sleepNote: String? {
-        if player.sleepAtEndOfSong { return "Pausing at the end of this song" }
-        guard let at = player.sleepAt else { return nil }
-        return "Pausing at \(at.formatted(date: .omitted, time: .shortened))"
-    }
-
-    private var transport: some View {
-        HStack {
-            Button { player.toggleShuffle() } label: {
-                Image(systemName: "shuffle")
-                    .foregroundStyle(player.shuffle ? Color.accentColor : Color.secondary)
-            }
-            .accessibilityLabel("Shuffle")
-            .accessibilityValue(player.shuffle ? "On" : "Off")
-            .accessibilityIdentifier("nowPlayingSheet.shuffle")
-            Spacer()
-            Button { player.previous() } label: {
-                Image(systemName: "backward.fill").font(.title)
-            }
-            .accessibilityLabel("Previous")
-            .accessibilityIdentifier("nowPlayingSheet.previous")
-            Spacer()
-            Button { player.toggle() } label: {
-                Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 64))
-            }
-            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-            .accessibilityIdentifier("nowPlayingSheet.playPause")
-            Spacer()
-            Button { player.next() } label: {
-                Image(systemName: "forward.fill").font(.title)
-            }
-            .disabled(!player.hasNext)
-            .accessibilityLabel("Next")
-            .accessibilityIdentifier("nowPlayingSheet.next")
-            Spacer()
-            Button { player.cycleRepeat() } label: {
-                Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
-                    .foregroundStyle(player.repeatMode == .off ? Color.secondary : Color.accentColor)
-            }
-            .accessibilityLabel("Repeat")
-            .accessibilityValue(Self.repeatName(player.repeatMode))
-            .accessibilityIdentifier("nowPlayingSheet.repeat")
-        }
-        .font(.title3)
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 8)
-    }
-
-    private var abSwitch: some View {
-        HStack(spacing: 24) {
-            ForEach([TakePlayer.Side.a, .b], id: \.self) { side in
-                Button { player.hear(side) } label: {
-                    Text(side == .a ? "A" : "B")
-                        .font(.largeTitle.bold())
-                        .frame(width: 56, height: 56)
-                }
-                .buttonStyle(.forgeChoice(isSelected: player.active == side, shape: .circle))
-                .accessibilityLabel(side == .a ? "Hear A" : "Hear B")
-                .accessibilityIdentifier(side == .a ? "nowPlayingSheet.a" : "nowPlayingSheet.b")
-            }
-            Button { player.toggle() } label: {
-                Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 64))
-            }
-            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-            .accessibilityIdentifier("nowPlayingSheet.playPause")
-        }
-        .buttonStyle(.borderless)
-    }
-
-    static func repeatName(_ mode: RepeatMode) -> String {
-        switch mode {
-        case .off: return "Off"
-        case .all: return "All"
-        case .one: return "One"
-        }
-    }
-}
 #endif
 
 #if os(iOS)

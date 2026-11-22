@@ -6,62 +6,33 @@ import PhotosUI
 import UniformTypeIdentifiers
 import SwiftUI
 
-// MARK: The library's first screen
+// MARK: The Search tab
 
-/// Artists, albums and songs, and search across all three. A song plays
-/// when tapped (from there on in the list); its details are one tap on the
-/// ellipsis away.
-struct LibraryHome: View {
+/// One search for your music, Jamendo and the Internet Archive, your own
+/// music first. Before you type, genres to browse.
+struct SearchTab: View {
     let model: ListenModel
     let player: TakePlayer
 
-    enum Shelf: String, CaseIterable, Identifiable {
-        case songs = "Songs", albums = "Albums", artists = "Artists"
-        var id: String { rawValue }
-    }
-
-    @AppStorage("library.shelf") private var shelf: Shelf = .songs
     @State private var search = ""
     @State private var details: String?
     /// The catalogues' answer to `query`, once it arrives.
     @State private var catalogues: CatalogueSearch?
     @State private var cataloguesProblem: String?
 
-    private var library: Library { model.library }
     private var query: String { search.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
         List {
-            if let problem = model.refreshProblem {
-                Section {
-                    ForgeNotice(problem, systemImage: "exclamationmark.icloud")
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                        .accessibilityIdentifier("library.refreshProblem")
-                }
-            }
             if query.isEmpty {
-                YourMusicSection(model: model, player: player, showDetails: { details = $0 })
-                Section {
-                    Picker("Show", selection: $shelf) {
-                        ForEach(Shelf.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("library.shelf")
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                }
-                switch shelf {
-                case .songs: songs(library.tracks)
-                case .albums: albums(library.albums)
-                case .artists: artists(library.artists)
-                }
+                browse
             } else {
                 results(model.search(query))
                 catalogueResults
             }
         }
         .listStyle(.insetGrouped)
+        .navigationTitle("Search")
         .searchable(text: $search, prompt: "Your music, Jamendo and the Archive")
         .task(id: query) {
             catalogues = nil
@@ -79,56 +50,38 @@ struct LibraryHome: View {
                 if !failure.stopped { cataloguesProblem = failure.message }
             }
         }
-        .refreshable { await model.loadLibrary(fresh: true) }
         .navigationDestination(item: $details) { id in
             TrackView(model: model, player: player, id: id)
         }
-        .toolbar {
-            ToolbarItem(placement: .secondaryAction) {
-                ImportMusicButton(model: model)
-            }
-        }
         .overlay {
-            if library.tracks.isEmpty && query.isEmpty {
-                ForgeStateView.empty(
-                    "No Music Yet", systemImage: "music.note.list",
-                    description: "Find music in Discover, import your own files, or add a take server."
-                )
-            } else if !query.isEmpty && model.search(query).isEmpty && catalogues?.isEmpty == true {
+            if !query.isEmpty && model.search(query).isEmpty && catalogues?.isEmpty == true {
                 ForgeStateView.noResults(for: query)
             }
         }
     }
 
-    @ViewBuilder private func songs(_ tracks: [LibraryTrack]) -> some View {
-        Section {
-            PlayShuffleButtons(disabled: tracks.isEmpty) { shuffle in
-                player.play(model.queue(tracks), shuffle: shuffle)
+    /// Before typing: Jamendo's genres as coloured tiles, or what search
+    /// covers when there is no Jamendo client ID.
+    @ViewBuilder private var browse: some View {
+        if model.jamendoClientId != nil {
+            Section {
+                GenreGrid(genres: model.jamendoGenres)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    .listRowBackground(Color.clear)
+            } header: {
+                Text("Browse by Genre")
+                    .font(.shelfTitle)
+                    .foregroundStyle(.primary)
+                    .textCase(nil)
+                    .accessibilityAddTraits(.isHeader)
             }
-        }
-        Section("\(tracks.count) \(tracks.count == 1 ? "Song" : "Songs")") {
-            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
-                    player.play(model.queue(tracks), from: index)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder private func albums(_ albums: [LibraryAlbum]) -> some View {
-        Section {
-            ForEach(albums) { album in
-                NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album, model: model) }
-                    .accessibilityIdentifier("library.album")
-            }
-        }
-    }
-
-    @ViewBuilder private func artists(_ artists: [LibraryArtist]) -> some View {
-        Section {
-            ForEach(artists) { artist in
-                NavigationLink(value: ListenRoute.artist(artist)) { ArtistRow(artist: artist) }
-                    .accessibilityIdentifier("library.artist")
+        } else {
+            Section {
+                Label("Search your songs, albums and artists, and the Internet Archive's free music. Add a Jamendo client ID in Discover to search Jamendo too.",
+                      systemImage: "magnifyingglass")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("search.hint")
             }
         }
     }
@@ -162,6 +115,50 @@ struct LibraryHome: View {
     }
 }
 
+/// Genres as tiles, each in its own colour (from its name, as artwork
+/// stand-ins are), two to a row.
+struct GenreGrid: View {
+    let genres: [JamendoGenre]
+
+    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 12) {
+            ForEach(genres, id: \.tag) { genre in
+                NavigationLink(value: ListenRoute.jamendoGenre(genre)) {
+                    GenreTile(name: genre.name)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("search.genre")
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+struct GenreTile: View {
+    let name: String
+
+    var body: some View {
+        let hue = ArtworkPalette.standInHue(name)
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: [Color(hue: hue, saturation: 0.6, brightness: 0.75),
+                         Color(hue: (hue + 0.08).truncatingRemainder(dividingBy: 1), saturation: 0.75, brightness: 0.45)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            Text(name)
+                .font(.system(.headline, design: .rounded).weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .padding(12)
+        }
+        .frame(minHeight: 96)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 extension LibrarySearch {
     var isEmpty: Bool { artists.isEmpty && albums.isEmpty && tracks.isEmpty }
 }
@@ -173,7 +170,7 @@ extension CatalogueSearch {
     }
 }
 
-extension LibraryHome {
+extension SearchTab {
     /// Under the library's own results: what Jamendo and the Internet
     /// Archive found, each in its own section, or why not.
     @ViewBuilder fileprivate var catalogueResults: some View {

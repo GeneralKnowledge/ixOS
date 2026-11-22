@@ -817,3 +817,5 @@ public enum TakeFormat {
         return artist.albumCount > 0 ? "\(albums) · \(songs)" : songs
     }
 }
+
+extension CatalogueTrack: Identifiable {}
