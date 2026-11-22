@@ -129,7 +129,8 @@ impl Workspace {
             let mut files = 0;
             let mut newest = modified_ms(&meta);
             let mut entries = Vec::new();
-            walk(&entry.path(), &entry.path(), &mut entries, usize::MAX);
+            // A project that can't be read is listed with what could be.
+            let _ = walk(&entry.path(), &entry.path(), &mut entries, usize::MAX);
             for e in &entries {
                 if !e.is_folder {
                     files += 1;
@@ -159,7 +160,7 @@ impl Workspace {
     pub fn create_project(&self, name: String) -> Result<(), WorkspaceError> {
         let name = project_name(&name)?;
         let path = self.root.join(&name);
-        if exists_any_case(&self.root, &name) {
+        if exists_any_case(&self.root, &name)? {
             return Err(WorkspaceError::Exists { name });
         }
         fs::create_dir(path).map_err(storage)
@@ -167,7 +168,7 @@ impl Workspace {
 
     pub fn rename_project(&self, from: String, to: String) -> Result<(), WorkspaceError> {
         let old = self.project(&from)?;
-        if from == SCRATCH_PROJECT {
+        if is_scratch(&from) {
             return Err(WorkspaceError::Protected);
         }
         let to = project_name(&to)?;
@@ -175,7 +176,7 @@ impl Workspace {
             return Ok(());
         }
         // A change of case only is allowed (the disk may not tell them apart).
-        if to.to_lowercase() != from.to_lowercase() && exists_any_case(&self.root, &to) {
+        if to.to_lowercase() != from.to_lowercase() && exists_any_case(&self.root, &to)? {
             return Err(WorkspaceError::Exists { name: to });
         }
         fs::rename(old, self.root.join(to)).map_err(storage)
@@ -183,7 +184,7 @@ impl Workspace {
 
     pub fn delete_project(&self, name: String) -> Result<(), WorkspaceError> {
         let path = self.project(&name)?;
-        if name == SCRATCH_PROJECT {
+        if is_scratch(&name) {
             return Err(WorkspaceError::Protected);
         }
         fs::remove_dir_all(path).map_err(storage)
@@ -194,7 +195,7 @@ impl Workspace {
     pub fn entries(&self, project: String) -> Result<Vec<WorkspaceEntry>, WorkspaceError> {
         let root = self.project(&project)?;
         let mut out = Vec::new();
-        walk(&root, &root, &mut out, usize::MAX);
+        walk(&root, &root, &mut out, usize::MAX).map_err(storage)?;
         out.sort_by(|a, b| tree_order(&a.path, a.is_folder, &b.path, b.is_folder));
         Ok(out)
     }
@@ -397,7 +398,7 @@ impl Workspace {
 
     fn check_room(&self, root: &Path) -> Result<(), WorkspaceError> {
         let mut entries = Vec::new();
-        walk(root, root, &mut entries, ENTRIES_MAX);
+        walk(root, root, &mut entries, ENTRIES_MAX).map_err(storage)?;
         if entries.len() >= ENTRIES_MAX {
             return Err(WorkspaceError::TooLarge {
                 reason: format!("A project can hold at most {ENTRIES_MAX} files and folders."),
@@ -421,11 +422,19 @@ pub fn workspace_move_projects(old: String, new: String) -> Result<bool, Workspa
     }
     if new.exists() {
         let scratch = new.join(SCRATCH_PROJECT);
-        let only_empty_scratch = fs::read_dir(&new)
-            .map_err(storage)?
-            .flatten()
-            .all(|e| e.path() == scratch)
-            && fs::read_dir(&scratch).map_or(true, |mut d| d.next().is_none());
+        // Fail closed: anything unreadable counts as work, never as empty.
+        let mut only_scratch = true;
+        for entry in fs::read_dir(&new).map_err(storage)? {
+            if entry.map_err(storage)?.path() != scratch {
+                only_scratch = false;
+            }
+        }
+        let only_empty_scratch = only_scratch
+            && match fs::read_dir(&scratch) {
+                Ok(mut d) => d.next().is_none(),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => true,
+                Err(err) => return Err(storage(err)),
+            };
         if !only_empty_scratch {
             return Ok(false);
         }
@@ -474,6 +483,13 @@ fn project_name(name: &str) -> Result<String, WorkspaceError> {
         });
     }
     name_part(trimmed, "A project name")?;
+    // A folder with a ladder task's name would be taken for an old ladder
+    // project, moved into the hidden `.ladder` and wiped by the next run.
+    if crate::harness::is_ladder_task(trimmed) {
+        return Err(WorkspaceError::Invalid {
+            reason: format!("{trimmed} is the name of one of Bonsai's test tasks; choose another."),
+        });
+    }
     Ok(trimmed.to_string())
 }
 
@@ -539,12 +555,24 @@ fn parent_of(path: &str) -> String {
         .map_or(String::new(), |(p, _)| p.to_string())
 }
 
-fn exists_any_case(dir: &Path, name: &str) -> bool {
+fn exists_any_case(dir: &Path, name: &str) -> Result<bool, WorkspaceError> {
     let lower = name.to_lowercase();
-    fs::read_dir(dir).is_ok_and(|read| {
-        read.flatten()
-            .any(|e| e.file_name().to_string_lossy().to_lowercase() == lower)
-    })
+    for entry in fs::read_dir(dir).map_err(storage)? {
+        if entry
+            .map_err(storage)?
+            .file_name()
+            .to_string_lossy()
+            .to_lowercase()
+            == lower
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn is_scratch(name: &str) -> bool {
+    name.trim().to_lowercase() == SCRATCH_PROJECT
 }
 
 fn modified_ms(meta: &fs::Metadata) -> i64 {
@@ -556,21 +584,22 @@ fn modified_ms(meta: &fs::Metadata) -> i64 {
 
 /// Files and folders under `dir`, hidden ones and links skipped, stopping
 /// once `out` holds `limit`.
-fn walk(root: &Path, dir: &Path, out: &mut Vec<WorkspaceEntry>, limit: usize) {
-    let Ok(read) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in read.flatten() {
+fn walk(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<WorkspaceEntry>,
+    limit: usize,
+) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
         if out.len() >= limit {
-            return;
+            return Ok(());
         }
         if entry.file_name().to_string_lossy().starts_with('.') {
             continue;
         }
         let path = entry.path();
-        let Ok(meta) = fs::symlink_metadata(&path) else {
-            continue;
-        };
+        let meta = fs::symlink_metadata(&path)?;
         if meta.file_type().is_symlink() {
             continue;
         }
@@ -585,9 +614,10 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<WorkspaceEntry>, limit: usize) {
             modified_ms: modified_ms(&meta),
         });
         if meta.is_dir() {
-            walk(root, &path, out, limit);
+            walk(root, &path, out, limit)?;
         }
     }
+    Ok(())
 }
 
 /// Tree order: by path, part by part, with folders before files at the
@@ -616,9 +646,16 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let temp = path.with_file_name(format!(".{name}.saving"));
+    // A name of its own for each save, so two saves at once never share a
+    // temporary file; the last rename wins with complete contents.
+    static SAVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SAVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temp = path.with_file_name(format!(".{name}.{}.{n}.saving", std::process::id()));
     let result = (|| {
-        let mut file = fs::File::create(&temp)?;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         fs::rename(&temp, path)
@@ -686,6 +723,19 @@ mod tests {
     #[test]
     fn scratch_cannot_be_renamed_or_deleted() {
         let (_dir, ws) = workspace();
+        // iOS's file system ignores case, so "Scratch" names the same folder.
+        assert!(is_scratch(" Scratch "));
+        assert!(is_scratch("SCRATCH"));
+        for variant in ["Scratch", "SCRATCH"] {
+            let result = ws.delete_project(s(variant));
+            assert!(
+                matches!(
+                    result,
+                    Err(WorkspaceError::Protected | WorkspaceError::NotFound { .. })
+                ),
+                "{variant}: {result:?}"
+            );
+        }
         assert_eq!(
             ws.delete_project(s("scratch")),
             Err(WorkspaceError::Protected)
@@ -708,6 +758,15 @@ mod tests {
                 "{bad:?}"
             );
         }
+        assert!(matches!(
+            ws.create_project(s("t1-hello")),
+            Err(WorkspaceError::Invalid { .. })
+        ));
+        ws.create_project(s("mine")).unwrap();
+        assert!(matches!(
+            ws.rename_project(s("mine"), s("T3-One-Fix")),
+            Err(WorkspaceError::Invalid { .. })
+        ));
         let long = "x".repeat(PROJECT_NAME_MAX + 1);
         let Err(WorkspaceError::Invalid { reason }) = ws.create_project(long) else {
             panic!("a long name was taken");
@@ -781,7 +840,12 @@ mod tests {
         );
         assert_eq!(ws.projects()[0].files, 3);
         // No temporary file is left behind.
-        assert!(!_dir.path().join("scratch/.main.py.saving").exists());
+        let leftovers = fs::read_dir(_dir.path().join("scratch"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".saving"))
+            .count();
+        assert_eq!(leftovers, 0);
 
         ws.rename_entry(p.clone(), s("lib/helper.py"), s("helper.py"))
             .unwrap();

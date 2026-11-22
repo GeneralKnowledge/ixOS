@@ -292,6 +292,13 @@ pub const SCRATCH_PROJECT: &str = "scratch";
 /// PL1a).
 pub const LADDER_FOLDER: &str = ".ladder";
 
+/// Whether `name` is a ladder task's id (ignoring case), which a person's
+/// project may not be called.
+pub fn is_ladder_task(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    evidence::ladder().iter().any(|task| task.id == lower)
+}
+
 /// Moves ladder projects left at the top of `projects` by builds before
 /// PL1a into [`LADDER_FOLDER`], once. Best effort: a folder that can't be
 /// moved stays where it is.
