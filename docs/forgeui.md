@@ -184,6 +184,8 @@ ForgeRow(task.title, subtitle: task.notes) { ForgeBadge("High", tone: .danger) }
 
 A `ForgeRow` is the label of SwiftUI's own rows, so navigation chevrons, toggles, pickers and swipe actions are the system's. Titles you pass as literals are localised; titles from your data (`task.title`) are shown as written, as with `Text`. The row reads as one element in VoiceOver.
 
+Rows that stand for different things (Favourites, Playlists, Downloaded) can give each icon tile its own colour from ForgeUI's checked accents without changing the app's accent: `ForgeRow("Favourites", systemImage: "heart.fill", accent: .pink)`. Use a tone when the colour means something (a warning, a danger) and an accent when it only tells rows apart. The `icon-tile` parity rule catches a symbol drawn by hand on a raw-coloured rectangle.
+
 ### Cards, badges, status, headers
 
 ```swift

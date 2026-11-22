@@ -123,6 +123,19 @@ public struct ForgeThemeColors {
         }
     }
 
+    /// One of ForgeUI's accents, whatever the app's own accent is: for
+    /// things that need telling apart (icon tiles), not for meaning.
+    public func accent(_ accent: ForgeAccent) -> ForgeToneStyle {
+        let light = accent.light
+        let dark = accent.dark
+        return ForgeToneStyle(
+            solid: forgeDynamicColor(light: light.solid, dark: dark.solid),
+            onSolid: forgeDynamicColor(light: light.onSolid, dark: dark.onSolid),
+            soft: forgeDynamicColor(light: light.soft, dark: dark.soft),
+            text: forgeDynamicColor(light: light.text, dark: dark.text)
+        )
+    }
+
     public func tone(_ tone: ForgeTone) -> ForgeToneStyle {
         let light = palette.light.tone(tone)
         let dark = palette.dark.tone(tone)

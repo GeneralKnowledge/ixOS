@@ -420,6 +420,7 @@ private struct RowsPage: View {
         }
         ForgeRow("Version", value: "1.0.0")
         ForgeRow(task.title) { ForgeBadge("High", tone: .danger) }
+        ForgeRow("Favourites", systemImage: "heart.fill", accent: .pink, value: "12")
         """) {
             ForgeRow(
                 "Notifications",
@@ -433,6 +434,10 @@ private struct RowsPage: View {
                 case .badge: ForgeBadge("New", tone: .info)
                 case .status: ForgeStatus("On", tone: .success)
                 }
+            }
+            // Accent tiles tell rows apart without meaning anything.
+            ForEach(ForgeAccent.allCases) { accent in
+                ForgeRow(accent.name, systemImage: "music.note.list", accent: accent, value: "12")
             }
         } options: {
             Toggle("Icon", isOn: $icon).accessibilityIdentifier("gallery.rows.icon")

@@ -864,6 +864,32 @@ def rule_form_toolbar(app):
     return True, ""
 
 
+# A coloured tile behind a row's symbol is ForgeRow's icon tile, coloured by
+# a tone or one of ForgeUI's checked accents (decision D1, ForgeUI coverage
+# audit). Built by hand it was a symbol on a RoundedRectangle in a raw
+# colour (`.pink`, `tint.gradient`), with its own size and corner, unchecked
+# for contrast in dark mode (ForgeUI 0.2, item 2). Materials and the theme's
+# own colours are surfaces, not tiles, and are left alone.
+TILE_BACKGROUND = re.compile(r"\.background\(\s*([^,()]+(?:\([^()]*\))?[^,()]*),\s*in:\s*RoundedRectangle\b")
+SURFACE = re.compile(r"Material|theme\.|\.quaternary|\.tertiary|\.secondary|\.fill\b")
+
+
+def rule_icon_tile(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in TILE_BACKGROUND.finditer(code):
+            if SURFACE.search(m.group(1)):
+                continue
+            before = code[: m.start()].splitlines()[-6:]
+            if any("Image(systemName:" in line for line in before):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws an icon tile by hand; use ForgeRow's systemImage with a tone or an accent: " + ", ".join(bad)
+    return True, ""
+
+
 # A file the app has just written (an export, a backup) goes to the system
 # share sheet with ForgeUI's forgeShareFile as soon as it is ready. Four
 # apps had their own "your file is ready" sheet or row with a ShareLink on
@@ -1041,6 +1067,7 @@ RULES = [
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
+    ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
     ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),

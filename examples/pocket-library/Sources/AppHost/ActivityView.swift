@@ -26,16 +26,17 @@ struct ActivityView: View {
                 }
                 if let stats = model.stats {
                     Section("Summary") {
-                        StatRow(label: "Finished this year", value: "\(stats.finishedThisYear)", symbol: "checkmark.circle", tint: .green)
-                        StatRow(label: "Pages in the last 7 days", value: "\(stats.pagesLast7Days)", symbol: "book.pages", tint: .blue)
-                        StatRow(label: "Want to read", value: "\(stats.wantToRead)", symbol: "bookmark", tint: .orange)
-                        StatRow(label: "Finished in total", value: "\(stats.finished)", symbol: "books.vertical", tint: .secondary)
+                        ForgeRow("Finished this year", systemImage: "checkmark.circle", accent: .green,
+                                 value: stats.finishedThisYear.formatted())
+                        ForgeRow("Pages in the last 7 days", systemImage: "book.pages", accent: .blue,
+                                 value: stats.pagesLast7Days.formatted())
+                        ForgeRow("Want to read", systemImage: "bookmark", accent: .orange,
+                                 value: stats.wantToRead.formatted())
+                        ForgeRow("Finished in total", systemImage: "books.vertical", accent: .graphite,
+                                 value: stats.finished.formatted())
                         if let average = stats.averageRating {
-                            StatRow(
-                                label: "Average rating",
-                                value: average.formatted(.number.precision(.fractionLength(1))) + " ★",
-                                symbol: "star", tint: .yellow
-                            )
+                            ForgeRow("Average rating", systemImage: "star", accent: .orange,
+                                     value: average.formatted(.number.precision(.fractionLength(1))) + " ★")
                         }
                     }
                 }
@@ -71,28 +72,6 @@ struct ActivityView: View {
         return grouped
             .map { (day: $0.key, entries: $0.value.sorted { $0.atMs > $1.atMs }) }
             .sorted { $0.day > $1.day }
-    }
-}
-
-private struct StatRow: View {
-    let label: String
-    let value: String
-    let symbol: String
-    let tint: Color
-
-    var body: some View {
-        LabeledContent {
-            Text(value)
-                .font(.body.monospacedDigit().weight(.semibold))
-                .foregroundStyle(.primary)
-        } label: {
-            Label {
-                Text(label)
-            } icon: {
-                Image(systemName: symbol).foregroundStyle(tint)
-                    .accessibilityHidden(true)
-            }
-        }
     }
 }
 
