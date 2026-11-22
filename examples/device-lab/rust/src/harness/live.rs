@@ -73,6 +73,7 @@ fn field(text: &str, key: &str) -> Option<(String, bool)> {
                         match (ahead.next(), ahead.next()) {
                             (None, _) | (Some('\\'), None) => break,
                             (Some('\\'), Some('u')) => {
+                                // cut: only counts whether four characters of the escape have arrived; nothing is cut from the text.
                                 if ahead.as_str().chars().take(4).count() < 4 {
                                     break;
                                 }
