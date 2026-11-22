@@ -572,7 +572,32 @@ impl Drop for Tunnel {
 
 /// Whether the device whose site a viewer opens is still trusted here:
 /// asked before every request, so revoking it stops the viewer at once.
-pub(crate) type StillTrusted = Arc<dyn Fn() -> bool + Send + Sync>;
+/// Where the site's device may be dialled now: asked before every request,
+/// so a revocation or a change of Connections (to Local, say) applies to an
+/// open port at once. An error ends the request.
+pub(crate) type SiteRoute = Arc<dyn Fn() -> Result<EndpointAddr, RelayError> + Send + Sync>;
+
+/// The connection kept to a device's site. Closing it starts a new
+/// generation, so a dial that was running at the time is not kept: it
+/// may have taken a route that is no longer allowed.
+#[derive(Debug, Default)]
+pub(crate) struct Kept {
+    conn: Option<Connection>,
+    generation: u64,
+}
+
+impl Kept {
+    pub(crate) fn close(&mut self, why: &'static [u8]) {
+        self.generation += 1;
+        if let Some(c) = self.conn.take() {
+            c.close(0u32.into(), why);
+        }
+    }
+
+    fn live(&self) -> Option<&Connection> {
+        self.conn.as_ref().filter(|c| c.close_reason().is_none())
+    }
+}
 
 /// The browser's name for a device's site: `<id>.localhost`. Browsers send
 /// `*.localhost` to this machine, and a name per device keeps one site's
@@ -624,14 +649,14 @@ fn base32(bytes: &[u8]) -> String {
 }
 
 /// Opens `127.0.0.1:port` (0 picks one) on this device; each browser
-/// connection's request for `host` goes to the site of the device at `to`.
+/// connection's request for `host` goes to the site of the device `route`
+/// finds, asked again for every request.
 pub(crate) async fn open_tunnel(
     node: Arc<Node>,
-    to: EndpointAddr,
-    conn: Arc<Mutex<Option<Connection>>>,
+    conn: Arc<Mutex<Kept>>,
     port: u16,
     host: String,
-    still: StillTrusted,
+    route: SiteRoute,
 ) -> Result<Tunnel, RelayError> {
     let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port)))
         .await
@@ -651,12 +676,11 @@ pub(crate) async fn open_tunnel(
                 continue;
             };
             let node = Arc::clone(&node);
-            let to = to.clone();
             let conn = Arc::clone(&conn);
             let host = host.clone();
-            let still = Arc::clone(&still);
+            let route = Arc::clone(&route);
             tokio::spawn(async move {
-                if let Err(err) = forward(&node, to, &conn, browser, &host, still.as_ref()).await {
+                if let Err(err) = forward(&node, &conn, browser, &host, route.as_ref()).await {
                     log::info!("web: a page request failed: {err}");
                 }
             });
@@ -669,11 +693,15 @@ pub(crate) async fn open_tunnel(
 async fn connection(
     node: &Node,
     to: EndpointAddr,
-    cached: &Mutex<Option<Connection>>,
+    cached: &Mutex<Kept>,
 ) -> Result<Connection, RelayError> {
-    if let Some(c) = lock(cached).as_ref().filter(|c| c.close_reason().is_none()) {
-        return Ok(c.clone());
-    }
+    let generation = {
+        let kept = lock(cached);
+        if let Some(c) = kept.live() {
+            return Ok(c.clone());
+        }
+        kept.generation
+    };
     let c = tokio::time::timeout(crate::code::STEP, node.endpoint.connect(to, WEB_ALPN))
         .await
         .map_err(|_| RelayError::Unreachable {
@@ -682,25 +710,37 @@ async fn connection(
         .map_err(|e| RelayError::Unreachable {
             reason: e.to_string(),
         })?;
+    keep(cached, generation, c)
+}
+
+/// Keeps `c`, dialled in `generation`. A connection closed since then (a
+/// revocation, a change of Connections) means its route may no longer be
+/// allowed, so it isn't kept. Another request that dialled at the same
+/// time keeps its own: one connection, so closing it closes every one in
+/// use.
+fn keep(cached: &Mutex<Kept>, generation: u64, c: Connection) -> Result<Connection, RelayError> {
     let mut kept = lock(cached);
-    if let Some(other) = kept.as_ref().filter(|o| o.close_reason().is_none()) {
-        // Another request dialled at the same time: keep one connection, so
-        // closing the cached one on revocation closes every one in use.
+    if kept.generation != generation {
+        c.close(0u32.into(), b"route changed");
+        return Err(RelayError::Unreachable {
+            reason: "the way to the device changed; try again".into(),
+        });
+    }
+    if let Some(other) = kept.live() {
         c.close(0u32.into(), b"duplicate");
         return Ok(other.clone());
     }
-    *kept = Some(c.clone());
+    kept.conn = Some(c.clone());
     Ok(c)
 }
 
 /// One browser connection: one request over a new stream, one response.
 async fn forward(
     node: &Node,
-    to: EndpointAddr,
-    cached: &Mutex<Option<Connection>>,
+    cached: &Mutex<Kept>,
     mut browser: TcpStream,
     host: &str,
-    still: &(dyn Fn() -> bool + Send + Sync),
+    route: &(dyn Fn() -> Result<EndpointAddr, RelayError> + Send + Sync),
 ) -> Result<(), RelayError> {
     let head = read_head(&mut browser).await?;
     // Only the site's own name: another name (127.0.0.1, or a page
@@ -720,29 +760,19 @@ async fn forward(
         let _ = browser.shutdown().await;
         return Ok(());
     }
-    // Revoked here: nothing more goes to it, on any connection.
-    let revoked = || {
-        if let Some(c) = lock(cached).take() {
-            c.close(0u32.into(), b"revoked");
-        }
-        RelayError::Declined {
-            reason: "That device is no longer trusted here.".into(),
-        }
-    };
+    // No way to it now (revoked, or not allowed by Connections): nothing
+    // more goes to it, on any connection.
+    let route_now = || route().inspect_err(|_| lock(cached).close(b"no route"));
     // Once the site's answer has started reaching the browser, a failure
     // can only end the connection: a 502 after it would read as its body.
     let answered = AtomicBool::new(false);
     let attempt = async {
-        if !still() {
-            return Err(revoked());
-        }
+        let to = route_now()?;
         let conn = connection(node, to, cached).await?;
-        // Asked again once the connection is cached: a revocation that
+        // Asked again once the connection is kept: a revocation that
         // finished while it was being dialled couldn't close it, and one
-        // that finishes from now on closes it (it is the cached one).
-        if !still() {
-            return Err(revoked());
-        }
+        // that finishes from now on closes it (it is the kept one).
+        route_now()?;
         let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
         send.write_all(&rewritten(&head, None))
             .await
@@ -838,7 +868,7 @@ const MAX_FETCHED: usize = 64 * 1024 * 1024;
 pub(crate) async fn fetch(
     node: &Node,
     to: EndpointAddr,
-    cached: &Mutex<Option<Connection>>,
+    cached: &Mutex<Kept>,
     request: SiteRequest,
 ) -> Result<SiteResponse, RelayError> {
     if !request.path.starts_with('/') || request.path.contains(['\r', '\n', ' ']) {
@@ -1207,16 +1237,24 @@ mod tests {
             // dial has finished.
             let asked = Arc::new(AtomicUsize::new(0));
             let counted = Arc::clone(&asked);
-            let still: StillTrusted = Arc::new(move || counted.fetch_add(1, Ordering::SeqCst) == 0);
-            let cached: Arc<Mutex<Option<Connection>>> = Arc::default();
+            let addr = host.endpoint.addr();
+            let route: SiteRoute = Arc::new(move || {
+                if counted.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Ok(addr.clone())
+                } else {
+                    Err(RelayError::Declined {
+                        reason: "That device is no longer trusted here.".into(),
+                    })
+                }
+            });
+            let cached: Arc<Mutex<Kept>> = Arc::default();
             let name = site_host(&host.id().to_string());
             let tunnel = open_tunnel(
                 Arc::clone(&viewer),
-                host.endpoint.addr(),
                 Arc::clone(&cached),
                 0,
                 name.clone(),
-                still,
+                route,
             )
             .await
             .unwrap();
@@ -1236,7 +1274,24 @@ mod tests {
                 2,
                 "asked before and after the dial"
             );
-            assert!(lock(&cached).is_none(), "the dialled connection is closed");
+            assert!(
+                lock(&cached).conn.is_none(),
+                "the dialled connection is closed"
+            );
+
+            // A dial still running when the kept connection was closed (a
+            // revocation, a change of Connections) isn't kept: its route
+            // may no longer be allowed.
+            let generation = lock(&cached).generation;
+            let late = viewer
+                .endpoint
+                .connect(host.endpoint.addr(), WEB_ALPN)
+                .await
+                .unwrap();
+            lock(&cached).close(b"closed");
+            assert!(keep(&cached, generation, late.clone()).is_err());
+            assert!(lock(&cached).conn.is_none());
+            assert!(late.close_reason().is_some(), "and it is closed");
             drop(tunnel);
             viewer.shutdown().await;
             host.shutdown().await;
