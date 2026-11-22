@@ -21,9 +21,17 @@ name = "relay"
 path = "src/bin/relay.rs"
 required-features = ["cli"]
 
+[[bin]]
+name = "relay-mailbox"
+path = "src/bin/relay-mailbox.rs"
+required-features = ["server"]
+
 [features]
 # The `relay` command for Linux and macOS. Never built for iOS.
 cli = ["dep:qrcode", "dep:mdns-sd"]
+# The `relay-mailbox` server (N3), run on Relay's own server. Never built
+# for iOS.
+server = []
 
 [dependencies]
 # The application runtime: one core per process, serial commands, revisions,
@@ -76,7 +84,7 @@ libc = "=0.2.189"
 spake2 = "0.4"
 sha2 = "0.10"
 hmac = "0.12"
-tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros", "fs", "io-util"] }
 log = "0.4"
 # The `relay` command prints a word code's QR code in the terminal.
 qrcode = { version = "0.14", default-features = false, optional = true }

@@ -342,7 +342,7 @@ impl std::fmt::Debug for DepositPass {
 }
 
 /// Byte strings as CBOR byte strings, not arrays of numbers.
-mod serde_bytes_vec {
+pub(crate) mod serde_bytes_vec {
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
