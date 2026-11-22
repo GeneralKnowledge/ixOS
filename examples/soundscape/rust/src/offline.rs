@@ -138,11 +138,14 @@ pub fn plan(offline: &OfflineFile, library: &Library) -> Plan {
         if !may_download(recording) {
             continue;
         }
-        let key = download_key(id, &recording.id);
+        // A recording a merged song brought is kept under that song, as
+        // localize_track looks for it.
+        let owner = recording.merged_from.as_deref().unwrap_or(id.as_str());
+        let key = download_key(owner, &recording.id);
         if !offline.files.contains_key(&key) {
             fetch.push(Fetch {
                 key: key.clone(),
-                track_id: id.clone(),
+                track_id: owner.to_string(),
                 recording_id: recording.id.clone(),
                 url: recording.audio_url.clone(),
                 extension: extension_of(&recording.audio_url),
@@ -275,7 +278,11 @@ pub fn state_of(offline: &OfflineFile, progress: &Progress, track: &LibraryTrack
             reason: "its source doesn't allow downloading".into(),
         };
     }
-    let key = download_key(&track.id, &recording.id);
+    let owner = recording
+        .merged_from
+        .as_deref()
+        .unwrap_or(track.id.as_str());
+    let key = download_key(owner, &recording.id);
     if offline.files.contains_key(&key) {
         DownloadState::Downloaded
     } else if progress.current.as_deref() == Some(key.as_str()) {

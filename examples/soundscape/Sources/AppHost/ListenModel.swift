@@ -432,6 +432,9 @@ public final class ListenModel {
         do {
             let detail = try await core.mergeSongs(into: track, ids: others)
             library = core.library()
+            // Favourites and songs chosen for the phone moved to the kept song.
+            collection = core.collection()
+            offline = core.offline()
             feedback.play(.success)
             return detail
         } catch {

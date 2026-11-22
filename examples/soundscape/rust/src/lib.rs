@@ -984,12 +984,20 @@ impl SoundscapeCore {
         let target = into.clone();
         self.rt
             .command("songs-merge", move |state| {
+                // Checked again here: a removal queued before this command
+                // may have run since the check above.
+                let lib = state.library.value();
+                if !lib.has_track(&target) || lib.merged.contains_key(&target) {
+                    return Err(SoundscapeError::NotInLibrary { id: target.clone() });
+                }
                 let ids: Vec<String> = ids.into_iter().filter(|id| *id != target).collect();
                 for id in &ids {
                     if !state.library.value().has_track(id) {
                         return Err(SoundscapeError::NotInLibrary { id: id.clone() });
                     }
                 }
+                // The library first: if a save after it fails, opening the
+                // app finishes the move (merge::repair_collection).
                 state.change_library(|lib| {
                     merge::merge(lib, &target, &ids);
                     Ok(())
@@ -1412,6 +1420,27 @@ impl SoundscapeCore {
             },
         )
         .await?;
+        // On a merged song, the chosen recording's song is the one to play.
+        let kept = track_id.clone();
+        self.rt
+            .command("song-prefer", move |state| {
+                let lib = state.library.value();
+                let now = lib.prefer.get(&kept);
+                let want = (owner != kept
+                    && library::merged_root(lib, &owner).as_ref() == Some(&kept))
+                .then_some(&owner);
+                if now == want {
+                    return Ok(());
+                }
+                state.change_library(|lib| {
+                    match want {
+                        Some(owner) => lib.prefer.insert(kept.clone(), owner.clone()),
+                        None => lib.prefer.remove(&kept),
+                    };
+                    Ok(())
+                })
+            })
+            .await?;
         self.library_track(track_id)
     }
 
@@ -1611,6 +1640,13 @@ impl SoundscapeCore {
         if let Some(kept) = kept {
             forge_runtime::logging::warn!("unreadable collection set aside as {}", kept.display());
         }
+        let mut collection_doc = collection_doc;
+        let mut repaired = collection_doc.value().clone();
+        if merge::repair_collection(library_doc.value(), &mut repaired) {
+            if let Err(err) = collection_doc.replace(repaired) {
+                forge_runtime::logging::warn!("merged songs' favourites not moved: {err}");
+            }
+        }
         let collection_published = Arc::new(Published::new(collection_doc.value().clone()));
         let imported =
             FileStore::new(directory.path().join("imported")).with_max_bytes(MAX_IMPORT_BYTES);
@@ -1636,6 +1672,13 @@ impl SoundscapeCore {
         let named = offline_doc.value().file_names();
         downloads.sweep(|name| named.contains(name));
         let downloads_root = downloads.root().to_path_buf();
+        let mut offline_doc = offline_doc;
+        let mut repaired = offline_doc.value().clone();
+        if merge::repair_offline(library_doc.value(), &mut repaired) {
+            if let Err(err) = offline_doc.replace(repaired) {
+                forge_runtime::logging::warn!("merged songs' downloads not moved: {err}");
+            }
+        }
         let offline_published = Arc::new(Published::new(offline_doc.value().clone()));
         // Losing what was playing is a small loss: an unreadable file is
         // set aside and playback starts empty.

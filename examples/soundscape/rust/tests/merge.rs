@@ -38,6 +38,11 @@ fn server() -> StaticClient {
     StaticClient::new()
         .route(
             Method::Get,
+            format!("{SERVER}/audio/r/lb-1.mp3"),
+            Ok(Response::new(200, vec![7u8; 300])),
+        )
+        .route(
+            Method::Get,
             format!("{SERVER}/api/catalog"),
             Ok(Response::new(200, CATALOG)),
         )
@@ -203,9 +208,48 @@ fn a_take_merged_into_a_catalogue_song_is_still_picked_on_its_server() {
     );
     let picked = block(core.choose_recording(jamendo_id.clone(), "r/lb-1".into())).unwrap();
     assert_eq!(picked.track.id, jamendo_id);
+    // The chosen take is what the song plays now, and stays so.
+    let plays = picked.track.preferred.as_ref().unwrap();
+    assert_eq!(plays.id, "r/lb-1");
+    assert_eq!(plays.merged_from.as_deref(), Some(anchor.as_str()));
+    let queued = core.queue_tracks(vec![jamendo_id.clone()]);
+    assert_eq!(queued[0].recording.id, "r/lb-1");
+    drop(picked);
+    let core = {
+        drop(core);
+        open(&dir)
+    };
+
+    // Downloaded under the song it came from, and kept on the next pass.
+    block(core.set_offline(vec![jamendo_id.clone()], true)).unwrap();
+    block(core.sync_downloads(None)).unwrap();
+    let again = block(core.sync_downloads(None)).unwrap();
+    let state = &again
+        .tracks
+        .iter()
+        .find(|t| t.track.id == jamendo_id)
+        .unwrap()
+        .state;
+    assert_eq!(*state, soundscape_core::DownloadState::Downloaded);
+    let detail = core.library_track(jamendo_id.clone()).unwrap();
+    assert!(detail.track.downloaded);
+    assert!(detail
+        .track
+        .preferred
+        .unwrap()
+        .audio_url
+        .starts_with("file://"));
+
     // One playable take on its own.
-    let one = core.queue_recording(jamendo_id, "r/lb-1".into()).unwrap();
+    let one = core
+        .queue_recording(jamendo_id.clone(), "r/lb-1".into())
+        .unwrap();
     assert_eq!(one.recording.label, "a");
+
+    // Separating the take server's song undoes the choice.
+    block(core.separate_song(anchor.clone())).unwrap();
+    let alone = core.library_track(jamendo_id.clone()).unwrap();
+    assert_eq!(alone.track.preferred.unwrap().id, jamendo_id);
 }
 
 #[test]
@@ -243,4 +287,64 @@ fn merges_that_make_no_sense_are_refused() {
     let all = core.library_track(jamendo_id).unwrap();
     assert_eq!(all.recordings.len(), 4);
     assert_eq!(all.track.merged.len(), 2);
+}
+
+#[test]
+fn an_unknown_length_never_ties_two_different_lengths_together() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    let file = |name: &str, seconds: Option<f64>| {
+        let path = dir.path().join(name);
+        std::fs::write(&path, name.as_bytes()).unwrap();
+        MusicFile {
+            path: path.to_string_lossy().into_owned(),
+            file_name: name.into(),
+            title: Some("Wise Up".into()),
+            artist: Some("Someone".into()),
+            album: None,
+            number: None,
+            genre: None,
+            duration_seconds: seconds,
+            artwork_path: None,
+        }
+    };
+    block(core.import_music(vec![
+        file("a.mp3", None),
+        file("b.mp3", Some(200.0)),
+        file("c.mp3", Some(400.0)),
+    ]))
+    .unwrap();
+    assert!(
+        core.duplicate_songs().is_empty(),
+        "{:?}",
+        core.duplicate_songs()
+    );
+
+    // With one known length, the unknown one joins it.
+    block(core.import_music(vec![file("d.mp3", Some(201.0))])).unwrap();
+    let groups = core.duplicate_songs();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].tracks.len(), 2, "200 s and 201 s only");
+}
+
+#[test]
+fn a_merge_whose_later_saves_failed_is_finished_on_opening() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, imported, _) = ready(&dir);
+    let night = track_id("ah-one-more-night");
+    block(core.set_favourite(imported.clone(), true)).unwrap();
+    block(core.set_offline(vec![imported.clone()], true)).unwrap();
+    drop(core);
+
+    // As if the library saved the merge and nothing after it did.
+    let path = dir.path().join("data").join("library.json");
+    let mut json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let value = json.get_mut("data").expect("a versioned document");
+    value["merged"] = serde_json::json!({ imported.clone(): night.clone() });
+    std::fs::write(&path, json.to_string()).unwrap();
+
+    let core = open(&dir);
+    assert_eq!(core.collection().favourite_tracks[0].id, night);
+    assert!(core.offline().tracks.iter().any(|t| t.track.id == night));
 }

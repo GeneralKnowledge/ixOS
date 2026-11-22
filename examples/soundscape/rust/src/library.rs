@@ -66,6 +66,12 @@ pub struct LibraryFile {
     /// aren't offered for merging again: [`crate::merge::group_key`]s.
     #[serde(default)]
     pub distinct: std::collections::BTreeSet<String>,
+    /// A merged song whose recording the person chose from one of the
+    /// songs merged into it: kept song's id -> that song's id. Its
+    /// preferred recording then plays, in place of your own file or the
+    /// kept song's.
+    #[serde(default)]
+    pub prefer: BTreeMap<String, String>,
 }
 
 /// A song linked to the recording MusicBrainz knows it as.
@@ -716,7 +722,15 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
     }
     for (mut source, origin, into) in parts {
         let mut merged = Vec::new();
+        let chosen = file.prefer.get(&source.id);
+        let mut chosen_recording = None;
         for (theirs, their_origin) in into {
+            if chosen == Some(&theirs.id) {
+                chosen_recording = theirs.preferred.clone().map(|mut r| {
+                    r.merged_from = Some(theirs.id.clone());
+                    r
+                });
+            }
             source.recording_count += theirs.recording_count;
             // Your own file plays when the merged song has one.
             let local = matches!(their_origin, Origin::Imported(_));
@@ -735,6 +749,10 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
                 source: source_name(&their_origin, file, &theirs.id),
                 id: theirs.id,
             });
+        }
+        // A recording the person chose from a merged song wins.
+        if chosen_recording.is_some() {
+            source.preferred = chosen_recording;
         }
         add(source, origin, merged);
     }

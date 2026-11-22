@@ -68,11 +68,44 @@ pub fn merge(file: &mut LibraryFile, into: &str, ids: &[String]) {
     }
     // Never a song merged into itself.
     file.merged.retain(|from, to| from != to);
+    // Merges collapse: a song merged into one of `ids` now hangs off
+    // `into`, and so does any choice of its recording.
+    let merged = &file.merged;
+    file.prefer.retain(|kept, _| !merged.contains_key(kept));
 }
 
-/// Brings `id` back as a song of its own. Songs merged into it stay with it.
+/// Brings `id` back as a song of its own. Merges collapse into the song
+/// kept (see [`merge`]), so songs that were merged into `id` before it was
+/// merged stay with the kept song; only `id` comes back.
 pub fn separate(file: &mut LibraryFile, id: &str) -> bool {
+    file.prefer.retain(|_, chosen| chosen != id);
     file.merged.remove(id).is_some()
+}
+
+/// Points favourites, playlists, history and offline choices that still
+/// name a merged-away song at the song it was merged into. A merge saves
+/// the library first and these after; if one of those later saves failed,
+/// this finishes the move the next time the app opens. True when it
+/// changed something.
+pub fn repair_collection(file: &LibraryFile, collection: &mut CollectionFile) -> bool {
+    let before = collection.clone();
+    for from in file.merged.keys() {
+        if let Some(root) = merged_root(file, from) {
+            move_collection(collection, from, &root);
+        }
+    }
+    *collection != before
+}
+
+/// [`repair_collection`] for the songs chosen for the phone.
+pub fn repair_offline(file: &LibraryFile, offline: &mut OfflineFile) -> bool {
+    let before = offline.wanted.clone();
+    for from in file.merged.keys() {
+        if let Some(root) = merged_root(file, from) {
+            move_offline(offline, from, &root);
+        }
+    }
+    offline.wanted != before
 }
 
 /// Moves favourites, playlist entries and history from `from` to `to`.
@@ -141,16 +174,10 @@ pub fn duplicates(file: &LibraryFile, library: &Library) -> Vec<DuplicateSongs> 
         by_details.entry(key).or_default().push(track);
     }
     for tracks in by_details.into_values() {
-        // Within the same title and artist, songs of clearly different
-        // lengths (a live version, an edit) are different songs.
-        let mut left = tracks;
-        while let Some(first) = left.first().copied() {
-            let (same, rest): (Vec<&LibraryTrack>, Vec<&LibraryTrack>) =
-                left.into_iter().partition(|t| same_length(first, t));
+        for same in by_length(tracks) {
             if same.len() > 1 {
                 out.push(group(DuplicateReason::SameDetails, same));
             }
-            left = rest;
         }
     }
 
@@ -159,6 +186,39 @@ pub fn duplicates(file: &LibraryFile, library: &Library) -> Vec<DuplicateSongs> 
         !file.distinct.contains(&group_key(&ids))
     });
     out
+}
+
+/// Splits songs with the same title and artist by length: songs of
+/// clearly different lengths (a live version, an edit) are different
+/// songs. Known lengths are grouped first; a song of unknown length joins
+/// them only when they all agree, so it never ties two different lengths
+/// together.
+fn by_length(tracks: Vec<&LibraryTrack>) -> Vec<Vec<&LibraryTrack>> {
+    let (mut known, unknown): (Vec<&LibraryTrack>, Vec<&LibraryTrack>) =
+        tracks.into_iter().partition(|t| seconds(t).is_some());
+    known.sort_by(|a, b| {
+        seconds(a)
+            .unwrap_or(0.0)
+            .total_cmp(&seconds(b).unwrap_or(0.0))
+    });
+    let mut groups: Vec<Vec<&LibraryTrack>> = Vec::new();
+    for track in known {
+        match groups.last_mut() {
+            Some(last) if same_length(last[0], track) => last.push(track),
+            _ => groups.push(vec![track]),
+        }
+    }
+    match groups.len() {
+        0 => groups.push(unknown),
+        1 => groups[0].extend(unknown),
+        // Unknown lengths can't say which group they belong to.
+        _ => {}
+    }
+    groups
+}
+
+fn seconds(track: &LibraryTrack) -> Option<f64> {
+    track.duration_seconds
 }
 
 fn group(reason: DuplicateReason, mut tracks: Vec<&LibraryTrack>) -> DuplicateSongs {
