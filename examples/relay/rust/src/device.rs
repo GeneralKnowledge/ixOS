@@ -185,6 +185,16 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn still_takes_from(&self, from: &str) -> bool {
         self.rights(from).is_some_and(|r| r.receives_from)
     }
+    /// Whether `from` may still see the device list now: a connection
+    /// opened before the switch went off (or the device was marked a
+    /// person's) gets no list.
+    fn still_sees_devices(&self, from: &str) -> bool {
+        self.rights(from).is_some_and(|r| r.sees_devices)
+    }
+    /// Whether `from` may still ask this device's AI now.
+    fn still_may_ask(&self, from: &str) -> bool {
+        self.rights(from).is_some_and(|r| r.may_ask)
+    }
     /// This device's name, for the reply to Hello.
     fn my_name(&self) -> String;
     /// What this device says about itself, for a `StatusAsk`.
@@ -389,9 +399,14 @@ impl DeviceHandler {
         request: ChatRequest,
     ) -> Result<(), RelayError> {
         let host = Arc::clone(&self.host);
-        let Some(model) = tokio::task::spawn_blocking(move || host.model())
-            .await
-            .map_err(connection)?
+        let asker = them.to_string();
+        let Some(model) = tokio::task::spawn_blocking(move || {
+            // Checked again now: the switch may have gone off since the
+            // connection opened.
+            host.still_may_ask(&asker).then(|| host.model()).flatten()
+        })
+        .await
+        .map_err(connection)?
         else {
             let reason = "The other device doesn't answer asks".into();
             say(&mut send, &DeviceMsg::Refused { reason }).await?;
@@ -533,12 +548,21 @@ impl DeviceHandler {
         };
         // The device list has its own switch: trust alone doesn't share it.
         if item == DeviceMsg::DevicesAsk {
-            let reply = if rights.sees_devices {
+            let list = if rights.sees_devices {
                 let host = Arc::clone(&self.host);
                 let asker = them.to_string();
-                let list = tokio::task::spawn_blocking(move || host.device_list(&asker))
-                    .await
-                    .map_err(connection)?;
+                // Checked again now, as the connection may be older than a
+                // change to the switch.
+                tokio::task::spawn_blocking(move || {
+                    host.still_sees_devices(&asker)
+                        .then(|| host.device_list(&asker))
+                })
+                .await
+                .map_err(connection)?
+            } else {
+                None
+            };
+            let reply = if let Some(list) = list {
                 DeviceMsg::DeviceList {
                     trusted: list.trusted,
                     revoked: list.revoked,
