@@ -229,6 +229,13 @@ public final class PythonLabModel {
         hasWorkspace && activity.bonsaiProject == project
     }
 
+    /// Bonsai is about to work in `name`: text whose save just failed
+    /// there is held back now, whether or not Python Lab is on screen.
+    public func bonsaiStarting(in name: String) {
+        guard hasWorkspace, name == project, case .failed = saveState else { return }
+        heldBack = true
+    }
+
     /// Reads the open file and the project's files again from disk, after
     /// Bonsai worked on them. Edits not yet saved are kept, not replaced.
     public func reloadFromDisk() {

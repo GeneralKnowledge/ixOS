@@ -355,6 +355,10 @@ fn requires_python_is_checked() {
     assert!(!python_allowed(">=3.16"));
     assert!(!python_allowed("<3.12"));
     assert!(!python_allowed("!=3.15.*"));
+    assert!(!python_allowed(">=3.16rc1"));
+    assert!(python_allowed(">=3.15.0b1"));
+    assert!(python_allowed("<3.16.dev0"));
+    assert!(!python_allowed(">=three"));
     let json = r#"{
       "info": {"name": "future", "version": "9.0", "requires_python": ">=3.16"},
       "urls": [
@@ -502,4 +506,88 @@ fn an_upgrade_that_cant_keep_saved_files_is_undone() {
         .collect();
     entries.sort();
     assert_eq!(entries, ["keeper", "keeper-1.0.dist-info"]);
+}
+
+#[test]
+fn an_upgrade_never_drops_a_saved_file_the_new_version_also_has() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "1.0",
+        &[("keeper/__init__.py", "X = 1\n")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    fs::write(site.join("keeper/state.json"), "saved").unwrap();
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "2.0",
+        &[
+            ("keeper/__init__.py", "X = 2\n"),
+            ("keeper/state.json", "new"),
+        ],
+        &[],
+        true,
+    );
+    assert!(package_install_wheel(path, sum, site_text.clone()).is_err());
+    assert_eq!(
+        fs::read_to_string(site.join("keeper/state.json")).unwrap(),
+        "saved"
+    );
+    assert_eq!(packages_installed(site_text)[0].version, "1.0");
+}
+
+#[test]
+fn an_undone_upgrade_restores_a_folder_the_new_version_dropped() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "1.0",
+        &[
+            ("keeper/__init__.py", "X = 1\n"),
+            ("assets/old.py", "OLD = 1\n"),
+        ],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    fs::write(site.join("assets/state.sqlite"), "a").unwrap();
+    fs::create_dir_all(site.join("keeper/data")).unwrap();
+    fs::write(site.join("keeper/data/state.sqlite"), "k").unwrap();
+    // Version 2 drops assets/ and has a file where keeper/data was.
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "2.0",
+        &[("keeper/__init__.py", "X = 2\n"), ("keeper/data", "")],
+        &[],
+        true,
+    );
+    assert!(package_install_wheel(path, sum, site_text.clone()).is_err());
+    assert_eq!(
+        fs::read_to_string(site.join("assets/old.py")).unwrap(),
+        "OLD = 1\n"
+    );
+    assert_eq!(
+        fs::read_to_string(site.join("assets/state.sqlite")).unwrap(),
+        "a"
+    );
+    assert_eq!(
+        fs::read_to_string(site.join("keeper/data/state.sqlite")).unwrap(),
+        "k"
+    );
+    let mut entries: Vec<_> = fs::read_dir(&site)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    entries.sort();
+    assert_eq!(entries, ["assets", "keeper", "keeper-1.0.dist-info"]);
 }

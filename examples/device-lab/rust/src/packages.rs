@@ -196,7 +196,15 @@ pub(crate) fn python_allowed(spec: &str) -> bool {
             let Some(op) = OPERATORS.iter().find(|op| clause.starts_with(**op)) else {
                 return true;
             };
-            compare_versions(PYTHON_VERSION, op, clause[op.len()..].trim()).unwrap_or(true)
+            // A pre-, post- or dev-release counts as its release
+            // (`>=3.16rc1` as `>=3.16`); one that still can't be read
+            // excludes the wheel rather than risk it.
+            let version = clause[op.len()..].trim();
+            let release = version
+                .find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '*'))
+                .map_or(version, |end| &version[..end])
+                .trim_end_matches('.');
+            compare_versions(PYTHON_VERSION, op, release).unwrap_or(false)
         })
 }
 
@@ -452,11 +460,21 @@ pub fn package_install_wheel(
                 fs::remove_file(&path)
             };
         }
+        let mut restored = true;
         for top in &set_aside {
-            let _ = fs::rename(backup.join(top), site.join(top));
+            // A folder the new version didn't have, made only to hold
+            // copied saved files: the originals are in the backup.
+            let path = site.join(top);
+            if !placed.contains(top) && path.is_dir() {
+                let _ = fs::remove_dir_all(&path);
+            }
+            restored &= fs::rename(backup.join(top), &path).is_ok();
         }
         let _ = fs::remove_dir_all(&staging);
-        let _ = fs::remove_dir_all(&backup);
+        // Kept if anything couldn't go back, so nothing is lost.
+        if restored {
+            let _ = fs::remove_dir_all(&backup);
+        }
         return Err(err);
     }
     let _ = fs::remove_dir_all(&staging);
@@ -465,8 +483,8 @@ pub fn package_install_wheel(
 }
 
 /// Copies each file under `backup/rel` that `recorded` doesn't list (and
-/// isn't a Python cache) to the same place under `site`, if nothing is
-/// there.
+/// isn't a Python cache) to the same place under `site`. Fails if the new
+/// version put something there.
 fn keep_unrecorded(
     backup: &Path,
     site: &Path,
@@ -486,8 +504,14 @@ fn keep_unrecorded(
     }
     let key = rel.to_string_lossy().replace('\\', "/");
     let to = site.join(rel);
-    if !meta.is_file() || recorded.contains(&key) || fs::symlink_metadata(&to).is_ok() {
+    if !meta.is_file() || recorded.contains(&key) {
         return Ok(());
+    }
+    if fs::symlink_metadata(&to).is_ok() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!("the new version has its own {key}"),
+        ));
     }
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent)?;

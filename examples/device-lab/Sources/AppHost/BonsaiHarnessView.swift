@@ -145,6 +145,7 @@ struct BonsaiHarnessView: View {
                 // the task still starts; the unsaved text stays on screen
                 // there and isn't written over Bonsai's work until edited again.
                 pythonLab?.flush()
+                pythonLab?.bonsaiStarting(in: model.project)
                 model.runRequest()
             }
                 .disabled(model.isScripted || model.request.isEmpty)
