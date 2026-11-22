@@ -226,6 +226,36 @@ public final class ListenModel {
         }
     }
 
+    /// The genres to browse Jamendo by, in the order shown.
+    public var jamendoGenres: [JamendoGenre] { core.jamendoGenres() }
+
+    /// Jamendo tracks in `genre`, this week's most popular first.
+    public func jamendoTracks(in genre: JamendoGenre) async -> Result<[CatalogueTrack], ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.jamendoGenre(tag: genre.tag, cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("jamendo genre failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// More from Jamendo for the Jamendo track `trackId`: by its artist, or
+    /// in its genre.
+    public func moreFromJamendo(_ trackId: String, by: JamendoMore) async -> Result<JamendoMoreTracks, ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.moreFromJamendo(trackId: trackId, by: by, cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("jamendo more failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
     /// An Internet Archive item's playable tracks, in order.
     public func archiveTracks(_ item: ArchiveItem) async -> Result<[CatalogueTrack], ListenFailure> {
         do {
