@@ -110,6 +110,47 @@ public final class BonsaiHarnessModel {
         }
     }
 
+    /// Plans the person's own task as several tasks first (H4).
+    public func runPlan() {
+        perform { [request] harness, model in
+            try harness.startCustomPlan(model: model, request: request)
+        }
+    }
+
+    /// Whether a plan is shown for approval before it runs (Rust keeps it).
+    public var approvePlans: Bool {
+        get { snapshot?.approvePlans ?? true }
+        set {
+            harness?.setApprovePlans(approve: newValue)
+            refresh()
+        }
+    }
+
+    /// Approves the plan on screen, or resumes it from its last verified
+    /// task.
+    public func continuePlan() {
+        if isScripted, let harness {
+            attempt { try harness.continuePlanScripted() }
+            return
+        }
+        perform { harness, model in
+            try harness.continuePlan(model: model)
+        }
+    }
+
+    public func discardPlan() {
+        guard let harness else { return }
+        do {
+            try harness.discardPlan()
+            error = nil
+        } catch let failure as HarnessError {
+            error = failure.message
+        } catch {
+            self.error = "\(error)"
+        }
+        refresh()
+    }
+
     public func stop() {
         harness?.stop()
         refresh()
@@ -177,6 +218,7 @@ extension HarnessError {
         case .Busy: "A task is still running. Stop it first."
         case .EmptyTask: "Describe the task first."
         case .UnknownTask(let id): "There is no task called \(id)."
+        case .NoPlan: "There is no plan to approve or resume."
         case .Storage(let reason): reason
         }
     }
@@ -191,6 +233,20 @@ extension TaskStatus {
         case .completed: "Completed"
         case .failed: "Failed"
         case .stopped: "Stopped"
+        }
+    }
+}
+
+extension PlanState {
+    var title: String {
+        switch self {
+        case .planning: "Writing the plan"
+        case .awaitingApproval: "Waiting for your approval"
+        case .running: "Running"
+        case .completed: "Completed"
+        case .failed: "Failed"
+        case .stopped: "Stopped"
+        case .discarded: "Discarded"
         }
     }
 }

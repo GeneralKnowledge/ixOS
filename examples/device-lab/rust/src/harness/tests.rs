@@ -9,6 +9,7 @@ use forge_services::ai::{AiError, ChatRequest, LanguageModel, ModelInfo, Scripte
 use super::calls::{self, check_path, grammar, parse, with_finish};
 use super::evidence::{ladder, Criterion, Evidence};
 use super::journal::{Entry, Journal, TaskStatus};
+use super::plan::{self, PlanState};
 use super::python_lab::testing::{has_python, LocalPython};
 use super::python_lab::PythonLab;
 use super::*;
@@ -690,6 +691,8 @@ fn the_journal_replays_and_a_task_the_app_closed_during_is_stopped() {
                 criteria: vec![Criterion::WorkRuns],
                 model: "m".into(),
                 at_ms: 1,
+                plan: None,
+                plan_task: None,
             },
             Entry::Status {
                 task: "task-1".into(),
@@ -852,8 +855,17 @@ fn the_scripted_model_completes_every_ladder_task() {
         // Outside the temporary folder, which the guard allows writes to.
         let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
         let h = harness(&dir);
+        h.set_approve_plans(false);
         h.start_ladder_scripted(task.id.into()).unwrap();
         let snapshot = wait(&h);
+        if task.planned {
+            let plan = snapshot.plan.clone().unwrap();
+            assert_eq!(plan.status, PlanState::Completed, "{}: {plan:?}", task.id);
+            assert_eq!(plan.passed as usize, plan.tasks.len());
+            assert!(plan.reason.unwrap().starts_with("All "));
+        } else {
+            assert!(snapshot.plan.is_none());
+        }
         let record = snapshot.task.unwrap();
         assert_eq!(
             record.status,
@@ -905,10 +917,15 @@ fn the_scripted_model_completes_every_ladder_task() {
             assert!(h.transcript().contains("self.assertEqual(add(2, 3), 5)"));
         }
     }
-    // Every scripted answer parses against the tools it will meet.
+    // Every scripted answer parses against the tools (or the planner) it
+    // will meet.
     for task in ladder() {
-        for text in super::evidence::script(task.id) {
-            parse(&text, &lab_tools()).unwrap_or_else(|e| panic!("{text}: {e:?}"));
+        for (index, text) in super::evidence::script(task.id).into_iter().enumerate() {
+            if task.planned && index == 0 {
+                plan::parse(&text).unwrap_or_else(|e| panic!("{text}: {e:?}"));
+            } else {
+                parse(&text, &lab_tools()).unwrap_or_else(|e| panic!("{text}: {e:?}"));
+            }
         }
     }
 }
@@ -1241,4 +1258,379 @@ fn the_live_view_reads_a_half_written_answer() {
     let live = super::live::read(lone);
     assert_eq!(live.code, "x\u{FFFD}");
     assert!(!live.writing);
+}
+
+// MARK: Plans (H4)
+
+#[test]
+fn the_plan_grammar_has_tasks_ids_and_the_checks_to_choose_from() {
+    let g = plan::grammar();
+    assert!(g.starts_with("root ::= \"{\\\"thought\\\": \" thought \", \\\"tasks\\\": [\" task (\", \" task){0,5} \"]}\""), "{g}");
+    for check in ["tests_pass", "work_runs", "run_prints", "makes_image"] {
+        assert!(
+            g.contains(&format!("\\\"check\\\": \\\"{check}\\\"")),
+            "{check}:\n{g}"
+        );
+    }
+    assert!(g.contains("id ::= \"\\\"\" [a-z] [a-z0-9-]{0,15} \"\\\"\""));
+    assert!(g.contains("char ::="));
+    // The instructions' example is a plan the parser takes.
+    let (thought, tasks) = plan::parse(&plan::example()).unwrap();
+    assert!(!thought.is_empty());
+    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks[1].after, vec!["area".to_string()]);
+    assert_eq!(
+        tasks[1].criteria,
+        vec![Criterion::RunPrints {
+            path: "main.py".into(),
+            text: "15".into()
+        }]
+    );
+    assert!(plan::instructions().contains(&plan::example()));
+}
+
+#[test]
+fn a_plan_that_cant_run_in_order_is_refused_with_a_reason() {
+    let task = |id: &str, after: &str, check: &str| {
+        format!(r#"{{"id": "{id}", "do": "Do {id}.", "after": [{after}], "checks": [{check}]}}"#)
+    };
+    let tests = r#"{"check": "tests_pass"}"#;
+    let plan_of =
+        |tasks: Vec<String>| format!(r#"{{"thought": "t", "tasks": [{}]}}"#, tasks.join(", "));
+    for (text, expected) in [
+        (plan_of(vec![]), "no tasks"),
+        (
+            plan_of(vec![task("a", "", tests), task("a", "", tests)]),
+            "Two tasks are called",
+        ),
+        (
+            plan_of(vec![task("a", r#""b""#, tests), task("b", "", tests)]),
+            "not an earlier task",
+        ),
+        (plan_of(vec![task("a", r#""a""#, tests)]), "after itself"),
+        (plan_of(vec![task("a", "", "")]), "at least one check"),
+        (
+            plan_of(vec![task("a", "", r#"{"check": "looks_nice"}"#)]),
+            "no check called",
+        ),
+        (
+            plan_of(vec![task(
+                "a",
+                "",
+                r#"{"check": "run_prints", "path": "../x.py", "text": "1"}"#,
+            )]),
+            "inside the project",
+        ),
+        (
+            plan_of(vec![task(
+                "a",
+                "",
+                r#"{"check": "run_prints", "path": "x.py", "text": " "}"#,
+            )]),
+            "needs the text",
+        ),
+        (plan_of(vec![task("Big", "", tests)]), "not a task id"),
+        (
+            plan_of((0..7).map(|i| task(&format!("t{i}"), "", tests)).collect()),
+            "at most 6",
+        ),
+        ("{\"thought\": \"t\"}".to_string(), "no \"tasks\""),
+    ] {
+        let err = plan::parse(&text).unwrap_err();
+        assert!(err.contains(expected), "{text}: {err}");
+    }
+}
+
+#[test]
+fn a_plan_waits_for_approval_then_runs_or_is_discarded() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    assert!(h.snapshot().approve_plans);
+    h.start_ladder_scripted("t6-two-functions".into()).unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::AwaitingApproval);
+    assert!(plan.can_continue);
+    assert_eq!(plan.tasks.len(), 2);
+    assert_eq!(plan.tasks[1].after, vec!["shout".to_string()]);
+    assert!(plan.tasks.iter().all(|t| t.status == TaskStatus::Ready));
+    // Nothing ran: no task, no files.
+    assert!(snapshot.task.is_none());
+    assert!(h.files().is_empty());
+
+    h.continue_plan_scripted().unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
+    assert_eq!(plan.passed, 2);
+    assert!(!plan.can_continue);
+    assert!(matches!(
+        h.continue_plan_scripted(),
+        Err(HarnessError::NoPlan)
+    ));
+    let transcript = h.transcript();
+    assert!(transcript.contains("## Plan"), "{transcript}");
+    assert!(
+        transcript.contains("- whisper (after shout)"),
+        "{transcript}"
+    );
+    assert!(
+        transcript.contains("return text.lower() + \\\"...\\\""),
+        "{transcript}"
+    );
+
+    // A plan the person doesn't approve never runs.
+    h.start_ladder_scripted("t6-two-functions".into()).unwrap();
+    wait(&h);
+    h.discard_plan().unwrap();
+    let plan = h.snapshot().plan.unwrap();
+    assert_eq!(plan.status, PlanState::Discarded);
+    assert!(matches!(
+        h.continue_plan_scripted(),
+        Err(HarnessError::NoPlan)
+    ));
+    assert!(matches!(h.discard_plan(), Err(HarnessError::NoPlan)));
+    assert!(h.files().is_empty());
+}
+
+/// Answers like the Scripted model, then fails: the phone losing the
+/// model halfway through a plan.
+struct FailAfter(ScriptedModel, std::sync::atomic::AtomicUsize);
+
+impl Brain for FailAfter {
+    fn describe(&self) -> ModelInfo {
+        self.0.describe()
+    }
+
+    fn generate(
+        &self,
+        request: ChatRequest,
+        _grammar: Option<&str>,
+        out: Arc<dyn TextOut>,
+    ) -> Result<(), AiError> {
+        use std::sync::atomic::Ordering;
+        if self.1.fetch_sub(1, Ordering::SeqCst) == 0 {
+            return Err(AiError::Unavailable {
+                reason: "the model was unloaded".into(),
+            });
+        }
+        self.0.generate(request, out)
+    }
+}
+
+#[test]
+fn a_failed_plan_resumes_from_its_last_verified_task() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    h.set_approve_plans(false);
+    let script = evidence::script("t7-plan-with-dependency");
+    // The plan, task letter's three answers, then task tests writes its
+    // file and the model goes.
+    let brain = Arc::new(FailAfter(
+        ScriptedModel::new(script.clone()),
+        std::sync::atomic::AtomicUsize::new(5),
+    ));
+    h.start(brain, task("t7-plan-with-dependency")).unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Failed, "{plan:?}");
+    assert!(plan
+        .reason
+        .as_deref()
+        .unwrap()
+        .starts_with("Task tests: The model failed"));
+    assert_eq!(plan.passed, 1);
+    assert_eq!(plan.tasks[0].status, TaskStatus::Completed);
+    assert_eq!(plan.tasks[1].status, TaskStatus::Failed);
+    assert_eq!(plan.tasks[2].status, TaskStatus::Ready);
+    assert!(plan.can_continue);
+    let root = dir.path().join("t7-plan-with-dependency");
+    assert!(root.join("test_grades.py").exists());
+
+    h.continue_plan_scripted().unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
+    assert_eq!(plan.passed, 3);
+    // letter ran once; tests ran twice (the failed try, then the resumed one).
+    let entries = Journal::replay(&root);
+    let runs_of = |id: &str| {
+        entries
+            .iter()
+            .filter(|e| matches!(e, Entry::Task { plan_task: Some(p), .. } if p == id))
+            .count()
+    };
+    assert_eq!(
+        (runs_of("letter"), runs_of("tests"), runs_of("report")),
+        (1, 2, 1)
+    );
+    // The report's task saw a line on each task done before it, with fresh
+    // steps of its own.
+    assert_eq!(snapshot.steps.len(), 3);
+    assert_eq!(snapshot.steps[0].index, 1);
+}
+
+#[test]
+fn the_executor_sees_its_task_and_one_line_per_task_done() {
+    let entries = vec![
+        Entry::PlanRequest {
+            plan: "plan-1".into(),
+            request: "Grades and a report.".into(),
+            criteria: vec![],
+            model: "m".into(),
+            at_ms: 1,
+        },
+        Entry::Plan {
+            plan: "plan-1".into(),
+            thought: "t".into(),
+            tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0])
+                .unwrap()
+                .1,
+            model_ms: 1,
+        },
+        Entry::Task {
+            task: "task-1".into(),
+            description: "letter".into(),
+            criteria: vec![Criterion::WorkRuns],
+            model: "m".into(),
+            at_ms: 2,
+            plan: Some("plan-1".into()),
+            plan_task: Some("letter".into()),
+        },
+        Entry::Status {
+            task: "task-1".into(),
+            status: TaskStatus::Completed,
+            reason: Some("Verified: grades.py ran without an error.".into()),
+            at_ms: 3,
+        },
+    ];
+    let view = plan::PlanView::read(&entries).unwrap();
+    let next = view.next().unwrap();
+    assert_eq!(next.id, "tests");
+    assert_eq!(view.restart_point(), "task-1");
+    let request = view.executor_request(next);
+    assert!(request.starts_with("Write test_grades.py"), "{request}");
+    assert!(
+        request.contains("plan for: Grades and a report."),
+        "{request}"
+    );
+    assert!(
+        request.contains("Done already:\n- letter: Write grades.py"),
+        "{request}"
+    );
+    assert!(request.contains("Verified: grades.py ran"), "{request}");
+    // Nothing done yet: the plan's own checkpoint.
+    let view = plan::PlanView::read(&entries[..2]).unwrap();
+    assert_eq!(view.restart_point(), "plan-1");
+    assert!(!view
+        .executor_request(view.next().unwrap())
+        .contains("Done already"));
+}
+
+#[test]
+fn a_plan_the_app_closed_during_stops_and_can_resume() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("scratch");
+    std::fs::create_dir_all(&root).unwrap();
+    {
+        let mut journal = Journal::open(&root).unwrap();
+        for entry in [
+            Entry::PlanRequest {
+                plan: "plan-1".into(),
+                request: "Grades.".into(),
+                criteria: vec![],
+                model: "m".into(),
+                at_ms: 1,
+            },
+            Entry::Plan {
+                plan: "plan-1".into(),
+                thought: "t".into(),
+                tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0])
+                    .unwrap()
+                    .1,
+                model_ms: 1,
+            },
+            Entry::PlanStatus {
+                plan: "plan-1".into(),
+                status: PlanState::Running,
+                reason: None,
+                at_ms: 2,
+            },
+            Entry::Task {
+                task: "task-1".into(),
+                description: "letter".into(),
+                criteria: vec![Criterion::WorkRuns],
+                model: "m".into(),
+                at_ms: 3,
+                plan: Some("plan-1".into()),
+                plan_task: Some("letter".into()),
+            },
+            Entry::Status {
+                task: "task-1".into(),
+                status: TaskStatus::Running,
+                reason: None,
+                at_ms: 4,
+            },
+            Entry::StepStarted {
+                task: "task-1".into(),
+                step: 1,
+                at_ms: 5,
+            },
+        ] {
+            journal.append(&entry).unwrap();
+        }
+    }
+    let h = harness(&dir);
+    h.open_project("scratch".into()).unwrap();
+    let snapshot = h.snapshot();
+    assert_eq!(snapshot.task.unwrap().status, TaskStatus::Stopped);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Stopped);
+    assert_eq!(
+        plan.reason.as_deref(),
+        Some("The app closed during task letter.")
+    );
+    assert!(plan.can_continue);
+    assert_eq!(plan.passed, 0);
+    // Written back: opening it again changes nothing.
+    h.open_project("scratch".into()).unwrap();
+    assert_eq!(Journal::replay(&root).len(), 8);
+}
+
+#[test]
+fn restore_puts_the_project_back_as_the_checkpoint_kept_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    std::fs::write(dir.path().join("a.py"), "a = 1\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("pkg")).unwrap();
+    std::fs::write(dir.path().join("pkg/m.py"), "m = 1\n").unwrap();
+    lab.checkpoint("one").unwrap();
+    std::fs::write(dir.path().join("a.py"), "a = 2\n").unwrap();
+    std::fs::write(dir.path().join("b.py"), "b = 1\n").unwrap();
+    std::fs::remove_dir_all(dir.path().join("pkg")).unwrap();
+    std::fs::create_dir_all(dir.path().join(".harness")).unwrap();
+    std::fs::write(dir.path().join(".harness/journal.jsonl"), "{}\n").unwrap();
+    lab.restore("one").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.py")).unwrap(),
+        "a = 1\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("pkg/m.py")).unwrap(),
+        "m = 1\n"
+    );
+    assert!(!dir.path().join("b.py").exists());
+    // The harness's own records stay.
+    assert!(dir.path().join(".harness/journal.jsonl").exists());
+    assert!(lab.restore("missing").is_err());
 }

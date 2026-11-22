@@ -815,6 +815,21 @@ void uniffi_forge_ffi_fn_free_bonsaiharness(uint64_t handle, RustCallStatus *_No
 uint64_t uniffi_forge_ffi_fn_constructor_bonsaiharness_new(uint64_t python, RustBuffer projects_folder, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_CONTINUE_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_CONTINUE_PLAN
+void uniffi_forge_ffi_fn_method_bonsaiharness_continue_plan(uint64_t ptr, uint64_t model, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_CONTINUE_PLAN_SCRIPTED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_CONTINUE_PLAN_SCRIPTED
+void uniffi_forge_ffi_fn_method_bonsaiharness_continue_plan_scripted(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_DISCARD_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_DISCARD_PLAN
+void uniffi_forge_ffi_fn_method_bonsaiharness_discard_plan(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_FILES
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_FILES
 RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_files(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -840,6 +855,11 @@ RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_project_folder(uint64_t ptr,
 RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_replay(uint64_t ptr, uint32_t step, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SET_APPROVE_PLANS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SET_APPROVE_PLANS
+void uniffi_forge_ffi_fn_method_bonsaiharness_set_approve_plans(uint64_t ptr, int8_t approve, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SNAPSHOT
 RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_snapshot(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -848,6 +868,11 @@ RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_snapshot(uint64_t ptr, RustC
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM
 void uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(uint64_t ptr, uint64_t model, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM_PLAN
+void uniffi_forge_ffi_fn_method_bonsaiharness_start_custom_plan(uint64_t ptr, uint64_t model, RustBuffer request, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_LADDER
@@ -2069,6 +2094,24 @@ uint16_t uniffi_forge_ffi_checksum_method_ailab_update_external(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_CONTINUE_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_CONTINUE_PLAN
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_continue_plan(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_CONTINUE_PLAN_SCRIPTED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_CONTINUE_PLAN_SCRIPTED
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_continue_plan_scripted(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_DISCARD_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_DISCARD_PLAN
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_discard_plan(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_FILES
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_FILES
 uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_files(void
@@ -2099,6 +2142,12 @@ uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_replay(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_SET_APPROVE_PLANS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_SET_APPROVE_PLANS
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_set_approve_plans(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_SNAPSHOT
 uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_snapshot(void
@@ -2108,6 +2157,12 @@ uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_snapshot(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM
 uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM_PLAN
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom_plan(void
     
 );
 #endif

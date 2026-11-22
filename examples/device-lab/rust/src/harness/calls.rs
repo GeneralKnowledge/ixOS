@@ -140,7 +140,13 @@ pub fn grammar(tools: &[ToolSpec]) -> String {
         text += &rule;
         text.push('\n');
     }
-    text += &format!(
+    text + &common_rules()
+}
+
+/// The rules every harness grammar shares: a project path, the thought, a
+/// JSON string and its characters.
+pub fn common_rules() -> String {
+    let mut text = format!(
         "path ::= \"\\\"\" [A-Za-z0-9_] [A-Za-z0-9_./-]{{0,{}}} \"\\\"\"\n",
         PATH_MAX - 1
     );

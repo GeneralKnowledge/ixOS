@@ -183,9 +183,19 @@ Phone sitting: Scripted T1 to T5, then T4 and T5 on the 4B and the 9B, comparing
 
 The ladder also has **T-P1** (`tp1-svg-chart`, from Visual Labs P1): write chart.py that saves a bar chart of [3, 7, 5] as chart.svg with the standard library; accepted when a run after the last change made chart.svg and it contains an `<svg>` element (`ProducesImage`). Since the 2026-11-22 phone run (4B passed with every bar the same height), it must also draw the numbers: `SvgBars` wants `<rect>` heights or widths that rank like 3, 7, 5 and each value as a `<text>` label. The same run spent five steps on double quotes inside a double-quoted string, so a parse error for an unterminated string now names that cause.
 
-### H4: planning and multi-task orchestration
+### H4: planning and multi-task orchestration (built 2026-11-22)
 
 Planner mode: the request becomes a constrained plan (tasks, dependencies, acceptance criteria chosen from the harness's list). As in Cline's Plan and Act, the plan is shown before anything changes, with an approval switch (approve each plan, or run on). The harness runs ready tasks in dependency order, one executor at a time, each with a fresh context, and shows the plan with each task's status (as in "3 / 6 tasks passed"). The journal now resumes a half-finished plan from its last verified task, and the model can be unloaded between tasks. Ladder: T6 "a module with two functions, each with its own test" as a two-task plan; T7 a three-task plan with a dependency.
+
+What was built (`rust/src/harness/plan.rs`), tested on Linux against python3; Swift not compiled yet, nothing run on the phone yet:
+
+- **The plan is one JSON object** under its own grammar, generated like the executor's: a thought, then one to six tasks, each with an id, what to do (at most 400 characters), the ids of earlier tasks it needs (`after`) and one to four checks chosen from `tests_pass`, `work_runs`, `run_prints(path, text)` and `makes_image(path, svg|png)`. Rust checks it again: unique ids, `after` naming only earlier tasks (so a plan can't have a cycle and runs in the order written), paths inside the project, a text for `run_prints`. A plan that fails a check goes back to the planner with the reason; three in a row and the plan fails.
+- **Approval:** a switch on the screen, on by default. With it on, the plan is shown with each task, its dependencies and checks, and nothing changes until **Approve and Run** (or **Discard Plan**). With it off, the plan runs as soon as it parses.
+- **Running:** the first task not yet verified whose dependencies all are; one executor at a time, each with a fresh history. Its request is its own description, the whole request for context, and one line per task already done (what it was and the evidence that verified it). A task that fails or stops ends the plan there (recovery is H5). Once every task is verified, the request's own checks (a ladder task's) are made against the evidence of the whole plan.
+- **Journal and resume:** new entries `plan_request`, `plan_invalid`, `plan` and `plan_status`, and each executor task names its plan and plan task. A checkpoint is taken before the first task and after each verified one. Opening a project whose plan was running when the app closed marks it Stopped; **Resume from Last Verified Task** puts the files back as that checkpoint kept them and runs the rest. The Scripted model picks up its answers at the same place.
+- **Not done:** unloading the model between tasks. The model stays loaded for the whole plan; whether unloading is worth the reload time waits for a memory measurement on the phone.
+- **Ladder:** T6 (`textutil.py` with `shout` and `whisper`, a test file each, as two tasks) and T7 (`grades.py`'s `letter`, its tests, and `report.py` printing `Ana: A`, `Ben: C`, `Cy: B`, as three tasks where the tests and the report both need the function). Both have Scripted answers, plan included.
+- **Phone check (next combined build):** Scripted T6 with approval on (plan shown, Approve and Run, both tasks pass); Scripted T7 with approval off; then T6 and T7 on the 4B and 9B, recording the plan each writes.
 
 ### H5: recovery and replanning
 

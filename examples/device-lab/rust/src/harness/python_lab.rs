@@ -569,6 +569,41 @@ impl Environment for PythonLab {
         }
         Ok(())
     }
+
+    fn restore(&self, name: &str) -> std::io::Result<()> {
+        let source = self.root.join(".harness/checkpoints").join(name);
+        if !source.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("there is no checkpoint {name}"),
+            ));
+        }
+        // The project's own files go (never the harness's records), then
+        // the checkpoint's come back.
+        if let Ok(entries) = fs::read_dir(&self.root) {
+            for entry in entries.flatten() {
+                if entry.file_name().to_string_lossy().starts_with('.') {
+                    continue;
+                }
+                let path = entry.path();
+                if entry.file_type()?.is_dir() {
+                    fs::remove_dir_all(path)?;
+                } else {
+                    fs::remove_file(path)?;
+                }
+            }
+        }
+        let mut kept = Vec::new();
+        walk(&source, &source, &mut kept);
+        for (path, _) in kept {
+            let to = self.root.join(&path);
+            if let Some(parent) = to.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(source.join(&path), to)?;
+        }
+        Ok(())
+    }
 }
 
 fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) {

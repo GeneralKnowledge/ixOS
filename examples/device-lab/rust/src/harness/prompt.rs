@@ -360,3 +360,77 @@ pub fn transcript(project: &str, task: &[Entry]) -> String {
     }
     text
 }
+
+/// A plan and each of its tasks as Markdown, to copy as evidence.
+pub fn plan_transcript(project: &str, entries: &[Entry]) -> String {
+    let Some(view) = super::plan::PlanView::read(entries) else {
+        return "No plan yet.".into();
+    };
+    let mut text = format!(
+        "# Bonsai Harness plan: {}\n\nProject: {project}\nModel: {}\nRequest: {}\nStatus: {:?}{}\n",
+        view.id,
+        view.model,
+        view.request,
+        view.state,
+        view.reason
+            .as_ref()
+            .map(|r| format!(" ({r})"))
+            .unwrap_or_default(),
+    );
+    if !view.criteria.is_empty() {
+        text += &format!(
+            "Done when: {}\n",
+            view.criteria
+                .iter()
+                .map(Criterion::describe)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
+    for entry in entries {
+        if let Entry::PlanInvalid {
+            text: answer,
+            error,
+            ..
+        } = entry
+        {
+            text += &format!("\nRefused plan ({error}):\n\n```\n{answer}\n```\n");
+        }
+    }
+    if !view.thought.is_empty() {
+        text += &format!("\nThought: {}\n", view.thought);
+    }
+    text += "\n## Plan\n\n";
+    for task in &view.tasks {
+        let after = if task.after.is_empty() {
+            String::new()
+        } else {
+            format!(" (after {})", task.after.join(", "))
+        };
+        text += &format!(
+            "- {}{after}: {} [{:?}] Done when: {}.\n",
+            task.id,
+            task.description,
+            view.status_of(&task.id),
+            task.criteria
+                .iter()
+                .map(Criterion::describe)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
+    // Every executor task of the plan, in the order they ran.
+    let ids: Vec<&str> = entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Task { task, .. } => Some(task.as_str()),
+            _ => None,
+        })
+        .collect();
+    for id in ids {
+        let task: Vec<Entry> = entries.iter().filter(|e| e.task() == id).cloned().collect();
+        text += "\n";
+        text += &transcript(project, &task).replacen("# Bonsai Harness:", "## Task", 1);
+    }
+    text
+}

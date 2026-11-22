@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::evidence::{Criterion, Evidence};
+use super::plan::{PlanState, PlanTask};
 
 /// A task's status, owned by the harness.
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +46,11 @@ pub enum Entry {
         criteria: Vec<Criterion>,
         model: String,
         at_ms: i64,
+        /// The plan this task belongs to, and its id there (H4).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plan: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plan_task: Option<String>,
     },
     Status {
         task: String,
@@ -86,6 +92,35 @@ pub enum Entry {
         step: u32,
         text: String,
     },
+    /// A request the planner splits into tasks; `criteria` are the
+    /// request's own checks, made once every task is verified.
+    PlanRequest {
+        plan: String,
+        request: String,
+        criteria: Vec<Criterion>,
+        model: String,
+        at_ms: i64,
+    },
+    /// A plan answer that couldn't be used, and why.
+    PlanInvalid {
+        plan: String,
+        text: String,
+        error: String,
+        model_ms: u64,
+    },
+    /// The plan the planner wrote.
+    Plan {
+        plan: String,
+        thought: String,
+        tasks: Vec<PlanTask>,
+        model_ms: u64,
+    },
+    PlanStatus {
+        plan: String,
+        status: PlanState,
+        reason: Option<String>,
+        at_ms: i64,
+    },
 }
 
 impl Entry {
@@ -98,6 +133,10 @@ impl Entry {
             | Entry::Invalid { task, .. }
             | Entry::Result { task, .. }
             | Entry::Nudge { task, .. } => task,
+            Entry::PlanRequest { plan, .. }
+            | Entry::PlanInvalid { plan, .. }
+            | Entry::Plan { plan, .. }
+            | Entry::PlanStatus { plan, .. } => plan,
         }
     }
 }

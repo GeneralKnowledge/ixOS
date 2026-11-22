@@ -18,6 +18,7 @@ pub mod calls;
 pub mod evidence;
 pub mod journal;
 pub mod live;
+pub mod plan;
 mod prompt;
 pub mod python_lab;
 pub mod samples;
@@ -25,7 +26,7 @@ pub mod samples;
 mod tests;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -38,6 +39,7 @@ use crate::native::ai::{AiModelError, AiModelInfo, AiRequest, TextSink};
 use calls::{parse, with_finish, ToolCall, FINISH};
 use evidence::{Criterion, Evidence, LadderTask};
 use journal::{Entry, Journal, TaskStatus};
+use plan::{PlanState, PlanView};
 use python_lab::{PythonHost, PythonLab};
 
 /// What a tool call did: whether it worked, the text the model sees, and
@@ -81,6 +83,8 @@ pub trait Environment: Send + Sync {
     fn interrupt(&self);
     /// Keeps a copy of the workspace as it is now, under `name`.
     fn checkpoint(&self, name: &str) -> std::io::Result<()>;
+    /// Puts the workspace back as the checkpoint `name` kept it.
+    fn restore(&self, name: &str) -> std::io::Result<()>;
 }
 
 /// A model the harness can drive, implemented by the host (iOS: llama.cpp's
@@ -127,7 +131,9 @@ impl ScriptBrain {
                     unavailable_reason: None,
                     context_tokens: 8_192,
                 })
-                .pause(Duration::from_millis(400)),
+                // Slow enough on the phone for the screen to follow; tests
+                // don't wait.
+                .pause(Duration::from_millis(if cfg!(test) { 0 } else { 400 })),
         )
     }
 }
@@ -210,6 +216,8 @@ pub struct HarnessTask {
     pub request: String,
     /// What proves it done, in words.
     pub acceptance: Vec<String>,
+    /// Bonsai plans it as several tasks first (H4).
+    pub planned: bool,
 }
 
 /// The task record, as the screen shows it.
@@ -265,6 +273,39 @@ pub struct HarnessSnapshot {
     pub live: Option<live::HarnessLive>,
     pub elapsed_ms: u64,
     pub limits: HarnessLimits,
+    /// The plan the task belongs to, or the plan being written.
+    pub plan: Option<HarnessPlan>,
+    /// Plans are shown for approval before they run.
+    pub approve_plans: bool,
+}
+
+/// A plan, as the screen shows it.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct HarnessPlan {
+    pub id: String,
+    pub request: String,
+    pub status: PlanState,
+    /// Why it stopped or failed, or what proved it complete.
+    pub reason: Option<String>,
+    /// The planner's one line on the plan.
+    pub thought: String,
+    pub tasks: Vec<HarnessPlanTask>,
+    /// Tasks verified so far (as in "3 / 6 tasks passed").
+    pub passed: u32,
+    /// The request's own checks, made once every task is verified.
+    pub acceptance: Vec<String>,
+    /// Approve it, or resume it from its last verified task.
+    pub can_continue: bool,
+}
+
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct HarnessPlanTask {
+    pub id: String,
+    pub description: String,
+    pub after: Vec<String>,
+    pub acceptance: Vec<String>,
+    pub status: TaskStatus,
+    pub result: Option<String>,
 }
 
 /// A file of the project, for the screen.
@@ -283,6 +324,8 @@ pub enum HarnessError {
     EmptyTask,
     #[error("There is no task called {id}.")]
     UnknownTask { id: String },
+    #[error("There is no plan to approve or resume.")]
+    NoPlan,
     #[error("{reason}")]
     Storage { reason: String },
 }
@@ -314,6 +357,7 @@ struct State {
     started: Option<Instant>,
     finished_ms: u64,
     environment: Option<Arc<dyn Environment>>,
+    approve_plans: bool,
 }
 
 #[uniffi::export]
@@ -337,13 +381,19 @@ impl BonsaiHarness {
                 title: t.title.into(),
                 request: t.request.into(),
                 acceptance: t.criteria.iter().map(Criterion::describe).collect(),
+                planned: t.planned,
             })
             .collect()
     }
 
     pub fn snapshot(&self) -> HarnessSnapshot {
         let state = lock(&self.shared.state);
-        let task = journal::last_task(&state.entries);
+        let current_plan = plan::current(&state.entries);
+        // While a plan is written, no task of its own has started yet.
+        let task = match current_plan {
+            Some(entries) if !entries.iter().any(|e| matches!(e, Entry::Task { .. })) => &[],
+            _ => journal::last_task(&state.entries),
+        };
         HarnessSnapshot {
             running: state.running,
             phase: state.phase,
@@ -371,7 +421,16 @@ impl BonsaiHarness {
                 _ => state.finished_ms,
             },
             limits: self.limits.clone(),
+            plan: current_plan
+                .and_then(PlanView::read)
+                .map(|view| plan_record(&view)),
+            approve_plans: state.approve_plans,
         }
+    }
+
+    /// Whether a plan waits for the person's approval before it runs.
+    pub fn set_approve_plans(&self, approve: bool) {
+        lock(&self.shared.state).approve_plans = approve;
     }
 
     /// Starts a ladder task in a fresh project of its own (the last run's
@@ -406,7 +465,71 @@ impl BonsaiHarness {
         model: Arc<dyn HarnessModel>,
         request: String,
     ) -> Result<(), HarnessError> {
-        self.start_request(Arc::new(HostBrain(model)), request)
+        self.start_request(Arc::new(HostBrain(model)), request, false)
+    }
+
+    /// Plans a task in the person's own words as several tasks, then runs
+    /// them (after approval, when that's on), in the scratch project.
+    pub fn start_custom_plan(
+        &self,
+        model: Arc<dyn HarnessModel>,
+        request: String,
+    ) -> Result<(), HarnessError> {
+        self.start_request(Arc::new(HostBrain(model)), request, true)
+    }
+
+    /// Runs the plan on screen: approves it, or resumes it from its last
+    /// verified task (the project's files go back to that task's
+    /// checkpoint).
+    pub fn continue_plan(&self, model: Arc<dyn HarnessModel>) -> Result<(), HarnessError> {
+        self.continue_with(Arc::new(HostBrain(model)))
+    }
+
+    /// [`Self::continue_plan`] with the Scripted model, which picks up its
+    /// known-good answers where the plan left off.
+    pub fn continue_plan_scripted(&self) -> Result<(), HarnessError> {
+        let (project, turns) = {
+            let state = lock(&self.shared.state);
+            let view = plan::current(&state.entries).and_then(PlanView::read);
+            (
+                state.project.clone(),
+                view.map(|v| v.verified_turns).unwrap_or(0),
+            )
+        };
+        let script = evidence::script(project.as_deref().unwrap_or(""))
+            .into_iter()
+            .skip(turns)
+            .collect();
+        self.continue_with(Arc::new(ScriptBrain::new(script)))
+    }
+
+    /// Discards a plan waiting for approval; nothing of it runs.
+    pub fn discard_plan(&self) -> Result<(), HarnessError> {
+        let mut state = lock(&self.shared.state);
+        if state.running {
+            return Err(HarnessError::Busy);
+        }
+        let Some(view) = plan::current(&state.entries).and_then(PlanView::read) else {
+            return Err(HarnessError::NoPlan);
+        };
+        if view.state != PlanState::AwaitingApproval {
+            return Err(HarnessError::NoPlan);
+        }
+        let entry = Entry::PlanStatus {
+            plan: view.id,
+            status: PlanState::Discarded,
+            reason: Some("Discarded.".into()),
+            at_ms: now_ms(),
+        };
+        let name = state.project.clone().unwrap_or_default();
+        let root = self.project_root(&name)?;
+        Journal::open(&root)
+            .and_then(|mut journal| journal.append(&entry))
+            .map_err(|err| HarnessError::Storage {
+                reason: format!("Could not write the journal: {err}"),
+            })?;
+        state.entries.push(entry);
+        Ok(())
     }
 
     /// Opens a project's journal for the screen (the last task and its
@@ -445,6 +568,33 @@ impl BonsaiHarness {
                 state.entries.push(entry);
             }
         }
+        // A plan the app closed during stops too, and can be resumed from
+        // its last verified task.
+        if let Some(view) = plan::current(&state.entries).and_then(PlanView::read) {
+            if matches!(view.state, PlanState::Planning | PlanState::Running) {
+                let at = view
+                    .tasks
+                    .iter()
+                    .find(|t| {
+                        !matches!(
+                            view.status_of(&t.id),
+                            TaskStatus::Completed | TaskStatus::Ready
+                        )
+                    })
+                    .map(|t| format!("The app closed during task {}.", t.id))
+                    .unwrap_or_else(|| "The app closed during this plan.".into());
+                let entry = Entry::PlanStatus {
+                    plan: view.id,
+                    status: PlanState::Stopped,
+                    reason: Some(at),
+                    at_ms: now_ms(),
+                };
+                if let Ok(mut journal) = Journal::open(&root) {
+                    let _ = journal.append(&entry);
+                }
+                state.entries.push(entry);
+            }
+        }
         Ok(())
     }
 
@@ -464,10 +614,11 @@ impl BonsaiHarness {
     /// The last task as text, to copy as evidence.
     pub fn transcript(&self) -> String {
         let state = lock(&self.shared.state);
-        prompt::transcript(
-            state.project.as_deref().unwrap_or("?"),
-            journal::last_task(&state.entries),
-        )
+        let project = state.project.as_deref().unwrap_or("?");
+        match plan::current(&state.entries) {
+            Some(entries) => prompt::plan_transcript(project, entries),
+            None => prompt::transcript(project, journal::last_task(&state.entries)),
+        }
     }
 
     /// Step `step` of the last task as the live view drew it once written:
@@ -534,6 +685,7 @@ impl BonsaiHarness {
                     started: None,
                     finished_ms: 0,
                     environment: None,
+                    approve_plans: true,
                 }),
                 stop: AtomicBool::new(false),
             }),
@@ -561,19 +713,25 @@ impl BonsaiHarness {
                 reason: format!("Could not prepare the project: {err}"),
             });
         }
-        self.launch(
-            brain,
-            Arc::new(lab),
-            task.id,
-            task.request.into(),
-            task.criteria,
-        )
+        let job = if task.planned {
+            Job::Plan {
+                request: task.request.into(),
+                criteria: task.criteria,
+            }
+        } else {
+            Job::Task {
+                request: task.request.into(),
+                criteria: task.criteria,
+            }
+        };
+        self.launch(brain, Arc::new(lab), task.id, job)
     }
 
     pub fn start_request(
         &self,
         brain: Arc<dyn Brain>,
         request: String,
+        planned: bool,
     ) -> Result<(), HarnessError> {
         let request = request.trim().to_string();
         if request.is_empty() {
@@ -592,12 +750,46 @@ impl BonsaiHarness {
                 reason: err.to_string(),
             });
         }
+        let job = if planned {
+            // Each planned task carries its own checks.
+            Job::Plan {
+                request,
+                criteria: Vec::new(),
+            }
+        } else {
+            Job::Task {
+                request,
+                criteria: vec![Criterion::WorkRuns],
+            }
+        };
+        self.launch(brain, Arc::new(lab), SCRATCH_PROJECT, job)
+    }
+
+    /// Approves or resumes the plan on screen with `brain`.
+    pub fn continue_with(&self, brain: Arc<dyn Brain>) -> Result<(), HarnessError> {
+        let (project, view) = {
+            let state = lock(&self.shared.state);
+            let view = plan::current(&state.entries).and_then(PlanView::read);
+            (state.project.clone(), view)
+        };
+        let (Some(project), Some(view)) = (project, view) else {
+            return Err(HarnessError::NoPlan);
+        };
+        if !view.state.can_continue() {
+            return Err(HarnessError::NoPlan);
+        }
+        let root = self.project_root(&project)?;
+        let lab = PythonLab::new(
+            root,
+            Arc::clone(&self.python),
+            Duration::from_secs(self.limits.run_seconds.into()),
+        );
+        self.claim()?;
         self.launch(
             brain,
             Arc::new(lab),
-            SCRATCH_PROJECT,
-            request,
-            vec![Criterion::WorkRuns],
+            &project,
+            Job::Continue { plan: view.id },
         )
     }
 
@@ -623,8 +815,7 @@ impl BonsaiHarness {
         brain: Arc<dyn Brain>,
         lab: Arc<PythonLab>,
         project: &str,
-        request: String,
-        criteria: Vec<Criterion>,
+        job: Job,
     ) -> Result<(), HarnessError> {
         let journal = match Journal::open(lab.root()) {
             Ok(journal) => journal,
@@ -635,7 +826,7 @@ impl BonsaiHarness {
                 });
             }
         };
-        {
+        let approve = {
             let mut state = lock(&self.shared.state);
             state.entries = Journal::replay(lab.root());
             state.journal = Some(journal);
@@ -643,7 +834,8 @@ impl BonsaiHarness {
             state.started = Some(Instant::now());
             state.phase = HarnessPhase::Thinking;
             state.environment = Some(Arc::clone(&lab) as Arc<dyn Environment>);
-        }
+            state.approve_plans
+        };
         let shared = Arc::clone(&self.shared);
         let limits = self.limits.clone();
         let spawned = std::thread::Builder::new()
@@ -655,7 +847,13 @@ impl BonsaiHarness {
                     environment: lab,
                     limits,
                 };
-                run.task(request, criteria);
+                match job {
+                    Job::Task { request, criteria } => {
+                        run.task(request.clone(), request, criteria, None);
+                    }
+                    Job::Plan { request, criteria } => run.plan(request, criteria, approve),
+                    Job::Continue { plan } => run.continue_plan(&plan),
+                }
                 let mut state = lock(&shared.state);
                 state.running = false;
                 state.phase = HarnessPhase::Idle;
@@ -673,6 +871,72 @@ impl BonsaiHarness {
             });
         }
         Ok(())
+    }
+}
+
+/// What a launch does.
+enum Job {
+    /// One task.
+    Task {
+        request: String,
+        criteria: Vec<Criterion>,
+    },
+    /// A request planned as several tasks, then run.
+    Plan {
+        request: String,
+        criteria: Vec<Criterion>,
+    },
+    /// Approve or resume the plan with this id.
+    Continue { plan: String },
+}
+
+/// A journal id: `prefix-<ms>`, never the same twice in this process.
+fn fresh_id(prefix: &str) -> String {
+    static LAST: AtomicI64 = AtomicI64::new(0);
+    let now = now_ms();
+    let mut last = LAST.load(Ordering::SeqCst);
+    loop {
+        let next = now.max(last + 1);
+        match LAST.compare_exchange(last, next, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return format!("{prefix}-{next}"),
+            Err(seen) => last = seen,
+        }
+    }
+}
+
+/// The plan as the screen shows it.
+fn plan_record(view: &PlanView) -> HarnessPlan {
+    let tasks: Vec<HarnessPlanTask> = view
+        .tasks
+        .iter()
+        .map(|t| {
+            let (status, result) = match view.runs.get(&t.id) {
+                Some((_, status, reason)) => (*status, reason.clone()),
+                None => (TaskStatus::Ready, None),
+            };
+            HarnessPlanTask {
+                id: t.id.clone(),
+                description: t.description.clone(),
+                after: t.after.clone(),
+                acceptance: t.criteria.iter().map(Criterion::describe).collect(),
+                status,
+                result,
+            }
+        })
+        .collect();
+    HarnessPlan {
+        id: view.id.clone(),
+        request: view.request.clone(),
+        status: view.state,
+        reason: view.reason.clone(),
+        thought: view.thought.clone(),
+        passed: tasks
+            .iter()
+            .filter(|t| t.status == TaskStatus::Completed)
+            .count() as u32,
+        tasks,
+        acceptance: view.criteria.iter().map(Criterion::describe).collect(),
+        can_continue: view.state.can_continue(),
     }
 }
 
@@ -733,27 +997,292 @@ impl Run {
             .collect()
     }
 
-    fn task(&self, request: String, criteria: Vec<Criterion>) {
-        let task = format!("task-{}", now_ms());
+    /// Runs one task: `request` is what the model sees, `description` what
+    /// the journal and the screen show. `part` is its plan and its id there.
+    fn task(
+        &self,
+        request: String,
+        description: String,
+        criteria: Vec<Criterion>,
+        part: Option<(&str, &str)>,
+    ) -> End {
+        let task = fresh_id("task");
         let started = Instant::now();
         let opened = self
             .record(Entry::Task {
                 task: task.clone(),
-                description: request.clone(),
+                description,
                 criteria: criteria.clone(),
                 model: self.brain.describe().id,
                 at_ms: now_ms(),
+                plan: part.map(|(plan, _)| plan.to_string()),
+                plan_task: part.map(|(_, id)| id.to_string()),
             })
             .and_then(|_| self.status(&task, TaskStatus::Running, None));
-        if opened.is_err() {
-            return;
+        if let Err(end) = opened {
+            return end;
         }
         logging::info!(target: "harness", "{task} started");
         let End(status, reason) = match self.work(&task, &request, &criteria, started) {
             Ok(end) | Err(end) => end,
         };
         logging::info!(target: "harness", "{task} ended {status:?}");
-        let _ = self.status(&task, status, Some(reason));
+        if let Err(end) = self.status(&task, status, Some(reason.clone())) {
+            return end;
+        }
+        End(status, reason)
+    }
+
+    fn plan_status(
+        &self,
+        plan: &str,
+        status: PlanState,
+        reason: Option<String>,
+    ) -> Result<(), End> {
+        self.record(Entry::PlanStatus {
+            plan: plan.into(),
+            status,
+            reason,
+            at_ms: now_ms(),
+        })
+    }
+
+    /// Ends the plan the way `end` ended its task or its drafting.
+    fn end_plan(&self, plan: &str, End(status, reason): End) {
+        let state = if status == TaskStatus::Stopped {
+            PlanState::Stopped
+        } else {
+            PlanState::Failed
+        };
+        logging::info!(target: "harness", "{plan} ended {state:?}");
+        let _ = self.plan_status(plan, state, Some(reason));
+    }
+
+    fn plan_view(&self, plan: &str) -> Option<PlanView> {
+        let state = lock(&self.shared.state);
+        plan::current(&state.entries)
+            .and_then(PlanView::read)
+            .filter(|view| view.id == plan)
+    }
+
+    /// Planner mode: writes the plan, then waits for approval or runs it.
+    fn plan(&self, request: String, criteria: Vec<Criterion>, approve: bool) {
+        let plan = fresh_id("plan");
+        let opened = self
+            .record(Entry::PlanRequest {
+                plan: plan.clone(),
+                request: request.clone(),
+                criteria,
+                model: self.brain.describe().id,
+                at_ms: now_ms(),
+            })
+            .and_then(|_| self.plan_status(&plan, PlanState::Planning, None));
+        if opened.is_err() {
+            return;
+        }
+        logging::info!(target: "harness", "{plan} started");
+        if let Err(end) = self.draft(&plan, &request) {
+            return self.end_plan(&plan, end);
+        }
+        if approve {
+            let _ = self.plan_status(
+                &plan,
+                PlanState::AwaitingApproval,
+                Some("Approve the plan to run it.".into()),
+            );
+            return;
+        }
+        self.run_plan(&plan);
+    }
+
+    /// Approves the plan, or resumes it from its last verified task.
+    fn continue_plan(&self, plan: &str) {
+        let Some(view) = self.plan_view(plan) else {
+            return;
+        };
+        if view.tasks.is_empty() {
+            // It never got a plan: write one now.
+            if let Err(end) = self
+                .plan_status(plan, PlanState::Planning, None)
+                .and_then(|_| self.draft(plan, &view.request))
+            {
+                return self.end_plan(plan, end);
+            }
+        } else if view.state != PlanState::AwaitingApproval {
+            let point = view.restart_point();
+            if let Err(err) = self.environment.restore(&point) {
+                return self.end_plan(
+                    plan,
+                    End(
+                        TaskStatus::Failed,
+                        format!("Could not go back to the last verified task: {err}"),
+                    ),
+                );
+            }
+        }
+        self.run_plan(plan);
+    }
+
+    /// Asks for a plan until one can be used (or the invalid limit).
+    fn draft(&self, plan: &str, request: &str) -> Result<(), End> {
+        let grammar = plan::grammar();
+        let overview = self.environment.overview();
+        let mut refused: Vec<(String, String)> = Vec::new();
+        loop {
+            if self.stopped() {
+                return Err(End(TaskStatus::Stopped, "Stopped.".into()));
+            }
+            if refused.len() as u32 >= self.limits.invalid_in_a_row {
+                return Err(End(
+                    TaskStatus::Failed,
+                    format!("{} plans in a row couldn't be used.", refused.len()),
+                ));
+            }
+            self.phase(HarnessPhase::Thinking);
+            let messages = plan::messages(request, &overview, &refused);
+            let request_ = ChatRequest {
+                model: None,
+                messages,
+                max_tokens: self.limits.turn_tokens,
+                temperature: 0.0,
+            };
+            let shared = Arc::clone(&self.shared);
+            let out =
+                Arc::new(Collect::new().stop_when(move || shared.stop.load(Ordering::SeqCst)));
+            lock(&self.shared.state).out = Some(Arc::clone(&out));
+            let asked = Instant::now();
+            let answer = self.brain.generate(
+                request_,
+                Some(&grammar),
+                Arc::clone(&out) as Arc<dyn TextOut>,
+            );
+            let model_ms = asked.elapsed().as_millis() as u64;
+            if self.stopped() {
+                return Err(End(TaskStatus::Stopped, "Stopped.".into()));
+            }
+            match answer {
+                Ok(()) => {}
+                Err(AiError::Stopped) => return Err(End(TaskStatus::Stopped, "Stopped.".into())),
+                Err(err) => {
+                    return Err(End(TaskStatus::Failed, format!("The model failed: {err}")))
+                }
+            }
+            let text = out.text();
+            match plan::parse(&text) {
+                Ok((thought, tasks)) => {
+                    return self.record(Entry::Plan {
+                        plan: plan.into(),
+                        thought,
+                        tasks,
+                        model_ms,
+                    });
+                }
+                Err(error) => {
+                    self.record(Entry::PlanInvalid {
+                        plan: plan.into(),
+                        text: text.clone(),
+                        error: error.clone(),
+                        model_ms,
+                    })?;
+                    refused.push((text, error));
+                }
+            }
+        }
+    }
+
+    /// Runs the plan's ready tasks in order, one at a time, each with a
+    /// fresh context, until all are verified or one isn't.
+    fn run_plan(&self, plan: &str) {
+        let Some(view) = self.plan_view(plan) else {
+            return;
+        };
+        if view.runs.is_empty() {
+            // Where a resume before the first verified task starts from.
+            if let Err(err) = self.environment.checkpoint(plan) {
+                logging::warn!(target: "harness", "plan checkpoint failed: {err}");
+            }
+        }
+        if self.plan_status(plan, PlanState::Running, None).is_err() {
+            return;
+        }
+        loop {
+            if self.stopped() {
+                return self.end_plan(plan, End(TaskStatus::Stopped, "Stopped.".into()));
+            }
+            let Some(view) = self.plan_view(plan) else {
+                return;
+            };
+            let Some(next) = view.next().cloned() else {
+                return self.finish_plan(&view);
+            };
+            let End(status, reason) = self.task(
+                view.executor_request(&next),
+                next.description.clone(),
+                next.criteria.clone(),
+                Some((plan, &next.id)),
+            );
+            if status != TaskStatus::Completed {
+                return self.end_plan(plan, End(status, format!("Task {}: {reason}", next.id)));
+            }
+        }
+    }
+
+    /// Every task is verified: checks the request's own criteria against
+    /// the evidence of the whole plan.
+    fn finish_plan(&self, view: &PlanView) {
+        let done = view.completed().len();
+        if done < view.tasks.len() {
+            return self.end_plan(
+                &view.id,
+                End(
+                    TaskStatus::Failed,
+                    "No task can start: the tasks before them aren't verified.".into(),
+                ),
+            );
+        }
+        self.phase(HarnessPhase::Verifying);
+        let seen: Vec<Evidence> = {
+            let state = lock(&self.shared.state);
+            plan::current(&state.entries)
+                .unwrap_or(&[])
+                .iter()
+                .filter_map(|e| match e {
+                    Entry::Result { evidence, .. } => Some(evidence.clone()),
+                    _ => None,
+                })
+                .flatten()
+                .collect()
+        };
+        let read = |path: &str| self.environment.read_text(path);
+        let checks: Vec<Result<String, String>> = view
+            .criteria
+            .iter()
+            .map(|c| c.check(&seen, &read))
+            .collect();
+        let missing: Vec<&str> = checks
+            .iter()
+            .filter_map(|c| c.as_ref().err().map(String::as_str))
+            .collect();
+        let tasks = format!("All {done} tasks verified");
+        if missing.is_empty() {
+            let proof: Vec<&str> = checks
+                .iter()
+                .filter_map(|c| c.as_ref().ok().map(String::as_str))
+                .collect();
+            let reason = if proof.is_empty() {
+                format!("{tasks}.")
+            } else {
+                format!("{tasks}; {}.", proof.join("; "))
+            };
+            logging::info!(target: "harness", "{} completed", view.id);
+            let _ = self.plan_status(&view.id, PlanState::Completed, Some(reason));
+        } else {
+            let _ = self.plan_status(
+                &view.id,
+                PlanState::Failed,
+                Some(format!("{tasks}, but {}.", missing.join("; "))),
+            );
+        }
     }
 
     fn status(&self, task: &str, status: TaskStatus, reason: Option<String>) -> Result<(), End> {

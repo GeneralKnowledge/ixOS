@@ -399,6 +399,9 @@ pub struct LadderTask {
     pub request: &'static str,
     pub seed: Vec<SeedFile>,
     pub criteria: Vec<Criterion>,
+    /// Bonsai plans it as several tasks first (H4); `criteria` are then
+    /// checked once every task is verified.
+    pub planned: bool,
 }
 
 const AVERAGE_PY: &str = "def average(numbers):\n    \"\"\"The mean of a list of numbers.\"\"\"\n    return sum(numbers) / (len(numbers) + 1)\n";
@@ -408,7 +411,7 @@ const TEST_AVERAGE_PY: &str = "import unittest\n\nfrom average import average\n\
 const INVENTORY_PY: &str = "stock = {\"apples\": 3, \"pears\": 0, \"plums\": 5}\n\n\ndef report(stock):\n    lines = []\n    for name, count in stock.items():\n        lines.append(name + \": \" + count)\n    return lines\n\n\nfor line in report(stock):\n    print(line)\n";
 
 /// The ladder (docs/bonsai-harness-plan.md): T1 to T3 are H1's, T4 and
-/// T5 are H2's.
+/// T5 are H2's, T6 and T7 (planned) are H4's.
 pub fn ladder() -> Vec<LadderTask> {
     vec![
         LadderTask {
@@ -420,6 +423,7 @@ pub fn ladder() -> Vec<LadderTask> {
                 path: "hello.py".into(),
                 text: "Hello from Bonsai".into(),
             }],
+            planned: false,
         },
         LadderTask {
             id: "t2-one-test",
@@ -428,6 +432,7 @@ pub fn ladder() -> Vec<LadderTask> {
                       test_mathutil.py with a unittest test for it. Then run the tests.",
             seed: vec![],
             criteria: vec![Criterion::TestsPass],
+            planned: false,
         },
         LadderTask {
             id: "t3-one-fix",
@@ -451,6 +456,7 @@ pub fn ladder() -> Vec<LadderTask> {
                     content: TEST_AVERAGE_PY.into(),
                 },
             ],
+            planned: false,
         },
         LadderTask {
             id: "t4-two-modules",
@@ -469,6 +475,7 @@ pub fn ladder() -> Vec<LadderTask> {
                     text: "12.57".into(),
                 },
             ],
+            planned: false,
         },
         LadderTask {
             id: "tp1-svg-chart",
@@ -488,6 +495,7 @@ pub fn ladder() -> Vec<LadderTask> {
                     values: vec!["3".into(), "7".into(), "5".into()],
                 },
             ],
+            planned: false,
         },
         LadderTask {
             id: "t5-fix-from-traceback",
@@ -509,6 +517,42 @@ pub fn ladder() -> Vec<LadderTask> {
                     text: "plums: 5".into(),
                 },
             ],
+            planned: false,
+        },
+        LadderTask {
+            id: "t6-two-functions",
+            title: "T6 Two functions, two tests (a plan)",
+            request: "Write textutil.py with two functions: shout(text) returns the text in capitals \
+                      followed by \"!\", and whisper(text) returns it in lower case followed by \"...\". \
+                      Give each its own unittest file, test_shout.py and test_whisper.py. Plan it as two \
+                      tasks, one per function with its test.",
+            seed: vec![],
+            criteria: vec![Criterion::TestsPass],
+            planned: true,
+        },
+        LadderTask {
+            id: "t7-plan-with-dependency",
+            title: "T7 Three tasks with a dependency (a plan)",
+            request: "Write grades.py with letter(score): A for 90 and up, B for 80 and up, C for 70 and \
+                      up, otherwise F. Test it in test_grades.py. Then write report.py that uses \
+                      grades.letter to print each student of {\"Ana\": 93, \"Ben\": 78, \"Cy\": 85} like \
+                      \"Ana: A\", and run it. Plan it as three tasks: the function, its tests, the report.",
+            seed: vec![],
+            criteria: vec![
+                Criterion::RunPrints {
+                    path: "report.py".into(),
+                    text: "Ana: A".into(),
+                },
+                Criterion::RunPrints {
+                    path: "report.py".into(),
+                    text: "Ben: C".into(),
+                },
+                Criterion::RunPrints {
+                    path: "report.py".into(),
+                    text: "Cy: B".into(),
+                },
+            ],
+            planned: true,
         },
     ]
 }
@@ -667,6 +711,112 @@ pub fn script(task_id: &str) -> Vec<String> {
             answer("Run it again.", "run_python", &[("path", "inventory.py")]),
             finish("count is converted with str(); every item prints."),
         ],
+        // A plan, then each task with a fresh context.
+        "t6-two-functions" => vec![
+            plan_answer(
+                "One function and its test at a time.",
+                &[
+                    ("shout", "Write textutil.py with shout(text) returning text.upper() + '!', and test_shout.py testing it with unittest. Run the tests.", &[], "tests_pass"),
+                    ("whisper", "Add whisper(text) to textutil.py returning text.lower() + '...', keeping shout, and write test_whisper.py testing it. Run the tests.", &["shout"], "tests_pass"),
+                ],
+            ),
+            answer(
+                "Write shout.",
+                "write_file",
+                &[
+                    ("path", "textutil.py"),
+                    ("content", "def shout(text):\n    return text.upper() + \"!\"\n"),
+                ],
+            ),
+            answer(
+                "Test it.",
+                "write_file",
+                &[("path", "test_shout.py"), ("content", TEST_SHOUT_PY)],
+            ),
+            answer("Run the tests.", "run_tests", &[]),
+            finish("shout and its test pass."),
+            answer(
+                "Add whisper after shout.",
+                "edit_file",
+                &[
+                    ("path", "textutil.py"),
+                    ("old", "    return text.upper() + \"!\"\n"),
+                    (
+                        "new",
+                        "    return text.upper() + \"!\"\n\n\ndef whisper(text):\n    return text.lower() + \"...\"\n",
+                    ),
+                ],
+            ),
+            answer(
+                "Test whisper.",
+                "write_file",
+                &[("path", "test_whisper.py"), ("content", TEST_WHISPER_PY)],
+            ),
+            answer("Run all the tests.", "run_tests", &[]),
+            finish("Both functions and their tests pass."),
+        ],
+        "t7-plan-with-dependency" => vec![
+            plan_answer(
+                "The function first; its tests and the report both need it.",
+                &[
+                    ("letter", "Write grades.py with letter(score): 'A' for 90 and up, 'B' for 80 and up, 'C' for 70 and up, otherwise 'F'. Run grades.py.", &[], "work_runs"),
+                    ("tests", "Write test_grades.py testing grades.letter at 95, 85, 75 and 50 with unittest. Run the tests.", &["letter"], "tests_pass"),
+                    ("report", "Write report.py that prints each student of {'Ana': 93, 'Ben': 78, 'Cy': 85} as 'Ana: A' using grades.letter. Run report.py.", &["letter"], "report"),
+                ],
+            ),
+            answer(
+                "Write letter.",
+                "write_file",
+                &[("path", "grades.py"), ("content", GRADES_PY)],
+            ),
+            answer("Check it runs.", "run_python", &[("path", "grades.py")]),
+            finish("grades.py runs."),
+            answer(
+                "Test each band.",
+                "write_file",
+                &[("path", "test_grades.py"), ("content", TEST_GRADES_PY)],
+            ),
+            answer("Run the tests.", "run_tests", &[]),
+            finish("letter's tests pass."),
+            answer(
+                "Write the report.",
+                "write_file",
+                &[("path", "report.py"), ("content", REPORT_PY)],
+            ),
+            answer("Run it.", "run_python", &[("path", "report.py")]),
+            finish("report.py prints every student."),
+        ],
         _ => vec![],
     }
 }
+
+/// A plan answer in the planner grammar's shape: tasks as (id, what to do,
+/// after, check), where check is "tests_pass", "work_runs" or "report"
+/// (report.py prints "Ana: A").
+fn plan_answer(thought: &str, tasks: &[(&str, &str, &[&str], &str)]) -> String {
+    let tasks: Vec<serde_json::Value> = tasks
+        .iter()
+        .map(|(id, what, after, check)| {
+            let check = match *check {
+                "report" => serde_json::json!({"check": "run_prints", "path": "report.py", "text": "Ana: A"}),
+                other => serde_json::json!({ "check": other }),
+            };
+            serde_json::json!({"id": id, "do": what, "after": after, "checks": [check]})
+        })
+        .collect();
+    format!(
+        "{{\"thought\": {}, \"tasks\": {}}}",
+        serde_json::to_string(thought).unwrap_or_default(),
+        serde_json::to_string(&tasks).unwrap_or_default()
+    )
+}
+
+const TEST_SHOUT_PY: &str = "import unittest\n\nfrom textutil import shout\n\n\nclass ShoutTest(unittest.TestCase):\n    def test_shout(self):\n        self.assertEqual(shout(\"hi\"), \"HI!\")\n";
+
+const TEST_WHISPER_PY: &str = "import unittest\n\nfrom textutil import whisper\n\n\nclass WhisperTest(unittest.TestCase):\n    def test_whisper(self):\n        self.assertEqual(whisper(\"HI\"), \"hi...\")\n";
+
+const GRADES_PY: &str = "def letter(score):\n    if score >= 90:\n        return \"A\"\n    if score >= 80:\n        return \"B\"\n    if score >= 70:\n        return \"C\"\n    return \"F\"\n";
+
+const TEST_GRADES_PY: &str = "import unittest\n\nfrom grades import letter\n\n\nclass LetterTest(unittest.TestCase):\n    def test_bands(self):\n        self.assertEqual(letter(95), \"A\")\n        self.assertEqual(letter(85), \"B\")\n        self.assertEqual(letter(75), \"C\")\n        self.assertEqual(letter(50), \"F\")\n";
+
+const REPORT_PY: &str = "from grades import letter\n\nscores = {\"Ana\": 93, \"Ben\": 78, \"Cy\": 85}\nfor name, score in scores.items():\n    print(name + \": \" + letter(score))\n";

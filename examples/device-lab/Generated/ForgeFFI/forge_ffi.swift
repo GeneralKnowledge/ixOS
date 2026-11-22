@@ -1953,6 +1953,24 @@ public func FfiConverterTypeBluetoothSink_lower(_ value: BluetoothSink) -> UInt6
  */
 public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
     
+    /**
+     * Runs the plan on screen: approves it, or resumes it from its last
+     * verified task (the project's files go back to that task's
+     * checkpoint).
+     */
+    func continuePlan(model: HarnessModel) throws 
+    
+    /**
+     * [`Self::continue_plan`] with the Scripted model, which picks up its
+     * known-good answers where the plan left off.
+     */
+    func continuePlanScripted() throws 
+    
+    /**
+     * Discards a plan waiting for approval; nothing of it runs.
+     */
+    func discardPlan() throws 
+    
     func files()  -> [ProjectFile]
     
     func ladder()  -> [HarnessTask]
@@ -1976,6 +1994,11 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
      */
     func replay(step: UInt32)  -> HarnessLive?
     
+    /**
+     * Whether a plan waits for the person's approval before it runs.
+     */
+    func setApprovePlans(approve: Bool) 
+    
     func snapshot()  -> HarnessSnapshot
     
     /**
@@ -1983,6 +2006,12 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
      * (kept between tasks).
      */
     func startCustom(model: HarnessModel, request: String) throws 
+    
+    /**
+     * Plans a task in the person's own words as several tasks, then runs
+     * them (after approval, when that's on), in the scratch project.
+     */
+    func startCustomPlan(model: HarnessModel, request: String) throws 
     
     /**
      * Starts a ladder task in a fresh project of its own (the last run's
@@ -2079,6 +2108,43 @@ public convenience init(python: PythonHost, projectsFolder: String) {
     
 
     
+    /**
+     * Runs the plan on screen: approves it, or resumes it from its last
+     * verified task (the project's files go back to that task's
+     * checkpoint).
+     */
+open func continuePlan(model: HarnessModel)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_continue_plan(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHarnessModel_lower(model),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * [`Self::continue_plan`] with the Scripted model, which picks up its
+     * known-good answers where the plan left off.
+     */
+open func continuePlanScripted()throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_continue_plan_scripted(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Discards a plan waiting for approval; nothing of it runs.
+     */
+open func discardPlan()throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_discard_plan(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
 open func files() -> [ProjectFile]  {
     return try!  FfiConverterSequenceTypeProjectFile.lift(try! rustCall() {
         uniffiCallStatus in
@@ -2138,6 +2204,18 @@ open func replay(step: UInt32) -> HarnessLive?  {
 })
 }
     
+    /**
+     * Whether a plan waits for the person's approval before it runs.
+     */
+open func setApprovePlans(approve: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_set_approve_plans(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(approve),uniffiCallStatus
+    )
+}
+}
+    
 open func snapshot() -> HarnessSnapshot  {
     return try!  FfiConverterTypeHarnessSnapshot_lift(try! rustCall() {
         uniffiCallStatus in
@@ -2154,6 +2232,20 @@ open func snapshot() -> HarnessSnapshot  {
 open func startCustom(model: HarnessModel, request: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHarnessModel_lower(model),
+        FfiConverterString.lower(request),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Plans a task in the person's own words as several tasks, then runs
+     * them (after approval, when that's on), in the scratch project.
+     */
+open func startCustomPlan(model: HarnessModel, request: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_start_custom_plan(
             self.uniffiCloneHandle(),
         FfiConverterTypeHarnessModel_lower(model),
         FfiConverterString.lower(request),uniffiCallStatus
@@ -8874,6 +8966,191 @@ public func FfiConverterTypeHarnessLive_lower(_ value: HarnessLive) -> RustBuffe
 }
 
 
+/**
+ * A plan, as the screen shows it.
+ */
+public struct HarnessPlan: Equatable, Hashable {
+    public var id: String
+    public var request: String
+    public var status: PlanState
+    /**
+     * Why it stopped or failed, or what proved it complete.
+     */
+    public var reason: String?
+    /**
+     * The planner's one line on the plan.
+     */
+    public var thought: String
+    public var tasks: [HarnessPlanTask]
+    /**
+     * Tasks verified so far (as in "3 / 6 tasks passed").
+     */
+    public var passed: UInt32
+    /**
+     * The request's own checks, made once every task is verified.
+     */
+    public var acceptance: [String]
+    /**
+     * Approve it, or resume it from its last verified task.
+     */
+    public var canContinue: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, request: String, status: PlanState, 
+        /**
+         * Why it stopped or failed, or what proved it complete.
+         */reason: String?, 
+        /**
+         * The planner's one line on the plan.
+         */thought: String, tasks: [HarnessPlanTask], 
+        /**
+         * Tasks verified so far (as in "3 / 6 tasks passed").
+         */passed: UInt32, 
+        /**
+         * The request's own checks, made once every task is verified.
+         */acceptance: [String], 
+        /**
+         * Approve it, or resume it from its last verified task.
+         */canContinue: Bool) {
+        self.id = id
+        self.request = request
+        self.status = status
+        self.reason = reason
+        self.thought = thought
+        self.tasks = tasks
+        self.passed = passed
+        self.acceptance = acceptance
+        self.canContinue = canContinue
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HarnessPlan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessPlan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessPlan {
+        return
+            try HarnessPlan(
+                id: FfiConverterString.read(from: &buf), 
+                request: FfiConverterString.read(from: &buf), 
+                status: FfiConverterTypePlanState.read(from: &buf), 
+                reason: FfiConverterOptionString.read(from: &buf), 
+                thought: FfiConverterString.read(from: &buf), 
+                tasks: FfiConverterSequenceTypeHarnessPlanTask.read(from: &buf), 
+                passed: FfiConverterUInt32.read(from: &buf), 
+                acceptance: FfiConverterSequenceString.read(from: &buf), 
+                canContinue: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HarnessPlan, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.request, into: &buf)
+        FfiConverterTypePlanState.write(value.status, into: &buf)
+        FfiConverterOptionString.write(value.reason, into: &buf)
+        FfiConverterString.write(value.thought, into: &buf)
+        FfiConverterSequenceTypeHarnessPlanTask.write(value.tasks, into: &buf)
+        FfiConverterUInt32.write(value.passed, into: &buf)
+        FfiConverterSequenceString.write(value.acceptance, into: &buf)
+        FfiConverterBool.write(value.canContinue, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessPlan_lift(_ buf: RustBuffer) throws -> HarnessPlan {
+    return try FfiConverterTypeHarnessPlan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessPlan_lower(_ value: HarnessPlan) -> RustBuffer {
+    return FfiConverterTypeHarnessPlan.lower(value)
+}
+
+
+public struct HarnessPlanTask: Equatable, Hashable {
+    public var id: String
+    public var description: String
+    public var after: [String]
+    public var acceptance: [String]
+    public var status: TaskStatus
+    public var result: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, description: String, after: [String], acceptance: [String], status: TaskStatus, result: String?) {
+        self.id = id
+        self.description = description
+        self.after = after
+        self.acceptance = acceptance
+        self.status = status
+        self.result = result
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HarnessPlanTask: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessPlanTask: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessPlanTask {
+        return
+            try HarnessPlanTask(
+                id: FfiConverterString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                after: FfiConverterSequenceString.read(from: &buf), 
+                acceptance: FfiConverterSequenceString.read(from: &buf), 
+                status: FfiConverterTypeTaskStatus.read(from: &buf), 
+                result: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HarnessPlanTask, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterSequenceString.write(value.after, into: &buf)
+        FfiConverterSequenceString.write(value.acceptance, into: &buf)
+        FfiConverterTypeTaskStatus.write(value.status, into: &buf)
+        FfiConverterOptionString.write(value.result, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessPlanTask_lift(_ buf: RustBuffer) throws -> HarnessPlanTask {
+    return try FfiConverterTypeHarnessPlanTask.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessPlanTask_lower(_ value: HarnessPlanTask) -> RustBuffer {
+    return FfiConverterTypeHarnessPlanTask.lower(value)
+}
+
+
 public struct HarnessSnapshot: Equatable, Hashable {
     public var running: Bool
     public var phase: HarnessPhase
@@ -8891,6 +9168,14 @@ public struct HarnessSnapshot: Equatable, Hashable {
     public var live: HarnessLive?
     public var elapsedMs: UInt64
     public var limits: HarnessLimits
+    /**
+     * The plan the task belongs to, or the plan being written.
+     */
+    public var plan: HarnessPlan?
+    /**
+     * Plans are shown for approval before they run.
+     */
+    public var approvePlans: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -8901,7 +9186,13 @@ public struct HarnessSnapshot: Equatable, Hashable {
         /**
          * The same answer read field by field (thought, tool, file, code),
          * while Bonsai is writing it.
-         */live: HarnessLive?, elapsedMs: UInt64, limits: HarnessLimits) {
+         */live: HarnessLive?, elapsedMs: UInt64, limits: HarnessLimits, 
+        /**
+         * The plan the task belongs to, or the plan being written.
+         */plan: HarnessPlan?, 
+        /**
+         * Plans are shown for approval before they run.
+         */approvePlans: Bool) {
         self.running = running
         self.phase = phase
         self.project = project
@@ -8911,6 +9202,8 @@ public struct HarnessSnapshot: Equatable, Hashable {
         self.live = live
         self.elapsedMs = elapsedMs
         self.limits = limits
+        self.plan = plan
+        self.approvePlans = approvePlans
     }
 
     
@@ -8937,7 +9230,9 @@ public struct FfiConverterTypeHarnessSnapshot: FfiConverterRustBuffer {
                 draft: FfiConverterString.read(from: &buf), 
                 live: FfiConverterOptionTypeHarnessLive.read(from: &buf), 
                 elapsedMs: FfiConverterUInt64.read(from: &buf), 
-                limits: FfiConverterTypeHarnessLimits.read(from: &buf)
+                limits: FfiConverterTypeHarnessLimits.read(from: &buf), 
+                plan: FfiConverterOptionTypeHarnessPlan.read(from: &buf), 
+                approvePlans: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -8951,6 +9246,8 @@ public struct FfiConverterTypeHarnessSnapshot: FfiConverterRustBuffer {
         FfiConverterOptionTypeHarnessLive.write(value.live, into: &buf)
         FfiConverterUInt64.write(value.elapsedMs, into: &buf)
         FfiConverterTypeHarnessLimits.write(value.limits, into: &buf)
+        FfiConverterOptionTypeHarnessPlan.write(value.plan, into: &buf)
+        FfiConverterBool.write(value.approvePlans, into: &buf)
     }
 }
 
@@ -9074,17 +9371,25 @@ public struct HarnessTask: Equatable, Hashable {
      * What proves it done, in words.
      */
     public var acceptance: [String]
+    /**
+     * Bonsai plans it as several tasks first (H4).
+     */
+    public var planned: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(id: String, title: String, request: String, 
         /**
          * What proves it done, in words.
-         */acceptance: [String]) {
+         */acceptance: [String], 
+        /**
+         * Bonsai plans it as several tasks first (H4).
+         */planned: Bool) {
         self.id = id
         self.title = title
         self.request = request
         self.acceptance = acceptance
+        self.planned = planned
     }
 
     
@@ -9106,7 +9411,8 @@ public struct FfiConverterTypeHarnessTask: FfiConverterRustBuffer {
                 id: FfiConverterString.read(from: &buf), 
                 title: FfiConverterString.read(from: &buf), 
                 request: FfiConverterString.read(from: &buf), 
-                acceptance: FfiConverterSequenceString.read(from: &buf)
+                acceptance: FfiConverterSequenceString.read(from: &buf), 
+                planned: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -9115,6 +9421,7 @@ public struct FfiConverterTypeHarnessTask: FfiConverterRustBuffer {
         FfiConverterString.write(value.title, into: &buf)
         FfiConverterString.write(value.request, into: &buf)
         FfiConverterSequenceString.write(value.acceptance, into: &buf)
+        FfiConverterBool.write(value.planned, into: &buf)
     }
 }
 
@@ -12130,6 +12437,7 @@ enum HarnessError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case EmptyTask
     case UnknownTask(id: String
     )
+    case NoPlan
     case Storage(reason: String
     )
 
@@ -12166,7 +12474,8 @@ public struct FfiConverterTypeHarnessError: FfiConverterRustBuffer {
         case 3: return .UnknownTask(
             id: try FfiConverterString.read(from: &buf)
             )
-        case 4: return .Storage(
+        case 4: return .NoPlan
+        case 5: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -12194,8 +12503,12 @@ public struct FfiConverterTypeHarnessError: FfiConverterRustBuffer {
             FfiConverterString.write(id, into: &buf)
             
         
-        case let .Storage(reason):
+        case .NoPlan:
             writeInt(&buf, Int32(4))
+        
+        
+        case let .Storage(reason):
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -13629,6 +13942,122 @@ public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) ->
 
 
 
+/**
+ * A plan's state, owned by the harness.
+ */
+
+public enum PlanState: Equatable, Hashable {
+    
+    /**
+     * The model is writing the plan.
+     */
+    case planning
+    /**
+     * Shown before anything changes; runs once the person approves it.
+     */
+    case awaitingApproval
+    case running
+    /**
+     * Every task was verified, and so was the request's own check.
+     */
+    case completed
+    case failed
+    case stopped
+    /**
+     * The person didn't approve it.
+     */
+    case discarded
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PlanState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePlanState: FfiConverterRustBuffer {
+    typealias SwiftType = PlanState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlanState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .planning
+        
+        case 2: return .awaitingApproval
+        
+        case 3: return .running
+        
+        case 4: return .completed
+        
+        case 5: return .failed
+        
+        case 6: return .stopped
+        
+        case 7: return .discarded
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PlanState, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .planning:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .awaitingApproval:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .running:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .completed:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .stopped:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .discarded:
+            writeInt(&buf, Int32(7))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlanState_lift(_ buf: RustBuffer) throws -> PlanState {
+    return try FfiConverterTypePlanState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlanState_lower(_ value: PlanState) -> RustBuffer {
+    return FfiConverterTypePlanState.lower(value)
+}
+
+
+
 public 
 enum PythonHostError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
@@ -14495,6 +14924,30 @@ fileprivate struct FfiConverterOptionTypeHarnessLive: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeHarnessPlan: FfiConverterRustBuffer {
+    typealias SwiftType = HarnessPlan?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHarnessPlan.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHarnessPlan.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeHarnessTaskRecord: FfiConverterRustBuffer {
     typealias SwiftType = HarnessTaskRecord?
 
@@ -14904,6 +15357,31 @@ fileprivate struct FfiConverterSequenceTypeConnectivityChange: FfiConverterRustB
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeConnectivityChange.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHarnessPlanTask: FfiConverterRustBuffer {
+    typealias SwiftType = [HarnessPlanTask]
+
+    public static func write(_ value: [HarnessPlanTask], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHarnessPlanTask.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HarnessPlanTask] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HarnessPlanTask]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHarnessPlanTask.read(from: &buf))
         }
         return seq
     }
@@ -15837,6 +16315,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_ailab_update_external() != 57909) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_continue_plan() != 6670) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_continue_plan_scripted() != 9546) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_discard_plan() != 541) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_files() != 19690) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -15852,10 +16339,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_replay() != 365) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_set_approve_plans() != 52960) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_snapshot() != 53706) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom() != 36010) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom_plan() != 64176) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder() != 34402) {

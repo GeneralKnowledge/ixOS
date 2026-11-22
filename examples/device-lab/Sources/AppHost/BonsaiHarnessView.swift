@@ -45,6 +45,15 @@ struct BonsaiHarnessView: View {
                         position: $replayPosition
                     )
                 }
+                if let snapshot = model.snapshot, let plan = snapshot.plan {
+                    BonsaiPlanSection(
+                        plan: plan,
+                        draft: snapshot.task == nil ? snapshot.draft : "",
+                        running: snapshot.running,
+                        approve: model.continuePlan,
+                        discard: model.discardPlan
+                    )
+                }
                 if let snapshot = model.snapshot, let task = snapshot.task {
                     statusSection(snapshot, task)
                 }
@@ -105,6 +114,10 @@ struct BonsaiHarnessView: View {
                         Text(task.request).font(.footnote).foregroundStyle(.secondary)
                         Text("Done when \(task.acceptance.joined(separator: "; ")).")
                             .font(.caption).foregroundStyle(.secondary)
+                        if task.planned {
+                            Label("Bonsai plans it as several tasks first", systemImage: "list.number")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .accessibilityIdentifier("harness.task.\(task.id)")
@@ -115,10 +128,15 @@ struct BonsaiHarnessView: View {
             Button("Run My Task", systemImage: "play.fill") { model.runRequest() }
                 .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.runRequest")
+            Button("Plan My Task", systemImage: "list.number") { model.runPlan() }
+                .disabled(model.isScripted || model.request.isEmpty)
+                .accessibilityIdentifier("harness.planRequest")
+            Toggle("Show Plans Before They Run", isOn: $model.approvePlans)
+                .accessibilityIdentifier("harness.approvePlans")
         } header: {
             Text("Tasks")
         } footer: {
-            Text("Each ladder task starts from a fresh project. Your own tasks share one project, kept between tasks.")
+            Text("Each ladder task starts from a fresh project. Your own tasks share one project, kept between tasks. A planned task is split into small tasks, each checked before the next starts.")
         }
     }
 
