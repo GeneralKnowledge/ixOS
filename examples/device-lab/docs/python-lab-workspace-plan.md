@@ -6,7 +6,7 @@ It builds on [visual-labs-spec.md](visual-labs-spec.md) (graphics) and [bonsai-h
 
 ## Names
 
-The visual-labs spec already has a **P1** (projects and image previews, built and passed) and a **P2** (Matplotlib). To keep those two names from meaning two different things, Reuben's four stages are called **PL1 to PL4** here:
+The visual-labs spec already has a **P1** (projects and image previews: built, on the phone only "images worked" recorded so far) and a **P2** (Matplotlib). To keep those two names from meaning two different things, Reuben's four stages are called **PL1 to PL4** here:
 
 | Stage | What | Includes |
 |---|---|---|
@@ -62,7 +62,7 @@ It also fixes a fault the #367 review found: Python Lab's Stop and time limit ca
 
 - Python Lab opens on the **last project and file** it had open. A project list (create, rename, delete with a confirmation naming the file count) and a file browser for the project (folders, files with sizes, images opening in the existing preview, swipe to rename or delete, a + menu for a new file or folder).
 - The editor edits **a real file**. Autosave a second after typing stops, and when the screen closes or the app goes to the background, so nothing typed is lost; a small "Saved" or "Not saved: reason" line shows which.
-- Run runs **the open file** from disk (`runpy.run_path` in the existing wrapper, `__name__ == "__main__"`), so a traceback names `main.py, line 3` and one file can import another. A project can mark a different file as the one Run starts; by default it runs the file you're looking at. The last-expression echo stays for a quick check.
+- Run runs **the open file** from disk (`runpy.run_path` in the existing wrapper, `__name__ == "__main__"`), so a traceback names `main.py, line 3` and one file can import another. A project can mark a different file as the one Run starts; by default it runs the file you're looking at. The last-expression echo stays for a quick check. Run first saves what is on screen and waits for the save; if it fails, the reason shows and nothing runs, so Run never runs the older copy on disk.
 - Examples become "New file from example", which adds the sample as a file to the open project instead of replacing what you wrote.
 - **Migration:** whatever is in `scratch` stays. Nothing else exists to migrate, since manual code was never saved.
 
@@ -90,13 +90,13 @@ Bracket matching and several open files are PL2.
 
 ### PL1e. Bonsai on the same projects, plus import and export (one PR)
 
-- Bonsai's own requests run in a project you choose (by default, the one open in Python Lab), and the Bonsai screen gets "Open in Python Lab". The harness already reads files from disk at every step, so your edits are its input. While Bonsai runs in a project, Python Lab shows that project read-only with a banner, so you and Bonsai can't write one file at once.
+- Bonsai's own requests run in a project you choose (by default, the one open in Python Lab), and the Bonsai screen gets "Open in Python Lab". The harness already reads files from disk at every step, so your edits are its input. While Bonsai runs in a project, Python Lab shows that project read-only with a banner, so you and Bonsai can't write one file at once. That banner doesn't stop the Files app or another app, so Bonsai's writes also check: the harness remembers each file's size and modification time when Bonsai last read or wrote it in the task, and a `write_file` or `edit_file` to a file that changed since then is refused with "main.py changed outside Bonsai since you read it; read it again". The trade-off: the model spends a step re-reading, but an edit made through Files is never silently replaced. (An atomic save alone only prevents half-written files.)
 - **Import:** files from the Files app into the open project (the system file picker; text and images; the PL1a limits apply). **Export:** share a file, or the whole project as a `.zip`, with forge-storage's existing zip support (the `backup` feature), so no new dependency enters.
 - Bonsai plan: H7 is updated to say what PL1 already delivered.
 
 ## Decided: projects live in Files
 
-**Reuben, 2026-11-22: projects move to `Documents/Python Lab`.** Device Lab already shows its `Documents` folder in the Files app (Relay's received files are there), so every project is a normal folder under On My iPhone ▸ Device Lab ▸ Python Lab: import, export and opening a file in another app need no screens of ours. Built in PL1a: `PythonLabProjects.folder` points there, and on first use `workspace_move_projects` moves the old `Application Support/Python Lab/Projects` across once (only while the new folder holds nothing but an empty `scratch`, so it never overwrites work). The cost: the person, or another app through Files, can change a project while Bonsai works in it; the harness reads files from disk at every step, so it notices rather than breaks. PL1e keeps in-app import and export for convenience.
+**Reuben, 2026-11-22: projects move to `Documents/Python Lab`.** Device Lab already shows its `Documents` folder in the Files app (Relay's received files are there), so every project is a normal folder under On My iPhone ▸ Device Lab ▸ Python Lab: import, export and opening a file in another app need no screens of ours. Built in PL1a: `PythonLabProjects.folder` points there, and on first use `workspace_move_projects` moves the old `Application Support/Python Lab/Projects` across once (only while the new folder holds nothing but an empty `scratch`, so it never overwrites work). The cost: the person, or another app through Files, can change a project while Bonsai works in it; PL1e's write check (above) refuses a Bonsai write over a file changed outside it, so an outside edit is never silently replaced. PL1e keeps in-app import and export for convenience.
 
 ## Not in PL1 (Reuben's avoid list, kept)
 
@@ -111,8 +111,8 @@ Each PR's Swift goes into the one combined Device Lab build through the merge th
 3. Close Device Lab from the app switcher, reopen: the same project, file and text are back.
 4. `name = input("Name? ")` then `print("Hello", name)`: the prompt appears, the answer is used. A slow loop printing once a second shows lines as they come. Stop works while waiting for input.
 5. Rename and delete a project; `scratch` can't be deleted.
-6. Bonsai's T1 in a new project, then open it in Python Lab and run it.
-7. Left over from P1: the SVG `<script>` and `https://` check, the thumbnail refreshing after a rerun, and `sum(range(10**10))` past the limit.
+6. In Python Lab, create a project `handoff`, then in Bonsai Harness choose `handoff` as the project and ask "write hello.py that prints hi and run it"; tap Open in Python Lab and run hello.py. (Ladder tasks stay in the hidden `.ladder` folder; T1 is run separately as in the Bonsai plan.)
+7. Left over from P1: the SVG `<script>` and `https://` check, the thumbnail refreshing after a rerun, `sum(range(10**10))` past the limit, and ladder task T-P1 (`tp1-svg-chart`) with the Scripted model and with Bonsai 4B. Each gets its own row in the results table.
 
 Each result is recorded passed or failed from what Reuben sees, in this document's results table, none assumed.
 
