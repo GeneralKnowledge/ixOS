@@ -689,8 +689,15 @@ impl BonsaiHarness {
         Ok(())
     }
 
+    /// Gives up a claim after a run failed to start. Preparing may already
+    /// have archived the last task's journal and reset its project, so the
+    /// last task is forgotten too: nothing may pair its record with files
+    /// it no longer has (the verified-task card reads both).
     fn release(&self) {
-        lock(&self.shared.state).running = false;
+        let mut state = lock(&self.shared.state);
+        state.running = false;
+        state.entries.clear();
+        state.root = None;
     }
 
     fn launch(
