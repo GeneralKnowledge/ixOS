@@ -62,6 +62,7 @@ struct BonsaiHarnessView: View {
         .inlineNavigationTitle()
         .task { await model.follow() }
         .onChange(of: model.snapshot?.task?.id) { replayPosition = nil }
+        .onChange(of: model.isRunning) { if model.isRunning { replayPosition = nil } }
     }
 
     private var modelSection: some View {
@@ -136,7 +137,7 @@ struct BonsaiHarnessView: View {
                     .forgeForeground(task.status == .completed ? .success : .danger)
                     .accessibilityIdentifier("harness.result")
             }
-            if !snapshot.running, let made = model.artifacts.first {
+            if !snapshot.running, let made = model.made.first {
                 NavigationLink {
                     ArtifactDetailView(artifact: made, url: model.url(of: made))
                 } label: {

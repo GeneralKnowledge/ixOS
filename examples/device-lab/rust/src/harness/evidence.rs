@@ -228,6 +228,8 @@ impl Criterion {
 
 /// The checks of `Criterion::SvgBars` on the SVG's text.
 fn svg_bars(svg: &str, values: &[String]) -> Result<(), String> {
+    // What's inside <defs> isn't drawn by itself.
+    let svg = &without_defs(svg);
     let labels = svg_texts(svg);
     let missing: Vec<&str> = values
         .iter()
@@ -300,13 +302,36 @@ fn ordered_pick(sizes: &[f64], n: usize, ok: &dyn Fn(&[f64]) -> bool) -> bool {
     sizes.len() <= 40 && go(sizes, n, 0, &mut Vec::new(), ok)
 }
 
-/// (height, width) of each <rect>, 0 when missing or not a number.
+/// The SVG with every <defs> element's content left out.
+fn without_defs(svg: &str) -> String {
+    let mut out = String::new();
+    let mut rest = svg;
+    while let Some(start) = rest.find("<defs") {
+        out.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let tag_end = rest.find('>').map_or(rest.len(), |i| i + 1);
+        if rest[..tag_end].ends_with("/>") {
+            rest = &rest[tag_end..];
+        } else {
+            rest = rest
+                .find("</defs>")
+                .map_or("", |close| &rest[close + "</defs>".len()..]);
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// (height, width) of each <rect> that would show: both sizes positive.
 fn svg_rects(svg: &str) -> Vec<(f64, f64)> {
     svg.match_indices("<rect")
         .map(|(at, _)| {
             let tag = &svg[at..];
             let tag = &tag[..tag.find('>').unwrap_or(tag.len())];
             (svg_attribute(tag, "height"), svg_attribute(tag, "width"))
+        })
+        .filter(|(height, width)| {
+            height.is_finite() && width.is_finite() && *height > 0.0 && *width > 0.0
         })
         .collect()
 }

@@ -19,6 +19,8 @@ public final class BonsaiHarnessModel {
     public private(set) var files: [ProjectFile] = []
     /// The project's images, newest first, shown as thumbnails.
     public private(set) var artifacts: [ProjectArtifact] = []
+    /// The images the last task made or changed, newest first: its result.
+    public private(set) var made: [ProjectArtifact] = []
     public private(set) var error: String?
     /// The person's own task.
     public var request = ""
@@ -33,6 +35,8 @@ public final class BonsaiHarnessModel {
 
     @ObservationIgnored private let harness: BonsaiHarness?
     @ObservationIgnored private var models: [String: LlamaCppModel] = [:]
+    /// The project's images when the task started, to tell what it made.
+    @ObservationIgnored private var imagesBefore: [String: ProjectArtifact]?
 
     public init(harness: BonsaiHarness?) {
         self.harness = harness
@@ -114,6 +118,12 @@ public final class BonsaiHarnessModel {
     public func loadFiles() {
         files = harness?.files() ?? []
         artifacts = projectFolder.map { projectArtifacts(project: $0) } ?? []
+        if !isRunning, let before = imagesBefore {
+            made = artifacts.filter { artifact in
+                guard let old = before[artifact.path] else { return true }
+                return old.bytes != artifact.bytes || old.modifiedMs != artifact.modifiedMs
+            }
+        }
     }
 
     /// The folder of the project on screen.
@@ -137,6 +147,10 @@ public final class BonsaiHarnessModel {
     }
 
     private func attempt(_ start: () throws -> Void) {
+        imagesBefore = Dictionary(
+            (projectFolder.map { projectArtifacts(project: $0) } ?? []).map { ($0.path, $0) },
+            uniquingKeysWith: { first, _ in first })
+        made = []
         do {
             try start()
             error = nil

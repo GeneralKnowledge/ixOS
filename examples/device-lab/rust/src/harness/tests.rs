@@ -334,6 +334,19 @@ fn an_svg_chart_must_draw_the_values() {
             .into(),
     );
     assert!(check(&across).is_ok(), "{:?}", check(&across));
+    // Bars of no width don't show.
+    let thin = svg(
+        "<rect width='0' height='60'/><rect width='0' height='140'/><rect width='0' height='100'/>\
+         <text>3</text><text>7</text><text>5</text>"
+            .into(),
+    );
+    assert!(check(&thin).is_err());
+    // Bars only inside <defs> aren't drawn.
+    let hidden = svg(format!(
+        "<defs>{}</defs><rect width='400' height='300'/>",
+        bar(60, "3") + &bar(140, "7") + &bar(100, "5")
+    ));
+    assert!(check(&hidden).is_err());
     // A label missing.
     let unlabelled = svg(bar(60, "3") + &bar(140, "7") + &bar(100, ""));
     assert!(check(&unlabelled).unwrap_err().contains("5"));
