@@ -354,8 +354,13 @@ impl BonsaiHarness {
                 (Some(out), HarnessPhase::Thinking) => out.text(),
                 _ => String::new(),
             },
+            // Kept while the step runs and is checked, so the screen shows
+            // the finished answer even if no poll saw its last tokens.
             live: match (&state.out, state.phase) {
-                (Some(out), HarnessPhase::Thinking) => {
+                (
+                    Some(out),
+                    HarnessPhase::Thinking | HarnessPhase::Acting | HarnessPhase::Verifying,
+                ) => {
                     let text = out.text();
                     (!text.is_empty()).then(|| live::read(&text))
                 }

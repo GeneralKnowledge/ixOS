@@ -66,12 +66,26 @@ fn field(text: &str, key: &str) -> Option<(String, bool)> {
                 Some('b') => out.push('\u{8}'),
                 Some('f') => out.push('\u{c}'),
                 Some('u') => {
-                    let hex: String = chars.by_ref().take(4).collect();
-                    if hex.len() < 4 {
-                        break;
-                    }
-                    if let Some(c) = u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
-                        out.push(c);
+                    let Some(unit) = hex4(&mut chars) else { break };
+                    if (0xD800..0xDC00).contains(&unit) {
+                        // A high surrogate: wait for its low half.
+                        let mut ahead = chars.clone();
+                        let low = match (ahead.next(), ahead.next()) {
+                            (Some('\\'), Some('u')) => hex4(&mut ahead),
+                            (None, _) | (Some('\\'), None) => break,
+                            _ => None,
+                        };
+                        match low {
+                            Some(low) if (0xDC00..0xE000).contains(&low) => {
+                                let code = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+                                out.extend(char::from_u32(code));
+                                chars = ahead;
+                            }
+                            None if ahead.clone().next().is_none() => break,
+                            _ => out.push(char::REPLACEMENT_CHARACTER),
+                        }
+                    } else {
+                        out.push(char::from_u32(unit).unwrap_or(char::REPLACEMENT_CHARACTER));
                     }
                 }
                 Some(other) => out.push(other),
@@ -81,6 +95,15 @@ fn field(text: &str, key: &str) -> Option<(String, bool)> {
         }
     }
     Some((out, false))
+}
+
+/// Four hex digits after `\u`, or None when the text ends first.
+fn hex4(chars: &mut std::str::Chars<'_>) -> Option<u32> {
+    let hex: String = chars.by_ref().take(4).collect();
+    if hex.len() < 4 {
+        return None;
+    }
+    u32::from_str_radix(&hex, 16).ok()
 }
 
 /// The first `marker` that isn't inside a string value: scans the text

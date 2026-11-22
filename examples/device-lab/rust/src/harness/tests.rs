@@ -1046,4 +1046,9 @@ fn the_live_view_reads_a_half_written_answer() {
     assert_eq!(live.replacing, "len(numbers) + 1");
     assert_eq!(live.code, "len(num");
     assert!(live.writing);
+    // A surrogate pair becomes one character; half a pair waits.
+    let emoji = r#"{"thought": "t", "tool": "write_file", "path": "a.py", "content": "print('\uD83D\uDE00')"#;
+    assert_eq!(super::live::read(emoji).code, "print('😀')");
+    let half = &emoji[..emoji.find("\\uDE00").unwrap() + 2];
+    assert_eq!(super::live::read(half).code, "print('");
 }
