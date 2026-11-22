@@ -1,14 +1,14 @@
 # Smoke test: the app opens on the library, and Discover opens from it.
 # Uses a temporary data folder, so the library is empty.
-# Run with the phone plugged in:  forge ui run uitests/smoke.toml
+# Run with the phone plugged in:  forge ui run examples/soundscape/uitests/smoke.toml
 name = "Smoke: library, then Discover"
-app = "org.forgemobile.agentlab"
+app = "org.forgemobile.devicelab"
 
 [[step]]
 terminate = {}
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData"] }
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "soundscape"] }
 
 [[step]]
 expect = { id = "library.discover" }

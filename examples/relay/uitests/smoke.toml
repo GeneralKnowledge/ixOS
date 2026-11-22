@@ -1,15 +1,15 @@
 # Smoke test: from the empty screen, open Send with a Code, then close it.
 # Uses a temporary data folder; asks for the local network but needs no
 # second device.
-# Run with the phone plugged in:  forge ui run uitests/smoke.toml
+# Run with the phone plugged in:  forge ui run examples/relay/uitests/smoke.toml
 name = "Smoke: open Send with a Code"
-app = "org.forgemobile.agentlab"
+app = "org.forgemobile.devicelab"
 
 [[step]]
 terminate = {}
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData"] }
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "relay"] }
 
 [[step]]
 screenshot = "1-empty"

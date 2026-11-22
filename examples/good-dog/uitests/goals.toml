@@ -8,10 +8,10 @@
 #   forge ui run examples/good-dog/uitests/goals.toml
 
 name = "GD-8, GD-9, GD-11: goals, rest days, the week and safety"
-app = "org.forgemobile.gooddog"
+app = "org.forgemobile.devicelab"
 
 [[step]]
-launch = { args = ["-ForgeUITestData", "-ForgeUITestSampleDog"] }
+launch = { args = ["-ForgeUITestData", "-ForgeUITestSampleDog", "-launchApp", "goodDog"] }
 
 [[step]]
 expect = { id = "today.rhythm" }

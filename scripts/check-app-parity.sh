@@ -267,6 +267,36 @@ def rule_device_lab(app):
     return ok, "" if ok else "not on Device Lab's Apps screen"
 
 
+# The phone has Device Lab, not each app (it hosts them all; a free team
+# allows only 3 installed apps), so a hosted app's phone scenarios drive
+# Device Lab and open the app with -launchApp. Fifteen scenarios still
+# launched the old agentlab or gooddog installs, which aren't on the phone
+# (found 2026-11-22).
+DEVICE_LAB_ID = "org.forgemobile.devicelab"
+
+
+def rule_lab_scenarios(app):
+    if app.name == HOST or app.name not in hosted:
+        return None
+    paths = sorted((app / "uitests").glob("*.toml"))
+    if not paths:
+        return None
+    bad = []
+    for path in paths:
+        try:
+            data = tomllib.loads(read(path))
+        except tomllib.TOMLDecodeError:
+            bad.append(f"{path.name} (not TOML)")
+            continue
+        launches = [s["launch"] for s in data.get("step", []) if "launch" in s]
+        opens = all("-launchApp" in (l.get("args") or []) for l in launches)
+        if data.get("app") != DEVICE_LAB_ID or not launches or not opens:
+            bad.append(path.name)
+    if bad:
+        return False, "scenarios that don't open the app in Device Lab (-launchApp): " + ", ".join(bad)
+    return True, ""
+
+
 def rule_device_family(app):
     # xtool marks every app for iPhone and iPad unless told otherwise, so
     # each app says where it runs (docs/app-config.md).
@@ -1209,6 +1239,7 @@ RULES = [
     ("device-checks", "Every requirement has a device scenario", rule_device_checks),
     ("ui-test", "At least one `uitests/*.toml` scenario for `forge ui run`", rule_ui_test),
     ("device-lab", "Reachable from Device Lab's Apps screen", rule_device_lab),
+    ("lab-scenarios", "Phone scenarios drive Device Lab and open the app with `-launchApp`, never a separate install", rule_lab_scenarios),
     ("device-family", "Says which devices it runs on (`[ios] devices`)", rule_device_family),
 ]
 RULE_IDS = {r[0] for r in RULES}

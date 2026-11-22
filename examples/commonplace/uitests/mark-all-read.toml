@@ -6,13 +6,13 @@
 # address with the laptop's. Starts on an empty, throwaway library.
 
 name = "Mark all as read"
-app = "org.forgemobile.agentlab"
+app = "org.forgemobile.devicelab"
 
 [[step]]
 terminate = {}
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData"] }
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "commonplace"] }
 
 [[step]]
 tap = { id = "feeds.add" }
