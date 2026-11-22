@@ -201,7 +201,9 @@ for manifest in sorted(root.rglob("Package.swift")):
     text = "\n".join(
         l for l in text.splitlines() if not l.strip().startswith("//")
     )
-    for url in re.findall(r"\.package\(\s*(?:name:\s*\"[^\"]*\"\s*,\s*)?url:\s*\"([^\"]+)\"", text):
+    # Anything (an inline comment, a name:) may sit between `.package(` and
+    # `url:`; a declaration's URL comes before any `)`.
+    for url in re.findall(r"\.package\([^)]*?\burl:\s*\"([^\"]+)\"", text):
         if (rel, url.removesuffix(".git")) not in SWIFT_PACKAGES_ALLOWED:
             errors.append(
                 f"{rel}: third-party Swift package {url} isn't allowed here "
