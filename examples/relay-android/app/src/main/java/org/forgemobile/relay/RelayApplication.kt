@@ -2,6 +2,7 @@ package org.forgemobile.relay
 
 import android.app.Application
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.provider.Settings
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -103,7 +104,10 @@ class RelayApplication : Application() {
 
     fun launch(intent: Intent) {
         launched = true
-        val throwaway = intent.getBooleanExtra(ForgeEnvironment.TEMPORARY_DATA_EXTRA, false)
+        // Tests only: any app can start the activity, so a release build never lets an extra
+        // swap the person's Relay for throwaway data.
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        val throwaway = debuggable && intent.getBooleanExtra(ForgeEnvironment.TEMPORARY_DATA_EXTRA, false)
         if (throwaway) {
             if (host.core != null) host.close()
             network.close()

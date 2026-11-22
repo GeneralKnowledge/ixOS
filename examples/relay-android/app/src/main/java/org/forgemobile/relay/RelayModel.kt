@@ -393,7 +393,11 @@ class RelayModel(
             try {
                 paths = copy()
                 send(paths, device)
-            } catch (e: java.io.IOException) {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Unreadable, or its grant gone (a provider throws SecurityException): said, not
+                // a crash.
                 report(ForgeFailure("Couldn't Read the File", e.message ?: "$e"))
             } finally {
                 finished(paths)
