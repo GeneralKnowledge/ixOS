@@ -196,21 +196,25 @@ struct PythonCodeEditor: UIViewRepresentable {
             }
         }
 
-        /// Temporary attributes: shown, never saved in the text or undo.
+        /// A background on the text storage, like the colours: an attribute
+        /// change never enters Undo, and the file saves only the text.
+        /// (TextKit 1's temporary attributes are macOS-only.)
         private func mark(_ ranges: [NSRange], colour: UIColor) {
             guard let view else { return }
-            let manager = view.layoutManager
-            let length = view.textStorage.length
-            // Typing moves text under the old marks, so clear them all.
-            if marked {
-                manager.removeTemporaryAttribute(
-                    .backgroundColor, forCharacterRange: NSRange(location: 0, length: length))
-            }
+            let storage = view.textStorage
+            let length = storage.length
             let ranges = ranges.filter { NSMaxRange($0) <= length }
-            marked = !ranges.isEmpty
+            guard marked || !ranges.isEmpty else { return }
+            storage.beginEditing()
+            // Typing moves text under the old marks, so clear them all.
+            storage.removeAttribute(.backgroundColor, range: NSRange(location: 0, length: length))
             for range in ranges {
-                manager.addTemporaryAttribute(.backgroundColor, value: colour, forCharacterRange: range)
+                storage.addAttribute(.backgroundColor, value: colour, range: range)
             }
+            storage.endEditing()
+            marked = !ranges.isEmpty
+            // What's typed next never takes a mark's background.
+            view.typingAttributes[.backgroundColor] = nil
         }
 
         private func changed() {
@@ -226,6 +230,8 @@ struct PythonCodeEditor: UIViewRepresentable {
         func textView(
             _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText replacement: String
         ) -> Bool {
+            // Typed beside a marked bracket, text would take its background.
+            textView.typingAttributes[.backgroundColor] = nil
             let source = (textView.text ?? "") as NSString
             let lineStart = source.lineRange(for: NSRange(location: range.location, length: 0)).location
             if replacement == "\n" {
@@ -271,6 +277,7 @@ struct PythonCodeEditor: UIViewRepresentable {
 
         func insert(_ snippet: String) {
             guard let view, view.isEditable else { return }
+            view.typingAttributes[.backgroundColor] = nil
             if snippet == "\t" {
                 indentSelection(outdent: false)
                 return
@@ -334,6 +341,9 @@ struct PythonCodeEditor: UIViewRepresentable {
                 }.value
                 guard !Task.isCancelled, let self, let view = self.view, view.text == source else { return }
                 Self.apply(spans, to: view, colours: colours, font: self.font)
+                // Colouring resets every attribute, the bracket marks too.
+                self.marked = false
+                self.matchBrackets()
             }
         }
 
