@@ -1413,6 +1413,42 @@ mod tests {
                 "{fetched:?}"
             );
             assert!(lock(&cached).conn.is_none());
+
+            // Connections changes while a dial is under way (Hybrid to
+            // Local, say): the route found under the old choice still works,
+            // but its connection isn't kept. The route is asked again under
+            // the new choice and that connection is the one used. Two hosts
+            // stand for the two routes, so which one was kept shows.
+            let other = start("other").await;
+            let asked = AtomicUsize::new(0);
+            let (old_plan, new_plan) = (host.endpoint.addr(), other.endpoint.addr());
+            let changed: Arc<Mutex<Kept>> = Arc::default();
+            let route = || {
+                if asked.fetch_add(1, Ordering::SeqCst) == 0 {
+                    // What apply_servers does when Connections changes.
+                    lock(&changed).close(b"closed");
+                    Ok(old_plan.clone())
+                } else {
+                    Ok(new_plan.clone())
+                }
+            };
+            let c = connection(&viewer, &changed, route).await.unwrap();
+            assert_eq!(
+                asked.load(Ordering::SeqCst),
+                2,
+                "asked again after the change"
+            );
+            assert_eq!(c.remote_id(), other.id(), "the new choice's route is used");
+            let kept = lock(&changed).live().cloned().expect("kept");
+            assert_eq!(kept.remote_id(), other.id());
+            // And while Connections stays the same, it is reused.
+            let again = connection(&viewer, &changed, || -> Result<EndpointAddr, RelayError> {
+                panic!("not asked: the kept connection is reused")
+            })
+            .await
+            .unwrap();
+            assert_eq!(again.stable_id(), kept.stable_id());
+            other.shutdown().await;
             drop(tunnel);
             viewer.shutdown().await;
             host.shutdown().await;
