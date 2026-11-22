@@ -132,10 +132,12 @@ struct ConnectionModeSection: View {
     let choose: (ConnectionMode) -> Void
     let chooseServers: (RelayServers) -> Void
 
-    init(model: RelayModel) {
+    /// `showsHealth`: false where the screen shows the servers-down notice
+    /// elsewhere (Devices, at the top), so it isn't shown twice.
+    init(model: RelayModel, showsHealth: Bool = true) {
         mode = model.connectionMode
         servers = model.servers
-        health = model.serverHealth
+        health = showsHealth ? model.serverHealth : .off
         choose = { mode in Task { await model.setConnectionMode(mode) } }
         chooseServers = { servers in Task { await model.setServers(servers) } }
     }
@@ -170,13 +172,7 @@ struct ConnectionModeSection: View {
                 }
                 .accessibilityIdentifier("devices.servers")
                 if health == .unreachable {
-                    ForgeNotice(
-                        "The servers can't be reached right now. Devices on the same Wi-Fi or Tailscale still can.",
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .accessibilityIdentifier("devices.serversDown")
+                    ServersDownNotice()
                 }
             }
         } header: {
@@ -192,6 +188,20 @@ struct ConnectionModeSection: View {
         case .own: "Your Own"
         case .none: "None"
         }
+    }
+}
+
+/// Relay's servers can't be reached (N2): on Devices (at the top) and in
+/// Settings, under Connections.
+struct ServersDownNotice: View {
+    var body: some View {
+        ForgeNotice(
+            "The servers can't be reached right now. Devices on the same Wi-Fi or Tailscale still can.",
+            systemImage: "exclamationmark.triangle"
+        )
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .accessibilityIdentifier("devices.serversDown")
     }
 }
 

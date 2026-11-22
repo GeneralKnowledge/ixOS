@@ -245,6 +245,12 @@ public final class RelayModel {
         serverHealth = core.serverHealth()
     }
 
+    /// Re-reads only whether Relay's servers answer.
+    public func refreshServerHealth() {
+        let health = core.serverHealth()
+        if health != serverHealth { serverHealth = health }
+    }
+
     /// "Nearby", "Reachable, seen 2 min ago" or "Offline, seen 3 h ago".
     nonisolated public static func whereNow(_ device: Device, now: Date = Date()) -> String {
         let word: String

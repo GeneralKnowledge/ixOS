@@ -209,8 +209,8 @@ messages over 5G, was run. N2's acceptance run covers them. The stages after the
 | M1, M2 | Reliable Trusted-Device Delivery, Personal Device Network | As defined; with #353 and the 1.0 acceptance run, the proven device foundation ([audit, step 5](relay-audit-2026-11.md)) |
 | N1 | My Devices | A person's identity across devices; trust and revoke once. Step 1, the introducer, is on main; next is a signed device list |
 | N2 | Away from home | Secure communication beyond the home network, without manual networking. Chosen next on 2026-11-21; plan: [relay-away-from-home.md](relay-away-from-home.md) |
-| N3 | The encrypted mailbox | Somewhere things wait while a device is away: its own security, retention and availability questions ([review, refinement 3](relay-review-2026-11.md)) |
-| N4 | One messaging security model | The chat server path on Relay's identities and encryption |
+| N3 | The encrypted mailbox | Somewhere things wait while a device is away: its own security, retention and availability questions ([review, refinement 3](relay-review-2026-11.md)). N2 passed on the phone on 2026-11-22; plan: [relay-mailbox.md](relay-mailbox.md), built together with N4 |
+| N4 | One messaging security model | The chat server path on Relay's identities and encryption; plan: [relay-chat-on-relay.md](relay-chat-on-relay.md) |
 | N5 | Capabilities and permissions | Devices offer services safely, each behind its own right |
 | N6 | The first capability | Sites, or transcription on the laptop: proof that new functions come from the layer |
 | N7 | Groups and people | Rooms and Spaces on MLS, people beyond your own devices |

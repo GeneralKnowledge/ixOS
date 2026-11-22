@@ -83,6 +83,13 @@ struct DevicesView: View {
                     model.refreshDevices()
                 }
             }
+            // The relay can go down or come back with nothing else changing:
+            // its notice follows within seconds.
+            .task {
+                while (try? await Task.sleep(for: .seconds(5))) != nil {
+                    model.refreshServerHealth()
+                }
+            }
         }
         // On the stack, not its first screen: the device screen it pushes asks
         // to forget a device, and an alert on the root showed behind it.
@@ -104,6 +111,13 @@ struct DevicesView: View {
     /// `body` so the compiler can type-check each part in time.
     private var deviceList: some View {
         List {
+            // At the top, not only under Connections: a relay that can't be
+            // reached is why a device away from home doesn't answer.
+            if model.connectionMode == .hybrid, model.serverHealth == .unreachable {
+                Section {
+                    ServersDownNotice()
+                }
+            }
             if !model.trustedDevices.isEmpty {
                 Section {
                     ForEach(model.trustedDevices) { device in
@@ -127,7 +141,7 @@ struct DevicesView: View {
             }
             if !isEmpty {
                 PairingPolicySection(model: model)
-                ConnectionModeSection(model: model)
+                ConnectionModeSection(model: model, showsHealth: false)
             }
             if !model.transfers.isEmpty {
                 Section("History") {
