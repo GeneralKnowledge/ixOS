@@ -1487,9 +1487,24 @@ void uniffi_forge_ffi_fn_func_crash_test_rust_panic(RustCallStatus *_Nonnull out
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_ARTIFACT_TABLE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_ARTIFACT_TABLE
+RustBuffer uniffi_forge_ffi_fn_func_artifact_table(RustBuffer file, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_ARTIFACT_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_ARTIFACT_TEXT
+RustBuffer uniffi_forge_ffi_fn_func_artifact_text(RustBuffer file, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PROJECT_ARTIFACTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PROJECT_ARTIFACTS
 RustBuffer uniffi_forge_ffi_fn_func_project_artifacts(RustBuffer project, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PROJECT_OUTPUTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PROJECT_OUTPUTS
+RustBuffer uniffi_forge_ffi_fn_func_project_outputs(RustBuffer project, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_CONSOLE_SCRIPT
@@ -1945,9 +1960,27 @@ uint16_t uniffi_forge_ffi_checksum_func_crash_test_rust_panic(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_ARTIFACT_TABLE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_ARTIFACT_TABLE
+uint16_t uniffi_forge_ffi_checksum_func_artifact_table(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_ARTIFACT_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_ARTIFACT_TEXT
+uint16_t uniffi_forge_ffi_checksum_func_artifact_text(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PROJECT_ARTIFACTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PROJECT_ARTIFACTS
 uint16_t uniffi_forge_ffi_checksum_func_project_artifacts(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PROJECT_OUTPUTS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PROJECT_OUTPUTS
+uint16_t uniffi_forge_ffi_checksum_func_project_outputs(void
     
 );
 #endif

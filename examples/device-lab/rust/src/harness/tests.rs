@@ -1501,3 +1501,92 @@ fn a_tracebacks_project_frames_are_found_for_opening() {
     );
     assert!(super::python_lab::python_traceback_frames("all fine\n".into()).is_empty());
 }
+
+#[test]
+fn outputs_list_every_kind_but_python() {
+    use super::artifacts::{list_outputs, output_kind_of};
+    assert_eq!(output_kind_of("out/results.CSV"), Some("table"));
+    assert_eq!(output_kind_of("data.json"), Some("json"));
+    assert_eq!(output_kind_of("report.md"), Some("text"));
+    assert_eq!(output_kind_of("page.html"), Some("html"));
+    assert_eq!(output_kind_of("plot.png"), Some("png"));
+    assert_eq!(output_kind_of("model.bin"), Some("file"));
+    assert_eq!(output_kind_of("main.py"), None);
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("__pycache__")).unwrap();
+    std::fs::create_dir_all(root.join(".workspace")).unwrap();
+    std::fs::write(root.join("main.py"), "print(1)").unwrap();
+    std::fs::write(root.join("__pycache__/main.cpython-315.pyc"), "x").unwrap();
+    std::fs::write(root.join(".workspace/runs.json"), "[]").unwrap();
+    std::fs::write(root.join("results.csv"), "a,b\n1,2\n").unwrap();
+    std::fs::write(root.join("notes.txt"), "hi").unwrap();
+    let mut found: Vec<_> = list_outputs(root)
+        .into_iter()
+        .map(|a| (a.path, a.kind))
+        .collect();
+    found.sort();
+    assert_eq!(
+        found,
+        [
+            ("notes.txt".to_string(), "text".to_string()),
+            ("results.csv".to_string(), "table".to_string())
+        ]
+    );
+}
+
+#[test]
+fn tables_read_like_python_csv_writes_them() {
+    use super::artifacts::{parse_table, CELL_MAX_CHARS, TABLE_MAX_ROWS};
+    let table = parse_table(
+        "\u{feff}name,note\r\nAda,\"likes, commas\"\r\nBo,\"said \"\"hi\"\"\nthen left\"\r\n",
+        ',',
+        false,
+    );
+    assert_eq!(
+        table.rows,
+        vec![
+            vec!["name", "note"],
+            vec!["Ada", "likes, commas"],
+            vec!["Bo", "said \"hi\"\nthen left"],
+        ]
+    );
+    assert_eq!(table.total_rows, 3);
+    assert!(!table.cut);
+
+    // No newline at the end, tabs, and an empty last cell.
+    let tsv = parse_table("a\tb\n1\t", '\t', false);
+    assert_eq!(tsv.rows, vec![vec!["a", "b"], vec!["1", ""]]);
+
+    let long = "x".repeat(CELL_MAX_CHARS + 5);
+    let many: String = (0..TABLE_MAX_ROWS + 10).map(|n| format!("{n},{long}\n")).collect();
+    let big = parse_table(&many, ',', true);
+    assert_eq!(big.rows.len(), TABLE_MAX_ROWS);
+    assert_eq!(big.total_rows, (TABLE_MAX_ROWS + 10) as u64);
+    assert!(big.cut && big.partial);
+    assert_eq!(big.rows[0][1].chars().count(), CELL_MAX_CHARS + 1);
+}
+
+#[test]
+fn json_is_indented_and_text_is_cut_at_a_character() {
+    use super::artifacts::{artifact_text, TEXT_MAX_BYTES};
+    let dir = tempfile::tempdir().unwrap();
+    let json = dir.path().join("data.json");
+    std::fs::write(&json, r#"{"a":[1,2]}"#).unwrap();
+    let shown = artifact_text(json.to_string_lossy().into()).unwrap();
+    assert_eq!(shown.text, "{\n  \"a\": [\n    1,\n    2\n  ]\n}");
+    assert!(!shown.truncated);
+
+    let broken = dir.path().join("broken.json");
+    std::fs::write(&broken, "{not json").unwrap();
+    assert_eq!(artifact_text(broken.to_string_lossy().into()).unwrap().text, "{not json");
+
+    let long = dir.path().join("long.txt");
+    std::fs::write(&long, "é".repeat(TEXT_MAX_BYTES)).unwrap();
+    let cut = artifact_text(long.to_string_lossy().into()).unwrap();
+    assert!(cut.truncated);
+    assert!(cut.text.len() <= TEXT_MAX_BYTES);
+
+    assert!(artifact_text(dir.path().join("missing.txt").to_string_lossy().into()).is_err());
+}

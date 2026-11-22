@@ -289,7 +289,7 @@ struct PythonLabView: View {
     @ViewBuilder private var artifactsSection: some View {
         Section {
             if model.madeByLastRun.isEmpty {
-                Text(model.succeeded == nil ? "Images a script saves, like plot.png, show here." : "The last run made no images.")
+                Text(model.succeeded == nil ? "Files a script saves, like plot.png or results.csv, show here." : "The last run made no files.")
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("pythonLab.artifacts.none")
             }
@@ -306,7 +306,7 @@ struct PythonLabView: View {
                     .navigationTitle("Artifacts")
                     .inlineNavigationTitle()
                 } label: {
-                    LabeledContent("All Images", value: "\(model.artifacts.count)")
+                    LabeledContent("All Outputs", value: "\(model.artifacts.count)")
                 }
                 .accessibilityIdentifier("pythonLab.artifacts.all")
             }
@@ -565,7 +565,10 @@ struct PythonFilesView: View {
         .padding(.leading, CGFloat(depth) * 16)
         if entry.isFolder {
             label.accessibilityIdentifier("pythonLab.folder.\(entry.path)")
-        } else if let artifact = model.artifacts.first(where: { $0.path == entry.path }) {
+        } else if let artifact = model.artifacts.first(where: { $0.path == entry.path }),
+                  !ArtifactKind.editable.contains(artifact.kind) {
+            // Text, JSON and CSV open in the editor here; previews are under
+            // Artifacts.
             NavigationLink {
                 ArtifactDetailView(artifact: artifact, url: model.url(of: artifact))
             } label: {

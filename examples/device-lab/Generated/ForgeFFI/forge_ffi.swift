@@ -7970,6 +7970,148 @@ public func FfiConverterTypeAppDirectories_lower(_ value: AppDirectories) -> Rus
 
 
 /**
+ * A CSV or TSV file's first rows, the first being its header.
+ */
+public struct ArtifactTable: Equatable, Hashable {
+    public var rows: [[String]]
+    /**
+     * Rows in the part of the file read, header included; more than
+     * `rows.len()` when the preview stops early.
+     */
+    public var totalRows: UInt64
+    /**
+     * Some rows had more columns, or cells more characters, than shown.
+     */
+    public var cut: Bool
+    /**
+     * The file is longer than the part read.
+     */
+    public var partial: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(rows: [[String]], 
+        /**
+         * Rows in the part of the file read, header included; more than
+         * `rows.len()` when the preview stops early.
+         */totalRows: UInt64, 
+        /**
+         * Some rows had more columns, or cells more characters, than shown.
+         */cut: Bool, 
+        /**
+         * The file is longer than the part read.
+         */partial: Bool) {
+        self.rows = rows
+        self.totalRows = totalRows
+        self.cut = cut
+        self.partial = partial
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ArtifactTable: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeArtifactTable: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArtifactTable {
+        return
+            try ArtifactTable(
+                rows: FfiConverterSequenceSequenceString.read(from: &buf), 
+                totalRows: FfiConverterUInt64.read(from: &buf), 
+                cut: FfiConverterBool.read(from: &buf), 
+                partial: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ArtifactTable, into buf: inout [UInt8]) {
+        FfiConverterSequenceSequenceString.write(value.rows, into: &buf)
+        FfiConverterUInt64.write(value.totalRows, into: &buf)
+        FfiConverterBool.write(value.cut, into: &buf)
+        FfiConverterBool.write(value.partial, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactTable_lift(_ buf: RustBuffer) throws -> ArtifactTable {
+    return try FfiConverterTypeArtifactTable.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactTable_lower(_ value: ArtifactTable) -> RustBuffer {
+    return FfiConverterTypeArtifactTable.lower(value)
+}
+
+
+/**
+ * A text or JSON file to show; JSON is indented when it parses.
+ */
+public struct ArtifactText: Equatable, Hashable {
+    public var text: String
+    public var truncated: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, truncated: Bool) {
+        self.text = text
+        self.truncated = truncated
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ArtifactText: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeArtifactText: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArtifactText {
+        return
+            try ArtifactText(
+                text: FfiConverterString.read(from: &buf), 
+                truncated: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ArtifactText, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterBool.write(value.truncated, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactText_lift(_ buf: RustBuffer) throws -> ArtifactText {
+    return try FfiConverterTypeArtifactText.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactText_lower(_ value: ArtifactText) -> RustBuffer {
+    return FfiConverterTypeArtifactText.lower(value)
+}
+
+
+/**
  * The device's orientation, in radians.
  */
 public struct Attitude: Equatable, Hashable {
@@ -11123,7 +11265,7 @@ public func FfiConverterTypePowerStats_lower(_ value: PowerStats) -> RustBuffer 
 
 
 /**
- * An image file in a project.
+ * An output file in a project (an image, for `project_artifacts`).
  */
 public struct ProjectArtifact: Equatable, Hashable {
     /**
@@ -11131,7 +11273,8 @@ public struct ProjectArtifact: Equatable, Hashable {
      */
     public var path: String
     /**
-     * "png", "jpeg", "gif" or "svg".
+     * "png", "jpeg", "gif" or "svg"; with `project_outputs` also "table"
+     * (CSV, TSV), "json", "text", "html", "pdf" or "file".
      */
     public var kind: String
     public var bytes: UInt64
@@ -11149,7 +11292,8 @@ public struct ProjectArtifact: Equatable, Hashable {
          * Relative to the project, like "charts/sales.png".
          */path: String, 
         /**
-         * "png", "jpeg", "gif" or "svg".
+         * "png", "jpeg", "gif" or "svg"; with `project_outputs` also "table"
+         * (CSV, TSV), "json", "text", "html", "pdf" or "file".
          */kind: String, bytes: UInt64, modifiedMs: Int64, 
         /**
          * From the PNG header; none for other kinds.
@@ -13008,6 +13152,81 @@ public func FfiConverterTypeAiRunState_lower(_ value: AiRunState) -> RustBuffer 
     return FfiConverterTypeAiRunState.lower(value)
 }
 
+
+
+public 
+enum ArtifactError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case Unreadable(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension ArtifactError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeArtifactError: FfiConverterRustBuffer {
+    typealias SwiftType = ArtifactError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArtifactError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Unreadable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ArtifactError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Unreadable(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactError_lift(_ buf: RustBuffer) throws -> ArtifactError {
+    return try FfiConverterTypeArtifactError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactError_lower(_ value: ArtifactError) -> RustBuffer {
+    return FfiConverterTypeArtifactError.lower(value)
+}
 
 
 
@@ -16929,6 +17148,31 @@ fileprivate struct FfiConverterSequenceTypeNetworkInterface: FfiConverterRustBuf
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [[String]]
+
+    public static func write(_ value: [[String]], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterSequenceString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [[String]] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [[String]]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterSequenceString.read(from: &buf))
+        }
+        return seq
+    }
+}
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
 
@@ -17092,6 +17336,30 @@ public func crashTestRustPanic()  {try! rustCall() {
 }
 }
 /**
+ * The first rows of the CSV (or, for `.tsv`, tab-separated) file at
+ * `file`. Quoted cells may hold the separator, quotes (doubled) and
+ * newlines, as Python's `csv` module writes them.
+ */
+public func artifactTable(file: String)throws  -> ArtifactTable  {
+    return try  FfiConverterTypeArtifactTable_lift(try rustCallWithError(FfiConverterTypeArtifactError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_artifact_table(
+        FfiConverterString.lower(file),uniffiCallStatus
+    )
+})
+}
+/**
+ * The text of the file at `file` (the first 256 KB), JSON indented.
+ */
+public func artifactText(file: String)throws  -> ArtifactText  {
+    return try  FfiConverterTypeArtifactText_lift(try rustCallWithError(FfiConverterTypeArtifactError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_artifact_text(
+        FfiConverterString.lower(file),uniffiCallStatus
+    )
+})
+}
+/**
  * The images in the project folder `project`, newest first, for Python
  * Lab's Artifacts section and Bonsai Harness's project files.
  */
@@ -17099,6 +17367,18 @@ public func projectArtifacts(project: String) -> [ProjectArtifact]  {
     return try!  FfiConverterSequenceTypeProjectArtifact.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_func_project_artifacts(
+        FfiConverterString.lower(project),uniffiCallStatus
+    )
+})
+}
+/**
+ * Every output file in the project folder `project` (PL2e): images,
+ * tables, text and the rest, newest first. Python files aren't outputs.
+ */
+public func projectOutputs(project: String) -> [ProjectArtifact]  {
+    return try!  FfiConverterSequenceTypeProjectArtifact.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_project_outputs(
         FfiConverterString.lower(project),uniffiCallStatus
     )
 })
@@ -17523,7 +17803,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_crash_test_rust_panic() != 23512) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_artifact_table() != 65088) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_artifact_text() != 49125) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_project_artifacts() != 21958) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_project_outputs() != 5403) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_python_lab_console_script() != 54637) {

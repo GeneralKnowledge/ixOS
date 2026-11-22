@@ -127,9 +127,10 @@ public final class PythonLabModel {
     /// The file Run starts; nil runs the open file.
     public private(set) var runFile: String?
 
-    /// The project's images, newest first.
+    /// The project's outputs (images, tables, text, anything but Python),
+    /// newest first (PL2e).
     public private(set) var artifacts: [ProjectArtifact] = []
-    /// The images the last run made or changed.
+    /// The outputs the last run made or changed.
     public private(set) var madeByLastRun: [ProjectArtifact] = []
 
     public let samples: [PythonLabSample]
@@ -672,7 +673,7 @@ public final class PythonLabModel {
         if let folder, let file {
             script = pythonLabConsoleScript(project: folder, path: file)
             before = Dictionary(
-                projectArtifacts(project: folder).map { ($0.path, $0) },
+                projectOutputs(project: folder).map { ($0.path, $0) },
                 uniquingKeysWith: { first, _ in first })
         }
         lastRunFile = file
@@ -701,7 +702,7 @@ public final class PythonLabModel {
                 let stderr = console.segments.filter { $0.kind == .error }.map(\.text).joined()
                 errorFrames = pythonTracebackFrames(output: stderr)
             }
-            artifacts = projectArtifacts(project: folder)
+            artifacts = projectOutputs(project: folder)
             madeByLastRun = artifacts.filter { artifact in
                 guard let old = before[artifact.path] else { return true }
                 return old.bytes != artifact.bytes || old.modifiedMs != artifact.modifiedMs
@@ -804,10 +805,10 @@ public final class PythonLabModel {
         }
     }
 
-    /// Reads the project's images again (after a delete, or on opening).
+    /// Reads the project's outputs again (after a delete, or on opening).
     public func loadArtifacts() {
         guard let projectFolder else { return }
-        artifacts = projectArtifacts(project: projectFolder)
+        artifacts = projectOutputs(project: projectFolder)
     }
 
     /// Where an artifact is, to show or share it.

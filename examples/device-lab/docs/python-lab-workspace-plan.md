@@ -126,9 +126,13 @@ Opening a file adds it as a tab above the editor (up to 8; a ninth closes the ol
 
 Putting the cursor beside a bracket marks it and its partner; a bracket with no partner, or the wrong one (`(]`), is marked alone in the danger tone. Rust's `python_matching_bracket(source, cursor)` finds the pair in UTF-16 units and skips brackets in strings and comments (the highlighter's tokens), tested on Linux. The marks are TextKit temporary attributes, so they never enter the text or Undo.
 
+### PL2e. Artifact browser — built
+
+Artifacts now lists every file a run made or changed, not only images: anything in the project except Python files, hidden folders and `__pycache__` (Rust's `project_outputs`; Bonsai's image check still uses `project_artifacts`). Each opens in a preview that fits it: images as before; CSV and TSV as a grid with the header row in bold (Rust's `artifact_table` reads quoted cells as Python's `csv` writes them, and keeps the first 500 rows, 50 columns and 200 characters a cell, saying so when it cuts); text and JSON as selectable monospaced text, JSON indented (`artifact_text`, first 256 KB); HTML in the same script-free web view as SVG; PDFs and anything else in Quick Look. Every preview shares the file. In the Files list, text, JSON and CSV still open in the editor.
+
 ### Still in PL2
 
-A general artifact browser, and debugging (stepping, variables).
+Debugging (breakpoints, stepping, variables).
 
 ## Decided: projects live in Files
 
