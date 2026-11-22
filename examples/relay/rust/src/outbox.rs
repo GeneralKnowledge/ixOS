@@ -1031,7 +1031,11 @@ impl RelayCore {
                 })
             })
             .await;
-        lock(&depositing).remove(&transfer);
+        // Kept when that couldn't be saved: the item is in the mailbox all
+        // the same, so it stays out of reach of a cancel until a relaunch.
+        if saved.is_ok() {
+            lock(&depositing).remove(&transfer);
+        }
         matches!(saved, Ok(true))
     }
 
