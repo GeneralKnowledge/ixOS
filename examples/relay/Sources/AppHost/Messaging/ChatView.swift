@@ -481,6 +481,12 @@ struct ChatView: View {
         replyingTo = nil
     }
 
+    /// Nothing started since a send cleared the composer: no text, files,
+    /// reply or edit. Only then does a refused send come back.
+    private var composerIsEmpty: Bool {
+        draft.isEmpty && staged.isEmpty && replyingTo == nil && editing == nil
+    }
+
     /// Clears the composer at once, and gives everything back if Rust
     /// refuses it (too long, say), unless something new has been started
     /// meanwhile: a refusal never loses what was written.
@@ -496,7 +502,7 @@ struct ChatView: View {
                 let kept = await model.send(
                     files: sending.map(\.outgoing), text: text, to: conversationId, replyTo: answering?.id)
                 // Refused: the files and caption come back to the composer.
-                if !kept && staged.isEmpty && draft.isEmpty && editing == nil {
+                if !kept && composerIsEmpty {
                     staged = sending
                     draft = text
                     replyingTo = answering
@@ -515,8 +521,7 @@ struct ChatView: View {
             Task {
                 // Failed (the alert says why): back to editing, with the edit.
                 let saved = await model.edit(message, to: text)
-                if !saved, editing == nil, draft == stashedDraft {
-                    replyingTo = nil
+                if !saved, editing == nil, replyingTo == nil, staged.isEmpty, draft == stashedDraft {
                     editing = message
                     draft = text
                 }
@@ -528,7 +533,7 @@ struct ChatView: View {
         // Not tied to the view: leaving the room does not cancel the send.
         Task {
             let kept = await model.send(text, to: conversationId, replyTo: answering?.id)
-            if !kept && draft.isEmpty && editing == nil {
+            if !kept && composerIsEmpty {
                 draft = text
                 replyingTo = answering
             }

@@ -45,13 +45,17 @@ final class ChatModelTests: XCTestCase {
         try await me.signUp(serverURL: server.url, displayName: "Reuben")
         await waitUntil("rooms listed") { me.conversations.map(\.id).contains("general") }
 
-        let tooLong = String(repeating: "x", count: MAX_MESSAGE_CHARS_SWIFT + 1)
+        // "é" spelt as two scalars: the limit counts scalars, as Rust's
+        // chars() does, not the characters on screen.
+        let longest = String(repeating: "e\u{0301}", count: MAX_MESSAGE_CHARS_SWIFT / 2)
+        XCTAssertEqual(longest.unicodeScalars.count, MAX_MESSAGE_CHARS_SWIFT)
+        let tooLong = longest + "x"
+        XCTAssertEqual(tooLong.unicodeScalars.count, MAX_MESSAGE_CHARS_SWIFT + 1)
         let refused = await me.send(tooLong, to: "general")
         XCTAssertFalse(refused)
         XCTAssertNotNil(me.sendError["general"])
         XCTAssertFalse(me.messages(in: "general").contains { $0.body == tooLong })
 
-        let longest = String(repeating: "x", count: MAX_MESSAGE_CHARS_SWIFT)
         let kept = await me.send(longest, to: "general")
         XCTAssertTrue(kept)
         XCTAssertNil(me.sendError["general"])
