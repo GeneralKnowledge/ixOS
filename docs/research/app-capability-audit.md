@@ -196,7 +196,7 @@ This is Device Lab code. It moves toward ForgeKit only when a second *app* (not 
 
 ## 5. Proposed order
 
-Each step is its own PR and starts only on Reuben's go.
+Each step was planned as its own PR. Reuben asked on 2026-11-22 (20:03) for bigger strides while he sleeps, so C1 to C4 are built together on this branch, one commit per step, under the provisional decisions in section 6.
 
 | Step | What | Where | Needs the iPhone |
 |---|---|---|---|
@@ -210,10 +210,12 @@ Why Commonplace first rather than Pocket Library, which A2UI-1 imitated: Pocket 
 
 ## 6. Decisions for Reuben
 
-1. **Order.** C1 to C4 as above, or Pocket Library's per-book reading plan first so the A2UI-1 scenario becomes real. Recommended: C1 to C4; the per-book plan joins Pocket Library's own queue beside item 3.
-2. **Where the surface lives.** Capability in the app's crate, surface in Device Lab (4.2), so no app depends on A2UI. Recommended as written; the alternative, A2UI inside the app's own package, contradicts "keep it out of production apps".
-3. **Good Dog.** Leave the goal chooser behind GD7's go-ahead. Recommended.
-4. **Text field.** Not added now; revisit only after C3 or C4 has been used on the phone (4.1).
+**Provisional (2026-11-22, 20:05):** each decision below is taken as recommended so that C1 to C4 could be built overnight. Any of them can be overruled; the work is in separate commits so a step can be dropped without the others.
+
+1. **Order.** C1 to C4 as above, or Pocket Library's per-book reading plan first so the A2UI-1 scenario becomes real. Recommended: C1 to C4; the per-book plan joins Pocket Library's own queue beside item 3. **Provisionally taken.**
+2. **Where the surface lives.** Capability in the app's crate, surface in Device Lab (4.2), so no app depends on A2UI. Recommended as written; the alternative, A2UI inside the app's own package, contradicts "keep it out of production apps". **Provisionally taken.**
+3. **Good Dog.** Leave the goal chooser behind GD7's go-ahead. Recommended. **Provisionally taken: Good Dog is not touched.**
+4. **Text field.** Not added now; revisit only after C3 or C4 has been used on the phone (4.1). **Provisionally taken.**
 
 ## Coordination
 
