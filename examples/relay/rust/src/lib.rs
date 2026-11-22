@@ -1403,6 +1403,8 @@ impl RelayCore {
         for id in &done.revoked {
             lock(&self.nearby).remove(id);
             lock(&self.reached).remove(id);
+            // Its site, if this device had it open, closes at once.
+            self.close_site_connections(Some(id));
             // What waited for it ends: No longer trusted.
             self.wake(id);
         }

@@ -443,6 +443,15 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             };
             let device = find_device(core, who)
                 .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            // Found on this network, as `send` does: a device never met
+            // has no saved address yet.
+            let addresses = find_device_addresses(&device.endpoint_id).unwrap_or_default();
+            if !addresses.is_empty() {
+                core.devices_nearby(vec![relay_core::NearbyDevice {
+                    endpoint_id: device.endpoint_id.clone(),
+                    addresses,
+                }]);
+            }
             let opened = core
                 .open_site_port(&device.endpoint_id, port)
                 .map_err(|e| e.to_string())?;
@@ -698,7 +707,7 @@ mod control {
                     let server = ["127.0.0.1:", "localhost:"]
                         .iter()
                         .any(|h| arg.starts_with(h));
-                    if i == 1 && !arg.starts_with("--") && !server {
+                    if i == 1 && arg != "--stop" && !server {
                         cwd.join(&arg).to_string_lossy().into_owned()
                     } else {
                         arg

@@ -28,6 +28,9 @@ or permission scheme of their own (the constraint of 2026-11-21).
    connection opens and again on every request. An open connection is
    closed within a quarter of a second when the grant goes, the device is
    revoked, or the service stops, even in the middle of a download.
+   Changing what the service offers (sharing another folder in place of
+   the first) is not one of these: a request already running finishes
+   from what it started on, and every later request uses the new one.
 4. **Seen only by who may use it.** A device's status answer
    (`relay status <device>`) names a capability among its offers only
    when the asker may use it. A device without the grant can't tell that

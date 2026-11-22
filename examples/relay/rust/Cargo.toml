@@ -101,7 +101,7 @@ tempfile = "3.14"
 # Messaging's tests run the real chat server in process.
 chat-server = { path = "../messaging/chat-server" }
 axum = "0.8"
-tokio = { version = "1", features = ["net"] }
+tokio = { version = "1", features = ["net", "test-util"] }
 # A pkarr lookup server in process (tests/servers.rs).
 iroh = { version = "1", default-features = false, features = ["tls-ring", "test-utils"] }
 # A plain-HTTP relay server in process, as on Hetzner (tests/servers.rs).

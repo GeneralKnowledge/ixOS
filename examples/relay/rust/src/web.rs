@@ -45,6 +45,40 @@ const MAX_HEAD: usize = 64 * 1024;
 const MAX_STREAMS: usize = 32;
 /// How long a stream may sit idle.
 const IDLE: Duration = Duration::from_secs(60);
+
+/// When a request last moved, in either direction. A transfer is idle only
+/// when nothing has moved either way for `IDLE`: a server still taking a
+/// big upload hasn't stopped answering.
+struct Activity(std::sync::Mutex<tokio::time::Instant>);
+
+impl Activity {
+    fn new() -> Self {
+        Self(std::sync::Mutex::new(tokio::time::Instant::now()))
+    }
+
+    fn moved(&self) {
+        *lock(&self.0) = tokio::time::Instant::now();
+    }
+
+    /// Runs `step`, giving up once nothing has moved for `IDLE`.
+    async fn within<F: std::future::Future>(&self, step: F) -> Result<F::Output, RelayError> {
+        tokio::pin!(step);
+        loop {
+            let deadline = *lock(&self.0) + IDLE;
+            tokio::select! {
+                out = &mut step => {
+                    self.moved();
+                    return Ok(out);
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    if *lock(&self.0) + IDLE <= tokio::time::Instant::now() {
+                        return Err(bad("idle"));
+                    }
+                }
+            }
+        }
+    }
+}
 /// Headers the viewer may not set: the host sets or drops them.
 const HOP_HEADERS: [&str; 5] = [
     "connection",
@@ -396,7 +430,7 @@ async fn serve_file(send: &mut SendStream, head: &Head, root: &Path) -> Result<(
         .await
         .map_err(|e| bad(&e.to_string()))?;
     if head.method == "GET" {
-        copy_idle(&mut opened, send).await?;
+        copy_idle(&mut opened, send, &Activity::new()).await?;
     }
     Ok(())
 }
@@ -426,9 +460,16 @@ async fn proxy(
     let (mut from_server, mut to_server) = server.split();
     // The answer is read while the body goes up: a server may answer (and
     // stop reading) before the whole body is sent.
+    let moving = Activity::new();
     both_ways(
-        copy_body(recv, &mut to_server, &head.extra, head.content_length),
-        copy_idle(&mut from_server, send),
+        copy_body(
+            recv,
+            &mut to_server,
+            &head.extra,
+            head.content_length,
+            &moving,
+        ),
+        copy_idle(&mut from_server, send, &moving),
     )
     .await
 }
@@ -454,8 +495,9 @@ async fn both_ways(
     }
 }
 
-/// Copies until the end, giving up when nothing moves for `IDLE`.
-async fn copy_idle<R, W>(from: &mut R, to: &mut W) -> Result<u64, RelayError>
+/// Copies until the end, giving up when nothing moves for `IDLE`, either
+/// way (`moving` is shared with the request's other direction).
+async fn copy_idle<R, W>(from: &mut R, to: &mut W, moving: &Activity) -> Result<u64, RelayError>
 where
     R: tokio::io::AsyncRead + Unpin + ?Sized,
     W: tokio::io::AsyncWrite + Unpin + ?Sized,
@@ -463,16 +505,16 @@ where
     let mut buf = vec![0u8; 16 * 1024];
     let mut total = 0u64;
     loop {
-        let n = tokio::time::timeout(IDLE, from.read(&mut buf))
-            .await
-            .map_err(|_| bad("idle"))?
+        let n = moving
+            .within(from.read(&mut buf))
+            .await?
             .map_err(|e| bad(&e.to_string()))?;
         if n == 0 {
             return Ok(total);
         }
-        tokio::time::timeout(IDLE, to.write_all(&buf[..n]))
-            .await
-            .map_err(|_| bad("idle"))?
+        moving
+            .within(to.write_all(&buf[..n]))
+            .await?
             .map_err(|e| bad(&e.to_string()))?;
         total += n as u64;
     }
@@ -485,6 +527,7 @@ async fn copy_body<R, W>(
     to: &mut W,
     extra: &[u8],
     length: u64,
+    moving: &Activity,
 ) -> Result<(), RelayError>
 where
     R: tokio::io::AsyncRead + Unpin,
@@ -497,7 +540,7 @@ where
     let rest = length.saturating_sub(first as u64);
     if rest > 0 {
         let mut limited = from.take(rest);
-        let copied = copy_idle(&mut limited, to).await?;
+        let copied = copy_idle(&mut limited, to, moving).await?;
         if copied < rest {
             return Err(bad("the request body ended early"));
         }
@@ -686,6 +729,9 @@ async fn forward(
             reason: "That device is no longer trusted here.".into(),
         }
     };
+    // Once the site's answer has started reaching the browser, a failure
+    // can only end the connection: a 502 after it would read as its body.
+    let answered = AtomicBool::new(false);
     let attempt = async {
         if !still() {
             return Err(revoked());
@@ -702,12 +748,14 @@ async fn forward(
             .await
             .map_err(|e| bad(&e.to_string()))?;
         let (mut from_browser, mut to_browser) = browser.split();
+        let moving = Activity::new();
         let upload = async {
             copy_body(
                 &mut from_browser,
                 &mut send,
                 &head.extra,
                 head.content_length,
+                &moving,
             )
             .await?;
             let _ = send.finish();
@@ -716,7 +764,8 @@ async fn forward(
         let download = async {
             let mut first = [0u8; 1];
             // The first byte shows the site answered at all.
-            let n = tokio::time::timeout(IDLE, recv.read(&mut first))
+            let n = moving
+                .within(recv.read(&mut first))
                 .await
                 .map_err(|_| bad("the site stopped answering"))?
                 .map_err(|e| bad(&e.to_string()))?
@@ -724,16 +773,21 @@ async fn forward(
             if n == 0 {
                 return Err(RelayError::Refused);
             }
+            answered.store(true, Ordering::SeqCst);
             to_browser
                 .write_all(&first[..n])
                 .await
                 .map_err(|e| bad(&e.to_string()))?;
-            copy_idle(&mut recv, &mut to_browser).await
+            copy_idle(&mut recv, &mut to_browser, &moving).await
         };
         both_ways(upload, download).await
     };
     let result = attempt.await;
-    if let Err(err) = &result {
+    if let Some(err) = result
+        .as_ref()
+        .err()
+        .filter(|_| !answered.load(Ordering::SeqCst))
+    {
         // Tell the browser in words; the site may simply not be shared.
         let text = match err {
             RelayError::Refused => {
@@ -815,13 +869,17 @@ pub(crate) async fn fetch(
     let conn = connection(node, to, cached).await?;
     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
     let mut answer = Vec::new();
+    let moving = Activity::new();
     let upload = async {
         send.write_all(&rewritten(&head, None))
             .await
             .map_err(|e| bad(&e.to_string()))?;
-        send.write_all(&request.body)
-            .await
-            .map_err(|e| bad(&e.to_string()))?;
+        for piece in request.body.chunks(16 * 1024) {
+            moving
+                .within(send.write_all(piece))
+                .await?
+                .map_err(|e| bad(&e.to_string()))?;
+        }
         let _ = send.finish();
         Ok(())
     };
@@ -830,7 +888,8 @@ pub(crate) async fn fetch(
     let download = async {
         let mut chunk = [0u8; 16 * 1024];
         loop {
-            let n = tokio::time::timeout(IDLE, recv.read(&mut chunk))
+            let n = moving
+                .within(recv.read(&mut chunk))
                 .await
                 .map_err(|_| bad("the site stopped answering"))?
                 .map_err(|e| bad(&e.to_string()))?
@@ -892,7 +951,9 @@ pub(crate) fn parse_response(mut answer: &[u8], head: bool) -> Result<SiteRespon
         });
     }
     let rest = &answer[end..];
-    let body = if chunked {
+    let body = if head || matches!(status, 204 | 304) {
+        Vec::new()
+    } else if chunked {
         let body = unchunk(rest)?;
         headers.retain(|h| !h.name.eq_ignore_ascii_case("content-length"));
         headers.push(SiteHeader {
@@ -900,8 +961,6 @@ pub(crate) fn parse_response(mut answer: &[u8], head: bool) -> Result<SiteRespon
             value: body.len().to_string(),
         });
         body
-    } else if head || matches!(status, 204 | 304) {
-        Vec::new()
     } else {
         match length {
             Some(n) if n > rest.len() => return Err(bad("the site's answer ended early")),
@@ -929,7 +988,17 @@ fn unchunk(mut rest: &[u8]) -> Result<Vec<u8>, RelayError> {
         let size = usize::from_str_radix(size_text, 16).map_err(|_| bad("a bad chunk size"))?;
         rest = &rest[line_end + 2..];
         if size == 0 {
-            return Ok(body);
+            // Trailer fields, if any, then the empty line that ends them.
+            loop {
+                let end = rest
+                    .windows(2)
+                    .position(|w| w == b"\r\n")
+                    .ok_or_else(|| bad("a chunked answer ended early"))?;
+                if end == 0 {
+                    return Ok(body);
+                }
+                rest = &rest[end + 2..];
+            }
         }
         if size.checked_add(2).is_none_or(|need| rest.len() < need) {
             return Err(bad("a chunk ended early"));
@@ -1057,6 +1126,41 @@ mod tests {
         assert!(parse_response(short, false).is_err());
         let r = parse_response(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n", true).unwrap();
         assert!(r.body.is_empty());
+
+        // A chunked answer ends with the line after its trailers.
+        let cut = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n";
+        assert!(parse_response(cut, false).is_err());
+        let trailers = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\nX-Sum: 1\r\n\r\n";
+        assert_eq!(parse_response(trailers, false).unwrap().body, b"ok");
+        // HEAD, 204 and 304 have no body, even when chunked.
+        let chunked_head = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+        assert!(parse_response(chunked_head, true).unwrap().body.is_empty());
+        let not_modified = b"HTTP/1.1 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n";
+        assert_eq!(parse_response(not_modified, false).unwrap().status, 304);
+    }
+
+    /// A step waiting on one direction isn't idle while the other moves.
+    #[test]
+    fn a_transfer_is_idle_only_when_nothing_moves_either_way() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .start_paused(true)
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let moving = Activity::new();
+            let waiting = moving.within(tokio::time::sleep(IDLE * 3));
+            let uploading = async {
+                for _ in 0..8 {
+                    tokio::time::sleep(IDLE / 2).await;
+                    moving.moved();
+                }
+            };
+            let (waited, ()) = tokio::join!(waiting, uploading);
+            assert!(waited.is_ok(), "the upload kept it alive");
+            // Nothing moving at all: idle after IDLE.
+            assert!(moving.within(tokio::time::sleep(IDLE * 3)).await.is_err());
+        });
     }
 
     #[test]
