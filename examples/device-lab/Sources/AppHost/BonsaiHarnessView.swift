@@ -8,6 +8,9 @@ import ForgeUI
 /// (docs/bonsai-harness-plan.md).
 struct BonsaiHarnessView: View {
     @Bindable var model: BonsaiHarnessModel
+    /// The step on screen when going back through a finished task; nil
+    /// follows the last one.
+    @State private var replayPosition: Int?
 
     var body: some View {
         List {
@@ -32,11 +35,23 @@ struct BonsaiHarnessView: View {
                         Button("Stop", systemImage: "stop.fill", role: .destructive) { model.stop() }
                             .accessibilityIdentifier("harness.stop")
                     }
-                } else {
-                    tasksSection
+                } else if let snapshot = model.snapshot, let task = snapshot.task, !snapshot.steps.isEmpty {
+                    // The finished task stays where the live view was, to
+                    // step back through, with its result and pictures below.
+                    BonsaiReplaySection(
+                        task: task.description,
+                        steps: snapshot.steps,
+                        replay: model.replay(step:),
+                        position: $replayPosition
+                    )
                 }
                 if let snapshot = model.snapshot, let task = snapshot.task {
                     statusSection(snapshot, task)
+                }
+                if !model.isRunning {
+                    tasksSection
+                }
+                if let snapshot = model.snapshot, snapshot.task != nil {
                     stepsSection(snapshot)
                     projectSection(snapshot)
                 }
@@ -46,6 +61,7 @@ struct BonsaiHarnessView: View {
         .navigationTitle("Bonsai Harness")
         .inlineNavigationTitle()
         .task { await model.follow() }
+        .onChange(of: model.snapshot?.task?.id) { replayPosition = nil }
     }
 
     private var modelSection: some View {
@@ -119,6 +135,15 @@ struct BonsaiHarnessView: View {
                     .font(.footnote)
                     .forgeForeground(task.status == .completed ? .success : .danger)
                     .accessibilityIdentifier("harness.result")
+            }
+            if !snapshot.running, let made = model.artifacts.first {
+                NavigationLink {
+                    ArtifactDetailView(artifact: made, url: model.url(of: made))
+                } label: {
+                    MadePreview(artifact: made, url: model.url(of: made))
+                }
+                .accessibilityLabel("Made \(made.path)")
+                .accessibilityIdentifier("harness.made")
             }
             if !snapshot.running {
                 ShareLink(item: model.transcript) {
@@ -216,5 +241,32 @@ struct BonsaiHarnessView: View {
         case false?: "xmark.circle.fill"
         case nil: "circle.dotted"
         }
+    }
+}
+
+/// The picture a task made, big enough to judge, right under the result.
+/// Opens the full view to zoom or share.
+private struct MadePreview: View {
+    let artifact: ProjectArtifact
+    let url: URL?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Made \(artifact.path)").font(.subheadline.weight(.semibold))
+            Group {
+                if artifact.kind == "svg" {
+                    if let url, let svg = try? String(contentsOf: url, encoding: .utf8) {
+                        SVGView(svg: svg).allowsHitTesting(false)
+                    }
+                } else if let image = ArtifactImage.load(url) {
+                    image.resizable().scaledToFit()
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 260)
+            .background(.white, in: RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .id("\(artifact.path)-\(artifact.modifiedMs)-\(artifact.bytes)")
+        }
+        .padding(.vertical, 4)
     }
 }

@@ -1964,11 +1964,17 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
     func openProject(name: String) throws 
     
     /**
-     * The open project's files.
      * The folder of the project on screen, for its images
      * (`project_artifacts`).
      */
     func projectFolder()  -> String?
+    
+    /**
+     * Step `step` of the last task as the live view drew it once written:
+     * its thought, tool, path and the whole file or edit, so the screen
+     * can go back through the steps. None for an answer that wasn't a call.
+     */
+    func replay(step: UInt32)  -> HarnessLive?
     
     func snapshot()  -> HarnessSnapshot
     
@@ -2105,7 +2111,6 @@ open func openProject(name: String)throws   {try rustCallWithError(FfiConverterT
 }
     
     /**
-     * The open project's files.
      * The folder of the project on screen, for its images
      * (`project_artifacts`).
      */
@@ -2114,6 +2119,21 @@ open func projectFolder() -> String?  {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_bonsaiharness_project_folder(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Step `step` of the last task as the live view drew it once written:
+     * its thought, tool, path and the whole file or edit, so the screen
+     * can go back through the steps. None for an answer that wasn't a call.
+     */
+open func replay(step: UInt32) -> HarnessLive?  {
+    return try!  FfiConverterOptionTypeHarnessLive.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_replay(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(step),uniffiCallStatus
     )
 })
 }
@@ -15826,7 +15846,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_open_project() != 56134) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_bonsaiharness_project_folder() != 25723) {
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_project_folder() != 62507) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_replay() != 365) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_snapshot() != 53706) {

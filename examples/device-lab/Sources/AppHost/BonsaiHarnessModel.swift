@@ -105,6 +105,9 @@ public final class BonsaiHarnessModel {
         refresh()
     }
 
+    /// A finished step's whole answer, to go back through the task.
+    public func replay(step: UInt32) -> HarnessLive? { harness?.replay(step: step) }
+
     /// The last task as Markdown, to share as evidence.
     public var transcript: String { harness?.transcript() ?? "" }
 

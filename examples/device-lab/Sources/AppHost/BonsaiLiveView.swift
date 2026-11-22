@@ -13,33 +13,138 @@ struct BonsaiLiveSection: View {
 
     var body: some View {
         Section {
-            VStack(alignment: .leading, spacing: 10) {
-                Label(stepTitle, systemImage: icon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.opacity)
-                    .accessibilityIdentifier("harness.live.step")
-                thought
-                if let live, !live.replacing.isEmpty {
-                    LiveCode(text: live.replacing, writing: false, removed: true)
-                        .accessibilityLabel("Replacing: \(live.replacing)")
-                }
-                if let live, !live.code.isEmpty {
-                    LiveCode(text: live.code, writing: live.writing, removed: false)
-                        .accessibilityIdentifier("harness.live.code")
-                }
-            }
-            .padding(.vertical, 4)
-            .animation(.default, value: live?.tool)
+            BonsaiStepView(step: step, phase: phase, live: live)
         } header: {
-            Text(task)
-                .font(.headline)
-                .foregroundStyle(.primary)
-                .textCase(nil)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("harness.live.task")
+            BonsaiTaskHeader(task: task)
         }
     }
+}
+
+/// A finished task, step by step: the same view as while Bonsai wrote it,
+/// with controls to go back and forward through the steps, and what each
+/// step's tool reported. Rust reads each step's whole answer (`replay`).
+struct BonsaiReplaySection: View {
+    let task: String
+    let steps: [HarnessStep]
+    let replay: @MainActor (UInt32) -> HarnessLive?
+    /// Which step is on screen, as a position in `steps`; nil is the last.
+    @Binding var position: Int?
+
+    var body: some View {
+        Section {
+            if let step = current {
+                VStack(alignment: .leading, spacing: 12) {
+                    controls
+                    BonsaiStepView(step: Int(step.index), phase: .idle, live: replay(step.index))
+                    if !step.result.isEmpty {
+                        Label {
+                            Text(step.result)
+                                .font(.system(.caption, design: .monospaced))
+                                .lineLimit(8)
+                                .textSelection(.enabled)
+                        } icon: {
+                            Image(systemName: step.ok == false ? "xmark.circle.fill" : "checkmark.circle.fill")
+                                .forgeForeground(step.ok == false ? .danger : .success)
+                        }
+                        .accessibilityIdentifier("harness.replay.result")
+                    }
+                }
+                .padding(.vertical, 4)
+                .animation(.default, value: index)
+            }
+        } header: {
+            BonsaiTaskHeader(task: task)
+        }
+    }
+
+    private var index: Int {
+        min(position ?? steps.count - 1, steps.count - 1)
+    }
+
+    private var current: HarnessStep? {
+        steps.isEmpty ? nil : steps[max(index, 0)]
+    }
+
+    private var controls: some View {
+        VStack(spacing: 6) {
+            HStack {
+                Button("Previous Step", systemImage: "chevron.backward") { position = max(index - 1, 0) }
+                    .labelStyle(.iconOnly)
+                    .disabled(index == 0)
+                    .accessibilityIdentifier("harness.replay.back")
+                Spacer()
+                Text("Step \(index + 1) of \(steps.count)")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("harness.replay.position")
+                Spacer()
+                Button("Next Step", systemImage: "chevron.forward") { position = min(index + 1, steps.count - 1) }
+                    .labelStyle(.iconOnly)
+                    .disabled(index >= steps.count - 1)
+                    .accessibilityIdentifier("harness.replay.forward")
+            }
+            .buttonStyle(.borderless)
+            if steps.count > 1 {
+                Slider(
+                    value: Binding(
+                        get: { Double(index) },
+                        set: { position = Int($0.rounded()) }
+                    ),
+                    in: 0...Double(steps.count - 1),
+                    step: 1
+                )
+                .accessibilityLabel("Step")
+                .accessibilityValue("\(index + 1) of \(steps.count)")
+                .accessibilityIdentifier("harness.replay.slider")
+            }
+        }
+    }
+}
+
+/// The task as a section title, in the person's own capitalisation.
+private struct BonsaiTaskHeader: View {
+    let task: String
+
+    var body: some View {
+        Text(task)
+            .font(.headline)
+            .foregroundStyle(.primary)
+            .textCase(nil)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("harness.live.task")
+    }
+}
+
+/// One step: what it does, the thought, then the code it wrote or replaced.
+struct BonsaiStepView: View {
+    let step: Int
+    let phase: HarnessPhase
+    let live: HarnessLive?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(stepTitle, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .contentTransition(.opacity)
+                .accessibilityIdentifier("harness.live.step")
+            thought
+            if let live, !live.replacing.isEmpty {
+                LiveCode(text: live.replacing, writing: false, removed: true, follows: follows)
+                    .accessibilityLabel("Replacing: \(live.replacing)")
+            }
+            if let live, !live.code.isEmpty {
+                LiveCode(text: live.code, writing: live.writing, removed: false, follows: follows)
+                    .accessibilityIdentifier("harness.live.code")
+            }
+        }
+        .padding(.vertical, 4)
+        .animation(.default, value: live?.tool)
+    }
+
+    /// While Bonsai writes, the code follows the caret; going back through
+    /// a finished task, each step's code opens at its first line.
+    private var follows: Bool { phase != .idle }
 
     @ViewBuilder
     private var thought: some View {
@@ -94,6 +199,7 @@ private struct LiveCode: View {
     let text: String
     let writing: Bool
     let removed: Bool
+    let follows: Bool
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -115,14 +221,20 @@ private struct LiveCode: View {
                 .fixedSize(horizontal: true, vertical: false)
                 .textSelection(.enabled)
                 .padding(10)
+                .id("top")
             }
             .frame(maxHeight: removed ? 90 : 280)
-            .defaultScrollAnchor(.bottomLeading)
+            .defaultScrollAnchor(follows ? .bottomLeading : .topLeading)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
             .onChange(of: text) {
-                // Trailing edge to the caret: on a short new line the offset
-                // can't go below zero, so the view slides back to the left.
-                proxy.scrollTo("caret", anchor: .bottomTrailing)
+                if follows {
+                    // Trailing edge to the caret: on a short new line the
+                    // offset can't go below zero, so the view slides back
+                    // to the left.
+                    proxy.scrollTo("caret", anchor: .bottomTrailing)
+                } else {
+                    proxy.scrollTo("top", anchor: .topLeading)
+                }
             }
         }
     }

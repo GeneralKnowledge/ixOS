@@ -470,7 +470,19 @@ impl BonsaiHarness {
         )
     }
 
-    /// The open project's files.
+    /// Step `step` of the last task as the live view drew it once written:
+    /// its thought, tool, path and the whole file or edit, so the screen
+    /// can go back through the steps. None for an answer that wasn't a call.
+    pub fn replay(&self, step: u32) -> Option<live::HarnessLive> {
+        let state = lock(&self.shared.state);
+        journal::last_task(&state.entries)
+            .iter()
+            .find_map(|entry| match entry {
+                Entry::Answer { step: s, text, .. } if *s == step => Some(live::read(text)),
+                _ => None,
+            })
+    }
+
     /// The folder of the project on screen, for its images
     /// (`project_artifacts`).
     pub fn project_folder(&self) -> Option<String> {

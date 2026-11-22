@@ -274,6 +274,79 @@ fn a_syntax_error_is_the_writes_result() {
 }
 
 #[test]
+fn double_quotes_inside_a_string_get_a_hint() {
+    if !has_python() {
+        return;
+    }
+    let (_dir, lab) = seeded("t1-hello");
+    // What Bonsai 4B wrote five times running on the T-P1 phone run.
+    let out = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "chart.py", "content": "x = 1\ns = f\"<rect x=\"{x}\"/>\n"}"#,
+    ));
+    assert!(!out.ok);
+    assert!(
+        out.text.contains("wrap the string in single quotes"),
+        "{}",
+        out.text
+    );
+    // Other syntax errors don't get it.
+    let out = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "bad.py", "content": "def f(:\n    pass\n"}"#,
+    ));
+    assert!(!out.text.contains("single quotes"), "{}", out.text);
+}
+
+#[test]
+fn an_svg_chart_must_draw_the_values() {
+    let check = |svg: &str| {
+        let svg = svg.to_string();
+        Criterion::SvgBars {
+            path: "chart.svg".into(),
+            values: vec!["3".into(), "7".into(), "5".into()],
+        }
+        .check(&[], &|_| Some(svg.clone()))
+    };
+    let bar = |h: u32, label: &str| {
+        format!("<rect x='0' y='0' width='40' height='{h}' fill='teal'/><text x='1' y='2'>{label}</text>")
+    };
+    let svg = |body: String| {
+        format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"300\">{body}</svg>"
+        )
+    };
+    // The phone run's chart: every bar 150 high.
+    let flat = svg(bar(150, "3") + &bar(150, "7") + &bar(150, "5"));
+    assert!(check(&flat)
+        .unwrap_err()
+        .contains("don't follow the values"));
+    // Sized by value, after a full-size background.
+    let good = svg(
+        "<rect width=\"400\" height=\"300\" fill=\"white\"/>".to_string()
+            + &bar(60, "3")
+            + &bar(140, "7")
+            + &bar(100, "5"),
+    );
+    assert!(check(&good).is_ok(), "{:?}", check(&good));
+    // Bars across: the widths carry the values.
+    let across = svg(
+        "<rect y='0' height='20' width='30'/><rect y='30' height='20' width='70'/>\
+         <rect y='60' height='20' width='50'/><text>3</text><text>7</text><text>Value: 5</text>"
+            .into(),
+    );
+    assert!(check(&across).is_ok(), "{:?}", check(&across));
+    // A label missing.
+    let unlabelled = svg(bar(60, "3") + &bar(140, "7") + &bar(100, ""));
+    assert!(check(&unlabelled).unwrap_err().contains("5"));
+    // Missing file.
+    let gone = Criterion::SvgBars {
+        path: "chart.svg".into(),
+        values: vec!["3".into()],
+    }
+    .check(&[], &|_| None);
+    assert!(gone.is_err());
+}
+
+#[test]
 fn a_program_that_raises_shows_only_the_projects_frames() {
     if !has_python() {
         return;
@@ -703,6 +776,19 @@ fn the_scripted_model_completes_every_ladder_task() {
         }
         if task.id == "t3-one-fix" {
             assert!(snapshot.steps[0].result.contains("Not done yet"));
+        }
+        if task.id == "tp1-svg-chart" {
+            // The finished task can be stepped back through, whole files and all.
+            let first = h.replay(snapshot.steps[0].index).unwrap();
+            assert_eq!(first.tool.as_deref(), Some("write_file"));
+            assert_eq!(first.path.as_deref(), Some("chart.py"));
+            assert!(
+                first.code.starts_with("values = [3, 7, 5]\n"),
+                "{}",
+                first.code
+            );
+            assert!(!first.writing && first.thought_done);
+            assert!(h.replay(99).is_none());
         }
         if task.id == "t5-fix-from-traceback" {
             assert!(snapshot.steps[0].result.contains("TypeError"));

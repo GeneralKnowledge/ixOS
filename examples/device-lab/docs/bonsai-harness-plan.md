@@ -181,7 +181,7 @@ Started after the H1 sitting: all of T1 to T3 passed, so the escaping-proof raw 
 
 Phone sitting: Scripted T1 to T5, then T4 and T5 on the 4B and the 9B, comparing model time per step with H1's.
 
-The ladder also has **T-P1** (`tp1-svg-chart`, from Visual Labs P1): write chart.py that saves a bar chart of [3, 7, 5] as chart.svg with the standard library; accepted when a run after the last change made chart.svg and it contains an `<svg>` element (`ProducesImage`).
+The ladder also has **T-P1** (`tp1-svg-chart`, from Visual Labs P1): write chart.py that saves a bar chart of [3, 7, 5] as chart.svg with the standard library; accepted when a run after the last change made chart.svg and it contains an `<svg>` element (`ProducesImage`). Since the 2026-11-22 phone run (4B passed with every bar the same height), it must also draw the numbers: `SvgBars` wants `<rect>` heights or widths that rank like 3, 7, 5 and each value as a `<text>` label. The same run spent five steps on double quotes inside a double-quoted string, so a parse error for an unterminated string now names that cause.
 
 ### H4: planning and multi-task orchestration
 
