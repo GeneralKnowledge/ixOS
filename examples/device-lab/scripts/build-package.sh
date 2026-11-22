@@ -30,7 +30,7 @@ set -euo pipefail
 
 # Build-time tools, from PyPI into a private environment (exact versions).
 BUILD_REQUIREMENTS=(cython==3.3.1 ninja==1.13.2 meson==1.12.1 pybind11==3.1.0
-  setuptools_scm==9.2.2 setuptools==84.2.1)
+  setuptools_scm==9.2.2 setuptools==84.2.1 meson-python==0.22.1)
 
 package="$1"
 # Each package: version, source release (URL, SHA-256), Meson setup options,
@@ -317,7 +317,10 @@ case "$package" in
     rm -f "$out"/numpy/_core/{_multiarray_tests,_umath_tests,_rational_tests,_struct_ufunc_tests,_operand_flag_tests,_simd}.*.so ;;
   matplotlib)
     # Example data for matplotlib's own gallery.
-    rm -rf "$out"/matplotlib/mpl-data/sample_data ;;
+    rm -rf "$out"/matplotlib/mpl-data/sample_data
+    # iOS has no Tk, so the Tk backend would be one more framework to sign.
+    rm -f "$out"/matplotlib/backends/_tkagg.*.so "$out"/matplotlib/backends/_backend_tk.py \
+      "$out"/matplotlib/backends/backend_tk*.py ;;
 esac
 if [[ -n "$strip_tool" ]]; then
   find "$out" -name '*.so' -exec "$strip_tool" -x {} \;

@@ -64,14 +64,15 @@ d = ImageDraw.Draw(img)
 d.ellipse((10, 10, 90, 90), fill="red")
 d.text((110, 40), "Hi", fill="black", font=ImageFont.load_default(size=24))
 for fmt in ("PNG", "JPEG", "WEBP"):
-    buf = io.BytesIO(); img.save(buf, fmt); print(fmt, len(buf.getvalue()), "bytes")
-print(Image.open(io.BytesIO(buf.getvalue())).size)   # (200, 100)
+    buf = io.BytesIO(); img.save(buf, fmt)
+    back = Image.open(io.BytesIO(buf.getvalue())); back.load()
+    print(fmt, len(buf.getvalue()), "bytes", back.size)   # ... (200, 100)
 print(features.check("freetype2"), features.check("jpg"), features.check("webp"))  # True True True
 ```
 
 ## matplotlib
 
-matplotlib 3.11.2 and contourpy 1.4.0 have no iOS wheels, so `scripts/build-package.sh` builds them the same way as numpy. Each package has a recipe (version, source SHA-256, Meson options) in the script. Both use pybind11, which the build environment provides through a `pybind11.pc` file. matplotlib downloads and builds its own FreeType, HarfBuzz, libraqm, SheenBidi and Qhull as Meson subprojects. It is built without the Cocoa backend (`-Dmacosx=false`) and draws with Agg. kiwisolver comes from its official iOS wheel. The pure-Python dependencies (cycler, fonttools, packaging, pyparsing, python-dateutil, six) come from their wheels in the same `WHEELS` list as Pillow.
+matplotlib 3.11.2 and contourpy 1.4.0 have no iOS wheels, so `scripts/build-package.sh` builds them the same way as numpy. Each package has a recipe (version, source SHA-256, Meson options) in the script. Both use pybind11, which the build environment provides through a `pybind11.pc` file. matplotlib downloads and builds its own FreeType, HarfBuzz, libraqm, SheenBidi and Qhull as Meson subprojects. It is built without the Cocoa backend (`-Dmacosx=false`) and draws with Agg; the Tk backend is left out. On the laptop the first build took 4 min 37 s (contourpy 32 s, matplotlib 127 s, plus numpy again because the build tools changed), and the bundled Python grew from 57 MB to 86 MB: matplotlib 15 MB (most of it the 42 fonts in `mpl-data`), fontTools 5.5 MB, 9 new frameworks. kiwisolver comes from its official iOS wheel. The pure-Python dependencies (cycler, fonttools, packaging, pyparsing, python-dateutil, six) come from their wheels in the same `WHEELS` list as Pillow.
 
 A `sitecustomize.py` in the standard library sets `MPLCONFIGDIR` to `~/Library/Caches/matplotlib` and `MPLBACKEND` to `Agg`. matplotlib's default config folder, `~/.matplotlib`, is not writable in an iOS app, so without this it would rebuild its font cache at every launch.
 
