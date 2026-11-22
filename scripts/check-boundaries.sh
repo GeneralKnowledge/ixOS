@@ -201,35 +201,49 @@ for manifest in sorted(root.rglob("Package.swift")):
     text = "\n".join(
         l for l in text.splitlines() if not l.strip().startswith("//")
     )
-    # Every `.package(` must be a local path or an allowed URL. Rather than
-    # parse Swift, take each declaration's text up to its closing bracket
-    # (brackets inside strings don't count): one with no URL in it must be
-    # a `path:` one, and every URL in it must be allowed, however it is
-    # written (raw strings, inline comments, split lines).
+    # Every `.package(` must be one of two plain shapes, read whole up to its
+    # closing bracket (brackets in strings and comments don't count):
+    #   .package(path: "<literal>")                   a local package, or
+    #   .package(url: "<literal>", <requirement>)     with an allowed URL.
+    # (`name:` may come first in either.) Anything else, such as a URL
+    # built from pieces or by a helper, fails: the check can't read it.
+    local_re = re.compile(r'\s*(?:name:\s*"[^"]*"\s*,\s*)?path:\s*"[^"]*"\s*')
+    remote_re = re.compile(
+        r'\s*(?:name:\s*"[^"]*"\s*,\s*)?url:\s*(#*)"([^"]*)"\1\s*(?:,|$)'
+    )
     for m in re.finditer(r"\.package\s*\(", text):
-        depth, quoted, end = 1, False, m.end()
-        while end < len(text) and depth:
+        depth, quoted, end, decl = 1, False, m.end(), []
+        while end < len(text):
             c = text[end]
+            if not quoted and text.startswith("//", end):
+                end = text.find("\n", end)
+                end = len(text) if end < 0 else end
+                continue
             if c == '"':
                 quoted = not quoted
             elif not quoted:
                 depth += {"(": 1, ")": -1}.get(c, 0)
+                if depth == 0:
+                    break
+            decl.append(c)
             end += 1
-        decl = text[m.end():end]
-        urls = re.findall(r"(?:https?|ssh|git)://[^\"#\s)]+|git@[^\"#\s)]+", decl)
-        if not urls and re.search(r"\bpath:", decl):
+        decl = "".join(decl)
+        if local_re.fullmatch(decl):
             continue
-        if not urls:
+        remote = remote_re.match(decl)
+        if not remote:
             errors.append(
-                f"{rel}: a .package declaration with neither a path nor a URL "
-                f"the check can read (scripts/check-boundaries.sh)"
+                f"{rel}: a .package declaration the check can't read; write "
+                f'.package(path: "...") or .package(url: "...", ...) with a '
+                f"plain URL (scripts/check-boundaries.sh)"
             )
-        for url in urls:
-            if (rel, url.removesuffix(".git")) not in SWIFT_PACKAGES_ALLOWED:
-                errors.append(
-                    f"{rel}: third-party Swift package {url} isn't allowed here "
-                    f"(scripts/check-boundaries.sh, SWIFT_PACKAGES_ALLOWED)"
-                )
+            continue
+        url = remote.group(2)
+        if (rel, url.removesuffix(".git")) not in SWIFT_PACKAGES_ALLOWED:
+            errors.append(
+                f"{rel}: third-party Swift package {url} isn't allowed here "
+                f"(scripts/check-boundaries.sh, SWIFT_PACKAGES_ALLOWED)"
+            )
 
 if errors:
     for e in errors:
