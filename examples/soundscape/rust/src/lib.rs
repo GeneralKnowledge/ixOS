@@ -519,7 +519,12 @@ impl SoundscapeCore {
             progress.failures.clear();
         }
         loop {
-            let plan = offline::plan(&self.offline.get(), &self.kept_library());
+            // A song merged away whose offline choice hasn't moved yet (a
+            // save after the merge failed) still counts as wanted, under
+            // the song it joined, so its download isn't removed.
+            let mut wanted = self.offline.get().as_ref().clone();
+            merge::repair_offline(&self.library.get(), &mut wanted);
+            let plan = offline::plan(&wanted, &self.kept_library());
             self.remove_unwanted(plan.remove).await?;
             let next = {
                 let progress = self.progress();

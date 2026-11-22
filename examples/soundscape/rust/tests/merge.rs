@@ -417,3 +417,31 @@ fn a_catalogue_track_merged_into_your_file_plays_your_file() {
     assert_eq!(queued[0].track_id, imported);
     assert!(queued[0].recording.audio_url.starts_with("file:"));
 }
+
+#[test]
+fn a_download_survives_a_merge_whose_offline_save_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _, jamendo_id) = ready(&dir);
+    let anchor = track_id("lb-anchor");
+    block(core.set_offline(vec![anchor.clone()], true)).unwrap();
+    block(core.sync_downloads(None)).unwrap();
+    let downloads = dir.path().join("data").join("downloads");
+    let count = || std::fs::read_dir(&downloads).unwrap().count();
+    assert_eq!(count(), 1);
+
+    // The offline list can't be saved: the merge saves the library and
+    // then fails.
+    let offline = dir.path().join("data").join("offline.json");
+    let kept = std::fs::read(&offline).unwrap();
+    std::fs::remove_file(&offline).unwrap();
+    std::fs::create_dir(&offline).unwrap();
+    assert!(block(core.merge_songs(jamendo_id.clone(), vec![anchor.clone()])).is_err());
+    std::fs::remove_dir(&offline).unwrap();
+    std::fs::write(&offline, kept).unwrap();
+    // The merged song plays the downloaded take.
+    block(core.choose_recording(jamendo_id.clone(), "r/lb-1".into())).unwrap();
+
+    // Before any restart, a sync keeps the file the merged song plays.
+    block(core.sync_downloads(None)).unwrap();
+    assert_eq!(count(), 1);
+}
