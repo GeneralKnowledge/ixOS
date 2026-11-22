@@ -339,9 +339,14 @@ impl ChecklistCore {
     }
 }
 
-/// A title as compared for duplicates: trimmed, ignoring case.
+/// A title as compared for duplicates: tidied the way a saved title is
+/// (runs of spaces, tabs and line breaks become one space), ignoring case.
 fn same_title(title: &str) -> String {
-    title.trim().to_lowercase()
+    title
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 /// The line number a "Line N: ..." note starts with, for sorting.
