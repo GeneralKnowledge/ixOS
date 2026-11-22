@@ -140,6 +140,9 @@ Button("Continue", action: next)
 ForgeButton("Save", isWorking: model.isSaving) { Task { await model.save() } }
     .buttonStyle(.forgePrimary)              // a spinner in place of the title while saving
 
+ForgeButton("Trust Again") { await model.trustAgain(device) }
+    .buttonStyle(.forgeSecondary)            // async: tracks its own work, spinner after 0.4 s
+
 Button { add() } label: { Label("Add", systemImage: "plus") }
     .buttonStyle(.forgeIcon)                 // round, icon only; VoiceOver reads "Add"
 ```
@@ -147,6 +150,14 @@ Button { add() } label: { Label("Add", systemImage: "plus") }
 Disabled and pressed states come from SwiftUI (`.disabled(...)`); there is no `isDisabled` parameter. Buttons are at least 44 points tall, and grow with Dynamic Type.
 
 `ForgeButton` is disabled while `isWorking`, so nothing can press it twice: not a tap, VoiceOver, Voice Control nor the keyboard. VoiceOver reads it as dimmed and "In progress". ForgeUI's styles keep it at full colour while it works, because the spinner already says it is busy; a button the app disables itself fades as usual.
+
+Give `ForgeButton` an async action and it tracks the work itself: it is disabled as soon as it is tapped, and its spinner (and VoiceOver's "In progress") appear only if the work takes longer than 0.4 seconds. A fast local write doesn't flicker; a slow one is never silent. Use it for any button whose action awaits something ([silent waits](research/experience/forgeui-0.2.md#35-silent-waits)); keep `isWorking:` for work the model already tracks.
+
+For a control that isn't a `Button` (a `Menu`'s label, a renderer's own control), `.forgeButtonLook(.primary, expands:, isPressed:)` draws the same look. It is the one implementation: the button styles draw with it, so pressed, disabled, working, compact, Reduce Motion and the Dynamic Type minimum height all behave the same.
+
+```swift
+Menu { … } label: { Label("New", systemImage: "plus").forgeButtonLook(.primary) }
+```
 
 ### Text fields and form fields
 
