@@ -17,6 +17,7 @@ use std::f32::consts::TAU;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::catalogue::{rights_from_licence, CatalogueTrack};
 use crate::library::file_url;
@@ -141,8 +142,9 @@ pub const SPECS: &[Spec] = &[
         slug: "no-artwork",
         title: "No Artwork",
         artist: Some(ARTIST),
-        album: Some(ALBUM),
-        number: Some(3),
+        // On no album: the album's cover would stand in for its own.
+        album: None,
+        number: None,
         genre: Some("Test"),
         seconds: 45,
         rate: 16_000,
@@ -313,15 +315,29 @@ pub fn ensure(dir: &Path) -> Result<(), SoundscapeError> {
     Ok(())
 }
 
+/// Each write has a temporary file of its own (created new, never
+/// shared), so two loads at once can't spoil each other's files.
 fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
     let mut part = PathBuf::from(path);
-    part.set_extension("part");
-    {
-        let mut file = fs::File::create(&part)?;
+    part.set_extension(format!(
+        "{}-{}.part",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&part)?;
         file.write_all(bytes)?;
         file.sync_all()?;
+        fs::rename(&part, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&part);
     }
-    fs::rename(&part, path)
+    written
 }
 
 // ------------------------------------------------------------ sound

@@ -1178,6 +1178,7 @@ impl SoundscapeCore {
     pub fn saved_playback(&self) -> Option<SavedPlayback> {
         let saved = self.playback.get().saved.clone()?;
         let library = self.library();
+        let test_url = self.test_url();
         let file = self.library.get();
         playback::refresh(saved, |queued| {
             // A song merged into another since is found under that song.
@@ -1196,8 +1197,21 @@ impl SoundscapeCore {
                     .queue_recording(id.clone(), queued.recording.id.clone())
                     .ok(),
                 // Not in the library: a stream (catalogue, take server)
-                // still plays; a file on the phone that nothing names is gone.
-                None => (!queued.recording.audio_url.starts_with("file:")).then(|| queued.clone()),
+                // still plays, and so does a test catalogue file found in
+                // the data folder as it is now; any other file on the phone
+                // that nothing names is gone.
+                None if queued.recording.audio_url.starts_with("file:") => {
+                    test_catalogue::spec(&queued.track_id)?;
+                    let audio_url = test_url(&queued.recording.audio_url)?;
+                    let path = PathBuf::from(listen::decode(audio_url.strip_prefix("file://")?));
+                    path.exists().then(|| {
+                        let mut kept = queued.clone();
+                        kept.recording.audio_url = audio_url;
+                        kept.artwork_url = kept.artwork_url.as_deref().and_then(&test_url);
+                        kept
+                    })
+                }
+                None => Some(queued.clone()),
             }
         })
     }
