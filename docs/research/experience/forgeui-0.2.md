@@ -133,7 +133,7 @@ Ordered by evidence and size. Each item is one PR.
 | 0 | **ForgeButton disabled while working** | Fix | none | none | Button |
 | 1 | **`forgeFormToolbar` adoption** | Adoption | Pocket Library book form, Good Dog dog form, FieldKit start trip and add note, Commonplace add feed, and the starter (with the next ForgeKit release) | `form-toolbar`: a `.confirmationAction` toolbar item holding a `ProgressView` | none |
 | 2 | **Accent icon tiles** (D1): `ForgeRow(..., systemImage:, accent: ForgeAccent)` | Parameter | Soundscape Your Music rows, Pocket Library Summary rows (which become `ForgeRow(value:)`) | `icon-tile`: a symbol on a `RoundedRectangle` background in a raw colour | ListItem |
-| 3 | **Public button look**: `.forgeButtonLook(_ kind:, expands:, isPressed:)` on any view, the same chrome `ForgeButtonStyle` draws | Expose | `ForgeStateView` menus (internal today), the A2UI adapter's `ForgeA2uiButtonStyle` (Device Lab) | none | Button |
+| 3 | **Public button look**: `.forgeButtonLook(_ kind:, expands:, isPressed:)` on any view. It is the one implementation: `ForgeButtonStyle` and `ForgeStateView`'s menus are rebuilt on it, so there is no second copy. It covers every state the style has: pressed, disabled (from `\.isEnabled`), working (full colour, from `ForgeButton`), compact (`.controlSize(.small)`), full width, Reduce Motion, and the Dynamic Type minimum height. A Linux-testable state value says which of them apply, like `ForgeButtonState` | Expose | `ForgeStateView` menus (internal today), the A2UI adapter's `ForgeA2uiButtonStyle` (Device Lab) | none | Button |
 | 4 | **`ForgeRating`**: display and input; one adjustable element for VoiceOver ("3 of 5 stars"), tap the current star to clear when `allowsClearing`, star colour from a fixed rating tone, identifier `<id>` with `<id>.star.<n>` | Component | Soundscape `Stars`, Pocket Library `StarRating` | `rating`: a `ForEach` over `star`/`star.fill` symbols | Rating |
 | 5 | **`ForgeThumbnail`**: a frame for any image content, with `shape` (`.rounded`, `.circle`, `.square`), `aspectRatio`, and placeholder, loading and failed states drawn the same everywhere; hidden from VoiceOver unless given a label. It takes a view or a phase, so it works with `ForgeRemoteImage`, a local file, or a `CGImage`, and depends on none of them | Component | Soundscape `Artwork`, Pocket Library `CoverImage`, Relay `PhotoThumbnail`, Device Lab `ArtifactThumbnail`, Sketchbook `SketchTile` frame | `thumbnail`: a `clipShape(RoundedRectangle(cornerRadius: <number>))` around an `Image` | Image (app-supplied only) |
 | 6 | **Choice style**: `.toggleStyle(.forgeChoice)` for chips that turn on and off, and `.buttonStyle(.forgeChoice(isSelected:))` for one-of-several tiles; both add the `.isSelected` trait, use the accent's `soft`/`solid`, and are at least 44 pt | Style | Relay reactions (gaining identifiers), Soundscape A/B tiles and switch, Device Lab phone-check results | `choice`: `.accessibilityAddTraits(... .isSelected ...)` outside ForgeUI | ChoicePicker |
@@ -168,9 +168,9 @@ The showcase today shows each component once, in the system's appearance. 0.2 tu
 
 1. Items 0 to 3 first: a fix, an adoption, a parameter, an exposure. Small, and 3 unblocks A2UI-1b.
 2. Items 4 to 8, one PR each, in table order. Each moves its apps and adds its rule, except item 8 (a style on a native control, see its row).
-3. 0.2 ships as a ForgeKit release when items 0 to 8 have merged and the showcase matrix has been looked at on the phone once (light, dark, AX3, VoiceOver on rating, choice and stat). The starter's `forgeFormToolbar` move goes in with that release.
+3. 0.2 ships as a ForgeKit release when items 0 to 8 have merged and the showcase has been looked at on the phone once (light and dark, VoiceOver on rating, choice and stat). Large text sizes are checked from the matrix's screenshots, not by hand on the phone. The starter's `forgeFormToolbar` move goes in with that release.
 
-Phone time: about 15 minutes for the whole of 0.2, in the combined Device Lab sitting: VoiceOver on ForgeButton working, rating, a choice chip and a stat; one form sheet's spinner; the showcase matrix at AX3.
+Phone time: about 15 minutes for the whole of 0.2, in the combined Device Lab sitting: VoiceOver on ForgeButton working, rating, a choice chip and a stat; one form sheet's spinner; the showcase in dark mode.
 
 ## 6. Forge A2UI catalogue contract
 
@@ -187,7 +187,7 @@ One closed list of components an agent may use in any ixOS surface. Each entry f
 5. **Its identifier**: `a2ui.<surface>.<componentId>`, which satisfies rule 4's `screen.element` shape.
 6. **The events it may send**: none, or named events registered by the app (A2UI-1's gate already refuses everything else).
 
-The list is the same data in three places: the Rust gate's allow-list, the Swift adapter's catalogue, and later a Compose adapter. It starts as the table below; it becomes a machine-readable file shared by the gate and the adapter when the adapter moves out of Device Lab (the second app), so the three can't drift.
+The list is used in three places: the Rust gate's allow-list, the Swift adapter's catalogue, and later a Compose adapter. It starts as the table below. When the adapter moves out of Device Lab (its second user), it becomes a **tested projection of ForgeUI** rather than a second description kept by hand: one file lists each entry's ForgeUI target, and checks fail when the gate's allow-list or the adapter's catalogue disagree with it, when an entry names a ForgeUI piece or property that no longer exists, or when the entry's accessibility requirement is weaker than the ForgeUI component's own behaviour spec (5.3). So a ForgeUI change that breaks the projection fails a check instead of drifting silently. Until then, the adapter's PRs check the table by hand.
 
 ### 6.2 The catalogue
 
@@ -226,4 +226,4 @@ The contract is a component *specification*, not shared code: SwiftUI components
 1. **Scope.** Items 0 to 8 as 0.2, with thumbnails pulled forward from 0.3 because five apps built one. Or keep thumbnails in 0.3 and ship 0.2 with seven items. Recommended: pull it forward.
 2. **Choice style API.** A toggle style for chips plus a button style for one-of-several tiles (two small APIs on real controls), rather than a `ForgeChoices` component that would duplicate `Picker`. Recommended as written.
 3. **Rating colour.** A fixed warm rating tone (checked for contrast) instead of the accent, so stars look like stars in every app. Recommended.
-4. **Catalogue file.** Keep the contract as this table until the adapter leaves Device Lab, then generate the gate's allow-list and the adapter's catalogue from one file. Recommended.
+4. **Catalogue file.** Keep the contract as this table until the adapter leaves Device Lab, then make it a tested projection of ForgeUI (6.1). Agreed by Reuben 2026-11-22.
