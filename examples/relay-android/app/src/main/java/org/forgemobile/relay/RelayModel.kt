@@ -248,7 +248,9 @@ class RelayModel(
      */
     suspend fun askToRemove(transfer: Transfer) {
         val file = transfer.item as? Item.File
-        if (transfer.direction != Direction.RECEIVED || file?.path == null) {
+        // Any received file asks first, whether or not it has landed yet:
+        // the list this row came from may be a moment old.
+        if (transfer.direction != Direction.RECEIVED || file == null) {
             remove(transfer)
             return
         }

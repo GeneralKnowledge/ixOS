@@ -171,7 +171,9 @@ public final class RelayModel {
     /// (Rust deletes Relay's copy), so that asks first; anything else goes
     /// at once.
     public func askToRemove(_ transfer: Transfer) async {
-        guard transfer.direction == .received, case .file(let name, _, let path) = transfer.item, path != nil else {
+        // Any received file asks first, whether or not it has landed yet:
+        // the list this row came from may be a moment old.
+        guard transfer.direction == .received, case .file(let name, _, _) = transfer.item else {
             await remove(transfer)
             return
         }
@@ -662,6 +664,12 @@ public final class RelayModel {
         return picks
     }
 
+    /// Whether this pick is still the one being made ready: not stopped
+    /// and not replaced by a newer pick.
+    public func isStaging(_ pick: Int) -> Bool {
+        pick != 0 && pick == staging
+    }
+
     /// Sends a pick once it is copied in, unless it was stopped or replaced
     /// meanwhile.
     public func send(paths: [String], staged pick: Int) {
@@ -684,7 +692,7 @@ public final class RelayModel {
         // Still copying the picked file in: Rust hasn't been asked yet, and
         // what it says is about the send before.
         if staging != 0 { return }
-        let now = core.codeSendStatus()
+        codeSend = core.codeSendStatus()
         refreshTrustOffer()
     }
 

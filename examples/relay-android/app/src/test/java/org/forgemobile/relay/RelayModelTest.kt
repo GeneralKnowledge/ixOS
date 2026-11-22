@@ -187,6 +187,14 @@ class RelayModelTest {
         val laptop = device("Laptop")
         codeTransfer(laptop, phone, file("b.txt", "b"))
         val received = phone.state.value.transfers.single { it.direction == Direction.RECEIVED }
+
+        // A row read while the file was still arriving has no path yet; it
+        // still asks, since the file may have landed since.
+        val arriving = received.copy(item = (received.item as Item.File).copy(path = null))
+        phone.askToRemove(arriving)
+        assertEquals("Delete “b.txt”?", phone.alert.value!!.title)
+        phone.dismissAlert()
+
         phone.askToRemove(received)
         val ask = phone.alert.value!!
         assertEquals("Delete “b.txt”?", ask.title)
