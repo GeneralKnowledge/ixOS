@@ -324,6 +324,7 @@ pub fn clean_name(raw: &str) -> Option<String> {
         .filter(|w| !w.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
+    // cut: a feed name from an imported OPML file, not typed; it can be renamed
     let cut: String = collapsed.chars().take(MAX_NAME_CHARS).collect();
     (!cut.is_empty()).then_some(cut)
 }

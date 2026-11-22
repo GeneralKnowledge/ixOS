@@ -48,6 +48,7 @@ pub fn clean_client_id(text: &str) -> Result<Option<String>, SoundscapeError> {
 /// popular when it is empty. Streams are asked for as MP3 at the higher
 /// quality Jamendo offers (`mp32`).
 pub fn search_url(client_id: &str, query: &str) -> String {
+    // cut: a search; the first 200 characters find the same tracks, and nothing is kept
     let query: String = query.trim().chars().take(MAX_QUERY_CHARS).collect();
     let what = if query.is_empty() {
         "order=popularity_week".to_string()
@@ -183,6 +184,7 @@ fn text(value: &Value) -> Option<String> {
         Value::Number(n) => n.to_string(),
         _ => return None,
     };
+    // cut: a field in Jamendo's answer, not typed
     (!s.is_empty()).then(|| s.chars().take(MAX_FIELD_CHARS * 4).collect())
 }
 
