@@ -52,7 +52,7 @@ It passes if every line prints without an error and the values match the comment
 
 ## Pillow
 
-Pillow 13.0.0 publishes official iOS wheels on PyPI (`cp315-ios_13_0_arm64_iphoneos`), so nothing is compiled. `prepare-python.sh` downloads the wheel once and checks its SHA-256 (the `WHEELS` list). It unpacks the wheel into site-packages, and the same loop turns its 7 extension modules into frameworks (`PIL._imaging` and others). Pillow's own copies of libjpeg, libpng, FreeType, WebP, AVIF and LittleCMS are built into those modules, so they depend only on Python.framework, libSystem and libbz2. The Tk bridge (`_imagingtk`, `ImageTk`) is left out. The bundle grows by about 11 MB.
+Pillow 13.0.0 publishes official iOS wheels on PyPI (`cp315-ios_13_0_arm64_iphoneos`), so nothing is compiled. `prepare-python.sh` downloads the wheel once and checks its SHA-256 (the `WHEELS` list). It unpacks the wheel into site-packages, and the same loop turns its 7 extension modules into frameworks (`PIL._imaging` and others). Pillow's own copies of libjpeg, libpng, FreeType, WebP, AVIF and LittleCMS are built into those modules, so they depend only on Python.framework, libSystem and libbz2. The Tk bridge (`_imagingtk`, `ImageTk`) is left out. The bundle grows by about 11 MB. Phone: PASS, reported by Reuben on 2026-11-22 on Device Lab 1.29922914.
 
 Phone check, in Python Lab:
 
@@ -72,7 +72,7 @@ print(features.check("freetype2"), features.check("jpg"), features.check("webp")
 
 ## matplotlib
 
-matplotlib 3.11.2 and contourpy 1.4.0 have no iOS wheels, so `scripts/build-package.sh` builds them the same way as numpy. Each package has a recipe (version, source SHA-256, Meson options) in the script. Both use pybind11, which the build environment provides through a `pybind11.pc` file. matplotlib downloads and builds its own FreeType, HarfBuzz, libraqm, SheenBidi and Qhull as Meson subprojects. It is built without the Cocoa backend (`-Dmacosx=false`) and draws with Agg; the Tk backend is left out. On the laptop the first build took 4 min 37 s (contourpy 32 s, matplotlib 127 s, plus numpy again because the build tools changed), and the bundled Python grew from 57 MB to 86 MB: matplotlib 15 MB (most of it the 42 fonts in `mpl-data`), fontTools 5.5 MB, 9 new frameworks. kiwisolver comes from its official iOS wheel. The pure-Python dependencies (cycler, fonttools, packaging, pyparsing, python-dateutil, six) come from their wheels in the same `WHEELS` list as Pillow.
+matplotlib 3.11.2 and contourpy 1.4.0 have no iOS wheels, so `scripts/build-package.sh` builds them the same way as numpy. Each package has a recipe (version, source SHA-256, Meson options) in the script. Both use pybind11, which the build environment provides through a `pybind11.pc` file. matplotlib downloads and builds its own FreeType, HarfBuzz, libraqm, SheenBidi and Qhull as Meson subprojects. It is built without the Cocoa backend (`-Dmacosx=false`) and draws with Agg; the Tk backend is left out. On the laptop the first build took 4 min 37 s (contourpy 32 s, matplotlib 127 s, plus numpy again because the build tools changed), and the bundled Python grew from 57 MB to 86 MB: matplotlib 15 MB (most of it the 42 fonts in `mpl-data`), fontTools 5.5 MB, 9 new frameworks. Phone: PASS, reported by Reuben on 2026-11-22 on Device Lab 1.29922914 (import time not recorded). kiwisolver comes from its official iOS wheel. The pure-Python dependencies (cycler, fonttools, packaging, pyparsing, python-dateutil, six) come from their wheels in the same `WHEELS` list as Pillow.
 
 A `sitecustomize.py` in the standard library sets `MPLCONFIGDIR` to `~/Library/Caches/matplotlib` and `MPLBACKEND` to `Agg`. matplotlib's default config folder, `~/.matplotlib`, is not writable in an iOS app, so without this it would rebuild its font cache at every launch.
 
@@ -97,4 +97,3 @@ print("PNG", len(buf.getvalue()), "bytes")   # tens of kB
 ## Open questions
 
 - Python's iOS frameworks use the `APPL` package type and a relative install name, the same as the standard library ones that already pass on the phone. App Store validation may want `FMWK` and `@rpath` ids. That doesn't matter for sideloading.
-- The next packages (Pillow, matplotlib) need their C libraries (libjpeg, freetype) cross-compiled the same way.
