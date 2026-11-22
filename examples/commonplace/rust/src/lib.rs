@@ -894,24 +894,8 @@ impl AppCore {
                 let current = organise::snapshot(&snapshot.feeds, &snapshot.folders);
                 let moves = organise::check(&current, &plan)
                     .map_err(|e| AppError::InvalidInput { reason: e.0 })?;
-                let mut made: Vec<(String, i64)> = Vec::new();
-                for m in &moves {
-                    let folder_id = match &m.to {
-                        organise::Target::Folder { id } => Some(*id),
-                        organise::Target::NoFolder => None,
-                        organise::Target::NewFolder { name } => {
-                            match made.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)) {
-                                Some((_, id)) => Some(*id),
-                                None => {
-                                    let id = state.store.create_folder(name, None, now_ms())?;
-                                    made.push((name.clone(), id));
-                                    Some(id)
-                                }
-                            }
-                        }
-                    };
-                    state.store.move_feed(m.feed_id, folder_id)?;
-                }
+                // One transaction: a failure part way leaves nothing moved.
+                state.store.apply_folder_moves(&moves, now_ms())?;
                 state.publish();
                 Ok(moves.len() as u32)
             })

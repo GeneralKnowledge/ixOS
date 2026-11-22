@@ -30,6 +30,10 @@ pub const MAX_NAME: usize = 40;
 pub struct OrganiseSnapshot {
     pub feeds: Vec<OrganiseFeed>,
     pub folders: Vec<OrganiseFolder>,
+    /// Names of top-level folders the snapshot doesn't offer (past the
+    /// first [`MAX_FOLDERS`]), so a new folder can't take one of them.
+    #[serde(default)]
+    pub other_names: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -43,7 +47,28 @@ pub struct OrganiseFeed {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct OrganiseFolder {
     pub id: i64,
+    /// Its path from the top ("Tech / News"), so two folders of the same
+    /// name in different places can be told apart.
     pub name: String,
+}
+
+/// Separates a nested folder's name from its parents' in a path.
+pub const PATH_SEPARATOR: &str = " / ";
+
+/// `folder`'s path from the top, through its parents in `all`.
+fn path(folder: &Folder, all: &[Folder]) -> String {
+    let mut parts = vec![folder.name.as_str()];
+    let mut parent = folder.parent_id;
+    // Bounded by the folder count, so a damaged parent loop can't spin.
+    for _ in 0..all.len() {
+        let Some(p) = parent.and_then(|id| all.iter().find(|f| f.id == id)) else {
+            break;
+        };
+        parts.push(p.name.as_str());
+        parent = p.parent_id;
+    }
+    parts.reverse();
+    parts.join(PATH_SEPARATOR)
 }
 
 /// Where a feed goes.
@@ -81,14 +106,20 @@ fn err(text: impl Into<String>) -> OrganiseError {
 /// The library's feeds and folders, as a plan may use them: the first
 /// [`MAX_FOLDERS`] folders, and the first [`MAX_FEEDS`] feeds that are in
 /// no folder or in one of those.
-pub fn snapshot(feeds: &[Feed], folders: &[Folder]) -> OrganiseSnapshot {
-    let folders: Vec<OrganiseFolder> = folders
+pub fn snapshot(feeds: &[Feed], all: &[Folder]) -> OrganiseSnapshot {
+    let folders: Vec<OrganiseFolder> = all
         .iter()
         .take(MAX_FOLDERS)
         .map(|f| OrganiseFolder {
             id: f.id,
-            name: f.name.clone(),
+            name: path(f, all),
         })
+        .collect();
+    let other_names = all
+        .iter()
+        .skip(MAX_FOLDERS)
+        .filter(|f| f.parent_id.is_none())
+        .map(|f| f.name.clone())
         .collect();
     let feeds = feeds
         .iter()
@@ -104,7 +135,11 @@ pub fn snapshot(feeds: &[Feed], folders: &[Folder]) -> OrganiseSnapshot {
             folder_id: f.folder_id,
         })
         .collect();
-    OrganiseSnapshot { feeds, folders }
+    OrganiseSnapshot {
+        feeds,
+        folders,
+        other_names,
+    }
 }
 
 /// A clean folder name, or why not.
@@ -182,7 +217,11 @@ pub fn check(
             }
             Target::NewFolder { name } => {
                 let name = clean_name(name)?;
-                if snapshot.folder_named(&name).is_some() {
+                let other = snapshot
+                    .other_names
+                    .iter()
+                    .any(|n| n.eq_ignore_ascii_case(&name));
+                if other || snapshot.folder_named(&name).is_some() {
                     return Err(err("A new folder has the name of an existing one."));
                 }
                 if !new_names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
@@ -277,7 +316,44 @@ mod tests {
                 id: 10,
                 name: "Reading".into(),
             }],
+            other_names: vec!["Archive".into()],
         }
+    }
+
+    fn folder(id: i64, parent_id: Option<i64>, name: &str) -> Folder {
+        Folder {
+            id,
+            parent_id,
+            name: name.into(),
+            depth: u32::from(parent_id.is_some()),
+            feed_count: 0,
+            unread_count: 0,
+        }
+    }
+
+    #[test]
+    fn nested_folders_show_their_path_and_hidden_names_stay_taken() {
+        let mut all = vec![folder(1, None, "Tech"), folder(2, Some(1), "News")];
+        all.extend((3..=9).map(|id| folder(id, None, &format!("F{id}"))));
+        all.push(folder(10, None, "Later"));
+        let s = snapshot(&[], &all);
+        assert_eq!(s.folders.len(), MAX_FOLDERS);
+        assert_eq!(s.folder(2).unwrap().name, "Tech / News");
+        assert_eq!(s.other_names, vec!["F9".to_string(), "Later".to_string()]);
+    }
+
+    #[test]
+    fn a_new_folder_cant_take_a_hidden_folders_name() {
+        let plan = FolderPlan {
+            moves: vec![mv(
+                1,
+                None,
+                Target::NewFolder {
+                    name: "archive".into(),
+                },
+            )],
+        };
+        assert!(check(&snap(), &plan).is_err());
     }
 
     fn mv(feed_id: i64, from: Option<i64>, to: Target) -> FeedMove {

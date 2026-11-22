@@ -492,6 +492,18 @@ impl BonsaiHarness {
             .map(|root| root.display().to_string())
     }
 
+    /// The paths of `project`'s files, without reading them.
+    pub(crate) fn file_paths(&self, project: &str) -> Vec<String> {
+        let Ok(root) = self.project_root(project) else {
+            return Vec::new();
+        };
+        PythonLab::new(root, Arc::clone(&self.python), Duration::ZERO)
+            .files()
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect()
+    }
+
     pub fn files(&self) -> Vec<ProjectFile> {
         let Some(name) = lock(&self.shared.state).project.clone() else {
             return Vec::new();

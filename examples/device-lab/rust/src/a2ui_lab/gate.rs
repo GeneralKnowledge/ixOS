@@ -96,6 +96,11 @@ pub trait Registration {
     /// Checks data for the surface: the whole model at creation
     /// (`path` `None`), or an update at `path`.
     fn check_data(&self, path: Option<&str>, value: &Value) -> Result<Self::Data, Refusal>;
+    /// Whether `updateDataModel` may change the data once the surface
+    /// exists; a read-only surface says no.
+    fn data_updatable(&self) -> bool {
+        true
+    }
 }
 
 /// The largest payload accepted, in bytes.
@@ -235,6 +240,12 @@ fn check_message<R: Registration>(
         "updateDataModel" => {
             created(state)?;
             surface_id(body, reg)?;
+            if !reg.data_updatable() {
+                return Err(refuse(
+                    "data",
+                    "This surface's data can't be changed once shown.",
+                ));
+            }
             only_keys(body, &["surfaceId", "path", "value"])?;
             let path = body.get("path").map(|p| {
                 p.as_str()

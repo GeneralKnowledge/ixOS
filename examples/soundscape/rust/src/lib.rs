@@ -369,10 +369,28 @@ impl SoundscapeCore {
         };
         let plan: playlist_plan::PlaylistPlan =
             serde_json::from_str(&plan_json).map_err(|_| refused())?;
-        let snapshot = playlist_plan::snapshot(&self.library());
-        let (name, tracks) = playlist_plan::check(&snapshot, &plan).map_err(|_| refused())?;
-        let ids = tracks.iter().map(|t| t.id.clone()).collect();
-        self.create_playlist(name, ids).await
+        let artwork = self.artwork_url();
+        let music = self.imported_url();
+        // The check and the write run in one command, so the songs checked
+        // are the songs the playlist gets: nothing removes one in between.
+        let id = self
+            .rt
+            .command("playlist-create", move |state| {
+                let library = library::build_library(
+                    state.library.value(),
+                    &library::Locate {
+                        artwork: &artwork,
+                        music: &music,
+                    },
+                );
+                let snapshot = playlist_plan::snapshot(&library);
+                let (name, tracks) =
+                    playlist_plan::check(&snapshot, &plan).map_err(|_| refused())?;
+                let ids = tracks.iter().map(|t| t.id.clone()).collect();
+                state.change_collection(|c| c.create_playlist(&name, ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
     }
 
     pub async fn rename_playlist(

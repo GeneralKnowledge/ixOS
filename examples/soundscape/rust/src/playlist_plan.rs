@@ -147,9 +147,13 @@ pub fn propose(snapshot: &PlaylistSnapshot) -> Option<PlaylistPlan> {
     {
         if n >= 3 {
             let genre = genre.to_string();
-            return Some(pick(format!("{genre} mix"), &|t| {
-                t.genre.as_deref() == Some(genre.as_str())
-            }));
+            // cut: a proposed name from a long genre, kept to the name
+            // limit; the person sees it in full on the surface and the review
+            let name: String = format!("{genre} mix")
+                .chars()
+                .take(MAX_NAME_CHARS as usize)
+                .collect();
+            return Some(pick(name, &|t| t.genre.as_deref() == Some(genre.as_str())));
         }
     }
     let (artist, _) = most_common(snapshot.tracks.iter().map(|t| t.artist.as_str()))?;
@@ -203,6 +207,15 @@ mod tests {
         assert_eq!(plan.name, "More of Ann");
         assert_eq!(plan.track_ids, ["a", "c", "d"]);
         assert!(propose(&PlaylistSnapshot::default()).is_none());
+
+        // A long genre still gives a name the check accepts.
+        let mut s = snap();
+        for t in &mut s.tracks {
+            t.genre = Some("g".repeat(200));
+        }
+        let plan = propose(&s).unwrap();
+        assert_eq!(plan.name.chars().count(), MAX_NAME_CHARS as usize);
+        assert!(check(&s, &plan).is_ok());
     }
 
     #[test]

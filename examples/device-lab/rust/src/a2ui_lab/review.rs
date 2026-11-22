@@ -46,11 +46,13 @@ impl<P> Reviews<P> {
         let stale = || A2uiLabError::Stale {
             reason: "This changed after you reviewed it. Review it again.".into(),
         };
-        let (at, plan) = self.pending.take().ok_or_else(stale)?;
-        if at != revision || revision != self.revision {
-            return Err(stale());
+        match &self.pending {
+            Some((at, _)) if *at == revision && revision == self.revision => {}
+            _ => return Err(stale()),
         }
-        Ok(plan)
+        // A stale revision leaves the current plan in place; only a match
+        // takes it, so it applies once.
+        self.pending.take().map(|(_, plan)| plan).ok_or_else(stale)
     }
 }
 
@@ -75,5 +77,15 @@ mod tests {
         let fifth = r.reviewed("e");
         r.accepted();
         assert!(r.confirm(fifth).is_err());
+    }
+
+    #[test]
+    fn a_stale_confirm_keeps_the_current_plan() {
+        let mut r = Reviews::default();
+        r.accepted();
+        let old = r.reviewed("old");
+        let current = r.reviewed("current");
+        assert!(r.confirm(old).is_err());
+        assert_eq!(r.confirm(current).unwrap(), "current");
     }
 }

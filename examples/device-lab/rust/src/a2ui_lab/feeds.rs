@@ -196,6 +196,7 @@ impl FeedsSurface {
             .filter(|l| !l.is_empty() && l.len() <= MAX_FEEDS)
             .ok_or_else(|| bad("The feeds aren't in the expected form."))?;
         let mut moves = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
         for item in list {
             let object = item
                 .as_object()
@@ -213,6 +214,9 @@ impl FeedsSurface {
                 .snapshot
                 .feed(id)
                 .ok_or_else(|| bad("A feed isn't in the library."))?;
+            if !seen.insert(id) {
+                return Err(bad("A feed appears twice."));
+            }
             if let Some(title) = object.get("title") {
                 if title.as_str() != Some(feed.title.as_str()) {
                     return Err(bad("A feed's title isn't the app's."));
@@ -234,6 +238,11 @@ impl FeedsSurface {
                 from: feed.folder_id,
                 to: target.clone(),
             });
+        }
+        // The surface shows every feed in the snapshot, so a replacement
+        // must hold exactly that set: none added, none dropped.
+        if seen.len() != self.snapshot.feeds.len() {
+            return Err(bad("The feeds aren't the ones the surface showed."));
         }
         let plan = FolderPlan { moves };
         organise::check(&self.snapshot, &plan).map_err(|e| gate::refuse("data", e.0))?;
@@ -336,7 +345,7 @@ impl A2uiFeeds {
         if snapshot.feeds.is_empty() {
             return Err(A2uiLabError::Refused {
                 code: "empty".into(),
-                reason: "Commonplace has no feeds to organise. Add some in Commonplace first."
+                reason: "There are no feeds to organise here. Add some in Commonplace, or move feeds out of folders past the first eight."
                     .into(),
             });
         }
@@ -464,6 +473,7 @@ mod tests {
                 id: 7,
                 name: "Reading".into(),
             }],
+            other_names: Vec::new(),
         }
     }
 
@@ -531,7 +541,10 @@ mod tests {
             .review(
                 REVIEW_EVENT.into(),
                 REVIEW_COMPONENT.into(),
-                context(json!([{ "id": "1", "title": "Alpha", "folder": ["folder_7"] }])),
+                context(json!([
+                    { "id": "1", "title": "Alpha", "folder": ["folder_7"] },
+                    { "id": "2", "title": "Beta", "folder": ["folder_7"] }
+                ])),
             )
             .unwrap();
         assert!(feeds.surface_edited());
@@ -549,7 +562,10 @@ mod tests {
                 .review(name.into(), source.into(), ctx)
                 .expect_err(name)
         };
-        let ok = context(json!([{ "id": "1", "title": "Alpha", "folder": ["none"] }]));
+        let ok = context(json!([
+            { "id": "1", "title": "Alpha", "folder": ["none"] },
+            { "id": "2", "title": "Beta", "folder": ["folder_7"] }
+        ]));
         refused("deleteFeeds", REVIEW_COMPONENT, ok.clone());
         refused(REVIEW_EVENT, "intro", ok);
         for bad in [
@@ -563,6 +579,8 @@ mod tests {
                 { "id": "1", "title": "Alpha", "folder": ["folder_7"] }
             ]),
             json!([]),
+            // A feed dropped from the list.
+            json!([{ "id": "1", "title": "Alpha", "folder": ["none"] }]),
         ] {
             refused(REVIEW_EVENT, REVIEW_COMPONENT, context(bad));
         }
@@ -584,6 +602,9 @@ mod tests {
                 "path": "/feeds", "value": [{ "id": "1", "folder": ["none"] }] } }]),
             json!([{ "version": "1.0", "updateDataModel": { "surfaceId": SURFACE_ID,
                 "path": "/settings", "value": {} } }]),
+            // A whole-model replace that drops a feed.
+            json!([{ "version": "1.0", "updateDataModel": { "surfaceId": SURFACE_ID,
+                "value": { "feeds": [{ "id": "1", "title": "Alpha", "folder": ["none"] }] } } }]),
             json!([{ "version": "1.0", "updateComponents": { "surfaceId": SURFACE_ID,
                 "components": [{ "id": "review", "component": "Button", "child": "reviewLabel",
                     "action": { "event": { "name": "proposeReadingPlan",
@@ -598,7 +619,9 @@ mod tests {
         }
         // A data update that only changes a choice is fine.
         let ok = json!([{ "version": "1.0", "updateDataModel": { "surfaceId": SURFACE_ID,
-            "path": "/feeds", "value": [{ "id": "1", "title": "Alpha", "folder": ["folder_7"] }] } }]);
+            "path": "/feeds", "value": [
+                { "id": "1", "title": "Alpha", "folder": ["folder_7"] },
+                { "id": "2", "title": "Beta", "folder": ["folder_7"] }] } }]);
         assert!(gate::check(&ok.to_string(), &surface, &mut state).is_ok());
     }
 
@@ -608,6 +631,7 @@ mod tests {
         let empty = OrganiseSnapshot {
             feeds: Vec::new(),
             folders: Vec::new(),
+            other_names: Vec::new(),
         };
         let err = feeds
             .start(serde_json::to_string(&empty).unwrap())

@@ -171,6 +171,10 @@ impl Registration for TaskCard {
         &[]
     }
 
+    fn data_updatable(&self) -> bool {
+        false
+    }
+
     fn check_data(&self, path: Option<&str>, value: &Value) -> Result<(), Refusal> {
         if path.is_some() {
             return Err(gate::refuse(
@@ -204,8 +208,13 @@ impl BonsaiHarness {
     /// The verified-task card for the last task, as A2UI messages through
     /// the gate. Refused for a task the harness hasn't verified.
     pub fn result_card(&self) -> Result<A2uiPayload, A2uiLabError> {
+        // One snapshot: the files listed are the snapshot's project's.
         let snapshot = self.snapshot();
-        let files: Vec<String> = self.files().into_iter().map(|f| f.path).collect();
+        let files = snapshot
+            .project
+            .as_deref()
+            .map(|project| self.file_paths(project))
+            .unwrap_or_default();
         let card = snapshot
             .task
             .as_ref()
@@ -257,6 +266,11 @@ mod tests {
         assert!(messages[0].contains("Ran hello.py: hello"));
     }
 
+    fn create_value_like() -> Value {
+        let card = Card::verified(&record(TaskStatus::Completed), &[], 9).unwrap();
+        json!({ "card": card.value() })
+    }
+
     #[test]
     fn the_card_has_no_actions_and_cant_be_changed() {
         let card = Card::verified(&record(TaskStatus::Completed), &[], 1).unwrap();
@@ -267,6 +281,9 @@ mod tests {
             // A changed claim after it is shown.
             json!([{ "version": "1.0", "updateDataModel": { "surfaceId": SURFACE_ID,
                 "path": "/card/status", "value": "Approved" } }]),
+            // The whole card replaced, with no path.
+            json!([{ "version": "1.0", "updateDataModel": { "surfaceId": SURFACE_ID,
+                "value": create_value_like() } }]),
             json!([{ "version": "1.0", "updateComponents": { "surfaceId": SURFACE_ID,
                 "components": [{ "id": "status", "component": "Text", "text": "Approved" }] } }]),
             // Another surface's id.
