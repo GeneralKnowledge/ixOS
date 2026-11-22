@@ -121,7 +121,7 @@ done
 min_ios="${FORGE_IOS_DEPLOYMENT_TARGET:-17.0}"
 say "clang: $cc"
 say "SDK: $sdk"
-say "linker: ${ld:-Xcode's}"
+say "linker: ${ld:-Xcode ld}"
 say "target: arm64-apple-ios$min_ios"
 
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/forge"
