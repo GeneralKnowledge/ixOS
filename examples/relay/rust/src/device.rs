@@ -1038,7 +1038,9 @@ fn told_mailbox(
     }
 }
 
-/// Connects to a trusted device at `to` and says Hello.
+/// Says Hello on a connection to a trusted device. Its Hello back is
+/// kept as a listener keeps the dialler's: where it can be reached, and its
+/// mailbox, so asking a device anything is enough to learn its mailbox.
 async fn hello(
     node: &Node,
     conn: &Connection,
@@ -1056,7 +1058,23 @@ async fn hello(
     )
     .await?;
     match hear(&mut recv, STEP).await? {
-        DeviceMsg::Hello { .. } => Ok((send, recv)),
+        DeviceMsg::Hello {
+            version,
+            addresses,
+            mailbox,
+            ..
+        } => {
+            if version == VERSION {
+                let mailbox = told_mailbox(conn, mailbox);
+                node.devices.met(
+                    &conn.remote_id().to_string(),
+                    addresses,
+                    route_of(conn),
+                    mailbox,
+                );
+            }
+            Ok((send, recv))
+        }
         DeviceMsg::Refused { reason } => Err(RelayError::Declined { reason }),
         _ => Err(connection("no hello")),
     }
