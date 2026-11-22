@@ -551,9 +551,7 @@ where
     W: tokio::io::AsyncWrite + Unpin,
 {
     let first = extra.len().min(length as usize);
-    to.write_all(&extra[..first])
-        .await
-        .map_err(|e| bad(&e.to_string()))?;
+    write_moving(to, &extra[..first], moving).await?;
     let rest = length.saturating_sub(first as u64);
     if rest > 0 {
         let mut limited = from.take(rest);
@@ -1256,6 +1254,37 @@ mod tests {
             };
             let (copied, got) = tokio::join!(writing, slow_reader);
             assert_eq!(copied.unwrap(), 6);
+            assert_eq!(got, b"abcdef");
+        });
+
+        // The same for the part of a body that came with the head: while a
+        // slow server takes it, the answer it hasn't sent yet isn't idle.
+        rt.block_on(async {
+            let moving = Activity::new();
+            let (mut writer, mut reader) = tokio::io::duplex(1);
+            let slow_reader = async {
+                let mut got = Vec::new();
+                let mut byte = [0u8; 1];
+                while reader.read(&mut byte).await.unwrap() == 1 {
+                    got.push(byte[0]);
+                    tokio::time::sleep(IDLE / 2).await;
+                }
+                got
+            };
+            let answer = moving.within(std::future::pending::<()>());
+            let uploading = async {
+                let mut nothing_more: &[u8] = b"";
+                // Only while the body is going up: once it is all sent, the
+                // answer has its own IDLE again.
+                let sent = tokio::select! {
+                    sent = copy_body(&mut nothing_more, &mut writer, b"abcdef", 6, &moving) => sent,
+                    _ = answer => panic!("the answer timed out while the body was still going up"),
+                };
+                drop(writer);
+                sent
+            };
+            let (sent, got) = tokio::join!(uploading, slow_reader);
+            sent.unwrap();
             assert_eq!(got, b"abcdef");
         });
     }
