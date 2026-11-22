@@ -526,18 +526,6 @@ impl BonsaiHarness {
             .map(|root| root.display().to_string())
     }
 
-    /// The paths of `project`'s files, without reading them.
-    pub(crate) fn file_paths(&self, project: &str) -> Vec<String> {
-        let Ok(root) = self.project_root(project) else {
-            return Vec::new();
-        };
-        PythonLab::new(root, Arc::clone(&self.python), Duration::ZERO)
-            .files()
-            .into_iter()
-            .map(|(path, _)| path)
-            .collect()
-    }
-
     /// The open project's files.
     pub fn files(&self) -> Vec<ProjectFile> {
         let Some(root) = lock(&self.shared.state).root.clone() else {
@@ -557,6 +545,32 @@ impl BonsaiHarness {
 }
 
 impl BonsaiHarness {
+    /// The last task, its step count and the paths of its project's
+    /// files, all from one read of the state: the root is the one the task
+    /// ran in (a ladder task's lives under the ladder folder). Paths only;
+    /// nothing is read.
+    pub(crate) fn last_task_with_files(&self) -> (Option<HarnessTaskRecord>, u32, Vec<String>) {
+        let (task, steps, root) = {
+            let state = lock(&self.shared.state);
+            let task = journal::last_task(&state.entries);
+            (
+                prompt::record(task),
+                prompt::steps(task).len() as u32,
+                state.root.clone(),
+            )
+        };
+        let files = root
+            .map(|root| {
+                PythonLab::new(root, Arc::clone(&self.python), Duration::ZERO)
+                    .files()
+                    .into_iter()
+                    .map(|(path, _)| path)
+                    .collect()
+            })
+            .unwrap_or_default();
+        (task, steps, files)
+    }
+
     pub fn with_limits(
         python: Arc<dyn PythonHost>,
         projects: PathBuf,

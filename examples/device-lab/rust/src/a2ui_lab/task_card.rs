@@ -208,17 +208,12 @@ impl BonsaiHarness {
     /// The verified-task card for the last task, as A2UI messages through
     /// the gate. Refused for a task the harness hasn't verified.
     pub fn result_card(&self) -> Result<A2uiPayload, A2uiLabError> {
-        // One snapshot: the files listed are the snapshot's project's.
-        let snapshot = self.snapshot();
-        let files = snapshot
-            .project
-            .as_deref()
-            .map(|project| self.file_paths(project))
-            .unwrap_or_default();
-        let card = snapshot
-            .task
+        // One read of the state: the files are those of the project the
+        // task ran in.
+        let (task, steps, files) = self.last_task_with_files();
+        let card = task
             .as_ref()
-            .and_then(|task| Card::verified(task, &files, snapshot.steps.len() as u32))
+            .and_then(|task| Card::verified(task, &files, steps))
             .ok_or_else(|| A2uiLabError::Refused {
                 code: "not_verified".into(),
                 reason: "The card is only for a task the harness verified.".into(),
