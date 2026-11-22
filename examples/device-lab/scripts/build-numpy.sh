@@ -99,8 +99,8 @@ for candidate in "$tools_bin/llvm-strip" "$(command -v llvm-strip || true)"; do
   if [[ -z "$strip_tool" && -n "$candidate" && -x "$candidate" ]]; then strip_tool="$candidate"; fi
 done
 
-# The deployment target CPython's iOS build was made for.
-min_ios="$(python3 -I -c 'import sys; ns = {}; exec(open(sys.argv[1]).read(), ns); print(ns["build_time_vars"].get("IPHONEOS_DEPLOYMENT_TARGET") or "13.0")' "$sysconfigdata")"
+# The app's deployment target (Package.swift: iOS 17; CPython's own is lower).
+min_ios="${FORGE_IOS_DEPLOYMENT_TARGET:-17.0}"
 say "clang: $cc"
 say "SDK: $sdk"
 say "linker: $ld"
@@ -181,7 +181,15 @@ esac
 exec "$py" "\$@"
 EOF
 chmod +x "$work/python"
-mkdir -p "$work/no-pkgconfig"
+# pkg-config sees only the iOS Python: Meson's Cython check links against the
+# "python3" dependency, which could otherwise find this machine's own headers.
+py_version="$(python3 -I -c 'import sys; ns = {}; exec(open(sys.argv[1]).read(), ns); print(ns["build_time_vars"]["VERSION"])' "$sysconfigdata")"
+mkdir -p "$work/pkgconfig"
+for name in python3 "python-$py_version"; do
+  printf '%s\n' "Name: Python" "Description: CPython for iOS (python.org's iOS build)" \
+    "Version: $py_version" "Cflags: -I$headers" "Libs: -F$slice -framework Python" \
+    > "$work/pkgconfig/$name.pc"
+done
 
 q() { printf "'%s'" "$1"; }
 target="arm64-apple-ios$min_ios"
@@ -202,7 +210,7 @@ cpp_link_args = [$(q "--ld-path=$ld"), '-F', $(q "$slice"), '-framework', 'Pytho
 # Apple arm64: long double is the same as double.
 longdouble_format = 'IEEE_DOUBLE_LE'
 needs_exe_wrapper = true
-pkg_config_libdir = $(q "$work/no-pkgconfig")
+pkg_config_libdir = $(q "$work/pkgconfig")
 
 [host_machine]
 system = 'ios'
@@ -219,7 +227,10 @@ export PATH="$venv/bin:$PATH"
 (cd "$srcdir" && "$py" vendored-meson/meson/meson.py setup "$work/build" \
   --cross-file "$work/ios.ini" --prefix=/usr --buildtype=release -Db_ndebug=if-release \
   -Dblas=none -Dlapack=none -Dallow-noblas=true) > "$work/configure.log" 2>&1 \
-  || { tail -60 "$work/configure.log" >&2; fail "configure failed (log above)"; }
+  || { tail -60 "$work/configure.log" >&2
+       log="$work/build/meson-logs/meson-log.txt"
+       if [[ -f "$log" ]]; then echo "--- end of meson-log.txt" >&2; tail -120 "$log" >&2; fi
+       fail "configure failed (log above)"; }
 jobs="${FORGE_NUMPY_JOBS:-4}"
 say "Compiling (ninja -j$jobs)"
 "$venv/bin/ninja" -C "$work/build" -j "$jobs" > "$work/build.log" 2>&1 \
