@@ -641,7 +641,9 @@ struct Artwork: View {
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        Group {
+        // The coloured initial is Soundscape's own stand-in (its look), in
+        // ForgeUI's thumbnail frame.
+        ForgeThumbnail(width: size, shape: circle ? .circle : .rounded) {
             if let url, let link = URL(string: url) {
                 ForgeRemoteImage(url: link, maxPixels: ForgeImages.pixels(size, scale: displayScale)) { image in
                     image.resizable().scaledToFill()
@@ -652,9 +654,6 @@ struct Artwork: View {
                 standIn
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.12)))
-        .accessibilityHidden(true)
     }
 
     private var standIn: some View {

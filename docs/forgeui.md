@@ -237,6 +237,28 @@ ForgeRating(value: review.stars, identifier: "review.rating")   // read-only
 
 The `rating` [parity rule](app-parity.md) catches stars drawn by hand (`"star.fill"` switching with `"star"`).
 
+### Thumbnails
+
+```swift
+ForgeThumbnail(width: 44, aspectRatio: 2 / 3) {          // a book cover
+    ForgeRemoteImage(url: cover, maxPixels: 132) { $0.resizable().scaledToFill() } placeholder: { failed in
+        ForgeThumbnailPlaceholder(failed ? .failed : .loading, systemImage: "book.closed")
+    }
+}
+ForgeThumbnail(width: 40, shape: .circle) { artistPicture }
+ForgeThumbnail(aspectRatio: 3 / 4) { sketchPreview }      // fills a grid cell's width
+```
+
+| Aspect | ForgeThumbnail |
+|---|---|
+| States | picture, or `ForgeThumbnailPlaceholder` for `.empty`, `.loading` (small spinner) and `.failed` (drawn like empty: a broken picture looks calm) |
+| Shape | `.rounded` (a tenth of the width, up to the card radius; the medium radius when it fills its space), `.circle`, `.square`; a hairline outline on all three |
+| Size | a fixed `width` and `aspectRatio` (width over height), or no width to fill what it's offered |
+| VoiceOver | hidden, since a thumbnail sits beside the words that name it; with `label:` it is one image element |
+| Loading | the content's job: `ForgeRemoteImage`, `ForgeImages.thumbnail`, a `CGImage`. ForgeUI depends on none of them |
+
+An app whose stand-in is part of its look (Soundscape's coloured initial) draws its own inside the frame. The `thumbnail` [parity rule](app-parity.md) catches an `Image` clipped to a fixed-radius rectangle or a circle by hand.
+
 ### Notices
 
 When something is wrong but the screen still works (offline, the map can't update, the server refused the account), say so inside the screen with `ForgeNotice`: what is wrong, what still works, and at most one action.

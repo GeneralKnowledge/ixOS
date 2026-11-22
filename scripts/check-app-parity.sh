@@ -923,6 +923,27 @@ def rule_icon_tile(app):
     return True, ""
 
 
+# Pictures (covers, photos, artwork) sit in ForgeUI's ForgeThumbnail, which
+# sizes, shapes and outlines them the same everywhere and draws one
+# placeholder for empty, loading and failed. Five apps clipped their own,
+# with five corner radii and three placeholders (ForgeUI 0.2, item 5). This
+# finds an image clipped to a fixed-radius rectangle or a circle by hand.
+HAND_THUMBNAIL = re.compile(r"\.clipShape\(\s*(?:RoundedRectangle\(\s*cornerRadius:\s*[\d.]+|Circle\(\))")
+
+
+def rule_thumbnail(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in HAND_THUMBNAIL.finditer(code):
+            if re.match(r"(?:Image|ForgeRemoteImage|AsyncImage)\(", chain_root(code, m.start())):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "clips a picture by hand; put it in ForgeUI's ForgeThumbnail: " + ", ".join(bad)
+    return True, ""
+
+
 # Stars for a rating come from ForgeUI's ForgeRating: one adjustable
 # VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
 # app, and `<id>.star.<n>` identifiers. Soundscape and Pocket Library each
@@ -1122,6 +1143,7 @@ RULES = [
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
     ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
     ("rating", "Ratings through ForgeUI's `ForgeRating`, never stars drawn by hand", rule_rating),
+    ("thumbnail", "Pictures in ForgeUI's `ForgeThumbnail`, never an image clipped to a shape by hand", rule_thumbnail),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
     ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),
