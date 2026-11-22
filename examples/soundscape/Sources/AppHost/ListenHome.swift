@@ -10,6 +10,7 @@ import SwiftUI
 struct ListenHome: View {
     let model: ListenModel
     let player: TakePlayer
+    let radio: Radio
     let openNowPlaying: () -> Void
 
     @State private var popular: [CatalogueTrack] = []
@@ -28,6 +29,7 @@ struct ListenHome: View {
 
     private var isEmpty: Bool {
         model.library.tracks.isEmpty && player.current == nil && popular.isEmpty
+            && model.suggestedStations.isEmpty
     }
 
     var body: some View {
@@ -39,6 +41,21 @@ struct ListenHome: View {
                     .padding(.horizontal, SoundscapeMetrics.screenEdge)
                     .accessibilityIdentifier("listen.greeting")
                 continueListening
+                Shelf(title: "Hear Nonstop Music", items: model.suggestedStations, identifier: "listen.radio") { station in
+                    Button {
+                        Task { await radio.start(station.seed, title: station.title, model: model, player: player) }
+                    } label: {
+                        StationTile(station: station)
+                            .overlay {
+                                if radio.isTuning && radio.seed == station.seed {
+                                    ProgressView().tint(.white)
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Starts nonstop music")
+                    .accessibilityIdentifier("listen.station")
+                }
                 Shelf(title: "Recently Played", items: Array(recentTracks.prefix(15)), seeAll: .recent,
                       identifier: "listen.recent") { track in
                     trackTile(track, in: recentTracks, identifier: "listen.recentSong")

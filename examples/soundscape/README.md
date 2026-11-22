@@ -33,12 +33,13 @@ longer asks for the microphone.
 | M8 | Sleep timer: pause after 15 to 90 minutes or at the end of this song, fading out over the last 10 seconds | Swift written, not yet built with xtool or run on a phone |
 | M9 | Between songs: no gap (the next song is loaded early and starts the moment one ends) or a 2 to 12 second crossfade, kept as a setting | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | S1-S3 | The redesign ([design](docs/design.md)): four tabs (Listen, Library, Discover, Search), the mini-player above the tab bar, a Listen home of artwork shelves, the Library by kind with an album grid, and a full-screen Now Playing in the artwork's colours with lyrics in place, a queue sheet, volume and AirPlay | Swift written, not yet built with xtool or run on a phone |
+| R1 | Radio ([design](docs/design.md#radio-reuben-2026-11-22-2028-and-2036)): nonstop stations from a genre, a song or an artist, mixed in Rust (likes, favourites and plays weighted up, two in five songs new, no artist twice within four songs, disliked songs never), Like and Dislike in Now Playing, Hear Nonstop Music on Listen | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 
 ## How the work is split
 
 - **Rust owns the state and the rules** (`rust/src`): the library (`library.rs`),
   favourites, playlists and history (`collection.rs`), what is kept on the phone
-  (`offline.rs`), the queue (`queue.rs`) and what was playing (`playback.rs`),
+  (`offline.rs`), the queue (`queue.rs`), the radio's mix (`station.rs`) and what was playing (`playback.rs`),
   the catalogues (`jamendo.rs`, `archive.rs`, rights in `catalogue.rs`), the take
   server's client (`listen.rs`) and lyrics (`lyrics.rs`). All of it is tested on Linux.
 - **AVPlayer plays** (`TakePlayer.swift`): the queue, the mini-player (`MiniPlayer.swift`) and Now

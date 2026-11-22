@@ -25,6 +25,7 @@ pub mod offline;
 pub mod playback;
 pub mod queue;
 pub mod search;
+pub mod station;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -61,6 +62,7 @@ use playback::PlaybackFile;
 pub use playback::SavedPlayback;
 pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
 pub use search::CatalogueSearch;
+pub use station::{Feeling, Station, StationSeed};
 
 uniffi::setup_scaffolding!();
 
@@ -851,6 +853,148 @@ impl SoundscapeCore {
                 archive::item_tracks(http.as_ref(), &identifier, cancel)
             })
             .await
+    }
+
+    // MARK: Stations
+
+    /// How the person feels about a song for stations, if they said.
+    pub fn feeling(&self, track_id: String) -> Option<Feeling> {
+        self.collection.get().feelings.get(&track_id).copied()
+    }
+
+    /// Likes or dislikes a song (any track id, in the library or from a
+    /// catalogue), or forgets it with `None`. Disliked songs never play on
+    /// a station; liked ones come up more.
+    pub async fn set_feeling(
+        &self,
+        track_id: String,
+        feeling: Option<Feeling>,
+    ) -> Result<(), SoundscapeError> {
+        self.rt
+            .command("collection-feeling", move |state| {
+                state.change_collection(|c| c.set_feeling(&track_id, feeling))
+            })
+            .await
+    }
+
+    /// Stations to offer on the Listen screen: your top genres and most
+    /// played artists, then Jamendo's genres when there is a client ID.
+    pub fn suggested_stations(&self) -> Vec<Station> {
+        station::suggested(
+            &self.library(),
+            &self.collection.get(),
+            self.jamendo_client_id().is_some(),
+        )
+    }
+
+    /// The next `size` songs (at most 50) for a station: your music that
+    /// fits the seed, weighted by likes, favourites and plays, with about
+    /// two in five new to you (unplayed songs, and Jamendo's in the
+    /// station's genre when there is a client ID). `played` are the
+    /// station's songs so far, `recent_artists` the last artists played
+    /// (newest last), `seed_number` makes the mix repeatable. Jamendo
+    /// failing leaves its songs out; no song at all is `NotInLibrary`.
+    /// On-screen work.
+    pub async fn station_batch(
+        &self,
+        seed: StationSeed,
+        played: Vec<String>,
+        recent_artists: Vec<String>,
+        size: u32,
+        seed_number: u64,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<QueueTrack>, SoundscapeError> {
+        let library = self.library();
+        let collection = self.collection.get();
+        let mut candidates = station::library_candidates(&seed, &library, &collection);
+        let mut catalogue: Vec<CatalogueTrack> = Vec::new();
+        if let Some(client_id) = self.jamendo_client_id() {
+            let genre = station::seed_genre(&seed, &library);
+            let http = Arc::clone(&self.http);
+            let work = self.rt.foreground(cancellation.as_deref());
+            let seed_for_work = seed.clone();
+            let found = self
+                .rt
+                .run("station-jamendo", work, move |cancel| {
+                    match (
+                        &seed_for_work,
+                        genre.as_deref().and_then(station::jamendo_tag),
+                    ) {
+                        (_, Some(tag)) => jamendo::tracks(
+                            http.as_ref(),
+                            &client_id,
+                            &jamendo::Ask::Genre(tag),
+                            cancel,
+                        ),
+                        // A Jamendo song not in the library: Jamendo knows its genre.
+                        (StationSeed::Track { id }, None) if id.starts_with("jamendo:") => {
+                            jamendo::more(http.as_ref(), &client_id, id, JamendoMore::Genre, cancel)
+                                .map(|more| more.tracks)
+                        }
+                        _ => Ok(Vec::new()),
+                    }
+                })
+                .await;
+            match found {
+                Ok(tracks) => catalogue = tracks,
+                Err(SoundscapeError::Stopped { kind }) => {
+                    return Err(SoundscapeError::Stopped { kind })
+                }
+                Err(error) => forge_runtime::logging::warn!("station: Jamendo left out: {error}"),
+            }
+        }
+        let known: std::collections::HashSet<String> =
+            candidates.iter().map(|c| c.id.clone()).collect();
+        let plays = station::play_counts(&collection);
+        for t in &catalogue {
+            if known.contains(&t.id)
+                || !t.rights.may_stream
+                || collection.feelings.get(&t.id) == Some(&Feeling::Dislike)
+            {
+                continue;
+            }
+            let liked = collection.feelings.get(&t.id) == Some(&Feeling::Like);
+            candidates.push(station::Candidate {
+                id: t.id.clone(),
+                artist: t.artist.clone().unwrap_or_default(),
+                weight: if liked { 4.0 } else { 1.0 },
+                heard: plays.contains_key(t.id.as_str()),
+            });
+        }
+        let played = station::Played {
+            ids: played.into_iter().collect(),
+            artists: recent_artists,
+        };
+        let size = (size as usize).clamp(1, 50);
+        let mut ids = station::mix(&candidates, &played, size, seed_number);
+        // A song seed plays first when the station starts.
+        if let StationSeed::Track { id } = &seed {
+            if played.ids.is_empty() {
+                ids.retain(|i| i != id);
+                ids.insert(0, id.clone());
+                ids.truncate(size);
+            }
+        }
+        let tracks: Vec<QueueTrack> = ids
+            .iter()
+            .filter_map(|id| {
+                if let Some(t) = library.tracks.iter().find(|t| &t.id == id) {
+                    library::queue_track(t)
+                } else {
+                    catalogue.iter().find(|t| &t.id == id).and_then(|t| {
+                        self.catalogue_queue_tracks(vec![t.clone()])
+                            .into_iter()
+                            .next()
+                    })
+                }
+            })
+            .collect();
+        if tracks.is_empty() {
+            return Err(SoundscapeError::NotInLibrary {
+                id: "station".into(),
+            });
+        }
+        Ok(tracks)
     }
 
     // MARK: MusicBrainz

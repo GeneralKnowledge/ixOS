@@ -47,6 +47,7 @@ enum SoundscapeTab: String, Hashable {
 struct ListenView: View {
     @State private var model: ListenModel
     @State private var player = TakePlayer()
+    @State private var radio = Radio()
     @State private var editingServer = false
     @State private var showingNowPlaying = false
     @AppStorage("soundscape.tab") private var tab: SoundscapeTab = .listen
@@ -68,7 +69,7 @@ struct ListenView: View {
                 MiniPlayer(player: player, zoom: playerZoom, open: openNowPlaying)
             })
             .fullScreenCover(isPresented: $showingNowPlaying) {
-                NowPlayingView(model: model, player: player, go: go)
+                NowPlayingView(model: model, player: player, radio: radio, go: go)
                     .modifier(ZoomedFrom(id: MiniPlayer.zoomID, namespace: playerZoom))
             }
             .onChange(of: player.current == nil) { _, stopped in
@@ -83,6 +84,11 @@ struct ListenView: View {
                 set: { model.alert = $0 }
             )) { action in Task { await model.handle(action) } }
             .task(id: model.server) { await model.loadLibrary() }
+            // The radio keeps a few songs queued ahead, and ends when
+            // something else plays.
+            .task(id: "\(player.current?.trackId ?? "")|\(player.upcoming.count)") {
+                await radio.follow(model: model, player: player)
+            }
             .onAppear {
                 player.onPlayed = { [model] trackId, recordingId in
                     Task { await model.recordPlay(trackId: trackId, recordingId: recordingId) }
@@ -116,7 +122,7 @@ struct ListenView: View {
 
     private var listen: some View {
         stack($listenPath) {
-            ListenHome(model: model, player: player, openNowPlaying: openNowPlaying)
+            ListenHome(model: model, player: player, radio: radio, openNowPlaying: openNowPlaying)
         }
     }
 

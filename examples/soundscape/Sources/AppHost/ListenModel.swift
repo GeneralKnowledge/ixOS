@@ -448,6 +448,48 @@ public final class ListenModel {
         }
     }
 
+    // MARK: Radio
+
+    /// Stations to offer: your genres and artists, then Jamendo's genres.
+    public var suggestedStations: [Station] { core.suggestedStations() }
+
+    /// How the person feels about a song for the radio, if they said.
+    public func feeling(_ trackId: String) -> Feeling? { core.feeling(trackId: trackId) }
+
+    /// Likes or dislikes a song for the radio; the same again takes it back.
+    public func toggleFeeling(_ trackId: String, _ feeling: Feeling) async {
+        let new: Feeling? = core.feeling(trackId: trackId) == feeling ? nil : feeling
+        do {
+            try await core.setFeeling(trackId: trackId, feeling: new)
+            feelingRevision += 1
+            feedback.play(.success)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Changes when a song is liked or disliked, so screens read it again.
+    public private(set) var feelingRevision = 0
+
+    /// The next songs for a station (Rust mixes them).
+    public func stationBatch(
+        _ seed: StationSeed, played: [String], recentArtists: [String], size: Int = 10
+    ) async -> Result<[QueueTrack], ListenFailure> {
+        do {
+            let tracks = try await withRustCancellation { cancellation in
+                try await core.stationBatch(
+                    seed: seed, played: played, recentArtists: recentArtists,
+                    size: UInt32(size), seedNumber: UInt64.random(in: 0...UInt64.max),
+                    cancellation: cancellation
+                )
+            }
+            return .success(tracks)
+        } catch {
+            if !Self.isStop(error) { log.warn("station failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
     public func playlist(_ id: UInt64) -> PlaylistDetail? { try? core.playlist(id: id) }
 
     /// A new playlist, empty or with `tracks`. Throws when Rust refuses the

@@ -105,7 +105,7 @@ Four tabs, each its own `NavigationStack` with the same destinations (albums, ar
 
 | Tab | Root | What it holds |
 |---|---|---|
-| Listen | `ListenHome` | A greeting, Continue Listening (the saved queue), Recently Played shelf, your playlists, recently added albums, Popular on Jamendo when a client ID is set |
+| Listen | `ListenHome` | A greeting, Continue Listening (the saved queue), Hear Nonstop Music (radio), Recently Played shelf, your playlists, recently added albums, Popular on Jamendo when a client ID is set |
 | Library | `LibraryTab` | Category rows (Playlists, Artists, Albums, Songs, Favourites, Downloaded, To Pick, Recently Played), then recently added albums as an artwork grid; import and take server in the toolbar |
 | Discover | `DiscoverView` | Jamendo and the Internet Archive as today (S5 makes it editorial) |
 | Search | `SearchTab` | One search for your music, Jamendo and the Archive (as today), with genres to browse before you type |
@@ -133,26 +133,41 @@ Full screen, dark, over the artwork palette:
 The queue is a sheet with shuffle and repeat at the top and Up Next below (tap to jump, swipe to remove). A/B
 comparison keeps its own A / B switch in place of the transport.
 
-## Stations (Reuben, 2026-11-22 20:28)
+## Radio (Reuben, 2026-11-22 20:28 and 20:36)
 
-A station is an endless, generated playlist from a seed: a genre, a song or an artist. It's a smarter shuffle,
-so it lives in Rust next to the queue (`station.rs`), and Swift only shows it and plays what Rust hands over.
+Radio is nonstop music: a station is an endless playlist generated from a seed (a genre, a song or an artist),
+queued a batch at a time, so there are many stations for free. It's a smarter shuffle, so the mix lives in Rust
+(`rust/src/station.rs`, tested on Linux), and Swift only starts it, shows it and keeps the queue topped up
+(`Radio.swift`).
 
-- **Seeds:** a genre (Jamendo's tags and your library's genres), a song ("Start Station" on a song's menu and
-  in Now Playing), or an artist.
-- **What goes in:** songs from your library in that genre or like the seed, weighted up by what you liked,
-  favourited and played often; plus new songs you haven't heard, from Jamendo in the same genre (and the
-  Archive later), so a station is never only your library.
-- **Rules:** no artist twice within a few songs; no song you disliked; songs you skip early count against
-  their weight; a share of each batch is always new. The mix is reproducible from a seed number, so it can be
-  tested on Linux.
-- **Like and Dislike:** two buttons in Now Playing while a station plays (and in the song's menu). Like is
-  stronger than a favourite for stations only; Dislike skips the song and keeps it out of every station. Both
-  are kept in `collection.json` with the history.
-- **Default stations:** a "Stations for You" shelf on Listen, built from your top genres and most-played
-  artists, plus a few Jamendo genres when the library is small.
-- **The queue:** a station fills the queue a batch at a time (about 10 songs ahead), so shuffle, repeat,
-  crossfade, the lock screen and the saved queue all work unchanged.
+**Built (step 1):**
+
+- **Seeds:** a genre (your library's genres and Jamendo's), a song (Start Radio in Now Playing's More menu), or
+  an artist (your most played).
+- **The mix:** songs from your library in the genre (or by the artist), weighted up by Like (+3), favourite
+  (+2) and plays (+0.5 each, up to +3), and two in five new to you: unplayed songs, and Jamendo's in the
+  station's genre when there is a client ID. A Jamendo song that isn't in the library seeds from Jamendo's
+  "more in this genre".
+- **Rules:** a disliked song never plays; the same artist doesn't come back within four songs (across
+  batches too); a station never repeats a song until it has played everything; the mix is repeatable from a
+  seed number.
+- **Like and Dislike:** two buttons in Now Playing while the radio plays. Dislike also skips the song. Both
+  are kept in `collection.json` (`feelings`), for any track id, library or catalogue.
+- **Hear Nonstop Music:** a shelf of station tiles on Listen: your top genres, your most played artists,
+  then Jamendo's genres, eight in all.
+- **Continuous play:** the radio asks Rust for the next 10 songs while fewer than four are still to come, so
+  there is always a batch in hand, and AVPlayer already loads the next song before the current one ends
+  (gapless). Playing anything else ends the radio.
+
+**Next:**
+
+- **Cache ahead for weak connections:** download the next few radio songs in the background when their rights
+  allow it (`may_download`, as Discover's downloads already check), and drop them once played unless kept.
+  Songs whose licence allows downloading also get Keep on Phone from the radio.
+- **Live radio (step 2):** open internet radio through the Radio Browser directory (free, community-run,
+  no key): browse by genre, country and language, search stations, play their streams through the same
+  player, with categories on a Radio screen. Shown apart from generated stations, because a live stream has
+  no queue, no skip and no Like.
 
 ## Milestones
 
@@ -164,7 +179,8 @@ so it lives in Rust next to the queue (`station.rs`), and Swift only shows it an
 | S4 | Library: album and artist pages with large artwork, Play / Shuffle, more shelves | Next |
 | S5 | Discover: genre tiles, Popular This Week shelf, artists, Archive collections, recently discovered | Next |
 | S6 | Native finish: Dynamic Type at the largest sizes, VoiceOver order, loading and empty states, interruptions | Next |
-| ST | Stations (above): station mixer in Rust, Like / Dislike, Stations for You on Listen | Next, after S3 |
+| R1 | Radio (above): station mixer in Rust, Like and Dislike, Hear Nonstop Music on Listen, continuous queue | In this PR |
+| R2 | Radio: cache songs ahead (downloadable rights only); live open radio (Radio Browser) | Next |
 
 ## Phone checks (next combined Device Lab sitting, about 10 minutes)
 
@@ -174,6 +190,8 @@ so it lives in Rust next to the queue (`station.rs`), and Swift only shows it an
 3. Tap the mini-player: Now Playing zooms open from it; the background takes the artwork's colours; pause
    shrinks the artwork.
 4. Scrub, skip, open Queue, jump to a song, swipe one away; open Lyrics on a song that has them.
-5. Lock the phone: lock-screen controls still work; the queue survives closing the app (unchanged behaviour,
+5. Radio: on Listen, tap a Hear Nonstop Music tile; songs keep coming past ten; Dislike skips; Start Radio
+   from Now Playing's More menu.
+6. Lock the phone: lock-screen controls still work; the queue survives closing the app (unchanged behaviour,
    check it wasn't broken).
-6. Light and dark mode, and the largest Dynamic Type size on Listen and Now Playing.
+7. Light and dark mode, and the largest Dynamic Type size on Listen and Now Playing.

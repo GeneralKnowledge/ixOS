@@ -9,12 +9,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::library::{Library, LibraryAlbum, LibraryArtist, LibraryTrack};
 use crate::model::{clean_name, SoundscapeError};
+use crate::station::Feeling;
 
 pub const COLLECTION_VERSION: u32 = 1;
 pub const MAX_PLAYLISTS: usize = 500;
 pub const MAX_PLAYLIST_TRACKS: usize = 5_000;
 /// Plays kept in the history, newest last.
 pub const MAX_HISTORY: usize = 2_000;
+/// Songs liked or disliked, at most.
+pub const MAX_FEELINGS: usize = 20_000;
 /// Different songs in Recently Played.
 pub const RECENT_SONGS: usize = 50;
 /// A song counts as played after this long, or half of it when shorter.
@@ -35,6 +38,9 @@ pub struct CollectionFile {
     pub history: Vec<Play>,
     #[serde(default)]
     pub next_playlist: u64,
+    /// Songs liked or disliked for stations (`station.rs`), by track id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub feelings: BTreeMap<String, Feeling>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -163,6 +169,29 @@ impl CollectionFile {
         }
         list.track_ids = arranged;
         list.modified_ms = now;
+        Ok(())
+    }
+
+    /// Likes or dislikes a song for stations, or forgets how you felt.
+    pub fn set_feeling(
+        &mut self,
+        track_id: &str,
+        feeling: Option<Feeling>,
+    ) -> Result<(), SoundscapeError> {
+        if track_id.trim().is_empty() || track_id.chars().count() > 512 {
+            return Err(SoundscapeError::range("track id"));
+        }
+        match feeling {
+            Some(f) => {
+                if self.feelings.len() >= MAX_FEELINGS && !self.feelings.contains_key(track_id) {
+                    return Err(SoundscapeError::range("liked and disliked songs"));
+                }
+                self.feelings.insert(track_id.into(), f);
+            }
+            None => {
+                self.feelings.remove(track_id);
+            }
+        }
         Ok(())
     }
 

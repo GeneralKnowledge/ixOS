@@ -2246,6 +2246,11 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func events()  -> RuntimeEvents?
     
     /**
+     * How the person feels about a song for stations, if they said.
+     */
+    func feeling(trackId: String)  -> Feeling?
+    
+    /**
      * Recordings MusicBrainz knows that might be this song, best first,
      * ranked by its title, artist and length. Changes nothing. On-screen
      * work.
@@ -2467,6 +2472,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func setFavourite(id: String, on: Bool) async throws  -> MusicCollection
     
     /**
+     * Likes or dislikes a song (any track id, in the library or from a
+     * catalogue), or forgets it with `None`. Disliked songs never play on
+     * a station; liked ones come up more.
+     */
+    func setFeeling(trackId: String, feeling: Feeling?) async throws 
+    
+    /**
      * Saves the Jamendo client ID (from developer.jamendo.com). Empty
      * forgets it; Jamendo tracks already in the library stay. Returns
      * what was saved.
@@ -2497,6 +2509,24 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * streams. Commands already accepted still finish and save.
      */
     func shutdown() 
+    
+    /**
+     * The next `size` songs (at most 50) for a station: your music that
+     * fits the seed, weighted by likes, favourites and plays, with about
+     * two in five new to you (unplayed songs, and Jamendo's in the
+     * station's genre when there is a client ID). `played` are the
+     * station's songs so far, `recent_artists` the last artists played
+     * (newest last), `seed_number` makes the mix repeatable. Jamendo
+     * failing leaves its songs out; no song at all is `NotInLibrary`.
+     * On-screen work.
+     */
+    func stationBatch(seed: StationSeed, played: [String], recentArtists: [String], size: UInt32, seedNumber: UInt64, cancellation: Cancellation?) async throws  -> [QueueTrack]
+    
+    /**
+     * Stations to offer on the Listen screen: your top genres and most
+     * played artists, then Jamendo's genres when there is a client ID.
+     */
+    func suggestedStations()  -> [Station]
     
     /**
      * Downloads what the person chose and removes what nothing wants, one
@@ -2931,6 +2961,19 @@ open func events() -> RuntimeEvents?  {
         uniffiCallStatus in
     uniffi_soundscape_core_fn_method_soundscapecore_events(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * How the person feels about a song for stations, if they said.
+     */
+open func feeling(trackId: String) -> Feeling?  {
+    return try!  FfiConverterOptionTypeFeeling.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_feeling(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(trackId),uniffiCallStatus
     )
 })
 }
@@ -3580,6 +3623,27 @@ open func setFavourite(id: String, on: Bool)async throws  -> MusicCollection  {
 }
     
     /**
+     * Likes or dislikes a song (any track id, in the library or from a
+     * catalogue), or forgets it with `None`. Disliked songs never play on
+     * a station; liked ones come up more.
+     */
+open func setFeeling(trackId: String, feeling: Feeling?)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_set_feeling(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(trackId),FfiConverterOptionTypeFeeling.lower(feeling)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_void,
+            completeFunc: ffi_soundscape_core_rust_future_complete_void,
+            freeFunc: ffi_soundscape_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Saves the Jamendo client ID (from developer.jamendo.com). Empty
      * forgets it; Jamendo tracks already in the library stay. Returns
      * what was saved.
@@ -3664,6 +3728,45 @@ open func shutdown()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * The next `size` songs (at most 50) for a station: your music that
+     * fits the seed, weighted by likes, favourites and plays, with about
+     * two in five new to you (unplayed songs, and Jamendo's in the
+     * station's genre when there is a client ID). `played` are the
+     * station's songs so far, `recent_artists` the last artists played
+     * (newest last), `seed_number` makes the mix repeatable. Jamendo
+     * failing leaves its songs out; no song at all is `NotInLibrary`.
+     * On-screen work.
+     */
+open func stationBatch(seed: StationSeed, played: [String], recentArtists: [String], size: UInt32, seedNumber: UInt64, cancellation: Cancellation?)async throws  -> [QueueTrack]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_station_batch(
+                        self.uniffiCloneHandle(),FfiConverterTypeStationSeed_lower(seed),FfiConverterSequenceString.lower(played),FfiConverterSequenceString.lower(recentArtists),FfiConverterUInt32.lower(size),FfiConverterUInt64.lower(seedNumber),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeQueueTrack.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Stations to offer on the Listen screen: your top genres and most
+     * played artists, then Jamendo's genres when there is a client ID.
+     */
+open func suggestedStations() -> [Station]  {
+    return try!  FfiConverterSequenceTypeStation.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_suggested_stations(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -7468,6 +7571,83 @@ public func FfiConverterTypeSongSummary_lower(_ value: SongSummary) -> RustBuffe
 
 
 /**
+ * A station to start, for the Listen screen's shelf.
+ */
+public struct Station: Equatable, Hashable {
+    public var title: String
+    /**
+     * Why it is offered ("From your library", "On Jamendo").
+     */
+    public var subtitle: String
+    public var seed: StationSeed
+    /**
+     * Up to four covers from it, for the tile.
+     */
+    public var artworkUrls: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(title: String, 
+        /**
+         * Why it is offered ("From your library", "On Jamendo").
+         */subtitle: String, seed: StationSeed, 
+        /**
+         * Up to four covers from it, for the tile.
+         */artworkUrls: [String]) {
+        self.title = title
+        self.subtitle = subtitle
+        self.seed = seed
+        self.artworkUrls = artworkUrls
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Station: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeStation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Station {
+        return
+            try Station(
+                title: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterString.read(from: &buf), 
+                seed: FfiConverterTypeStationSeed.read(from: &buf), 
+                artworkUrls: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Station, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterTypeStationSeed.write(value.seed, into: &buf)
+        FfiConverterSequenceString.write(value.artworkUrls, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStation_lift(_ buf: RustBuffer) throws -> Station {
+    return try FfiConverterTypeStation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStation_lower(_ value: Station) -> RustBuffer {
+    return FfiConverterTypeStation.lower(value)
+}
+
+
+/**
  * One take of a song.
  */
 public struct Take: Equatable, Hashable {
@@ -8094,6 +8274,76 @@ public func FfiConverterTypeDownloadState_lift(_ buf: RustBuffer) throws -> Down
 #endif
 public func FfiConverterTypeDownloadState_lower(_ value: DownloadState) -> RustBuffer {
     return FfiConverterTypeDownloadState.lower(value)
+}
+
+
+
+/**
+ * How the person feels about a song, for stations: liked songs come up
+ * more, disliked ones never.
+ */
+
+public enum Feeling: Equatable, Hashable {
+    
+    case like
+    case dislike
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension Feeling: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFeeling: FfiConverterRustBuffer {
+    typealias SwiftType = Feeling
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Feeling {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .like
+        
+        case 2: return .dislike
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Feeling, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .like:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .dislike:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeeling_lift(_ buf: RustBuffer) throws -> Feeling {
+    return try FfiConverterTypeFeeling.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeeling_lower(_ value: Feeling) -> RustBuffer {
+    return FfiConverterTypeFeeling.lower(value)
 }
 
 
@@ -9568,6 +9818,100 @@ public func FfiConverterTypeSoundscapeError_lower(_ value: SoundscapeError) -> R
     return FfiConverterTypeSoundscapeError.lower(value)
 }
 
+
+/**
+ * What a station is made from.
+ */
+
+public enum StationSeed: Equatable, Hashable {
+    
+    /**
+     * A genre, by name as songs carry it ("Jazz", "lo-fi").
+     */
+    case genre(name: String
+    )
+    /**
+     * Songs like this one (by track id).
+     */
+    case track(id: String
+    )
+    /**
+     * This artist (by library artist id) and others like them.
+     */
+    case artist(id: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension StationSeed: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeStationSeed: FfiConverterRustBuffer {
+    typealias SwiftType = StationSeed
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StationSeed {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .genre(name: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .track(id: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .artist(id: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: StationSeed, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .genre(name):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(name, into: &buf)
+            
+        
+        case let .track(id):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .artist(id):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(id, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStationSeed_lift(_ buf: RustBuffer) throws -> StationSeed {
+    return try FfiConverterTypeStationSeed.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStationSeed_lower(_ value: StationSeed) -> RustBuffer {
+    return FfiConverterTypeStationSeed.lower(value)
+}
+
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -9923,6 +10267,30 @@ fileprivate struct FfiConverterOptionTypeSavedPlayback: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeSavedPlayback.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeFeeling: FfiConverterRustBuffer {
+    typealias SwiftType = Feeling?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFeeling.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFeeling.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -10548,6 +10916,31 @@ fileprivate struct FfiConverterSequenceTypeSongSummary: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeSongSummary.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeStation: FfiConverterRustBuffer {
+    typealias SwiftType = [Station]
+
+    public static func write(_ value: [Station], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeStation.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Station] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Station]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeStation.read(from: &buf))
         }
         return seq
     }
@@ -11193,6 +11586,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_events() != 62026) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_feeling() != 42667) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_identify_track() != 18597) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11307,6 +11703,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_favourite() != 412) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_feeling() != 62566) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_jamendo_client_id() != 50790) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11320,6 +11719,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_shutdown() != 30947) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_station_batch() != 7214) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_suggested_stations() != 41468) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_sync_downloads() != 16384) {

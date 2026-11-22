@@ -15,6 +15,7 @@ import UIKit
 struct NowPlayingView: View {
     let model: ListenModel
     let player: TakePlayer
+    let radio: Radio
     /// Closes the player and opens a screen in the tab underneath.
     let go: (ListenRoute) -> Void
 
@@ -42,6 +43,7 @@ struct NowPlayingView: View {
                         titleRow(current)
                     }
                     rating(current)
+                    radioRow(current)
                     NowPlayingScrubber(player: player)
                         .padding(.top, 14)
                     if let note = sleepNote {
@@ -186,6 +188,11 @@ struct NowPlayingView: View {
     private func moreMenu(_ current: TakePlayer.Loaded) -> some View {
         Menu {
             if let trackId = current.trackId, !player.isComparing {
+                Button("Start Radio", systemImage: "dot.radiowaves.left.and.right") {
+                    let title = "\(current.song) Radio"
+                    Task { await radio.start(.track(id: trackId), title: title, model: model, player: player) }
+                }
+                .accessibilityIdentifier("nowPlayingSheet.startRadio")
                 Button("Add to Playlist", systemImage: "text.badge.plus") { addingToPlaylist = true }
                     .accessibilityIdentifier("nowPlayingSheet.addToPlaylist")
                 if let track = model.track(trackId)?.track {
@@ -235,6 +242,47 @@ struct NowPlayingView: View {
         }
         .accessibilityLabel("More")
         .accessibilityIdentifier("nowPlayingSheet.more")
+    }
+
+    /// On the radio: the station's name, and Like and Dislike, which
+    /// steer what it plays (Dislike also skips the song).
+    @ViewBuilder private func radioRow(_ current: TakePlayer.Loaded) -> some View {
+        if radio.isOn, let trackId = current.trackId, !player.isComparing {
+            // Reading the revision redraws this row when a feeling changes.
+            let feeling: Feeling? = { _ = model.feelingRevision; return model.feeling(trackId) }()
+            HStack(spacing: 12) {
+                Label(radio.title ?? "Radio", systemImage: "dot.radiowaves.left.and.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    Task { await model.toggleFeeling(trackId, .dislike) }
+                    if feeling != .dislike { player.next() }
+                } label: {
+                    Image(systemName: feeling == .dislike ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                        .frame(width: 36, height: 36)
+                        .background(.white.opacity(0.14), in: Circle())
+                }
+                .accessibilityLabel("Dislike")
+                .accessibilityValue(feeling == .dislike ? "On" : "Off")
+                .accessibilityHint("Skips it and keeps it off the radio")
+                .accessibilityIdentifier("nowPlayingSheet.dislike")
+                Button {
+                    Task { await model.toggleFeeling(trackId, .like) }
+                } label: {
+                    Image(systemName: feeling == .like ? "hand.thumbsup.fill" : "hand.thumbsup")
+                        .frame(width: 36, height: 36)
+                        .background(.white.opacity(0.14), in: Circle())
+                }
+                .accessibilityLabel("Like")
+                .accessibilityValue(feeling == .like ? "On" : "Off")
+                .accessibilityHint("Plays it and songs like it more often")
+                .accessibilityIdentifier("nowPlayingSheet.like")
+            }
+            .foregroundStyle(.white)
+            .padding(.top, 8)
+        }
     }
 
     /// Stars for a generated take (a take server recording), to rate it
