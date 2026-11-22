@@ -13,7 +13,9 @@ It builds on the [ForgeUI coverage audit](forgeui-coverage.md) (#325, 2026-11-18
 5. **The ForgeButton gap is real** and is fixed in this PR: the button ignored taps while working but stayed enabled for VoiceOver, Voice Control and the keyboard. No app uses `ForgeButton`, so nothing in the apps changes.
 6. **For A2UI**, the useful contract is a small closed catalogue whose every entry names its ForgeUI (or native) target, typed properties drawn from ForgeUI's tokens, the accessibility it must carry and the events it may send. Section 6 proposes it. Four of the five new components are also what an agent-composed surface most needs, which is a good sign the two plans line up.
 
-So 0.2 is: one fix, one parameter, one public look, five components, three adoption rules, and a showcase that shows states. That is smaller than Reuben's stage list for 0.2, and in one place (thumbnails) it pulls forward something he had in 0.3, because the apps say so.
+7. **Silent waits** (added 2026-11-22 after Reuben saw Relay sit on a blank-looking screen while it loaded): 72 buttons across 10 apps start work with `Task { await … }` and show nothing while it runs. Most of that work is fast, local Rust, but the code can't tell which isn't, and neither can a check. Section 3.5 proposes one pattern that makes "always show work" free for fast calls, plus a `silent-wait` parity rule.
+
+So 0.2 is: one fix, one parameter, one public look, five components, a working-button pattern, four adoption rules, and a showcase that shows states. That is smaller than Reuben's stage list for 0.2, and in one place (thumbnails) it pulls forward something he had in 0.3, because the apps say so.
 
 ## 1. Method
 
@@ -102,6 +104,37 @@ The rule-backed half of the table moved from almost nothing to almost everything
 | Accessibility: component-level VoiceOver and Dynamic Type testing | Most copies in 3.1 differ in accessibility | Each 0.2 component ships with a behaviour spec and a showcase state matrix (section 5.4); the full test matrix is 0.4 |
 | Theming: semantic tokens, motion, elevation | Zero uses of `.contentTransition`, `.symbolEffect` or `.matchedGeometryEffect`; one shadow (raised cards) | No tokens. Restraint is the visual language; tokens without users would be decoration |
 
+### 3.5 Silent waits
+
+**Reuben, 2026-11-22:** in Relay, a slow load shows nothing, "you just stare at a screen looking like nothing is happening. Which probably happens in other places." Relay is fixing its own screens in its thread. This section checks every app, as the standing quality rule asks, and proposes the shared fix.
+
+**Method.** Every view file, every `Task { … await … }` started from a button, swipe action, menu, toolbar item or `onSubmit`, kept only where nothing within 40 lines sets a working flag or draws a `ProgressView`, `ForgeButton`, `forgeFormToolbar` or loading state. A heuristic scan, so it over-counts rather than misses; the `silent-wait` rule below is the reproducible version. FieldKit and Weather had none. The starter's form uses a labelled spinner and its delete closes the screen first, so it has none either; it gets `ForgeButton` with the next ForgeKit release like the form toolbar.
+
+| App | Silent action sites | Examples |
+|---|---|---|
+| Soundscape | 19 | Discover add-to-library, Keep on Phone, Remove All Downloads, Jamendo client ID |
+| Good Dog | 17 | Today swap and shorten, goal pause and resume, Erase All |
+| Commonplace | 10 | Mark All Read, move feed, full-text toggle |
+| Relay | 9 | Trust (from the trust offer), Trust Again, Delete, stage photos |
+| Checklist | 5 | Clear Done, export text and CSV |
+| Sketchbook | 4 | New sketch, duplicate, undo, redo |
+| Urdu Naturally | 4 | Record, Start Over, set name |
+| Device Lab | 2 | Permission request, Servers' Check Again (each row does show "Checking") |
+| Pocket Library, Sums | 1 each | Personal Voice request; Sums' keys |
+
+What the table can't say is how long each one takes. Most are a write to Rust's local store and finish in milliseconds (Soundscape's add-to-library is a local write, checked in `add_catalogue_tracks`). The ones that wait on a network or another device are the ones people notice, and they are scattered: Relay's Trust and Trust Again go through `trustDevice`, the exports write a file, Sketchbook's New writes a document. A rule that tries to tell slow from fast by reading code would be guessing.
+
+**Pattern: make showing work free, so everything can do it.**
+
+1. **`ForgeButton` takes an async action and owns its working state:** `ForgeButton("Trust Again") { await model.trustAgain(device) }`. While the action runs the button is disabled (the fix in section 4), and **the spinner appears only after 0.4 s**, so a fast local write never flickers and a slow one always shows. VoiceOver hears "In progress" only when the spinner shows. The existing `isWorking:` form stays for work the model tracks itself.
+2. **Screen and section loads** keep `ForgeStateView.loading` / `ForgeLoadView`, with the same 0.4 s delay, so a screen that loads quickly doesn't flash a spinner and one that doesn't is never blank. A section that loads separately (a device's status, a server check) shows its own "Checking…" row, as Device Lab's Servers already does.
+3. **Actions from places that close at once** (alerts, confirmation dialogs, swipe actions, menus) can't hold a spinner. The model marks the affected row as pending and the row shows it (`ForgeStatus("Trusting…", tone: .info)` or a small `ProgressView`), or, for work that outlives the screen, ForgeAppKit's `forgeBanner` running-work banner. Relay's trust offer is the example: the alert closes, the device row says "Trusting…".
+4. **Over about 10 seconds**, or with a known size, show real progress (`ProgressView(value:)` with the 0.2 progress style), not a spinner.
+
+**Rule `silent-wait`** (`scripts/check-app-parity.sh`): fails a `Button` whose action starts a `Task` that awaits, unless it is a `ForgeButton`, sits in `forgeFormToolbar`, or the same closure sets a working flag. Buttons inside `.alert`, `.confirmationDialog`, `.swipeActions`, `.contextMenu`/`forgeRowActions` and `Menu` are judged by the pending-row pattern instead and are listed per app in `docs/app-parity.toml` until moved. It can't measure time, which is why the pattern makes the safe choice cost nothing.
+
+**Not built from evidence yet:** a global "still working" overlay or a debug watchdog that times every Rust call. The delay makes them unnecessary for buttons; if a load still looks dead after this, Rust's existing `forge_runtime::logging` timings are where to look first.
+
 ## 4. The ForgeButton gap (verified, fixed here)
 
 **Real.** `ForgeButton` guarded its action with `if !isWorking { action() }` and showed a spinner, but never disabled the SwiftUI `Button`. So while working:
@@ -139,6 +172,7 @@ Ordered by evidence and size. Each item is one PR.
 | 6 | **Choice style**: `.toggleStyle(.forgeChoice)` for chips that turn on and off, and `.buttonStyle(.forgeChoice(isSelected:))` for one-of-several tiles; both add the `.isSelected` trait, use the accent's `soft`/`solid`, and are at least 44 pt | Style | Relay reactions (gaining identifiers), Soundscape A/B tiles and switch, Device Lab phone-check results | `choice`: `.accessibilityAddTraits(... .isSelected ...)` outside ForgeUI | ChoicePicker |
 | 7 | **`ForgeStat`**: value, label, optional unit and `spokenValue`, optional tone; drawn with the `figure` and `figureCaption` roles; one VoiceOver element ("Distance, 4.2 kilometres"); `.forgeStatBackground(.hidden)` for apps with their own surfaces | Component | FieldKit `Stat` (two screens), Weather `MeasureRow`; Good Dog GD4 uses it from the start. Pocket Library's `StatRow` is a row, not a stat: it moves to `ForgeRow(value:)` in item 2. Weather's `DetailTile` stays (a tile with its own graphic) | `stat`: a `VStack` of a `monospacedDigit` figure over a secondary caption | Stat |
 | 8 | **Progress style**: `.progressViewStyle(.forge)` (and `.forge(tone:)`) on SwiftUI's own `ProgressView`, laying out its label and `currentValueLabel` with text roles and giving VoiceOver "n of m" | Style | Good Dog progress row and goal focus, Urdu skill bars, Pocket Library book progress, reader and summaries, Relay receive, Device Lab transfers, downloads and storage | none, by exception: a `ProgressView` without the style is still a correct native control, so there is nothing to forbid | Progress |
+| 9 | **Working buttons and silent waits** (3.5): `ForgeButton` with an async action and a 0.4 s delayed spinner; the same delay in `ForgeStateView.loading`; pending rows for alert, swipe and menu actions | Component change + adoption | The 72 sites in 3.5, app by app (one PR per app or two, Relay first since it is fixing its own screens) | `silent-wait` | Button |
 
 **Not in 0.2:** charts (0.3, after Good Dog GD4 as the second user), audio transport (0.3 at the earliest, when two apps' controls match), grids and adaptive layouts (0.3, with a second card-led screen), toasts, filters, multi-select, split views, motion and elevation tokens (no users), custom fonts (no request), and snapshot tests (0.4, see 5.4).
 
@@ -167,7 +201,7 @@ The showcase today shows each component once, in the system's appearance. 0.2 tu
 ### 5.5 Order and gates
 
 1. Items 0 to 3 first: a fix, an adoption, a parameter, an exposure. Small, and 3 unblocks A2UI-1b.
-2. Items 4 to 8, one PR each, in table order. Each moves its apps and adds its rule, except item 8 (a style on a native control, see its row).
+2. Item 9's `ForgeButton` change goes with item 3 (both touch the button), and its app moves follow, Relay first. Items 4 to 8, one PR each, in table order. Each moves its apps and adds its rule, except item 8 (a style on a native control, see its row).
 3. 0.2 ships as a ForgeKit release when items 0 to 8 have merged and the showcase has been looked at on the phone once (light and dark, VoiceOver on rating, choice and stat). Large text sizes are checked from the matrix's screenshots, not by hand on the phone. The starter's `forgeFormToolbar` move goes in with that release.
 
 Phone time: about 15 minutes for the whole of 0.2, in the combined Device Lab sitting: VoiceOver on ForgeButton working, rating, a choice chip and a stat; one form sheet's spinner; the showcase in dark mode.
