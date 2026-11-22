@@ -179,7 +179,12 @@ pub fn localize_track(
     url: &dyn Fn(&str) -> Option<String>,
 ) {
     if let Some(recording) = &mut track.preferred {
-        if localize(&track.id, recording, offline, url) {
+        // A recording a merged song brought is kept under that song.
+        let owner = recording
+            .merged_from
+            .clone()
+            .unwrap_or_else(|| track.id.clone());
+        if localize(&owner, recording, offline, url) {
             track.downloaded = true;
         }
     }
