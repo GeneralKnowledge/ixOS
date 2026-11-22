@@ -24,6 +24,7 @@ struct SendCodeSheet: View {
     @State private var photos: [PhotosPickerItem] = []
     /// The copies of what is being sent, kept until the next send starts.
     @State private var outgoing: [ForgePickedFile] = []
+    @State private var outgoingPhotos: [PickedPhoto] = []
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -105,7 +106,12 @@ struct SendCodeSheet: View {
             .onChange(of: model.returns) { network.readvertiseCode(model.codeAdvert) }
             .onDisappear {
                 network.stopWatchingCodeSenders()
-                if !model.isSendingCode { network.advertiseCode(nil) }
+                // A finished send no longer needs its copies, and the next
+                // sheet starts with none of its own to release.
+                if !model.isSendingCode {
+                    network.advertiseCode(nil)
+                    releaseOutgoing()
+                }
             }
             .forgeSwipeGuard(model.isSendingCode)
         }
@@ -182,54 +188,72 @@ struct SendCodeSheet: View {
 
     /// Copies what was picked off the main thread (ForgeAppKit's
     /// `ForgePickedFile`: the picker's access ends with this call, and Rust
-    /// reads the files for the whole send), then starts the send. The
-    /// previous send's copies are deleted when the next one starts.
+    /// reads the files for the whole send), then starts the send. Each pick
+    /// keeps its own copies: they replace the previous send's only if the
+    /// pick is still the current one, and are deleted otherwise.
     private func start(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        model.preparing(name: Self.name(urls.map(\.lastPathComponent)))
+        let pick = model.preparing(name: Self.name(urls.map(\.lastPathComponent)))
         Task {
-            releaseOutgoing()
+            var copies: [ForgePickedFile] = []
             do {
                 for url in urls {
-                    outgoing.append(try await ForgePickedFile.copy(of: url))
+                    copies.append(try await ForgePickedFile.copy(of: url))
                 }
-                model.send(paths: outgoing.map(\.url.path))
             } catch {
-                releaseOutgoing()
-                model.failSend("Couldn't read what you chose: \(error.localizedDescription)")
+                copies.forEach { $0.release() }
+                model.failSend("Couldn't read what you chose: \(error.localizedDescription)", staged: pick)
+                return
             }
+            guard model.isStaging(pick) else {
+                copies.forEach { $0.release() }
+                return
+            }
+            releaseOutgoing()
+            outgoing = copies
+            model.send(paths: copies.map(\.url.path), staged: pick)
         }
     }
 
     /// Loads the picked photos and videos as files (the originals, not
     /// re-encoded where iOS can help it), then starts the send.
     private func start(photos: [PhotosPickerItem]) {
-        model.preparing(name: photos.count == 1 ? "a photo" : "\(photos.count) photos")
+        let pick = model.preparing(name: photos.count == 1 ? "a photo" : "\(photos.count) photos")
         Task {
-            releaseOutgoing()
+            var kept: [PickedPhoto] = []
             do {
-                var paths: [String] = []
                 for item in photos {
                     if let file = try await item.loadTransferable(type: PickedPhoto.self) {
-                        paths.append(file.url.path)
+                        kept.append(file)
                     }
                 }
-                if paths.isEmpty {
-                    model.failSend("Couldn't read the photos you chose.")
-                } else {
-                    model.send(paths: paths)
-                }
             } catch {
-                model.failSend("Couldn't read the photos: \(error.localizedDescription)")
+                kept.forEach { $0.release() }
+                model.failSend("Couldn't read the photos: \(error.localizedDescription)", staged: pick)
+                return
             }
+            guard model.isStaging(pick) else {
+                kept.forEach { $0.release() }
+                return
+            }
+            if kept.isEmpty {
+                model.failSend("Couldn't read the photos you chose.", staged: pick)
+                return
+            }
+            releaseOutgoing()
+            // Also any an earlier sheet left behind: this send replaces it.
+            PickedPhoto.releaseAll(except: kept)
+            outgoingPhotos = kept
+            model.send(paths: kept.map(\.url.path), staged: pick)
         }
     }
 
-    /// Deletes the copies an earlier send made.
+    /// Deletes the copies the previous send made.
     private func releaseOutgoing() {
         outgoing.forEach { $0.release() }
         outgoing = []
-        PickedPhoto.releaseAll()
+        outgoingPhotos.forEach { $0.release() }
+        outgoingPhotos = []
     }
 
     private static func name(_ names: [String]) -> String {
@@ -264,9 +288,19 @@ struct PickedPhoto: Transferable {
         url = kept
     }
 
-    /// Deletes every kept photo.
-    static func releaseAll() {
-        try? FileManager.default.removeItem(at: directory)
+    /// Deletes this kept photo and the folder made for it.
+    func release() {
+        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+
+    /// Deletes every kept photo but these.
+    static func releaseAll(except kept: [PickedPhoto]) {
+        let keep = Set(kept.map { $0.url.deletingLastPathComponent().standardizedFileURL.path })
+        let folders = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil)) ?? []
+        for folder in folders where !keep.contains(folder.standardizedFileURL.path) {
+            try? FileManager.default.removeItem(at: folder)
+        }
     }
 }
 
