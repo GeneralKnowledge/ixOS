@@ -5043,7 +5043,9 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */
     func cancelTransfer(id: UInt64) 
     
@@ -5510,7 +5512,9 @@ open func cancelCodeSend()  {try! rustCall() {
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */
 open func cancelTransfer(id: UInt64)  {try! rustCall() {
         uniffiCallStatus in
@@ -13757,6 +13761,12 @@ public enum TransferStatus: Equatable, Hashable {
      */
     case waiting
     /**
+     * Left sealed in the recipient's mailbox, collected the next time it
+     * opens Relay. It can no longer be cancelled: it is out of this
+     * device's hands.
+     */
+    case inMailbox
+    /**
      * Bytes so far, out of the item's size.
      */
     case inProgress(done: UInt64
@@ -13787,12 +13797,14 @@ public struct FfiConverterTypeTransferStatus: FfiConverterRustBuffer {
         
         case 1: return .waiting
         
-        case 2: return .inProgress(done: try FfiConverterUInt64.read(from: &buf)
+        case 2: return .inMailbox
+        
+        case 3: return .inProgress(done: try FfiConverterUInt64.read(from: &buf)
         )
         
-        case 3: return .done
+        case 4: return .done
         
-        case 4: return .failed(reason: try FfiConverterString.read(from: &buf)
+        case 5: return .failed(reason: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -13807,17 +13819,21 @@ public struct FfiConverterTypeTransferStatus: FfiConverterRustBuffer {
             writeInt(&buf, Int32(1))
         
         
-        case let .inProgress(done):
+        case .inMailbox:
             writeInt(&buf, Int32(2))
+        
+        
+        case let .inProgress(done):
+            writeInt(&buf, Int32(3))
             FfiConverterUInt64.write(done, into: &buf)
             
         
         case .done:
-            writeInt(&buf, Int32(3))
+            writeInt(&buf, Int32(4))
         
         
         case let .failed(reason):
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -15271,7 +15287,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_cancel_code_send() != 14930) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_cancel_transfer() != 49543) {
+    if (uniffi_relay_core_checksum_method_relaycore_cancel_transfer() != 50284) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_code_receive_size() != 28847) {

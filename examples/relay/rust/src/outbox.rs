@@ -289,6 +289,14 @@ impl Record {
             .collect()
     }
 
+    /// Whether the send for history entry `transfer` waits sealed in the
+    /// recipient's mailbox at `now_ms`, out of this device's hands.
+    pub fn sent_to_mailbox(&self, transfer: u64, now_ms: i64) -> bool {
+        self.deliveries
+            .iter()
+            .any(|d| d.transfer == transfer && d.in_mailbox(now_ms))
+    }
+
     /// Ends a delivery: its history entry takes `status`. False when it had
     /// already ended (cancelled while it was being sent).
     pub fn end_delivery(&mut self, id: &str, status: SavedStatus) -> bool {
@@ -676,8 +684,14 @@ impl RelayCore {
     }
 
     /// Takes a waiting item off the queue; one being sent is stopped and
-    /// ends Cancelled. False when `transfer` isn't pending.
+    /// ends Cancelled. False when `transfer` isn't pending, or when it is
+    /// already sealed in the recipient's mailbox: the mailbox has no
+    /// withdraw, so the recipient gets it whatever this device does, and
+    /// calling it Cancelled would be untrue.
     pub(crate) async fn cancel_delivery(&self, transfer: u64) -> bool {
+        if self.record.get().sent_to_mailbox(transfer, now_ms()) {
+            return false;
+        }
         if let Some(stop) = lock(&self.device_stops).get(&transfer) {
             stop.store(true, Ordering::SeqCst);
             return true;

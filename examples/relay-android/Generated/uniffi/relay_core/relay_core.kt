@@ -1905,7 +1905,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_relay_core_checksum_func_device_conversation_id() and 0xFFFF) != 5838) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_relay_core_checksum_func_chat_delivery() and 0xFFFF) != 64205) {
+    if ((lib.uniffi_relay_core_checksum_func_chat_delivery() and 0xFFFF) != 7415) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_func_chat_error_kind() and 0xFFFF) != 39415) {
@@ -1971,7 +1971,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_relay_core_checksum_method_relaycore_cancel_code_send() and 0xFFFF) != 14930) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_relay_core_checksum_method_relaycore_cancel_transfer() and 0xFFFF) != 49543) {
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_cancel_transfer() and 0xFFFF) != 50284) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_method_relaycore_code_receive_size() and 0xFFFF) != 28847) {
@@ -9451,7 +9451,9 @@ public interface RelayCoreInterface {
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */
     fun `cancelTransfer`(`id`: kotlin.ULong)
     
@@ -9975,7 +9977,9 @@ open class RelayCore: Disposable, AutoCloseable, RelayCoreInterface
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */override fun `cancelTransfer`(`id`: kotlin.ULong)
         = 
     callWithHandle {
@@ -12731,6 +12735,12 @@ data class ChatMessage (
      * `ChatCore::fetch_attachment`.
      */
     var `attachments`: List<ChatAttachment>
+    , 
+    /**
+     * Relay only: still sending, and waiting in its device's mailbox for
+     * that device to collect it (it wasn't reachable).
+     */
+    var `inMailbox`: kotlin.Boolean
     
 ){
     
@@ -12760,6 +12770,7 @@ public object FfiConverterTypeChatMessage: FfiConverterRustBuffer<ChatMessage> {
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceTypeChatReaction.read(buf),
             FfiConverterSequenceTypeChatAttachment.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -12776,7 +12787,8 @@ public object FfiConverterTypeChatMessage: FfiConverterRustBuffer<ChatMessage> {
             FfiConverterBoolean.allocationSize(value.`edited`) +
             FfiConverterBoolean.allocationSize(value.`deleted`) +
             FfiConverterSequenceTypeChatReaction.allocationSize(value.`reactions`) +
-            FfiConverterSequenceTypeChatAttachment.allocationSize(value.`attachments`)
+            FfiConverterSequenceTypeChatAttachment.allocationSize(value.`attachments`) +
+            FfiConverterBoolean.allocationSize(value.`inMailbox`)
     )
 
     override fun write(value: ChatMessage, buf: ByteBuffer) {
@@ -12793,6 +12805,7 @@ public object FfiConverterTypeChatMessage: FfiConverterRustBuffer<ChatMessage> {
             FfiConverterBoolean.write(value.`deleted`, buf)
             FfiConverterSequenceTypeChatReaction.write(value.`reactions`, buf)
             FfiConverterSequenceTypeChatAttachment.write(value.`attachments`, buf)
+            FfiConverterBoolean.write(value.`inMailbox`, buf)
     }
 }
 
@@ -15210,6 +15223,11 @@ public object FfiConverterTypeCapability: FfiConverterRustBuffer<Capability> {
 enum class ChatDelivery {
     
     SENDING,
+    /**
+     * Relay only: left in its device's mailbox, which the device collects
+     * when it next opens Relay with a network.
+     */
+    IN_MAILBOX,
     SENT,
     /**
      * Someone else in the room has read it (their read cursor passed it).
@@ -17973,6 +17991,14 @@ sealed class TransferStatus {
     
     
     /**
+     * Left sealed in the recipient's mailbox, collected the next time it
+     * opens Relay. It can no longer be cancelled: it is out of this
+     * device's hands.
+     */
+    object InMailbox : TransferStatus()
+    
+    
+    /**
      * Bytes so far, out of the item's size.
      */
     data class InProgress(
@@ -18013,11 +18039,12 @@ public object FfiConverterTypeTransferStatus : FfiConverterRustBuffer<TransferSt
     override fun read(buf: ByteBuffer): TransferStatus {
         return when(buf.getInt()) {
             1 -> TransferStatus.Waiting
-            2 -> TransferStatus.InProgress(
+            2 -> TransferStatus.InMailbox
+            3 -> TransferStatus.InProgress(
                 FfiConverterULong.read(buf),
                 )
-            3 -> TransferStatus.Done
-            4 -> TransferStatus.Failed(
+            4 -> TransferStatus.Done
+            5 -> TransferStatus.Failed(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
@@ -18026,6 +18053,12 @@ public object FfiConverterTypeTransferStatus : FfiConverterRustBuffer<TransferSt
 
     override fun allocationSize(value: TransferStatus): ULong = when(value) {
         is TransferStatus.Waiting -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is TransferStatus.InMailbox -> {
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
                 4UL
@@ -18059,17 +18092,21 @@ public object FfiConverterTypeTransferStatus : FfiConverterRustBuffer<TransferSt
                 buf.putInt(1)
                 Unit
             }
-            is TransferStatus.InProgress -> {
+            is TransferStatus.InMailbox -> {
                 buf.putInt(2)
+                Unit
+            }
+            is TransferStatus.InProgress -> {
+                buf.putInt(3)
                 FfiConverterULong.write(value.`done`, buf)
                 Unit
             }
             is TransferStatus.Done -> {
-                buf.putInt(3)
+                buf.putInt(4)
                 Unit
             }
             is TransferStatus.Failed -> {
-                buf.putInt(4)
+                buf.putInt(5)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
@@ -19324,7 +19361,8 @@ public object FfiConverterSequenceTypeCapability: FfiConverterRustBuffer<List<Ca
 
         /**
          * The delivery state of `message` in `conversation`: `Read` once another
-         * account's read cursor has passed one of our sent messages. Only
+         * account's read cursor has passed one of our sent messages, and
+         * `InMailbox` while one waits in a Relay device's mailbox. Only
          * meaningful for our own messages.
          */ fun `chatDelivery`(`message`: ChatMessage, `conversation`: ChatConversation?): ChatDelivery {
             return FfiConverterTypeChatDelivery.lift(

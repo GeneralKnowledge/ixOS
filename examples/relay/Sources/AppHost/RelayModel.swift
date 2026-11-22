@@ -119,7 +119,7 @@ public final class RelayModel {
     /// Whether anything waits in the outbox for a trusted device, so the
     /// screen notices when it goes.
     public var isWaiting: Bool {
-        transfers.contains { $0.status == .waiting }
+        transfers.contains { $0.status == .waiting || $0.status == .inMailbox }
     }
 
     /// The haptic for what arrived between two reads of the history: success
@@ -133,14 +133,14 @@ public final class RelayModel {
             // New since the last read, or still on its way then.
             let wasRunning: Bool
             switch before[transfer.id] {
-            case .none, .some(.inProgress), .some(.waiting): wasRunning = true
+            case .none, .some(.inProgress), .some(.waiting), .some(.inMailbox): wasRunning = true
             case .some(.done), .some(.failed): wasRunning = false
             }
             guard wasRunning else { continue }
             switch transfer.status {
             case .done: kind = kind ?? .success
             case .failed: kind = .failure
-            case .inProgress, .waiting: break
+            case .inProgress, .waiting, .inMailbox: break
             }
         }
         return kind
@@ -752,11 +752,13 @@ public enum RelayFormat {
         }
     }
 
-    /// "Waiting for MacBook", "Sending 40%", "Sent", "Received", "Failed: …".
+    /// "Waiting for MacBook", "In the Mailbox", "Sending 40%", "Sent", "Received", "Failed: …".
     public static func status(_ transfer: Transfer) -> String {
         switch transfer.status {
         case .waiting:
             return "Waiting for \(transfer.peerName)"
+        case .inMailbox:
+            return String(localized: "In the Mailbox")
         case .inProgress(let done):
             let verb = transfer.direction == .sent ? "Sending" : "Receiving"
             if case .file(_, let size, _) = transfer.item, size > 0 {
