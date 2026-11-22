@@ -20,9 +20,6 @@
 //! Replay is the outbox's 45-day memory of ids; [`open`] returns the id
 //! for it to check.
 
-// Used by the mailbox client in step 3; until then only the tests call it.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use hpke::aead::ChaCha20Poly1305;
 use hpke::kdf::HkdfSha256;
 use hpke::kem::X25519HkdfSha256;
@@ -69,6 +66,8 @@ pub(crate) struct MailboxKey {
 }
 
 impl MailboxKey {
+    /// A random key, for tests: a device's own is [`MailboxKey::of_device`].
+    #[cfg(test)]
     pub(crate) fn generate() -> Self {
         let mut seed = [0u8; 32];
         getrandom::fill(&mut seed).expect("the system's random source");
@@ -79,6 +78,7 @@ impl MailboxKey {
         Self { seed }
     }
 
+    #[cfg(test)]
     pub(crate) fn seed(&self) -> [u8; 32] {
         self.seed
     }
@@ -325,6 +325,8 @@ fn signature(bytes: &[u8]) -> Result<Signature, MailboxError> {
 pub(crate) struct DepositPass([u8; 32]);
 
 impl DepositPass {
+    /// A random pass, for tests: a device's own are [`DepositPass::for_peer`].
+    #[cfg(test)]
     pub(crate) fn generate() -> Self {
         let mut pass = [0u8; 32];
         getrandom::fill(&mut pass).expect("the system's random source");

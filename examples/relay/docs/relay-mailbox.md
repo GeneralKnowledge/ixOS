@@ -164,6 +164,16 @@ one step:
    again: the recipient leaves a fresh receipt and acknowledges it, so
    only one is ever kept and the server deletes the copy.
 
+**Built so far (step 3, part 2).** Messages and notes go through the
+mailbox; files still wait for a direct route. An item left in the mailbox
+no longer holds up the items after it, so a device that stays away gets
+the whole queue there. Relay tries it directly again whenever the device
+is seen, connects, or Relay comes to the foreground; the mailbox copy is
+then dropped on collection as a duplicate. The labels (**Left for
+<device>**, **In the mailbox**, **Not confirmed**) aren't in the app yet:
+until then the item shows as waiting, and after 30 days it ends as any
+undelivered item does.
+
 ### Collecting
 
 - **iPhone:** when Relay opens or comes to the foreground, and then every
@@ -278,6 +288,11 @@ relay, and it publishes where it is on the lookup server.
    the mailbox's address in Relay's Servers (step 3 compiles it in), so
    **keep `/var/lib/relay-mailbox/device.key`**: a new key is a new
    mailbox, and every device would need an update to find it.
+
+Running since 2026-11-22 as endpoint
+`d47c501b63457d5eae9083d0cfd00f5e44c1744b4e93da8f1ce60fe95dc1b553`, which
+Relay's Servers include. With `DynamicUser` its state lives in
+`/var/lib/private/relay-mailbox` (`/var/lib/relay-mailbox` links there).
 
 An update is steps 1 and 2 again; the key and the waiting items stay in
 `/var/lib/relay-mailbox`. If the host firewall is on, allow UDP 7850.

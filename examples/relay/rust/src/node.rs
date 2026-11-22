@@ -289,6 +289,20 @@ impl Node {
             .collect()
     }
 
+    /// The mailbox server this device collects from, if any (Hybrid only).
+    pub fn mailbox_server(&self) -> Option<iroh::PublicKey> {
+        forge_runtime::lock(&self.servers).mailbox()
+    }
+
+    /// Where to dial the mailbox server `id`: by key, and through this
+    /// device's relay (the mailbox runs on Relay's own server, on the same
+    /// relay), so it is reached without waiting on the lookup server;
+    /// iroh moves to a direct path when it can.
+    pub fn mailbox_addr(&self, id: iroh::PublicKey) -> iroh::EndpointAddr {
+        let relay = forge_runtime::lock(&self.servers).relay();
+        iroh::EndpointAddr::from_parts(id, relay.map(iroh::TransportAddr::Relay))
+    }
+
     /// What this device tells `peer` about its mailbox in the Hello (N3):
     /// nothing when it uses no mailbox, which is always the case outside
     /// Hybrid (the node's servers are those of the mode).

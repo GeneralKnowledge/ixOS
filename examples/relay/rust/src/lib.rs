@@ -40,6 +40,7 @@ mod store;
 pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind, ServerHealth};
 mod hex;
 mod mailbox;
+mod mailbox_client;
 pub mod mailbox_server;
 mod trust;
 mod web;
@@ -950,6 +951,7 @@ impl RelayCore {
         for to in self.record.get().waiting_for() {
             self.try_now(&to);
         }
+        self.collect_mailbox();
     }
 
     /// Trusted and revoked devices, by name. Forgotten ones aren't listed.
@@ -1252,6 +1254,8 @@ impl RelayCore {
         self.close_site_connections(Some(&endpoint_id));
         // What waited for it ends: No longer trusted.
         self.wake(&endpoint_id);
+        // Its pass is taken back from the mailbox now.
+        self.collect_mailbox();
         Ok(())
     }
 
@@ -1272,6 +1276,7 @@ impl RelayCore {
             .await?;
         self.close_site_connections(Some(&endpoint_id));
         self.wake(&endpoint_id);
+        self.collect_mailbox();
         Ok(())
     }
 
@@ -1782,6 +1787,8 @@ impl RelayCore {
                 .await
             })
             .await;
+        // A new mailbox gets this device's passes registered now.
+        self.collect_mailbox();
     }
 
     /// Asks the introducer `endpoint_id` for its list in the background;
@@ -2055,6 +2062,9 @@ impl device::DeviceInbound for CoreDevices {
             return;
         };
         lock(&core.problems).remove(from);
+        // It has just been told this device's pass: registered now, so
+        // whatever it leaves while this device is closed is taken.
+        core.collect_mailbox();
         let from = from.to_string();
         code::TOKIO.spawn(async move {
             let _ = core

@@ -278,9 +278,11 @@ pub struct RelayServers {
 /// server on one machine, with TLS (Let's Encrypt, through Caddy).
 const OWN_RELAY: &str = "https://relay.avedeus.ovh";
 const OWN_LOOKUP: &str = "https://lookup.avedeus.ovh/pkarr";
-/// The mailbox on the same machine, by endpoint id: none until it runs
-/// there (examples/relay/docs/relay-mailbox.md, "Running the mailbox").
-const OWN_MAILBOX: Option<&str> = None;
+/// The mailbox on the same machine, by endpoint id: its key is
+/// `device.key` in its data folder there, kept across updates
+/// (examples/relay/docs/relay-mailbox.md, "Running the mailbox").
+const OWN_MAILBOX: Option<&str> =
+    Some("d47c501b63457d5eae9083d0cfd00f5e44c1744b4e93da8f1ce60fe95dc1b553");
 
 /// Relay's own servers, for the "Use Relay's Servers" setting and
 /// `relay servers --own`. Nothing uses them until they are set.
@@ -761,6 +763,24 @@ mod tests {
         assert_eq!(own.in_mode(Hybrid), own);
         assert_eq!(own.in_mode(Private), RelayServers::default());
         assert_eq!(own.in_mode(Local), RelayServers::default());
+    }
+
+    /// Relay's own servers, chosen before the mailbox ran there, gain it;
+    /// anyone else's servers never do.
+    #[test]
+    fn a_choice_of_relays_own_servers_gains_its_mailbox() {
+        let before = RelayServers {
+            mailbox: None,
+            ..own_relay_servers()
+        };
+        assert_eq!(before.upgraded(), own_relay_servers());
+        assert!(own_relay_servers().mailbox().is_some());
+        let theirs = RelayServers {
+            relay_url: Some("https://relay.example.org".into()),
+            lookup_url: Some(OWN_LOOKUP.into()),
+            mailbox: None,
+        };
+        assert_eq!(theirs.clone().upgraded(), theirs);
     }
 
     #[test]
