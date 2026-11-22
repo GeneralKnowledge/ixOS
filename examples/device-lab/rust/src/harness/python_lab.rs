@@ -739,9 +739,37 @@ fn replace_lines_loosely(text: &str, old: &str, new: &str) -> Option<String> {
 }
 
 /// A line as a small model might copy it: no indent or trailing space,
-/// and one kind of quote.
+/// and each string written with single quotes. Only the delimiters change:
+/// a string with a quote or backslash inside keeps its own, so `"Bob's"`
+/// never matches `'Bob"s'`.
 fn forgiving(line: &str) -> String {
-    line.trim().replace('"', "'")
+    let chars: Vec<char> = line.trim().chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let quote = chars[i];
+        if quote != '"' && quote != '\'' {
+            out.push(quote);
+            i += 1;
+            continue;
+        }
+        // The string's end: the next unescaped quote of the same kind.
+        let mut j = i + 1;
+        while j < chars.len() && chars[j] != quote {
+            j += if chars[j] == '\\' { 2 } else { 1 };
+        }
+        let end = j.min(chars.len());
+        let inner: String = chars[i + 1..end].iter().collect();
+        let plain = !inner.contains(['"', '\'', '\\']);
+        let shown = if plain { '\'' } else { quote };
+        out.push(shown);
+        out.push_str(&inner);
+        if j < chars.len() {
+            out.push(shown);
+        }
+        i = j + 1;
+    }
+    out
 }
 
 /// `old` matched against `text` ignoring indentation and quote style. When
@@ -763,10 +791,30 @@ fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String
         })
         .collect();
     let [at] = found[..] else { return None };
+    // Tab-indented code is only re-indented when the edit uses tabs too:
+    // mixing tabs and spaces makes Python refuse the file.
+    let tabbed = |line: &&str| line.starts_with('\t');
+    let file_tabs = lines[at..at + want.len()].iter().any(tabbed);
+    if file_tabs != new.lines().any(|l| tabbed(&l)) && new.lines().count() > 1 {
+        return None;
+    }
     // Indents are runs of ASCII spaces and tabs, so every cut below falls on
-    // a character boundary, and the file's own indent (tabs included) is
-    // what the new lines get.
+    // a character boundary. Depths compare in columns (a tab to the next
+    // multiple of 8, as Python counts), and the file's own indent (tabs
+    // included) is what the new lines get.
     let indent = |line: &str| line.len() - line.trim_start_matches([' ', '\t']).len();
+    let column = |ws: &str| {
+        ws.chars().fold(
+            0usize,
+            |col, c| {
+                if c == '\t' {
+                    col / 8 * 8 + 8
+                } else {
+                    col + 1
+                }
+            },
+        )
+    };
     let first_old = old.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     let first_file = lines[at..at + want.len()]
         .iter()
@@ -774,19 +822,28 @@ fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String
         .copied()
         .unwrap_or("");
     let prefix = &first_file[..indent(first_file)];
-    let old_indent = indent(first_old);
+    let old_width = column(&first_old[..indent(first_old)]);
     let shifted = new.lines().map(|line| {
-        let own = indent(line);
-        if line.trim().is_empty() {
-            String::new()
-        } else if own >= old_indent {
+        let own = &line[..indent(line)];
+        let rest = &line[own.len()..];
+        if rest.is_empty() {
+            return String::new();
+        }
+        if column(own) >= old_width {
             // As deep as the first old line or deeper: the file's indent,
-            // then the rest.
-            format!("{prefix}{}", &line[old_indent..])
+            // then whatever this line has beyond the old line's depth.
+            let skip = (0..=own.len())
+                .find(|&n| column(&own[..n]) >= old_width)
+                .unwrap_or(own.len());
+            format!("{prefix}{}{rest}", &own[skip..])
         } else {
-            // Shallower: that much less of the file's indent.
-            let keep = prefix.len().saturating_sub(old_indent - own);
-            format!("{}{}", &prefix[..keep], &line[own..])
+            // Shallower: that many columns less of the file's indent.
+            let want = column(prefix).saturating_sub(old_width - column(own));
+            let keep = (0..=prefix.len())
+                .rev()
+                .find(|&n| column(&prefix[..n]) <= want)
+                .unwrap_or(0);
+            format!("{}{rest}", &prefix[..keep])
         }
     });
     let mut out: Vec<String> = lines[..at].iter().map(|l| l.to_string()).collect();

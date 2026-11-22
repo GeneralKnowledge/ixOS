@@ -318,16 +318,67 @@ fn a_forgiving_edit_keeps_the_files_tabs_and_never_cuts_inside_a_character() {
         "def f():\n\tvalue = \"x\"\n\treturn value\n",
     )
     .unwrap();
-    // Copied with spaces and single quotes; the new lines go one deeper,
-    // then one shallower.
-    let out = lab.execute(&call(
-        r#"{"tool": "edit_file", "path": "f.txt", "old": "    value = 'x'", "new": "    if True:\n        value = 'y'\nvalue2 = 1"}"#,
-    ));
+    let edit = |path: &str, file: &str, old: &str, new: &str| {
+        std::fs::write(dir.path().join(path), file).unwrap();
+        let args = serde_json::json!({"tool": "edit_file", "path": path, "old": old, "new": new});
+        let out = lab.execute(&call(&args.to_string()));
+        (out, std::fs::read_to_string(dir.path().join(path)).unwrap())
+    };
+    let tabbed = "def f():\n\tvalue = \"x\"\n\treturn value\n";
+    // Copied with spaces and single quotes: the file's tab is kept.
+    let (out, text) = edit("f.txt", tabbed, "    value = 'x'", "    value = 'y'");
+    assert!(out.ok, "{}", out.text);
+    assert_eq!(text, "def f():\n\tvalue = 'y'\n\treturn value\n");
+    // Several new lines indented with spaces into tab-indented code would
+    // mix the two, which Python refuses: no guess.
+    let (out, text) = edit(
+        "f.txt",
+        tabbed,
+        "    value = 'x'",
+        "    if True:\n        value = 'y'",
+    );
+    assert!(!out.ok, "{}", out.text);
+    assert_eq!(text, tabbed);
+    // With tabs, they go in at the right depths, deeper and shallower.
+    let (out, text) = edit(
+        "f.txt",
+        tabbed,
+        "\tvalue = 'x'",
+        "\tif True:\n\t\tvalue = 'y'\nz = 1",
+    );
     assert!(out.ok, "{}", out.text);
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("f.txt")).unwrap(),
-        "def f():\n\tif True:\n\t    value = 'y'\nvalue2 = 1\n\treturn value\n"
+        text,
+        "def f():\n\tif True:\n\t\tvalue = 'y'\nz = 1\n\treturn value\n"
     );
+    // Depths compare in columns: a tab in old is the file's eight spaces.
+    let (out, text) = edit(
+        "g.txt",
+        "def f():\n        value = \"x\"\n        return value\n",
+        "\tvalue = 'x'",
+        "        value = 'y'",
+    );
+    assert!(out.ok, "{}", out.text);
+    assert_eq!(
+        text,
+        "def f():\n        value = 'y'\n        return value\n"
+    );
+    // Only delimiters are forgiven: a quote inside a string must match.
+    let (out, _) = edit(
+        "h.txt",
+        "label = \"Bob's\"\n",
+        "label = 'Bob\"s'",
+        "label = 'x'",
+    );
+    assert!(!out.ok, "{}", out.text);
+    let (out, text) = edit(
+        "h.txt",
+        "print(\"a: \" + b)\n",
+        "print('a: ' + b)",
+        "print('a: ' + str(b))",
+    );
+    assert!(out.ok, "{}", out.text);
+    assert_eq!(text, "print('a: ' + str(b))\n");
     // A wide space where an indent would be: no panic, an answer.
     std::fs::write(dir.path().join("g.txt"), "x = \"a\"\n").unwrap();
     let out = lab.execute(&call(
