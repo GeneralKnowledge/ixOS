@@ -183,7 +183,7 @@ One closed list of components an agent may use in any ixOS surface. Each entry f
 1. **The A2UI component name** (A2UI v1.0, the basic catalogue's definition where one exists).
 2. **Its Forge target**: the ForgeUI component or style, or the native SwiftUI control on ForgeUI tokens.
 3. **Its properties**, each typed and closed: text, a ForgeUI tone, accent, text role or spacing token, a number with bounds, a data-model path. Never a colour, font, size, URL or free-form style.
-4. **The accessibility it must carry**: which property becomes the VoiceOver label, and that the renderer refuses the component without it. The one exception is Image: without a label it is decorative and hidden from VoiceOver.
+4. **The accessibility it must carry**: which property becomes the VoiceOver label, and that the renderer refuses the component without it. This applies to components a person reads or operates. Containers (Column, Row, Card) and Divider carry no label: they are structure, and Divider is hidden from VoiceOver. Rating has a default label ("Rating") from `ForgeRating`. Image without a label is decorative and hidden from VoiceOver.
 5. **Its identifier**: `a2ui.<surface>.<componentId>`, which satisfies rule 4's `screen.element` shape.
 6. **The events it may send**: none, or named events registered by the app (A2UI-1's gate already refuses everything else).
 
