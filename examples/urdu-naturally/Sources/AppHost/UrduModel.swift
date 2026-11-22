@@ -133,9 +133,14 @@ public final class UrduModel {
     /// spaces round it are trimmed, as `set_name` counts. The field takes
     /// an edit only while this holds, so it never holds a name that saving
     /// would refuse (and leaving Settings would then lose), and an edit
-    /// over the limit is refused rather than cutting the end off.
+    /// over the limit is refused rather than cutting the end off. It trims
+    /// exactly what Rust's `str::trim` trims (Unicode `White_Space`), not
+    /// Foundation's whitespace set, so the two never disagree on a name.
     public static func fitsName(_ name: String) -> Bool {
-        name.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count <= maxNameChars
+        let scalars = name.unicodeScalars
+        let kept = scalars.drop(while: \.properties.isWhitespace)
+        let trailing = kept.reversed().prefix(while: \.properties.isWhitespace).count
+        return kept.count - trailing <= maxNameChars
     }
 
     public func setName(_ name: String) async {

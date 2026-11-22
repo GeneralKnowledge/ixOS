@@ -46,6 +46,9 @@ final class UrduModelTests: XCTestCase {
         XCTAssertFalse(UrduModel.fitsName(longest + "b"))
         // Spaces round the name don't count, as Rust trims them.
         XCTAssertTrue(UrduModel.fitsName(" " + longest + " "))
+        // A zero-width space is not White_Space: Rust keeps and counts it.
+        XCTAssertFalse(UrduModel.fitsName("\u{200B}" + longest))
+        XCTAssertTrue(UrduModel.fitsName("\u{00A0}" + longest + "\n"))
         await model.setName(" " + longest + " ")
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(model.settings.name, longest)
