@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the FileProvider may hand to other apps: files Relay received (its data folder, and
+     the throwaway folder UI tests use). -->
+<paths>
+    <files-path name="relay" path="Relay/" />
+    <cache-path name="test" path="forge-test-Relay/" />
+</paths>
