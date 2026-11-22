@@ -16,11 +16,15 @@
 #                                         certifi): iOS has no OpenSSL trust
 #                                         store, so without it every HTTPS
 #                                         request fails to verify
+#     lib/python3.15/site-packages/numpy  numpy, built for iOS by
+#                                         scripts/build-numpy.sh (cached)
 #     Frameworks/<module>.framework       the extension modules (math, _json,
-#                                         _sqlite3, _ssl ...), one framework
-#                                         each, as CPython's iOS support
-#                                         expects (Apple's rule: no loose
-#                                         binaries in an app); xtool signs them
+#                                         _sqlite3, _ssl ..., and numpy's as
+#                                         numpy._core._multiarray_umath ...),
+#                                         one framework each, as CPython's
+#                                         iOS support expects (Apple's rule:
+#                                         no loose binaries in an app); xtool
+#                                         signs them
 #
 # forge runs it before every iOS build ([ios] prepare in forge.toml); with
 # everything in place it exits at once. Uses curl, tar, python3 (to read
@@ -46,7 +50,8 @@ sha256() {
 }
 
 # What this script makes: a new version or a changed script starts over.
-stamp_want="$VERSION $(sha256 "$0" | cut -c1-16)"
+numpy_script="$(dirname "$0")/build-numpy.sh"
+stamp_want="$VERSION $(sha256 "$0" | cut -c1-16) $(sha256 "$numpy_script" | cut -c1-16)"
 if [[ -f "$out/.prepared" && "$(cat "$out/.prepared")" == "$stamp_want" ]]; then
   exit 0
 fi
@@ -138,17 +143,31 @@ find "$lib" -name __pycache__ -type d -prune -exec rm -rf {} +
 # CPython's own test modules.
 rm -f "$lib"/lib-dynload/{_test,xx,_ctypes_test,_xxtestfuzz}*.so
 
-# Each extension module becomes Frameworks/<module>.framework/<module>, and
-# lib-dynload/<module>.<suffix>.fwork names it (relative to the app bundle).
+# numpy, compiled for iOS once and cached (scripts/build-numpy.sh).
+numpy_cache="${XDG_CACHE_HOME:-$HOME/.cache}/forge/python-packages/numpy-ios-cp315"
+"$numpy_script" "$home" "$xcf" "$numpy_cache"
+mkdir -p "$lib/site-packages"
+cp -R "$numpy_cache/numpy" "$lib/site-packages/"
+
+# Each extension module becomes Frameworks/<module>.framework/<module>, named
+# by its full dotted name (numpy/_core/_multiarray_umath.<suffix>.so is
+# numpy._core._multiarray_umath), and a .fwork file where the binary was
+# names it (relative to the app bundle).
 count=0
-for so in "$lib"/lib-dynload/*.so; do
+while IFS= read -r so; do
   file="$(basename "$so")"
-  module="${file%%.*}"
+  case "$so" in
+    "$lib"/site-packages/*)
+      rel="${so#"$lib/site-packages/"}"
+      module="$(dirname "$rel" | tr '/' '.').${file%%.*}" ;;
+    *) module="${file%%.*}" ;;
+  esac
   framework="$home/Frameworks/${module}.framework"
   mkdir -p "$framework"
   mv "$so" "$framework/$module"
-  # _json -> org.forgemobile.devicelab.python.json (a bundle id has no _).
-  bundle_id="${BUNDLE_PREFIX}.$(echo "${module#"${module%%[!_]*}"}" | tr '_' '-')"
+  # _json -> org.forgemobile.devicelab.python.json, numpy._core._umath_linalg
+  # -> ...python.numpy.core.umath-linalg (a bundle id has no _).
+  bundle_id="${BUNDLE_PREFIX}.$(echo "$module" | sed -E 's/(^|\.)_+/\1/g' | tr '_' '-')"
   # CPython's template, with the module's executable name and bundle id.
   awk -v exe="$module" -v id="$bundle_id" '
     /<key>CFBundleExecutable<\/key>/ { print; getline; print "\t<string>" exe "</string>"; next }
@@ -158,9 +177,9 @@ for so in "$lib"/lib-dynload/*.so; do
     mv "$lib/lib-dynload/${module}.xcprivacy" "$framework/PrivacyInfo.xcprivacy"
   fi
   echo "python/Frameworks/${module}.framework/${module}" > "${so%.so}.fwork"
-  echo "python/lib/python${MINOR}/lib-dynload/${file%.so}.fwork" > "$framework/${module}.origin"
+  echo "python/${so#"$home/"}" | sed 's/\.so$/.fwork/' > "$framework/${module}.origin"
   count=$((count + 1))
-done
+done < <(find "$lib/lib-dynload" "$lib/site-packages" -name '*.so' | sort)
 
 echo "$stamp_want" > "$out/.prepared"
 echo "[python] CPython ${VERSION}: $(du -sh "$home" | cut -f1) standard library with ${count} extension modules, $(du -sh "$xcf" | cut -f1) interpreter"
