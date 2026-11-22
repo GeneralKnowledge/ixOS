@@ -382,3 +382,118 @@ fn a_live_answer_reads() {
     let err = jamendo::parse_tracks(refused.as_bytes()).unwrap_err();
     assert!(err.to_string().contains("Invalid Client Id"), "{err}");
 }
+
+// More from Jamendo: by the same artist, or in the same genre.
+
+const ONE_TRACK: &str = r#"{"headers": {"status": "success", "code": 0, "error_message": "", "results_count": 1},
+ "results": [{"id": "2034080", "name": "Music Soothe", "artist_id": "551562", "artist_name": "StimiBeats",
+  "audio": "https://prod-1.storage.jamendo.com/?trackid=2034080&format=mp32",
+  "license_ccurl": "http://creativecommons.org/licenses/by-nc-nd/3.0/",
+  "musicinfo": {"tags": {"genres": ["newage", "ambient"]}}}]}"#;
+
+const BY_ARTIST: &str = r#"{"headers": {"status": "success", "code": 0, "error_message": "", "results_count": 2},
+ "results": [
+  {"id": "2034080", "name": "Music Soothe", "artist_name": "StimiBeats",
+   "audio": "https://prod-1.storage.jamendo.com/?trackid=2034080&format=mp32", "license_ccurl": ""},
+  {"id": "2034081", "name": "Calm Water", "artist_name": "StimiBeats",
+   "audio": "https://prod-1.storage.jamendo.com/?trackid=2034081&format=mp32", "license_ccurl": ""}
+ ]}"#;
+
+fn related() -> StaticClient {
+    use jamendo::{tracks_url, Ask};
+    StaticClient::new()
+        .route(
+            Method::Get,
+            tracks_url(CLIENT, &Ask::Track("2034080".into())),
+            Ok(Response::new(200, ONE_TRACK)),
+        )
+        .route(
+            Method::Get,
+            tracks_url(CLIENT, &Ask::Artist("551562".into())),
+            Ok(Response::new(200, BY_ARTIST)),
+        )
+        .route(
+            Method::Get,
+            tracks_url(CLIENT, &Ask::Genre("newage".into())),
+            Ok(Response::new(200, RESULTS)),
+        )
+}
+
+#[test]
+fn more_by_the_artist_leaves_out_the_song_playing() {
+    let cancel = forge_net::CancelHandle::new();
+    let more = jamendo::more(
+        &related(),
+        CLIENT,
+        "jamendo:2034080",
+        jamendo::JamendoMore::Artist,
+        &cancel,
+    )
+    .unwrap();
+    assert_eq!(more.name, "StimiBeats");
+    let ids: Vec<_> = more.tracks.iter().map(|t| t.id.as_str()).collect();
+    assert_eq!(ids, ["jamendo:2034081"]);
+}
+
+#[test]
+fn more_in_the_genre_uses_the_first_genre() {
+    let cancel = forge_net::CancelHandle::new();
+    let more = jamendo::more(
+        &related(),
+        CLIENT,
+        "jamendo:2034080",
+        jamendo::JamendoMore::Genre,
+        &cancel,
+    )
+    .unwrap();
+    assert_eq!(more.name, "New Age");
+    assert_eq!(more.tracks.len(), 2);
+}
+
+#[test]
+fn more_needs_a_jamendo_song() {
+    let cancel = forge_net::CancelHandle::new();
+    for id in [
+        "file:abc",
+        "jamendo:",
+        "jamendo:12&x=1",
+        "archive:foo/bar.mp3",
+    ] {
+        let err = jamendo::more(
+            &related(),
+            CLIENT,
+            id,
+            jamendo::JamendoMore::Artist,
+            &cancel,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, SoundscapeError::BadAddress { .. }),
+            "{id}: {err}"
+        );
+    }
+}
+
+#[test]
+fn artist_and_genre_requests() {
+    use jamendo::{tracks_url, Ask};
+    let artist = tracks_url(CLIENT, &Ask::Artist("551562".into()));
+    assert!(
+        artist.contains("artist_id=551562&order=popularity_total&type=single%20albumtrack"),
+        "{artist}"
+    );
+    let genre = tracks_url(CLIENT, &Ask::Genre("jazz".into()));
+    assert!(
+        genre.contains("tags=jazz&order=popularity_week&type=single%20albumtrack"),
+        "{genre}"
+    );
+    assert_eq!(jamendo::clean_tag(" Jazz ").unwrap(), "jazz");
+    assert!(jamendo::clean_tag("jazz&order=x").is_err());
+    assert!(jamendo::clean_tag("").is_err());
+    let genres = jamendo::genres();
+    assert!(genres
+        .iter()
+        .all(|g| jamendo::clean_tag(&g.tag).as_deref() == Ok(g.tag.as_str())));
+    assert_eq!(jamendo::genre_name("hiphop"), "Hip-Hop");
+    assert_eq!(jamendo::genre_name("darkwave"), "Darkwave");
+}

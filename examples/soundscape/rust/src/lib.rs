@@ -41,6 +41,7 @@ use collection::CollectionFile;
 pub use collection::{
     counts_as_played, MusicCollection, Playlist, PlaylistDetail, PlaylistEntry, RecentPlay,
 };
+pub use jamendo::{JamendoGenre, JamendoMore, JamendoMoreTracks};
 use library::LibraryFile;
 pub use library::{
     ArtworkTarget, AudioSource, Generation, ImportResult, Library, LibraryAlbum, LibraryArtist,
@@ -739,16 +740,54 @@ impl SoundscapeCore {
         query: String,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
-        let client_id = self
-            .jamendo_client_id()
-            .ok_or_else(|| SoundscapeError::BadAddress {
-                reason: "add your Jamendo client ID first".into(),
-            })?;
+        let client_id = self.needs_jamendo_client_id()?;
         let http = Arc::clone(&self.http);
         let work = self.rt.foreground(cancellation.as_deref());
         self.rt
             .run("jamendo-search", work, move |cancel| {
                 jamendo::search(http.as_ref(), &client_id, &query, cancel)
+            })
+            .await
+    }
+
+    /// The genres Discover offers for Jamendo, in the order shown.
+    pub fn jamendo_genres(&self) -> Vec<JamendoGenre> {
+        jamendo::genres()
+    }
+
+    /// Jamendo tracks in the genre `tag` (such as `jazz`), this week's
+    /// most popular first. On-screen work.
+    pub async fn jamendo_genre(
+        &self,
+        tag: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let tag = jamendo::clean_tag(&tag)?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-genre", work, move |cancel| {
+                jamendo::tracks(http.as_ref(), &client_id, &jamendo::Ask::Genre(tag), cancel)
+            })
+            .await
+    }
+
+    /// More from Jamendo for the Jamendo track `track_id`
+    /// (`jamendo:<id>`): its artist's other tracks, or others in its
+    /// genre. On-screen work.
+    pub async fn more_from_jamendo(
+        &self,
+        track_id: String,
+        by: JamendoMore,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<JamendoMoreTracks, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-more", work, move |cancel| {
+                jamendo::more(http.as_ref(), &client_id, &track_id, by, cancel)
             })
             .await
     }
@@ -1338,6 +1377,14 @@ impl SoundscapeCore {
 }
 
 impl SoundscapeCore {
+    /// The saved Jamendo client ID, or the error that asks for one.
+    fn needs_jamendo_client_id(&self) -> Result<String, SoundscapeError> {
+        self.jamendo_client_id()
+            .ok_or_else(|| SoundscapeError::BadAddress {
+                reason: "add your Jamendo client ID first".into(),
+            })
+    }
+
     /// A core whose Listen requests go through `http`, for tests.
     pub fn open_with_http(
         data_directory: &str,

@@ -2273,6 +2273,17 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func jamendoClientId()  -> String?
     
     /**
+     * Jamendo tracks in the genre `tag` (such as `jazz`), this week's
+     * most popular first. On-screen work.
+     */
+    func jamendoGenre(tag: String, cancellation: Cancellation?) async throws  -> [CatalogueTrack]
+    
+    /**
+     * The genres Discover offers for Jamendo, in the order shown.
+     */
+    func jamendoGenres()  -> [JamendoGenre]
+    
+    /**
      * What the runtime found at open (unfinished background work).
      */
     func launchReport()  -> LaunchReport
@@ -2333,6 +2344,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * pick made just before leaving the app still arrives.
      */
     func markTake(slug: String, takeId: String, mark: TakeMark) async throws  -> SongDetail
+    
+    /**
+     * More from Jamendo for the Jamendo track `track_id`
+     * (`jamendo:<id>`): its artist's other tracks, or others in its
+     * genre. On-screen work.
+     */
+    func moreFromJamendo(trackId: String, by: JamendoMore, cancellation: Cancellation?) async throws  -> JamendoMoreTracks
     
     /**
      * What the person chose for the phone and how far along it is. Never
@@ -2996,6 +3014,38 @@ open func jamendoClientId() -> String?  {
 }
     
     /**
+     * Jamendo tracks in the genre `tag` (such as `jazz`), this week's
+     * most popular first. On-screen work.
+     */
+open func jamendoGenre(tag: String, cancellation: Cancellation?)async throws  -> [CatalogueTrack]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_jamendo_genre(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(tag),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeCatalogueTrack.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * The genres Discover offers for Jamendo, in the order shown.
+     */
+open func jamendoGenres() -> [JamendoGenre]  {
+    return try!  FfiConverterSequenceTypeJamendoGenre.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_jamendo_genres(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * What the runtime found at open (unfinished background work).
      */
 open func launchReport() -> LaunchReport  {
@@ -3161,6 +3211,27 @@ open func markTake(slug: String, takeId: String, mark: TakeMark)async throws  ->
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeSongDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * More from Jamendo for the Jamendo track `track_id`
+     * (`jamendo:<id>`): its artist's other tracks, or others in its
+     * genre. On-screen work.
+     */
+open func moreFromJamendo(trackId: String, by: JamendoMore, cancellation: Cancellation?)async throws  -> JamendoMoreTracks  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_more_from_jamendo(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(trackId),FfiConverterTypeJamendoMore_lower(by),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeJamendoMoreTracks_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -4634,6 +4705,132 @@ public func FfiConverterTypeImportResult_lift(_ buf: RustBuffer) throws -> Impor
 #endif
 public func FfiConverterTypeImportResult_lower(_ value: ImportResult) -> RustBuffer {
     return FfiConverterTypeImportResult.lower(value)
+}
+
+
+/**
+ * A genre to browse: Jamendo's tag and the name to show.
+ */
+public struct JamendoGenre: Equatable, Hashable {
+    public var tag: String
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(tag: String, name: String) {
+        self.tag = tag
+        self.name = name
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension JamendoGenre: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeJamendoGenre: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> JamendoGenre {
+        return
+            try JamendoGenre(
+                tag: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: JamendoGenre, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.tag, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeJamendoGenre_lift(_ buf: RustBuffer) throws -> JamendoGenre {
+    return try FfiConverterTypeJamendoGenre.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeJamendoGenre_lower(_ value: JamendoGenre) -> RustBuffer {
+    return FfiConverterTypeJamendoGenre.lower(value)
+}
+
+
+/**
+ * Jamendo's tracks related to one track.
+ */
+public struct JamendoMoreTracks: Equatable, Hashable {
+    /**
+     * The artist's name, or the genre's.
+     */
+    public var name: String
+    /**
+     * The tracks, best first, without the track asked about.
+     */
+    public var tracks: [CatalogueTrack]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The artist's name, or the genre's.
+         */name: String, 
+        /**
+         * The tracks, best first, without the track asked about.
+         */tracks: [CatalogueTrack]) {
+        self.name = name
+        self.tracks = tracks
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension JamendoMoreTracks: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeJamendoMoreTracks: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> JamendoMoreTracks {
+        return
+            try JamendoMoreTracks(
+                name: FfiConverterString.read(from: &buf), 
+                tracks: FfiConverterSequenceTypeCatalogueTrack.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: JamendoMoreTracks, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterSequenceTypeCatalogueTrack.write(value.tracks, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeJamendoMoreTracks_lift(_ buf: RustBuffer) throws -> JamendoMoreTracks {
+    return try FfiConverterTypeJamendoMoreTracks.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeJamendoMoreTracks_lower(_ value: JamendoMoreTracks) -> RustBuffer {
+    return FfiConverterTypeJamendoMoreTracks.lower(value)
 }
 
 
@@ -8122,6 +8319,81 @@ public func FfiConverterTypeHttpTransportError_lower(_ value: HttpTransportError
 
 
 /**
+ * What "more from Jamendo" means for a track that is playing.
+ */
+
+public enum JamendoMore: Equatable, Hashable {
+    
+    /**
+     * More by the same artist.
+     */
+    case artist
+    /**
+     * More in the track's (first) genre.
+     */
+    case genre
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension JamendoMore: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeJamendoMore: FfiConverterRustBuffer {
+    typealias SwiftType = JamendoMore
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> JamendoMore {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .artist
+        
+        case 2: return .genre
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: JamendoMore, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .artist:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .genre:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeJamendoMore_lift(_ buf: RustBuffer) throws -> JamendoMore {
+    return try FfiConverterTypeJamendoMore.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeJamendoMore_lower(_ value: JamendoMore) -> RustBuffer {
+    return FfiConverterTypeJamendoMore.lower(value)
+}
+
+
+
+/**
  * What a line of lyrics is.
  */
 
@@ -9784,6 +10056,31 @@ fileprivate struct FfiConverterSequenceTypeHttpHeader: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeJamendoGenre: FfiConverterRustBuffer {
+    typealias SwiftType = [JamendoGenre]
+
+    public static func write(_ value: [JamendoGenre], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeJamendoGenre.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [JamendoGenre] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [JamendoGenre]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeJamendoGenre.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLibraryAlbum: FfiConverterRustBuffer {
     typealias SwiftType = [LibraryAlbum]
 
@@ -10911,6 +11208,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_client_id() != 42216) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_genre() != 51854) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_genres() != 17256) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_launch_report() != 4480) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10939,6 +11242,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_mark_take() != 58743) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_more_from_jamendo() != 23671) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_offline() != 23785) {
