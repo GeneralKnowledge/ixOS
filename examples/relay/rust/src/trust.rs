@@ -96,6 +96,19 @@ pub struct SavedDevice {
     /// person can see it, and trust it again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revoked_by: Option<String>,
+    /// The person this device belongs to, when it isn't one of the
+    /// person's own devices (N4 step 1). A person's device sends messages
+    /// and files, but never introduces devices or sees the device list,
+    /// and Chats shows this name rather than the device's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person: Option<String>,
+}
+
+impl SavedDevice {
+    /// The name Chats shows: the person's, or else the device's.
+    pub fn shown_name(&self) -> &str {
+        self.person.as_deref().unwrap_or(&self.name)
+    }
 }
 
 /// What an introducer says about its devices (My Devices, step 1).
@@ -215,6 +228,7 @@ impl Devices {
                 sees_devices: false,
                 introduced_by: None,
                 revoked_by: None,
+                person: None,
             }),
         }
     }
@@ -234,11 +248,34 @@ impl Devices {
         }
     }
 
-    /// Whether the device introduces devices here. Only for a trusted
-    /// device; returns false otherwise.
-    pub fn set_introduces(&mut self, endpoint_id: &str, on: bool) -> bool {
+    /// Marks a trusted device as a person's (`Some(name)`) or as one of
+    /// the person's own devices (`None`) (N4 step 1). Marking it a
+    /// person's turns off introducing and seeing the device list, which a
+    /// person's device never has. Returns false for a device that isn't
+    /// trusted, or an empty name.
+    pub fn set_person(&mut self, endpoint_id: &str, person: Option<&str>) -> bool {
+        let person = person.map(str::trim);
+        if person.is_some_and(str::is_empty) {
+            return false;
+        }
         match self.get_mut(endpoint_id) {
             Some(d) if d.trust == SavedTrust::Trusted => {
+                d.person = person.map(str::to_string);
+                if d.person.is_some() {
+                    d.introduces = false;
+                    d.sees_devices = false;
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether the device introduces devices here. Only for a trusted
+    /// device, and never for a person's; returns false otherwise.
+    pub fn set_introduces(&mut self, endpoint_id: &str, on: bool) -> bool {
+        match self.get_mut(endpoint_id) {
+            Some(d) if d.trust == SavedTrust::Trusted && !(on && d.person.is_some()) => {
                 d.introduces = on;
                 true
             }
@@ -247,10 +284,10 @@ impl Devices {
     }
 
     /// Whether the device may see the devices trusted here. Only for a
-    /// trusted device; returns false otherwise.
+    /// trusted device, and never for a person's; returns false otherwise.
     pub fn set_sees_devices(&mut self, endpoint_id: &str, on: bool) -> bool {
         match self.get_mut(endpoint_id) {
-            Some(d) if d.trust == SavedTrust::Trusted => {
+            Some(d) if d.trust == SavedTrust::Trusted && !(on && d.person.is_some()) => {
                 d.sees_devices = on;
                 true
             }
@@ -259,11 +296,14 @@ impl Devices {
     }
 
     /// The list this device gives `asker`: the devices trusted and revoked
-    /// here, without the asker itself.
+    /// here, without the asker itself. People's devices are left out of
+    /// the trusted ones, so they are never offered as the person's own;
+    /// a revoked one is still listed, so it is revoked everywhere.
     pub fn list_for(&self, asker: &str) -> DeviceList {
         let mut list = DeviceList::default();
         for d in self.list.iter().filter(|d| d.endpoint_id != asker) {
             match d.trust {
+                SavedTrust::Trusted if d.person.is_some() => {}
                 SavedTrust::Trusted => list.trusted.push((d.endpoint_id.clone(), d.name.clone())),
                 SavedTrust::Revoked => list.revoked.push(d.endpoint_id.clone()),
                 SavedTrust::Forgotten => {}
@@ -462,6 +502,35 @@ mod tests {
         let given = devices.list_for("tablet");
         assert!(given.trusted.iter().all(|(id, _)| id != "tablet"));
         assert!(!given.revoked.contains(&"tablet".to_string()));
+    }
+
+    #[test]
+    fn a_persons_device_never_introduces_or_sees_the_list() {
+        let mut devices = Devices::default();
+        devices.trust("sam", "iPhone", 1);
+        devices.trust("laptop", "Laptop", 1);
+        assert!(devices.set_sees_devices("sam", true));
+        assert!(devices.set_introduces("sam", true));
+        assert!(!devices.set_person("sam", Some("  ")), "a name is needed");
+        assert!(devices.set_person("sam", Some(" Sam ")));
+        let sam = devices.get("sam").unwrap();
+        assert_eq!(sam.shown_name(), "Sam");
+        assert!(!sam.introduces && !sam.sees_devices, "turned off");
+        assert!(!devices.set_introduces("sam", true));
+        assert!(!devices.set_sees_devices("sam", true));
+        assert!(devices.set_sees_devices("sam", false));
+        // It is never offered to the person's own devices as theirs.
+        let given = devices.list_for("laptop");
+        assert!(given.trusted.is_empty());
+        // Trusting it afresh keeps whose it is; revoking it is shared.
+        devices.trust("sam", "iPhone", 2);
+        assert_eq!(devices.get("sam").unwrap().shown_name(), "Sam");
+        assert!(devices.revoke("sam"));
+        assert_eq!(devices.list_for("laptop").revoked, ["sam"]);
+        assert!(!devices.set_person("sam", None), "only while trusted");
+        // One of the person's own devices shows its own name.
+        assert!(devices.set_person("laptop", None));
+        assert_eq!(devices.get("laptop").unwrap().shown_name(), "Laptop");
     }
     use super::*;
     use AfterCode::*;

@@ -44,7 +44,8 @@ default now. Chats shows the person's name rather than their device's
 name.
 
 This is mostly naming and one setting, "This is a person" or "This is one
-of my devices", chosen when you trust the device. The delivery, the outbox
+of my devices", set on the trusted device's screen (Whose Device) or with
+`relay person <device> NAME` (`--mine` to undo). The delivery, the outbox
 and N3's mailbox already work for it. Someone with several devices of
 their own is N7's question (a person's identity across devices), not
 this stage's.

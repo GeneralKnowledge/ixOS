@@ -103,6 +103,7 @@ SealedItem {
 | Per recipient | 1 GB held at once, shared out per deposit pass (below), so one sender can use at most a quarter of it. A full mailbox refuses new items, and the sender keeps them |
 | Per deposit pass | 200 items an hour, and at most 256 MB held at once |
 | Duplicates | The same (`from`, `id`) is stored once |
+| Receipts | Small fixed-size records, one per (`from`, `id`), kept outside the per-recipient quota so a full mailbox still takes them |
 | Deleting | Only when the recipient acknowledges the item, or when it expires |
 | Storage | SQLite for the index, one file per sealed item, nothing else |
 
@@ -155,8 +156,9 @@ one step:
      delivered": the sender can't tell a lost item from a lost receipt,
      and the label says only what it knows.
 4. A direct route that comes back first still delivers. The recipient's
-   45-day memory of ids means the copy in the mailbox is then dropped
-   unopened, and only one is ever kept.
+   45-day memory of ids means the copy in the mailbox is then not saved
+   again: the recipient leaves a fresh receipt and acknowledges it, so
+   only one is ever kept and the server deletes the copy.
 
 ### Collecting
 

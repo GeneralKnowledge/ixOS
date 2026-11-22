@@ -32,7 +32,7 @@ struct TrustedDeviceRow: View {
                 .foregroundStyle(device.presence == .offline ? .secondary : Color.accentColor)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Text(device.name)
+                Text(device.person.map { "\($0) (\(device.name))" } ?? device.name)
                 HStack(spacing: 8) {
                     TrustBadge()
                     Text(RelayModel.whereNow(device))
@@ -353,6 +353,9 @@ struct TrustedDeviceView: View {
     @State private var sending = false
     @State private var pickingFiles = false
     @State private var asking = false
+    /// "This Is a Person" turned on, before a name is saved.
+    @State private var namingPerson = false
+    @State private var personName = ""
     @State private var syncing = false
     @State private var synced: String?
 
@@ -439,39 +442,80 @@ struct TrustedDeviceView: View {
                      : "\(device.name) is still trusted, but what it sends here is declined.")
             }
             Section {
-                Toggle("Introduces Devices", isOn: Binding(
-                    get: { device.introduces },
-                    set: { on in Task { await model.setIntroduces(on, for: device) } }
-                ))
-                .accessibilityIdentifier("trusted.introduces")
-                Toggle("Can See My Devices", isOn: Binding(
-                    get: { device.seesDevices },
-                    set: { on in Task { await model.setSeesDevices(on, for: device) } }
-                ))
-                .accessibilityIdentifier("trusted.seesDevices")
-                if device.introduces {
-                    Button {
-                        Task {
-                            syncing = true
-                            synced = await model.syncDevices(with: device)
-                            syncing = false
+                Toggle("This Is a Person", isOn: Binding(
+                    get: { device.person != nil || namingPerson },
+                    set: { on in
+                        if on {
+                            personName = device.person ?? ""
+                            namingPerson = true
+                        } else {
+                            namingPerson = false
+                            Task { await model.setPerson(nil, for: device) }
                         }
-                    } label: {
-                        Label(syncing ? "Asking…" : "Check Its Devices Now", systemImage: "arrow.triangle.2.circlepath")
                     }
-                    .disabled(syncing)
-                    .accessibilityIdentifier("trusted.syncDevices")
-                }
-                if let introducer = device.introducedBy {
-                    LabeledContent("Introduced By", value: introducer)
-                        .accessibilityIdentifier("trusted.introducedBy")
+                ))
+                .accessibilityIdentifier("trusted.isPerson")
+                if device.person != nil || namingPerson {
+                    TextField("Their Name", text: $personName)
+                        .textContentType(.name)
+                        .submitLabel(.done)
+                        .onAppear {
+                            if personName.isEmpty { personName = device.person ?? "" }
+                        }
+                        .onSubmit {
+                            let name = personName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !name.isEmpty else { return }
+                            Task {
+                                await model.setPerson(name, for: device)
+                                namingPerson = false
+                            }
+                        }
+                        .accessibilityIdentifier("trusted.personName")
                 }
             } header: {
-                Text("Your Devices")
+                Text("Whose Device")
             } footer: {
-                Text(synced ?? (device.introduces
-                     ? "Devices \(device.name) trusts are offered here for you to trust, and devices it revokes are revoked here too."
-                     : "Turn on for your own devices, so you pair and revoke once. Both devices need it on: Introduces here, Can See My Devices there."))
+                Text(device.person.map { "\(device.name) belongs to \($0). It can send messages and files, but never introduces devices or sees yours. Chats shows their name." }
+                     ?? (namingPerson
+                         ? "Type their name and press Done."
+                         : "One of your own devices. Turn on if it belongs to someone you trust."))
+            }
+            if device.person == nil {
+                Section {
+                    Toggle("Introduces Devices", isOn: Binding(
+                        get: { device.introduces },
+                        set: { on in Task { await model.setIntroduces(on, for: device) } }
+                    ))
+                    .accessibilityIdentifier("trusted.introduces")
+                    Toggle("Can See My Devices", isOn: Binding(
+                        get: { device.seesDevices },
+                        set: { on in Task { await model.setSeesDevices(on, for: device) } }
+                    ))
+                    .accessibilityIdentifier("trusted.seesDevices")
+                    if device.introduces {
+                        Button {
+                            Task {
+                                syncing = true
+                                synced = await model.syncDevices(with: device)
+                                syncing = false
+                            }
+                        } label: {
+                            Label(syncing ? "Asking…" : "Check Its Devices Now", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(syncing)
+                        .accessibilityIdentifier("trusted.syncDevices")
+                    }
+                    if let introducer = device.introducedBy {
+                        LabeledContent("Introduced By", value: introducer)
+                            .accessibilityIdentifier("trusted.introducedBy")
+                    }
+                } header: {
+                    Text("Your Devices")
+                } footer: {
+                    Text(synced ?? (device.introduces
+                         ? "Devices \(device.name) trusts are offered here for you to trust, and devices it revokes are revoked here too."
+                         : "Turn on for your own devices, so you pair and revoke once. Both devices need it on: Introduces here, Can See My Devices there."))
+                }
             }
         }
         .navigationTitle(device.name)

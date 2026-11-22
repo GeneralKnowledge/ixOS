@@ -144,7 +144,7 @@ final class RelayModelTests: XCTestCase {
     func testReachText() {
         func device(nearby: Bool, route: String?, problem: String?, presence: Presence = .offline) -> Device {
             Device(endpointId: "id", name: "create", trusted: true, sinceMs: 0, receivesFrom: true, mayAsk: false,
-                   introduces: false, seesDevices: false, introducedBy: nil, revokedBy: nil,
+                   introduces: false, seesDevices: false, introducedBy: nil, revokedBy: nil, person: nil,
                    nearby: nearby, presence: nearby ? .nearby : presence, lastSeenMs: nil,
                    platform: nil, offers: [], route: route, problem: problem)
         }

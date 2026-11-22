@@ -332,6 +332,13 @@ public final class RelayModel {
         await perform { try await $0.setIntroduces(endpointId: device.endpointId, on: on) }
     }
 
+    /// Marks `device` as a person's, with their name, or (with `nil`) as
+    /// one of your own devices. A person's device sends messages and
+    /// files, never sees your devices, and Chats shows their name.
+    public func setPerson(_ name: String?, for device: Device) async {
+        await perform { try await $0.setPerson(endpointId: device.endpointId, person: name) }
+    }
+
     /// Whether `device` may see which devices this one trusts.
     public func setSeesDevices(_ on: Bool, for device: Device) async {
         await perform { try await $0.setSeesDevices(endpointId: device.endpointId, on: on) }
