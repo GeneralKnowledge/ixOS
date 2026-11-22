@@ -8,7 +8,7 @@ use forge_net::{Method, Response, StaticClient};
 use soundscape_core::catalogue::{rights_from_licence, CatalogueTrack};
 use soundscape_core::library::track_id;
 use soundscape_core::queue::{queue_put_back, queue_remove, queue_start};
-use soundscape_core::{RepeatMode, SoundscapeCore, StationSeed, TrackEdit};
+use soundscape_core::{Feeling, RepeatMode, SoundscapeCore, StationSeed, TrackEdit};
 
 const SERVER: &str = "http://100.64.0.7:8642";
 
@@ -222,4 +222,32 @@ fn a_song_taken_out_of_the_queue_goes_back_where_it_was() {
     moved.position = 2;
     let back = queue_put_back(moved, index, 2);
     assert_eq!(back.order[3], index);
+}
+
+#[test]
+fn an_artists_top_songs_lead_with_plays_then_favourites() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    let artist = core
+        .library()
+        .tracks
+        .into_iter()
+        .find(|t| t.id == track_id("one"))
+        .and_then(|t| t.artist_id)
+        .unwrap();
+    // Artist "a" has One and Three.
+    let titles = |core: &SoundscapeCore| -> Vec<String> {
+        core.artist_top_tracks(artist.clone(), 5)
+            .into_iter()
+            .map(|t| t.title)
+            .collect()
+    };
+    assert_eq!(titles(&core), ["One", "Three"]);
+    block(core.set_favourite(track_id("three"), true)).unwrap();
+    assert_eq!(titles(&core), ["Three", "One"]);
+    block(core.record_play(track_id("one"), "r/one".into())).unwrap();
+    assert_eq!(titles(&core), ["One", "Three"]);
+    block(core.set_feeling(track_id("one"), Some(Feeling::Dislike))).unwrap();
+    assert_eq!(titles(&core), ["Three"]);
+    assert_eq!(core.artist_top_tracks(artist, 0).len(), 0);
 }

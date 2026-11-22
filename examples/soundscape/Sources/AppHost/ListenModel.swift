@@ -323,6 +323,11 @@ public final class ListenModel {
     }
     public func albums(of artist: LibraryArtist) -> [LibraryAlbum] { core.artistAlbums(artistId: artist.id) }
     public func tracks(of artist: LibraryArtist) -> [LibraryTrack] { core.artistTracks(artistId: artist.id) }
+    /// An artist's top songs: most played, then favourites and likes.
+    public func topTracks(of artist: LibraryArtist, limit: Int = 5) -> [LibraryTrack] {
+        _ = collection
+        return core.artistTopTracks(artistId: artist.id, limit: UInt32(limit))
+    }
     public func tracks(of album: LibraryAlbum) -> [LibraryTrack] { core.albumTracks(albumId: album.id) }
 
     /// A track with its recordings, or `nil` once it has left the library.

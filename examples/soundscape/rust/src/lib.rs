@@ -1443,6 +1443,24 @@ impl SoundscapeCore {
             .collect()
     }
 
+    /// An artist's top songs for their page, at most `limit`: most played
+    /// first, then favourites and liked songs, then by title. With nothing
+    /// played yet, favourites and likes lead and the rest follow by title.
+    pub fn artist_top_tracks(&self, artist_id: String, limit: u32) -> Vec<LibraryTrack> {
+        let collection = self.collection.get();
+        let plays = station::play_counts(&collection);
+        let mut tracks = self.artist_tracks(artist_id);
+        let score = |t: &LibraryTrack| {
+            let kept = collection.is_favourite(&t.id)
+                || collection.feelings.get(&t.id) == Some(&Feeling::Like);
+            (plays.get(t.id.as_str()).copied().unwrap_or(0), kept)
+        };
+        tracks.retain(|t| collection.feelings.get(&t.id) != Some(&Feeling::Dislike));
+        tracks.sort_by(|a, b| score(b).cmp(&score(a)).then_with(|| a.title.cmp(&b.title)));
+        tracks.truncate(limit as usize);
+        tracks
+    }
+
     /// A track with every recording of it.
     pub fn library_track(&self, id: String) -> Result<TrackDetail, SoundscapeError> {
         let artwork = self.artwork_url();

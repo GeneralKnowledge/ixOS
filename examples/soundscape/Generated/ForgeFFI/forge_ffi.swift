@@ -2179,6 +2179,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func artistAlbums(artistId: String)  -> [LibraryAlbum]
     
     /**
+     * An artist's top songs for their page, at most `limit`: most played
+     * first, then favourites and liked songs, then by title. With nothing
+     * played yet, favourites and likes lead and the rest follow by title.
+     */
+    func artistTopTracks(artistId: String, limit: UInt32)  -> [LibraryTrack]
+    
+    /**
      * An artist's tracks, by title.
      */
     func artistTracks(artistId: String)  -> [LibraryTrack]
@@ -2816,6 +2823,22 @@ open func artistAlbums(artistId: String) -> [LibraryAlbum]  {
     uniffi_soundscape_core_fn_method_soundscapecore_artist_albums(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(artistId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * An artist's top songs for their page, at most `limit`: most played
+     * first, then favourites and liked songs, then by title. With nothing
+     * played yet, favourites and likes lead and the rest follow by title.
+     */
+open func artistTopTracks(artistId: String, limit: UInt32) -> [LibraryTrack]  {
+    return try!  FfiConverterSequenceTypeLibraryTrack.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_artist_top_tracks(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(artistId),
+        FfiConverterUInt32.lower(limit),uniffiCallStatus
     )
 })
 }
@@ -11803,6 +11826,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_artist_albums() != 57485) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_artist_top_tracks() != 26053) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_artist_tracks() != 25887) {
