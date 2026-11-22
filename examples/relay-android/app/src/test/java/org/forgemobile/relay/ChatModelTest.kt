@@ -195,6 +195,11 @@ class ChatModelTest {
         assertFalse(phone.chat.send(long, toLaptop))
         assertNotNull(phone.chat.state.value.sendError[toLaptop])
         assertTrue(phone.chat.state.value.messages(toLaptop).none { it.body == long })
+
+        // A caption too long refuses its files too, before any goes: the screen keeps them.
+        val path = file("plan.txt", "the plan")
+        assertFalse(phone.chat.send(listOf(ChatOutgoingFile(path, "plan.txt", "text/plain")), long, toLaptop))
+        assertTrue(phone.chat.state.value.messages(toLaptop).none { it.attachments.isNotEmpty() })
     }
 
     @Test

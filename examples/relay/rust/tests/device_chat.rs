@@ -373,6 +373,35 @@ fn a_photo_sent_from_chats_goes_to_the_device() {
     assert_eq!(got[1].body, "the harbour");
 }
 
+/// A caption too long to send refuses the whole message before any file
+/// goes, so the person can shorten it and send the same files once.
+#[test]
+fn a_caption_too_long_sends_no_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let (phone, laptop, phone_id) = trusted_pair(dir.path());
+    sees(&laptop, &phone);
+    let laptop_chat = chat(dir.path(), "laptop", &laptop);
+    let before = laptop.transfers().len();
+    let file = dir.path().join("a.txt");
+    std::fs::write(&file, b"a").unwrap();
+    let refused = block_on(laptop_chat.send_files(
+        format!("device:{phone_id}"),
+        "x".repeat(4001),
+        None,
+        vec![relay_core::chat::ChatOutgoingFile {
+            path: file.to_string_lossy().into_owned(),
+            name: "a.txt".into(),
+            mime: "text/plain".into(),
+        }],
+    ));
+    assert!(matches!(
+        refused,
+        Err(relay_core::chat::ChatError::InvalidInput { .. })
+    ));
+    assert!(laptop.device_messages(&phone_id).unwrap().is_empty());
+    assert_eq!(laptop.transfers().len(), before);
+}
+
 /// A note from a device on an older build is a message in its
 /// conversation, and a retry of it adds nothing.
 #[test]

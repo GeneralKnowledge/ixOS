@@ -41,6 +41,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -251,14 +253,15 @@ private fun ConversationRow(model: ChatModel, conversation: ChatConversation, op
 @Composable
 private fun SearchResults(model: ChatModel, query: String, open: (Route.Chat) -> Unit) {
     val state by model.state.collectAsState()
-    var results by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
-    // The query the results answer: "No Results" waits for the search of what is typed now.
-    var resultsFor by remember { mutableStateOf("") }
-    LaunchedEffect(query) {
+    // The results with the query they answer, so rows for an earlier query never show (or open).
+    var answer by remember { mutableStateOf<Pair<String, List<ChatMessage>?>?>(null) }
+    var attempt by remember { mutableIntStateOf(0) }
+    LaunchedEffect(query, attempt) {
         delay(200)
-        results = model.search(query)
-        resultsFor = query
+        answer = query to model.search(query)
     }
+    val current = answer?.takeIf { it.first == query }
+    val results = current?.second.orEmpty()
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize().testTag("chats.results")) {
             items(results, key = { it.id }) { message ->
@@ -290,28 +293,43 @@ private fun SearchResults(model: ChatModel, query: String, open: (Route.Chat) ->
                 }
             }
         }
-        if (results.isEmpty()) {
-            if (resultsFor == query) {
-                EmptyState("No Results", "Nothing on this device matches “$query”.", tag = "chats.noResults")
-            } else {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            }
+        when {
+            current == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            current.second == null -> SearchFailed { attempt++ }
+            results.isEmpty() -> EmptyState("No Results", "Nothing on this device matches “$query”.", tag = "chats.noResults")
         }
+    }
+}
+
+/** A search that failed, which isn't the same as one with no matches: it offers to try again. */
+@Composable
+internal fun SearchFailed(retry: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().padding(32.dp).testTag("search.failed"),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("Couldn't Search", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Text(
+            "Something went wrong searching this device's messages.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        TextButton(onClick = retry, modifier = Modifier.testTag("search.retry")) { Text("Try Again") }
     }
 }
 
 /** [text] with each word of [query] in bold where a word starts with it. */
 private fun highlighted(text: String, query: String) = buildAnnotatedString {
-    val words = query.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
-    val lower = text.lowercase()
+    val words = query.split(Regex("\\s+")).filter { it.isNotEmpty() }
     val bold = BooleanArray(text.length)
     for (word in words) {
-        var at = lower.indexOf(word)
-        while (at >= 0) {
-            if (at == 0 || !lower[at - 1].isLetterOrDigit()) {
-                for (i in at until minOf(at + word.length, text.length)) bold[i] = true
+        // Compared in place, so the offsets are the text's own (lowercasing can change lengths).
+        for (at in 0..text.length - word.length) {
+            if ((at == 0 || !text[at - 1].isLetterOrDigit()) && text.regionMatches(at, word, 0, word.length, ignoreCase = true)) {
+                for (i in at until at + word.length) bold[i] = true
             }
-            at = lower.indexOf(word, at + 1)
         }
     }
     text.forEachIndexed { i, c ->

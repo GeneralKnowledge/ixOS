@@ -12,8 +12,8 @@ import java.io.File
 import org.forgemobile.relay.kit.ForgeFailure
 
 object ReceivedFiles {
-    /** Opens the file at [path]; tells [fail] why it couldn't. */
-    fun open(context: Context, path: String, fail: (ForgeFailure) -> Unit) {
+    /** Opens the file at [path] (of type [mime] when its name doesn't say); tells [fail] why it couldn't. */
+    fun open(context: Context, path: String, fail: (ForgeFailure) -> Unit, mime: String? = null) {
         val file = File(path)
         if (file.isDirectory) {
             fail(ForgeFailure("A Folder", "Several items arrived together in this folder. Opening folders comes in a later version of Relay for Android."))
@@ -29,7 +29,11 @@ object ReceivedFiles {
             fail(ForgeFailure("Can't Open This", "The file is outside Relay's folder."))
             return
         }
-        val type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "*/*"
+        // A file kept under its attachment id has no extension: its type comes with it.
+        // octet-stream says nothing, and as a type it would hide the apps "*/*" offers.
+        val type = mime?.takeIf { it != "application/octet-stream" }
+            ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())
+            ?: "*/*"
         val intent = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, type)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)

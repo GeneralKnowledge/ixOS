@@ -63,7 +63,8 @@ value first; each starts when the one before has merged.
 | History | Open, copy a note, cancel a waiting send, remove | **1** |
 | Chats | Device conversations (messages and attachments to trusted devices, one outbox) | **2** |
 | Chats | The Message button on a device's page | **2** |
-| Chats | Replies, reactions, edits, deletes, search, drafts, unread counts, mute | **2** |
+| Chats | Replies, search, drafts, unread counts, mute, Try Again and deleting a message that failed to send | **2** |
+| Chats | Reactions, edits and unsending a delivered message (Rust has them for chat-server rooms only, not devices yet) | 3, with rooms |
 | Chats | Voice messages | 5 (the `audio` service adapter) |
 | Chats | A chat server account, rooms, Join a Room by code | 3 |
 | Chats | Notifications for new messages, tapping one opens the conversation | 3 (`LocalNotifier` adapter, `POST_NOTIFICATIONS`) |

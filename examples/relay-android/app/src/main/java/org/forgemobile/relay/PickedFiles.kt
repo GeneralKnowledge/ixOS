@@ -42,12 +42,19 @@ class PickedFiles(private val context: Context, private val folder: String) {
         root.deleteRecursively()
     }
 
-    /** Removes only the copies one [copy] made, given the paths it returned. */
+    /**
+     * Removes only these copies, given paths [copy] returned, and a pick's folder once none of
+     * its copies is left: removing one of a pick's files keeps the others.
+     */
     fun release(paths: List<String>) {
-        paths.mapNotNull { File(it).parentFile?.parentFile }
-            .distinct()
-            .filter { it.parentFile == root }
-            .forEach { it.deleteRecursively() }
+        val batches = paths.mapNotNull { path ->
+            val item = File(path).parentFile ?: return@mapNotNull null
+            val batch = item.parentFile ?: return@mapNotNull null
+            if (batch.parentFile != root) return@mapNotNull null
+            item.deleteRecursively()
+            batch
+        }
+        batches.distinct().filter { it.list()?.isEmpty() == true }.forEach { it.delete() }
     }
 
     private fun displayName(uri: Uri): String? =

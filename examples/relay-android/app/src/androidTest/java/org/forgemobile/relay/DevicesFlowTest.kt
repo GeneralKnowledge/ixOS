@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -56,8 +57,6 @@ class DevicesFlowTest {
             val text = failure.config.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }
             throw AssertionError("Relay didn't open: $text")
         }
-        // Relay opens on Chats, as on the iPhone: with no trusted devices it has none.
-        compose.waitUntilAtLeastOneExists(hasTestTag("chats.empty"), 10_000)
         compose.onNodeWithTag("tab.devices").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("devices.empty"), 10_000)
     }
@@ -73,6 +72,14 @@ class DevicesFlowTest {
             it.destroy()
         }
         scenario?.close()
+    }
+
+    @Test
+    fun relayOpensOnAnEmptyChats() {
+        launch()
+        // Relay opens on Chats, as on the iPhone: with no trusted devices it has none.
+        compose.onNodeWithTag("tab.chats").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("chats.empty"), 10_000)
     }
 
     @Test
@@ -172,7 +179,8 @@ class DevicesFlowTest {
         compose.onNodeWithText("Test Laptop").assertIsDisplayed()
         compose.onNodeWithTag("chat.composer").performTextInput("hello laptop")
         compose.onNodeWithTag("chat.send").performClick()
-        compose.waitUntilAtLeastOneExists(hasText("hello laptop"), 10_000)
+        // In the transcript, not just still in the composer.
+        compose.waitUntilAtLeastOneExists(hasText("hello laptop") and hasAnyAncestor(hasTestTag("chat.transcript")), 10_000)
         compose.onNodeWithTag("chat.back").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("chats.list"), 5_000)
         compose.waitUntilAtLeastOneExists(hasText("You: hello laptop"), 5_000)

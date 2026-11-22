@@ -654,12 +654,16 @@ public final class ChatModel {
 
     // MARK: Helpers
 
-    /// Whether Rust refused a message by its rules (too long, too many
-    /// files, a reply to a message that is gone) before keeping it. Any
-    /// other failure leaves a bubble that says "Not Sent" and can be retried.
+    /// Whether Rust refused a message before keeping it: by its rules (too
+    /// long, too many files, a reply to a message that is gone), with no
+    /// account or Relay to send it, or because a picked file couldn't be
+    /// copied in. Any other failure leaves a bubble that says "Not Sent" and
+    /// can be retried.
     nonisolated static func refusedBeforeKeeping(_ error: Error) -> Bool {
-        if case .InvalidInput? = error as? ChatError { return true }
-        return false
+        switch error as? ChatError {
+        case .InvalidInput?, .NotSignedIn?, .Storage?: return true
+        default: return false
+        }
     }
 
     /// Whether this launch uses throwaway test data (`-ForgeUITestData`, or

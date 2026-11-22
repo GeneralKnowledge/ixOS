@@ -64,6 +64,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,6 +82,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -119,6 +121,8 @@ fun ChatScreen(model: ChatModel, conversationId: String, focusMessage: String?, 
     var draft by rememberSaveable(conversationId) { mutableStateOf(model.draft(conversationId)) }
     var composerContext by remember { mutableStateOf<ComposerContext?>(null) }
     val staged = remember { mutableStateListOf<Staged>() }
+    // Files still being copied in count against the limit, so two quick picks can't overfill it.
+    var copying by remember { mutableIntStateOf(0) }
     var sending by remember { mutableStateOf(false) }
     // How many messages were unread when it opened: the divider sits above them.
     val unreadAtOpen = remember(conversationId) { conversation?.unreadCount?.toInt() ?: 0 }
@@ -134,25 +138,40 @@ fun ChatScreen(model: ChatModel, conversationId: String, focusMessage: String?, 
 
     fun stage(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        val room = MAX_ATTACHMENTS - staged.size
+        val room = MAX_ATTACHMENTS - staged.size - copying
         if (uris.size > room) {
             model.show(ForgeFailure("Too Many Files", "A message can carry up to $MAX_ATTACHMENTS files."))
         }
         val chosen = uris.take(room.coerceAtLeast(0))
         if (chosen.isEmpty()) return
         val mimes = chosen.map { context.contentResolver.getType(it) ?: "application/octet-stream" }
+        copying += chosen.size
         scope.launch {
             try {
                 val paths = picked.copy(chosen)
                 paths.zip(mimes).forEach { (path, mime) -> staged += Staged(path, File(path).name, mime) }
+            } catch (e: CancellationException) {
+                // The screen closed: its copies go with it (onDispose), and there's nothing to say.
+                throw e
             } catch (e: Exception) {
                 model.show(ForgeFailure("Couldn't Read the File", "The file couldn't be read. Try picking it again."))
+            } finally {
+                copying -= chosen.size
             }
         }
     }
 
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_ATTACHMENTS)) { stage(it) }
     val documents = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { stage(it) }
+
+    /** Clears the composer after a send, unless what is in it was written after Send. */
+    fun clearAfterSend(text: String, ctx: ComposerContext?) {
+        if (draft == text) {
+            draft = ""
+            model.saveDraft("", conversationId)
+        }
+        if (composerContext == ctx) composerContext = null
+    }
 
     fun send() {
         if (sending) return
@@ -168,24 +187,20 @@ fun ChatScreen(model: ChatModel, conversationId: String, focusMessage: String?, 
                         composerContext = null
                     }
                     staged.isNotEmpty() -> {
-                        val files = staged.map { ChatOutgoingFile(it.path, it.name, it.mime) }
+                        // Only what this send carries: a file staged while it runs waits for the next.
+                        val sent = staged.toList()
+                        val files = sent.map { ChatOutgoingFile(it.path, it.name, it.mime) }
                         val reply = (ctx as? ComposerContext.Replying)?.message?.id
                         if (model.send(files, text, conversationId, reply)) {
                             // Rust copied them in: the cache copies can go.
-                            picked.release(staged.map { it.path })
-                            staged.clear()
-                            draft = ""
-                            model.saveDraft("", conversationId)
-                            composerContext = null
+                            picked.release(sent.map { it.path })
+                            staged.removeAll(sent)
+                            clearAfterSend(text, ctx)
                         }
                     }
                     else -> {
                         val reply = (ctx as? ComposerContext.Replying)?.message?.id
-                        if (model.send(text, conversationId, reply)) {
-                            draft = ""
-                            model.saveDraft("", conversationId)
-                            composerContext = null
-                        }
+                        if (model.send(text, conversationId, reply)) clearAfterSend(text, ctx)
                     }
                 }
             } finally {
@@ -337,14 +352,19 @@ private fun Transcript(
     }
     var seen by remember { mutableStateOf(messages.size) }
     var opened by remember { mutableStateOf(false) }
+    // The highlighted message shown so far: one that isn't loaded yet is shown when it arrives.
+    var revealed by remember { mutableStateOf<String?>(null) }
+    val target = highlighted?.let { id -> messages.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
 
     // Opens at the highlighted message, the first unread, or the end; then follows new messages
     // while at the end, and offers a "New Messages" button otherwise.
-    LaunchedEffect(messages.size, highlighted) {
+    LaunchedEffect(messages.size, highlighted, target) {
         if (messages.isEmpty()) return@LaunchedEffect
-        val target = highlighted?.let { id -> messages.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
         when {
-            target != null && !opened -> list.scrollToItem(target)
+            target != null && revealed != highlighted -> {
+                list.scrollToItem(target)
+                revealed = highlighted
+            }
             !opened -> {
                 val unread = firstUnread?.let { id -> messages.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
                 list.scrollToItem(unread ?: messages.lastIndex)
@@ -452,7 +472,7 @@ private fun MessageBubble(
             if (path == null) {
                 model.show(ForgeFailure("Can't Open This", "The file couldn't be fetched. Try again when the other side can be reached."))
             } else {
-                ReceivedFiles.open(context, path, model::show)
+                ReceivedFiles.open(context, path, model::show, attachment.mime)
             }
         }
     }
@@ -614,9 +634,11 @@ private fun MessageBubble(
 @Composable
 private fun AttachmentView(model: ChatModel, attachment: ChatAttachment, color: androidx.compose.ui.graphics.Color, open: () -> Unit) {
     if (attachment.isImage) {
-        val bitmap by produceState<Bitmap?>(null, attachment.id) {
-            value = model.localFile(attachment)?.let { path -> withContext(Dispatchers.IO) { thumbnail(path) } }
+        // Loading until it settles; null after that means no preview, though Open may still work.
+        val preview by produceState<Pair<Boolean, Bitmap?>>(false to null, attachment.id) {
+            value = true to model.localFile(attachment)?.let { path -> withContext(Dispatchers.IO) { thumbnail(path) } }
         }
+        val (loaded, bitmap) = preview
         Box(
             Modifier
                 .padding(bottom = 4.dp)
@@ -633,6 +655,8 @@ private fun AttachmentView(model: ChatModel, attachment: ChatAttachment, color: 
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
+            } else if (loaded) {
+                Text("Photo", color = color, style = MaterialTheme.typography.bodyMedium)
             } else {
                 CircularProgressIndicator(Modifier.size(24.dp))
             }
@@ -650,13 +674,18 @@ private fun AttachmentView(model: ChatModel, attachment: ChatAttachment, color: 
     }
 }
 
-/** A photo scaled down to about [size] pixels on its short side, so a big one never fills memory. */
-private fun thumbnail(path: String, size: Int = 600): Bitmap? {
+/**
+ * A photo scaled down to about [size] pixels on its short side, and to at most [longest] on its
+ * long side (a panorama), so a big one never fills memory.
+ */
+private fun thumbnail(path: String, size: Int = 600, longest: Int = 2048): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(path, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
     var sample = 1
-    while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= size) sample *= 2
+    val short = minOf(bounds.outWidth, bounds.outHeight)
+    val long = maxOf(bounds.outWidth, bounds.outHeight)
+    while (short / (sample * 2) >= size || long / sample > longest) sample *= 2
     return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
 }
 
@@ -777,11 +806,15 @@ private fun ConversationSearch(
     close: () -> Unit,
     found: (String) -> Unit,
 ) {
-    var results by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
-    LaunchedEffect(query) {
+    // The results with the query they answer, so rows for an earlier query never show (or open).
+    var answer by remember { mutableStateOf<Pair<String, List<ChatMessage>?>?>(null) }
+    var attempt by remember { mutableIntStateOf(0) }
+    LaunchedEffect(query, attempt) {
         kotlinx.coroutines.delay(200)
-        results = model.search(query, conversationId)
+        answer = query to model.search(query, conversationId)
     }
+    val current = answer?.takeIf { it.first == query }
+    val results = current?.second.orEmpty()
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
             OutlinedTextField(
@@ -792,6 +825,10 @@ private fun ConversationSearch(
                 modifier = Modifier.weight(1f).testTag("chat.searchField"),
             )
             TextButton(onClick = close, modifier = Modifier.testTag("chat.searchDone")) { Text("Done") }
+        }
+        if (current != null && current.second == null) {
+            SearchFailed { attempt++ }
+            return@Column
         }
         LazyColumn(Modifier.fillMaxSize()) {
             itemsIndexed(results, key = { _, m -> m.id }) { _, message ->

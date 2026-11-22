@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -167,6 +168,26 @@ private fun RelayScreens(
 
     BackHandler(enabled = stack.size > 1, onBack = back)
 
+    // Open to trusted devices while Relay is on screen, whichever tab: advertise, and look for
+    // them. Chats needs it as much as Devices, since a trusted device's local address comes
+    // from here. Android stops neither in the background by itself, so leaving withdraws both.
+    val visible by onScreen.collectAsState()
+    DisposableEffect(model, visible) {
+        val job = if (visible) {
+            scope.launch {
+                network.watchDevices(model::devicesNearby)
+                network.advertiseDevice(model.deviceService())
+            }
+        } else {
+            null
+        }
+        onDispose {
+            job?.cancel()
+            network.advertiseDevice(null)
+            network.stopWatchingDevices()
+        }
+    }
+
     // Haptics, whichever screen is showing.
     LaunchedEffect(model) {
         model.feedback.collect { kind -> view.haptic(kind) }
@@ -206,8 +227,11 @@ private fun RelayScreens(
                 Route.Chats -> ChatsScreen(chat, chatProblem, open)
                 is Route.Chat -> if (chat != null) {
                     ChatScreen(chat, route.conversationId, route.messageId, chatFiles, back)
+                } else {
+                    // Chats couldn't open: its list says why.
+                    LaunchedEffect(Unit) { chatsStack = listOf(Route.Chats.key) }
                 }
-                Route.Devices -> DevicesScreen(model, network, onScreen, open)
+                Route.Devices -> DevicesScreen(model, open)
                 is Route.Device -> TrustedDeviceScreen(model, route.endpointId, deviceFiles, back) {
                     // A device's Message button opens its conversation in Chats.
                     chatsStack = listOf(Route.Chats.key, Route.Chat(deviceConversationId(route.endpointId)).key)

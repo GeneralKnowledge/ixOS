@@ -156,7 +156,10 @@ class ChatModel(
     suspend fun refresh() {
         _state.update { it.copy(isRefreshing = true) }
         try {
-            val list = withContext(rust) { core.listConversations() }
+            val seen = changes
+            val fetched = withContext(rust) { core.listConversations() }
+            // An event that came in meanwhile is in the store but maybe not in what came back.
+            val list = if (changes == seen) fetched else core.cachedConversations()
             _state.update { it.copy(conversations = list, listError = null) }
         } catch (e: CancellationException) {
             throw e
@@ -216,7 +219,10 @@ class ChatModel(
             return
         }
         try {
-            val synced = withContext(rust) { core.syncMessages(conversationId) }
+            val seen = changes
+            val fetched = withContext(rust) { core.syncMessages(conversationId) }
+            // An event that came in meanwhile is in the store but maybe not in what came back.
+            val synced = if (changes == seen) fetched else core.cachedMessages(conversationId)
             _state.update { it.copy(messages = it.messages + (conversationId to synced)) }
         } catch (e: CancellationException) {
             throw e
@@ -360,15 +366,15 @@ class ChatModel(
         runCatching { core.setDraft(conversationId, text) }
     }
 
-    /** Messages on this device with every word of [query], newest first (Rust's index). */
-    suspend fun search(query: String, conversationId: String? = null): List<ChatMessage> {
+    /** Messages on this device with every word of [query], newest first (Rust's index); null if the search failed. */
+    suspend fun search(query: String, conversationId: String? = null): List<ChatMessage>? {
         if (query.isBlank()) return emptyList()
         return try {
             withContext(rust) { core.search(query, conversationId) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            emptyList()
+            null
         }
     }
 
@@ -393,7 +399,11 @@ class ChatModel(
     // Events
 
     /** Applies one Rust event. Internal so tests can drive it directly. */
+    /** Events applied so far: a list read across one is read again from the store. */
+    private var changes = 0L
+
     internal fun apply(event: ChatEvent) {
+        changes++
         when (event) {
             is ChatEvent.AccountChanged -> showAccount(event.account)
             is ChatEvent.AccountRejected -> _state.update { it.copy(accountProblem = event.reason) }
@@ -519,11 +529,13 @@ class ChatModel(
         }
 
         /**
-         * Whether Rust refused a message by its rules (too long, too many files, a reply to a
-         * message that is gone) before keeping it. Any other failure leaves a bubble that says
-         * "Not Sent" and can be retried.
+         * Whether Rust refused a message before keeping it: by its rules (too long, too many
+         * files, a reply to a message that is gone), with no account or Relay to send it, or
+         * because a picked file couldn't be copied in. Any other failure leaves a bubble that
+         * says "Not Sent" and can be retried.
          */
-        fun refusedBeforeKeeping(error: Throwable): Boolean = error is ChatException.InvalidInput
+        fun refusedBeforeKeeping(error: Throwable): Boolean =
+            error is ChatException.InvalidInput || error is ChatException.NotSignedIn || error is ChatException.Storage
 
         /** The text where only a line fits (a list row, a quote): the body, or "Photo" / a name. */
         fun summary(message: ChatMessage): String {

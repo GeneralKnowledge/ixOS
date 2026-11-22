@@ -1329,16 +1329,32 @@ impl ChatCore {
                 ),
             });
         }
-        for file in files {
+        // The caption too: it follows the files, and a refusal after they
+        // went would leave them sent with the screen still holding them.
+        if body.chars().count() > chat_core::MAX_BODY_CHARS {
+            return Err(ChatError::InvalidInput {
+                reason: format!(
+                    "message body is longer than {} characters",
+                    chat_core::MAX_BODY_CHARS
+                ),
+            });
+        }
+        // Every copy before the first send, so a copy that fails refuses
+        // the whole message rather than half of it.
+        let mut paths = Vec::with_capacity(files.len());
+        for file in &files {
             // Under the name the person sees: Relay names an item after its
             // file, and a picked photo waits under a temporary one.
-            let staged = named_copy(&file).map_err(|e| ChatError::Storage {
+            let staged = named_copy(file).map_err(|e| ChatError::Storage {
                 reason: e.to_string(),
             })?;
-            let path = staged
-                .as_ref()
-                .map(|(_, path)| path.clone())
-                .unwrap_or_else(|| std::path::PathBuf::from(&file.path));
+            paths.push(
+                staged
+                    .map(|(_, path)| path)
+                    .unwrap_or_else(|| std::path::PathBuf::from(&file.path)),
+            );
+        }
+        for path in paths {
             // The staged copy stays in the temporary folder (the system
             // clears it): when Relay couldn't keep its own copy, the
             // conversation opens the file from there.
