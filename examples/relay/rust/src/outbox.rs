@@ -995,18 +995,21 @@ impl RelayCore {
             let go = self
                 .rt
                 .command("delivery-depositing", move |state| {
-                    let pending = state.record.delivery(&id).is_some();
-                    if pending {
-                        lock(&marks).insert(transfer);
+                    if state.record.delivery(&id).is_none() {
+                        return Ok::<_, RelayError>(None);
                     }
-                    Ok::<_, RelayError>(pending)
+                    // Already marked: an earlier deposit whose `left_ms`
+                    // couldn't be saved, so it may be in the mailbox.
+                    Ok(Some(!lock(&marks).insert(transfer)))
                 })
                 .await;
-            if !matches!(go, Ok(true)) {
+            let Ok(Some(earlier)) = go else {
                 return false;
-            }
+            };
             if let Err(why) = self.leave_in_mailbox(d).await {
-                lock(&depositing).remove(&transfer);
+                if !earlier {
+                    lock(&depositing).remove(&transfer);
+                }
                 forge_runtime::logging::info!("relay: not left in the mailbox: {why}");
                 return false;
             }
