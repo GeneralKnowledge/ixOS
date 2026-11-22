@@ -2106,6 +2106,20 @@ fn a_forgiving_edit_leaves_quotes_inside_a_docstring_alone() {
         std::fs::read_to_string(dir.path().join("g.py")).unwrap(),
         text
     );
+    // A short string continued with a backslash is still a string.
+    let text = "text = 'prefix \\\nstatus = \"on\" \\\n'\n";
+    std::fs::write(dir.path().join("h.py"), text).unwrap();
+    let outcome = edit(&lab, "h.py", "status = 'on' \\", "status = 'off' \\");
+    assert!(!outcome.ok, "{}", outcome.text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("h.py")).unwrap(),
+        text
+    );
+    // Non-ASCII text in a docstring doesn't trip it up.
+    let text = "def f():\n    \"\"\"café ☕\"\"\"\n    return \"x\"\n";
+    std::fs::write(dir.path().join("i.py"), text).unwrap();
+    let outcome = edit(&lab, "i.py", "return 'x'", "return 'y'");
+    assert!(outcome.ok, "{}", outcome.text);
     // Code after a docstring still gets the forgiving match.
     let text = "def f():\n    \"\"\"Doc.\"\"\"\n    return \"x\"\n";
     std::fs::write(dir.path().join("f.py"), text).unwrap();

@@ -841,52 +841,61 @@ fn keys(lines: &[&str]) -> Vec<String> {
         .collect()
 }
 
-/// Whether `line` is in or touches a triple-quoted string, given the one
+/// Whether `line` is in or touches a string that spans lines, given the one
 /// open before it (`open`, updated for the next line). A small tokenizer:
-/// a `#` outside a string ends the line, and one-line strings are skipped,
-/// so triple quotes in a comment or in a short string don't count. Every
-/// cut is at an ASCII quote, so it falls on a character boundary.
+/// a `#` outside a string ends the line, and short strings that close on
+/// their line are skipped, so quotes in a comment or a short string don't
+/// count. Strings that span lines are triple-quoted ones and short ones
+/// continued with a backslash. It compares bytes, so non-ASCII text can't
+/// split a cut.
 fn in_triple_string(line: &str, open: &mut Option<&'static str>) -> bool {
     let bytes = line.as_bytes();
     let mut touched = open.is_some();
     let mut i = 0;
-    while i < bytes.len() {
+    loop {
         if let Some(quote) = *open {
-            // A backslash escapes the next character, so `\"""` doesn't
-            // close the string (in raw strings too).
-            if bytes[i] == b'\\' {
-                i += 2;
-            } else if line[i..].starts_with(quote) {
-                i += 3;
-                *open = None;
-            } else {
-                i += 1;
+            // Inside a string: a backslash escapes the next character (in
+            // raw strings too), so `\"""` doesn't close it.
+            while i < bytes.len() && open.is_some() {
+                if bytes[i] == b'\\' {
+                    i += 2;
+                } else if bytes[i..].starts_with(quote.as_bytes()) {
+                    i += quote.len();
+                    *open = None;
+                } else {
+                    i += 1;
+                }
             }
-            continue;
+            if open.is_some() {
+                // A short string goes on to the next line only after a
+                // backslash at the end of this one (`i` then steps past it).
+                if quote.len() == 1 && i != bytes.len() + 1 {
+                    *open = None;
+                } else {
+                    touched = true;
+                }
+                return touched;
+            }
         }
-        let c = bytes[i];
-        if c == b'#' {
-            break;
+        if i >= bytes.len() || bytes[i] == b'#' {
+            return touched;
         }
-        if c == b'"' || c == b'\'' {
-            let triple = if c == b'"' { "\"\"\"" } else { "'''" };
-            if line[i..].starts_with(triple) {
-                *open = Some(triple);
-                touched = true;
-                i += 3;
+        let quote = match bytes[i] {
+            b'"' if bytes[i..].starts_with(b"\"\"\"") => "\"\"\"",
+            b'\'' if bytes[i..].starts_with(b"'''") => "'''",
+            b'"' => "\"",
+            b'\'' => "'",
+            _ => {
+                i += 1;
                 continue;
             }
-            // A one-line string: to its closing quote.
-            let mut j = i + 1;
-            while j < bytes.len() && bytes[j] != c {
-                j += if bytes[j] == b'\\' { 2 } else { 1 };
-            }
-            i = j + 1;
-            continue;
+        };
+        if quote.len() == 3 {
+            touched = true;
         }
-        i += 1;
+        *open = Some(quote);
+        i += quote.len();
     }
-    touched
 }
 
 /// `old` matched against `text` ignoring indentation and quote style. When
