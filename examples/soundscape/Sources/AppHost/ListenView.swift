@@ -54,6 +54,7 @@ extension ListenRoute {
         case .favourites: "favourites"
         case .playlists: "playlists"
         case .playlist(let id): "playlist:\(id)"
+        case .smartPlaylist(let id): "smartPlaylist:\(id)"
         case .recent: "recent"
         case .downloads: "downloads"
         case .toPick: "toPick"
@@ -67,6 +68,7 @@ extension ListenRoute {
         case .songs: "songs"
         case .albums: "albums"
         case .artists: "artists"
+        case .duplicates: "duplicates"
         }
     }
 
@@ -74,7 +76,7 @@ extension ListenRoute {
     /// tile they were opened from. Lists and areas are ordinary pushes.
     var style: SurfaceStyle {
         switch self {
-        case .artist, .album, .playlist, .archiveItem: .stacked
+        case .artist, .album, .playlist, .smartPlaylist, .archiveItem: .stacked
         default: .fullScreen
         }
     }

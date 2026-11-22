@@ -14,7 +14,9 @@ struct SmartPlaylistsSection: View {
     var body: some View {
         Section("Smart Playlists") {
             ForEach(model.collection.smartPlaylists, id: \.id) { list in
-                NavigationLink(value: ListenRoute.smartPlaylist(list.id)) { SmartPlaylistRow(list: list) }
+                NavigationLink(value: ListenRoute.smartPlaylist(list.id)) {
+                    SmartPlaylistRow(list: list).surfaceSource(.smartPlaylist(list.id))
+                }
                     .accessibilityIdentifier(list.builtIn ? "playlists.builtInSmart" : "playlists.smart")
                     .forgeRowActions {
                         if !list.builtIn {
