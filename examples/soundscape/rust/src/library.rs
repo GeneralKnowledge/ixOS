@@ -56,6 +56,22 @@ pub struct LibraryFile {
     /// Songs the person linked to a MusicBrainz recording, by track id.
     #[serde(default)]
     pub musicbrainz: BTreeMap<String, MusicBrainzLink>,
+    /// Songs merged into another: each absorbed track id with the song it
+    /// is now part of. The absorbed song's recordings show as recordings of
+    /// that song, and the absorbed song leaves the lists. Separating
+    /// removes the entry. Nothing else of the absorbed song is deleted.
+    #[serde(default)]
+    pub merged: BTreeMap<String, String>,
+    /// Groups of songs the person said aren't the same song, so they
+    /// aren't offered for merging again: [`crate::merge::group_key`]s.
+    #[serde(default)]
+    pub distinct: std::collections::BTreeSet<String>,
+    /// A merged song whose recording the person chose: kept song's id ->
+    /// the id of the song that recording belongs to (one merged into it,
+    /// or the kept song itself). That song's preferred recording then
+    /// plays, in place of your own file.
+    #[serde(default)]
+    pub prefer: BTreeMap<String, String>,
 }
 
 /// A song linked to the recording MusicBrainz knows it as.
@@ -277,6 +293,11 @@ pub struct Recording {
     /// for the person's own music.
     #[serde(default)]
     pub rights: Option<Rights>,
+    /// The song it belonged to before that song was merged into this one;
+    /// `None` for the song's own recordings. Downloads, picks and stars
+    /// stay with that song.
+    #[serde(default)]
+    pub merged_from: Option<String>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -310,6 +331,36 @@ pub struct LibraryTrack {
     pub downloaded: bool,
     /// The MusicBrainz recording it was linked to, if any.
     pub musicbrainz_id: Option<String>,
+    /// The songs merged into this one, each a source of more recordings.
+    pub merged: Vec<MergedSong>,
+}
+
+/// A song merged into another, as its source had it.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct MergedSong {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    /// Where it came from: "Take server", "Your file", "Jamendo"...
+    pub source: String,
+}
+
+/// Why songs look like the same song.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DuplicateReason {
+    /// Linked to the same MusicBrainz recording.
+    SameRecording,
+    /// The same title and artist, and the same length where both are known.
+    SameDetails,
+}
+
+/// Songs that look like one song from several sources, to offer merging.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct DuplicateSongs {
+    pub reason: DuplicateReason,
+    /// The suggested song to keep first (the take server's, else a
+    /// catalogue's, else your file), then the others.
+    pub tracks: Vec<LibraryTrack>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -440,40 +491,83 @@ pub fn build_track(file: &LibraryFile, locate: &Locate<'_>, id: &str) -> Option<
     let (track, origin) = tracks.iter().find(|(t, _)| t.id == id)?;
     let same = same_recording(track);
     let track = track.clone();
-    Some(match origin {
-        Origin::Server(snap) => {
-            let snap = snap.clone();
-            let server = file
-                .snapshot
-                .as_ref()
-                .map(|s| s.server.clone())
-                .unwrap_or_default();
-            let recordings = recordings(&snap, &server);
-            let caption = most_common(snap.takes.iter().map(|t| t.caption.clone()));
-            let lyrics = most_common(snap.takes.iter().map(|t| t.lyrics.clone()));
-            TrackDetail {
-                track,
-                recordings,
-                caption,
-                lyrics,
-                same_recording: same,
-            }
+    let server = file
+        .snapshot
+        .as_ref()
+        .map(|s| s.server.clone())
+        .unwrap_or_default();
+    let (mut all, caption, lyrics) = match origin {
+        Origin::Server(snap) => (
+            recordings(snap, &server),
+            most_common(snap.takes.iter().map(|t| t.caption.clone())),
+            most_common(snap.takes.iter().map(|t| t.lyrics.clone())),
+        ),
+        Origin::Imported(own) | Origin::Catalogue(own) => {
+            (own.clone().into_iter().collect(), None, None)
         }
-        Origin::Imported | Origin::Catalogue => TrackDetail {
-            recordings: track.preferred.clone().into_iter().collect(),
-            track,
-            caption: None,
-            lyrics: None,
-            same_recording: same,
-        },
+    };
+    // Recordings of the songs merged into this one, each marked with the
+    // song it came from; the one that plays is the track's preferred.
+    for (from, origin) in absorbed_into(file, locate, &track.id) {
+        let theirs = match &origin {
+            Origin::Server(snap) => recordings(snap, &server),
+            Origin::Imported(own) | Origin::Catalogue(own) => own.clone().into_iter().collect(),
+        };
+        all.extend(theirs.into_iter().map(|mut r| {
+            r.merged_from = Some(from.clone());
+            r
+        }));
+    }
+    if !track.merged.is_empty() {
+        let plays = track
+            .preferred
+            .as_ref()
+            .map(|p| (p.id.clone(), p.merged_from.clone()));
+        for r in &mut all {
+            r.preferred = plays
+                .as_ref()
+                .is_some_and(|(id, from)| &r.id == id && &r.merged_from == from);
+        }
+    }
+    Some(TrackDetail {
+        track,
+        recordings: all,
+        caption,
+        lyrics,
+        same_recording: same,
     })
 }
 
-/// Where a built track came from.
+/// The songs merged into `into`, with where each came from.
+fn absorbed_into(file: &LibraryFile, locate: &Locate<'_>, into: &str) -> Vec<(String, Origin)> {
+    sources(file, locate)
+        .into_iter()
+        .filter(|(s, _)| merged_root(file, &s.id).as_deref() == Some(into))
+        .map(|(s, o)| (s.id, o))
+        .collect()
+}
+
+/// The song `id` is merged into, following merges of merges; `None` when
+/// it isn't merged (or its chain goes round in a circle).
+pub fn merged_root(file: &LibraryFile, id: &str) -> Option<String> {
+    let mut at = file.merged.get(id)?;
+    for _ in 0..16 {
+        match file.merged.get(at) {
+            Some(next) if next == id => return None,
+            Some(next) => at = next,
+            None => return Some(at.clone()),
+        }
+    }
+    None
+}
+
+/// Where a built track came from, with its own recording when it has one
+/// (a take server song's are its takes).
+#[derive(Clone)]
 enum Origin {
     Server(SnapTrack),
-    Imported,
-    Catalogue,
+    Imported(Option<Recording>),
+    Catalogue(Option<Recording>),
 }
 
 struct Built {
@@ -498,6 +592,9 @@ struct Source {
     updated_ms: i64,
 }
 
+/// A track as its source has it, with where it came from.
+type Sourced = (Source, Origin);
+
 type ArtistEntry = (LibraryArtist, std::collections::BTreeSet<String>);
 
 fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
@@ -512,7 +609,7 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
     let mut artists: BTreeMap<String, ArtistEntry> = BTreeMap::new();
     let mut tracks = Vec::new();
 
-    let mut add = |source: Source, origin: Origin| {
+    let mut add = |source: Source, origin: Origin, merged: Vec<MergedSong>| {
         let id = source.id;
         let edit = file.edits.get(&id).cloned().unwrap_or_default();
         let link = file.musicbrainz.get(&id);
@@ -547,7 +644,7 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             album.updated_ms = album.updated_ms.max(source.updated_ms);
             // An imported album takes the first cover one of its songs has.
             if album.artwork_url.is_none() {
-                if let Origin::Imported | Origin::Catalogue = origin {
+                if let Origin::Imported(_) | Origin::Catalogue(_) = origin {
                     album.artwork_url = source.artwork.clone();
                 }
             }
@@ -580,6 +677,10 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             .as_ref()
             .and_then(|al| albums.get(al))
             .and_then(|a| a.artwork_url.clone());
+        let downloaded = matches!(
+            source.preferred.as_ref().map(|r| &r.source),
+            Some(AudioSource::LocalFile { .. })
+        );
         let track = LibraryTrack {
             title,
             artist_id: a_id,
@@ -596,82 +697,65 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             slug: source.slug,
             updated_ms: source.updated_ms,
             edited: !edit.is_empty(),
-            downloaded: matches!(origin, Origin::Imported),
+            downloaded,
             musicbrainz_id: link.map(|l| l.recording_id.clone()),
+            merged,
             id,
         };
         tracks.push((track, origin));
     };
 
-    if let Some(snapshot) = &file.snapshot {
-        for snap in &snapshot.tracks {
-            let preferred = preferred_snap_take(snap);
-            add(
-                Source {
-                    id: track_id(&snap.slug),
-                    title: snap.title.clone(),
-                    artist: snap.artist.clone(),
-                    album: snap.album.clone(),
-                    number: snap.number,
-                    genre: None,
-                    artwork: snap.artwork.clone(),
-                    recording_count: snap.takes.len() as u32,
-                    preferred: preferred.map(|t| recording(t, snap, &snapshot.server)),
-                    picked: snap
-                        .pick
-                        .as_ref()
-                        .is_some_and(|p| snap.takes.iter().any(|t| &t.id == p)),
-                    slug: Some(snap.slug.clone()),
-                    updated_ms: snap.updated_ms,
-                },
-                Origin::Server(snap.clone()),
-            );
+    let mut parts: Vec<(Source, Origin, Vec<Sourced>)> = Vec::new();
+    let mut absorbed: Vec<(String, Source, Origin)> = Vec::new();
+    for (source, origin) in sources(file, locate) {
+        match merged_root(file, &source.id) {
+            Some(root) => absorbed.push((root, source, origin)),
+            None => parts.push((source, origin, Vec::new())),
         }
     }
-    for (id, imported) in &file.imported {
-        // A copy that has gone missing isn't offered as playable.
-        let Some(url) = (locate.music)(&imported.file) else {
-            continue;
-        };
-        add(
-            Source {
-                id: id.clone(),
-                title: imported.title.clone(),
-                artist: imported.artist.clone(),
-                album: imported.album.clone(),
-                number: imported.number,
-                genre: imported.genre.clone(),
-                artwork: imported
-                    .artwork
-                    .as_deref()
-                    .and_then(|n| (locate.artwork)(n)),
-                recording_count: 1,
-                preferred: Some(imported_recording(id, imported, url)),
-                picked: false,
-                slug: None,
-                updated_ms: imported.added_ms,
-            },
-            Origin::Imported,
-        );
+    for (root, source, origin) in absorbed {
+        // A merge into a song that is gone leaves the song on its own.
+        match parts.iter_mut().find(|(s, _, _)| s.id == root) {
+            Some((_, _, into)) => into.push((source, origin)),
+            None => parts.push((source, origin, Vec::new())),
+        }
     }
-    for (id, saved) in &file.catalogue {
-        add(
-            Source {
-                id: id.clone(),
-                title: saved.title.clone(),
-                artist: saved.artist.clone(),
-                album: saved.album.clone(),
-                number: saved.number,
-                genre: saved.genre.clone(),
-                artwork: saved.artwork_url.clone(),
-                recording_count: 1,
-                preferred: Some(catalogue_recording(saved)),
-                picked: false,
-                slug: None,
-                updated_ms: saved.added_ms,
-            },
-            Origin::Catalogue,
-        );
+    for (mut source, origin, into) in parts {
+        let mut merged = Vec::new();
+        let chosen = file.prefer.get(&source.id);
+        let mut chosen_recording = None;
+        for (theirs, their_origin) in into {
+            if chosen == Some(&theirs.id) {
+                chosen_recording = theirs.preferred.clone().map(|mut r| {
+                    r.merged_from = Some(theirs.id.clone());
+                    r
+                });
+            }
+            source.recording_count += theirs.recording_count;
+            // Your own file plays when the merged song has one.
+            let local = matches!(their_origin, Origin::Imported(_));
+            let kept_chosen = chosen == Some(&source.id);
+            if local && !kept_chosen && !matches!(origin, Origin::Imported(_)) {
+                source.preferred = theirs.preferred.clone().map(|mut r| {
+                    r.merged_from = Some(theirs.id.clone());
+                    r
+                });
+            }
+            merged.push(MergedSong {
+                title: theirs.title.clone(),
+                artist: theirs
+                    .artist
+                    .clone()
+                    .unwrap_or_else(|| UNKNOWN_ARTIST.into()),
+                source: source_name(&their_origin, file, &theirs.id),
+                id: theirs.id,
+            });
+        }
+        // A recording the person chose from a merged song wins.
+        if chosen_recording.is_some() {
+            source.preferred = chosen_recording;
+        }
+        add(source, origin, merged);
     }
 
     let mut artists: Vec<LibraryArtist> = artists
@@ -700,6 +784,102 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
     }
 }
 
+/// Every track as its source has it, before edits and merges.
+fn sources(file: &LibraryFile, locate: &Locate<'_>) -> Vec<(Source, Origin)> {
+    let mut out = Vec::new();
+    if let Some(snapshot) = &file.snapshot {
+        for snap in &snapshot.tracks {
+            let preferred = preferred_snap_take(snap);
+            out.push((
+                Source {
+                    id: track_id(&snap.slug),
+                    title: snap.title.clone(),
+                    artist: snap.artist.clone(),
+                    album: snap.album.clone(),
+                    number: snap.number,
+                    genre: None,
+                    artwork: snap.artwork.clone(),
+                    recording_count: snap.takes.len() as u32,
+                    preferred: preferred.map(|t| recording(t, snap, &snapshot.server)),
+                    picked: snap
+                        .pick
+                        .as_ref()
+                        .is_some_and(|p| snap.takes.iter().any(|t| &t.id == p)),
+                    slug: Some(snap.slug.clone()),
+                    updated_ms: snap.updated_ms,
+                },
+                Origin::Server(snap.clone()),
+            ));
+        }
+    }
+    for (id, imported) in &file.imported {
+        // A copy that has gone missing isn't offered as playable.
+        let Some(url) = (locate.music)(&imported.file) else {
+            continue;
+        };
+        out.push((
+            Source {
+                id: id.clone(),
+                title: imported.title.clone(),
+                artist: imported.artist.clone(),
+                album: imported.album.clone(),
+                number: imported.number,
+                genre: imported.genre.clone(),
+                artwork: imported
+                    .artwork
+                    .as_deref()
+                    .and_then(|n| (locate.artwork)(n)),
+                recording_count: 1,
+                preferred: Some(imported_recording(id, imported, url)),
+                picked: false,
+                slug: None,
+                updated_ms: imported.added_ms,
+            },
+            Origin::Imported(None),
+        ));
+    }
+    for (id, saved) in &file.catalogue {
+        out.push((
+            Source {
+                id: id.clone(),
+                title: saved.title.clone(),
+                artist: saved.artist.clone(),
+                album: saved.album.clone(),
+                number: saved.number,
+                genre: saved.genre.clone(),
+                artwork: saved.artwork_url.clone(),
+                recording_count: 1,
+                preferred: Some(catalogue_recording(saved)),
+                picked: false,
+                slug: None,
+                updated_ms: saved.added_ms,
+            },
+            Origin::Catalogue(None),
+        ));
+    }
+
+    for (source, origin) in &mut out {
+        match origin {
+            Origin::Imported(own) | Origin::Catalogue(own) => *own = source.preferred.clone(),
+            Origin::Server(_) => {}
+        }
+    }
+    out
+}
+
+/// Where a song comes from, in words.
+fn source_name(origin: &Origin, file: &LibraryFile, id: &str) -> String {
+    match origin {
+        Origin::Server(_) => "Take server".into(),
+        Origin::Imported(_) => "Your file".into(),
+        Origin::Catalogue(_) => file
+            .catalogue
+            .get(id)
+            .map(|t| t.provider.clone())
+            .unwrap_or_else(|| "Catalogue".into()),
+    }
+}
+
 fn imported_recording(id: &str, imported: &ImportedFile, url: String) -> Recording {
     Recording {
         id: id.to_string(),
@@ -718,6 +898,7 @@ fn imported_recording(id: &str, imported: &ImportedFile, url: String) -> Recordi
         generation: None,
         lyrics: None,
         rights: None,
+        merged_from: None,
     }
 }
 
@@ -740,6 +921,7 @@ pub fn catalogue_recording(track: &CatalogueTrack) -> Recording {
         generation: None,
         lyrics: None,
         rights: Some(track.rights.clone()),
+        merged_from: None,
     }
 }
 
@@ -789,6 +971,7 @@ fn recording(take: &SnapTake, snap: &SnapTrack, server: &str) -> Recording {
         }),
         lyrics: take.lyrics.clone(),
         rights: None,
+        merged_from: None,
     }
 }
 

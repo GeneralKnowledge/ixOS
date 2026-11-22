@@ -28,6 +28,8 @@ enum ListenRoute: Hashable {
     /// Jamendo's genres, then one genre's tracks.
     case jamendoGenres
     case jamendoGenre(JamendoGenre)
+    /// Songs that look like one song from several sources.
+    case duplicates
 }
 
 /// The Listen tab: your music library (artists, albums, songs, each song
@@ -65,6 +67,7 @@ struct ListenView: View {
                     case .discoverSearch(let query): DiscoverView(model: model, player: player, search: query)
                     case .archiveItem(let item): ArchiveItemView(model: model, player: player, item: item)
                     case .jamendoGenres: JamendoGenresView(model: model)
+                    case .duplicates: DuplicatesView(model: model, player: player)
                     case .jamendoGenre(let genre): JamendoTracksView(model: model, player: player, ask: .genre(genre))
                     }
                 }
