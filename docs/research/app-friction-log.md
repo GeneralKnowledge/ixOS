@@ -22,6 +22,27 @@ How it is used:
 Severity: **blocker** (had to stop), **limit** (had to work around),
 **annoyance** (cost time, nothing more).
 
+## Where the list stands on 22 November
+
+**Stopped between 17 and 22 November.** Nothing was written here after
+A42 (17 November), while Soundscape, Relay, Python Lab, Bonsai, A2UI,
+Urdu Naturally and ForgeUI 0.2 all moved. A43 to A54 below were collected
+on 22 November from those PRs, their review fixes and the phone results,
+app-side first. From here on, a PR that works round the framework adds an
+entry in the same PR.
+
+The app-side frictions that matter most now, most costly first:
+
+| Rank | What | Entries | State |
+|---|---|---|---|
+| 1 | Swift is compiled and phone-checked well after it is written, so features pile up unproven | A44, A53 | Open: process, not code |
+| 2 | Apps build the same controls by hand, and the copies differ, mostly in accessibility | A45, A47 | Being fixed: ForgeUI 0.2 (#407 merged, #413 open) |
+| 3 | Swift can't see Rust's rules: length limits cut text silently, and an error can't say "kept, but not sent" | A51, A52 | Limits fixed with a check (#388); "kept" is open |
+| 4 | Swift 6.2 errors that only the iOS build shows | A43 | Accept; two habits in A43 |
+| 5 | Calendar edge cases (midnight, daylight saving) handled by hand in each Rust core | A54 | Open: waits for a second use |
+| 6 | Bars over lists come back with each redesign | A46 | Rule `floating-bars`; Soundscape redesign (#418) to check on the phone |
+| 7 | Every compiled Python package is a cross-compile of its own | A48, A49 | Device Lab only; accept |
+
 ## Where the ranked list stands after the 15 November merges
 
 All open work merged into main on 2026-11-15 (#216, #218 to #225, combined
@@ -873,3 +894,164 @@ Checklist and Pocket Library both said "Row 2" (the place among readable
 rows) next to "Line 4" (the file's line) when importing a spreadsheet.
 `CsvImport::row_lines` now gives each row's line, and both apps name
 skipped rows by it (#276). (annoyance, fixed in the framework)
+
+## A43. Swift 6.2 errors only the iOS build shows
+
+Collected on 2026-11-22, like A43 to A54, from PRs merged since 17
+November. A28 again, with the newer compiler:
+
+- **Weather's forecast page stopped type-checking** ("ambiguous use of
+  init" on its `ScrollView`): the content closure was too big. The cards
+  moved into their own view (d8e4f0a).
+- **Relay's device-conversation environment key** didn't build under
+  Swift 6's concurrency checks (72dde4c).
+- **`await` inside an `XCTUnwrap` autoclosure** is refused by Swift 6.2:
+  Commonplace's export test (99a8a86), and again on the ForgeUI 0.2 branch
+  (a12150a).
+
+**Framework.** Accept, with two habits: keep a view's `body` small enough
+that a type-check failure points at one piece, and `await` into a local
+before `XCTUnwrap`. (annoyance)
+
+## A44. Merged before compiled
+
+Python Lab PL1a to PL1c (#390), the defect-hunt fixes (#391, #395 to
+#397) and most Relay N-stage PRs merged, or were ready to merge, with
+their Swift not yet compiled for iPhone; the combined Device Lab build
+compiled them afterwards. Since 21 November the merge thread starts that
+build as soon as a PR's Swift lands, which shortened the gap but didn't
+remove it. Cloud sessions still can't compile SwiftUI (A37). (limit)
+
+**Framework.** Nothing to extract. The view models' Linux compile in CI
+catches the model half; the views wait for the laptop.
+
+## A45. The same controls, built by hand five times
+
+The ForgeUI 0.2 audit ([forgeui-0.2.md](experience/forgeui-0.2.md),
+#382) found five components each built two to five times by hand,
+differently each time and usually with an accessibility difference: a
+rating, a media thumbnail, a selectable choice (chips and tiles), a stat,
+and determinate progress. `forgeFormToolbar` had no users at all, and no
+app used `ForgeButton`. (limit)
+
+**Framework.** Being fixed: `ForgeRating`, `ForgeThumbnail`, the choice
+style, `ForgeStat` and the progress style, each with the apps moved onto
+it (#407 merged; #413 open). The lesson, as in the coverage audit: the
+problem was adoption, so each new component moves its apps in the same
+PR.
+
+## A46. Bars over lists, again
+
+`forgeBar` gives floating bars their room, and rule `floating-bars` fails
+an app that measures a bar in an overlay (#363, [screen-space.md](screen-space.md)).
+The Soundscape redesign (#418, open) moves the mini-player above a tab
+bar, a new arrangement the rule hasn't seen. (annoyance)
+
+**Framework.** Check the last row of a long list under the mini-player
+on every tab in #418's phone sitting.
+
+## A47. Finished-feeling details missing in several apps
+
+The UI Finish Audit ([ui-finish-audit.md](experience/ui-finish-audit.md))
+found the pieces existed but were used unevenly: Weather and FieldKit said
+"allow it in Settings" with no button, nothing moved focus to the field a
+failed save named, and no app used the alert's Try Again for a failed
+network action. (annoyance)
+
+**Framework.** Adoption again: Open Settings and first-invalid-field focus
+(#409 merged), Try Again on network actions (#413, open). No new
+component.
+
+## A48. Compiled Python packages for iOS
+
+Python Lab needs numpy, Pillow and matplotlib inside the app bundle,
+because iOS loads only signed native code
+([numpy-spike.md](../../examples/device-lab/docs/numpy-spike.md)):
+
+- PyPI has no iOS wheels for numpy, contourpy or matplotlib, and
+  cibuildwheel builds them only on a Mac. Each is cross-compiled on Linux
+  with Meson and xtool's clang and SDK, from a recipe in
+  `scripts/build-package.sh`.
+- Two Linux-only flags: `-mlinker-version=907` (or clang passes ld64 flags
+  lld rejects) and pkg-config files for the iOS Python (or Meson finds the
+  build machine's headers).
+- Every extension module becomes its own framework (PEP 730).
+- The bundle is read-only, so `.py` files are compiled at every launch,
+  and matplotlib's config folder isn't writable (a `sitecustomize.py`
+  moves it to Caches).
+- HTTPS failed with `CERTIFICATE_VERIFY_FAILED`: iOS has no OpenSSL trust
+  store, so certifi's CA file ships with the app (#357).
+
+All pass on the phone. (limit)
+
+**Framework.** Accept: Device Lab only. If a second app embeds Python, the
+build scripts and the `sitecustomize.py` are the start of a shared piece.
+
+## A49. One interpreter, two apps
+
+Python Lab and Bonsai share one CPython in the process. Python Lab's Stop
+and time limit called a global interrupt, so they could stop a Bonsai
+script that was running while Python Lab's waited (found in #367's
+review, fixed in #390). (bug, fixed)
+
+**Framework.** Accept. Anything run in a process-wide engine (Python,
+llama.cpp) needs one queue and a per-run stop, not a global one.
+
+## A50. The first third-party Swift package under xtool
+
+A2UI (#377, Device Lab only) was the first. It built under xtool first
+time, build-tool plugin included, but package resolution took about 3
+minutes (the whole a2ui monorepo is fetched), the debug app grew about
+9 MiB, and its core can't be tested on Linux because it uses Combine.
+(annoyance)
+
+**Framework.** Accept for Device Lab; the numbers are in the
+[assessment](external-projects/assessments/ai/a2ui.md). A dependency for a
+production app should be weighed against the same three costs.
+
+## A51. Limits only Rust knows
+
+Rust kept the first N characters while the text field took anything:
+Urdu Naturally's chat cut a long message silently (#388), its name field
+saved 40 of what was typed (#396), and Relay refused an over-long message
+only after Send (#391). (bug, fixed)
+
+**Framework.** Done in #388: the chat shows its limit, and the parity rule
+`no-silent-cut` refuses typed text over a limit instead of cutting it,
+unless the cut says why. The limits themselves still live in Rust and are
+repeated in Swift by hand.
+
+## A52. "Failed" when it was kept
+
+Relay's `upload_attachments` returns `InvalidInput` after the message is
+already stored, so the composer puts the draft back beside a Not Sent
+bubble (found while fixing #391). The FFI error can't say "kept, but not
+sent". (annoyance, open)
+
+**Framework.** Rust should report whether a failed send was stored; a
+second app that queues outgoing work would make it a shared shape.
+
+## A53. Phone checks are the bottleneck
+
+Every app is checked inside Device Lab (a free team allows three apps),
+one combined build at a time, in sittings of 10 to 15 minutes. On
+22 November the owed phone checks were #405 (Relay mailbox), #407 (forms)
+and #409 (Open Settings), with #413, #416, #418 and #419 queued behind
+them. Ordinary use catches the everyday paths ("Soundscape works well");
+the scripted checks (gapless, sleep timer, saved queue) wait. (limit)
+
+**Framework.** Nothing to extract. Keep each PR's phone check short and
+named, and record each result separately, never assumed.
+
+## A54. Calendar edge cases in Rust cores
+
+The defect hunt (#389) found what ordinary testing misses: a Good Dog
+session across midnight couldn't be recorded (#392), its reminders moved
+by an hour across daylight saving (#397, per-day offsets passed from
+Swift), Checklist's re-import missed items whose whitespace was tidied
+(#393), and Pocket Library refused imports with long metadata (#394).
+(bug, fixed)
+
+**Framework.** `forge_runtime::time` writes UTC dates but knows nothing of
+local days. Good Dog's per-day offsets are the first use; a second app
+with reminders or local days makes it a shared helper.
