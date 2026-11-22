@@ -9800,6 +9800,12 @@ public struct RelayServers: Equatable, Hashable {
      * key alone.
      */
     public var lookupUrl: String?
+    /**
+     * A `relay-mailbox` server's endpoint id (N3): where trusted devices
+     * leave items for this one while it can't be reached. Told to them
+     * in the Hello; Hybrid only, like the others.
+     */
+    public var mailbox: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -9811,9 +9817,15 @@ public struct RelayServers: Equatable, Hashable {
          * A pkarr lookup server: each device publishes a record of where it can
          * be reached there, signed by its key, so a trusted device finds it by
          * key alone.
-         */lookupUrl: String?) {
+         */lookupUrl: String?, 
+        /**
+         * A `relay-mailbox` server's endpoint id (N3): where trusted devices
+         * leave items for this one while it can't be reached. Told to them
+         * in the Hello; Hybrid only, like the others.
+         */mailbox: String? = nil) {
         self.relayUrl = relayUrl
         self.lookupUrl = lookupUrl
+        self.mailbox = mailbox
     }
 
     
@@ -9833,13 +9845,15 @@ public struct FfiConverterTypeRelayServers: FfiConverterRustBuffer {
         return
             try RelayServers(
                 relayUrl: FfiConverterOptionString.read(from: &buf), 
-                lookupUrl: FfiConverterOptionString.read(from: &buf)
+                lookupUrl: FfiConverterOptionString.read(from: &buf), 
+                mailbox: FfiConverterOptionString.read(from: &buf)
         )
     }
 
     public static func write(_ value: RelayServers, into buf: inout [UInt8]) {
         FfiConverterOptionString.write(value.relayUrl, into: &buf)
         FfiConverterOptionString.write(value.lookupUrl, into: &buf)
+        FfiConverterOptionString.write(value.mailbox, into: &buf)
     }
 }
 

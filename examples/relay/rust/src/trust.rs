@@ -16,6 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::capability::Capability;
+use crate::mailbox::PeerMailbox;
 use crate::resolver::{ConnectionMode, RelayServers, RouteKind};
 
 /// What happens after a word-code transfer with a device (Settings).
@@ -109,6 +110,11 @@ pub struct SavedDevice {
     /// nothing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub grants: Vec<String>,
+    /// Its mailbox, as it last told this device in a Hello (N3): where to
+    /// leave items for it while it can't be reached. Cleared when it is
+    /// revoked, forgotten or trusted again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mailbox: Option<PeerMailbox>,
 }
 
 impl SavedDevice {
@@ -228,6 +234,7 @@ impl Devices {
                 d.introduced_by = None;
                 d.revoked_by = None;
                 d.grants.clear();
+                d.mailbox = None;
                 if !name.is_empty() {
                     d.name = name.into();
                 }
@@ -251,6 +258,7 @@ impl Devices {
                 revoked_by: None,
                 person: None,
                 grants: Vec::new(),
+                mailbox: None,
             }),
         }
     }
@@ -359,6 +367,7 @@ impl Devices {
                     d.addresses.clear();
                     d.revoked_by = Some(introducer.to_string());
                     d.grants.clear();
+                    d.mailbox = None;
                     done.revoked.push(id.clone());
                 }
             }
@@ -395,6 +404,7 @@ impl Devices {
                 d.addresses.clear();
                 d.revoked_by = None;
                 d.grants.clear();
+                d.mailbox = None;
                 true
             }
             None => false,
@@ -409,6 +419,7 @@ impl Devices {
                 d.trust = SavedTrust::Forgotten;
                 d.addresses.clear();
                 d.grants.clear();
+                d.mailbox = None;
                 true
             }
             Some(_) => true,
@@ -488,9 +499,20 @@ impl Devices {
 
     /// A trusted device said where it can be reached, and a connection with
     /// it used `route`.
-    pub fn met(&mut self, endpoint_id: &str, told: &[String], route: Option<RouteKind>) {
+    pub fn met(
+        &mut self,
+        endpoint_id: &str,
+        told: &[String],
+        route: Option<RouteKind>,
+        mailbox: Option<PeerMailbox>,
+    ) {
         if let Some(d) = self.get_mut(endpoint_id) {
             if d.trust == SavedTrust::Trusted {
+                if let Some(newer) = mailbox {
+                    if d.mailbox.as_ref().is_none_or(|m| m.replaced_by(&newer)) {
+                        d.mailbox = Some(newer);
+                    }
+                }
                 let told = crate::resolver::clean(told);
                 if !told.is_empty() {
                     d.told = told;
@@ -512,6 +534,38 @@ impl Devices {
 
 #[cfg(test)]
 mod tests {
+
+    /// N3 step 3: a trusted device's mailbox is kept from its Hello,
+    /// replaced only by a newer one, and dropped when trust ends.
+    #[test]
+    fn a_mailbox_is_kept_while_trusted() {
+        use crate::mailbox::MailboxIntro;
+        let laptop = iroh::SecretKey::from_bytes(&[2; 32]);
+        let me = iroh::SecretKey::from_bytes(&[1; 32]).public();
+        let server = iroh::SecretKey::from_bytes(&[9; 32]).public();
+        let told = |at| {
+            MailboxIntro::new(&laptop, &me, &server, at)
+                .verify(&laptop.public())
+                .unwrap()
+        };
+        let id = laptop.public().to_string();
+        let mut devices = Devices::default();
+        // Not trusted: nothing kept.
+        devices.met(&id, &[], None, Some(told(1)));
+        assert!(devices.get(&id).is_none());
+        devices.trust(&id, "Laptop", 1);
+        devices.met(&id, &[], None, Some(told(5)));
+        assert_eq!(devices.get(&id).unwrap().mailbox, Some(told(5)));
+        // An older one, or the same again, changes nothing.
+        devices.met(&id, &[], None, Some(told(2)));
+        devices.met(&id, &[], None, Some(told(9)));
+        assert_eq!(devices.get(&id).unwrap().mailbox, Some(told(5)));
+        // A Hello without one keeps what is known.
+        devices.met(&id, &[], None, None);
+        assert!(devices.get(&id).unwrap().mailbox.is_some());
+        assert!(devices.revoke(&id));
+        assert_eq!(devices.get(&id).unwrap().mailbox, None);
+    }
 
     #[test]
     fn an_introducer_offers_and_revokes_but_never_trusts_or_unseats_itself() {

@@ -697,7 +697,8 @@ pub(crate) fn settle_messages(r: &Record, c: &mut Conversations<'_>) {
 fn remember_reached(r: &mut Record, to: &str, sent: &device::Sent) {
     let at: Vec<String> = sent.at.iter().map(|a| a.to_string()).collect();
     r.devices.seen_at(to, &at, now_ms());
-    r.devices.met(to, &sent.addresses, sent.route);
+    r.devices
+        .met(to, &sent.addresses, sent.route, sent.mailbox.clone());
 }
 
 impl RelayCore {

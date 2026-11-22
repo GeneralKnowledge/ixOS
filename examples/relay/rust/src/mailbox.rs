@@ -369,6 +369,112 @@ pub(crate) mod serde_bytes_vec {
     }
 }
 
+/// Where the mailbox's own secrets come from: both are derived from the
+/// device key (HKDF-SHA256), so there is no second secret to keep, back up
+/// or lose. Losing the device key loses them too, as it loses everything.
+const DERIVED: &[u8] = b"relay/mailbox/1 derived";
+
+fn derive(device: &SecretKey, label: &[u8], peer: Option<&PublicKey>) -> [u8; 32] {
+    let hk = hkdf::Hkdf::<sha2::Sha256>::new(Some(DERIVED), &device.to_bytes());
+    let mut info = label.to_vec();
+    if let Some(peer) = peer {
+        info.extend_from_slice(peer.as_bytes());
+    }
+    let mut out = [0u8; 32];
+    hk.expand(&info, &mut out)
+        .expect("32 bytes is a valid HKDF-SHA256 length");
+    out
+}
+
+impl MailboxKey {
+    /// This device's mailbox key, the same every time from its device key.
+    pub(crate) fn of_device(device: &SecretKey) -> Self {
+        Self::from_seed(derive(device, b"mailbox key", None))
+    }
+}
+
+impl DepositPass {
+    /// The pass this device gives `peer`: the same every time, and
+    /// different for every peer, so revoking one deregisters only its own.
+    pub(crate) fn for_peer(device: &SecretKey, peer: &PublicKey) -> Self {
+        Self(derive(device, b"deposit pass", Some(peer)))
+    }
+}
+
+/// What a device tells a trusted device in the Hello so it can leave
+/// items in its mailbox (N3 step 3): its mailbox key, signed; the pass
+/// for that device alone; and the mailbox server it collects from.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct MailboxIntro {
+    pub announcement: Announcement,
+    pub pass: [u8; 32],
+    /// The mailbox server's endpoint id.
+    pub server: [u8; 32],
+}
+
+impl MailboxIntro {
+    /// This device's intro for `peer`, collecting at `server`.
+    pub(crate) fn new(
+        device: &SecretKey,
+        peer: &PublicKey,
+        server: &PublicKey,
+        now_ms: i64,
+    ) -> Self {
+        Self {
+            announcement: MailboxKey::of_device(device).announce(device, now_ms),
+            pass: DepositPass::for_peer(device, peer).bytes(),
+            server: *server.as_bytes(),
+        }
+    }
+
+    /// What `device` told this one, if it signed it: what to keep.
+    pub(crate) fn verify(&self, device: &PublicKey) -> Result<PeerMailbox, MailboxError> {
+        let key = self.announcement.verify(device)?;
+        let server = PublicKey::from_bytes(&self.server).map_err(|_| MailboxError::Malformed)?;
+        Ok(PeerMailbox {
+            key: crate::hex::hex(&key),
+            issued_ms: self.announcement.issued_ms,
+            pass: crate::hex::hex(&self.pass),
+            server: server.to_string(),
+        })
+    }
+}
+
+/// A trusted device's mailbox, as this device keeps it (on
+/// `SavedDevice`): where to leave items for it, sealed to what, under
+/// which pass. Hex, as the record is JSON.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct PeerMailbox {
+    pub key: String,
+    pub issued_ms: i64,
+    pub pass: String,
+    /// The mailbox server's endpoint id.
+    pub server: String,
+}
+
+impl PeerMailbox {
+    /// Whether `newer` says anything this one doesn't: a newer
+    /// announcement of a different key, pass or server. Only then is the
+    /// record written.
+    pub(crate) fn replaced_by(&self, newer: &PeerMailbox) -> bool {
+        newer.issued_ms > self.issued_ms
+            && (newer.key != self.key || newer.pass != self.pass || newer.server != self.server)
+    }
+
+    pub(crate) fn key(&self) -> Option<[u8; 32]> {
+        crate::hex::unhex(&self.key)?.try_into().ok()
+    }
+
+    pub(crate) fn pass(&self) -> Option<DepositPass> {
+        let bytes: [u8; 32] = crate::hex::unhex(&self.pass)?.try_into().ok()?;
+        Some(DepositPass::from_bytes(bytes))
+    }
+
+    pub(crate) fn server(&self) -> Option<PublicKey> {
+        self.server.parse().ok()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -585,5 +691,73 @@ mod tests {
             crate::hex::hex(&bytes) + "\n",
         )
         .unwrap();
+    }
+
+    /// N3 step 3: the mailbox key and passes come from the device key,
+    /// the same each time, one pass per peer, so nothing new is stored.
+    #[test]
+    fn mailbox_secrets_are_derived_from_the_device_key() {
+        let phone = SecretKey::from_bytes(&[1; 32]);
+        let laptop = SecretKey::from_bytes(&[2; 32]).public();
+        let tablet = SecretKey::from_bytes(&[3; 32]).public();
+        assert_eq!(
+            MailboxKey::of_device(&phone).public(),
+            MailboxKey::of_device(&phone).public()
+        );
+        assert_ne!(
+            MailboxKey::of_device(&phone).public(),
+            MailboxKey::of_device(&SecretKey::from_bytes(&[4; 32])).public()
+        );
+        // Not the device key itself.
+        assert_ne!(MailboxKey::of_device(&phone).seed(), phone.to_bytes());
+        assert_eq!(
+            DepositPass::for_peer(&phone, &laptop),
+            DepositPass::for_peer(&phone, &laptop)
+        );
+        assert_ne!(
+            DepositPass::for_peer(&phone, &laptop),
+            DepositPass::for_peer(&phone, &tablet)
+        );
+    }
+
+    /// An intro is kept only from the device that signed it; a newer one
+    /// replaces the kept one only when it says something new.
+    #[test]
+    fn an_intro_is_kept_only_from_its_signer() {
+        let phone = SecretKey::from_bytes(&[1; 32]);
+        let laptop = SecretKey::from_bytes(&[2; 32]);
+        let server = SecretKey::from_bytes(&[9; 32]).public();
+        let intro = MailboxIntro::new(&phone, &laptop.public(), &server, 1_000);
+        let kept = intro.verify(&phone.public()).unwrap();
+        assert_eq!(kept.key(), Some(MailboxKey::of_device(&phone).public()));
+        assert_eq!(
+            kept.pass(),
+            Some(DepositPass::for_peer(&phone, &laptop.public()))
+        );
+        assert_eq!(kept.server(), Some(server));
+        assert_eq!(
+            intro.verify(&laptop.public()),
+            Err(MailboxError::BadSignature)
+        );
+        // The same intro later: nothing new, so nothing written.
+        let later = MailboxIntro::new(&phone, &laptop.public(), &server, 2_000)
+            .verify(&phone.public())
+            .unwrap();
+        assert!(!kept.replaced_by(&later));
+        // Another server, later: replaces it; earlier: doesn't.
+        let other = SecretKey::from_bytes(&[8; 32]).public();
+        let moved = MailboxIntro::new(&phone, &laptop.public(), &other, 3_000)
+            .verify(&phone.public())
+            .unwrap();
+        assert!(kept.replaced_by(&moved));
+        assert!(!moved.replaced_by(&kept));
+        // One that names a server that isn't a key is malformed.
+        let not_a_key = (0..=255u8)
+            .map(|b| [b; 32])
+            .find(|b| PublicKey::from_bytes(b).is_err())
+            .unwrap();
+        let mut bad = intro.clone();
+        bad.server = not_a_key;
+        assert_eq!(bad.verify(&phone.public()), Err(MailboxError::Malformed));
     }
 }

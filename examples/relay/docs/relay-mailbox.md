@@ -78,12 +78,14 @@ SealedItem {
 }
 ```
 
-- **The mailbox key.** Each device makes a separate X25519 key for the
+- **The mailbox key.** Each device has a separate X25519 key for the
   mailbox. It sends that key, signed by its endpoint key, to trusted
   devices in the Hello they already exchange. The server never sees it,
   so only trusted devices can seal items the device will open. Keeping it
   separate from the endpoint key avoids reusing one key for two kinds of
-  cryptography, and lets it be rotated without re-pairing.
+  cryptography. It is derived from the device key (HKDF-SHA256, label
+  `relay/mailbox/1 derived`), so there is no second secret to keep in
+  the Keychain, back up or lose, and it is the same every time.
 - **Encryption.** HPKE (RFC 9180) base mode, X25519 with ChaCha20-Poly1305.
   The outer `id`, `to`, `from` and `expires` are bound in as associated
   data, so the server can't move an item to someone else or stretch its
@@ -113,10 +115,13 @@ Only devices the recipient trusts can leave anything. Otherwise anyone
 with an iroh key could fill a closed device's mailbox and crowd out the
 devices that matter.
 
-- For each device it trusts, the recipient makes a random 32-byte
-  **deposit pass** and sends it to that device in their Hello, over the
-  connection that is already encrypted. It registers only the pass's
-  SHA-256 with the mailbox.
+- For each device it trusts, the recipient has a 32-byte **deposit
+  pass**, derived from its device key and that device's id (so each
+  device's pass is different and nothing new is stored), and sends it to
+  that device in their Hello, with the mailbox server's endpoint id,
+  over the connection that is already encrypted and authenticated (which
+  is why the pass and server need no signature of their own). It
+  registers only the pass's SHA-256 with the mailbox.
 - Passes are scoped to their recipient. Only the recipient can register
   or deregister its passes: the server takes the recipient from the iroh
   connection, never from the request. A deposit must carry a pass
@@ -125,8 +130,7 @@ devices that matter.
   quotas above apply per pass, so one trusted device, even a misbehaving
   one, can't use up the whole mailbox.
 - Revoking a device deregisters its pass at once, and forgetting a device
-  does the same. A device that rotates its mailbox key rotates its passes
-  too.
+  does the same. Trusting it again registers the same pass again.
 - The server never learns the trust graph in advance: a pass is just a
   hash until someone uses it. It learns which pairs actually send, as the
   relay does.
@@ -179,9 +183,11 @@ one step:
   is in the 45-day memory, so it isn't saved again, and the receipt is
   left again (the server stores one per id) before the acknowledgement.
 - A revoked sender's items are dropped and acknowledged without being
-  saved. A device that has been revoked no longer has the recipient's
-  current mailbox key once that key rotates on revoke, so it can't seal
-  anything new to it.
+  saved. A revoked device still knows the recipient's mailbox key (it
+  doesn't rotate), but its pass is deregistered, so the server refuses
+  anything new from it, and the recipient would drop it anyway. Rotating
+  the key on revoke would add nothing to those two checks, and would cut
+  off every other trusted device until they next met directly.
 
 ## Steps
 
@@ -197,8 +203,11 @@ Each step is a PR, Linux-tested before the phone sees it.
    include a device registering a pass for someone else (refused), a
    pass used for another recipient (refused), and an acknowledgement
    from anyone but the recipient (refused).
-3. **The client.** The mailbox key goes in the Hello, the outbox gains its
-   new step, and collecting and receipts are added. The CLI gets
+3. **The client**, in two PRs. Part 1: the mailbox key, each device's
+   pass and the mailbox server go in the Hello (an optional field older
+   builds skip), each device keeps the other's on its saved device, and
+   Relay's servers gain the mailbox. Part 2: the outbox gains its new
+   step, registering passes, collecting and receipts are added. The CLI gets
    `relay status` lines and `relay servers --mailbox`. An end-to-end test
    covers a sender, a closed recipient and the server, then the recipient
    opening.

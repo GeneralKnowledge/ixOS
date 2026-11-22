@@ -414,7 +414,12 @@ impl RelayCore {
             device_chat::PeerLogs::new(directory.path().join("devices"), Arc::clone(&store));
         let store_dir = code_dir.join("store");
         // Outside Hybrid the endpoint has no relay and no lookup server.
-        let servers = record.devices.servers.in_mode(record.devices.mode);
+        let servers = record
+            .devices
+            .servers
+            .clone()
+            .upgraded()
+            .in_mode(record.devices.mode);
         let state = State {
             record,
             store,
@@ -1097,7 +1102,7 @@ impl RelayCore {
 
     /// Relay's own servers: a relay and a lookup server (M2 PR 7).
     pub fn servers(&self) -> RelayServers {
-        self.record.get().devices.servers.clone()
+        self.record.get().devices.servers.clone().upgraded()
     }
 
     /// Whether Relay's relay answers now: `Off` when none is in use (none
@@ -1123,6 +1128,10 @@ impl RelayCore {
         let clean = RelayServers {
             relay_url: servers.relay_url.filter(|u| !u.trim().is_empty()),
             lookup_url: servers.lookup_url.filter(|u| !u.trim().is_empty()),
+            mailbox: servers
+                .mailbox
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty()),
         };
         clean
             .check()
@@ -2035,7 +2044,13 @@ impl device::DeviceInbound for CoreDevices {
         }
     }
 
-    fn met(&self, from: &str, addresses: Vec<String>, route: Option<RouteKind>) {
+    fn met(
+        &self,
+        from: &str,
+        addresses: Vec<String>,
+        route: Option<RouteKind>,
+        mailbox: Option<mailbox::PeerMailbox>,
+    ) {
         let Some(core) = self.core.upgrade() else {
             return;
         };
@@ -2046,7 +2061,7 @@ impl device::DeviceInbound for CoreDevices {
                 .rt
                 .command("device-met", move |state| {
                     state.change(|r| {
-                        r.devices.met(&from, &addresses, route);
+                        r.devices.met(&from, &addresses, route, mailbox);
                         Ok(())
                     })
                 })
