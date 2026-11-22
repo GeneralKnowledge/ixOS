@@ -447,6 +447,8 @@ public final class ListenModel {
     public func separate(_ id: String) async {
         do {
             library = try await core.separateSong(id: id)
+            // What plays may have changed, and with it what is downloaded.
+            offline = core.offline()
         } catch {
             report(error)
         }

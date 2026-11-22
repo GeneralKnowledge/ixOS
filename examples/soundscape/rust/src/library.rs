@@ -66,10 +66,10 @@ pub struct LibraryFile {
     /// aren't offered for merging again: [`crate::merge::group_key`]s.
     #[serde(default)]
     pub distinct: std::collections::BTreeSet<String>,
-    /// A merged song whose recording the person chose from one of the
-    /// songs merged into it: kept song's id -> that song's id. Its
-    /// preferred recording then plays, in place of your own file or the
-    /// kept song's.
+    /// A merged song whose recording the person chose: kept song's id ->
+    /// the id of the song that recording belongs to (one merged into it,
+    /// or the kept song itself). That song's preferred recording then
+    /// plays, in place of your own file.
     #[serde(default)]
     pub prefer: BTreeMap<String, String>,
 }
@@ -734,7 +734,8 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             source.recording_count += theirs.recording_count;
             // Your own file plays when the merged song has one.
             let local = matches!(their_origin, Origin::Imported(_));
-            if local && !matches!(origin, Origin::Imported(_)) {
+            let kept_chosen = chosen == Some(&source.id);
+            if local && !kept_chosen && !matches!(origin, Origin::Imported(_)) {
                 source.preferred = theirs.preferred.clone().map(|mut r| {
                     r.merged_from = Some(theirs.id.clone());
                     r

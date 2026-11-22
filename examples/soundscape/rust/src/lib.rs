@@ -1147,15 +1147,19 @@ impl SoundscapeCore {
     pub fn saved_playback(&self) -> Option<SavedPlayback> {
         let saved = self.playback.get().saved.clone()?;
         let library = self.library();
+        let file = self.library.get();
         playback::refresh(saved, |queued| {
-            match library.tracks.iter().find(|t| t.id == queued.track_id) {
+            // A song merged into another since is found under that song.
+            let id = library::merged_root(&file, &queued.track_id)
+                .unwrap_or_else(|| queued.track_id.clone());
+            match library.tracks.iter().find(|t| t.id == id) {
                 Some(track)
                     if track.preferred.as_ref().map(|r| &r.id) == Some(&queued.recording.id) =>
                 {
                     library::queue_track(track)
                 }
                 Some(_) => self
-                    .queue_recording(queued.track_id.clone(), queued.recording.id.clone())
+                    .queue_recording(id.clone(), queued.recording.id.clone())
                     .ok(),
                 // Not in the library: a stream (catalogue, take server)
                 // still plays; a file on the phone that nothing names is gone.
@@ -1426,9 +1430,17 @@ impl SoundscapeCore {
             .command("song-prefer", move |state| {
                 let lib = state.library.value();
                 let now = lib.prefer.get(&kept);
-                let want = (owner != kept
-                    && library::merged_root(lib, &owner).as_ref() == Some(&kept))
-                .then_some(&owner);
+                // Its own recording is remembered too, so your merged
+                // file doesn't take over again.
+                let has_merged = lib
+                    .merged
+                    .keys()
+                    .any(|from| library::merged_root(lib, from).as_ref() == Some(&kept));
+                let want = if owner == kept {
+                    has_merged.then_some(&owner)
+                } else {
+                    (library::merged_root(lib, &owner).as_ref() == Some(&kept)).then_some(&owner)
+                };
                 if now == want {
                     return Ok(());
                 }

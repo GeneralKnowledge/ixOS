@@ -53,6 +53,16 @@ fn server() -> StaticClient {
         )
         .route(
             Method::Get,
+            format!("{SERVER}/api/song?slug=ah-one-more-night"),
+            Ok(Response::new(
+                200,
+                r#"{"slug": "ah-one-more-night", "title": "One More Night", "pick": "r/night-1",
+                 "takes": [{"id": "r/night-1", "file": "r/night-1.mp3", "label": "seed 1", "mtime": 100, "stars": 5},
+                           {"id": "r/night-2", "file": "r/night-2.mp3", "label": "seed 2", "mtime": 300, "stars": 3}]}"#,
+            )),
+        )
+        .route(
+            Method::Get,
             format!("{SERVER}/api/song?slug=lb-anchor"),
             Ok(Response::new(
                 200,
@@ -347,4 +357,50 @@ fn a_merge_whose_later_saves_failed_is_finished_on_opening() {
     let core = open(&dir);
     assert_eq!(core.collection().favourite_tracks[0].id, night);
     assert!(core.offline().tracks.iter().any(|t| t.track.id == night));
+}
+
+#[test]
+fn choosing_the_kept_songs_own_take_beats_your_merged_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, imported, _) = ready(&dir);
+    let night = track_id("ah-one-more-night");
+    let merged = block(core.merge_songs(night.clone(), vec![imported.clone()])).unwrap();
+    assert!(matches!(
+        merged.track.preferred.unwrap().source,
+        AudioSource::LocalFile { .. }
+    ));
+    let chosen = block(core.choose_recording(night.clone(), "r/night-1".into())).unwrap();
+    assert_eq!(chosen.track.preferred.as_ref().unwrap().id, "r/night-1");
+    assert_eq!(
+        core.queue_tracks(vec![night.clone()])[0].recording.id,
+        "r/night-1"
+    );
+}
+
+#[test]
+fn a_saved_queue_keeps_a_song_merged_since() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, imported, _) = ready(&dir);
+    let night = track_id("ah-one-more-night");
+    let tracks = core.queue_tracks(vec![imported.clone()]);
+    assert!(tracks[0].recording.audio_url.starts_with("file:"));
+    let queue =
+        soundscape_core::queue::queue_start(tracks, 0, false, soundscape_core::RepeatMode::Off, 1);
+    block(core.save_playback(Some(soundscape_core::SavedPlayback {
+        queue,
+        seconds: 12.0,
+        saved_ms: 1,
+    })))
+    .unwrap();
+    block(core.merge_songs(night.clone(), vec![imported.clone()])).unwrap();
+    drop(core);
+
+    let core = open(&dir);
+    let saved = core.saved_playback().expect("the queue survives");
+    assert_eq!(saved.queue.tracks.len(), 1);
+    assert_eq!(saved.queue.tracks[0].track_id, night);
+    assert!(saved.queue.tracks[0]
+        .recording
+        .audio_url
+        .starts_with("file:"));
 }
