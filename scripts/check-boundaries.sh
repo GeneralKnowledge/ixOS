@@ -201,14 +201,35 @@ for manifest in sorted(root.rglob("Package.swift")):
     text = "\n".join(
         l for l in text.splitlines() if not l.strip().startswith("//")
     )
-    # Anything (an inline comment, a name:) may sit between `.package(` and
-    # `url:`; a declaration's URL comes before any `)`.
-    for url in re.findall(r"\.package\([^)]*?\burl:\s*\"([^\"]+)\"", text):
-        if (rel, url.removesuffix(".git")) not in SWIFT_PACKAGES_ALLOWED:
+    # Every `.package(` must be a local path or an allowed URL. Rather than
+    # parse Swift, take each declaration's text up to its closing bracket
+    # (brackets inside strings don't count): one with no URL in it must be
+    # a `path:` one, and every URL in it must be allowed, however it is
+    # written (raw strings, inline comments, split lines).
+    for m in re.finditer(r"\.package\s*\(", text):
+        depth, quoted, end = 1, False, m.end()
+        while end < len(text) and depth:
+            c = text[end]
+            if c == '"':
+                quoted = not quoted
+            elif not quoted:
+                depth += {"(": 1, ")": -1}.get(c, 0)
+            end += 1
+        decl = text[m.end():end]
+        urls = re.findall(r"(?:https?|ssh|git)://[^\"#\s)]+|git@[^\"#\s)]+", decl)
+        if not urls and re.search(r"\bpath:", decl):
+            continue
+        if not urls:
             errors.append(
-                f"{rel}: third-party Swift package {url} isn't allowed here "
-                f"(scripts/check-boundaries.sh, SWIFT_PACKAGES_ALLOWED)"
+                f"{rel}: a .package declaration with neither a path nor a URL "
+                f"the check can read (scripts/check-boundaries.sh)"
             )
+        for url in urls:
+            if (rel, url.removesuffix(".git")) not in SWIFT_PACKAGES_ALLOWED:
+                errors.append(
+                    f"{rel}: third-party Swift package {url} isn't allowed here "
+                    f"(scripts/check-boundaries.sh, SWIFT_PACKAGES_ALLOWED)"
+                )
 
 if errors:
     for e in errors:
