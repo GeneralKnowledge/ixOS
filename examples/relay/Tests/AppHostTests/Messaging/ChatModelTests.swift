@@ -26,7 +26,8 @@ final class ChatModelTests: XCTestCase {
         let message = ChatMessage(
             id: "m1", conversationId: "general", author: "Laptop", authorId: "id-laptop",
             isMine: false, body: "hi", sentAt: 0, status: .sent,
-            replyTo: nil, edited: false, deleted: false, reactions: [], attachments: [])
+            replyTo: nil, edited: false, deleted: false, reactions: [], attachments: [],
+            inMailbox: false)
         model.apply(.messageReceived(message: message))
         XCTAssertNil(model.feedback.kind)
         model.apply(.notify(message: message))

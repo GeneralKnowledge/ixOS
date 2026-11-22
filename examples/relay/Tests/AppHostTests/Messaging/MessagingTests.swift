@@ -286,7 +286,8 @@ final class TranscriptTests: XCTestCase {
         ChatMessage(
             id: id, conversationId: "general", author: author, authorId: "id-\(author)",
             isMine: mine, body: id, sentAt: base + minutes * minute, status: status,
-            replyTo: nil, edited: false, deleted: false, reactions: [], attachments: [])
+            replyTo: nil, edited: false, deleted: false, reactions: [], attachments: [],
+            inMailbox: false)
     }
 
     private func places(_ rows: [Transcript.Row]) -> [String: Transcript.Place] {

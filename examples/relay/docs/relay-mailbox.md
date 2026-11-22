@@ -171,10 +171,13 @@ in the mailbox no longer holds up the items after it, so a device that
 stays away gets the whole queue there (up to the first file). Only
 Hybrid uses the mailbox. Relay tries it directly again whenever the device
 is seen, connects, or Relay comes to the foreground; the mailbox copy is
-then dropped on collection as a duplicate. The labels (**Left for
-<device>**, **In the mailbox**, **Not confirmed**) aren't in the app yet:
-until then the item shows as waiting, and after 30 days it ends as any
-undelivered item does. When the mailbox lets an item expire (7 days), the
+then dropped on collection as a duplicate. A message left in the mailbox
+shows **In the Mailbox** under its bubble until the receipt makes it
+Delivered (the message keeps an `in_mailbox` flag, set in the same
+transaction that records the delivery as left); `relay messages` and
+`relay listen` say the same. Notes in history and **Not confirmed** aren't
+labelled yet: a note shows as waiting, and after 30 days an unconfirmed
+item ends as any undelivered item does. When the mailbox lets an item expire (7 days), the
 next collecting round tries it directly and leaves it again. An item the
 recipient won't take (from a device it no longer takes from) is deleted
 with no receipt, so the sender's delivery doesn't show Sent. A recipient
