@@ -5266,6 +5266,14 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func setPairingPolicy(policy: PairingPolicy) async throws 
     
     /**
+     * Marks a trusted device as a person's, with their name, or (with
+     * `None`) as one of the person's own devices (N4 step 1). A person's
+     * device may send messages and files, never introduces devices or
+     * sees the device list, and Chats shows the person's name.
+     */
+    func setPerson(endpointId: String, person: String?) async throws 
+    
+    /**
      * The host reports the application lifecycle phase.
      */
     func setPhase(phase: AppPhase) 
@@ -6029,6 +6037,28 @@ open func setPairingPolicy(policy: PairingPolicy)async throws   {
             rustFutureFunc: {
                 uniffi_relay_core_fn_method_relaycore_set_pairing_policy(
                         self.uniffiCloneHandle(),FfiConverterTypePairingPolicy_lower(policy)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Marks a trusted device as a person's, with their name, or (with
+     * `None`) as one of the person's own devices (N4 step 1). A person's
+     * device may send messages and files, never introduces devices or
+     * sees the device list, and Chats shows the person's name.
+     */
+open func setPerson(endpointId: String, person: String?)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_set_person(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(endpointId),FfiConverterOptionString.lower(person)
                 )
             },
             pollFunc: ffi_relay_core_rust_future_poll_void,
@@ -8459,6 +8489,11 @@ public struct Device: Equatable, Hashable {
      */
     public var revokedBy: String?
     /**
+     * The person it belongs to, when it isn't one of the person's own
+     * devices (N4 step 1). Chats shows this name rather than `name`.
+     */
+    public var person: String?
+    /**
      * Whether the app sees it on this network now.
      */
     public var nearby: Bool
@@ -8520,6 +8555,10 @@ public struct Device: Equatable, Hashable {
          * The name of the introducer that revoked it, when the person didn't.
          */revokedBy: String?, 
         /**
+         * The person it belongs to, when it isn't one of the person's own
+         * devices (N4 step 1). Chats shows this name rather than `name`.
+         */person: String?, 
+        /**
          * Whether the app sees it on this network now.
          */nearby: Bool, 
         /**
@@ -8550,6 +8589,7 @@ public struct Device: Equatable, Hashable {
         self.seesDevices = seesDevices
         self.introducedBy = introducedBy
         self.revokedBy = revokedBy
+        self.person = person
         self.nearby = nearby
         self.presence = presence
         self.lastSeenMs = lastSeenMs
@@ -8585,6 +8625,7 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
                 seesDevices: FfiConverterBool.read(from: &buf), 
                 introducedBy: FfiConverterOptionString.read(from: &buf), 
                 revokedBy: FfiConverterOptionString.read(from: &buf), 
+                person: FfiConverterOptionString.read(from: &buf), 
                 nearby: FfiConverterBool.read(from: &buf), 
                 presence: FfiConverterTypePresence.read(from: &buf), 
                 lastSeenMs: FfiConverterOptionInt64.read(from: &buf), 
@@ -8606,6 +8647,7 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
         FfiConverterBool.write(value.seesDevices, into: &buf)
         FfiConverterOptionString.write(value.introducedBy, into: &buf)
         FfiConverterOptionString.write(value.revokedBy, into: &buf)
+        FfiConverterOptionString.write(value.person, into: &buf)
         FfiConverterBool.write(value.nearby, into: &buf)
         FfiConverterTypePresence.write(value.presence, into: &buf)
         FfiConverterOptionInt64.write(value.lastSeenMs, into: &buf)
@@ -14757,6 +14799,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_set_pairing_policy() != 5214) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_set_person() != 2068) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_set_phase() != 45256) {

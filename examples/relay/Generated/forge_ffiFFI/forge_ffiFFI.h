@@ -702,6 +702,11 @@ uint64_t uniffi_relay_core_fn_method_relaycore_set_may_ask(uint64_t ptr, RustBuf
 uint64_t uniffi_relay_core_fn_method_relaycore_set_pairing_policy(uint64_t ptr, RustBuffer policy
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PERSON
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PERSON
+uint64_t uniffi_relay_core_fn_method_relaycore_set_person(uint64_t ptr, RustBuffer endpoint_id, RustBuffer person
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PHASE
 void uniffi_relay_core_fn_method_relaycore_set_phase(uint64_t ptr, RustBuffer phase, RustCallStatus *_Nonnull out_status
@@ -2168,6 +2173,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_set_may_ask(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_PAIRING_POLICY
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_PAIRING_POLICY
 uint16_t uniffi_relay_core_checksum_method_relaycore_set_pairing_policy(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_PERSON
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SET_PERSON
+uint16_t uniffi_relay_core_checksum_method_relaycore_set_person(void
     
 );
 #endif

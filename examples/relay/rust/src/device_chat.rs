@@ -481,7 +481,7 @@ impl ChatRepo for PeerRepo {
             .get()
             .devices
             .get(&self.endpoint_id)
-            .map(|d| d.name.clone())
+            .map(|d| d.shown_name().to_string())
             .unwrap_or_else(|| "Device".into());
         let last = self.log.last().map_err(chat_error)?;
         Ok(vec![RemoteConversation {

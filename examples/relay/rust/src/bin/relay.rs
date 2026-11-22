@@ -75,7 +75,7 @@ const USAGE: &str = "usage: relay listen | devices | send PATH... | receive <cod
 send <device> (--text TEXT | PATH...) [--to host:port] | \
 messages <device> | status [<device>] | revoke <device> | forget <device> | \
 trust <device> | asks <device> on|off | introduces <device> on|off | \
-sees-devices <device> on|off | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
+sees-devices <device> on|off | person <device> (NAME | --mine) | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
 connections [everywhere | private | this-network] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] | \
@@ -253,8 +253,12 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 } else {
                     ""
                 };
+                let whose = match &d.person {
+                    Some(person) => format!(" ({person}'s)"),
+                    None => String::new(),
+                };
                 out += &format!(
-                    "{}  {state}{takes}{asks}{introduces}{sees}  {}  {}\n",
+                    "{}{whose}  {state}{takes}{asks}{introduces}{sees}  {}  {}\n",
                     d.name,
                     where_now(&d),
                     d.endpoint_id
@@ -401,6 +405,27 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 }
             };
             out += &format!("{}: {what}.\n", device.name);
+            Ok(())
+        })(),
+        // N4 step 1: a trusted device that belongs to someone else, shown
+        // by their name in Chats, or (--mine) one of your own devices.
+        "person" => (|| {
+            let [who, person] = rest else {
+                return Err(USAGE.to_string());
+            };
+            let device = find_device(core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            let person = (person != "--mine").then(|| person.clone());
+            block_on(core.set_person(device.endpoint_id.clone(), person.clone()))
+                .map_err(|e| e.to_string())?;
+            out += &match person {
+                Some(person) => format!(
+                    "{} is {}'s: it may send messages and files, and never sees your devices.\n",
+                    device.name,
+                    person.trim()
+                ),
+                None => format!("{} is one of your devices.\n", device.name),
+            };
             Ok(())
         })(),
         // Asks an introducer for its devices: new ones are listed (and
