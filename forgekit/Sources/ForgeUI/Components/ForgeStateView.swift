@@ -1,5 +1,8 @@
 #if canImport(SwiftUI)
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// A button a state view offers, with the identifier UI tests find it by.
 /// It is either a button or, when there is a choice to make (which kind of
@@ -36,6 +39,24 @@ public struct ForgeStateAction {
         @ViewBuilder content: () -> Content
     ) -> ForgeStateAction {
         ForgeStateAction(title: title, identifier: identifier, action: {}, systemImage: systemImage, menu: AnyView(content()))
+    }
+
+    /// "Open Settings", which opens this app's page in the Settings app. Use
+    /// it where a permission the person turned off is the reason for the
+    /// state: after a denial iOS never asks again, so asking is no way out.
+    ///
+    ///     ForgeStateView.failed("Weather where you are", message: message,
+    ///                           retry: .openSettings(identifier: "forecast.openSettings"))
+    public static func openSettings(identifier: String) -> ForgeStateAction {
+        ForgeStateAction("Open Settings", identifier: identifier) {
+            #if canImport(UIKit) && os(iOS)
+                Task { @MainActor in
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                    }
+                }
+            #endif
+        }
     }
 }
 
