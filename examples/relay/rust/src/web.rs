@@ -602,7 +602,14 @@ async fn connection(
         .map_err(|e| RelayError::Unreachable {
             reason: e.to_string(),
         })?;
-    *lock(cached) = Some(c.clone());
+    let mut kept = lock(cached);
+    if let Some(other) = kept.as_ref().filter(|o| o.close_reason().is_none()) {
+        // Another request dialled at the same time: keep one connection, so
+        // closing the cached one on revocation closes every one in use.
+        c.close(0u32.into(), b"duplicate");
+        return Ok(other.clone());
+    }
+    *kept = Some(c.clone());
     Ok(c)
 }
 
@@ -633,17 +640,26 @@ async fn forward(
         let _ = browser.shutdown().await;
         return Ok(());
     }
+    // Revoked here: nothing more goes to it, on any connection.
+    let revoked = || {
+        if let Some(c) = lock(cached).take() {
+            c.close(0u32.into(), b"revoked");
+        }
+        RelayError::Declined {
+            reason: "That device is no longer trusted here.".into(),
+        }
+    };
     let attempt = async {
         if !still() {
-            // Revoked here: nothing more goes to it, on any connection.
-            if let Some(c) = lock(cached).take() {
-                c.close(0u32.into(), b"revoked");
-            }
-            return Err(RelayError::Declined {
-                reason: "That device is no longer trusted here.".into(),
-            });
+            return Err(revoked());
         }
         let conn = connection(node, to, cached).await?;
+        // Asked again once the connection is cached: a revocation that
+        // finished while it was being dialled couldn't close it, and one
+        // that finishes from now on closes it (it is the cached one).
+        if !still() {
+            return Err(revoked());
+        }
         let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
         send.write_all(&rewritten(&head, None))
             .await
@@ -1004,5 +1020,70 @@ mod tests {
         assert!(parse_response(short, false).is_err());
         let r = parse_response(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n", true).unwrap();
         assert!(r.body.is_empty());
+    }
+
+    /// A device revoked while its connection was being dialled gets no
+    /// request: trust is asked again once the connection is in place.
+    #[test]
+    fn a_revocation_during_the_dial_stops_the_request() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        crate::code::TOKIO.block_on(async {
+            let start = |name: &str| {
+                let key_dir = dir.path().join(name);
+                async move {
+                    Arc::new(
+                        Node::start(
+                            &key_dir,
+                            &key_dir.join("store"),
+                            Arc::new(crate::device::NoDevices),
+                            crate::device::NodeLink::default(),
+                            &crate::resolver::RelayServers::default(),
+                        )
+                        .await
+                        .unwrap(),
+                    )
+                }
+            };
+            let host = start("host").await;
+            let viewer = start("viewer").await;
+            // Trusted when the request starts, revoked by the time the
+            // dial has finished.
+            let asked = Arc::new(AtomicUsize::new(0));
+            let counted = Arc::clone(&asked);
+            let still: StillTrusted = Arc::new(move || counted.fetch_add(1, Ordering::SeqCst) == 0);
+            let cached: Arc<Mutex<Option<Connection>>> = Arc::default();
+            let name = site_host(&host.id().to_string());
+            let tunnel = open_tunnel(
+                Arc::clone(&viewer),
+                host.endpoint.addr(),
+                Arc::clone(&cached),
+                0,
+                name.clone(),
+                still,
+            )
+            .await
+            .unwrap();
+            let mut browser = TcpStream::connect(("127.0.0.1", tunnel.port))
+                .await
+                .unwrap();
+            browser
+                .write_all(format!("GET / HTTP/1.1\r\nHost: {name}\r\n\r\n").as_bytes())
+                .await
+                .unwrap();
+            let mut answer = String::new();
+            browser.read_to_string(&mut answer).await.unwrap();
+            assert!(answer.starts_with("HTTP/1.1 502"), "{answer}");
+            assert!(answer.contains("no longer trusted"), "{answer}");
+            assert_eq!(
+                asked.load(Ordering::SeqCst),
+                2,
+                "asked before and after the dial"
+            );
+            assert!(lock(&cached).is_none(), "the dialled connection is closed");
+            drop(tunnel);
+            viewer.shutdown().await;
+            host.shutdown().await;
+        });
     }
 }
