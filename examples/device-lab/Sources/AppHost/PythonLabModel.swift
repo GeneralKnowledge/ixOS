@@ -681,7 +681,11 @@ public final class PythonLabModel {
                 seconds: lastSeconds ?? 0, ok: result.ok, timedOut: result.timedOut,
                 output: console.plainText)
             // In the project it ran in, even if another is open now.
-            try? workspace.recordRun(project: startedIn, run: record)
+            do {
+                try workspace.recordRun(project: startedIn, run: record)
+            } catch {
+                self.error = "The run finished but couldn't be added to History: \(Self.message(error))"
+            }
             if project == startedIn { loadRuns() }
         }
         isRunning = false
