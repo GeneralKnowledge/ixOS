@@ -203,8 +203,11 @@ cython = $(q "$venv/bin/cython")
 pkg-config = 'pkg-config'
 
 [built-in options]
-c_link_args = [$(q "--ld-path=$ld"), '-F', $(q "$slice"), '-framework', 'Python']
-cpp_link_args = [$(q "--ld-path=$ld"), '-F', $(q "$slice"), '-framework', 'Python']
+# -mlinker-version: Swift's clang can't ask ld64.lld its version and would
+# pass old ld64 flags (-arch, -iphoneos_version_min) that lld rejects; any
+# version from 520 on makes it pass -platform_version instead.
+c_link_args = [$(q "--ld-path=$ld"), '-mlinker-version=907', '-F', $(q "$slice"), '-framework', 'Python']
+cpp_link_args = [$(q "--ld-path=$ld"), '-mlinker-version=907', '-F', $(q "$slice"), '-framework', 'Python']
 
 [properties]
 # Apple arm64: long double is the same as double.
