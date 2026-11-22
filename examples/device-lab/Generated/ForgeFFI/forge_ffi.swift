@@ -8387,6 +8387,78 @@ public func FfiConverterTypeBluetoothStats_lower(_ value: BluetoothStats) -> Rus
 }
 
 
+/**
+ * A bracket beside the cursor and the one that pairs with it (PL2), in
+ * UTF-16 code units.
+ */
+public struct BracketMatch: Equatable, Hashable {
+    /**
+     * The bracket just before the cursor, or else the one just after it.
+     */
+    public var at: UInt32
+    /**
+     * Its partner, or nil when it has none or the nearest one is the
+     * wrong kind (`(]`): the editor marks it as unmatched.
+     */
+    public var partner: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The bracket just before the cursor, or else the one just after it.
+         */at: UInt32, 
+        /**
+         * Its partner, or nil when it has none or the nearest one is the
+         * wrong kind (`(]`): the editor marks it as unmatched.
+         */partner: UInt32?) {
+        self.at = at
+        self.partner = partner
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BracketMatch: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBracketMatch: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BracketMatch {
+        return
+            try BracketMatch(
+                at: FfiConverterUInt32.read(from: &buf), 
+                partner: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BracketMatch, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.at, into: &buf)
+        FfiConverterOptionUInt32.write(value.partner, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBracketMatch_lift(_ buf: RustBuffer) throws -> BracketMatch {
+    return try FfiConverterTypeBracketMatch.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBracketMatch_lower(_ value: BracketMatch) -> RustBuffer {
+    return FfiConverterTypeBracketMatch.lower(value)
+}
+
+
 public struct ConnectivityChange: Equatable, Hashable {
     public var atMs: Int64
     public var status: ConnectivityStatus
@@ -15800,6 +15872,30 @@ fileprivate struct FfiConverterOptionTypeAiRun: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeBracketMatch: FfiConverterRustBuffer {
+    typealias SwiftType = BracketMatch?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeBracketMatch.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeBracketMatch.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeConnectivityStatus: FfiConverterRustBuffer {
     typealias SwiftType = ConnectivityStatus?
 
@@ -17319,6 +17415,20 @@ public func pythonHighlight(source: String) -> [HighlightSpan]  {
     )
 })
 }
+/**
+ * The bracket beside UTF-16 offset `cursor` and its partner. Brackets in
+ * strings and comments don't count (an f-string's `{}` included), so
+ * `print(")")` pairs the outer two.
+ */
+public func pythonMatchingBracket(source: String, cursor: UInt32) -> BracketMatch?  {
+    return try!  FfiConverterOptionTypeBracketMatch.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_matching_bracket(
+        FfiConverterString.lower(source),
+        FfiConverterUInt32.lower(cursor),uniffiCallStatus
+    )
+})
+}
 public func transferTestCancel(id: String)throws   {try rustCallWithError(FfiConverterTypeTransferTestError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_func_transfer_test_cancel(
@@ -17495,6 +17605,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_python_highlight() != 46371) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_matching_bracket() != 13468) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_transfer_test_cancel() != 22994) {

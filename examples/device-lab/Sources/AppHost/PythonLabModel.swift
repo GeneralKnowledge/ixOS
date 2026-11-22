@@ -117,6 +117,13 @@ public final class PythonLabModel {
     public private(set) var entries: [WorkspaceEntry] = []
     /// The file in the editor, relative to the project.
     public private(set) var openFile: String?
+    /// The files open as tabs above the editor, in the order opened (PL2);
+    /// `openFile` is one of them. Only the one in the editor is held in
+    /// memory: switching saves it and reads the next.
+    public private(set) var openFiles: [String] = []
+
+    /// At most this many tabs; opening another closes the oldest.
+    public static let maxOpenFiles = 8
     /// The file Run starts; nil runs the open file.
     public private(set) var runFile: String?
 
@@ -198,6 +205,10 @@ public final class PythonLabModel {
         guard let workspace else { return }
         reloadEntries()
         loadArtifacts()
+        // Tabs whose files Bonsai removed close (the one in the editor stays).
+        openFiles.removeAll { tab in
+            tab != openFile && !entries.contains { $0.path == tab }
+        }
         guard let openFile, saveState == .saved else { return }
         if let fresh = try? workspace.readText(project: project, path: openFile), fresh != text {
             text = fresh
@@ -294,6 +305,8 @@ public final class PythonLabModel {
         runFile = state.runFile
         entries = listed
         listError = nil
+        // Rust already left out tabs whose files are gone.
+        openFiles = Array(state.openFiles.prefix(Self.maxOpenFiles))
         if let current = state.currentFile {
             open(file: current)
         } else if let first = entries.first(where: { !$0.isFolder && $0.path.hasSuffix(".py") }) {
@@ -399,11 +412,38 @@ public final class PythonLabModel {
             let text = try workspace.readText(project: project, path: path)
             self.text = text
             openFile = path
+            addTab(path)
             saveState = .saved
             error = nil
             saveProjectState()
         } catch {
             self.error = Self.message(error)
+        }
+    }
+
+    /// Closes a tab. Closing the one in the editor saves it and shows the
+    /// tab beside it; the last tab can't be closed (the editor always has
+    /// a file).
+    public func close(file path: String) {
+        guard openFiles.count > 1, let index = openFiles.firstIndex(of: path) else { return }
+        if path == openFile {
+            let next = openFiles[index + 1 < openFiles.count ? index + 1 : index - 1]
+            open(file: next)
+            // Not switched (the save failed): the tab stays.
+            guard openFile == next else { return }
+        }
+        openFiles.removeAll { $0 == path }
+        saveProjectState()
+    }
+
+    private func addTab(_ path: String) {
+        guard !openFiles.contains(path) else { return }
+        openFiles.append(path)
+        if openFiles.count > Self.maxOpenFiles {
+            // The oldest tab that isn't the one just opened.
+            if let oldest = openFiles.firstIndex(where: { $0 != path }) {
+                openFiles.remove(at: oldest)
+            }
         }
     }
 
@@ -451,6 +491,7 @@ public final class PythonLabModel {
             return Self.message(error)
         }
         openFile = openFile.map { Self.moved($0, from: entry.path, to: target) }
+        openFiles = openFiles.map { Self.moved($0, from: entry.path, to: target) }
         runFile = runFile.map { Self.moved($0, from: entry.path, to: target) }
         saveProjectState()
         reloadEntries()
@@ -484,9 +525,14 @@ public final class PythonLabModel {
         }
         if inside(runFile) { runFile = nil }
         reloadEntries()
+        openFiles.removeAll { inside($0) && $0 != openFile }
         if inside(openFile) {
+            let gone = openFile
             openFile = nil
-            if let first = entries.first(where: { !$0.isFolder && $0.path.hasSuffix(".py") }) {
+            openFiles.removeAll { $0 == gone }
+            if let tab = openFiles.last {
+                open(file: tab)
+            } else if let first = entries.first(where: { !$0.isFolder && $0.path.hasSuffix(".py") }) {
                 open(file: first.path)
             } else {
                 text = ""
@@ -562,7 +608,7 @@ public final class PythonLabModel {
     private func saveProjectState() {
         guard let workspace else { return }
         let state = WorkspaceState(
-            runFile: runFile, currentFile: openFile, openFiles: openFile.map { [$0] } ?? [])
+            runFile: runFile, currentFile: openFile, openFiles: openFiles)
         do {
             try workspace.saveState(project: project, state: state)
         } catch {

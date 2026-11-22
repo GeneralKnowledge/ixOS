@@ -120,9 +120,15 @@ After a failed run, each of the project's lines in the traceback is a button und
 
 Each run is recorded in the project's hidden `.workspace/runs.json` (the newest 30, each with the file, when, how long, how it ended and the last 16 KB of its output). History, beside Clear under the console, lists them; a run opens its output; Clear History forgets them. `Workspace.runs`, `record_run` and `clear_runs`, tested on Linux.
 
+### PL2d. Several open files and bracket matching — built
+
+Opening a file adds it as a tab above the editor (up to 8; a ninth closes the oldest). Tapping a tab saves the file in the editor and opens that one; its cross closes it, and the last tab can't be closed. The tabs are the project's `openFiles` in `.workspace/state.json`, which PL1b already kept, so they come back with the project; renaming and deleting carry them along, and Bonsai removing a file closes its tab. Only the file in the editor is held in memory.
+
+Putting the cursor beside a bracket marks it and its partner; a bracket with no partner, or the wrong one (`(]`), is marked alone in the danger tone. Rust's `python_matching_bracket(source, cursor)` finds the pair in UTF-16 units and skips brackets in strings and comments (the highlighter's tokens), tested on Linux. The marks are TextKit temporary attributes, so they never enter the text or Undo.
+
 ### Still in PL2
 
-Several open files and bracket matching in the editor, a general artifact browser, and debugging (stepping, variables).
+A general artifact browser, and debugging (stepping, variables).
 
 ## Decided: projects live in Files
 

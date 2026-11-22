@@ -23,6 +23,10 @@ struct PythonLabView: View {
                 projectSection
             }
             Section {
+                if model.openFiles.count > 1 {
+                    PythonFileTabs(model: model)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
+                }
                 PythonCodeEditor(
                     text: $model.code,
                     isEditable: !(model.hasWorkspace && model.openFile == nil) && !model.isLockedByBonsai,
@@ -739,5 +743,56 @@ struct PythonRunHistoryView: View {
         let when = date.formatted(date: .abbreviated, time: .shortened)
         let how = run.timedOut ? "stopped at the time limit" : run.ok ? "finished" : "error"
         return "\(when), \(Format.number(run.seconds, digits: 2)) s, \(how)"
+    }
+}
+
+/// The open files as tabs above the editor (PL2): tap one to switch, its
+/// cross to close it. Shown once more than one file is open.
+struct PythonFileTabs: View {
+    @Bindable var model: PythonLabModel
+    @Environment(\.forgeTheme) private var theme
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(model.openFiles, id: \.self) { path in
+                        tab(path)
+                    }
+                }
+            }
+            .onChange(of: model.openFile, initial: true) { _, current in
+                if let current {
+                    withAnimation { proxy.scrollTo(current) }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Open files")
+        .accessibilityIdentifier("pythonLab.tabs")
+    }
+
+    private func tab(_ path: String) -> some View {
+        let current = path == model.openFile
+        let name = path.split(separator: "/").last.map(String.init) ?? path
+        return HStack(spacing: 2) {
+            Button(name) { model.open(file: path) }
+                .font(.footnote.monospaced())
+                .lineLimit(1)
+                .accessibilityLabel(current ? "\(path), open" : path)
+                .accessibilityAddTraits(current ? .isSelected : [])
+                .accessibilityIdentifier("pythonLab.tab.\(path)")
+            Button("Close \(path)", systemImage: "xmark") { model.close(file: path) }
+                .labelStyle(.iconOnly)
+                .font(.caption2)
+                .accessibilityIdentifier("pythonLab.tab.close.\(path)")
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(
+            Capsule().fill(current ? theme.colors.tone(.accent).soft : theme.colors.tone(.neutral).soft))
+        .foregroundStyle(current ? theme.colors.tone(.accent).text : theme.colors.textSecondary)
+        .buttonStyle(.borderless)
+        .id(path)
     }
 }

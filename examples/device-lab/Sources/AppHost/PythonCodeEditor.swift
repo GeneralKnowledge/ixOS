@@ -8,7 +8,8 @@ import UIKit
 /// Python Lab's code editor (python-lab-workspace-plan.md, PL1c): a
 /// `UITextView` with smart punctuation off, line numbers, Python
 /// indentation, a key row above the keyboard, iOS's own find and replace,
-/// and syntax colours from Rust (`pythonHighlight`, python_highlight.rs).
+/// syntax colours from Rust (`pythonHighlight`, python_highlight.rs) and
+/// bracket matching (`pythonMatchingBracket`, PL2).
 struct PythonCodeEditor: UIViewRepresentable {
     @Binding var text: String
     var isEditable: Bool
@@ -79,6 +80,10 @@ struct PythonCodeEditor: UIViewRepresentable {
         var number: UIColor
         var definition: UIColor
         var decorator: UIColor
+        /// Behind a bracket and its partner (PL2).
+        var bracket: UIColor
+        /// Behind a bracket with no partner.
+        var unmatched: UIColor
 
         init(theme: ForgeTheme) {
             let colors = theme.colors
@@ -90,6 +95,8 @@ struct PythonCodeEditor: UIViewRepresentable {
             number = UIColor(colors.tone(.info).text)
             definition = UIColor(colors.textPrimary)
             decorator = UIColor(colors.tone(.warning).text)
+            bracket = UIColor(colors.tone(.accent).soft)
+            unmatched = UIColor(colors.tone(.danger).soft)
         }
 
         func colour(_ kind: HighlightKind) -> UIColor {
@@ -113,6 +120,9 @@ struct PythonCodeEditor: UIViewRepresentable {
         private var colours: EditorColours?
         private var theme: ForgeTheme?
         private var colouring: Task<Void, Never>?
+        private var matching: Task<Void, Never>?
+        /// A bracket is marked now, to clear on the next move.
+        private var marked = false
 
         init(text: Binding<String>) {
             self.text = text
@@ -146,6 +156,61 @@ struct PythonCodeEditor: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             changed()
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            matchBrackets()
+        }
+
+        // MARK: Bracket matching
+
+        /// Marks the bracket beside the cursor and its partner, or the
+        /// bracket alone in the danger tone when it has none (PL2). Rust
+        /// (`pythonMatchingBracket`) skips strings and comments.
+        private func matchBrackets() {
+            matching?.cancel()
+            guard let view, let colours else { return }
+            let selection = view.selectedRange
+            let source = view.text ?? ""
+            guard selection.length == 0, !source.isEmpty else {
+                mark([], colour: colours.bracket)
+                return
+            }
+            matching = Task { [weak self] in
+                let found = await Task.detached(priority: .userInitiated) {
+                    pythonMatchingBracket(source: source, cursor: UInt32(selection.location))
+                }.value
+                guard !Task.isCancelled, let self, let view = self.view, view.text == source,
+                      view.selectedRange == selection
+                else { return }
+                guard let found else {
+                    self.mark([], colour: colours.bracket)
+                    return
+                }
+                let at = NSRange(location: Int(found.at), length: 1)
+                if let partner = found.partner {
+                    self.mark([at, NSRange(location: Int(partner), length: 1)], colour: colours.bracket)
+                } else {
+                    self.mark([at], colour: colours.unmatched)
+                }
+            }
+        }
+
+        /// Temporary attributes: shown, never saved in the text or undo.
+        private func mark(_ ranges: [NSRange], colour: UIColor) {
+            guard let view else { return }
+            let manager = view.layoutManager
+            let length = view.textStorage.length
+            // Typing moves text under the old marks, so clear them all.
+            if marked {
+                manager.removeTemporaryAttribute(
+                    .backgroundColor, forCharacterRange: NSRange(location: 0, length: length))
+            }
+            let ranges = ranges.filter { NSMaxRange($0) <= length }
+            marked = !ranges.isEmpty
+            for range in ranges {
+                manager.addTemporaryAttribute(.backgroundColor, value: colour, forCharacterRange: range)
+            }
         }
 
         private func changed() {

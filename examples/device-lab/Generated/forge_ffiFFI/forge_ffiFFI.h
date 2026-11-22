@@ -1630,6 +1630,11 @@ RustBuffer uniffi_forge_ffi_fn_func_packages_installed(RustBuffer site_packages,
 RustBuffer uniffi_forge_ffi_fn_func_python_highlight(RustBuffer source, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_MATCHING_BRACKET
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_MATCHING_BRACKET
+RustBuffer uniffi_forge_ffi_fn_func_python_matching_bracket(RustBuffer source, uint32_t cursor, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CANCEL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CANCEL
 void uniffi_forge_ffi_fn_func_transfer_test_cancel(RustBuffer id, RustCallStatus *_Nonnull out_status
@@ -2105,6 +2110,12 @@ uint16_t uniffi_forge_ffi_checksum_func_packages_installed(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_HIGHLIGHT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_HIGHLIGHT
 uint16_t uniffi_forge_ffi_checksum_func_python_highlight(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_MATCHING_BRACKET
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_MATCHING_BRACKET
+uint16_t uniffi_forge_ffi_checksum_func_python_matching_bracket(void
     
 );
 #endif
