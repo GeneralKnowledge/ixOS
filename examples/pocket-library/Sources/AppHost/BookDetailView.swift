@@ -222,7 +222,7 @@ struct BookDetailView: View {
         if let total = book.totalPages {
             VStack(alignment: .leading, spacing: 6) {
                 ProgressView(value: book.progress)
-                    .tint(theme.colors.tone(book.status.tone).solid)
+                    .progressViewStyle(.forge(tone: book.status.tone))
                 Text("\(Int((book.progress * 100).rounded()))% · page \(book.currentPage) of \(total)")
                     .font(.caption)
                     .foregroundStyle(.secondary)

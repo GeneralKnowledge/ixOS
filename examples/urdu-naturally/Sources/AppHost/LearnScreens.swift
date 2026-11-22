@@ -259,7 +259,7 @@ struct SkillBars: View {
                 .font(.footnote)
                 .frame(width: 80, alignment: .leading)
             ProgressView(value: Double(level), total: 5)
-                .tint(theme.colors.accent.solid)
+                .progressViewStyle(.forge)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(level) of 5")

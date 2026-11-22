@@ -141,6 +141,7 @@ private struct ProgressRow: View {
             Text(allDone ? "All done for today" : "\(plan.totalMinutes) minutes with \(dogName)")
                 .font(.headline)
             ProgressView(value: Double(plan.doneCount), total: Double(max(plan.activities.count, 1)))
+                .progressViewStyle(.forge)
                 .accessibilityLabel("Activities done")
                 .accessibilityValue("\(plan.doneCount) of \(plan.activities.count)")
             if allDone {
@@ -211,7 +212,7 @@ private struct GoalFocusRow: View {
                 ForgeBadge("\(focus.stageNumber) of \(focus.stageCount)", systemImage: "flag", tone: .accent)
             }
             ProgressView(value: Double(focus.stageNumber - 1), total: Double(max(focus.stageCount, 1)))
-                .forgeTint(.accent)
+                .progressViewStyle(.forge)
                 .accessibilityHidden(true)
             Text("Now: \(focus.stageTitle)")
                 .font(.subheadline.weight(.semibold))

@@ -65,6 +65,7 @@ private struct TransferRowView: View {
                 }
                 if let fraction = row.fraction, row.state == "Running" {
                     ProgressView(value: fraction)
+                        .progressViewStyle(.forge)
                 }
                 if let detail = row.detail {
                     Text(detail).font(.footnote).foregroundStyle(.secondary)
