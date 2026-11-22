@@ -21,8 +21,8 @@ struct BookFormView: View {
     @State private var totalPages: String
     @State private var coverURL: String
     /// What the form opened with, so a swipe is blocked only once something changed.
-    private let opening: BookInput
-    private let openingText: [String]
+    @State private var opening: BookInput
+    @State private var openingText: [String]
     /// The Save button's work and its failure (ForgeAppKit).
     @State private var saving = ForgeSubmission()
     /// Rust's validation, shown under each field it names.
@@ -47,8 +47,8 @@ struct BookFormView: View {
         let pageText = start.currentPage == 0 ? "" : String(start.currentPage)
         let totalText = start.totalPages.map(String.init) ?? ""
         let coverText = start.coverUrl ?? ""
-        opening = start
-        openingText = [pageText, totalText, coverText]
+        _opening = State(initialValue: start)
+        _openingText = State(initialValue: [pageText, totalText, coverText])
         _input = State(initialValue: start)
         _currentPage = State(initialValue: pageText)
         _totalPages = State(initialValue: totalText)

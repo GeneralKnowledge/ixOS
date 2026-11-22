@@ -916,7 +916,7 @@ def rule_icon_tile(app):
         for m in TILE_BACKGROUND.finditer(code):
             if SURFACE.search(m.group(1)):
                 continue
-            if chain_root(code, m.start()).startswith("Image(systemName:"):
+            if re.match(r"Image\(\s*systemName:", chain_root(code, m.start())):
                 bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
     if bad:
         return False, "draws an icon tile by hand; use ForgeRow's systemImage with a tone or an accent: " + ", ".join(bad)

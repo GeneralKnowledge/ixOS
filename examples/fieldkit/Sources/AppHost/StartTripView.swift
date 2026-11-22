@@ -10,7 +10,7 @@ struct StartTripView: View {
 
     @State private var title: String
     /// The suggested name the sheet opened with; only a change from it blocks a swipe.
-    private let openingTitle: String
+    @State private var openingTitle: String
     @State private var starting = ForgeSubmission()
     @Environment(\.dismiss) private var dismiss
 
@@ -18,7 +18,7 @@ struct StartTripView: View {
         self.model = model
         self.onStarted = onStarted
         let suggested = TripFormat.defaultTitle()
-        openingTitle = suggested
+        _openingTitle = State(initialValue: suggested)
         _title = State(initialValue: suggested)
     }
 
