@@ -274,6 +274,37 @@ fn a_syntax_error_is_the_writes_result() {
 }
 
 #[test]
+fn an_edit_forgives_quotes_and_indent_when_one_line_fits() {
+    if !has_python() {
+        return;
+    }
+    let (dir, lab) = seeded("t5-fix-from-traceback");
+    // What Bonsai 9B sent six times on the T5 phone run: single quotes
+    // and nine spaces where the file has double quotes and eight.
+    let out = lab.execute(&call(
+        r#"{"tool": "edit_file", "path": "inventory.py", "old": "         lines.append(name + ': ' + count)", "new": "         lines.append(name + ': ' + str(count))"}"#,
+    ));
+    assert!(out.ok, "{}", out.text);
+    assert!(
+        out.text
+            .contains("matched line 7 once quotes and indentation were ignored"),
+        "{}",
+        out.text
+    );
+    let text = std::fs::read_to_string(dir.path().join("p/inventory.py")).unwrap();
+    assert!(
+        text.contains("\n        lines.append(name + ': ' + str(count))\n"),
+        "{text}"
+    );
+    assert!(!text.contains("+ count)"), "{text}");
+    // A line that isn't there still gets "did you mean", not a guess.
+    let out = lab.execute(&call(
+        r#"{"tool": "edit_file", "path": "inventory.py", "old": "lines.append(name + ': ' + amount)", "new": "x"}"#,
+    ));
+    assert!(!out.ok && out.text.contains("Did you mean"), "{}", out.text);
+}
+
+#[test]
 fn double_quotes_inside_a_string_get_a_hint() {
     if !has_python() {
         return;

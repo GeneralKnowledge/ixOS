@@ -225,9 +225,22 @@ impl PythonLab {
                     .to_string(),
             );
         }
+        let mut note = None;
         let edited = match text.matches(old).count() {
             1 => text.replacen(old, new, 1),
-            0 => match replace_lines_loosely(&text, old, new) {
+            0 => match replace_lines_loosely(&text, old, new)
+                // Small models copy a line with ' for " (writing " inside
+                // the JSON answer needs \") and with the indent off by a
+                // space. One place that fits once those are ignored is
+                // taken, re-indented, and the answer says so.
+                .or_else(|| {
+                    replace_lines_forgivingly(&text, old, new).map(|(edited, line)| {
+                        note = Some(format!(
+                            " old matched line {line} once quotes and indentation were ignored; the new lines were indented to fit."
+                        ));
+                        edited
+                    })
+                }) {
                 Some(edited) => edited,
                 None => {
                     let hint = similar_lines(&text, old)
@@ -244,7 +257,11 @@ impl PythonLab {
                 ))
             }
         };
-        self.store(path, &edited, "Edited")
+        let mut outcome = self.store(path, &edited, "Edited");
+        if let (true, Some(note)) = (outcome.ok, note) {
+            outcome.text.push_str(&note);
+        }
+        outcome
     }
 
     fn store(&self, path: &str, content: &str, verb: &str) -> ToolOutcome {
@@ -606,6 +623,59 @@ fn replace_lines_loosely(text: &str, old: &str, new: &str) -> Option<String> {
         joined.push('\n');
     }
     Some(joined)
+}
+
+/// A line as a small model might copy it: no indent or trailing space,
+/// and one kind of quote.
+fn forgiving(line: &str) -> String {
+    line.trim().replace('"', "'")
+}
+
+/// `old` matched against `text` ignoring indentation and quote style. When
+/// exactly one run of lines fits, it is replaced by `new`, shifted so its
+/// first line takes the indent of the line it replaces. Returns the edited
+/// text and the (1-based) first line replaced.
+fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String, usize)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let want: Vec<String> = old.lines().map(forgiving).collect();
+    if want.is_empty() || want.len() > lines.len() || want.iter().all(String::is_empty) {
+        return None;
+    }
+    let found: Vec<usize> = (0..=lines.len() - want.len())
+        .filter(|&i| {
+            lines[i..i + want.len()]
+                .iter()
+                .zip(&want)
+                .all(|(a, b)| forgiving(a) == *b)
+        })
+        .collect();
+    let [at] = found[..] else { return None };
+    let indent = |line: &str| line.len() - line.trim_start().len();
+    let first_old = old.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let first_file = lines[at..at + want.len()]
+        .iter()
+        .find(|l| !l.trim().is_empty())
+        .copied()
+        .unwrap_or("");
+    let shift = indent(first_file) as isize - indent(first_old) as isize;
+    let shifted = new.lines().map(|line| {
+        if line.trim().is_empty() {
+            String::new()
+        } else if shift >= 0 {
+            format!("{}{line}", " ".repeat(shift as usize))
+        } else {
+            let cut = (-shift as usize).min(indent(line));
+            line[cut..].to_string()
+        }
+    });
+    let mut out: Vec<String> = lines[..at].iter().map(|l| l.to_string()).collect();
+    out.extend(shifted);
+    out.extend(lines[at + want.len()..].iter().map(|l| l.to_string()));
+    let mut joined = out.join("\n");
+    if text.ends_with('\n') {
+        joined.push('\n');
+    }
+    Some((joined, at + 1))
 }
 
 /// The run of lines in `text` most like `old`, numbered, when it is close
