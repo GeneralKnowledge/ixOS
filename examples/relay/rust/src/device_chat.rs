@@ -222,6 +222,15 @@ impl<'a> Conversations<'a> {
         Ok(())
     }
 
+    /// Marks one of our queued messages as left in its device's mailbox
+    /// (see [`store::set_in_mailbox`]).
+    pub fn set_in_mailbox(&mut self, endpoint_id: &str, id: &str) -> Result<(), RelayError> {
+        if let Some(m) = store::set_in_mailbox(self.c, &checked(endpoint_id)?, id)? {
+            self.changed.push((endpoint_id.to_string(), m));
+        }
+        Ok(())
+    }
+
     /// Gives this device's own messages, authored `from` by an older build,
     /// the author [`ME`] (see [`store::reauthor`]).
     pub fn reauthor_own(&mut self, from: &str) -> Result<(), RelayError> {
@@ -615,6 +624,18 @@ impl RelayCore {
     /// The conversation with a trusted device, oldest first.
     pub fn device_messages(&self, endpoint_id: &str) -> Result<Vec<Message>, RelayError> {
         self.peer_logs.get(endpoint_id)?.since(None)
+    }
+
+    /// What changed in a device's conversation after `since`, a change
+    /// stamp of this device's (`Message::changed_at`): new messages,
+    /// including ones collected late from the mailbox, and status changes
+    /// of ours. Oldest first.
+    pub fn device_messages_since(
+        &self,
+        endpoint_id: &str,
+        since: i64,
+    ) -> Result<Vec<Message>, RelayError> {
+        self.peer_logs.get(endpoint_id)?.since(Some(since))
     }
 
     /// Sends `text` to a trusted device's conversation, through the outbox,

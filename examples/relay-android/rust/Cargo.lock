@@ -3208,6 +3208,7 @@ dependencies = [
  "log",
  "n0-future",
  "serde",
+ "serde_bytes",
  "serde_json",
  "sha2 0.10.9",
  "spake2",

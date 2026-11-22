@@ -612,6 +612,26 @@ pub(crate) fn set_status(
         return Ok(None);
     }
     m.status = status;
+    m.in_mailbox &= status == MessageStatus::Queued;
+    m.updated_at = Some(stamp(c, conversation)?);
+    insert_message(c, conversation, &m)?;
+    Ok(Some(m))
+}
+
+/// Marks one of our `Queued` messages as left in its device's mailbox.
+/// The changed message, or `None` when there was nothing to change.
+pub(crate) fn set_in_mailbox(
+    c: &Connection,
+    conversation: &str,
+    id: &str,
+) -> Result<Option<Message>, RelayError> {
+    let Some(mut m) = message(c, conversation, id)? else {
+        return Ok(None);
+    };
+    if m.status != MessageStatus::Queued || m.in_mailbox {
+        return Ok(None);
+    }
+    m.in_mailbox = true;
     m.updated_at = Some(stamp(c, conversation)?);
     insert_message(c, conversation, &m)?;
     Ok(Some(m))
