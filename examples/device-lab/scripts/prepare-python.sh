@@ -159,8 +159,9 @@ while IFS= read -r so; do
   case "$so" in
     "$lib"/site-packages/*)
       rel="${so#"$lib/site-packages/"}"
-      module="$(dirname "$rel" | tr '/' '.').${file%%.*}" ;;
-    *) module="${file%%.*}" ;;
+      module="$(dirname "$rel" | tr '/' '.').${file%%.*}"
+      minos="17.0" ;;  # build-numpy.sh builds for the app's iOS 17
+    *) module="${file%%.*}"; minos="" ;;
   esac
   framework="$home/Frameworks/${module}.framework"
   mkdir -p "$framework"
@@ -169,8 +170,9 @@ while IFS= read -r so; do
   # -> ...python.numpy.core.umath-linalg (a bundle id has no _).
   bundle_id="${BUNDLE_PREFIX}.$(echo "$module" | sed -E 's/(^|\.)_+/\1/g' | tr '_' '-')"
   # CPython's template, with the module's executable name and bundle id.
-  awk -v exe="$module" -v id="$bundle_id" '
+  awk -v exe="$module" -v id="$bundle_id" -v minos="$minos" '
     /<key>CFBundleExecutable<\/key>/ { print; getline; print "\t<string>" exe "</string>"; next }
+    /<key>MinimumOSVersion<\/key>/ && minos != "" { print; getline; print "\t<string>" minos "</string>"; next }
     /<key>CFBundleIdentifier<\/key>/ { print; getline; print "\t<string>" id "</string>"; next }
     { print }' "$src/build/iOS-dylib-Info-template.plist" > "$framework/Info.plist"
   if [[ -f "$lib/lib-dynload/${module}.xcprivacy" ]]; then
