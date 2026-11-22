@@ -1,0 +1,16 @@
+[app]
+name = "Relay"
+bundle_id = "org.forgemobile.relay"
+
+[android]
+min_sdk = 26
+abis = ["arm64-v8a", "x86_64"]
+
+[rust]
+# A thin crate that links Relay's own core (examples/relay/rust).
+path = "rust"
+
+[build]
+ios_device = false
+ios_simulator = false
+android = true
