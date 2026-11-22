@@ -1099,6 +1099,7 @@ impl RelayCore {
         } else {
             name
         };
+        let offers = self.trust_offers.clone();
         self.rt
             .command("trust-device", move |state| {
                 state.change(|r| {
@@ -1109,7 +1110,11 @@ impl RelayCore {
                         None => r.devices.trust(&endpoint_id, &name, now_ms()),
                     }
                     Ok(())
-                })
+                })?;
+                // A sync that ran after the offer was taken above, but
+                // before this command, may have offered the device again.
+                lock(&offers).retain(|o| o.endpoint_id != endpoint_id);
+                Ok(())
             })
             .await
     }
