@@ -697,3 +697,86 @@ fn a_wheels_own_installer_file_is_replaced() {
     assert!(!site.join("tool").exists());
     assert!(!info.exists());
 }
+
+#[test]
+fn a_startup_file_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    for file in ["hook.pth", "./Hook.PTH", "entry.start"] {
+        let (path, sum) = wheel(
+            dir.path(),
+            "hooky",
+            "1.0",
+            &[("hooky/__init__.py", ""), (file, "import os\n")],
+            &[],
+            true,
+        );
+        assert!(
+            matches!(
+                package_install_wheel(path, sum, site.display().to_string()),
+                Err(PackageError::Invalid { .. })
+            ),
+            "{file}"
+        );
+    }
+    // Inside a package folder it's only a file.
+    let (path, sum) = wheel(
+        dir.path(),
+        "hooky",
+        "1.0",
+        &[("hooky/__init__.py", ""), ("hooky/data.pth", "")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site.display().to_string()).unwrap();
+}
+
+#[test]
+fn reinstalling_keeps_what_a_removed_package_saved() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "1.0",
+        &[("keeper/__init__.py", "X = 1\n")],
+        &[],
+        true,
+    );
+    package_install_wheel(path.clone(), sum.clone(), site_text.clone()).unwrap();
+    fs::write(site.join("keeper/state.json"), "saved").unwrap();
+    package_uninstall(site_text.clone(), "keeper".into()).unwrap();
+    assert!(site.join("keeper/state.json").exists());
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    assert_eq!(packages_installed(site_text)[0].version, "1.0");
+    assert_eq!(
+        fs::read_to_string(site.join("keeper/state.json")).unwrap(),
+        "saved"
+    );
+    assert!(site.join("keeper/__init__.py").exists());
+}
+
+#[test]
+fn a_file_that_cant_be_removed_keeps_the_package_listed() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    let (path, sum) = wheel(
+        dir.path(),
+        "stuck",
+        "1.0",
+        &[("stuck/__init__.py", ""), ("stuck/a.py", "")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    // A folder where a recorded file was: remove_file can't take it.
+    fs::remove_file(site.join("stuck/a.py")).unwrap();
+    fs::create_dir(site.join("stuck/a.py")).unwrap();
+    assert!(matches!(
+        package_uninstall(site_text.clone(), "stuck".into()),
+        Err(PackageError::Invalid { .. })
+    ));
+    assert_eq!(packages_installed(site_text)[0].name, "stuck");
+}

@@ -53,6 +53,7 @@ public final class PythonPackagesModel {
 
     /// Installing stops after this many packages (a requirement chain that
     /// runs away).
+    // swift-only: Swift walks the requirements; Rust installs one wheel at a time.
     public static let maxPackages = 40
 
     @ObservationIgnored private let sitePackages: String

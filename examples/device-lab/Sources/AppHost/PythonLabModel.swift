@@ -129,6 +129,7 @@ public final class PythonLabModel {
     public private(set) var openFiles: [String] = []
 
     /// At most this many tabs; opening another closes the oldest.
+    // swift-only: tabs are the editor's own; Rust keeps no tab list.
     public static let maxOpenFiles = 8
 
     /// Where Debug pauses in this project (PL2f), kept with the project.
@@ -150,7 +151,8 @@ public final class PythonLabModel {
 
     /// The paused line, when it is in the open file.
     public var pausedLine: Int? {
-        guard let top = debugPause?.stack.last, top.file == openFile else { return nil }
+        guard project == debugProject, let top = debugPause?.stack.last, top.file == openFile
+        else { return nil }
         return Int(top.line)
     }
     /// The file Run starts; nil runs the open file.
@@ -272,8 +274,10 @@ public final class PythonLabModel {
         var refusals: [String] = []
         for url in urls {
             // A file from the picker may be outside the app's sandbox.
+            #if canImport(Darwin)
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            #endif
             do {
                 _ = try workspace.importFile(project: project, folder: folder ?? "", source: url.path)
             } catch {
@@ -290,6 +294,11 @@ public final class PythonLabModel {
     public func exportProject() -> URL? {
         guard let workspace else { return nil }
         flush()
+        // An export without the latest edits would look complete.
+        if case .failed(let reason) = saveState, openFile != nil {
+            error = "Couldn't export \(project): the open file isn't saved (\(reason))."
+            return nil
+        }
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("Python Lab export \(UUID().uuidString)", isDirectory: true)
         do {
@@ -323,8 +332,11 @@ public final class PythonLabModel {
 
     /// Opens a project, and in it the file that was open last (or the
     /// first Python file, or a new main.py when it has none).
-    public func open(project name: String) {
-        guard let workspace, savedBeforeLeaving() else { return }
+    /// Opens a project; false (with `error` saying why) when it stayed on
+    /// the one open.
+    @discardableResult
+    public func open(project name: String) -> Bool {
+        guard let workspace, savedBeforeLeaving() else { return false }
         reloadProjects()
         let target = projects.contains { $0.name == name } ? name : "scratch"
         // A project whose files can't be listed isn't opened: the one
@@ -334,7 +346,7 @@ public final class PythonLabModel {
             listed = try workspace.entries(project: target)
         } catch {
             self.error = "Couldn't open \(target): \(Self.message(error))"
-            return
+            return false
         }
         // The new project may have a file of the same name.
         openFile = nil
@@ -362,6 +374,7 @@ public final class PythonLabModel {
             succeeded = nil
             console = PythonConsoleText()
         }
+        return true
     }
 
     public func createProject(_ name: String) -> String? {

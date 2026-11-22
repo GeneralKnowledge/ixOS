@@ -286,6 +286,9 @@ struct BonsaiHarnessView: View {
             }
             if let pythonLab, let name = snapshot.project, model.projects.contains(name) {
                 Button("Open in Python Lab", systemImage: "chevron.left.forwardslash.chevron.right") {
+                    // Python Lab opens either way: when it couldn't switch
+                    // (an unsaved file, a folder it can't list), its banner
+                    // says why it stayed on the project it has open.
                     pythonLab.open(project: name)
                     showPythonLab = true
                 }

@@ -593,7 +593,7 @@ impl BonsaiHarness {
         if state.running {
             return Err(HarnessError::Busy);
         }
-        let root = self.project_root(&name)?;
+        let (name, root) = self.project_root(&name)?;
         let entries = Journal::replay(&root);
         state.entries = entries;
         state.project = Some(name);
@@ -749,11 +749,14 @@ impl BonsaiHarness {
 
     /// A person's project: named as Python Lab names them (any letters,
     /// spaces; never hidden, never a ladder task's name).
-    fn project_root(&self, name: &str) -> Result<PathBuf, HarnessError> {
+    /// A project's checked name (trimmed, as Python Lab saves it) and its
+    /// folder. Everything after uses that name, never the one passed in.
+    fn project_root(&self, name: &str) -> Result<(String, PathBuf), HarnessError> {
         let name = crate::workspace::project_name(name).map_err(|err| HarnessError::Storage {
             reason: err.to_string(),
         })?;
-        Ok(self.projects.join(name))
+        let root = self.projects.join(&name);
+        Ok((name, root))
     }
 
     /// A ladder task's project, under [`LADDER_FOLDER`].
@@ -803,7 +806,8 @@ impl BonsaiHarness {
         if request.is_empty() {
             return Err(HarnessError::EmptyTask);
         }
-        let root = self.project_root(project)?;
+        let (project, root) = self.project_root(project)?;
+        let project = project.as_str();
         // Only scratch is made when missing: any other project is one the
         // person made in Python Lab, and a missing one was renamed or
         // deleted there.
