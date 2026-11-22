@@ -33,7 +33,7 @@ public final class BonsaiHarnessModel {
     public static let scriptedID = "scripted"
     public var isScripted: Bool { modelID == Self.scriptedID }
 
-    @ObservationIgnored private let harness: BonsaiHarness?
+    @ObservationIgnored let harness: BonsaiHarness?
     @ObservationIgnored private var models: [String: LlamaCppModel] = [:]
     /// The project's images when the task started, to tell what it made.
     @ObservationIgnored private var imagesBefore: [String: ProjectArtifact]?

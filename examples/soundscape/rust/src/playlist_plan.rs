@@ -154,6 +154,8 @@ pub fn propose(snapshot: &PlaylistSnapshot) -> Option<PlaylistPlan> {
     }
     let (artist, _) = most_common(snapshot.tracks.iter().map(|t| t.artist.as_str()))?;
     let artist = artist.to_string();
+    // cut: a proposed name from a long artist name, kept to the name limit;
+    // the person sees it in full on the surface and the review
     let name: String = format!("More of {artist}")
         .chars()
         .take(MAX_NAME_CHARS as usize)

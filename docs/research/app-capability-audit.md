@@ -217,6 +217,30 @@ Why Commonplace first rather than Pocket Library, which A2UI-1 imitated: Pocket 
 3. **Good Dog.** Leave the goal chooser behind GD7's go-ahead. Recommended. **Provisionally taken: Good Dog is not touched.**
 4. **Text field.** Not added now; revisit only after C3 or C4 has been used on the phone (4.1). **Provisionally taken.**
 
+## 7. As built (C1 to C4, 2026-11-22)
+
+All in Device Lab's A2UI Lab (Tools → A2UI Lab), which now opens on a list of four surfaces. Rust tested on Linux; **Swift not yet compiled** (it rides the next combined Device Lab build); nothing run on the iPhone yet.
+
+| Step | Rust | Swift | Tests |
+|---|---|---|---|
+| C1 gate split | `a2ui_lab/gate.rs` (general rules, `Registration` trait, `a2ui_catalog_id`), `surface.rs` (`ReadingPlan` registration) | `A2uiSurfaceHost` takes any `A2uiSurfaceOwner` | A2UI-1's 16 tests unchanged and passing |
+| C2 Bonsai card | `a2ui_lab/task_card.rs`: `BonsaiHarness::result_card()`, refused unless the task is Completed; no events, nothing redrawn, no data updates | `A2uiTaskCardModel`, `A2uiTaskCardView` | 3: only verified tasks, no actions or changes accepted, long text clipped |
+| Shared | `a2ui_lab/review.rs`: the revision rule (a change set is good only for its own review) | | 1 |
+| C3 Commonplace | `commonplace_core::organise` (snapshot, `FolderPlan`, check, stand-in proposal from the suggested-feeds catalogue), `AppCore::organise_snapshot_json`, `apply_folder_plan_json` (checks again, makes folders, moves feeds); Device Lab `a2ui_lab/feeds.rs` (surface, registration, `A2uiFeeds`) | `A2uiFeedsModel`, `A2uiFeedsView`, `A2uiFolderReviewSheet`, `A2uiAppHooks.commonplace()` | 5 in Commonplace's `organise`, 1 apply test, 6 in Device Lab |
+| C4 Soundscape | `soundscape_core::playlist_plan` (snapshot without artwork, `PlaylistPlan`, check, stand-in proposal by genre then artist), `SoundscapeCore::playlist_snapshot_json`, `apply_playlist_plan_json`; Device Lab `a2ui_lab/playlist.rs` (`A2uiPlaylist`) | `A2uiPlaylistModel`, `A2uiPlaylistView`, `A2uiPlaylistReviewSheet`, `A2uiAppHooks.soundscape()` | 2 in Soundscape's `playlist_plan`, 1 apply test, 5 in Device Lab |
+
+How the data travels: Swift asks the app's own core (the one the Apps screen opens, `EmbeddedApps`) for a snapshot as JSON, hands it to Device Lab's Rust, which reads it with the app's own Rust types. On Confirm, Rust hands back the reviewed plan as JSON and Swift passes it to the app's core, which checks it again against its data as it is then and refuses it whole if anything changed. No app depends on A2UI, and Swift decides nothing.
+
+One edit outside these files: `BonsaiHarnessModel.harness` lost `private`, so A2UI Lab can ask the same harness for its card.
+
+### Phone check (needs the iPhone, about 10 minutes, on the next combined Device Lab build)
+
+1. **Organise Feeds** (needs a few Commonplace feeds, ideally some from its suggested list): Suggest Folders shows each feed with a folder chosen; change one, Review shows only the feeds that move, "New folder" on new ones; Confirm, then open Commonplace: the feeds are in those folders. Moving them back in Commonplace is the Undo.
+2. **Make a Playlist** (needs songs in Soundscape): Suggest a Playlist shows a named list; leave one song out, Review shows the rest and "1 song left out"; Make Playlist, then Soundscape's playlists show it. Nothing starts playing.
+3. **Stale plan**: review, change a choice, try Confirm: it asks for a new review.
+4. **Bonsai Result**: after a Bonsai task passes, Show the Card shows its request, criteria, evidence and files, with no buttons; before any verified task it says so.
+5. In each: light and dark, VoiceOver reads the chips' names and selection, and a large text size doesn't clip.
+
 ## Coordination
 
 The [ForgeUI 0.2](experience/forgeui-0.2.md) work (items 0 to 3, its own thread) owns the catalogue contract in its section 6. This audit adds nothing to it and proposes no ForgeUI change; everything here draws with what A2UI-1b already draws.

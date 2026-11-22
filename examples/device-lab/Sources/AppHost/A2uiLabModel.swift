@@ -13,12 +13,25 @@ protocol A2uiRendering: AnyObject {
     func render(messages: [String]) throws
 }
 
+/// What an A2UI surface's screen gives the renderer host: which surface and
+/// catalog to register, and where the surface's events, edits and errors
+/// go. The reading plan, the app surfaces and the Bonsai card all conform.
+@MainActor
+protocol A2uiSurfaceOwner: AnyObject {
+    var surfaceId: String { get }
+    var catalogId: String { get }
+    var renderer: (any A2uiRendering)? { get set }
+    func surfaceEvent(name: String, sourceComponentId: String, contextJson: String)
+    func surfaceEdited()
+    func rendererError(code: String)
+}
+
 /// The A2UI Lab screen's state (A2UI-1). Rust owns the plan, the gate and the
 /// change set ([`A2uiLab`]); this model passes payloads to the renderer, the
 /// surface's events back to Rust, and shows only what Rust returns.
 @MainActor
 @Observable
-final class A2uiLabModel {
+final class A2uiLabModel: A2uiSurfaceOwner {
     /// The change set the app-owned confirmation shows. Always Rust's.
     private(set) var changeSet: A2uiChangeSet?
     /// What happened last, for the notice at the top.

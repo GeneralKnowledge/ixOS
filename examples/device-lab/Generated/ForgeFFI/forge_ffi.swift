@@ -673,6 +673,216 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 /**
+ * The "Organise Feeds" surface. One per screen; thread-safe.
+ */
+public protocol A2uiFeedsProtocol: AnyObject, Sendable {
+    
+    /**
+     * The plan reviewed at `revision`, as JSON for Commonplace's
+     * `apply_folder_plan_json`, if nothing changed since the review.
+     */
+    func confirm(revision: UInt64) throws  -> String
+    
+    /**
+     * The review button's event: checks it, turns the surface's choices
+     * into a checked folder plan and returns the change set.
+     */
+    func review(name: String, sourceComponentId: String, contextJson: String) throws  -> A2uiFolderChangeSet
+    
+    /**
+     * A new surface for Commonplace's snapshot (its
+     * `organise_snapshot_json`), with the stand-in agent's proposal.
+     */
+    func start(snapshotJson: String) throws  -> A2uiPayload
+    
+    /**
+     * The person changed a folder on the surface.
+     */
+    func surfaceEdited()  -> Bool
+    
+    func surfaceId()  -> String
+    
+}
+/**
+ * The "Organise Feeds" surface. One per screen; thread-safe.
+ */
+open class A2uiFeeds: A2uiFeedsProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_a2uifeeds(self.handle, $0) }
+    }
+public convenience init() {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_constructor_a2uifeeds_new(uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_a2uifeeds(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The plan reviewed at `revision`, as JSON for Commonplace's
+     * `apply_folder_plan_json`, if nothing changed since the review.
+     */
+open func confirm(revision: UInt64)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uifeeds_confirm(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The review button's event: checks it, turns the surface's choices
+     * into a checked folder plan and returns the change set.
+     */
+open func review(name: String, sourceComponentId: String, contextJson: String)throws  -> A2uiFolderChangeSet  {
+    return try  FfiConverterTypeA2uiFolderChangeSet_lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uifeeds_review(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(sourceComponentId),
+        FfiConverterString.lower(contextJson),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A new surface for Commonplace's snapshot (its
+     * `organise_snapshot_json`), with the stand-in agent's proposal.
+     */
+open func start(snapshotJson: String)throws  -> A2uiPayload  {
+    return try  FfiConverterTypeA2uiPayload_lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uifeeds_start(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(snapshotJson),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The person changed a folder on the surface.
+     */
+open func surfaceEdited() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uifeeds_surface_edited(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func surfaceId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uifeeds_surface_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiFeeds: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = A2uiFeeds
+
+    public static func lift(_ handle: UInt64) throws -> A2uiFeeds {
+        return A2uiFeeds(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: A2uiFeeds) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiFeeds {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: A2uiFeeds, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiFeeds_lift(_ handle: UInt64) throws -> A2uiFeeds {
+    return try FfiConverterTypeA2uiFeeds.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiFeeds_lower(_ value: A2uiFeeds) -> UInt64 {
+    return FfiConverterTypeA2uiFeeds.lower(value)
+}
+
+
+
+
+
+
+/**
  * The lab. One per screen; thread-safe.
  */
 public protocol A2uiLabProtocol: AnyObject, Sendable {
@@ -970,6 +1180,202 @@ public func FfiConverterTypeA2uiLab_lift(_ handle: UInt64) throws -> A2uiLab {
 #endif
 public func FfiConverterTypeA2uiLab_lower(_ value: A2uiLab) -> UInt64 {
     return FfiConverterTypeA2uiLab.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The "Make a Playlist" surface. One per screen; thread-safe.
+ */
+public protocol A2uiPlaylistProtocol: AnyObject, Sendable {
+    
+    /**
+     * The plan reviewed at `revision`, as JSON for Soundscape's
+     * `apply_playlist_plan_json`, if nothing changed since the review.
+     */
+    func confirm(revision: UInt64) throws  -> String
+    
+    func review(name: String, sourceComponentId: String, contextJson: String) throws  -> A2uiPlaylistChangeSet
+    
+    /**
+     * A new surface for Soundscape's library snapshot (its
+     * `playlist_snapshot_json`), with the stand-in agent's proposal.
+     */
+    func start(snapshotJson: String) throws  -> A2uiPayload
+    
+    func surfaceEdited()  -> Bool
+    
+    func surfaceId()  -> String
+    
+}
+/**
+ * The "Make a Playlist" surface. One per screen; thread-safe.
+ */
+open class A2uiPlaylist: A2uiPlaylistProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_a2uiplaylist(self.handle, $0) }
+    }
+public convenience init() {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_constructor_a2uiplaylist_new(uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_a2uiplaylist(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The plan reviewed at `revision`, as JSON for Soundscape's
+     * `apply_playlist_plan_json`, if nothing changed since the review.
+     */
+open func confirm(revision: UInt64)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uiplaylist_confirm(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+})
+}
+    
+open func review(name: String, sourceComponentId: String, contextJson: String)throws  -> A2uiPlaylistChangeSet  {
+    return try  FfiConverterTypeA2uiPlaylistChangeSet_lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uiplaylist_review(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(sourceComponentId),
+        FfiConverterString.lower(contextJson),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A new surface for Soundscape's library snapshot (its
+     * `playlist_snapshot_json`), with the stand-in agent's proposal.
+     */
+open func start(snapshotJson: String)throws  -> A2uiPayload  {
+    return try  FfiConverterTypeA2uiPayload_lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uiplaylist_start(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(snapshotJson),uniffiCallStatus
+    )
+})
+}
+    
+open func surfaceEdited() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uiplaylist_surface_edited(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func surfaceId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uiplaylist_surface_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiPlaylist: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = A2uiPlaylist
+
+    public static func lift(_ handle: UInt64) throws -> A2uiPlaylist {
+        return A2uiPlaylist(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: A2uiPlaylist) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiPlaylist {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: A2uiPlaylist, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiPlaylist_lift(_ handle: UInt64) throws -> A2uiPlaylist {
+    return try FfiConverterTypeA2uiPlaylist.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiPlaylist_lower(_ value: A2uiPlaylist) -> UInt64 {
+    return FfiConverterTypeA2uiPlaylist.lower(value)
 }
 
 
@@ -1953,6 +2359,17 @@ public func FfiConverterTypeBluetoothSink_lower(_ value: BluetoothSink) -> UInt6
  */
 public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
     
+    /**
+     * The verified-task card for the last task, as A2UI messages through
+     * the gate. Refused for a task the harness hasn't verified.
+     */
+    func resultCard() throws  -> A2uiPayload
+    
+    /**
+     * The card's surface id, for Swift's renderer.
+     */
+    func resultCardSurfaceId()  -> String
+    
     func files()  -> [ProjectFile]
     
     func ladder()  -> [HarnessTask]
@@ -2078,6 +2495,31 @@ public convenience init(python: PythonHost, projectsFolder: String) {
 
     
 
+    
+    /**
+     * The verified-task card for the last task, as A2UI messages through
+     * the gate. Refused for a task the harness hasn't verified.
+     */
+open func resultCard()throws  -> A2uiPayload  {
+    return try  FfiConverterTypeA2uiPayload_lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_result_card(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The card's surface id, for Swift's renderer.
+     */
+open func resultCardSurfaceId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_result_card_surface_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
     
 open func files() -> [ProjectFile]  {
     return try!  FfiConverterSequenceTypeProjectFile.lift(try! rustCall() {
@@ -6659,6 +7101,140 @@ public func FfiConverterTypeA2uiChangeSet_lower(_ value: A2uiChangeSet) -> RustB
 
 
 /**
+ * One line of the change set: a feed and where it would go. Names come
+ * from Commonplace's snapshot and the checked plan.
+ */
+public struct A2uiFolderChange: Equatable, Hashable {
+    public var feedId: Int64
+    public var feedTitle: String
+    public var from: String
+    public var to: String
+    /**
+     * The folder would be made.
+     */
+    public var newFolder: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(feedId: Int64, feedTitle: String, from: String, to: String, 
+        /**
+         * The folder would be made.
+         */newFolder: Bool) {
+        self.feedId = feedId
+        self.feedTitle = feedTitle
+        self.from = from
+        self.to = to
+        self.newFolder = newFolder
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension A2uiFolderChange: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiFolderChange: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiFolderChange {
+        return
+            try A2uiFolderChange(
+                feedId: FfiConverterInt64.read(from: &buf), 
+                feedTitle: FfiConverterString.read(from: &buf), 
+                from: FfiConverterString.read(from: &buf), 
+                to: FfiConverterString.read(from: &buf), 
+                newFolder: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: A2uiFolderChange, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.feedId, into: &buf)
+        FfiConverterString.write(value.feedTitle, into: &buf)
+        FfiConverterString.write(value.from, into: &buf)
+        FfiConverterString.write(value.to, into: &buf)
+        FfiConverterBool.write(value.newFolder, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiFolderChange_lift(_ buf: RustBuffer) throws -> A2uiFolderChange {
+    return try FfiConverterTypeA2uiFolderChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiFolderChange_lower(_ value: A2uiFolderChange) -> RustBuffer {
+    return FfiConverterTypeA2uiFolderChange.lower(value)
+}
+
+
+public struct A2uiFolderChangeSet: Equatable, Hashable {
+    public var revision: UInt64
+    public var rows: [A2uiFolderChange]
+    public var unchanged: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(revision: UInt64, rows: [A2uiFolderChange], unchanged: UInt32) {
+        self.revision = revision
+        self.rows = rows
+        self.unchanged = unchanged
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension A2uiFolderChangeSet: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiFolderChangeSet: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiFolderChangeSet {
+        return
+            try A2uiFolderChangeSet(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                rows: FfiConverterSequenceTypeA2uiFolderChange.read(from: &buf), 
+                unchanged: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: A2uiFolderChangeSet, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterSequenceTypeA2uiFolderChange.write(value.rows, into: &buf)
+        FfiConverterUInt32.write(value.unchanged, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiFolderChangeSet_lift(_ buf: RustBuffer) throws -> A2uiFolderChangeSet {
+    return try FfiConverterTypeA2uiFolderChangeSet.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiFolderChangeSet_lower(_ value: A2uiFolderChangeSet) -> RustBuffer {
+    return FfiConverterTypeA2uiFolderChangeSet.lower(value)
+}
+
+
+/**
  * A deliberately bad payload, for checking the gate on the phone.
  */
 public struct A2uiHostileCase: Equatable, Hashable {
@@ -6783,6 +7359,145 @@ public func FfiConverterTypeA2uiPayload_lift(_ buf: RustBuffer) throws -> A2uiPa
 #endif
 public func FfiConverterTypeA2uiPayload_lower(_ value: A2uiPayload) -> RustBuffer {
     return FfiConverterTypeA2uiPayload.lower(value)
+}
+
+
+public struct A2uiPlaylistChangeSet: Equatable, Hashable {
+    public var revision: UInt64
+    /**
+     * The playlist's name, from the checked plan.
+     */
+    public var name: String
+    public var songs: [A2uiPlaylistSong]
+    public var leftOut: UInt32
+    /**
+     * The songs' total length, where known.
+     */
+    public var durationSeconds: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(revision: UInt64, 
+        /**
+         * The playlist's name, from the checked plan.
+         */name: String, songs: [A2uiPlaylistSong], leftOut: UInt32, 
+        /**
+         * The songs' total length, where known.
+         */durationSeconds: Double) {
+        self.revision = revision
+        self.name = name
+        self.songs = songs
+        self.leftOut = leftOut
+        self.durationSeconds = durationSeconds
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension A2uiPlaylistChangeSet: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiPlaylistChangeSet: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiPlaylistChangeSet {
+        return
+            try A2uiPlaylistChangeSet(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                songs: FfiConverterSequenceTypeA2uiPlaylistSong.read(from: &buf), 
+                leftOut: FfiConverterUInt32.read(from: &buf), 
+                durationSeconds: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: A2uiPlaylistChangeSet, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterSequenceTypeA2uiPlaylistSong.write(value.songs, into: &buf)
+        FfiConverterUInt32.write(value.leftOut, into: &buf)
+        FfiConverterDouble.write(value.durationSeconds, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiPlaylistChangeSet_lift(_ buf: RustBuffer) throws -> A2uiPlaylistChangeSet {
+    return try FfiConverterTypeA2uiPlaylistChangeSet.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiPlaylistChangeSet_lower(_ value: A2uiPlaylistChangeSet) -> RustBuffer {
+    return FfiConverterTypeA2uiPlaylistChangeSet.lower(value)
+}
+
+
+/**
+ * One song of the change set, from Soundscape's library.
+ */
+public struct A2uiPlaylistSong: Equatable, Hashable {
+    public var trackId: String
+    public var title: String
+    public var artist: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(trackId: String, title: String, artist: String) {
+        self.trackId = trackId
+        self.title = title
+        self.artist = artist
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension A2uiPlaylistSong: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiPlaylistSong: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiPlaylistSong {
+        return
+            try A2uiPlaylistSong(
+                trackId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artist: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: A2uiPlaylistSong, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.trackId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.artist, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiPlaylistSong_lift(_ buf: RustBuffer) throws -> A2uiPlaylistSong {
+    return try FfiConverterTypeA2uiPlaylistSong.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiPlaylistSong_lower(_ value: A2uiPlaylistSong) -> RustBuffer {
+    return FfiConverterTypeA2uiPlaylistSong.lower(value)
 }
 
 
@@ -14762,6 +15477,31 @@ fileprivate struct FfiConverterSequenceTypeA2uiChangeRow: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeA2uiFolderChange: FfiConverterRustBuffer {
+    typealias SwiftType = [A2uiFolderChange]
+
+    public static func write(_ value: [A2uiFolderChange], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeA2uiFolderChange.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [A2uiFolderChange] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [A2uiFolderChange]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeA2uiFolderChange.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeA2uiHostileCase: FfiConverterRustBuffer {
     typealias SwiftType = [A2uiHostileCase]
 
@@ -14779,6 +15519,31 @@ fileprivate struct FfiConverterSequenceTypeA2uiHostileCase: FfiConverterRustBuff
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeA2uiHostileCase.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeA2uiPlaylistSong: FfiConverterRustBuffer {
+    typealias SwiftType = [A2uiPlaylistSong]
+
+    public static func write(_ value: [A2uiPlaylistSong], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeA2uiPlaylistSong.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [A2uiPlaylistSong] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [A2uiPlaylistSong]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeA2uiPlaylistSong.read(from: &buf))
         }
         return seq
     }
@@ -15397,6 +16162,16 @@ public func uniffiForeignFutureHandleCountForgeFfi() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
 /**
+ * The catalog id every lab surface uses, for Swift's renderer.
+ */
+public func a2uiCatalogId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_a2ui_catalog_id(uniffiCallStatus
+    )
+})
+}
+/**
  * The ready-made experiments, in screen order.
  */
 public func aiLabExperiments() -> [AiExperiment]  {
@@ -15684,6 +16459,9 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_a2ui_catalog_id() != 12557) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_ai_lab_experiments() != 45569) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -15810,6 +16588,36 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_a2uilab_surface_id() != 56798) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_a2uifeeds_confirm() != 14746) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uifeeds_review() != 47005) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uifeeds_start() != 9201) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uifeeds_surface_edited() != 2249) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uifeeds_surface_id() != 44710) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uiplaylist_confirm() != 42831) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uiplaylist_review() != 4125) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uiplaylist_start() != 39511) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uiplaylist_surface_edited() != 58983) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uiplaylist_surface_id() != 15242) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_ailab_begin_external() != 51981) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -15835,6 +16643,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_ailab_update_external() != 57909) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_result_card() != 63832) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_result_card_surface_id() != 43451) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_files() != 19690) {
@@ -16021,6 +16835,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_a2uilab_new() != 57153) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_constructor_a2uifeeds_new() != 35188) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_constructor_a2uiplaylist_new() != 54230) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_ailab_new() != 39479) {

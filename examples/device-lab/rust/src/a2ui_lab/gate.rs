@@ -35,6 +35,12 @@ use serde_json::{Map, Value};
 /// `A2uiSurfaceHost`, `A2uiLabCatalog.make`).
 pub const CATALOG_ID: &str = "org.forgemobile.devicelab:a2ui-reading-plan:1";
 
+/// The catalog id every lab surface uses, for Swift's renderer.
+#[uniffi::export]
+pub fn a2ui_catalog_id() -> String {
+    CATALOG_ID.into()
+}
+
 /// The eight components of the ixOS catalog. Anything else is refused,
 /// including Image, Video and AudioPlayer (their URLs could carry data out)
 /// and Modal.

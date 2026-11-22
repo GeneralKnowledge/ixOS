@@ -52,7 +52,7 @@ struct A2uiLabView: View {
             .padding(theme.spacing.l)
         }
         .background(theme.colors.groupedBackground)
-        .navigationTitle("A2UI Lab")
+        .navigationTitle("Reading Plan")
         .inlineNavigationTitle()
         .sheet(isPresented: reviewing) {
             if let changeSet = model.changeSet {

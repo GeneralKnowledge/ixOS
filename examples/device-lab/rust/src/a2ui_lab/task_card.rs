@@ -37,6 +37,7 @@ fn clip(text: &str) -> String {
     if text.chars().count() <= MAX_TEXT {
         return text.to_string();
     }
+    // cut: the harness's own text, shortened for the card with "…" at the end
     let mut short: String = text.chars().take(MAX_TEXT - 1).collect();
     short.push('\u{2026}');
     short
