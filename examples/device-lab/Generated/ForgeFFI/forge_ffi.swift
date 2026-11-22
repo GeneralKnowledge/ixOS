@@ -1972,6 +1972,13 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
      */
     func projectFolder()  -> String?
     
+    /**
+     * Step `step` of the last task as the live view drew it once written:
+     * its thought, tool, path and the whole file or edit, so the screen
+     * can go back through the steps. None for an answer that wasn't a call.
+     */
+    func replay(step: UInt32)  -> HarnessLive?
+    
     func snapshot()  -> HarnessSnapshot
     
     /**
@@ -2119,6 +2126,21 @@ open func projectFolder() -> String?  {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_bonsaiharness_project_folder(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Step `step` of the last task as the live view drew it once written:
+     * its thought, tool, path and the whole file or edit, so the screen
+     * can go back through the steps. None for an answer that wasn't a call.
+     */
+open func replay(step: UInt32) -> HarnessLive?  {
+    return try!  FfiConverterOptionTypeHarnessLive.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_replay(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(step),uniffiCallStatus
     )
 })
 }
@@ -9108,6 +9130,127 @@ public func FfiConverterTypeHarnessLimits_lower(_ value: HarnessLimits) -> RustB
 }
 
 
+/**
+ * The answer so far, for the live view.
+ */
+public struct HarnessLive: Equatable, Hashable {
+    /**
+     * The reasoning line, as far as it has been written.
+     */
+    public var thought: String
+    /**
+     * True once the thought's closing quote has arrived.
+     */
+    public var thoughtDone: Bool
+    /**
+     * The tool, once its name is complete.
+     */
+    public var tool: String?
+    /**
+     * The file the step is about (`path`), once known.
+     */
+    public var path: String?
+    /**
+     * The text being written into the file: `content` for write_file,
+     * `new` for edit_file. Empty for other tools.
+     */
+    public var code: String
+    /**
+     * The lines being replaced (`old`, edit_file only).
+     */
+    public var replacing: String
+    /**
+     * True while `code` is still being written.
+     */
+    public var writing: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The reasoning line, as far as it has been written.
+         */thought: String, 
+        /**
+         * True once the thought's closing quote has arrived.
+         */thoughtDone: Bool, 
+        /**
+         * The tool, once its name is complete.
+         */tool: String?, 
+        /**
+         * The file the step is about (`path`), once known.
+         */path: String?, 
+        /**
+         * The text being written into the file: `content` for write_file,
+         * `new` for edit_file. Empty for other tools.
+         */code: String, 
+        /**
+         * The lines being replaced (`old`, edit_file only).
+         */replacing: String, 
+        /**
+         * True while `code` is still being written.
+         */writing: Bool) {
+        self.thought = thought
+        self.thoughtDone = thoughtDone
+        self.tool = tool
+        self.path = path
+        self.code = code
+        self.replacing = replacing
+        self.writing = writing
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HarnessLive: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarnessLive: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarnessLive {
+        return
+            try HarnessLive(
+                thought: FfiConverterString.read(from: &buf), 
+                thoughtDone: FfiConverterBool.read(from: &buf), 
+                tool: FfiConverterOptionString.read(from: &buf), 
+                path: FfiConverterOptionString.read(from: &buf), 
+                code: FfiConverterString.read(from: &buf), 
+                replacing: FfiConverterString.read(from: &buf), 
+                writing: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HarnessLive, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.thought, into: &buf)
+        FfiConverterBool.write(value.thoughtDone, into: &buf)
+        FfiConverterOptionString.write(value.tool, into: &buf)
+        FfiConverterOptionString.write(value.path, into: &buf)
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterString.write(value.replacing, into: &buf)
+        FfiConverterBool.write(value.writing, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessLive_lift(_ buf: RustBuffer) throws -> HarnessLive {
+    return try FfiConverterTypeHarnessLive.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarnessLive_lower(_ value: HarnessLive) -> RustBuffer {
+    return FfiConverterTypeHarnessLive.lower(value)
+}
+
+
 public struct HarnessSnapshot: Equatable, Hashable {
     public var running: Bool
     public var phase: HarnessPhase
@@ -9118,6 +9261,11 @@ public struct HarnessSnapshot: Equatable, Hashable {
      * The model's answer as it streams in.
      */
     public var draft: String
+    /**
+     * The same answer read field by field (thought, tool, file, code),
+     * while Bonsai is writing it.
+     */
+    public var live: HarnessLive?
     public var elapsedMs: UInt64
     public var limits: HarnessLimits
 
@@ -9126,13 +9274,18 @@ public struct HarnessSnapshot: Equatable, Hashable {
     public init(running: Bool, phase: HarnessPhase, project: String?, task: HarnessTaskRecord?, steps: [HarnessStep], 
         /**
          * The model's answer as it streams in.
-         */draft: String, elapsedMs: UInt64, limits: HarnessLimits) {
+         */draft: String, 
+        /**
+         * The same answer read field by field (thought, tool, file, code),
+         * while Bonsai is writing it.
+         */live: HarnessLive?, elapsedMs: UInt64, limits: HarnessLimits) {
         self.running = running
         self.phase = phase
         self.project = project
         self.task = task
         self.steps = steps
         self.draft = draft
+        self.live = live
         self.elapsedMs = elapsedMs
         self.limits = limits
     }
@@ -9159,6 +9312,7 @@ public struct FfiConverterTypeHarnessSnapshot: FfiConverterRustBuffer {
                 task: FfiConverterOptionTypeHarnessTaskRecord.read(from: &buf), 
                 steps: FfiConverterSequenceTypeHarnessStep.read(from: &buf), 
                 draft: FfiConverterString.read(from: &buf), 
+                live: FfiConverterOptionTypeHarnessLive.read(from: &buf), 
                 elapsedMs: FfiConverterUInt64.read(from: &buf), 
                 limits: FfiConverterTypeHarnessLimits.read(from: &buf)
         )
@@ -9171,6 +9325,7 @@ public struct FfiConverterTypeHarnessSnapshot: FfiConverterRustBuffer {
         FfiConverterOptionTypeHarnessTaskRecord.write(value.task, into: &buf)
         FfiConverterSequenceTypeHarnessStep.write(value.steps, into: &buf)
         FfiConverterString.write(value.draft, into: &buf)
+        FfiConverterOptionTypeHarnessLive.write(value.live, into: &buf)
         FfiConverterUInt64.write(value.elapsedMs, into: &buf)
         FfiConverterTypeHarnessLimits.write(value.limits, into: &buf)
     }
@@ -15213,6 +15368,30 @@ fileprivate struct FfiConverterOptionTypeDeviceStatus: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeHarnessLive: FfiConverterRustBuffer {
+    typealias SwiftType = HarnessLive?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHarnessLive.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHarnessLive.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeHarnessTaskRecord: FfiConverterRustBuffer {
     typealias SwiftType = HarnessTaskRecord?
 
@@ -16711,6 +16890,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_project_folder() != 62507) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_replay() != 365) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_snapshot() != 53706) {

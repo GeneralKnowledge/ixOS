@@ -136,6 +136,9 @@ pub struct AppCore {
     rt: Runtime<State>,
     /// The last committed data, for reads.
     data: Arc<Published<Stored>>,
+    /// The clock changes the phone expects soon (`set_offset_changes`), for
+    /// the reminders.
+    offset_changes: std::sync::Mutex<Vec<OffsetChange>>,
 }
 
 /// What the command thread owns: the data, its file, and where reads look.
@@ -571,8 +574,16 @@ impl AppCore {
         let Ok(services) = native::NativeServices::installed() else {
             return;
         };
-        let wanted = self.data.get().reminders(now);
+        let wanted = self.reminders_now(now);
         reminders::schedule(&services, wanted, now).await;
+    }
+
+    /// The clock changes the phone expects in the coming week (daylight
+    /// saving), from its time zone. The host sets them before
+    /// `refresh_reminders`, so a reminder after a change keeps the owner's
+    /// local time. Kept in memory: the host sets them on every launch.
+    pub fn set_offset_changes(&self, changes: Vec<OffsetChange>) {
+        *forge_runtime::lock(&self.offset_changes) = changes;
     }
 
     // MARK: Learn
@@ -810,7 +821,16 @@ impl AppCore {
         Ok(Arc::new(Self {
             rt: Runtime::with_directory("gooddog", directory, state),
             data,
+            offset_changes: std::sync::Mutex::new(Vec::new()),
         }))
+    }
+}
+
+impl AppCore {
+    /// The reminders wanted now, with the clock changes the host expects.
+    fn reminders_now(&self, now: LocalTime) -> Vec<native::LocalNotification> {
+        let changes = forge_runtime::lock(&self.offset_changes).clone();
+        self.data.get().reminders_with(now, &changes)
     }
 }
 

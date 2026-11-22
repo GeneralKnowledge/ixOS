@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::training::{local_day, Stored};
-use crate::{native, LocalTime};
+use crate::{native, LocalTime, OffsetChange};
 
 use good_dog_core::coaching::DAY_MS;
 
@@ -46,23 +46,30 @@ impl Stored {
 
     /// The reminders that should be pending now: one per day for the next
     /// week, from today if it's still to come and today is still open.
+    /// Every day uses today's offset from UTC; see [`Self::reminders_with`].
+    #[cfg(test)]
     pub(crate) fn reminders(&self, now: LocalTime) -> Vec<native::LocalNotification> {
+        self.reminders_with(now, &[])
+    }
+
+    /// The reminders, with the clock changes the phone expects this week
+    /// (`changes`): a day after a change gets its reminder at the owner's
+    /// time by the new offset, not an hour early or late.
+    pub(crate) fn reminders_with(
+        &self,
+        now: LocalTime,
+        changes: &[OffsetChange],
+    ) -> Vec<native::LocalNotification> {
         let (Some(at_minute), Some(dog)) = (self.reminder.at_minute, &self.dog) else {
             return Vec::new();
         };
         let today = local_day(now);
-        let offset_ms = i64::from(now.utc_offset_minutes) * 60_000;
         (today..today + DAYS_AHEAD)
             .filter(|&day| {
                 day != today
                     || (self.reminder.skipped_day != Some(today) && !self.practised_on(today, now))
             })
-            .map(|day| {
-                (
-                    day,
-                    day * DAY_MS + i64::from(at_minute) * 60_000 - offset_ms,
-                )
-            })
+            .map(|day| (day, unix_ms_at(day, at_minute, now, changes)))
             .filter(|&(_, at)| at > now.ms)
             .map(|(day, at)| {
                 let mut n = native::LocalNotification::now(
@@ -76,6 +83,28 @@ impl Stored {
                 n
             })
             .collect()
+    }
+}
+
+/// The moment `at_minute` past local midnight on local `day` happens, by
+/// the offset in force then: today's, or the last of `changes` before it.
+fn unix_ms_at(day: i64, at_minute: u32, now: LocalTime, changes: &[OffsetChange]) -> i64 {
+    let local = day * DAY_MS + i64::from(at_minute) * 60_000;
+    let offset_at = |utc_ms: i64| {
+        changes
+            .iter()
+            .filter(|c| c.at_ms > now.ms && c.at_ms <= utc_ms)
+            .max_by_key(|c| c.at_ms)
+            .map_or(now.utc_offset_minutes, |c| c.utc_offset_minutes)
+    };
+    let guess = local - i64::from(now.utc_offset_minutes) * 60_000;
+    let utc = local - i64::from(offset_at(guess)) * 60_000;
+    if offset_at(utc) == offset_at(guess) {
+        utc
+    } else {
+        // A time the clocks skip (01:30 when they go forward at 01:00):
+        // it falls just after the change, never before it.
+        guess
     }
 }
 

@@ -34,6 +34,15 @@ final class ListenModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .ready)
     }
 
+    /// A song field that is too long says which one and the limit, so
+    /// Edit Song can explain it (defect hunt finding 4).
+    func testTooLongSongFieldNamesTheField() {
+        XCTAssertEqual(
+            SoundscapeErrors.describe(.OutOfRange(setting: "title")),
+            "Keep the title to \(SoundscapeErrors.maxFieldChars) characters or fewer.")
+        XCTAssertEqual(SoundscapeErrors.describe(.OutOfRange(setting: "files")), "That is out of range.")
+    }
+
     func testFormatting() {
         let take = Take(
             id: "a", label: "seed 1", audioUrl: "http://x/a.mp3", seed: 1, model: "xl-turbo", bpm: 92,

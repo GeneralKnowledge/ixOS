@@ -351,6 +351,9 @@ pub enum UrduError {
     NotFound { id: String },
     #[error("names are at most {max} characters")]
     NameTooLong { max: u32 },
+    /// What you typed in the chat is longer than it takes.
+    #[error("a chat line is at most {max} characters")]
+    TooLong { max: u32 },
     #[error("the app is open in another copy of the app")]
     InUse,
     #[error("the saved progress can't be read: {reason}")]
@@ -371,7 +374,7 @@ forge_app::app_error_conversions!(UrduError: Stopped, OpenError, DocumentError);
 pub fn urdu_error_kind(error: UrduError) -> ErrorKind {
     match error {
         UrduError::NotFound { .. } => ErrorKind::NotFound,
-        UrduError::NameTooLong { .. } => ErrorKind::Invalid,
+        UrduError::NameTooLong { .. } | UrduError::TooLong { .. } => ErrorKind::Invalid,
         UrduError::InUse => ErrorKind::Unavailable,
         UrduError::Corrupt { .. } => ErrorKind::Corrupt,
         UrduError::NewerData => ErrorKind::NewerData,
@@ -1096,6 +1099,12 @@ impl UrduCore {
         now.as_ref().map(|now| self.saved.get().chat(now))
     }
 
+    /// The longest line `chat_say` takes, in characters, so the field can
+    /// show it.
+    pub fn chat_max_typed(&self) -> u32 {
+        chat::MAX_TYPED_CHARS as u32
+    }
+
     /// Ends the chat and forgets what you typed in it.
     pub fn chat_end(&self) {
         lock(&self.chat).take();
@@ -1110,7 +1119,14 @@ impl UrduCore {
         text: String,
         model: Option<Arc<dyn AiModel>>,
     ) -> Result<ChatView, UrduError> {
-        let text: String = text.trim().chars().take(chat::MAX_TYPED_CHARS).collect();
+        // Refused, never cut: a cut line would be answered as if you'd
+        // said less than you did. The field shows the limit before this.
+        let text = text.trim().to_string();
+        if text.chars().count() > chat::MAX_TYPED_CHARS {
+            return Err(UrduError::TooLong {
+                max: chat::MAX_TYPED_CHARS as u32,
+            });
+        }
         let (serial, current) = lock(&self.chat)
             .as_ref()
             .map(|now| (now.serial, now.chat.clone()))

@@ -835,6 +835,11 @@ void uniffi_forge_ffi_fn_method_bonsaiharness_open_project(uint64_t ptr, RustBuf
 RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_project_folder(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_REPLAY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_REPLAY
+RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_replay(uint64_t ptr, uint32_t step, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_SNAPSHOT
 RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_snapshot(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -2214,6 +2219,12 @@ uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_open_project(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_PROJECT_FOLDER
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_PROJECT_FOLDER
 uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_project_folder(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_REPLAY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_REPLAY
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_replay(void
     
 );
 #endif

@@ -25,6 +25,9 @@ enum ListenRoute: Hashable {
     case discoverSearch(String)
     /// An Internet Archive album or concert, with its tracks.
     case archiveItem(ArchiveItem)
+    /// Jamendo's genres, then one genre's tracks.
+    case jamendoGenres
+    case jamendoGenre(JamendoGenre)
 }
 
 /// The Listen tab: your music library (artists, albums, songs, each song
@@ -61,6 +64,8 @@ struct ListenView: View {
                     case .discover: DiscoverView(model: model, player: player)
                     case .discoverSearch(let query): DiscoverView(model: model, player: player, search: query)
                     case .archiveItem(let item): ArchiveItemView(model: model, player: player, item: item)
+                    case .jamendoGenres: JamendoGenresView(model: model)
+                    case .jamendoGenre(let genre): JamendoTracksView(model: model, player: player, ask: .genre(genre))
                     }
                 }
                 .toolbar {
@@ -753,6 +758,24 @@ private struct NowPlayingView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .listRowBackground(Color.clear)
+                    }
+                    if !player.isComparing, let trackId = current.trackId,
+                       trackId.hasPrefix("jamendo:"), model.jamendoClientId != nil {
+                        Section("On Jamendo") {
+                            NavigationLink {
+                                JamendoTracksView(model: model, player: player, ask: .more(trackId: trackId, by: .artist))
+                            } label: {
+                                Label(current.artist.map { "More by \($0)" } ?? "More by This Artist",
+                                      systemImage: "music.mic")
+                            }
+                            .accessibilityIdentifier("nowPlayingSheet.moreByArtist")
+                            NavigationLink {
+                                JamendoTracksView(model: model, player: player, ask: .more(trackId: trackId, by: .genre))
+                            } label: {
+                                Label("More in This Genre", systemImage: "guitars")
+                            }
+                            .accessibilityIdentifier("nowPlayingSheet.moreInGenre")
+                        }
                     }
                     if !player.upcoming.isEmpty {
                         Section("Up Next") {

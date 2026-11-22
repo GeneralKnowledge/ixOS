@@ -30,6 +30,25 @@ pub const COMPONENTS: [&str; 8] = [
     "ChoicePicker",
 ];
 
+/// The properties every component may carry.
+pub const COMMON_PROPERTIES: &[&str] = &["id", "component", "@accessibility"];
+
+/// The properties the ForgeUI adapter (`A2uiForgeCatalog.swift`) draws for
+/// each component. The gate refuses any other, so an agent can't ask for a
+/// look or behaviour the adapter doesn't have (a time picker, a filter
+/// field, A2UI's own styles).
+pub fn properties(component: &str) -> &'static [&'static str] {
+    match component {
+        "Text" => &["text", "variant"],
+        "Column" | "Row" => &["children"],
+        "Card" => &["child"],
+        "Button" => &["child", "variant", "action"],
+        "DateTimeInput" => &["label", "enableDate", "value"],
+        "ChoicePicker" => &["label", "variant", "displayStyle", "options", "value"],
+        _ => &[],
+    }
+}
+
 /// The context the review event must carry, exactly.
 pub fn review_context() -> Value {
     json!({ "books": { "@path": "/books" } })

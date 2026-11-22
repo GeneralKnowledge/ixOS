@@ -265,21 +265,10 @@ private struct NewConversationView: View {
             #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("newConversation.cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if working {
-                        ProgressView()
-                    } else {
-                        Button("Create", action: create).disabled(trimmed.isEmpty)
-                            .accessibilityIdentifier("newConversation.create")
-                    }
-                }
-            }
-            .forgeSwipeGuard(!trimmed.isEmpty)
+            .forgeFormToolbar(
+                id: "newConversation", confirmTitle: "Create", canConfirm: !trimmed.isEmpty,
+                isWorking: working, hasChanges: !trimmed.isEmpty, cancel: { dismiss() }, confirm: create
+            )
             .forgeAlert(failure: $error)
             .onAppear { focused = true }
         }

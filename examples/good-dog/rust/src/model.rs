@@ -68,6 +68,16 @@ pub struct LocalTime {
     pub utc_offset_minutes: i32,
 }
 
+/// A change of the phone's offset from UTC expected soon (a clock change),
+/// so reminders after it keep the owner's local time.
+#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OffsetChange {
+    /// When it happens, Unix milliseconds.
+    pub at_ms: i64,
+    /// The offset from then on.
+    pub utc_offset_minutes: i32,
+}
+
 /// The slot an activity fills in the day's plan.
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]

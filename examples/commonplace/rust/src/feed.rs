@@ -208,6 +208,7 @@ pub fn summary(html: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text;
     }
+    // cut: an article's summary, ended with "…"; the article is whole
     let cut: String = text.chars().take(max).collect();
     let cut = match cut.rfind(' ') {
         Some(space) if space > max / 2 => &cut[..space],

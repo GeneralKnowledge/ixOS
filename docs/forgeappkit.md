@@ -183,6 +183,16 @@ ForgeField("Pages", message: model.errors.message(for: "total_pages", otherwise:
 
 `fields` keeps the order they were reported in, so the first problem can be focused or announced; `summary` is every problem as one line each.
 
+After a refused save, move focus to the first field on screen that has a problem, so a keyboard or VoiceOver user lands on it and hears its message. Go by the form's order, not the order Rust reported them in (Pocket Library's `BookFormView`):
+
+```swift
+private static let fieldOrder: [(Field, String)] = [(.title, "title"), (.author, "author"), (.totalPages, "total_pages")]
+
+private func focusFirstProblem() {
+    if let first = Self.fieldOrder.first(where: { errors[$0.1] != nil }) { focused = first.0 }
+}
+```
+
 ## Files the person picks: `ForgePickedFile`
 
 A URL from `fileImporter`, the document picker or a drop is security-scoped: the app may read it only briefly. When Rust reads the file straight away, inside the call, hold the scope around that call and copy nothing (Checklist's and Pocket Library's imports). When Rust reads it later (an upload, a send that takes minutes), copy it first with `ForgePickedFile`, which copies off the main thread (a large video takes seconds), keeps the file's name, and deletes the copy on `release()`:

@@ -31,13 +31,13 @@ type = { id = "bookForm.currentPage", text = "50" }
 type = { id = "bookForm.totalPages", text = "10" }
 
 [[step]]
-tap = { id = "bookForm.save" }
+tap = { id = "bookForm.confirm" }
 
 [[step]]
 expect = { label = "Error: The current page is past the last page (10)." }
 
 [[step]]
-expect = { id = "bookForm.save" }
+expect = { id = "bookForm.confirm" }
 
 [[step]]
 screenshot = "1-refused"

@@ -17,6 +17,7 @@ pub mod artifacts;
 pub mod calls;
 pub mod evidence;
 pub mod journal;
+pub mod live;
 mod prompt;
 pub mod python_lab;
 pub mod samples;
@@ -259,6 +260,9 @@ pub struct HarnessSnapshot {
     pub steps: Vec<HarnessStep>,
     /// The model's answer as it streams in.
     pub draft: String,
+    /// The same answer read field by field (thought, tool, file, code),
+    /// while Bonsai is writing it.
+    pub live: Option<live::HarnessLive>,
     pub elapsed_ms: u64,
     pub limits: HarnessLimits,
 }
@@ -383,6 +387,18 @@ impl BonsaiHarness {
                 (Some(out), HarnessPhase::Thinking) => out.text(),
                 _ => String::new(),
             },
+            // Kept while the step runs and is checked, so the screen shows
+            // the finished answer even if no poll saw its last tokens.
+            live: match (&state.out, state.phase) {
+                (
+                    Some(out),
+                    HarnessPhase::Thinking | HarnessPhase::Acting | HarnessPhase::Verifying,
+                ) => {
+                    let text = out.text();
+                    (!text.is_empty()).then(|| live::read(&text))
+                }
+                _ => None,
+            },
             elapsed_ms: match state.started {
                 Some(started) if state.running => started.elapsed().as_millis() as u64,
                 _ => state.finished_ms,
@@ -486,6 +502,19 @@ impl BonsaiHarness {
             state.project.as_deref().unwrap_or("?"),
             journal::last_task(&state.entries),
         )
+    }
+
+    /// Step `step` of the last task as the live view drew it once written:
+    /// its thought, tool, path and the whole file or edit, so the screen
+    /// can go back through the steps. None for an answer that wasn't a call.
+    pub fn replay(&self, step: u32) -> Option<live::HarnessLive> {
+        let state = lock(&self.shared.state);
+        journal::last_task(&state.entries)
+            .iter()
+            .find_map(|entry| match entry {
+                Entry::Answer { step: s, text, .. } if *s == step => Some(live::read(text)),
+                _ => None,
+            })
     }
 
     /// The folder of the project on screen, for its images

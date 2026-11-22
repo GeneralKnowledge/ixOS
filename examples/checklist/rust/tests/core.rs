@@ -206,3 +206,26 @@ fn the_checklist_goes_out_and_comes_back_as_a_spreadsheet() {
     let err = block_on(core.import_csv(junk.to_string_lossy().into_owned())).unwrap_err();
     assert!(matches!(err, ChecklistError::Storage { .. }), "{err:?}");
 }
+
+/// A cell with a double space or a tab is saved tidied ("Buy milk"), and
+/// importing the file again still finds it on the list (defect hunt
+/// finding 6).
+#[test]
+fn reimporting_finds_items_that_were_tidied_on_the_way_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir).unwrap();
+    let file = dir.path().join("spaced.csv");
+    std::fs::write(&file, "Item,Done\nBuy  milk,No\nCall\tthe vet,No\n").unwrap();
+    let first = block_on(core.import_csv(file.to_string_lossy().into_owned())).unwrap();
+    assert_eq!(first.added, 2, "{first:?}");
+    let titles: Vec<String> = core.items().iter().map(|i| i.title.clone()).collect();
+    assert_eq!(titles, vec!["Buy milk", "Call the vet"]);
+
+    let again = block_on(core.import_csv(file.to_string_lossy().into_owned())).unwrap();
+    assert_eq!(again.added, 0, "{again:?}");
+    assert_eq!(
+        again.skipped,
+        vec!["2 items were already on the list".to_string()]
+    );
+    assert_eq!(core.items().len(), 2);
+}

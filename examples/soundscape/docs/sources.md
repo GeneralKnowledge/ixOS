@@ -180,6 +180,21 @@ and their results appear below under **From Jamendo** and **From the Internet Ar
   asked for an empty search (the catalogues' popular lists belong to Discover).
 - **In `rust/src/search.rs`**, tested in `rust/tests/search.rs`.
 
+## More by the artist and by genre, as built
+
+Now Playing on a Jamendo song (from the library or straight from Discover)
+has an **On Jamendo** section: **More by <artist>** and **More in This
+Genre**. Rust (`jamendo::more`) first asks Jamendo for the song itself
+(`tracks/?id=`), so it works for songs added before Soundscape kept an
+artist's id, then asks for that artist's tracks (`artist_id=`, most played
+first) or the song's first genre (`tags=`, this week's most popular),
+leaving out the song playing. Discover's Jamendo list starts with
+**Browse by Genre**: twenty of Jamendo's genre tags (`jamendo::GENRES`),
+each opening that genre's popular tracks. `tags=jazz` was checked live on
+2026-11-18; `artist_id=` and the other tags were not yet. The library's own
+genre names are unchanged (`newage` stays "Newage" there), so songs already
+added don't move genre.
+
 ## Order of work
 
 1. ~~The track resolver~~ (the library is the lookup; above) and Jamendo: built.

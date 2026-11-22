@@ -16,7 +16,7 @@
 //!                                    what happens after a code transfer
 //! relay connections [everywhere | private | this-network]
 //!                                    which routes reach trusted devices
-//! relay servers [--own] [--relay URL] [--lookup URL] [--none]
+//! relay servers [--own] [--relay URL] [--lookup URL] [--mailbox ID] [--none]
 //!                                    Relay's own relay and lookup server
 //! relay send PATH...                 send files and folders with a word code
 //!                                    to anyone on this network (the phone
@@ -85,7 +85,7 @@ messages <device> | status [<device>] | revoke <device> | forget <device> | \
 trust <device> | asks <device> on|off | introduces <device> on|off | \
 sees-devices <device> on|off | grant <device> sites on|off | \
 site [FOLDER | 127.0.0.1:PORT | --stop] | web <device> [--port N] | listen [--site FOLDER|127.0.0.1:PORT] | person <device> (NAME | --mine) | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
-connections [everywhere | private | this-network] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
+connections [everywhere | private | this-network] | servers [--own] [--relay URL] [--lookup URL] [--mailbox ID] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] | \
 ask <device> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
@@ -317,9 +317,10 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             out += &format!("Connections: {}\n", mode_name(core.connection_mode()));
             let s = core.servers();
             out += &format!(
-                "Servers: relay {}, lookup {}\n",
+                "Servers: relay {}, lookup {}, mailbox {}\n",
                 s.relay_url.as_deref().unwrap_or("none"),
-                s.lookup_url.as_deref().unwrap_or("none")
+                s.lookup_url.as_deref().unwrap_or("none"),
+                s.mailbox.as_deref().unwrap_or("none")
             );
             // A process that just opened Relay gives the relay a moment.
             let deadline = Instant::now() + Duration::from_secs(10);
@@ -603,9 +604,10 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             if rest.is_empty() {
                 let s = core.servers();
                 out += &format!(
-                    "relay: {}\nlookup: {}\n",
+                    "relay: {}\nlookup: {}\nmailbox: {}\n",
                     s.relay_url.as_deref().unwrap_or("none"),
-                    s.lookup_url.as_deref().unwrap_or("none")
+                    s.lookup_url.as_deref().unwrap_or("none"),
+                    s.mailbox.as_deref().unwrap_or("none")
                 );
                 return Ok(());
             }
@@ -613,8 +615,16 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             let mut args = rest.iter();
             while let Some(arg) = args.next() {
                 match arg.as_str() {
-                    "--relay" => servers.relay_url = args.next().cloned(),
-                    "--lookup" => servers.lookup_url = args.next().cloned(),
+                    // A flag without its value is a mistake, never a reset
+                    // (that is --none).
+                    "--relay" | "--lookup" | "--mailbox" => {
+                        let value = args.next().ok_or_else(|| USAGE.to_string())?.clone();
+                        match arg.as_str() {
+                            "--relay" => servers.relay_url = Some(value),
+                            "--lookup" => servers.lookup_url = Some(value),
+                            _ => servers.mailbox = Some(value),
+                        }
+                    }
                     "--none" => servers = relay_core::RelayServers::default(),
                     "--own" => servers = relay_core::own_relay_servers(),
                     _ => return Err(USAGE.to_string()),

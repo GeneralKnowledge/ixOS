@@ -108,6 +108,9 @@ public final class UrduModel {
         await chatRun { try await self.core.chatPick(phraseId: phraseId) }
     }
 
+    /// The longest line the chat takes, in characters (Rust's limit).
+    public var chatMaxTyped: Int { Int(core.chatMaxTyped()) }
+
     /// Ends the chat; what you typed in it is forgotten.
     public func chatEnd() { core.chatEnd() }
 
@@ -120,6 +123,24 @@ public final class UrduModel {
             errorMessage = Self.describe(error)
             return nil
         }
+    }
+
+    /// The longest name Rust keeps (`MAX_NAME_CHARS`), counted as Rust
+    /// counts (Unicode scalars).
+    public static let maxNameChars = 40
+
+    /// Whether Rust keeps `name`: at most `maxNameChars` scalars once the
+    /// spaces round it are trimmed, as `set_name` counts. The field takes
+    /// an edit only while this holds, so it never holds a name that saving
+    /// would refuse (and leaving Settings would then lose), and an edit
+    /// over the limit is refused rather than cutting the end off. It trims
+    /// exactly what Rust's `str::trim` trims (Unicode `White_Space`), not
+    /// Foundation's whitespace set, so the two never disagree on a name.
+    public static func fitsName(_ name: String) -> Bool {
+        let scalars = name.unicodeScalars
+        let kept = scalars.drop(while: \.properties.isWhitespace)
+        let trailing = kept.reversed().prefix(while: \.properties.isWhitespace).count
+        return kept.count - trailing <= maxNameChars
     }
 
     public func setName(_ name: String) async {
@@ -150,6 +171,7 @@ public final class UrduModel {
         switch error {
         case .NotFound: return "That phrase isn't in this version of the app."
         case let .NameTooLong(max): return "Names can be up to \(max) characters."
+        case let .TooLong(max): return "That's too long to say in one go. Keep it to \(max) characters."
         case .InUse: return "Urdu, Naturally is open in another copy of the app."
         case .Corrupt: return "Your saved progress couldn't be read."
         case .NewerData: return "Your progress was saved by a newer version of the app. Update it to carry on."
