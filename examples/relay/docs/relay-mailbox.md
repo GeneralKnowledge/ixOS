@@ -273,18 +273,20 @@ relay, and it publishes where it is on the lookup server.
      cargo build --release --features server --bin relay-mailbox
    ```
 
-2. Copy the binary and the unit to the box, install and start it:
+2. Copy the binary and the unit to the box (`hetzner` on the tailnet, Tailscale SSH), install and (re)start it:
 
    ```bash
-   scp target/release/relay-mailbox ../deploy/relay-mailbox.service root@relay.avedeus.ovh:/tmp/
-   ssh root@relay.avedeus.ovh '
-     install -m 755 /tmp/relay-mailbox /usr/local/bin/relay-mailbox &&
-     install -m 644 /tmp/relay-mailbox.service /etc/systemd/system/ &&
-     systemctl daemon-reload && systemctl enable --now relay-mailbox &&
+   scp target/release/relay-mailbox ../deploy/relay-mailbox.service root@hetzner:/root/
+   ssh root@hetzner '
+     install -m 755 /root/relay-mailbox /usr/local/bin/relay-mailbox &&
+     install -m 644 /root/relay-mailbox.service /etc/systemd/system/ &&
+     systemctl daemon-reload && systemctl enable relay-mailbox &&
+     systemctl restart relay-mailbox &&
      systemctl --no-pager status relay-mailbox'
    ```
 
-3. Read its endpoint id from `journalctl -u relay-mailbox`. That id is
+3. Read its endpoint id from
+   `journalctl -u relay-mailbox | grep -m1 'relay-mailbox [0-9a-f]'`. That id is
    the mailbox's address in Relay's Servers (step 3 compiles it in), so
    **keep `/var/lib/relay-mailbox/device.key`**: a new key is a new
    mailbox, and every device would need an update to find it.

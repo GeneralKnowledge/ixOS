@@ -615,9 +615,16 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             let mut args = rest.iter();
             while let Some(arg) = args.next() {
                 match arg.as_str() {
-                    "--relay" => servers.relay_url = args.next().cloned(),
-                    "--lookup" => servers.lookup_url = args.next().cloned(),
-                    "--mailbox" => servers.mailbox = args.next().cloned(),
+                    // A flag without its value is a mistake, never a reset
+                    // (that is --none).
+                    "--relay" | "--lookup" | "--mailbox" => {
+                        let value = args.next().ok_or_else(|| USAGE.to_string())?.clone();
+                        match arg.as_str() {
+                            "--relay" => servers.relay_url = Some(value),
+                            "--lookup" => servers.lookup_url = Some(value),
+                            _ => servers.mailbox = Some(value),
+                        }
+                    }
                     "--none" => servers = relay_core::RelayServers::default(),
                     "--own" => servers = relay_core::own_relay_servers(),
                     _ => return Err(USAGE.to_string()),
