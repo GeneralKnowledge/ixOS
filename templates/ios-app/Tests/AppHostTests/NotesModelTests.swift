@@ -125,9 +125,11 @@ final class NotesModelTests: XCTestCase {
         try await model.add(text: "Draft")
         let note = try XCTUnwrap(model.notes.first)
 
-        XCTAssertFalse(await model.update(note, text: "  "))
+        let refused = await model.update(note, text: "  ")
+        XCTAssertFalse(refused)
         XCTAssertEqual(model.unsavedText[note.id], "  ")
-        XCTAssertTrue(await model.update(note, text: "Draft, finished"))
+        let saved = await model.update(note, text: "Draft, finished")
+        XCTAssertTrue(saved)
         XCTAssertNil(model.unsavedText[note.id], "a save clears what was kept")
         XCTAssertEqual(model.note(id: note.id)?.text, "Draft, finished")
         host.close()

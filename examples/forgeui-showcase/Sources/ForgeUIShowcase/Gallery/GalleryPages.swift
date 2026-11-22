@@ -716,7 +716,6 @@ private struct SampleSheet: View {
         }
     }
 }
-#endif
 
 private struct ChoicesPage: View {
     enum Side: String, CaseIterable, Identifiable { case a, b; var id: String { rawValue } }
@@ -905,3 +904,4 @@ private struct ProgressPage: View {
         }
     }
 }
+#endif

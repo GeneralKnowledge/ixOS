@@ -91,7 +91,8 @@ final class ChecklistTests: XCTestCase {
             XCTAssertEqual(Checklist.message(for: ChecklistError.Stopped(kind: kind)), ForgeErrors.describe(.interrupted))
         }
         // The model's search stops quietly: a stop is not an error to show.
-        XCTAssertNil(await model.search("milk"))
+        let stopped = await model.search("milk")
+        XCTAssertNil(stopped)
         XCTAssertNil(model.errorMessage)
         XCTAssertTrue(ChecklistModel.isStop(CancellationError()))
         XCTAssertFalse(ChecklistModel.isStop(ChecklistError.InUse))
