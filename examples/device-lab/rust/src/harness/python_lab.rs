@@ -640,12 +640,16 @@ impl Environment for PythonLab {
         let target = folder.join(name);
         // Copied aside first and published whole, so a checkpoint is never
         // half there. Even an empty project gets its folder.
+        // Listed so a folder that can't be read fails the checkpoint
+        // instead of leaving it out.
+        let mut files = Vec::new();
+        list_files(&self.root, &self.root, &mut files)?;
         let partial = folder.join(format!(".{name}.partial"));
         if partial.exists() {
             fs::remove_dir_all(&partial)?;
         }
         fs::create_dir_all(&partial)?;
-        for (path, _) in self.files() {
+        for path in files {
             let to = partial.join(&path);
             if let Some(parent) = to.parent() {
                 fs::create_dir_all(parent)?;
@@ -676,7 +680,9 @@ impl Environment for PythonLab {
             .collect::<std::io::Result<_>>()?;
         // The files a checkpoint keeps go (never hidden ones, such as the
         // harness's records, at any depth), then the checkpoint's come back.
-        for (path, _) in self.files() {
+        let mut live = Vec::new();
+        list_files(&self.root, &self.root, &mut live)?;
+        for path in live {
             fs::remove_file(self.root.join(&path))?;
         }
         prune_empty(&self.root, true)?;
