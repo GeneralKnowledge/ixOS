@@ -566,7 +566,7 @@ private fun TransferRow(transfer: Transfer, model: RelayModel) {
                 text = { Text("Remove from History") },
                 onClick = {
                     menu = false
-                    scope.launch { model.remove(transfer) }
+                    scope.launch { model.askToRemove(transfer) }
                 },
                 modifier = Modifier.testTag("history.remove"),
             )
