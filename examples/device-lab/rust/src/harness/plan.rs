@@ -319,9 +319,11 @@ pub fn parse(text: &str, done: &[String]) -> Result<(String, Vec<PlanTask>), Str
     if items.is_empty() {
         return Err("The plan has no tasks.".into());
     }
-    if items.len() > MAX_TASKS {
+    // A replan's tasks join the ones already done, under the same limit.
+    let room = MAX_TASKS.saturating_sub(done.len()).max(1);
+    if items.len() > room {
         return Err(format!(
-            "The plan has {} tasks; use at most {MAX_TASKS}.",
+            "The plan has {} tasks; use at most {room}.",
             items.len()
         ));
     }
@@ -486,6 +488,9 @@ pub struct PlanView {
     pub recoveries: BTreeMap<String, u32>,
     /// The task Recovery mode blocked on, and its question.
     pub blocked: Option<(String, String)>,
+    /// Whether it ever ran (its checkpoint was taken): a plan that didn't
+    /// starts afresh, with no files to put back.
+    pub started: bool,
     /// Model answers the Scripted model has used up when the plan goes
     /// on: all of them, except a task's that ended unverified with no
     /// recovery after it (resuming runs that task again from scratch).
@@ -517,6 +522,7 @@ impl PlanView {
             notes: BTreeMap::new(),
             recoveries: BTreeMap::new(),
             blocked: None,
+            started: false,
             resume_turns: 0,
         };
         // Executor task id -> plan task id.
@@ -529,6 +535,15 @@ impl PlanView {
                     view.thought = thought.clone();
                     // A replan keeps the tasks already done, in order.
                     let done = view.completed_owned();
+                    // A task that isn't done is replaced, even when the new
+                    // plan reuses its id: its notes and last run go with it.
+                    // Its recovery count stays, so replans can't go on forever.
+                    for task in &view.tasks {
+                        if !done.contains(&task.id) {
+                            view.notes.remove(&task.id);
+                            view.runs.remove(&task.id);
+                        }
+                    }
                     let mut kept: Vec<PlanTask> = view
                         .tasks
                         .iter()
@@ -582,6 +597,7 @@ impl PlanView {
                 }
                 Entry::Answer { .. } | Entry::Invalid { .. } => open_turns += 1,
                 Entry::PlanStatus { status, reason, .. } => {
+                    view.started |= *status == PlanState::Running;
                     view.state = *status;
                     view.reason = reason.clone();
                 }
@@ -591,6 +607,9 @@ impl PlanView {
                     ..
                 } => {
                     owner.insert(task.clone(), part.clone());
+                    // A new try: an earlier one's answers, unfinished and
+                    // never recovered from, are given again.
+                    open_turns = 0;
                     view.runs
                         .insert(part.clone(), (task.clone(), TaskStatus::Ready, None));
                 }
@@ -615,6 +634,12 @@ impl PlanView {
         Some(view)
     }
 
+    /// Whether it can be approved or resumed: waiting for approval, ended
+    /// early, or blocked with its question answered.
+    pub fn can_continue(&self) -> bool {
+        self.state.can_continue() || (self.state == PlanState::Blocked && self.blocked.is_none())
+    }
+
     fn completed_owned(&self) -> Vec<String> {
         self.completed().into_iter().map(str::to_string).collect()
     }
@@ -635,8 +660,11 @@ impl PlanView {
             text += "- nothing yet\n";
         }
         text += &format!(
-            "Task {} ({}) failed: {reason}\nWhat is missing: {diagnosis}\n",
-            failed.id, failed.description
+            "Task {} ({}) failed: {reason}\nWhat is missing: {diagnosis}\n\
+             Plan at most {} tasks for what is left.\n",
+            failed.id,
+            failed.description,
+            MAX_TASKS.saturating_sub(done.len()).max(1)
         );
         text
     }

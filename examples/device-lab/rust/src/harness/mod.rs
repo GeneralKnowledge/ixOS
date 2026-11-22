@@ -25,6 +25,7 @@ pub mod samples;
 #[cfg(test)]
 mod tests;
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -526,14 +527,13 @@ impl BonsaiHarness {
     /// verified task (the project's files go back to that task's
     /// checkpoint).
     pub fn continue_plan(&self, model: Arc<dyn HarnessModel>) -> Result<(), HarnessError> {
-        self.continue_with(Arc::new(HostBrain(model)))
+        self.continue_with(Some(model))
     }
 
     /// [`Self::continue_plan`] with the Scripted model, which picks up its
     /// known-good answers where the plan left off.
     pub fn continue_plan_scripted(&self) -> Result<(), HarnessError> {
-        let brain = self.scripted_resume();
-        self.continue_with(brain)
+        self.continue_with(None)
     }
 
     /// Answers a blocked plan's question, then runs on from the blocked
@@ -543,13 +543,12 @@ impl BonsaiHarness {
         model: Arc<dyn HarnessModel>,
         answer: String,
     ) -> Result<(), HarnessError> {
-        self.answer_with(Arc::new(HostBrain(model)), answer)
+        self.answer_with(Some(model), answer)
     }
 
     /// [`Self::answer_plan`] with the Scripted model.
     pub fn answer_plan_scripted(&self, answer: String) -> Result<(), HarnessError> {
-        let brain = self.scripted_resume();
-        self.answer_with(brain, answer)
+        self.answer_with(None, answer)
     }
 
     /// Discards a plan waiting for approval; nothing of it runs.
@@ -822,51 +821,65 @@ impl BonsaiHarness {
         self.launch(brain, Arc::new(lab), SCRATCH_PROJECT, job)
     }
 
-    /// The Scripted model, picking up its answers where the plan on screen
-    /// left off.
-    fn scripted_resume(&self) -> Arc<dyn Brain> {
-        let (project, turns) = {
-            let state = lock(&self.shared.state);
-            let view = plan::current(&state.entries).and_then(PlanView::read);
-            (
-                state.project.clone(),
-                view.map(|v| v.resume_turns).unwrap_or(0),
-            )
+    /// `model`, or the Scripted model picking up its answers where the
+    /// plan `view` of `project` left off.
+    fn resume_brain(
+        model: Option<Arc<dyn HarnessModel>>,
+        project: &str,
+        view: &PlanView,
+    ) -> Arc<dyn Brain> {
+        match model {
+            Some(model) => Arc::new(HostBrain(model)),
+            None => Arc::new(ScriptBrain::new(
+                evidence::script(project)
+                    .into_iter()
+                    .skip(view.resume_turns)
+                    .collect(),
+            )),
+        }
+    }
+
+    /// Marks the harness busy for the plan on screen, when `fits` it, in
+    /// one hold of the lock, so another project can't be opened between
+    /// the check and the claim. Returns the project, its folder and the
+    /// plan.
+    fn claim_plan(
+        &self,
+        fits: impl Fn(&PlanView) -> bool,
+    ) -> Result<(String, PathBuf, PlanView), HarnessError> {
+        let mut state = lock(&self.shared.state);
+        if state.running {
+            return Err(HarnessError::Busy);
+        }
+        let view = plan::current(&state.entries)
+            .and_then(PlanView::read)
+            .filter(|view| fits(view))
+            .ok_or(HarnessError::NoPlan)?;
+        let (Some(project), Some(root)) = (state.project.clone(), state.root.clone()) else {
+            return Err(HarnessError::NoPlan);
         };
-        let script = evidence::script(project.as_deref().unwrap_or(""))
-            .into_iter()
-            .skip(turns)
-            .collect();
-        Arc::new(ScriptBrain::new(script))
+        state.running = true;
+        self.shared.stop.store(false, Ordering::SeqCst);
+        Ok((project, root, view))
     }
 
     /// Records the person's answer to the blocked plan on screen, then runs
-    /// on with `brain`.
-    pub fn answer_with(&self, brain: Arc<dyn Brain>, answer: String) -> Result<(), HarnessError> {
+    /// on with `model` (the Scripted model when none).
+    fn answer_with(
+        &self,
+        model: Option<Arc<dyn HarnessModel>>,
+        answer: String,
+    ) -> Result<(), HarnessError> {
         let answer = answer.trim().to_string();
         if answer.is_empty() {
             return Err(HarnessError::EmptyTask);
         }
-        let (project, view) = {
-            let state = lock(&self.shared.state);
-            if state.running {
-                return Err(HarnessError::Busy);
-            }
-            let view = plan::current(&state.entries).and_then(PlanView::read);
-            (state.project.clone().zip(state.root.clone()), view)
-        };
-        let (Some((project, root)), Some(view)) = (project, view) else {
+        let (project, root, view) =
+            self.claim_plan(|view| view.state.needs_answer() && view.blocked.is_some())?;
+        let Some((task, _)) = view.blocked.clone() else {
+            self.release();
             return Err(HarnessError::NoPlan);
         };
-        let Some((task, _)) = view.blocked.clone().filter(|_| view.state.needs_answer()) else {
-            return Err(HarnessError::NoPlan);
-        };
-        let lab = PythonLab::new(
-            root.clone(),
-            Arc::clone(&self.python),
-            Duration::from_secs(self.limits.run_seconds.into()),
-        );
-        self.claim()?;
         let entry = Entry::PersonAnswer {
             plan: view.id.clone(),
             plan_task: task,
@@ -879,6 +892,12 @@ impl BonsaiHarness {
                 reason: format!("Could not write the journal: {err}"),
             });
         }
+        let brain = Self::resume_brain(model, &project, &view);
+        let lab = PythonLab::new(
+            root,
+            Arc::clone(&self.python),
+            Duration::from_secs(self.limits.run_seconds.into()),
+        );
         self.launch(
             brain,
             Arc::new(lab),
@@ -887,25 +906,16 @@ impl BonsaiHarness {
         )
     }
 
-    /// Approves or resumes the plan on screen with `brain`.
-    pub fn continue_with(&self, brain: Arc<dyn Brain>) -> Result<(), HarnessError> {
-        let (project, view) = {
-            let state = lock(&self.shared.state);
-            let view = plan::current(&state.entries).and_then(PlanView::read);
-            (state.project.clone().zip(state.root.clone()), view)
-        };
-        let (Some((project, root)), Some(view)) = (project, view) else {
-            return Err(HarnessError::NoPlan);
-        };
-        if !view.state.can_continue() {
-            return Err(HarnessError::NoPlan);
-        }
+    /// Approves or resumes the plan on screen with `model` (the Scripted
+    /// model when none).
+    fn continue_with(&self, model: Option<Arc<dyn HarnessModel>>) -> Result<(), HarnessError> {
+        let (project, root, view) = self.claim_plan(PlanView::can_continue)?;
+        let brain = Self::resume_brain(model, &project, &view);
         let lab = PythonLab::new(
             root,
             Arc::clone(&self.python),
             Duration::from_secs(self.limits.run_seconds.into()),
         );
-        self.claim()?;
         self.launch(
             brain,
             Arc::new(lab),
@@ -974,7 +984,7 @@ impl BonsaiHarness {
                         run.task(request.clone(), request, criteria, None);
                     }
                     Job::Plan { request, criteria } => run.plan(request, criteria, approve),
-                    Job::Continue { plan } => run.continue_plan(&plan),
+                    Job::Continue { plan } => run.continue_plan(&plan, approve),
                 }
                 let mut state = lock(&shared.state);
                 state.running = false;
@@ -999,10 +1009,15 @@ impl BonsaiHarness {
 /// How a model error starts a task's end reason.
 const MODEL_FAILED: &str = "The model failed";
 
+/// How a failed checkpoint starts a task's or plan's end reason.
+const CHECKPOINT_FAILED: &str = "Could not save a checkpoint";
+
 /// Whether Recovery mode can help with a task that ended for `reason`: not
 /// when the model or the journal failed.
 fn recoverable(reason: &str) -> bool {
-    !reason.starts_with(MODEL_FAILED) && !reason.starts_with("Could not write the journal")
+    !reason.starts_with(MODEL_FAILED)
+        && !reason.starts_with(CHECKPOINT_FAILED)
+        && !reason.starts_with("Could not write the journal")
 }
 
 /// What a launch does.
@@ -1068,7 +1083,7 @@ fn plan_record(view: &PlanView) -> HarnessPlan {
             .count() as u32,
         tasks,
         acceptance: view.criteria.iter().map(Criterion::describe).collect(),
-        can_continue: view.state.can_continue(),
+        can_continue: view.can_continue(),
         question: view
             .blocked
             .as_ref()
@@ -1160,9 +1175,10 @@ impl Run {
             return end;
         }
         logging::info!(target: "harness", "{task} started");
-        let End(status, reason) = match self.work(&task, &request, &criteria, started) {
-            Ok(end) | Err(end) => end,
-        };
+        let End(status, reason) =
+            match self.work(&task, &request, &criteria, started, part.is_some()) {
+                Ok(end) | Err(end) => end,
+            };
         logging::info!(target: "harness", "{task} ended {status:?}");
         if let Err(end) = self.status(&task, status, Some(reason.clone())) {
             return end;
@@ -1176,12 +1192,23 @@ impl Run {
         status: PlanState,
         reason: Option<String>,
     ) -> Result<(), End> {
-        self.record(Entry::PlanStatus {
+        let recorded = self.record(Entry::PlanStatus {
             plan: plan.into(),
             status,
             reason,
             at_ms: now_ms(),
-        })
+        });
+        if let Err(End(_, failure)) = &recorded {
+            // The screen still learns the plan ended, and why; it can be
+            // resumed once the journal can be written again.
+            lock(&self.shared.state).entries.push(Entry::PlanStatus {
+                plan: plan.into(),
+                status: PlanState::Failed,
+                reason: Some(failure.clone()),
+                at_ms: now_ms(),
+            });
+        }
+        recorded
     }
 
     /// Ends the plan the way `end` ended its task or its drafting.
@@ -1232,8 +1259,10 @@ impl Run {
         self.run_plan(&plan);
     }
 
-    /// Approves the plan, or resumes it from its last verified task.
-    fn continue_plan(&self, plan: &str) {
+    /// Approves the plan, or resumes it from its last verified task. A
+    /// plan that never ran starts afresh, and waits for approval first
+    /// (when `approve`) unless that is what it is getting now.
+    fn continue_plan(&self, plan: &str, approve: bool) {
         let Some(view) = self.plan_view(plan) else {
             return;
         };
@@ -1245,7 +1274,19 @@ impl Run {
             {
                 return self.end_plan(plan, end);
             }
-        } else if view.state != PlanState::AwaitingApproval {
+        }
+        if !view.started {
+            if approve && view.state != PlanState::AwaitingApproval {
+                let _ = self.plan_status(
+                    plan,
+                    PlanState::AwaitingApproval,
+                    Some("Approve the plan to run it.".into()),
+                );
+                return;
+            }
+        } else if view.state != PlanState::Blocked {
+            // A blocked plan's files went back when it blocked, and keep
+            // anything the person added to answer it.
             let point = view.restart_point();
             if let Err(err) = self.environment.restore(&point) {
                 return self.end_plan(
@@ -1409,7 +1450,13 @@ impl Run {
         if view.runs.is_empty() {
             // Where a resume before the first verified task starts from.
             if let Err(err) = self.environment.checkpoint(plan) {
-                logging::warn!(target: "harness", "plan checkpoint failed: {err}");
+                return self.end_plan(
+                    plan,
+                    End(
+                        TaskStatus::Failed,
+                        format!("{CHECKPOINT_FAILED} before the first task: {err}"),
+                    ),
+                );
             }
         }
         if self.plan_status(plan, PlanState::Running, None).is_err() {
@@ -1452,12 +1499,17 @@ impl Run {
                 );
             }
             // Back to the last verified task's files before deciding.
-            if let Err(err) = self.environment.restore(&view.restart_point()) {
+            let point = view.restart_point();
+            if let Err(err) = self.environment.restore(&point) {
                 return self.end_plan(
                     plan,
                     End(
                         TaskStatus::Failed,
-                        format!("Could not roll back after task {}: {err}", next.id),
+                        format!(
+                            "Task {}: {reason}. Then the files could not go back to \
+                             checkpoint {point} ({err}); Resume tries that again.",
+                            next.id
+                        ),
                     ),
                 );
             }
@@ -1498,13 +1550,24 @@ impl Run {
             );
         }
         self.phase(HarnessPhase::Verifying);
+        // Only the verified runs' evidence: a rolled-back try's files are
+        // gone. Kept in the order it came, so a later write still counts
+        // against an earlier result.
+        let kept: BTreeSet<&str> = view
+            .runs
+            .values()
+            .filter(|(_, status, _)| *status == TaskStatus::Completed)
+            .map(|(run, _, _)| run.as_str())
+            .collect();
         let seen: Vec<Evidence> = {
             let state = lock(&self.shared.state);
             plan::current(&state.entries)
                 .unwrap_or(&[])
                 .iter()
                 .filter_map(|e| match e {
-                    Entry::Result { evidence, .. } => Some(evidence.clone()),
+                    Entry::Result { task, evidence, .. } if kept.contains(task.as_str()) => {
+                        Some(evidence.clone())
+                    }
                     _ => None,
                 })
                 .flatten()
@@ -1559,6 +1622,7 @@ impl Run {
         request: &str,
         criteria: &[Criterion],
         started: Instant,
+        planned: bool,
     ) -> Result<End, End> {
         let tools = with_finish(&self.environment.tools());
         let grammar = calls::grammar(&tools);
@@ -1703,6 +1767,14 @@ impl Run {
                         .join("; ");
                     if let Err(err) = self.environment.checkpoint(task) {
                         logging::warn!(target: "harness", "checkpoint failed: {err}");
+                        // A plan resumes from this checkpoint, so its task
+                        // can't pass without one; a lone task can.
+                        if planned {
+                            return Err(End(
+                                TaskStatus::Failed,
+                                format!("{CHECKPOINT_FAILED}: {err}"),
+                            ));
+                        }
                     }
                     // A Stop or the time limit that landed during the last
                     // model turn or the checkpoint still wins.

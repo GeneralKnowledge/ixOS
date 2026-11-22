@@ -1632,6 +1632,11 @@ fn a_plan_that_cant_run_in_order_is_refused_with_a_reason() {
         let err = plan::parse(&text, &[]).unwrap_err();
         assert!(err.contains(expected), "{text}: {err}");
     }
+    // A replan shares the six slots with the tasks already done.
+    let six = plan_of((0..6).map(|i| task(&format!("t{i}"), "", tests)).collect());
+    assert!(plan::parse(&six, &[]).is_ok());
+    let err = plan::parse(&six, &["done".to_string()]).unwrap_err();
+    assert!(err.contains("at most 5"), "{err}");
 }
 
 #[test]
@@ -1929,6 +1934,138 @@ fn restore_puts_the_project_back_as_the_checkpoint_kept_it() {
     // The harness's own records stay.
     assert!(dir.path().join(".harness/journal.jsonl").exists());
     assert!(lab.restore("missing").is_err());
+
+    // Hidden files stay at any depth; folders it emptied go.
+    std::fs::create_dir_all(dir.path().join("keep")).unwrap();
+    std::fs::write(dir.path().join("keep/.env"), "x\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("gone/deep")).unwrap();
+    std::fs::write(dir.path().join("gone/deep/g.py"), "g = 1\n").unwrap();
+    lab.restore("one").unwrap();
+    assert!(dir.path().join("keep/.env").exists());
+    assert!(!dir.path().join("gone").exists());
+    // A checkpoint is published whole: no partial copy is left behind.
+    lab.checkpoint("two").unwrap();
+    let names: Vec<String> = std::fs::read_dir(dir.path().join(".harness/checkpoints"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
+    assert!(!names.iter().any(|n| n.contains("partial")), "{names:?}");
+}
+
+#[test]
+fn an_answer_saved_before_the_app_closed_lets_the_plan_go_on() {
+    let tasks = plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+        .unwrap()
+        .1;
+    let first = tasks[0].id.clone();
+    let mut entries = vec![
+        Entry::PlanRequest {
+            plan: "plan-1".into(),
+            request: "Grades.".into(),
+            criteria: vec![],
+            model: "m".into(),
+            at_ms: 1,
+        },
+        Entry::Plan {
+            plan: "plan-1".into(),
+            thought: "t".into(),
+            tasks,
+            model_ms: 1,
+        },
+        Entry::PlanStatus {
+            plan: "plan-1".into(),
+            status: PlanState::Running,
+            reason: None,
+            at_ms: 2,
+        },
+        Entry::Recovery {
+            plan: "plan-1".into(),
+            plan_task: first.clone(),
+            thought: "t".into(),
+            decision: plan::Decision::Blocked {
+                question: "Which file?".into(),
+            },
+            model_ms: 1,
+        },
+        Entry::PlanStatus {
+            plan: "plan-1".into(),
+            status: PlanState::Blocked,
+            reason: Some("Which file?".into()),
+            at_ms: 3,
+        },
+    ];
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert!(view.started);
+    assert!(!view.can_continue());
+    entries.push(Entry::PersonAnswer {
+        plan: "plan-1".into(),
+        plan_task: first,
+        text: "data.csv".into(),
+        at_ms: 4,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert_eq!(view.state, PlanState::Blocked);
+    assert!(view.can_continue());
+}
+
+#[test]
+fn a_draft_that_never_ran_waits_for_approval_when_resumed() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("scratch");
+    std::fs::create_dir_all(&root).unwrap();
+    {
+        let mut journal = Journal::open(&root).unwrap();
+        for entry in [
+            Entry::PlanRequest {
+                plan: "plan-1".into(),
+                request: "Grades.".into(),
+                criteria: vec![],
+                model: "m".into(),
+                at_ms: 1,
+            },
+            Entry::PlanStatus {
+                plan: "plan-1".into(),
+                status: PlanState::Planning,
+                reason: None,
+                at_ms: 2,
+            },
+            Entry::Plan {
+                plan: "plan-1".into(),
+                thought: "t".into(),
+                tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+                    .unwrap()
+                    .1,
+                model_ms: 1,
+            },
+        ] {
+            journal.append(&entry).unwrap();
+        }
+    }
+    let h = harness(&dir);
+    h.open_project("scratch".into()).unwrap();
+    assert_eq!(h.snapshot().plan.unwrap().status, PlanState::Stopped);
+    // No checkpoint was ever taken, and approval is on: it asks first.
+    h.continue_plan_scripted().unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::AwaitingApproval, "{plan:?}");
+}
+
+#[test]
+fn a_forgiving_edit_leaves_quotes_inside_a_docstring_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    let text = "def f():\n    \"\"\"\n    say \"hi\"\n    \"\"\"\n    return 1\n";
+    std::fs::write(dir.path().join("d.py"), text).unwrap();
+    let outcome = edit(&lab, "d.py", "say 'hi'", "say 'bye'");
+    assert!(!outcome.ok, "{}", outcome.text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("d.py")).unwrap(),
+        text
+    );
 }
 
 // MARK: Recovery (H5)

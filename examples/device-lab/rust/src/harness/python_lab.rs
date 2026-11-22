@@ -221,7 +221,9 @@ impl PythonLab {
                 "read_symbol reads Python files; use read_file for {path}."
             ));
         }
-        let script = SYMBOLS_SCRIPT.replace("__FILE__", &py_str(&full.display().to_string()));
+        // Python parses the text read above, so its line numbers fit the
+        // lines shown.
+        let script = SYMBOLS_SCRIPT.replace("__SOURCE__", &py_str(&text));
         let (outcome, _) = self.run_script(script);
         let output = self.clean(&outcome.output);
         let symbols: Option<BTreeMap<String, (usize, usize)>> = output
@@ -634,20 +636,26 @@ impl Environment for PythonLab {
     }
 
     fn checkpoint(&self, name: &str) -> std::io::Result<()> {
-        let target = self.root.join(".harness/checkpoints").join(name);
-        if target.exists() {
-            fs::remove_dir_all(&target)?;
+        let folder = self.root.join(".harness/checkpoints");
+        let target = folder.join(name);
+        // Copied aside first and published whole, so a checkpoint is never
+        // half there. Even an empty project gets its folder.
+        let partial = folder.join(format!(".{name}.partial"));
+        if partial.exists() {
+            fs::remove_dir_all(&partial)?;
         }
-        // Even an empty project gets its folder, so it can be restored.
-        fs::create_dir_all(&target)?;
+        fs::create_dir_all(&partial)?;
         for (path, _) in self.files() {
-            let to = target.join(&path);
+            let to = partial.join(&path);
             if let Some(parent) = to.parent() {
                 fs::create_dir_all(parent)?;
             }
             fs::copy(self.root.join(&path), to)?;
         }
-        Ok(())
+        if target.exists() {
+            fs::remove_dir_all(&target)?;
+        }
+        fs::rename(&partial, &target)
     }
 
     fn restore(&self, name: &str) -> std::io::Result<()> {
@@ -658,32 +666,69 @@ impl Environment for PythonLab {
                 format!("there is no checkpoint {name}"),
             ));
         }
-        // The project's own files go (never the harness's records), then
-        // the checkpoint's come back.
-        if let Ok(entries) = fs::read_dir(&self.root) {
-            for entry in entries.flatten() {
-                if entry.file_name().to_string_lossy().starts_with('.') {
-                    continue;
-                }
-                let path = entry.path();
-                if entry.file_type()?.is_dir() {
-                    fs::remove_dir_all(path)?;
-                } else {
-                    fs::remove_file(path)?;
-                }
-            }
+        // Read the whole checkpoint before touching the project, so one
+        // that can't be read leaves the files as they are.
+        let mut listed = Vec::new();
+        list_files(&source, &source, &mut listed)?;
+        let staged: Vec<(String, Vec<u8>)> = listed
+            .into_iter()
+            .map(|path| fs::read(source.join(&path)).map(|bytes| (path, bytes)))
+            .collect::<std::io::Result<_>>()?;
+        // The files a checkpoint keeps go (never hidden ones, such as the
+        // harness's records, at any depth), then the checkpoint's come back.
+        for (path, _) in self.files() {
+            fs::remove_file(self.root.join(&path))?;
         }
-        let mut kept = Vec::new();
-        walk(&source, &source, &mut kept);
-        for (path, _) in kept {
+        prune_empty(&self.root, true)?;
+        for (path, bytes) in staged {
             let to = self.root.join(&path);
             if let Some(parent) = to.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::copy(source.join(&path), to)?;
+            fs::write(to, bytes)?;
         }
         Ok(())
     }
+}
+
+/// Whether the harness leaves a file or folder alone: hidden ones and
+/// Python's caches.
+fn skipped(name: &str) -> bool {
+    name.starts_with('.') || name == "__pycache__"
+}
+
+/// The files `walk` finds, but failing when a folder can't be read.
+fn list_files(root: &Path, dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if skipped(&entry.file_name().to_string_lossy()) {
+            continue;
+        }
+        let path = entry.path();
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            list_files(root, &path, out)?;
+        } else if kind.is_file() {
+            let relative = path.strip_prefix(root).unwrap_or(&path);
+            out.push(relative.to_string_lossy().to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Removes the folders under `dir` left empty, skipping hidden ones and
+/// Python's caches; `dir` itself stays when `top`.
+fn prune_empty(dir: &Path, top: bool) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() && !skipped(&entry.file_name().to_string_lossy()) {
+            prune_empty(&entry.path(), false)?;
+        }
+    }
+    if !top && fs::read_dir(dir)?.next().is_none() {
+        fs::remove_dir(dir)?;
+    }
+    Ok(())
 }
 
 fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) {
@@ -691,8 +736,7 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) {
         return;
     };
     for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') || name == "__pycache__" {
+        if skipped(&entry.file_name().to_string_lossy()) {
             continue;
         }
         let path = entry.path();
@@ -774,37 +818,68 @@ fn forgiving(line: &str) -> String {
     out
 }
 
+/// Each line as `forgiving` shows it, except lines in or around a
+/// triple-quoted string, whose quotes are data: those only lose their
+/// indent and trailing space.
+fn keys(lines: &[&str]) -> Vec<String> {
+    let mut open: Option<&str> = None;
+    lines
+        .iter()
+        .map(|line| {
+            let mut verbatim = open.is_some();
+            let mut rest = *line;
+            loop {
+                let next = match open {
+                    Some(quote) => rest.find(quote).map(|at| (at, None)),
+                    None => ["\"\"\"", "'''"]
+                        .iter()
+                        .filter_map(|q| rest.find(q).map(|at| (at, Some(*q))))
+                        .min(),
+                };
+                let Some((at, opens)) = next else { break };
+                verbatim = true;
+                open = opens;
+                rest = &rest[at + 3..];
+            }
+            if verbatim {
+                line.trim().to_string()
+            } else {
+                forgiving(line)
+            }
+        })
+        .collect()
+}
+
 /// `old` matched against `text` ignoring indentation and quote style. When
 /// exactly one run of lines fits, it is replaced by `new`, shifted so its
 /// first line takes the indent of the line it replaces. Returns the edited
 /// text and the (1-based) first line replaced.
 fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String, usize)> {
     let lines: Vec<&str> = text.lines().collect();
-    let want: Vec<String> = old.lines().map(forgiving).collect();
+    let olds: Vec<&str> = old.lines().collect();
+    let want = keys(&olds);
     if want.is_empty() || want.len() > lines.len() || want.iter().all(String::is_empty) {
         return None;
     }
+    let have = keys(&lines);
     let found: Vec<usize> = (0..=lines.len() - want.len())
-        .filter(|&i| {
-            lines[i..i + want.len()]
-                .iter()
-                .zip(&want)
-                .all(|(a, b)| forgiving(a) == *b)
-        })
+        .filter(|&i| have[i..i + want.len()] == want[..])
         .collect();
     let [at] = found[..] else { return None };
     // Tab-indented code is only re-indented when the edit uses tabs too:
     // mixing tabs and spaces makes Python refuse the file.
-    let tabbed = |line: &&str| line.starts_with('\t');
-    let file_tabs = lines[at..at + want.len()].iter().any(tabbed);
-    if file_tabs != new.lines().any(|l| tabbed(&l)) && new.lines().count() > 1 {
-        return None;
-    }
     // Indents are runs of ASCII spaces and tabs, so every cut below falls on
     // a character boundary. Depths compare in columns (a tab to the next
     // multiple of 8, as Python counts), and the file's own indent (tabs
     // included) is what the new lines get.
     let indent = |line: &str| line.len() - line.trim_start_matches([' ', '\t']).len();
+    // Tab-indented code is only re-indented when the edit uses tabs too:
+    // mixing tabs and spaces makes Python refuse the file.
+    let tabbed = |line: &str| line[..indent(line)].contains('\t');
+    let file_tabs = lines[at..at + want.len()].iter().any(|l| tabbed(l));
+    if file_tabs != new.lines().any(tabbed) && new.lines().count() > 1 {
+        return None;
+    }
     let column = |ws: &str| {
         ws.chars().fold(
             0usize,
@@ -944,7 +1019,6 @@ fn syntax_script(path: &Path) -> String {
 /// The project map's longest length, in characters.
 const MAP_MAX_CHARS: usize = 1_500;
 
-/// Prints one line per file: `path (bytes)` and its definitions.
 /// What starts the line `SYMBOLS_SCRIPT` prints its JSON on.
 const SYMBOLS_MARK: &str = "__harness_symbols__";
 
@@ -952,9 +1026,8 @@ const SYMBOLS_MARK: &str = "__harness_symbols__";
 /// Class.method, with its first line (decorators included) and last line.
 const SYMBOLS_SCRIPT: &str = r#"
 import ast, json
-def _harness_symbols(full):
-    with open(full, encoding='utf-8') as f:
-        tree = ast.parse(f.read())
+def _harness_symbols(source):
+    tree = ast.parse(source)
     defs = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
     def span(node):
         return [min([d.lineno for d in node.decorator_list] + [node.lineno]), node.end_lineno]
@@ -967,10 +1040,11 @@ def _harness_symbols(full):
                     if isinstance(inner, defs):
                         out[node.name + '.' + inner.name] = span(inner)
     print('__harness_symbols__' + json.dumps(out))
-_harness_symbols(__FILE__)
+_harness_symbols(__SOURCE__)
 del _harness_symbols
 "#;
 
+/// Prints one line per file: `path (bytes)` and its definitions.
 const MAP_SCRIPT: &str = r#"
 import ast
 def _harness_map(files):

@@ -149,27 +149,30 @@ pub fn messages(
         .map(Criterion::describe)
         .collect::<Vec<_>>()
         .join("; ");
-    let mut task =
+    let task =
         format!("Task: {request}\nDone when: {done_when}.\n\nProject files now:\n{overview}");
-    if !earlier.is_empty() {
-        task += &format!("\n\nEarlier work in this project:\n{earlier}");
-    }
     let turns = turns(history);
-    let fixed = tokens(system) + tokens(&task);
     let keep_full = 2;
+    let fits = |task: &str, level: u8, dropped: usize| {
+        let built = build(system, task, &turns, level, keep_full, dropped);
+        let fixed = tokens(system) + tokens(task);
+        (fixed + cost(&built) <= budget).then_some(built)
+    };
+    // Earlier work is optional: it stays while this task's own steps fit
+    // in full or shortened, and goes before any of them is dropped.
+    if !earlier.is_empty() {
+        let with = format!("{task}\n\nEarlier work in this project:\n{earlier}");
+        if let Some(built) = (0..3).find_map(|level| fits(&with, level, 0)) {
+            return built;
+        }
+    }
     // Level 0: everything in full; 1: old results shortened; 2: old calls
     // shortened too; then drop the oldest steps.
-    for level in 0..3 {
-        let built = build(system, &task, &turns, level, keep_full, 0);
-        if fixed + cost(&built) <= budget {
-            return built;
-        }
+    if let Some(built) = (0..3).find_map(|level| fits(&task, level, 0)) {
+        return built;
     }
-    for dropped in 1..turns.len() {
-        let built = build(system, &task, &turns, 2, keep_full, dropped);
-        if fixed + cost(&built) <= budget {
-            return built;
-        }
+    if let Some(built) = (1..turns.len()).find_map(|dropped| fits(&task, 2, dropped)) {
+        return built;
     }
     build(
         system,
@@ -425,6 +428,40 @@ pub fn plan_transcript(project: &str, entries: &[Entry]) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         );
+    }
+    // Recovery decisions and the person's answers, in the order they came.
+    let mut decided = String::new();
+    for entry in entries {
+        match entry {
+            Entry::Recovery {
+                plan_task,
+                decision,
+                ..
+            } => {
+                use super::plan::Decision;
+                decided += &match decision {
+                    Decision::Retry { diagnosis } => {
+                        format!("- {plan_task} failed: retry. {diagnosis}\n")
+                    }
+                    Decision::Revise { description, .. } => {
+                        format!("- {plan_task} failed: revised to: {description}\n")
+                    }
+                    Decision::Replan { diagnosis } => {
+                        format!("- {plan_task} failed: replan. {diagnosis}\n")
+                    }
+                    Decision::Blocked { question } => {
+                        format!("- {plan_task} blocked. Question: {question}\n")
+                    }
+                };
+            }
+            Entry::PersonAnswer {
+                plan_task, text, ..
+            } => decided += &format!("- The person answered for {plan_task}: {text}\n"),
+            _ => {}
+        }
+    }
+    if !decided.is_empty() {
+        text += &format!("\n## Recovery\n\n{decided}");
     }
     // Every executor task of the plan, in the order they ran.
     let ids: Vec<&str> = entries
