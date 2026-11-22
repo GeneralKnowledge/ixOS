@@ -1107,8 +1107,27 @@ def rule_limits_from_rust(app):
     return True, ""
 
 
-XCT_AWAIT = re.compile(r"\bXCT\w+\((?:[^()]|\([^()]*\))*\bawait\b")
-CLOSURE_DEFAULT = re.compile(r"\bstatic\s+(?:let|var)\s+defaultValue\s*:\s*\(+")
+XCT_CALL = re.compile(r"\bXCT\w+\(")
+CLOSURE_DEFAULT = re.compile(r"\bstatic\s+(?:let|var)\s+defaultValue\s*:\s*\(.*->")
+
+
+def xct_await_lines(text):
+    """Lines where an XCTest assertion's arguments, however many lines they
+    span, contain `await`. Comments are left out."""
+    strings = re.compile(r'"(?:\\.|[^"\\\n])*"')
+    code = "\n".join(strings.sub('""', line).split("//", 1)[0] for line in text.splitlines())
+    found = []
+    for m in XCT_CALL.finditer(code):
+        depth, j = 1, m.end()
+        while j < len(code) and depth:
+            if code[j] == "(":
+                depth += 1
+            elif code[j] == ")":
+                depth -= 1
+            j += 1
+        if re.search(r"\bawait\b", code[m.end() : j]):
+            found.append(code.count("\n", 0, m.start()) + 1)
+    return found
 
 
 def rule_swift6_traps(app):
@@ -1120,10 +1139,11 @@ def rule_swift6_traps(app):
     bad = []
     files = swift_sources(app) + sorted((app / "Tests").rglob("*.swift"))
     for path in files:
-        for i, line in enumerate(read(path).splitlines()):
+        text = read(path)
+        for line in xct_await_lines(text):
+            bad.append(f"{path.name}:{line} (await inside an XCTest assertion; await into a local first)")
+        for i, line in enumerate(text.splitlines()):
             code = line.split("//", 1)[0]
-            if XCT_AWAIT.search(code):
-                bad.append(f"{path.name}:{i + 1} (await inside an XCTest assertion; await into a local first)")
             if CLOSURE_DEFAULT.search(code) and "nonisolated(unsafe)" not in code and "@Sendable" not in code:
                 bad.append(f"{path.name}:{i + 1} (closure default value; mark it nonisolated(unsafe) or @Sendable)")
     if bad:

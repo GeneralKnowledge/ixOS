@@ -243,7 +243,7 @@ The rule: if Rust needs the result in order to apply a rule or store it, pass th
   - **An environment key whose default is a closure** needs `nonisolated(unsafe) static let defaultValue` (or a `@Sendable` closure type), or Swift 6 can't prove it is safe to share.
 
   The parity rule `swift6-traps` catches the last two on Linux.
-- A limit Rust enforces (a name's length, how many files a message carries) is exported from Rust as a function and read in Swift, never copied as a number; the parity rule `limits-from-rust` fails on a copy. A limit only Swift has (how far a photo is scaled down) says so with `// swift-only:`.
+- A limit Rust enforces (a name's length, how many files a message carries) is exported from Rust as a function and read in Swift, never copied as a number; the parity rule `limits-from-rust` fails on a number assigned to a Swift constant whose name says `max` or `limit` (a copy under another name, `nameCap`, gets past it, so name limits as limits). A limit only Swift has (how far a photo is scaled down) says so with `// swift-only:`.
 
 ## Checking the result
 

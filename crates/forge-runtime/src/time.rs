@@ -69,20 +69,45 @@ pub fn local_time_ms(
     changes: &[OffsetChange],
 ) -> i64 {
     let local = day * DAY_MS + i64::from(minute_of_day) * 60_000;
-    let offset_at = |utc_ms: i64| {
-        changes
-            .iter()
-            .filter(|c| c.at_ms > now_ms && c.at_ms <= utc_ms)
-            .max_by_key(|c| c.at_ms)
-            .map_or(now_offset_minutes, |c| c.utc_offset_minutes)
-    };
-    let guess = local - i64::from(now_offset_minutes) * 60_000;
-    let utc = local - i64::from(offset_at(guess)) * 60_000;
-    if offset_at(utc) == offset_at(guess) {
-        utc
-    } else {
-        guess
+    // The offsets in force from now on, as UTC segments: [from, to) at offset.
+    let mut ahead: Vec<OffsetChange> = changes
+        .iter()
+        .copied()
+        .filter(|c| c.at_ms > now_ms)
+        .collect();
+    ahead.sort_by_key(|c| c.at_ms);
+    let mut segments = Vec::with_capacity(ahead.len() + 1);
+    let mut from = i64::MIN;
+    let mut offset = now_offset_minutes;
+    for change in &ahead {
+        segments.push((from, change.at_ms, offset));
+        from = change.at_ms;
+        offset = change.utc_offset_minutes;
     }
+    segments.push((from, i64::MAX, offset));
+    // Each segment whose offset puts this local time inside it is a real
+    // occurrence; a repeated time has two, and the first is the one.
+    let first = segments
+        .iter()
+        .map(|&(from, to, offset)| (from, to, local - i64::from(offset) * 60_000))
+        .filter(|&(from, to, utc)| from <= utc && utc < to)
+        .map(|(_, _, utc)| utc)
+        .min();
+    if let Some(utc) = first {
+        return utc;
+    }
+    // A time the clocks skip: by the offset before the skip, which lands it
+    // just after the change.
+    for pair in segments.windows(2) {
+        let (before, after) = (pair[0].2, pair[1].2);
+        let at = pair[1].0;
+        let gap_start = at + i64::from(before) * 60_000;
+        let gap_end = at + i64::from(after) * 60_000;
+        if gap_start <= local && local < gap_end {
+            return local - i64::from(before) * 60_000;
+        }
+    }
+    local - i64::from(now_offset_minutes) * 60_000
 }
 
 #[cfg(test)]
@@ -141,6 +166,27 @@ mod tests {
         let monday = AUTUMN.div_euclid(DAY_MS) + 1;
         let at = local_time_ms(monday, 9 * 60, AUTUMN - DAY_MS, 60, &back);
         assert_eq!(utc_iso8601(at), "2027-11-01T09:00:00Z");
+    }
+
+    #[test]
+    fn a_repeated_time_is_the_first_even_with_both_changes_listed() {
+        let both = [
+            OffsetChange {
+                at_ms: SPRING,
+                utc_offset_minutes: 60,
+            },
+            OffsetChange {
+                at_ms: AUTUMN,
+                utc_offset_minutes: 0,
+            },
+        ];
+        let day = AUTUMN.div_euclid(DAY_MS);
+        // 01:30 happens at 00:30 UTC (BST) and again at 01:30 UTC (GMT).
+        let at = local_time_ms(day, 90, SPRING - DAY_MS, 0, &both);
+        assert_eq!(at, AUTUMN - 1_800_000);
+        // The spring skip still lands after its change with both listed.
+        let spring = local_time_ms(SPRING.div_euclid(DAY_MS), 90, SPRING - DAY_MS, 0, &both);
+        assert_eq!(utc_iso8601(spring), "2027-03-28T01:30:00Z");
     }
 
     #[test]
