@@ -252,6 +252,9 @@ fn cut(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_string();
     }
+    // cut: imported metadata (an EPUB's or catalogue's title, author or
+    // description) nobody typed; the "…" shows it was shortened, and the
+    // owner can edit it. Typed text is still refused over the limit.
     let kept: String = text.chars().take(max - 1).collect();
     format!("{}…", kept.trim_end())
 }
