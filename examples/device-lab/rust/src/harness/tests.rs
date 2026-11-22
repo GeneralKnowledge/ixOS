@@ -1053,6 +1053,17 @@ fn a_project_file_runs_as_main_and_imports_its_neighbours() {
     let out = file_run(root, "lib/my tool.py");
     assert!(out.ok, "{}", out.output);
     assert_eq!(out.output.trim(), "7");
+
+    // `import __main__` is the file being run, not the host.
+    std::fs::write(
+        root.join("peek.py"),
+        "import __main__\nprint(__main__.NAME)\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("entry.py"), "NAME = 'entry'\nimport peek\n").unwrap();
+    let out = file_run(root, "entry.py");
+    assert!(out.ok, "{}", out.output);
+    assert_eq!(out.output.trim(), "entry");
 }
 
 #[test]

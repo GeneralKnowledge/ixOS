@@ -288,7 +288,12 @@ struct PythonFilesView: View {
 
     var body: some View {
         List {
-            if model.entries.isEmpty {
+            // A file that wouldn't open, or a list that couldn't be read,
+            // says so here, not on the screen underneath.
+            if let error = model.error {
+                Text(error).font(.footnote).forgeForeground(.danger)
+                    .accessibilityIdentifier("pythonLab.files.error")
+            } else if model.entries.isEmpty {
                 Text("This project has no files yet.").foregroundStyle(.secondary)
             }
             ForEach(model.entries, id: \.path) { entry in

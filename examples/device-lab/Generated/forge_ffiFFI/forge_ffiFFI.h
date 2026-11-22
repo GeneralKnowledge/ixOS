@@ -1377,7 +1377,7 @@ uint64_t uniffi_forge_ffi_fn_constructor_workspace_new(RustBuffer projects_folde
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_CREATE_FILE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_CREATE_FILE
-void uniffi_forge_ffi_fn_method_workspace_create_file(uint64_t ptr, RustBuffer project, RustBuffer path, RustCallStatus *_Nonnull out_status
+void uniffi_forge_ffi_fn_method_workspace_create_file(uint64_t ptr, RustBuffer project, RustBuffer path, RustBuffer text, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_CREATE_FOLDER

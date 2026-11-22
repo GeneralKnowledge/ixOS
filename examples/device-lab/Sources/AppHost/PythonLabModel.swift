@@ -76,7 +76,7 @@ public final class PythonLabModel {
     /// Why Python isn't available (not in this build, or it failed to start).
     public private(set) var unavailable: String?
     /// The last action that failed, with why (cleared by the next one).
-    public private(set) var error: String?
+    public internal(set) var error: String?
     /// A script running longer than this is stopped.
     public let timeLimit: Duration
 
@@ -169,8 +169,7 @@ public final class PythonLabModel {
     /// Opens a project, and in it the file that was open last (or the
     /// first Python file, or a new main.py when it has none).
     public func open(project name: String) {
-        guard let workspace else { return }
-        flush()
+        guard let workspace, savedBeforeLeaving() else { return }
         // The new project may have a file of the same name.
         openFile = nil
         reloadProjects()
@@ -180,7 +179,9 @@ public final class PythonLabModel {
         let state = (try? workspace.state(project: target)) ?? WorkspaceState(
             runFile: nil, currentFile: nil, openFiles: [])
         runFile = state.runFile
-        reloadEntries()
+        // A project whose files can't be listed is not empty: don't start
+        // a main.py in it.
+        guard reloadEntries() else { return }
         if let current = state.currentFile {
             open(file: current)
         } else if let first = entries.first(where: { !$0.isFolder && $0.path.hasSuffix(".py") }) {
@@ -244,15 +245,40 @@ public final class PythonLabModel {
 
     // MARK: Files
 
-    public func reloadEntries() {
-        entries = (try? workspace?.entries(project: project)) ?? []
+    /// Lists the open project's files; false, with the reason in `error`,
+    /// when they can't be read.
+    @discardableResult
+    public func reloadEntries() -> Bool {
+        guard let workspace else {
+            entries = []
+            return true
+        }
+        do {
+            entries = try workspace.entries(project: project)
+            return true
+        } catch {
+            entries = []
+            self.error = "Couldn't list the files in \(project): \(Self.message(error))"
+            return false
+        }
+    }
+
+    /// Saves the open file before another takes its place. If it can't be
+    /// saved, stays on it, so the only copy of the edits isn't replaced.
+    private func savedBeforeLeaving() -> Bool {
+        flush()
+        if case .failed(let reason) = saveState {
+            error = "Your changes to \(openFile ?? "this file") aren't saved (\(reason)), so it stays open. Fix that, or undo the changes, first."
+            return false
+        }
+        return true
     }
 
     /// Opens a file in the editor, saving the one that was open first.
     public func open(file path: String) {
         guard let workspace else { return }
         if path == openFile { return }
-        flush()
+        guard savedBeforeLeaving() else { return }
         do {
             let text = try workspace.readText(project: project, path: path)
             self.text = text
@@ -270,14 +296,8 @@ public final class PythonLabModel {
         guard let workspace else { return nil }
         let path = Self.join(folder, name)
         do {
-            if text.isEmpty {
-                try workspace.createFile(project: project, path: path)
-            } else {
-                if entries.contains(where: { $0.path == path }) {
-                    return "\(path) already exists."
-                }
-                try workspace.writeText(project: project, path: path, text: text)
-            }
+            // Never replaces a file that's there, whatever its case.
+            try workspace.createFile(project: project, path: path, text: text)
         } catch {
             return Self.message(error)
         }
@@ -320,16 +340,21 @@ public final class PythonLabModel {
         let inside = { (path: String?) in
             path.map { $0 == entry.path || $0.hasPrefix(entry.path + "/") } ?? false
         }
-        if inside(openFile) {
-            pendingSave?.cancel()
-            saveState = .saved
-        }
         do {
             try workspace.deleteEntry(project: project, path: entry.path)
             error = nil
         } catch {
+            // The edits stay unsaved until the file is really gone; the
+            // list shows what is left of a folder that went only in part.
             self.error = Self.message(error)
+            reloadEntries()
             return
+        }
+        if inside(openFile) {
+            // Nothing to save: the file is gone.
+            pendingSave?.cancel()
+            pendingSave = nil
+            saveState = .saved
         }
         if inside(runFile) { runFile = nil }
         reloadEntries()
@@ -354,20 +379,27 @@ public final class PythonLabModel {
     /// Adds a sample to the project as a new file (`hello.py`, then
     /// `hello 2.py`, ...) and opens it; what you wrote stays where it was.
     public func load(_ sample: PythonLabSample) {
-        guard workspace != nil else {
+        guard let workspace else {
             text = sample.code
             return
         }
-        reloadEntries()
-        var name = "\(sample.id).py"
-        var n = 2
-        while entries.contains(where: { $0.path == name }) {
-            name = "\(sample.id) \(n).py"
-            n += 1
+        // The first free name; Rust refuses one that is taken, even when
+        // the list is out of date or the case differs.
+        for n in 1...100 {
+            let name = n == 1 ? "\(sample.id).py" : "\(sample.id) \(n).py"
+            do {
+                try workspace.createFile(project: project, path: name, text: sample.code)
+            } catch WorkspaceError.Exists {
+                continue
+            } catch {
+                self.error = Self.message(error)
+                return
+            }
+            reloadEntries()
+            open(file: name)
+            return
         }
-        if let refusal = createFile(name, text: sample.code) {
-            error = refusal
-        }
+        error = "There are already 100 copies of \(sample.title)."
     }
 
     // MARK: Saving
@@ -426,14 +458,21 @@ public final class PythonLabModel {
 
     public func run() async {
         guard let runtime, !isRunning else { return }
+        // Taken before the first wait, so a second tap can't start a
+        // second run while Python starts.
+        isRunning = true
+        await prepare()
+        // Saved after Python started, so edits made while it started run too.
         flush()
         if case .failed(let reason) = saveState {
             error = "Not run, because the file couldn't be saved: \(reason)"
+            isRunning = false
             return
         }
-        await prepare()
-        guard started else { return }
-        isRunning = true
+        guard started else {
+            isRunning = false
+            return
+        }
         output = ""
         succeeded = nil
         error = nil
@@ -441,6 +480,7 @@ public final class PythonLabModel {
         runID = id
         var script = code
         var before: [String: ProjectArtifact] = [:]
+        let startedIn = project
         let folder = projectFolder
         let file = fileToRun
         if let folder, let file {
@@ -461,6 +501,10 @@ public final class PythonLabModel {
             let readable = pythonLabOutput(project: folder, ok: result.ok, output: result.output)
             ok = readable.ok
             text = readable.output
+        }
+        // A run whose project is no longer open shows its output, but its
+        // images and file list belong to that project, not this one.
+        if let folder, project == startedIn {
             artifacts = projectArtifacts(project: folder)
             madeByLastRun = artifacts.filter { artifact in
                 guard let old = before[artifact.path] else { return true }
@@ -516,7 +560,7 @@ public final class PythonLabModel {
 
     /// The words for a refusal (the same as Rust's `WorkspaceError`
     /// messages; UniFFI's own description is the case's name).
-    static func message(_ error: Error) -> String {
+    nonisolated static func message(_ error: Error) -> String {
         guard let failure = error as? WorkspaceError else { return error.localizedDescription }
         switch failure {
         case .Invalid(let reason), .TooLarge(let reason), .Storage(let reason):

@@ -201,17 +201,25 @@ impl Workspace {
     }
 
     /// Creates an empty file; its folder must exist.
-    pub fn create_file(&self, project: String, path: String) -> Result<(), WorkspaceError> {
+    /// Creates a file holding `text`. It never replaces a file that is
+    /// already there, even one whose name differs only in case or that
+    /// appeared after the list was read: the text is written beside it and
+    /// linked into place, which fails if the name is taken.
+    pub fn create_file(
+        &self,
+        project: String,
+        path: String,
+        text: String,
+    ) -> Result<(), WorkspaceError> {
+        check_text_size(&path, &text)?;
         let full = self.new_path(&project, &path)?;
-        fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(full)
-            .map(|_| ())
-            .map_err(|err| match err.kind() {
-                std::io::ErrorKind::AlreadyExists => WorkspaceError::Exists { name: path },
-                _ => storage(err),
-            })
+        let temp = unique_temp(&full);
+        let result = write_new(&temp, text.as_bytes()).and_then(|_| fs::hard_link(&temp, &full));
+        let _ = fs::remove_file(&temp);
+        result.map_err(|err| match err.kind() {
+            std::io::ErrorKind::AlreadyExists => WorkspaceError::Exists { name: path },
+            _ => storage(err),
+        })
     }
 
     /// Creates a folder; its parent must exist.
@@ -252,15 +260,7 @@ impl Workspace {
         path: String,
         text: String,
     ) -> Result<(), WorkspaceError> {
-        if text.len() > TEXT_MAX_BYTES {
-            return Err(WorkspaceError::TooLarge {
-                reason: format!(
-                    "{path} would be {} KB; a file can be at most {} KB.",
-                    text.len() / 1024,
-                    TEXT_MAX_BYTES / 1024
-                ),
-            });
-        }
+        check_text_size(&path, &text)?;
         let root = self.project(&project)?;
         check_path(&path)?;
         let full = safe_join(&root, &path)?;
@@ -438,7 +438,16 @@ pub fn workspace_move_projects(old: String, new: String) -> Result<bool, Workspa
         if !only_empty_scratch {
             return Ok(false);
         }
-        fs::remove_dir_all(&new).map_err(storage)?;
+        // Not recursive: if something was put there since the check, the
+        // removal fails and nothing is lost.
+        if let Err(err) = fs::remove_dir(&scratch) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                return Ok(false);
+            }
+        }
+        if fs::remove_dir(&new).is_err() {
+            return Ok(false);
+        }
     }
     if let Some(parent) = new.parent() {
         fs::create_dir_all(parent).map_err(storage)?;
@@ -447,8 +456,10 @@ pub fn workspace_move_projects(old: String, new: String) -> Result<bool, Workspa
         // Copy beside the new folder first and rename it into place only
         // when complete, so a failed copy never leaves a half-filled
         // projects folder that would be taken as the real one.
-        let partial = new.with_file_name(".Python Lab moving");
-        let _ = fs::remove_dir_all(&partial);
+        // A staging folder of this move's own: created here, so removing
+        // it on failure never touches anyone else's folder.
+        let partial = unique_temp(&new);
+        fs::create_dir(&partial).map_err(storage)?;
         if let Err(err) = copy_tree(&old, &partial).and_then(|_| fs::rename(&partial, &new)) {
             let _ = fs::remove_dir_all(&partial);
             return Err(storage(err));
@@ -469,6 +480,16 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
             copy_tree(&entry.path(), &target)?;
         } else if kind.is_file() {
             fs::copy(entry.path(), target)?;
+        } else if kind.is_symlink() {
+            // Kept as a link, never followed.
+            std::os::unix::fs::symlink(fs::read_link(entry.path())?, target)?;
+        } else {
+            // Anything else can't be copied, so the move stops and the old
+            // folder stays as it is.
+            return Err(std::io::Error::other(format!(
+                "{} can't be copied",
+                entry.file_name().to_string_lossy()
+            )));
         }
     }
     Ok(())
@@ -651,28 +672,47 @@ fn tree_order(a: &str, a_folder: bool, b: &str, b_folder: bool) -> std::cmp::Ord
 
 /// Writes to a temporary file beside `path`, then renames it over `path`.
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    // A name of its own for each save, so two saves at once never share a
-    // temporary file; the last rename wins with complete contents.
-    static SAVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = SAVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let temp = path.with_file_name(format!(".{name}.{}.{n}.saving", std::process::id()));
-    let result = (|| {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        fs::rename(&temp, path)
-    })();
+    let temp = unique_temp(path);
+    let result = write_new(&temp, bytes).and_then(|_| fs::rename(&temp, path));
     if result.is_err() {
         let _ = fs::remove_file(&temp);
     }
     result
+}
+
+/// A hidden name beside `path` of its own for each save, so two saves at
+/// once never share a temporary file.
+fn unique_temp(path: &Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    static SAVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SAVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    path.with_file_name(format!(".{name}.{}.{n}.saving", std::process::id()))
+}
+
+/// Writes a file that must not exist yet, and syncs it.
+fn write_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+fn check_text_size(path: &str, text: &str) -> Result<(), WorkspaceError> {
+    if text.len() > TEXT_MAX_BYTES {
+        return Err(WorkspaceError::TooLarge {
+            reason: format!(
+                "{path} would be {} KB; a file can be at most {} KB.",
+                text.len() / 1024,
+                TEXT_MAX_BYTES / 1024
+            ),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -813,7 +853,7 @@ mod tests {
         let (_dir, ws) = workspace();
         let p = s("scratch");
         ws.create_folder(p.clone(), s("lib")).unwrap();
-        ws.create_file(p.clone(), s("main.py")).unwrap();
+        ws.create_file(p.clone(), s("main.py"), s("")).unwrap();
         ws.write_text(
             p.clone(),
             s("lib/helper.py"),
@@ -882,7 +922,7 @@ mod tests {
         let (_dir, ws) = workspace();
         let p = s("scratch");
         assert_eq!(
-            ws.create_file(p.clone(), s("missing/a.py")),
+            ws.create_file(p.clone(), s("missing/a.py"), s("")),
             Err(WorkspaceError::NotFound {
                 what: s("folder"),
                 name: s("missing")
@@ -892,11 +932,19 @@ mod tests {
             ws.write_text(p.clone(), s("missing/a.py"), s("")),
             Err(WorkspaceError::NotFound { .. })
         ));
-        ws.create_file(p.clone(), s("a.py")).unwrap();
+        ws.create_file(p.clone(), s("a.py"), s("print(1)\n"))
+            .unwrap();
         assert_eq!(
-            ws.create_file(p.clone(), s("a.py")),
+            ws.create_file(p.clone(), s("a.py"), s("print(2)\n")),
             Err(WorkspaceError::Exists { name: s("a.py") })
         );
+        // The refused create left the first text and no temporary file.
+        assert_eq!(ws.read_text(p.clone(), s("a.py")).unwrap(), "print(1)\n");
+        let folder = ws.project_folder(p.clone()).unwrap();
+        assert!(fs::read_dir(folder)
+            .unwrap()
+            .flatten()
+            .all(|e| !e.file_name().to_string_lossy().ends_with(".saving")));
         assert!(matches!(
             ws.read_text(p, s("b.py")),
             Err(WorkspaceError::NotFound { .. })
@@ -954,7 +1002,8 @@ mod tests {
         for i in 0..ENTRIES_MAX - 1 {
             fs::write(_dir.path().join(format!("scratch/f{i}")), "").unwrap();
         }
-        let Err(WorkspaceError::TooLarge { reason }) = ws.create_file(p.clone(), s("one-more"))
+        let Err(WorkspaceError::TooLarge { reason }) =
+            ws.create_file(p.clone(), s("one-more"), s(""))
         else {
             panic!("the project grew past its limit");
         };

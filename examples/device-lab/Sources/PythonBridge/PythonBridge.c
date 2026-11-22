@@ -157,13 +157,15 @@ char *pybridge_run(const char *code, int *ok) {
     return out;
 }
 
-void pybridge_interrupt(void) {
-    if (!started) return;
+int pybridge_interrupt(void) {
+    if (!started) return 0;
     PyGILState_STATE gil = PyGILState_Ensure();
+    int delivered = 0;
     if (running_thread != 0) {
-        PyThreadState_SetAsyncExc(running_thread, PyExc_KeyboardInterrupt);
+        delivered = PyThreadState_SetAsyncExc(running_thread, PyExc_KeyboardInterrupt) == 1;
     }
     PyGILState_Release(gil);
+    return delivered;
 }
 
 char *pybridge_version(void) {

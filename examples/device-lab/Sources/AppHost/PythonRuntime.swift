@@ -48,23 +48,45 @@ final class PythonRuntime: PythonRunning, @unchecked Sendable {
     /// other's script (#367 review).
     private let lock = NSLock()
     private var active: UUID?
+    /// Runs handed to `queue` and not finished.
+    private var waiting: Set<UUID> = []
+    /// Runs stopped while they waited for their turn: they don't start.
+    private var stoppedEarly: Set<UUID> = []
     /// Bonsai Harness's current run, for its `interrupt()`.
     private var harnessRun: UUID?
 
     /// Runs `code` once it has the interpreter. `limit`, if given, counts
     /// from then, not while it waited for its turn.
     private func run(_ code: String, id: UUID, limit: Duration?) async -> PythonRunResult {
-        await withCheckedContinuation { continuation in
+        _ = lock.withLock { waiting.insert(id) }
+        defer {
+            lock.withLock {
+                waiting.remove(id)
+                stoppedEarly.remove(id)
+            }
+        }
+        return await withCheckedContinuation { continuation in
             queue.async { [self] in
-                lock.withLock { active = id }
+                let stopped = lock.withLock {
+                    active = id
+                    return stoppedEarly.remove(id) != nil
+                }
+                if stopped {
+                    lock.withLock { active = nil }
+                    continuation.resume(returning: PythonRunResult(
+                        ok: false, output: "Stopped before it started.",
+                        timedOut: false))
+                    return
+                }
                 let timedOut = TimedOut()
                 var watchdog: DispatchWorkItem?
                 if let limit {
                     let item = DispatchWorkItem { [self] in
                         lock.withLock {
-                            if active == id {
+                            // Only a script still running counts as timed
+                            // out, not one that returned a moment before.
+                            if active == id, pybridge_interrupt() == 1 {
                                 timedOut.value = true
-                                pybridge_interrupt()
                             }
                         }
                     }
@@ -92,11 +114,17 @@ final class PythonRuntime: PythonRunning, @unchecked Sendable {
         await run(code, id: id, limit: Optional(limit))
     }
 
+    /// Stops run `id`: now if it is running, or as soon as its turn comes
+    /// if it is waiting behind another run (which it never touches).
     func interrupt(id: UUID) {
         // Not on `queue`: that is busy running the script.
         DispatchQueue.global().async { [self] in
             lock.withLock {
-                if active == id { pybridge_interrupt() }
+                if active == id {
+                    _ = pybridge_interrupt()
+                } else if waiting.contains(id) {
+                    stoppedEarly.insert(id)
+                }
             }
         }
     }
@@ -111,9 +139,13 @@ extension PythonLabModel {
     /// Projects in the same folder as Bonsai Harness's, so a file either
     /// of them writes is the other's to read.
     static func live() -> PythonLabModel {
-        PythonLabModel(
+        let model = PythonLabModel(
             runtime: PythonRuntime.shared,
             workspace: try? Workspace(projectsFolder: PythonLabProjects.folder.path))
+        if let reason = PythonLabProjects.moveFailed {
+            model.error = "Your projects couldn't move to the Files app (\(reason)), so they stay inside the app for now. Device Lab tries again next time it opens."
+        }
+        return model
     }
 }
 
@@ -121,6 +153,9 @@ extension PythonLabModel {
 /// which Device Lab shows in the Files app (On My iPhone > Device Lab >
 /// Python Lab), so every project is a normal folder there.
 enum PythonLabProjects {
+    /// Why the projects couldn't move to Files this launch, if they couldn't.
+    nonisolated(unsafe) static var moveFailed: String?
+
     static let folder: URL = {
         let folder = URL.documentsDirectory
             .appendingPathComponent("Python Lab", isDirectory: true)
@@ -128,7 +163,14 @@ enum PythonLabProjects {
         // see them; move them once.
         let old = URL.applicationSupportDirectory
             .appendingPathComponent("Python Lab/Projects", isDirectory: true)
-        _ = try? workspaceMoveProjects(old: old.path, new: folder.path)
+        do {
+            _ = try workspaceMoveProjects(old: old.path, new: folder.path)
+        } catch {
+            // Keep working where the projects are, so none of them
+            // disappears; the move is tried again on the next launch.
+            PythonLabProjects.moveFailed = PythonLabModel.message(error)
+            return old
+        }
         return folder
     }()
 }

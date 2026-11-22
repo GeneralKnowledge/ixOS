@@ -227,7 +227,13 @@ struct PythonCodeEditor: UIViewRepresentable {
             let result = changedLines.joined(separator: "\n")
             guard result != block else { return }
             replace(lines, with: result)
-            view.selectedRange = NSRange(location: lines.location, length: (result as NSString).length)
+            if selected.length == 0 {
+                // Just a caret: it stays where it was in the line's text.
+                let removed = (block as NSString).length - (result as NSString).length
+                view.selectedRange = NSRange(location: max(lines.location, selected.location - removed), length: 0)
+            } else {
+                view.selectedRange = NSRange(location: lines.location, length: (result as NSString).length)
+            }
         }
 
         // MARK: Colours

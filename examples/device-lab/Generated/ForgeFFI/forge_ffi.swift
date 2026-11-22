@@ -6492,8 +6492,12 @@ public protocol WorkspaceProtocol: AnyObject, Sendable {
     
     /**
      * Creates an empty file; its folder must exist.
+     * Creates a file holding `text`. It never replaces a file that is
+     * already there, even one whose name differs only in case or that
+     * appeared after the list was read: the text is written beside it and
+     * linked into place, which fails if the name is taken.
      */
-    func createFile(project: String, path: String) throws 
+    func createFile(project: String, path: String, text: String) throws 
     
     /**
      * Creates a folder; its parent must exist.
@@ -6624,13 +6628,18 @@ public convenience init(projectsFolder: String)throws  {
     
     /**
      * Creates an empty file; its folder must exist.
+     * Creates a file holding `text`. It never replaces a file that is
+     * already there, even one whose name differs only in case or that
+     * appeared after the list was read: the text is written beside it and
+     * linked into place, which fails if the name is taken.
      */
-open func createFile(project: String, path: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+open func createFile(project: String, path: String, text: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_workspace_create_file(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(project),
-        FfiConverterString.lower(path),uniffiCallStatus
+        FfiConverterString.lower(path),
+        FfiConverterString.lower(text),uniffiCallStatus
     )
 }
 }
@@ -16851,7 +16860,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_transfersink_reconcile() != 23410) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_workspace_create_file() != 25019) {
+    if (uniffi_forge_ffi_checksum_method_workspace_create_file() != 53635) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_workspace_create_folder() != 18457) {

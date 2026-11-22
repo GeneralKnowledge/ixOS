@@ -116,7 +116,7 @@ pub(crate) fn tokens(s: &[char]) -> Vec<Token> {
             continue;
         }
         if let Some((quote_at, formatted)) = string_prefix(s, i) {
-            let end = string_end(s, quote_at, formatted);
+            let end = string_end(s, quote_at, formatted, 0);
             out.push(Token {
                 start: i,
                 end,
@@ -230,7 +230,12 @@ fn string_prefix(s: &[char], i: usize) -> Option<(usize, bool)> {
 /// One past the end of the string whose opening quote is at `q`. An
 /// unclosed single-quoted string ends at the end of its line; an unclosed
 /// triple-quoted one at the end of the source.
-fn string_end(s: &[char], q: usize, formatted: bool) -> usize {
+/// Strings nested inside f-strings deeper than this are not followed (the
+/// rest of the outer string is still coloured), so a pathological file
+/// can't recurse deep enough to overflow the stack.
+const NESTING_MAX: usize = 16;
+
+fn string_end(s: &[char], q: usize, formatted: bool, depth: usize) -> usize {
     let quote = s[q];
     let triple = s.get(q + 1) == Some(&quote) && s.get(q + 2) == Some(&quote);
     let mut i = if triple { q + 3 } else { q + 1 };
@@ -258,7 +263,7 @@ fn string_end(s: &[char], q: usize, formatted: bool) -> usize {
                 i += 2;
                 continue;
             }
-            i = replacement_end(s, i + 1, triple);
+            i = replacement_end(s, i + 1, triple, depth);
             continue;
         }
         i += 1;
@@ -269,22 +274,24 @@ fn string_end(s: &[char], q: usize, formatted: bool) -> usize {
 /// One past the `}` that closes a replacement field starting at `i`,
 /// stepping over brackets and strings inside it (since Python 3.12 those
 /// may reuse the outer quote: `f"{d["key"]}"`).
-fn replacement_end(s: &[char], mut i: usize, triple: bool) -> usize {
-    let mut depth = 0usize;
+fn replacement_end(s: &[char], mut i: usize, triple: bool, depth: usize) -> usize {
+    let mut brackets = 0usize;
     while i < s.len() {
         let c = s[i];
         if !triple && (c == '\n' || c == '\r') {
             return i;
         }
-        if let Some((quote_at, formatted)) = string_prefix(s, i) {
-            i = string_end(s, quote_at, formatted);
-            continue;
+        if depth < NESTING_MAX {
+            if let Some((quote_at, formatted)) = string_prefix(s, i) {
+                i = string_end(s, quote_at, formatted, depth + 1);
+                continue;
+            }
         }
         match c {
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' => depth = depth.saturating_sub(1),
-            '}' if depth == 0 => return i + 1,
-            '}' => depth -= 1,
+            '(' | '[' | '{' => brackets += 1,
+            ')' | ']' => brackets = brackets.saturating_sub(1),
+            '}' if brackets == 0 => return i + 1,
+            '}' => brackets -= 1,
             _ => {}
         }
         if is_name_start(c) {

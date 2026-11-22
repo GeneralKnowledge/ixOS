@@ -88,6 +88,13 @@ fn unclosed_strings_stop_at_the_line_or_the_end() {
 }
 
 #[test]
+fn deeply_nested_f_strings_dont_overflow_the_stack() {
+    let source = "f\"{".repeat(300_000);
+    let spans = python_highlight(source);
+    assert_eq!(spans.len(), 1);
+}
+
+#[test]
 fn numbers() {
     assert_eq!(
         pieces("1 + 2.5 - .5e-3 * 1_000 + 0xFF_FF + 0b10 + 0o7 + 3j + 1e10 + 7."),

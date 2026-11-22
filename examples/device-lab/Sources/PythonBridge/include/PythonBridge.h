@@ -22,7 +22,8 @@ char *pybridge_run(const char *code, int *ok);
 
 /// Stops the script pybridge_run is running (raises KeyboardInterrupt in
 /// it at its next Python instruction). Does nothing when none is running.
-void pybridge_interrupt(void);
+/// Returns 1 when a running script was interrupted, else 0.
+int pybridge_interrupt(void);
 
 /// The interpreter's version ("3.15.0 (main, ...)"); malloc'd.
 char *pybridge_version(void);
