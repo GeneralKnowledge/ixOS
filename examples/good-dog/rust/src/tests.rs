@@ -101,6 +101,54 @@ fn the_day_boundary_follows_the_phones_time_zone() {
     assert_ne!(plan_utc.activities[0].id, plan_plus_one.activities[0].id);
 }
 
+/// A session started from Today's plan just before midnight and saved just
+/// after still counts for that activity (defect hunt finding 2). A plan two
+/// days old is history: its activities can't be recorded any more.
+#[test]
+fn a_session_that_crosses_midnight_is_recorded() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let ten_to_midnight = NINE_AM + 14 * 3_600_000 + 50 * 60_000;
+    let plan = block_on(app.today(at(ten_to_midnight))).unwrap();
+    let first = &plan.activities[0];
+    let after_midnight = at(ten_to_midnight + 15 * 60_000);
+    block_on(app.record_session(
+        first.exercise_id.clone(),
+        Some(first.id),
+        SessionResult::Easy,
+        false,
+        after_midnight,
+    ))
+    .unwrap();
+    assert_eq!(
+        block_on(app.record_session(
+            first.exercise_id.clone(),
+            Some(first.id),
+            SessionResult::Easy,
+            false,
+            after_midnight,
+        )),
+        Err(AppError::InvalidInput {
+            reason: "that activity has already been recorded".into()
+        }),
+        "the activity it was started from is done"
+    );
+
+    let second = &plan.activities[1];
+    assert_eq!(
+        block_on(app.record_session(
+            second.exercise_id.clone(),
+            Some(second.id),
+            SessionResult::Easy,
+            false,
+            at(ten_to_midnight + 2 * DAY_MS),
+        )),
+        Err(AppError::NotFound {
+            what: "that activity".into()
+        })
+    );
+}
+
 #[test]
 fn practising_moves_the_skill_on_and_tomorrow_adapts() {
     let dir = tempfile::tempdir().unwrap();
