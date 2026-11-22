@@ -176,6 +176,19 @@ struct ChatScreen: View {
                     .accessibilityIdentifier("chat.suggestion.\(phrase.id)")
                 }
             }
+            if let limit = limitNote {
+                if limit.over {
+                    Text(limit.text)
+                        .font(.footnote.weight(.semibold))
+                        .forgeForeground(.warning)
+                        .accessibilityIdentifier("chat.limit")
+                } else {
+                    Text(limit.text)
+                        .font(.footnote)
+                        .foregroundStyle(theme.colors.textTertiary)
+                        .accessibilityIdentifier("chat.limit")
+                }
+            }
             HStack(spacing: 8) {
                 TextField("Say something", text: $typed)
                     .textFieldStyle(.roundedBorder)
@@ -195,7 +208,7 @@ struct ChatScreen: View {
                             .font(.title2)
                     }
                     .buttonStyle(.borderless)
-                    .disabled(typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(trimmed.isEmpty || tooLong)
                     .accessibilityLabel("Send")
                     .accessibilityIdentifier("chat.send")
                 }
@@ -208,6 +221,24 @@ struct ChatScreen: View {
                 .accessibilityIdentifier("chat.help")
             }
         }
+    }
+
+    private var trimmed: String { typed.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var tooLong: Bool { trimmed.unicodeScalars.count > model.chatMaxTyped }
+
+    /// The limit, shown as you near it, so a long line is never cut short
+    /// or refused without warning. Rust counts the same characters
+    /// (Unicode scalars of the trimmed text).
+    private var limitNote: (text: String, over: Bool)? {
+        let max = model.chatMaxTyped
+        let count = trimmed.unicodeScalars.count
+        if count > max {
+            return ("\(count) of \(max) characters. Shorten it to send.", true)
+        }
+        if count > max - 50 {
+            return ("\(count) of \(max) characters", false)
+        }
+        return nil
     }
 
     private func ended(_ character: CharacterView) -> some View {
@@ -235,8 +266,8 @@ struct ChatScreen: View {
     }
 
     private func send() async {
-        let text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !busy, let before = chat?.lines.count else { return }
+        let text = trimmed
+        guard !text.isEmpty, !tooLong, !busy, let before = chat?.lines.count else { return }
         busy = true
         typed = ""
         // Apple's model only when it can answer: Rust says why otherwise.

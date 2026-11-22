@@ -56,6 +56,7 @@ pub fn is_identifier(text: &str) -> bool {
 /// The search request: audio items matching `query`, most downloaded
 /// first; with no query, this week's most downloaded net-label releases.
 pub fn search_url(query: &str) -> String {
+    // cut: a search, as in jamendo::search_url
     let query: String = query
         .trim()
         .chars()
