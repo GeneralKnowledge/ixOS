@@ -4,7 +4,9 @@
 //! `ValidationConfig.strict`). This gate is the app's own check, in Rust
 //! and tested on Linux, of the rules the catalog can't express:
 //!
-//! - only the eight catalog components, on the lab's one surface and catalog;
+//! - only the eight catalog components, on the lab's one surface and catalog,
+//!   each with only the properties the ForgeUI adapter draws (dates only,
+//!   chips only);
 //! - no function calls of any kind (`@call`, `functionCall`,
 //!   `callRendererFunction`): the agent can draw, not act;
 //! - an action may only be the registered review event, with exactly its
@@ -23,7 +25,8 @@ use serde_json::{Map, Value};
 
 use super::plan::{self, EditedBook};
 use super::surface::{
-    review_context, CATALOG_ID, COMPONENTS, REVIEW_COMPONENT, REVIEW_EVENT, SURFACE_ID, UPDATABLE,
+    properties, review_context, CATALOG_ID, COMMON_PROPERTIES, COMPONENTS, REVIEW_COMPONENT,
+    REVIEW_EVENT, SURFACE_ID, UPDATABLE,
 };
 
 /// The largest payload accepted, in bytes.
@@ -266,6 +269,7 @@ fn check_components(components: &Value, state: &mut GateState) -> Result<(), Ref
                 format!("\"{kind}\" isn't in this lab's catalog."),
             ));
         }
+        check_properties(kind, object)?;
         let action = match object.get("action") {
             Some(action) => Some(check_action(id, action)?),
             None => None,
@@ -281,6 +285,41 @@ fn check_components(components: &Value, state: &mut GateState) -> Result<(), Ref
         state.actions.insert(id.to_string(), action);
     }
     Ok(())
+}
+
+/// Only the properties the ForgeUI adapter draws, and only the forms it
+/// draws: a date picker without a time, a choice picker as chips, a
+/// primary or default button.
+fn check_properties(kind: &str, object: &Map<String, Value>) -> Result<(), Refusal> {
+    let allowed = properties(kind);
+    let unsupported = || {
+        refuse(
+            "unsupported_property",
+            format!("A {kind} asks for something this lab's catalog doesn't draw."),
+        )
+    };
+    if object
+        .keys()
+        .any(|key| !COMMON_PROPERTIES.contains(&key.as_str()) && !allowed.contains(&key.as_str()))
+    {
+        return Err(unsupported());
+    }
+    let is = |key: &str, want: &Value| object.get(key).is_none_or(|v| v == want);
+    let ok = match kind {
+        "DateTimeInput" => object.get("enableDate") == Some(&Value::Bool(true)),
+        "ChoicePicker" => is("displayStyle", &Value::from("chips")),
+        // The adapter draws primary and default buttons; a borderless one
+        // would come out tinted, which isn't what was asked for.
+        "Button" => object
+            .get("variant")
+            .is_none_or(|v| v == "primary" || v == "default"),
+        _ => true,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(unsupported())
+    }
 }
 
 /// The registry: one event, from one component, with one context.

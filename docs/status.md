@@ -20,7 +20,7 @@ A person ran an app that uses it on a physical iPhone and recorded the result.
 | Networking | Long-lived streams (SSE) with reconnect | Chat |
 | Extensions and restricted frameworks | Core ML | Qwen3.5 0.8B (copied in over USB) compiled on the phone and run, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-07 |
 | Extensions and restricted frameworks | GGUF models with llama.cpp (Metal) | Ternary-Bonsai-2 4B Q2_0 at ~29 tok/s and 9B Q2_0 at ~19 tok/s on the GPU, app memory ~400–470 MB, answers coherent, iPhone 15 Pro Max, free team, reported by Reuben 2026-11-21 |
-| Extensions and restricted frameworks | Agent-composed native UI (A2UI 1.0) | A2UI Lab phone check passed, all seven steps (Reuben, 2026-11-22, Device Lab 1.29922371) |
+| Extensions and restricted frameworks | Agent-composed native UI (A2UI 1.0) | A2UI Lab phone check passed, all seven steps (Reuben, 2026-11-22, Device Lab 1.29922371); ForgeUI adapter (A2UI-1b) passed its four-step check (Device Lab 1.29922445) |
 | Forge Device | Phone details from Linux (`forge device list`, `info`) | iPhone16,2, iOS 26.3.1, 2026-11-07 |
 | Forge Device | Live system log, filtered by app (`forge device logs`) | iPhone, iOS 26.3.1, 2026-11-07 (`--grep`, `--process`, `--limit`) |
 | Forge Device | Crash reports (`forge device crashes`) | iPhone, iOS 26.3.1, 2026-11-07 (listed 161, pulled 4) |
