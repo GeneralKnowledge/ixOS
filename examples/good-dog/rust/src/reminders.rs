@@ -98,7 +98,14 @@ fn unix_ms_at(day: i64, at_minute: u32, now: LocalTime, changes: &[OffsetChange]
             .map_or(now.utc_offset_minutes, |c| c.utc_offset_minutes)
     };
     let guess = local - i64::from(now.utc_offset_minutes) * 60_000;
-    local - i64::from(offset_at(guess)) * 60_000
+    let utc = local - i64::from(offset_at(guess)) * 60_000;
+    if offset_at(utc) == offset_at(guess) {
+        utc
+    } else {
+        // A time the clocks skip (01:30 when they go forward at 01:00):
+        // it falls just after the change, never before it.
+        guess
+    }
 }
 
 /// The local day a reminder is for, from its id.

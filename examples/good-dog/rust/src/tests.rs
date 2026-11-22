@@ -1371,4 +1371,19 @@ fn reminders_keep_local_time_across_a_clock_change() {
         "Saturday 18:00 BST"
     );
     assert_eq!(back[1], CLOCKS_BACK + 17 * 3_600_000, "Sunday 18:00 GMT");
+
+    // A 01:30 reminder on the night the clocks skip 01:00-02:00 goes off
+    // just after the change (02:30 BST), not before it or not at all.
+    block_on(app.set_reminder(Some(90), now)).unwrap();
+    app.set_offset_changes(vec![OffsetChange {
+        at_ms: CLOCKS_FORWARD,
+        utc_offset_minutes: 60,
+    }]);
+    let gap = times(&app);
+    assert_eq!(gap[0], CLOCKS_FORWARD + 1_800_000, "Sunday 02:30 BST");
+    assert_eq!(
+        gap[1],
+        CLOCKS_FORWARD + DAY_MS - 1_800_000,
+        "Monday 01:30 BST"
+    );
 }
