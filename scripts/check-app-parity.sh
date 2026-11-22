@@ -965,6 +965,28 @@ def rule_choice(app):
     return True, ""
 
 
+# A figure with its name (a total, a measurement) is ForgeUI's ForgeStat:
+# the figure and figureCaption text roles, equal-width digits and one
+# VoiceOver element ("Distance, 4.2 kilometres"). FieldKit and Weather drew
+# their own (ForgeUI 0.2, item 7). This finds the hand-built shape: a VStack
+# whose first Text has monospaced digits and whose next is a grey caption.
+HAND_STAT = re.compile(
+    r"VStack[^{\n]*\{\s*\n\s*Text\([^\n]*\)\s*\n\s*\.font\([^\n]*monospacedDigit[^\n]*\)\s*\n"
+    r"(?:\s*\.[^\n]*\n){0,3}\s*Text\([^\n]*\)\s*\n\s*\.font\(\.caption[^\n]*\n\s*\.foregroundStyle\(\.secondary\)"
+)
+
+
+def rule_stat(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        for m in HAND_STAT.finditer(text):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws a figure over a caption by hand; use ForgeUI's ForgeStat: " + ", ".join(bad)
+    return True, ""
+
+
 # Stars for a rating come from ForgeUI's ForgeRating: one adjustable
 # VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
 # app, and `<id>.star.<n>` identifiers. Soundscape and Pocket Library each
@@ -1164,6 +1186,7 @@ RULES = [
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
     ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
     ("choice", "Chips and one-of-several tiles through ForgeUI's `forgeChoice` style, never a hand-added `.isSelected`", rule_choice),
+    ("stat", "Figures with their name (totals, measurements) through ForgeUI's `ForgeStat`", rule_stat),
     ("rating", "Ratings through ForgeUI's `ForgeRating`, never stars drawn by hand", rule_rating),
     ("thumbnail", "Pictures in ForgeUI's `ForgeThumbnail`, never an image clipped to a shape by hand", rule_thumbnail),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),

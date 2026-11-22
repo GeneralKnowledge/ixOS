@@ -241,6 +241,28 @@ Toggle("Unread", isOn: $unreadOnly).toggleStyle(.forgeChoice)
 
 `forgeChoiceLook(isSelected:shape:tone:isPressed:)` puts the look on a control that isn't a `Button`. The `choice` [parity rule](app-parity.md) catches a hand-added `.isSelected` trait.
 
+### Stats
+
+```swift
+HStack {
+    ForgeStat("Distance", value: "4.2 km", spokenValue: "4.2 kilometres")
+    ForgeStat("Time", value: "1:12:05", spokenValue: "1 hour 12 minutes")
+}
+ForgeStat("Wind", value: "29", unit: "km/h", layout: .inline)   // in a card
+    .forgeStatBackground(.hidden)
+```
+
+| Aspect | ForgeStat |
+|---|---|
+| Parts | a value, a label, an optional `unit`, `spokenValue` and `tone` |
+| Layout | `.stacked` (figure over label, centred, fills its share of an `HStack`) or `.inline` (figure, then unit over label) |
+| Text | the `figure` role (equal-width digits) and `figureCaption`; the figure shrinks to 70% before it truncates |
+| VoiceOver | one element: "Distance, 4.2 kilometres" (`spokenValue`, else value and unit as shown) |
+| Surface | a soft tile by default; `.forgeStatBackground(.hidden)` drops it, and the text takes the colours around it (Weather's sky) |
+| Tone | colours the figure only when the number means something (over a limit) |
+
+A row in a list with a trailing value is `ForgeRow(value:)`, not a stat. The `stat` [parity rule](app-parity.md) catches a hand-built figure over a grey caption.
+
 ### Ratings
 
 ```swift
