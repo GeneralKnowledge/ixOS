@@ -1388,6 +1388,7 @@ impl ChatCore {
             // The staged copy stays in the temporary folder (the system
             // clears it): when Relay couldn't keep its own copy, the
             // conversation opens the file from there.
+            let before = sent_files(&relay, &endpoint_id);
             let result = relay
                 .send_to_device(
                     endpoint_id.clone(),
@@ -1395,15 +1396,20 @@ impl ChatCore {
                 )
                 .await;
             if let Err(e) = result {
-                // A failed send keeps nothing. Before any file went, the
-                // whole message was refused, and the screen keeps it all.
-                // After, the files that went are in the conversation and
-                // sending them again would repeat them: the error says how
-                // many went, and the screen lets the message go.
-                return Err(if sent == 0 {
+                // A send can fail before its message is kept (nothing in
+                // the conversation) or after (the delivery was refused: a
+                // "Not Sent" message that can be retried). Only a first
+                // file that left nothing behind refuses the whole message,
+                // so the screen keeps it all. Otherwise files are in the
+                // conversation, and sending them again would repeat them:
+                // the screen lets the message go.
+                let kept = sent_files(&relay, &endpoint_id) > before;
+                return Err(if sent == 0 && !kept {
                     ChatError::Storage {
                         reason: e.to_string(),
                     }
+                } else if kept {
+                    crate::device_chat::chat_error(e).into()
                 } else {
                     ChatError::Internal {
                         reason: format!(
@@ -1453,4 +1459,18 @@ fn named_copy(
         return Err(e);
     }
     Ok(Some((dir, to)))
+}
+
+/// How many messages with files this device has in `endpoint_id`'s
+/// conversation: a failed send that added one kept its message.
+fn sent_files(relay: &crate::RelayCore, endpoint_id: &str) -> usize {
+    relay
+        .device_messages(endpoint_id)
+        .map(|messages| {
+            messages
+                .iter()
+                .filter(|m| m.author_id == crate::device_chat::ME && !m.attachments.is_empty())
+                .count()
+        })
+        .unwrap_or(0)
 }

@@ -437,6 +437,38 @@ fn a_caption_too_long_sends_no_file() {
     assert_eq!(laptop.transfers().len(), before);
 }
 
+/// A file the other device refuses is kept as a "Not Sent" message, so the
+/// error isn't one that tells the screen to keep the file for another send
+/// (which would add it twice).
+#[test]
+fn a_refused_file_is_kept_and_not_offered_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let (phone, laptop, phone_id) = trusted_pair(dir.path());
+    let laptop_id = phone.devices()[0].endpoint_id.clone();
+    sees(&laptop, &phone);
+    block_on(phone.revoke_device(laptop_id)).unwrap();
+    let laptop_chat = chat(dir.path(), "laptop", &laptop);
+    let file = dir.path().join("a.txt");
+    std::fs::write(&file, b"a").unwrap();
+    let result = block_on(laptop_chat.send_files(
+        format!("device:{phone_id}"),
+        String::new(),
+        None,
+        vec![relay_core::chat::ChatOutgoingFile {
+            path: file.to_string_lossy().into_owned(),
+            name: "a.txt".into(),
+            mime: "text/plain".into(),
+        }],
+    ));
+    let kept = laptop.device_messages(&phone_id).unwrap();
+    assert_eq!(kept.len(), 1, "the refused file is in the conversation");
+    assert_eq!(kept[0].status, chat_core::MessageStatus::Failed);
+    assert!(matches!(
+        result,
+        Err(relay_core::chat::ChatError::Http { status: 403, .. })
+    ));
+}
+
 /// A note from a device on an older build is a message in its
 /// conversation, and a retry of it adds nothing.
 #[test]
