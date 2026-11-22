@@ -173,6 +173,13 @@ pub struct SoundscapeCore {
     http: Arc<dyn HttpClient>,
 }
 
+/// The longest title, artist, album or genre a song keeps, in characters,
+/// so Edit Song can name the limit.
+#[uniffi::export]
+pub fn song_field_max_chars() -> u32 {
+    library::MAX_FIELD_CHARS as u32
+}
+
 #[uniffi::export]
 impl SoundscapeCore {
     /// Opens the library saved in `data_directory` (created if missing),

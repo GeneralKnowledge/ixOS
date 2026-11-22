@@ -668,6 +668,12 @@ int8_t uniffi_urdu_naturally_core_fn_method_textsink_push(uint64_t ptr, RustBuff
 RustBuffer uniffi_urdu_naturally_core_fn_func_urdu_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_URDU_NATURALLY_CORE_FN_FUNC_URDU_MAX_NAME_CHARS
+#define UNIFFI_FFIDEF_UNIFFI_URDU_NATURALLY_CORE_FN_FUNC_URDU_MAX_NAME_CHARS
+uint32_t uniffi_urdu_naturally_core_fn_func_urdu_max_name_chars(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_URDU_NATURALLY_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
 #define UNIFFI_FFIDEF_UNIFFI_URDU_NATURALLY_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
 void uniffi_urdu_naturally_core_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
@@ -963,6 +969,12 @@ void ffi_urdu_naturally_core_rust_future_complete_void(uint64_t handle, RustCall
 #ifndef UNIFFI_FFIDEF_UNIFFI_URDU_NATURALLY_CORE_CHECKSUM_FUNC_URDU_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_URDU_NATURALLY_CORE_CHECKSUM_FUNC_URDU_ERROR_KIND
 uint16_t uniffi_urdu_naturally_core_checksum_func_urdu_error_kind(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_URDU_NATURALLY_CORE_CHECKSUM_FUNC_URDU_MAX_NAME_CHARS
+#define UNIFFI_FFIDEF_UNIFFI_URDU_NATURALLY_CORE_CHECKSUM_FUNC_URDU_MAX_NAME_CHARS
+uint16_t uniffi_urdu_naturally_core_checksum_func_urdu_max_name_chars(void
     
 );
 #endif

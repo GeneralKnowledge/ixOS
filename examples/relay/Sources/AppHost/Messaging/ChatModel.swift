@@ -38,9 +38,9 @@ public func makeChatHost(storageDirectory: String? = nil, useKeychain: Bool? = n
     )
 }
 
-/// Longest message text, in Unicode scalars (chat-core's `MAX_BODY_CHARS`):
-/// the composer says so before Rust would refuse it.
-public let MAX_MESSAGE_CHARS_SWIFT = 4000
+/// Longest message text, in Unicode scalars, from Rust (chat-core's
+/// `MAX_BODY_CHARS`): the composer says so before Rust would refuse it.
+public let MAX_MESSAGE_CHARS_SWIFT = Int(chatMaxMessageChars())
 
 /// Swift-side attachment failures, in the same log as Rust's
 /// (`forge device logs`, the live stream).

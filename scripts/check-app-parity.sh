@@ -1081,6 +1081,55 @@ def rule_no_silent_cut(app):
     return True, ""
 
 
+
+SWIFT_LIMIT = re.compile(
+    r"\b(?:let|var)\s+\w*(?:max|Max|MAX|limit|Limit|LIMIT)\w*\s*(?::\s*Int\s*)?=\s*[\d_]+\s*$"
+)
+
+
+def rule_limits_from_rust(app):
+    """A limit Rust enforces is read from Rust, never copied into Swift as a
+    number (the copies drift). A limit only Swift has says so with
+    `// swift-only:` on the line or just above it."""
+    if app.name in NO_RUST:
+        return None
+    bad = []
+    for path in swift_sources(app):
+        lines = read(path).splitlines()
+        for i, line in enumerate(lines):
+            if not SWIFT_LIMIT.search(line.split("//", 1)[0]):
+                continue
+            if any("// swift-only:" in l for l in lines[max(0, i - 3) : i + 1]):
+                continue
+            bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "copies a limit into Swift as a number; export it from Rust, or mark a Swift-only one `// swift-only:`: " + ", ".join(bad)
+    return True, ""
+
+
+XCT_AWAIT = re.compile(r"\bXCT\w+\((?:[^()]|\([^()]*\))*\bawait\b")
+CLOSURE_DEFAULT = re.compile(r"\bstatic\s+(?:let|var)\s+defaultValue\s*:\s*\(+")
+
+
+def rule_swift6_traps(app):
+    """Two Swift 6.2 errors that only the iOS build showed (friction log
+    A43), caught here on Linux: `await` inside an XCTest assertion (its
+    autoclosure can't suspend), and an environment key whose default is a
+    closure, which Swift 6 can't prove is safe to share unless it is
+    `nonisolated(unsafe)` or `@Sendable`."""
+    bad = []
+    files = swift_sources(app) + sorted((app / "Tests").rglob("*.swift"))
+    for path in files:
+        for i, line in enumerate(read(path).splitlines()):
+            code = line.split("//", 1)[0]
+            if XCT_AWAIT.search(code):
+                bad.append(f"{path.name}:{i + 1} (await inside an XCTest assertion; await into a local first)")
+            if CLOSURE_DEFAULT.search(code) and "nonisolated(unsafe)" not in code and "@Sendable" not in code:
+                bad.append(f"{path.name}:{i + 1} (closure default value; mark it nonisolated(unsafe) or @Sendable)")
+    if bad:
+        return False, "Swift 6.2 refuses this in the iOS build: " + ", ".join(bad)
+    return True, ""
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -1104,12 +1153,14 @@ RULES = [
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
     ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),
+    ("limits-from-rust", "Limits Rust enforces are read from Rust, never copied into Swift as numbers (`// swift-only:` for Swift's own)", rule_limits_from_rust),
     ("row-actions", "Row actions through ForgeUI's `forgeRowActions`: a swipe and a long-press menu, never swipe-only", rule_row_actions),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
     ("location", "Location through the `location` service", rule_location),
     ("rust-cancellation", "Rust work cancelled from Swift through ForgeKit's `withRustCancellation`", rule_rust_cancellation),
+    ("swift6-traps", "No Swift 6.2 errors only the iOS build shows: no `await` inside an XCTest assertion, no shared closure default in an environment key", rule_swift6_traps),
     ("swift-logging", "Swift logs through `ForgeLog`, never `print` or `NSLog`", rule_swift_logging),
     ("connectivity", "Network changes through the `connectivity` service, no own `NWPathMonitor`", rule_connectivity),
     ("requirements", "requirements.toml, every requirement with a test", rule_requirements),

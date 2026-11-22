@@ -37,9 +37,9 @@ The app-side frictions that matter most now, most costly first:
 |---|---|---|---|
 | 1 | Swift is compiled and phone-checked well after it is written, so features pile up unproven | A44, A53 | Open: process, not code |
 | 2 | Apps build the same controls by hand, and the copies differ, mostly in accessibility | A45, A47 | Being fixed: ForgeUI 0.2 (#407 merged, #413 open) |
-| 3 | Swift can't see Rust's rules: length limits cut text silently, and an error can't say "kept, but not sent" | A51, A52 | Limits fixed with a check (#388); "kept" is open |
-| 4 | Swift 6.2 errors that only the iOS build shows | A43 | Accept; two habits in A43 |
-| 5 | Calendar edge cases (midnight, daylight saving) handled by hand in each Rust core | A54 | Open: waits for a second use |
+| 3 | Swift can't see Rust's rules: length limits copied into Swift by hand, and an error can't say "kept, but not sent" | A51, A52 | Fixed: limits read from Rust (rule `limits-from-rust`), Relay's `NotSent` |
+| 4 | Swift 6.2 errors that only the iOS build shows | A43 | Two of three caught on Linux (rule `swift6-traps`); the third is a habit in ios-ui.md |
+| 5 | Calendar edge cases (midnight, daylight saving) handled by hand in each Rust core | A54 | Fixed: `forge_runtime::time::local_day` and `local_time_ms`; Good Dog moved |
 | 6 | Bars over lists come back with each redesign | A46 | Rule `floating-bars`; Soundscape redesign (#418) to check on the phone |
 | 7 | Every compiled Python package is a cross-compile of its own | A48, A49 | Device Lab only; accept |
 
@@ -909,9 +909,14 @@ November. A28 again, with the newer compiler:
   Commonplace's export test (99a8a86), and again on the ForgeUI 0.2 branch
   (a12150a).
 
-**Framework.** Accept, with two habits: keep a view's `body` small enough
-that a type-check failure points at one piece, and `await` into a local
-before `XCTUnwrap`. (annoyance)
+**Framework.** The parity rule `swift6-traps` now fails, on Linux, on
+`await` inside an XCTest assertion and on a closure default in an
+environment key that isn't `nonisolated(unsafe)` or `@Sendable`. Run on
+main it found two more of the first kind (Sketchbook's and Soundscape's
+model tests), now fixed. A view body too big to type-check can't be
+caught without the iOS SDK: [ios-ui.md](../ios-ui.md#building-with-xtool-on-linux)
+says to split it. macOS CI is mostly off (its queue held PRs up), so the
+combined Device Lab build stays the only full compile. (annoyance)
 
 ## A44. Merged before compiled
 
@@ -1018,18 +1023,27 @@ only after Send (#391). (bug, fixed)
 
 **Framework.** Done in #388: the chat shows its limit, and the parity rule
 `no-silent-cut` refuses typed text over a limit instead of cutting it,
-unless the cut says why. The limits themselves still live in Rust and are
-repeated in Swift by hand.
+unless the cut says why. **Since then (2026-11-22):** the four limits
+Swift still copied by hand (Relay's message length and files per message,
+Urdu's name length, Soundscape's song fields) are read from Rust through
+exported functions, and the parity rule `limits-from-rust` fails on a
+number copied into Swift. A limit only Swift has says `// swift-only:`.
 
 ## A52. "Failed" when it was kept
 
 Relay's `upload_attachments` returns `InvalidInput` after the message is
 already stored, so the composer puts the draft back beside a Not Sent
 bubble (found while fixing #391). The FFI error can't say "kept, but not
-sent". (annoyance, open)
+sent". (annoyance, fixed)
 
-**Framework.** Rust should report whether a failed send was stored; a
-second app that queues outgoing work would make it a shared shape.
+**Fixed (2026-11-22).** chat-core never returns `InvalidInput` once a
+message is kept: a failure after keeping that a retry won't fix is the new
+`NotSent`, so `InvalidInput` (with `NotSignedIn` and `ShutDown`) always
+means nothing was kept, and the composer gives the text back only then. A
+chat-core test pins it.
+
+**Framework.** A second app that queues outgoing work would make "kept or
+not" a shared shape.
 
 ## A53. Phone checks are the bottleneck
 
@@ -1052,6 +1066,11 @@ Swift), Checklist's re-import missed items whose whitespace was tidied
 (#393), and Pocket Library refused imports with long metadata (#394).
 (bug, fixed)
 
-**Framework.** `forge_runtime::time` writes UTC dates but knows nothing of
-local days. Good Dog's per-day offsets are the first use; a second app
-with reminders or local days makes it a shared helper.
+**Framework.** Done (2026-11-22), as platform-level code: `forge_runtime::time`
+has `local_day` (the local calendar day of a moment) and `local_time_ms`
+(a daily local time on a given day, by the offset in force then, with
+skipped times placed just after the change), with London's 2027 clock
+changes as tests. Good Dog's day boundary, week rhythm and reminders use
+them. The Swift half (listing the coming clock changes with
+`TimeZone.nextDaylightSavingTimeTransition`) stays in Good Dog until a
+second app needs it.
