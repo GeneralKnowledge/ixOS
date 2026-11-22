@@ -19,6 +19,7 @@ pub mod jamendo;
 pub mod library;
 pub mod listen;
 pub mod lyrics;
+pub mod merge;
 mod model;
 pub mod musicbrainz;
 pub mod offline;
@@ -48,6 +49,7 @@ pub use library::{
     LibrarySearch, LibraryTrack, MusicFile, Recording, RecordingKind, RecordingOrder, TrackDetail,
     TrackEdit,
 };
+pub use library::{DuplicateReason, DuplicateSongs, MergedSong};
 pub use listen::{
     group_songs, loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongGroup, SongSummary,
     Take, TakeMark,
@@ -517,7 +519,12 @@ impl SoundscapeCore {
             progress.failures.clear();
         }
         loop {
-            let plan = offline::plan(&self.offline.get(), &self.kept_library());
+            // A song merged away whose offline choice hasn't moved yet (a
+            // save after the merge failed) still counts as wanted, under
+            // the song it joined, so its download isn't removed.
+            let mut wanted = self.offline.get().as_ref().clone();
+            merge::repair_offline(&self.library.get(), &mut wanted);
+            let plan = offline::plan(&wanted, &self.kept_library());
             self.remove_unwanted(plan.remove).await?;
             let next = {
                 let progress = self.progress();
@@ -961,6 +968,98 @@ impl SoundscapeCore {
         self.library_track(track_id)
     }
 
+    // MARK: One song, several sources
+
+    /// Songs that look like one song from several sources, to offer
+    /// merging: linked to the same MusicBrainz recording, or the same
+    /// title, artist and length. Groups the person kept apart are left out.
+    pub fn duplicate_songs(&self) -> Vec<DuplicateSongs> {
+        merge::duplicates(&self.library.get(), &self.kept_library())
+    }
+
+    /// Merges the songs `ids` into the song `into`: one song whose
+    /// recordings come from every source. Favourites, playlists, history
+    /// and songs wanted offline move to `into`. Returns the merged song.
+    pub async fn merge_songs(
+        &self,
+        into: String,
+        ids: Vec<String>,
+    ) -> Result<TrackDetail, SoundscapeError> {
+        merge::check(&self.library.get(), &self.kept_library(), &into, &ids)?;
+        let target = into.clone();
+        self.rt
+            .command("songs-merge", move |state| {
+                // Checked again here: a removal queued before this command
+                // may have run since the check above.
+                let lib = state.library.value();
+                if !lib.has_track(&target) || lib.merged.contains_key(&target) {
+                    return Err(SoundscapeError::NotInLibrary { id: target.clone() });
+                }
+                let ids: Vec<String> = ids.into_iter().filter(|id| *id != target).collect();
+                for id in &ids {
+                    if !state.library.value().has_track(id) {
+                        return Err(SoundscapeError::NotInLibrary { id: id.clone() });
+                    }
+                }
+                // The library first: if a save after it fails, opening the
+                // app finishes the move (merge::repair_collection).
+                state.change_library(|lib| {
+                    merge::merge(lib, &target, &ids);
+                    Ok(())
+                })?;
+                state.change_collection(|c| {
+                    for id in &ids {
+                        merge::move_collection(c, id, &target);
+                    }
+                    Ok(())
+                })?;
+                state.change_offline(|o| {
+                    for id in &ids {
+                        merge::move_offline(o, id, &target);
+                    }
+                    Ok(())
+                })
+            })
+            .await?;
+        self.library_track(into)
+    }
+
+    /// Brings a merged song back as a song of its own, with its own
+    /// recordings. Favourites, playlist entries, history and offline
+    /// choices moved at the merge stay with the kept song. Returns
+    /// the library.
+    pub async fn separate_song(&self, id: String) -> Result<Library, SoundscapeError> {
+        self.rt
+            .command("song-separate", move |state| {
+                if !state.library.value().merged.contains_key(&id) {
+                    return Ok(());
+                }
+                state.change_library(|lib| {
+                    merge::separate(lib, &id);
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.library())
+    }
+
+    /// Remembers that these songs aren't one song, so they aren't offered
+    /// for merging again.
+    pub async fn keep_songs_apart(&self, ids: Vec<String>) -> Result<(), SoundscapeError> {
+        if ids.len() < 2 || ids.len() > merge::MAX_MERGE {
+            return Err(SoundscapeError::range("songs"));
+        }
+        let key = merge::group_key(&ids);
+        self.rt
+            .command("songs-keep-apart", move |state| {
+                state.change_library(|lib| {
+                    lib.distinct.insert(key);
+                    Ok(())
+                })
+            })
+            .await
+    }
+
     /// Adds catalogue tracks to the library, keeping their rights as they
     /// are now. A track already there keeps what was saved. Returns the
     /// library.
@@ -1004,14 +1103,17 @@ impl SoundscapeCore {
     /// in the library, else the catalogue's stream.
     pub fn catalogue_queue_tracks(&self, tracks: Vec<CatalogueTrack>) -> Vec<QueueTrack> {
         let library = self.library();
+        let file = self.library.get();
         tracks
             .iter()
             .filter(|t| t.rights.may_stream)
             .map(|t| {
-                library
-                    .tracks
-                    .iter()
-                    .find(|l| l.id == t.id)
+                // A track merged into another song plays as that song.
+                let root = library::merged_root(&file, &t.id);
+                let find = |id: &str| library.tracks.iter().find(|l| l.id == id);
+                root.as_deref()
+                    .and_then(find)
+                    .or_else(|| find(&t.id))
                     .and_then(library::queue_track)
                     .unwrap_or_else(|| QueueTrack {
                         track_id: t.id.clone(),
@@ -1055,15 +1157,22 @@ impl SoundscapeCore {
     pub fn saved_playback(&self) -> Option<SavedPlayback> {
         let saved = self.playback.get().saved.clone()?;
         let library = self.library();
+        let file = self.library.get();
         playback::refresh(saved, |queued| {
-            match library.tracks.iter().find(|t| t.id == queued.track_id) {
+            // A song merged into another since is found under that song.
+            // (Only when that song is still there: if it went, the
+            // merged song is back on its own under its own id.)
+            let id = library::merged_root(&file, &queued.track_id)
+                .filter(|root| library.tracks.iter().any(|t| &t.id == root))
+                .unwrap_or_else(|| queued.track_id.clone());
+            match library.tracks.iter().find(|t| t.id == id) {
                 Some(track)
                     if track.preferred.as_ref().map(|r| &r.id) == Some(&queued.recording.id) =>
                 {
                     library::queue_track(track)
                 }
                 Some(_) => self
-                    .queue_recording(queued.track_id.clone(), queued.recording.id.clone())
+                    .queue_recording(id.clone(), queued.recording.id.clone())
                     .ok(),
                 // Not in the library: a stream (catalogue, take server)
                 // still plays; a file on the phone that nothing names is gone.
@@ -1170,7 +1279,11 @@ impl SoundscapeCore {
         let url = self.download_url();
         offline::localize_track(&mut detail.track, &offline, &url);
         for recording in &mut detail.recordings {
-            offline::localize(&detail.track.id, recording, &offline, &url);
+            let owner = recording
+                .merged_from
+                .clone()
+                .unwrap_or_else(|| detail.track.id.clone());
+            offline::localize(&owner, recording, &offline, &url);
         }
         Ok(detail)
     }
@@ -1201,7 +1314,8 @@ impl SoundscapeCore {
         recording_id: String,
         mark: TakeMark,
     ) -> Result<TrackDetail, SoundscapeError> {
-        let slug = library::slug_of(&track_id)
+        let owner = self.recording_owner(&track_id, &recording_id);
+        let slug = library::slug_of(&owner)
             .ok_or_else(|| SoundscapeError::NotInLibrary {
                 id: track_id.clone(),
             })?
@@ -1307,7 +1421,8 @@ impl SoundscapeCore {
         track_id: String,
         recording_id: String,
     ) -> Result<TrackDetail, SoundscapeError> {
-        let slug = library::slug_of(&track_id)
+        let owner = self.recording_owner(&track_id, &recording_id);
+        let slug = library::slug_of(&owner)
             .ok_or_else(|| SoundscapeError::NotInLibrary {
                 id: track_id.clone(),
             })?
@@ -1322,6 +1437,35 @@ impl SoundscapeCore {
             },
         )
         .await?;
+        // On a merged song, the chosen recording's song is the one to play.
+        let kept = track_id.clone();
+        self.rt
+            .command("song-prefer", move |state| {
+                let lib = state.library.value();
+                let now = lib.prefer.get(&kept);
+                // Its own recording is remembered too, so your merged
+                // file doesn't take over again.
+                let has_merged = lib
+                    .merged
+                    .keys()
+                    .any(|from| library::merged_root(lib, from).as_ref() == Some(&kept));
+                let want = if owner == kept {
+                    has_merged.then_some(&owner)
+                } else {
+                    (library::merged_root(lib, &owner).as_ref() == Some(&kept)).then_some(&owner)
+                };
+                if now == want {
+                    return Ok(());
+                }
+                state.change_library(|lib| {
+                    match want {
+                        Some(owner) => lib.prefer.insert(kept.clone(), owner.clone()),
+                        None => lib.prefer.remove(&kept),
+                    };
+                    Ok(())
+                })
+            })
+            .await?;
         self.library_track(track_id)
     }
 
@@ -1352,6 +1496,7 @@ impl SoundscapeCore {
             }),
             lyrics: take.lyrics.clone(),
             rights: None,
+            merged_from: None,
         };
         offline::localize(
             &id,
@@ -1409,6 +1554,20 @@ impl SoundscapeCore {
 
     /// The library as kept, before downloads are swapped in: what the
     /// offline rules compare against.
+    /// The song a recording of `track_id` belongs to: the song merged into
+    /// it that brought it, else `track_id` itself.
+    fn recording_owner(&self, track_id: &str, recording_id: &str) -> String {
+        self.library_track(track_id.to_string())
+            .ok()
+            .and_then(|d| {
+                d.recordings
+                    .into_iter()
+                    .find(|r| r.id == recording_id)
+                    .and_then(|r| r.merged_from)
+            })
+            .unwrap_or_else(|| track_id.to_string())
+    }
+
     fn kept_library(&self) -> Library {
         let artwork = self.artwork_url();
         let music = self.imported_url();
@@ -1506,6 +1665,13 @@ impl SoundscapeCore {
         if let Some(kept) = kept {
             forge_runtime::logging::warn!("unreadable collection set aside as {}", kept.display());
         }
+        let mut collection_doc = collection_doc;
+        let mut repaired = collection_doc.value().clone();
+        if merge::repair_collection(library_doc.value(), &mut repaired) {
+            if let Err(err) = collection_doc.replace(repaired) {
+                forge_runtime::logging::warn!("merged songs' favourites not moved: {err}");
+            }
+        }
         let collection_published = Arc::new(Published::new(collection_doc.value().clone()));
         let imported =
             FileStore::new(directory.path().join("imported")).with_max_bytes(MAX_IMPORT_BYTES);
@@ -1531,6 +1697,13 @@ impl SoundscapeCore {
         let named = offline_doc.value().file_names();
         downloads.sweep(|name| named.contains(name));
         let downloads_root = downloads.root().to_path_buf();
+        let mut offline_doc = offline_doc;
+        let mut repaired = offline_doc.value().clone();
+        if merge::repair_offline(library_doc.value(), &mut repaired) {
+            if let Err(err) = offline_doc.replace(repaired) {
+                forge_runtime::logging::warn!("merged songs' downloads not moved: {err}");
+            }
+        }
         let offline_published = Arc::new(Published::new(offline_doc.value().clone()));
         // Losing what was playing is a small loss: an unreadable file is
         // set aside and playback starts empty.
