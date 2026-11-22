@@ -852,12 +852,15 @@ fn in_triple_string(line: &str, open: &mut Option<&'static str>) -> bool {
     let mut i = 0;
     while i < bytes.len() {
         if let Some(quote) = *open {
-            match line[i..].find(quote) {
-                Some(at) => {
-                    i += at + 3;
-                    *open = None;
-                }
-                None => break,
+            // A backslash escapes the next character, so `\"""` doesn't
+            // close the string (in raw strings too).
+            if bytes[i] == b'\\' {
+                i += 2;
+            } else if line[i..].starts_with(quote) {
+                i += 3;
+                *open = None;
+            } else {
+                i += 1;
             }
             continue;
         }
