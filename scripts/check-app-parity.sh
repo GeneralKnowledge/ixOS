@@ -1113,11 +1113,9 @@ CLOSURE_DEFAULT = re.compile(r"\bstatic\s+(?:let|var)\s+defaultValue\s*:\s*\(.*-
 
 def xct_await_lines(text):
     """Lines where an XCTest assertion's arguments, however many lines they
-    span, contain `await`. Comments are left out."""
-    strings = re.compile(r'"(?:\\.|[^"\\\n])*"')
-    code = "\n".join(strings.sub('""', line) for line in text.splitlines())
-    code = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), code, flags=re.S)
-    code = "\n".join(line.split("//", 1)[0] for line in code.splitlines())
+    span, contain `await`. Comments and string text are left out;
+    code inside a string interpolation still counts."""
+    code = swift_code_mask(text)
     found = []
     for m in XCT_CALL.finditer(code):
         depth, j = 1, m.end()
@@ -1127,7 +1125,8 @@ def xct_await_lines(text):
             elif code[j] == ")":
                 depth -= 1
             j += 1
-        if re.search(r"\bawait\b", code[m.end() : j]):
+        # The mask turns `\(` into `xx`, so `\(await f())` reads `xxawait`.
+        if re.search(r"(?:\b|(?<=xx))await\b", code[m.end() : j]):
             found.append(code.count("\n", 0, m.start()) + 1)
     return found
 
