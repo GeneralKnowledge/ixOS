@@ -188,19 +188,44 @@ for key in sorted(listed.keys() - used):
 # Google's A2UI renderer in Device Lab (A2UI-1, Reuben 2026-11-22,
 # docs/research/external-projects/assessments/ai/a2ui.md). Anything else,
 # or A2UI anywhere but Device Lab (ForgeKit, an app, the templates), fails.
+def strip_swift_comments(source):
+    """Removes // and /* */ comments, leaving string literals untouched."""
+    out, i, quoted = [], 0, False
+    while i < len(source):
+        if quoted:
+            if source[i] == "\\":
+                out.append(source[i : i + 2])
+                i += 2
+                continue
+            if source[i] == '"':
+                quoted = False
+        elif source.startswith("//", i):
+            i = source.find("\n", i)
+            i = len(source) if i < 0 else i
+            continue
+        elif source.startswith("/*", i):
+            close = source.find("*/", i + 2)
+            i = len(source) if close < 0 else close + 2
+            out.append(" ")
+            continue
+        elif source[i] == '"':
+            quoted = True
+        out.append(source[i])
+        i += 1
+    return "".join(out)
+
+
 SWIFT_PACKAGES_ALLOWED = {
     ("examples/device-lab/Package.swift", "https://github.com/a2ui-project/a2ui"),
 }
-for manifest in sorted(root.rglob("Package.swift")):
-    rel = manifest.relative_to(root).as_posix()
-    if any(part in (".build", "target", "node_modules") for part in manifest.parts):
-        continue
-    # Drop comments, then scan the whole manifest, so a declaration split
-    # over several lines is caught the same as one on a single line.
-    text = re.sub(r"/\*.*?\*/", "", manifest.read_text(), flags=re.S)
-    text = "\n".join(
-        l for l in text.splitlines() if not l.strip().startswith("//")
-    )
+
+
+def package_problems(rel, source):
+    """What is wrong with the .package( declarations in one manifest."""
+    errors = []
+    # Drop comments (outside string literals only), then scan the whole
+    # manifest, so a declaration split over lines reads like one on one line.
+    text = strip_swift_comments(source)
     # Every `.package(` must be one of two plain shapes, read whole up to its
     # closing bracket (brackets in strings and comments don't count):
     #   .package(path: "<literal>")                   a local package, or
@@ -244,6 +269,33 @@ for manifest in sorted(root.rglob("Package.swift")):
                 f"{rel}: third-party Swift package {url} isn't allowed here "
                 f"(scripts/check-boundaries.sh, SWIFT_PACKAGES_ALLOWED)"
             )
+
+    return errors
+
+
+# The checker's own cases: each must be refused outside the allowlist (and
+# the A2UI fork tricks even in Device Lab), so a later edit can't reopen one.
+_A2UI = "https://github.com/a2ui-project/a2ui"
+for _decl, _where in [
+    ('.package(url: "%s", from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package(\n  url: "%s",\n  from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package( // path: )\n url: "%s", from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package(/* x */ url: "%s", from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package(url: #"%s"#, from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package(url: repositoryURL(path: "org/repo"), from: "1.0.0")', "examples/checklist/Package.swift"),
+    ('.package(url: "%s" + "-fork", from: "0.11.0")' % _A2UI, "examples/device-lab/Package.swift"),
+    ('.package(url: "%s/*" + "-fork" + "*/", from: "0.11.0")' % _A2UI, "examples/device-lab/Package.swift"),
+]:
+    assert package_problems(_where, _decl), f"check-boundaries self-test passed: {_decl!r}"
+for _decl in ['.package(path: "../../forgekit")', '.package(url: "%s", .upToNextMinor(from: "0.11.0"))' % _A2UI]:
+    assert not package_problems("examples/device-lab/Package.swift", _decl), _decl
+
+
+for manifest in sorted(root.rglob("Package.swift")):
+    rel = manifest.relative_to(root).as_posix()
+    if any(part in (".build", "target", "node_modules") for part in manifest.parts):
+        continue
+    errors.extend(package_problems(rel, manifest.read_text()))
 
 if errors:
     for e in errors:
