@@ -94,7 +94,7 @@ struct MiniPlayer: View {
 
     @ViewBuilder private var controls: some View {
         // A heart for the song playing, without opening Now Playing.
-        if !inline, let current = player.current, let trackId = current.trackId, !player.isComparing {
+        if !inline, let trackId = player.current?.trackId, !player.isComparing {
             let on = model.isFavourite(trackId)
             Button {
                 Task {

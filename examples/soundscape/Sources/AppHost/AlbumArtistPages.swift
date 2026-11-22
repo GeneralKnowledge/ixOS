@@ -3,6 +3,7 @@
 import ForgeAppKit
 import ForgeUI
 import SwiftUI
+import UIKit
 
 // S4 (docs/design.md): an album and an artist as pages, in the colours of
 // their artwork, with Play and Shuffle up top and more to go on to below.
