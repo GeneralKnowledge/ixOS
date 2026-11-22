@@ -711,6 +711,11 @@ impl RelayCore {
             .rt
             .command("cancel-delivery", move |state| {
                 state.change_with(|r, c| {
+                    // Checked again here: it may have been left in the
+                    // mailbox since the check above.
+                    if r.sent_to_mailbox(ending.transfer, now_ms()) {
+                        return Ok(false);
+                    }
                     let ended = r.end_delivery(
                         &ending.id,
                         SavedStatus::Failed {
@@ -724,7 +729,8 @@ impl RelayCore {
                 })
             })
             .await;
-        if matches!(ended, Ok(true)) {
+        let ended = matches!(ended, Ok(true));
+        if ended {
             self.let_go(&d).await;
             self.answer(
                 &d.id,
@@ -733,7 +739,7 @@ impl RelayCore {
                 }),
             );
         }
-        true
+        ended
     }
 }
 
