@@ -271,6 +271,16 @@ pub fn propose(snapshot: &OrganiseSnapshot) -> FolderPlan {
         let to = match snapshot.folder_named(&category.name) {
             Some(folder) => Target::Folder { id: folder.id },
             None => {
+                // A top-level folder the snapshot doesn't offer already has
+                // this name: leave the feed where it is rather than propose
+                // a new folder the check would refuse.
+                let hidden = snapshot
+                    .other_names
+                    .iter()
+                    .any(|n| n.eq_ignore_ascii_case(&category.name));
+                if hidden {
+                    continue;
+                }
                 let known = new_names.iter().any(|n| n == &category.name);
                 if !known && new_names.len() >= MAX_NEW_FOLDERS {
                     continue;
@@ -476,6 +486,18 @@ mod tests {
             name: first.name.to_uppercase(),
         });
         assert_eq!(propose(&s).moves[0].to, Target::Folder { id: 11 });
+    }
+
+    #[test]
+    fn the_stand_in_skips_a_category_named_like_a_hidden_folder() {
+        let categories = suggested::suggestions(|_| false);
+        let first = &categories[0];
+        let mut s = snap();
+        s.feeds[0].url = first.feeds[0].url.clone();
+        s.other_names = vec![first.name.to_lowercase()];
+        let plan = propose(&s);
+        assert!(plan.moves.is_empty());
+        assert!(check(&s, &plan).is_ok());
     }
 
     #[test]
