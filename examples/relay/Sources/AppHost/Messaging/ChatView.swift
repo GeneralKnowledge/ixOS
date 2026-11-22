@@ -518,10 +518,15 @@ struct ChatView: View {
         if let message = editing {
             editing = nil
             draft = stashedDraft
+            // What the composer held besides the edit; unchanged, the edit
+            // comes back (files staged before it stay staged).
+            let stagedBefore = staged.map(\.id)
+            let replyBefore = replyingTo?.id
             Task {
                 // Failed (the alert says why): back to editing, with the edit.
                 let saved = await model.edit(message, to: text)
-                if !saved, editing == nil, replyingTo == nil, staged.isEmpty, draft == stashedDraft {
+                if !saved, editing == nil, draft == stashedDraft,
+                   staged.map(\.id) == stagedBefore, replyingTo?.id == replyBefore {
                     editing = message
                     draft = text
                 }
