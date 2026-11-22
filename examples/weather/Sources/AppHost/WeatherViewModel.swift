@@ -178,7 +178,9 @@ public final class WeatherViewModel {
     /// while the app was in the background.
     public func pageDidAppear() {
         guard isLive, started, let page = selectedPage, !page.isRefreshing else { return }
-        if page.isMyLocation && (page.place == nil || needsNewFix) {
+        // After a denial, look again on every return: the person may have
+        // turned location back on in Settings.
+        if page.isMyLocation && (page.place == nil || needsNewFix || locationDenied) {
             useCurrentLocation()
             return
         }
