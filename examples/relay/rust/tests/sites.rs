@@ -303,6 +303,14 @@ fn a_server_on_the_hosts_localhost_is_reached_and_told_who_asked() {
                 "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{body}\r\n0\r\n\r\n",
                 body.len()
             );
+            // Close as HTTP servers do (RFC 9112 9.6): stop writing, then
+            // read what is still coming. Closing with an unread upload
+            // would reset the connection, and the reset can throw away
+            // the answer before Relay reads it.
+            let _ = stream.shutdown(std::net::Shutdown::Write);
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+            let mut sink = [0u8; 16 * 1024];
+            while matches!(stream.read(&mut sink), Ok(n) if n > 0) {}
         }
     });
     block_on(laptop.share_site(SiteSource::Local { port: server_port })).unwrap();

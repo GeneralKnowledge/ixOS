@@ -291,8 +291,9 @@ impl PythonLab {
                 format!("{verb} {path} ({lines} lines). Syntax OK.")
             } else {
                 format!(
-                    "{verb} {path} ({lines} lines), but Python can't parse it:\n{}",
-                    problem.trim()
+                    "{verb} {path} ({lines} lines), but Python can't parse it:\n{}{}",
+                    problem.trim(),
+                    quote_hint(&problem)
                 )
             },
             evidence: vec![Evidence::Wrote {
@@ -839,6 +840,20 @@ pub fn python_lab_output(project: String, ok: bool, output: String) -> PythonLab
     PythonLabOutput {
         ok: ok && !output.contains(FAILED_MARK),
         output: text,
+    }
+}
+
+/// Small models keep putting double quotes inside a double-quoted string
+/// (SVG and HTML attributes), and read the parser's message as a puzzle
+/// for several steps. Name the usual cause.
+fn quote_hint(problem: &str) -> &'static str {
+    if problem.contains("unterminated string literal")
+        || problem.contains("unterminated f-string literal")
+    {
+        "\nIf that line puts double quotes inside a double-quoted string, wrap the \
+         string in single quotes instead: f'<rect width=\"{w}\"/>'."
+    } else {
+        ""
     }
 }
 
