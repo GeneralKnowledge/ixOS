@@ -203,8 +203,8 @@ Each step is a PR, Linux-tested before the phone sees it.
    covers a sender, a closed recipient and the server, then the recipient
    opening.
 4. **Running it.** Deploy `relay-mailbox` on Hetzner as a systemd service,
-   only with Reuben's go-ahead for the server. Then Relay's Servers
-   includes it.
+   only with Reuben's go-ahead for the server (given 2026-11-22). Then
+   Relay's Servers includes it. Steps in [Running the mailbox](#running-the-mailbox).
 5. **The phone run** (about 15 minutes, Device Lab, 5G with Tailscale
    off):
    - stop the laptop's listener, send a message and a photo from the
@@ -237,3 +237,39 @@ These go ahead as recommended unless he says otherwise:
 2. **How long items are kept:** 7 days.
 3. **Biggest item through the mailbox:** 100 MB, so photos and short
    videos fit and larger files still go direct.
+
+## Running the mailbox
+
+On Relay's server (the Hetzner box behind relay.avedeus.ovh), as a
+systemd service, [`deploy/relay-mailbox.service`](../deploy/relay-mailbox.service).
+It needs no Caddy route and no change to the relay or the lookup server:
+devices dial it by its key over iroh, straight to UDP 7850 or through the
+relay, and it publishes where it is on the lookup server.
+
+1. Build it on Linux (x86_64, the box's architecture), from
+   `examples/relay/rust`. On the shared laptop, through the build queue:
+
+   ```bash
+   forge queue run --note "relay-mailbox deploy" -- \
+     cargo build --release --features server --bin relay-mailbox
+   ```
+
+2. Copy the binary and the unit to the box, install and start it:
+
+   ```bash
+   scp target/release/relay-mailbox ../deploy/relay-mailbox.service root@relay.avedeus.ovh:/tmp/
+   ssh root@relay.avedeus.ovh '
+     install -m 755 /tmp/relay-mailbox /usr/local/bin/relay-mailbox &&
+     install -m 644 /tmp/relay-mailbox.service /etc/systemd/system/ &&
+     systemctl daemon-reload && systemctl enable --now relay-mailbox &&
+     systemctl --no-pager status relay-mailbox'
+   ```
+
+3. Read its endpoint id from `journalctl -u relay-mailbox`. That id is
+   the mailbox's address in Relay's Servers (step 3 compiles it in), so
+   **keep `/var/lib/relay-mailbox/device.key`**: a new key is a new
+   mailbox, and every device would need an update to find it.
+
+An update is steps 1 and 2 again; the key and the waiting items stay in
+`/var/lib/relay-mailbox`. If the host firewall is on, allow UDP 7850.
+
