@@ -217,6 +217,30 @@ ForgeDetailHeader(book.title, subtitle: book.author, systemImage: "book.closed.f
 
 Inside a `List`, `Section("Account")` already gives the right header; `ForgeSectionHeader` is for screens built from cards.
 
+### Choices
+
+```swift
+// One of several: the model owns which.
+Button("A") { player.hear(.a) }
+    .buttonStyle(.forgeChoice(isSelected: player.active == .a, shape: .circle))
+Button { model.set(.passed, for: check) } label: { Label("Passed", systemImage: "checkmark.circle") }
+    .buttonStyle(.forgeChoice(isSelected: answer == .passed, shape: .tile, tone: .success))
+
+// On and off, several at once (filters, reactions).
+Toggle("Unread", isOn: $unreadOnly).toggleStyle(.forgeChoice)
+```
+
+| Aspect | Choice style |
+|---|---|
+| Shapes | `.chip` (a capsule, the default), `.tile` (a rounded tile around larger content), `.circle` (a letter or symbol) |
+| Chosen look | the tone's soft fill, a solid outline and a semibold label, plus a checkmark on chips: never colour alone. Unchosen sits on a neutral fill |
+| VoiceOver | the `.isSelected` trait ("Selected"); a toggle chip reads as a button that is selected when on |
+| Size | at least 44 pt to tap; `.controlSize(.small)` draws a smaller chip with the same tap area (Relay's reactions) |
+| Tone | the accent, unless the choice means something (`tone: .success` for a passed check) |
+| Not for | a `Form` list with a checkmark (iOS's own one-of-several rows) and segmented `Picker`s: keep those native |
+
+`forgeChoiceLook(isSelected:shape:tone:isPressed:)` puts the look on a control that isn't a `Button`. The `choice` [parity rule](app-parity.md) catches a hand-added `.isSelected` trait.
+
 ### Ratings
 
 ```swift

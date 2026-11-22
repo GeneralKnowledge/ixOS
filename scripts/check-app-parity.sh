@@ -944,6 +944,27 @@ def rule_thumbnail(app):
     return True, ""
 
 
+# A choice among several (chips, tiles, A/B) wears ForgeUI's choice style
+# (`.buttonStyle(.forgeChoice(isSelected:))`, `.toggleStyle(.forgeChoice)`),
+# which adds the `.isSelected` trait, a 44-point tap and a chosen look that
+# isn't colour alone. Three apps built their own, each with its own colours
+# and sizes (ForgeUI 0.2, item 6). An app adding the trait itself has built
+# one by hand.
+HAND_SELECTED = re.compile(r"\.accessibilityAddTraits\([^)\n]*\.isSelected")
+
+
+def rule_choice(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in HAND_SELECTED.finditer(code):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "marks a choice selected by hand; use ForgeUI's forgeChoice style: " + ", ".join(bad)
+    return True, ""
+
+
 # Stars for a rating come from ForgeUI's ForgeRating: one adjustable
 # VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
 # app, and `<id>.star.<n>` identifiers. Soundscape and Pocket Library each
@@ -1142,6 +1163,7 @@ RULES = [
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
     ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
+    ("choice", "Chips and one-of-several tiles through ForgeUI's `forgeChoice` style, never a hand-added `.isSelected`", rule_choice),
     ("rating", "Ratings through ForgeUI's `ForgeRating`, never stars drawn by hand", rule_rating),
     ("thumbnail", "Pictures in ForgeUI's `ForgeThumbnail`, never an image clipped to a shape by hand", rule_thumbnail),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),

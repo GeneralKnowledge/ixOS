@@ -77,11 +77,9 @@ private struct CheckRow: View {
             model.set(result, for: item)
         } label: {
             Label(title, systemImage: chosen ? symbol + ".fill" : symbol)
-                .font(.footnote.weight(chosen ? .semibold : .regular))
-                .forgeForeground(chosen ? tone : .neutral)
+                .font(.footnote)
         }
-        .buttonStyle(.bordered)
-        .accessibilityAddTraits(chosen ? .isSelected : [])
+        .buttonStyle(.forgeChoice(isSelected: chosen, shape: .tile, tone: tone))
         .accessibilityIdentifier("checks.\(result.rawValue)")
     }
 }

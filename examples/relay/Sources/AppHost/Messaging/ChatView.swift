@@ -1117,23 +1117,16 @@ private struct ReactionsRow: View {
     var body: some View {
         HStack(spacing: 4) {
             ForEach(reactions, id: \.emoji) { reaction in
-                Button {
-                    react(reaction.emoji)
-                } label: {
+                // A chip that is on while one of the reactions is yours;
+                // tapping adds or takes back yours (Rust decides).
+                Toggle(isOn: Binding(get: { reaction.mine }, set: { _ in react(reaction.emoji) })) {
                     Text("\(reaction.emoji) \(reaction.count)")
                         .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule().fill(
-                                reaction.mine ? Color.accentColor.opacity(0.25) : Color.incomingBubble)
-                        )
-                        .overlay {
-                            if reaction.mine { Capsule().strokeBorder(Color.accentColor) }
-                        }
                 }
-                .buttonStyle(.plain)
+                .toggleStyle(.forgeChoice)
+                .controlSize(.small)
                 .accessibilityLabel("\(reaction.emoji), \(reaction.count)\(reaction.mine ? ", including you" : "")")
+                .accessibilityIdentifier("chat.reaction.\(reaction.emoji)")
             }
         }
         .padding(.horizontal, 4)

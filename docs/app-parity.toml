@@ -86,3 +86,15 @@ app = "sketchbook"
 rule = "share-file"
 status = "not-applicable"
 reason = "Its export screen previews the image and offers Save to Photos and Quick Look besides Share; sharing is one action of three, not a ready-to-share step"
+
+[[lag]]
+app = "good-dog"
+rule = "choice"
+status = "not-applicable"
+reason = "The session outcome is a Form section of rows with a checkmark, iOS's own one-of-several list (Settings), not chips or tiles; the trait is the native row's"
+
+[[lag]]
+app = "weather"
+rule = "choice"
+status = "not-applicable"
+reason = "The page dots are a page indicator over the sky, not a choice control; each dot marks the page shown"

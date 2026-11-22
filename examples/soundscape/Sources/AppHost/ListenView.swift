@@ -500,14 +500,9 @@ private struct ComparePanel: View {
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, minHeight: 72)
-            .background(on ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 12))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12).stroke(on ? Color.accentColor : .clear, lineWidth: 2)
-            }
         }
+        .buttonStyle(.forgeChoice(isSelected: on, shape: .tile))
         .accessibilityLabel(hidden ? "Hear \(label)" : "Hear \(label), \(take.label)")
-        .accessibilityAddTraits(on ? .isSelected : [])
         .accessibilityIdentifier(side == .a ? "compare.a" : "compare.b")
     }
 }
@@ -875,14 +870,10 @@ private struct NowPlayingView: View {
                 Button { player.hear(side) } label: {
                     Text(side == .a ? "A" : "B")
                         .font(.largeTitle.bold())
-                        .frame(width: 72, height: 72)
-                        .background(
-                            player.active == side ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12),
-                            in: Circle()
-                        )
+                        .frame(width: 56, height: 56)
                 }
+                .buttonStyle(.forgeChoice(isSelected: player.active == side, shape: .circle))
                 .accessibilityLabel(side == .a ? "Hear A" : "Hear B")
-                .accessibilityAddTraits(player.active == side ? .isSelected : [])
                 .accessibilityIdentifier(side == .a ? "nowPlayingSheet.a" : "nowPlayingSheet.b")
             }
             Button { player.toggle() } label: {
