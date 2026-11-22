@@ -242,6 +242,9 @@ struct ChatScreen: View {
         // Apple's model only when it can answer: Rust says why otherwise.
         let view = await model.chatSay(text, model: phoneModel)
         busy = false
+        // Not sent (an alert says why): give the words back, unless you've
+        // started typing something else.
+        if view == nil, typed.isEmpty { typed = text }
         update(view, from: before)
     }
 
@@ -257,7 +260,9 @@ struct ChatScreen: View {
     /// Shows the chat as Rust returns it, and reads their new lines aloud
     /// in their voice.
     private func update(_ view: ChatView?, from before: Int) {
-        guard let view else { return }
+        // Rust answers for the chat going on; a late answer for another one
+        // isn't this screen's.
+        guard let view, view.character.id == characterID else { return }
         chat = view
         let theirs = view.lines.dropFirst(before)
             .filter { $0.speaker == .character }

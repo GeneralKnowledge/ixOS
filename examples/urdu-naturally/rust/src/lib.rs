@@ -25,6 +25,7 @@ pub mod content;
 pub mod schedule;
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use forge_app::{DataDirectory, Document, ErrorKind, Published, Runtime};
@@ -892,10 +893,15 @@ pub struct UrduCore {
     /// The chat going on, if any. In memory only: what you type is never
     /// saved; what you practised is.
     chat: Arc<Mutex<Option<ChatNow>>>,
+    /// Chats started, for each chat's serial.
+    chats: AtomicU64,
 }
 
 /// A chat and the note from your last line.
 struct ChatNow {
+    /// Which chat this is, so an answer worked out for an earlier chat
+    /// never lands in this one.
+    serial: u64,
     chat: chat::Chat,
     note: Option<String>,
 }
@@ -929,6 +935,7 @@ impl UrduCore {
             rt: Runtime::with_directory("urdu-naturally", directory, state),
             saved: published,
             chat: Arc::new(Mutex::new(None)),
+            chats: AtomicU64::new(0),
         }))
     }
 
@@ -1071,7 +1078,15 @@ impl UrduCore {
         let chat = chat::Chat::start(&character_id, seed)
             .ok_or(UrduError::NotFound { id: character_id })?;
         let theirs = their_lines(&chat, 0);
-        *lock(&self.chat) = Some(ChatNow { chat, note: None });
+        {
+            let mut now = lock(&self.chat);
+            let serial = self.chats.fetch_add(1, Ordering::Relaxed);
+            *now = Some(ChatNow {
+                serial,
+                chat,
+                note: None,
+            });
+        }
         self.chat_record(theirs, None).await
     }
 
@@ -1096,9 +1111,9 @@ impl UrduCore {
         model: Option<Arc<dyn AiModel>>,
     ) -> Result<ChatView, UrduError> {
         let text: String = text.trim().chars().take(chat::MAX_TYPED_CHARS).collect();
-        let current = lock(&self.chat)
+        let (serial, current) = lock(&self.chat)
             .as_ref()
-            .map(|now| now.chat.clone())
+            .map(|now| (now.serial, now.chat.clone()))
             .ok_or(UrduError::NotFound { id: "chat".into() })?;
         if text.is_empty() {
             return Ok(self.chat().expect("a chat is going on"));
@@ -1123,7 +1138,7 @@ impl UrduCore {
                 )
             })
             .await?;
-        self.chat_answer(Some(text), understood).await
+        self.chat_answer(Some(serial), Some(text), understood).await
     }
 
     /// You pick a line from the help, and they answer.
@@ -1131,7 +1146,7 @@ impl UrduCore {
         if !Content::get().is_spoken(&phrase_id) {
             return Err(UrduError::NotFound { id: phrase_id });
         }
-        self.chat_answer(None, chat::Understood::picked(&phrase_id))
+        self.chat_answer(None, None, chat::Understood::picked(&phrase_id))
             .await
     }
 
@@ -1153,8 +1168,12 @@ impl UrduCore {
 forge_app::export_runtime!(UrduCore, rt);
 
 impl UrduCore {
+    /// Applies your turn to the chat, if it is still `serial` (the chat it
+    /// was worked out for): a chat started meanwhile is left alone, and
+    /// nothing is recorded.
     async fn chat_answer(
         &self,
+        serial: Option<u64>,
         typed: Option<String>,
         understood: chat::Understood,
     ) -> Result<ChatView, UrduError> {
@@ -1163,6 +1182,9 @@ impl UrduCore {
             let now = now
                 .as_mut()
                 .ok_or(UrduError::NotFound { id: "chat".into() })?;
+            if serial.is_some_and(|s| s != now.serial) {
+                return Ok(self.saved.get().chat(now));
+            }
             let before = now.chat.lines.len() + 1;
             now.chat.answer(typed, &understood);
             now.note = understood.note.clone();

@@ -477,3 +477,27 @@ fn a_free_chat_counts_what_you_said() {
         "not your line"
     );
 }
+
+/// An answer worked out for one chat never lands in the next one.
+#[test]
+fn a_late_answer_never_lands_in_a_new_chat() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    let first = block_on(core.chat_start("ali".into(), 1)).unwrap();
+    let line = first.suggestions[0].id.clone();
+    let serial = lock(&core.chat).as_ref().unwrap().serial;
+    let second = block_on(core.chat_start("khala".into(), 2)).unwrap();
+    let late = block_on(core.chat_answer(
+        Some(serial),
+        Some("typed in Ali's chat".into()),
+        chat::Understood::picked(&line),
+    ))
+    .unwrap();
+    assert_eq!(late, second, "Khala's chat is unchanged");
+    assert!(!core.saved.get().progress(&line).practised());
+    core.chat_end();
+    let third = block_on(core.chat_start("ali".into(), 1)).unwrap();
+    let late =
+        block_on(core.chat_answer(Some(serial), None, chat::Understood::picked(&line))).unwrap();
+    assert_eq!(late, third, "a new chat with the same person is a new chat");
+}

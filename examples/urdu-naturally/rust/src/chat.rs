@@ -46,6 +46,12 @@ pub struct Graph {
     replies: BTreeMap<String, Vec<String>>,
     /// Your line, and their lines that answer it: (character, phrase).
     answers: BTreeMap<String, Vec<(String, String)>>,
+    /// Their line, and their lines that follow it straight on ("Main Ayesha
+    /// hoon." then "Aap ka naam kya hai?"): said together, as one turn.
+    then: BTreeMap<String, Vec<String>>,
+    /// Your line, and your lines that follow it straight on ("Main theek
+    /// hoon." then "Tum sunao?"): they wait for the rest.
+    you_then: BTreeMap<String, Vec<String>>,
     /// How each conversation starts: (character, their first line).
     openers: Vec<(String, String)>,
     /// Every line you say somewhere, in the order the course meets them.
@@ -84,11 +90,29 @@ impl Graph {
                         (scenario.character.clone(), pair[1].phrase.clone()),
                         graph.answers.entry(pair[0].phrase.clone()).or_default(),
                     ),
-                    _ => {}
+                    (Who::Them, Who::Them) => push(
+                        pair[1].phrase.clone(),
+                        graph.then.entry(pair[0].phrase.clone()).or_default(),
+                    ),
+                    (Who::You, Who::You) => push(
+                        pair[1].phrase.clone(),
+                        graph.you_then.entry(pair[0].phrase.clone()).or_default(),
+                    ),
                 }
             }
         }
         graph
+    }
+
+    /// The last of the lines they say straight on from `their_line`.
+    fn run_end<'a>(&'a self, mut their_line: &'a str) -> &'a str {
+        for _ in 0..8 {
+            match self.then.get(their_line).and_then(|next| next.first()) {
+                Some(next) => their_line = next,
+                None => break,
+            }
+        }
+        their_line
     }
 
     /// Your lines that answer `their_line` in some conversation.
@@ -169,9 +193,24 @@ impl Chat {
 
     /// Your lines that would fit now: the help.
     pub fn suggestions(&self) -> Vec<String> {
+        let graph = Graph::get();
+        if self.ended {
+            return Vec::new();
+        }
+        // Half way through what you were saying: the rest of it.
+        if let Some(Line {
+            who: Who::You,
+            phrase: Some(yours),
+            ..
+        }) = self.lines.last()
+        {
+            if let Some(rest) = graph.you_then.get(yours) {
+                return rest.clone();
+            }
+        }
         match self.last_theirs() {
-            Some(theirs) if !self.ended => Graph::get().replies_to(theirs).to_vec(),
-            _ => Vec::new(),
+            Some(theirs) => graph.replies_to(theirs).to_vec(),
+            None => Vec::new(),
         }
     }
 
@@ -271,14 +310,14 @@ impl Chat {
                 self.say(id.clone());
                 Some(id)
             }
+            // You have more to say ("Main theek hoon." ... "Tum sunao?").
+            None if graph.you_then.contains_key(yours) => return None,
             None => self.change_subject(),
         };
         // A line that ends a conversation: they carry on with something new
         // rather than leave you nothing to answer.
-        if let Some(id) = &reply {
-            if graph.replies_to(id).is_empty() {
-                self.change_subject();
-            }
+        if reply.is_some() && self.suggestions().is_empty() {
+            self.change_subject();
         }
         reply
     }
@@ -291,7 +330,7 @@ impl Chat {
         let fresh: Vec<&(String, String)> = graph
             .openers
             .iter()
-            .filter(|(_, id)| self.can_say(id) && !graph.replies_to(id).is_empty())
+            .filter(|(_, id)| self.can_say(id) && !graph.replies_to(graph.run_end(id)).is_empty())
             .collect();
         match self.closest(&fresh) {
             Some(id) => {
@@ -351,14 +390,24 @@ impl Chat {
         Some(pool[(n % pool.len() as u64) as usize])
     }
 
+    /// Says a line, and the lines they say straight on from it.
     fn say(&mut self, id: String) {
-        self.said.insert(id.clone());
-        self.lines.push(Line {
-            who: Who::Them,
-            phrase: Some(id),
-            typed: None,
-            heard: None,
-        });
+        let graph = Graph::get();
+        let mut next = Some(id);
+        while let Some(id) = next.take() {
+            next = graph
+                .then
+                .get(&id)
+                .and_then(|after| after.iter().find(|a| *a != &id && self.can_say(a)))
+                .cloned();
+            self.said.insert(id.clone());
+            self.lines.push(Line {
+                who: Who::Them,
+                phrase: Some(id),
+                typed: None,
+                heard: None,
+            });
+        }
     }
 
     fn name(&self) -> &str {
@@ -522,6 +571,53 @@ mod tests {
             "{reply} is not one of their lines"
         );
         assert_eq!(chat.lines.len(), 3);
+    }
+
+    /// Lines said straight on stay together: Ayesha says who she is and
+    /// asks your name in one turn; after "Main theek hoon" you get to ask
+    /// back before Ali answers.
+    #[test]
+    fn lines_said_straight_on_stay_together() {
+        let mut chat = Chat::start("ayesha", 0).unwrap();
+        chat.lines.clear();
+        chat.said.clear();
+        chat.say("assalam-o-alaikum".into());
+        chat.answer(None, &Understood::picked("walaikum-assalam"));
+        let said: Vec<_> = chat
+            .lines
+            .iter()
+            .filter_map(|l| l.phrase.as_deref())
+            .collect();
+        assert_eq!(
+            said,
+            [
+                "assalam-o-alaikum",
+                "walaikum-assalam",
+                "main-ayesha-hoon",
+                "aap-ka-naam-kya-hai"
+            ]
+        );
+        assert_eq!(chat.suggestions(), ["mera-naam-hai"]);
+        let mut chat = Chat::start("ali", 0).unwrap();
+        chat.lines.clear();
+        chat.said.clear();
+        chat.say("kya-haal-hai".into());
+        assert_eq!(
+            chat.lines
+                .iter()
+                .filter_map(|l| l.phrase.as_deref())
+                .collect::<Vec<_>>(),
+            ["kya-haal-hai", "bohat-din-ho-gaye"]
+        );
+        assert!(chat.suggestions().contains(&"main-theek-hoon".to_string()));
+        assert_eq!(
+            chat.answer(None, &Understood::picked("main-theek-hoon")),
+            None
+        );
+        assert_eq!(chat.suggestions(), ["tum-sunao"]);
+        assert!(chat
+            .answer(None, &Understood::picked("tum-sunao"))
+            .is_some());
     }
 
     #[test]
