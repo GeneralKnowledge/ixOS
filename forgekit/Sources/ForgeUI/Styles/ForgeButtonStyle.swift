@@ -1,5 +1,34 @@
+/// What a `ForgeButton` allows while its work runs. Plain values, so the
+/// rules are checked on Linux; `ForgeButton` draws them.
+struct ForgeButtonState: Hashable, Sendable {
+    var isWorking: Bool
+
+    /// A tap runs the action only when the button isn't already working.
+    var runsAction: Bool { !isWorking }
+    /// While working the button is disabled, so VoiceOver reads it as dimmed
+    /// and Voice Control, Full Keyboard Access and a pointer can't press it
+    /// again, the same as a button the app disabled itself.
+    var isDisabled: Bool { isWorking }
+    /// It keeps its full colour while working: the spinner says it is busy,
+    /// and a faded spinner is hard to see. A button the app disabled fades.
+    var fadesWhenDisabled: Bool { !isWorking }
+}
+
 #if canImport(SwiftUI)
 import SwiftUI
+
+private struct ForgeButtonIsWorkingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Set by `ForgeButton` while its work runs, so ForgeUI's button styles
+    /// draw it at full colour although it is disabled.
+    var forgeButtonIsWorking: Bool {
+        get { self[ForgeButtonIsWorkingKey.self] }
+        set { self[ForgeButtonIsWorkingKey.self] = newValue }
+    }
+}
 
 /// ForgeUI's button styles, applied to SwiftUI's own `Button`:
 ///
@@ -58,6 +87,7 @@ struct ForgeButtonChrome<Content: View>: View {
 
     @Environment(\.forgeTheme) private var theme
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.forgeButtonIsWorking) private var isWorking
     @Environment(\.controlSize) private var controlSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .headline) private var minHeight: CGFloat = 44
@@ -95,7 +125,7 @@ struct ForgeButtonChrome<Content: View>: View {
             .frame(maxWidth: expands ? .infinity : nil, minHeight: compact ? compactHeight : minHeight)
             .background(fill, in: shape)
             .contentShape(shape)
-            .opacity(isEnabled ? (isPressed ? 0.7 : 1) : 0.4)
+            .opacity(isEnabled || isWorking ? (isPressed ? 0.7 : 1) : 0.4)
             .scaleEffect(isPressed && !reduceMotion ? 0.98 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isPressed)
     }
@@ -130,6 +160,7 @@ private struct ForgeIconButtonBody: View {
 
     @Environment(\.forgeTheme) private var theme
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.forgeButtonIsWorking) private var isWorking
     @ScaledMetric(relativeTo: .body) private var size: CGFloat = 44
 
     var body: some View {
@@ -141,12 +172,15 @@ private struct ForgeIconButtonBody: View {
             .frame(width: size, height: size)
             .background(colors.soft, in: Circle())
             .contentShape(Circle())
-            .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.4)
+            .opacity(isEnabled || isWorking ? (configuration.isPressed ? 0.7 : 1) : 0.4)
     }
 }
 
 /// A button that shows a spinner in place of its title while `isWorking`,
-/// and ignores taps until it finishes. Style it like any button:
+/// and is disabled until it finishes: taps, VoiceOver, Voice Control and
+/// the keyboard can't press it again, and VoiceOver reads "In progress".
+/// ForgeUI's styles keep it at full colour while it works. Style it like
+/// any button:
 ///
 ///     ForgeButton("Save", isWorking: model.isSaving) { Task { await model.save() } }
 ///         .buttonStyle(.forge(.primary, expands: true))
@@ -173,8 +207,9 @@ public struct ForgeButton: View {
     }
 
     public var body: some View {
-        Button(role: role) {
-            if !isWorking { action() }
+        let state = ForgeButtonState(isWorking: isWorking)
+        return Button(role: role) {
+            if state.runsAction { action() }
         } label: {
             ZStack {
                 Group {
@@ -190,6 +225,8 @@ public struct ForgeButton: View {
                 }
             }
         }
+        .disabled(state.isDisabled)
+        .environment(\.forgeButtonIsWorking, !state.fadesWhenDisabled)
         .accessibilityValue(isWorking ? Text("In progress") : Text(""))
     }
 }
