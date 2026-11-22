@@ -17,9 +17,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.forgemobile.ffi.ForgeAndroid
 import org.forgemobile.relay.host.ForgeEnvironment
+import org.forgemobile.relay.host.AndroidNotifier
 import org.forgemobile.relay.host.ForgeHost
+import org.forgemobile.relay.host.ForgeServices
+import org.forgemobile.relay.host.NotificationReceiver
 import org.forgemobile.relay.kit.ForgeFailure
 import uniffi.forge_app.AppPhase
+import uniffi.relay_core.deliverNotificationResponse
 
 /**
  * Owns the host, the model and the network for the life of the process, as ForgeKit does on
@@ -57,6 +61,16 @@ class RelayApplication : Application() {
         super.onCreate()
         // Android's trust store for Rust's HTTPS (Relay's servers), as on every Forge app.
         ForgeAndroid.init(this)
+        // The Keystore, notifications and permissions, before any Rust core opens.
+        try {
+            ForgeServices.install(this)
+        } catch (e: Exception) {
+            // Without them Relay still opens: its key stays in `device.key`, and Chats keeps a
+            // chat server account only until it closes.
+            android.util.Log.w("Relay", "platform services not installed: ${e.javaClass.simpleName}")
+        }
+        // A Reply or Mark as Read with Relay closed opens its cores in the background first.
+        NotificationReceiver.onResponse = { if (host.core == null) retry() }
         // Relay's errors in its own words, wherever the kit shows a failure (the open too).
         ForgeFailure.describer = RelayErrors
         network = RelayNetwork(this)
@@ -136,8 +150,30 @@ class RelayApplication : Application() {
             if (host.core != null) host.close()
             network.close()
             temporary = true
+            // A fresh identity each time, never the person's key or account.
+            if (ForgeServices.isInstalled) ForgeServices.secureStore.throwaway = java.util.concurrent.ConcurrentHashMap()
         }
+        open(intent)
         scope.launch { host.start() }
+    }
+
+    private val _link = MutableStateFlow<ChatLink?>(null)
+
+    /** A conversation a notification asked to open, until the screens take it. */
+    val link: StateFlow<ChatLink?> = _link.asStateFlow()
+
+    fun takeLink() {
+        _link.value = null
+    }
+
+    /**
+     * Handles an intent that opened the activity: a tap on a message notification opens its
+     * conversation, and Rust hears about the tap.
+     */
+    fun open(intent: Intent) {
+        val response = AndroidNotifier.response(intent) ?: return
+        deliverNotificationResponse(response)
+        intent.data?.toString()?.let(ChatLink::parse)?.let { _link.value = it }
     }
 
     /** Starts again after a failed open (Try Again). */

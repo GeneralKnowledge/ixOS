@@ -4,6 +4,7 @@ package org.forgemobile.relay
 
 import org.forgemobile.relay.host.ForgeCore
 import org.forgemobile.relay.host.ForgeEnvironment
+import org.forgemobile.relay.host.ForgeServices
 import uniffi.forge_app.AppPhase
 import uniffi.forge_app.LaunchReport
 import uniffi.forge_app.RuntimeEvents
@@ -53,30 +54,32 @@ class RelayHostCore(
  * [deviceName]; the person can rename it. [offline] (tests and throwaway data) gives a device
  * that never chose no servers, so nothing reaches Relay's real ones.
  *
- * The device key stays in `device.key` in the app's private files for now (stage 4 moves it
- * into the Android Keystore, docs/relay-android.md); the manifest turns backups off, so it
- * never leaves the phone.
+ * With the platform services installed (ForgeServices), Rust keeps the device key in the
+ * Keystore-backed secure store, moving it in from `device.key` the first time; without them
+ * (JVM tests) it stays in `device.key`. The manifest turns backups off either way.
  */
 class RelayOpener(private val deviceName: () -> String) {
     fun open(env: ForgeEnvironment, offline: Boolean): RelayHostCore {
         // Received files stay in Relay's own folder (`codes/received`); the history opens them.
         val relay = openWaitingForClose(env.dataDirectory, deviceName(), offline)
         // The conversations beside it (`<app>/chat`), inside the folder the FileProvider shares,
-        // so attachments open in other apps. The chat server account stays in memory until
-        // Android has a secure store for it (stage 3); device conversations need none.
+        // so attachments open in other apps. With the platform services installed
+        // (ForgeServices), the chat server account is kept in the Keystore and new messages are
+        // notified; throwaway data keeps the account in memory and asks for nothing.
         val chatDirectory = File(File(env.dataDirectory).parentFile, "chat").apply { mkdirs() }
+        val secure = !offline && ForgeServices.isInstalled
         return try {
-            RelayHostCore(relay, openChatWaitingForClose(chatDirectory.absolutePath))
+            RelayHostCore(relay, openChatWaitingForClose(chatDirectory.absolutePath, secure))
         } catch (e: ChatException) {
             RelayHostCore(relay, null, RelayErrors.describeChat(e))
         }
     }
 
-    private fun openChatWaitingForClose(directory: String): ChatCore {
+    private fun openChatWaitingForClose(directory: String, secure: Boolean): ChatCore {
         val deadline = System.nanoTime() + CLOSE_WAIT_MS * 1_000_000
         while (true) {
             try {
-                return ChatCore.withMemoryCredentials(directory)
+                return if (secure) ChatCore(directory) else ChatCore.withMemoryCredentials(directory)
             } catch (e: ChatException.InUse) {
                 if (System.nanoTime() >= deadline) throw e
                 Thread.sleep(50)

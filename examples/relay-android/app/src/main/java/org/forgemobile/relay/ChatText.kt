@@ -145,3 +145,32 @@ object ChatText {
         }
     }
 }
+
+/**
+ * Where a message notification leads: `forgechat://conversation/<id>?message=<id>`, as Rust
+ * writes it (`chatMessageLink`). The iPhone's ChatLinks.swift reads the same links.
+ */
+data class ChatLink(val conversationId: String, val messageId: String?) {
+    companion object {
+        const val SCHEME = "forgechat"
+
+        /** The conversation [link] points at, or null if it isn't a Chats link. */
+        fun parse(link: String): ChatLink? {
+            val uri = try {
+                java.net.URI(link)
+            } catch (e: java.net.URISyntaxException) {
+                return null
+            }
+            if (uri.scheme != SCHEME || uri.host != "conversation") return null
+            val parts = (uri.rawPath ?: "").split('/').filter { it.isNotEmpty() }
+            if (parts.size != 1) return null
+            val message = (uri.rawQuery ?: "").split('&')
+                .map { it.split('=', limit = 2) }
+                .firstOrNull { it.size == 2 && it[0] == "message" }
+                ?.get(1)
+            return ChatLink(decode(parts[0]), message?.let(::decode))
+        }
+
+        private fun decode(text: String): String = java.net.URLDecoder.decode(text.replace("+", "%2B"), "UTF-8")
+    }
+}

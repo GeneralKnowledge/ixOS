@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.forgemobile.relay.ChatLink
 import org.forgemobile.relay.ChatModel
 import org.forgemobile.relay.Feedback
 import org.forgemobile.relay.PickedFiles
@@ -65,6 +66,7 @@ sealed interface Route {
     data object Chats : Route
     /** A conversation, at [messageId] when opened from a search result. */
     data class Chat(val conversationId: String, val messageId: String? = null) : Route
+    data object ChatServer : Route
     data object Devices : Route
     data class Device(val endpointId: String) : Route
     data object Servers : Route
@@ -74,6 +76,7 @@ sealed interface Route {
     val key: String
         get() = when (this) {
             Chats -> "chats"
+            ChatServer -> "chatServer"
             is Chat -> listOfNotNull("chat", conversationId, messageId).joinToString("\n")
             Devices -> "devices"
             is Device -> "device:$endpointId"
@@ -85,6 +88,7 @@ sealed interface Route {
     companion object {
         fun of(key: String): Route = when {
             key == "chats" -> Chats
+            key == "chatServer" -> ChatServer
             key.startsWith("chat\n") -> key.split("\n").let { Chat(it[1], it.getOrNull(2)) }
             key.startsWith("device:") -> Device(key.removePrefix("device:"))
             key == "servers" -> Servers
@@ -111,7 +115,8 @@ fun RelayApp(app: RelayApplication) {
             when {
                 current != null -> {
                     val chat by app.chat.collectAsState()
-                    RelayScreens(current, chat, app.host.core?.chatProblem, app.network, app.onScreen)
+                    val link by app.link.collectAsState()
+                    RelayScreens(current, chat, app.host.core?.chatProblem, app.network, app.onScreen, link, app::takeLink)
                 }
                 status is ForgeHost.Status.Failed -> {
                     val failure = ForgeFailure(
@@ -148,6 +153,9 @@ private fun RelayScreens(
     chatProblem: String?,
     network: RelayNetwork,
     onScreen: StateFlow<Boolean>,
+    /** A conversation a notification opened, until it is shown. */
+    link: ChatLink?,
+    tookLink: () -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -186,6 +194,14 @@ private fun RelayScreens(
             network.advertiseDevice(null)
             network.stopWatchingDevices()
         }
+    }
+
+    // A tap on a message notification: its conversation, at that message.
+    LaunchedEffect(link, chat) {
+        if (link == null || chat == null) return@LaunchedEffect
+        chatsStack = listOf(Route.Chats.key, Route.Chat(link.conversationId, link.messageId).key)
+        tab = Tab.CHATS
+        tookLink()
     }
 
     // Haptics, whichever screen is showing.
@@ -229,6 +245,11 @@ private fun RelayScreens(
                     ChatScreen(chat, route.conversationId, route.messageId, chatFiles, back)
                 } else {
                     // Chats couldn't open: its list says why.
+                    LaunchedEffect(Unit) { chatsStack = listOf(Route.Chats.key) }
+                }
+                Route.ChatServer -> if (chat != null) {
+                    ChatServerScreen(chat, back)
+                } else {
                     LaunchedEffect(Unit) { chatsStack = listOf(Route.Chats.key) }
                 }
                 Route.Devices -> DevicesScreen(model, open)

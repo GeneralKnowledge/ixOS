@@ -8,10 +8,12 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Finding code senders and trusted devices with NsdManager (mDNS). -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- Message notifications from a chat server's rooms (Android 13 and later ask first). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- No backups: this device's key is in Relay's private files until it moves into the
-         Android Keystore (stage 4), and a copy of the identity must never leave the phone, as
-         the iPhone keeps it in the Keychain and out of backups. -->
+    <!-- No backups: this device's key and the chat server account are sealed by a Keystore key
+         that can't leave the phone, and Relay's data (and any `device.key` from before the
+         Keystore) must never leave it either, as the iPhone keeps the identity out of backups. -->
     <application
         android:name=".RelayApplication"
         android:enableOnBackInvokedCallback="true"
@@ -24,12 +26,18 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Notifications whose time has come, and Reply / Mark as Read on one. -->
+        <receiver
+            android:name=".host.NotificationReceiver"
+            android:exported="false" />
 
         <!-- Received files open in other apps through content URIs. -->
         <provider

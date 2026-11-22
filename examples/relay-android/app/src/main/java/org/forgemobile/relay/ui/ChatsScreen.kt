@@ -22,7 +22,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -71,11 +73,36 @@ import uniffi.relay_core.ChatMessage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatsScreen(model: ChatModel?, problem: String?, open: (Route.Chat) -> Unit) {
+fun ChatsScreen(model: ChatModel?, problem: String?, open: (Route) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
+    var creating by rememberSaveable { mutableStateOf(false) }
+    val signedIn = model?.state?.collectAsState()?.value?.account != null
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Chats") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Chats") },
+                actions = {
+                    if (model != null) {
+                        // Rooms are made on a chat server; a device's comes with trusting it.
+                        if (signedIn) {
+                            IconButton(onClick = { creating = true }, modifier = Modifier.testTag("chats.new")) {
+                                Icon(Icons.Filled.Add, contentDescription = "New Conversation")
+                            }
+                        }
+                        IconButton(onClick = { open(Route.ChatServer) }, modifier = Modifier.testTag("chats.server")) {
+                            Icon(Icons.Filled.Person, contentDescription = "Chat Server")
+                        }
+                    }
+                },
+            )
+        },
     ) { padding ->
+        if (creating && model != null) {
+            NewConversationDialog(model, dismiss = { creating = false }) { id ->
+                creating = false
+                open(Route.Chat(id))
+            }
+        }
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (model == null) {
                 // Devices still work; only the conversations couldn't open.
@@ -115,7 +142,7 @@ fun ChatsScreen(model: ChatModel?, problem: String?, open: (Route.Chat) -> Unit)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ConversationList(model: ChatModel, open: (Route.Chat) -> Unit) {
+private fun ConversationList(model: ChatModel, open: (Route) -> Unit) {
     val state by model.state.collectAsState()
     val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     PullToRefreshBox(
@@ -144,7 +171,7 @@ private fun ConversationList(model: ChatModel, open: (Route.Chat) -> Unit) {
             if (state.hasListed) {
                 EmptyState(
                     "No Conversations",
-                    "Trust a device on the Devices tab, and its conversation appears here.",
+                    "Trust a device on the Devices tab, or join a chat server, and conversations appear here.",
                     tag = "chats.empty",
                 )
             } else {
@@ -251,7 +278,7 @@ private fun ConversationRow(model: ChatModel, conversation: ChatConversation, op
 
 /** Messages in every conversation that contain each word typed, newest first. */
 @Composable
-private fun SearchResults(model: ChatModel, query: String, open: (Route.Chat) -> Unit) {
+private fun SearchResults(model: ChatModel, query: String, open: (Route) -> Unit) {
     val state by model.state.collectAsState()
     // The results with the query they answer, so rows for an earlier query never show (or open).
     var answer by remember { mutableStateOf<Pair<String, List<ChatMessage>?>?>(null) }

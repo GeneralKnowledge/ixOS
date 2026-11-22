@@ -6,6 +6,8 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasAnyAncestor
@@ -80,6 +82,25 @@ class DevicesFlowTest {
         launch(toDevices = false)
         // Relay opens on Chats, as on the iPhone: with no trusted devices it has none.
         compose.waitUntilAtLeastOneExists(hasTestTag("chats.empty"), 10_000)
+    }
+
+    @Test
+    fun chatsOfferToJoinAChatServer() {
+        launch()
+        compose.onNodeWithTag("tab.chats").performClick()
+        compose.onNodeWithTag("chats.server").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("signUp.create"), 5_000)
+        compose.onNodeWithTag("signUp.create").assertIsNotEnabled()
+        compose.onNodeWithTag("signUp.name").performTextInput("Test Phone")
+        compose.onNodeWithTag("signUp.server").performTextInput("http://127.0.0.1:9")
+        compose.onNodeWithTag("signUp.create").assertIsEnabled()
+        // Nothing listens there: the form says so and stays, with what was typed.
+        compose.onNodeWithTag("signUp.create").performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Can't Create the Account"), 15_000)
+        compose.onNodeWithTag("alert.ok").performClick()
+        compose.onNodeWithTag("signUp.name").assert(hasText("Test Phone"))
+        compose.onNodeWithTag("chatServer.back").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("chats.empty"), 5_000)
     }
 
     @Test
