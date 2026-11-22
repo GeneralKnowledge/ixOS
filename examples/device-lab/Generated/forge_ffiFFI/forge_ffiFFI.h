@@ -1555,6 +1555,11 @@ void uniffi_forge_ffi_fn_func_install_native_motion(uint64_t sensors, RustCallSt
 void uniffi_forge_ffi_fn_func_install_native_transfers(uint64_t session, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_HIGHLIGHT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_HIGHLIGHT
+RustBuffer uniffi_forge_ffi_fn_func_python_highlight(RustBuffer source, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CANCEL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CANCEL
 void uniffi_forge_ffi_fn_func_transfer_test_cancel(RustBuffer id, RustCallStatus *_Nonnull out_status
@@ -1976,6 +1981,12 @@ uint16_t uniffi_forge_ffi_checksum_func_install_native_motion(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_TRANSFERS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_TRANSFERS
 uint16_t uniffi_forge_ffi_checksum_func_install_native_transfers(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_HIGHLIGHT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_HIGHLIGHT
+uint16_t uniffi_forge_ffi_checksum_func_python_highlight(void
     
 );
 #endif

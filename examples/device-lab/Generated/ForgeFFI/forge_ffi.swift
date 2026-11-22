@@ -9526,6 +9526,67 @@ public func FfiConverterTypeHeading_lower(_ value: Heading) -> RustBuffer {
 
 
 /**
+ * One coloured range, in UTF-16 code units from the start of the source.
+ */
+public struct HighlightSpan: Equatable, Hashable {
+    public var start: UInt32
+    public var length: UInt32
+    public var kind: HighlightKind
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(start: UInt32, length: UInt32, kind: HighlightKind) {
+        self.start = start
+        self.length = length
+        self.kind = kind
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HighlightSpan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHighlightSpan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HighlightSpan {
+        return
+            try HighlightSpan(
+                start: FfiConverterUInt32.read(from: &buf), 
+                length: FfiConverterUInt32.read(from: &buf), 
+                kind: FfiConverterTypeHighlightKind.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HighlightSpan, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.start, into: &buf)
+        FfiConverterUInt32.write(value.length, into: &buf)
+        FfiConverterTypeHighlightKind.write(value.kind, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHighlightSpan_lift(_ buf: RustBuffer) throws -> HighlightSpan {
+    return try FfiConverterTypeHighlightSpan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHighlightSpan_lower(_ value: HighlightSpan) -> RustBuffer {
+    return FfiConverterTypeHighlightSpan.lower(value)
+}
+
+
+/**
  * Everything on the dashboard.
  */
 public struct LabSnapshot: Equatable, Hashable {
@@ -12747,6 +12808,106 @@ public func FfiConverterTypeHarnessPhase_lower(_ value: HarnessPhase) -> RustBuf
 
 
 
+
+public enum HighlightKind: Equatable, Hashable {
+    
+    case keyword
+    case string
+    case comment
+    case number
+    /**
+     * The name after `def` or `class`.
+     */
+    case definition
+    /**
+     * `@` and the dotted name after it, at the start of a line.
+     */
+    case decorator
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension HighlightKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHighlightKind: FfiConverterRustBuffer {
+    typealias SwiftType = HighlightKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HighlightKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .keyword
+        
+        case 2: return .string
+        
+        case 3: return .comment
+        
+        case 4: return .number
+        
+        case 5: return .definition
+        
+        case 6: return .decorator
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HighlightKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .keyword:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .string:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .comment:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .number:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .definition:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .decorator:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHighlightKind_lift(_ buf: RustBuffer) throws -> HighlightKind {
+    return try FfiConverterTypeHighlightKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHighlightKind_lower(_ value: HighlightKind) -> RustBuffer {
+    return FfiConverterTypeHighlightKind.lower(value)
+}
+
+
+
 /**
  * How precise fixes should be. Finer costs more battery.
  */
@@ -15510,6 +15671,31 @@ fileprivate struct FfiConverterSequenceTypeHarnessTask: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeHighlightSpan: FfiConverterRustBuffer {
+    typealias SwiftType = [HighlightSpan]
+
+    public static func write(_ value: [HighlightSpan], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHighlightSpan.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HighlightSpan] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HighlightSpan]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHighlightSpan.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLogLine: FfiConverterRustBuffer {
     typealias SwiftType = [LogLine]
 
@@ -16227,6 +16413,17 @@ public func installNativeTransfers(session: TransferSession)throws   {try rustCa
     )
 }
 }
+/**
+ * The coloured ranges in `source`, in order and never overlapping.
+ */
+public func pythonHighlight(source: String) -> [HighlightSpan]  {
+    return try!  FfiConverterSequenceTypeHighlightSpan.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_highlight(
+        FfiConverterString.lower(source),uniffiCallStatus
+    )
+})
+}
 public func transferTestCancel(id: String)throws   {try rustCallWithError(FfiConverterTypeTransferTestError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_func_transfer_test_cancel(
@@ -16376,6 +16573,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_install_native_transfers() != 47281) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_highlight() != 46371) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_transfer_test_cancel() != 22994) {

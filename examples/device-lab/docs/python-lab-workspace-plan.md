@@ -1,6 +1,6 @@
 # Python Lab: from script runner to workspace
 
-Status: **plan agreed in outline; PL1a and PL1b built** (Reuben, 2026-11-22). Their Rust is tested on Linux; their Swift is not compiled yet and nothing has run on the phone. Reuben's review of Python Lab found that it runs Python well but is still a script runner, not a place to work. This plan covers his first stage, **PL1 Workspace and interactive development**, in five small PRs. It checks his reading of the code first, and lists his later stages so that none of them is started early.
+Status: **plan agreed in outline; PL1a, PL1b and PL1c built** (Reuben, 2026-11-22). Their Rust is tested on Linux; their Swift is not compiled yet and nothing has run on the phone. Reuben's review of Python Lab found that it runs Python well but is still a script runner, not a place to work. This plan covers his first stage, **PL1 Workspace and interactive development**, in five small PRs. It checks his reading of the code first, and lists his later stages so that none of them is started early.
 
 It builds on [visual-labs-spec.md](visual-labs-spec.md) (graphics) and [bonsai-harness-plan.md](bonsai-harness-plan.md) (Bonsai). It changes neither of their decisions.
 
@@ -54,7 +54,7 @@ A `workspace` module in the Device Lab crate (beside `harness/`), exported throu
 - **Project state** in `<project>/.workspace/state.json`: the file to run, the files that were open and the cursor in each. Hidden folders are already skipped by the artifact list and the harness's file list.
 - Tests (Linux): every operation, refusals (escaping paths, links, names, limits), `scratch` protection, and the ladder move.
 
-### PL1b. The project browser and autosave (Swift, one PR)
+### PL1b. The project browser and autosave (Swift, one PR) — built
 
 Built: `PythonLabModel` over `Workspace` (projects, files, autosave a second after typing stops and on leaving or backgrounding, the open file remembered per project and the last project between launches), `PythonProjectsView` and `PythonFilesView` (ForgeUI's `forgeRename` for naming, `forgeRowActions` for rename, delete, Run This File, New File Here), and the Rust `python_lab_file_script(project, path)` with two Linux tests (a file imports its neighbours from its own folder and the project's; a traceback names `main.py, line 3` and `helper.py, line 2`; an edited module is picked up on the next run).
 
@@ -66,7 +66,7 @@ It also fixes a fault the #367 review found: Python Lab's Stop and time limit ca
 - Examples become "New file from example", which adds the sample as a file to the open project instead of replacing what you wrote.
 - **Migration:** whatever is in `scratch` stays. Nothing else exists to migrate, since manual code was never saved.
 
-### PL1c. A basic code editor (Swift view, Rust for the colours, one PR)
+### PL1c. A basic code editor (Swift view, Rust for the colours, one PR) — built
 
 A `UITextView` in a `UIViewRepresentable` (a view file, so UIKit is allowed there) instead of `TextEditor`:
 
@@ -78,6 +78,8 @@ A `UITextView` in a `UIViewRepresentable` (a view file, so UIKit is allowed ther
 - **Syntax colours** from a small Python tokenizer in Rust (keywords, strings including triple-quoted and f-strings, comments, numbers, `def` and `class` names, decorators), returning ranges that Swift colours with ForgeUI tones. Tested on Linux against Python's own `tokenize` on the samples. Re-coloured after typing pauses, for the whole file under 1 MB.
 
 Bracket matching and several open files are PL2.
+
+As built: the editor is `Sources/AppHost/PythonCodeEditor.swift` (TextKit 1, so the gutter can read line fragments) and the tokenizer `rust/src/python_highlight.rs` (`python_highlight(source) -> [HighlightSpan]`, ranges in UTF-16 units so Swift uses them as they are). Colours: keywords accent, strings success, numbers info, decorators warning, comments secondary text, `def` and `class` names semibold. Soft keywords (`match`, `case`, `type`) stay plain, since telling them from names needs a parser. Backspace in the indentation removes back to the last four-space stop. Bonsai Harness can reuse `python_highlight` for its live code view.
 
 ### PL1d. The interactive console (C bridge, Rust wrapper, Swift, one PR)
 

@@ -4,7 +4,7 @@ import ForgeUI
 
 /// Python Lab: a project of Python files, the open one in the editor (saved
 /// as you type), and Run running it on the phone with the embedded CPython
-/// (python-lab-workspace-plan.md, PL1b).
+/// (python-lab-workspace-plan.md, PL1b and PL1c).
 struct PythonLabView: View {
     @Bindable var model: PythonLabModel
     @Environment(\.scenePhase) private var scenePhase
@@ -15,14 +15,12 @@ struct PythonLabView: View {
                 projectSection
             }
             Section {
-                TextEditor(text: $model.code)
-                    .font(.system(.footnote, design: .monospaced))
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .frame(minHeight: 180)
-                    .disabled(model.hasWorkspace && model.openFile == nil)
-                    .accessibilityLabel(model.openFile.map { "Python file \($0)" } ?? "Python script")
-                    .accessibilityIdentifier("pythonLab.code")
+                PythonCodeEditor(
+                    text: $model.code,
+                    isEditable: !(model.hasWorkspace && model.openFile == nil),
+                    accessibilityLabel: model.openFile.map { "Python file \($0)" } ?? "Python script")
+                    .frame(minHeight: 320)
+                    .listRowInsets(EdgeInsets())
                 Menu {
                     ForEach(model.samples) { sample in
                         Button(sample.title) { model.load(sample) }
