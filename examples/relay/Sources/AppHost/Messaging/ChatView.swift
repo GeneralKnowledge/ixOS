@@ -1252,6 +1252,8 @@ private struct DeliveryLabel: View {
     static func text(_ delivery: ChatDelivery) -> String {
         switch delivery {
         case .sending: return String(localized: "Sending…")
+        // Its device couldn't be reached: it collects it from its mailbox.
+        case .inMailbox: return String(localized: "In the Mailbox")
         case .sent: return String(localized: "Delivered")
         case .read: return String(localized: "Read")
         case .failed: return String(localized: "Not Delivered. Tap to Try Again.")
