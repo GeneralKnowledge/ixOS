@@ -73,7 +73,7 @@ From the same scan, not yet judged:
 1. **E1** (Open Settings in Weather and FieldKit, with `ForgeStateAction.openSettings`): one small PR.
 2. **F2** (focus to the first invalid field): Pocket Library plus the `forgeui.md` recipe.
 3. **E3** (the starter keeps a failed save's text): goes with the next ForgeKit release, like the other starter changes.
-4. **E2** with each app's silent-wait move (0.2 item 9), Relay first. **E5** and **F4** when those apps are next touched.
+4. **E2** with each app's silent-wait move (0.2 item 9), Relay first (done in #413, with E3 and E5). **F4** when Relay's sign-up is next touched.
 5. Then the P1 pass.
 
 Phone time for 1 to 3: about 10 minutes. Deny location for Weather and FieldKit and use Open Settings. Submit a bad page number in Pocket Library and check where focus lands, with VoiceOver on.
