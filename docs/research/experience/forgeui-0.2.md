@@ -174,7 +174,7 @@ Phone time: about 15 minutes for the whole of 0.2, in the combined Device Lab si
 
 ## 6. Forge A2UI catalogue contract
 
-Designed with 0.2, owned outside ForgeUI. The layering is Reuben's (2026-11-22, in the [A2UI assessment](../external-projects/assessments/ai/a2ui.md) on #377): **A2UI decides which interface to compose; ForgeUI decides how it looks and behaves.** ForgeUI never imports A2UI. The adapter lives in Device Lab until a second app uses it.
+Designed with 0.2, owned outside ForgeUI. The layering is Reuben's (2026-11-22, in the A2UI assessment, `docs/research/external-projects/assessments/ai/a2ui.md` on [#377](https://github.com/GeneralKnowledge/ixOS/pull/377), not merged yet): **A2UI decides which interface to compose; ForgeUI decides how it looks and behaves.** ForgeUI never imports A2UI. The adapter lives in Device Lab until a second app uses it.
 
 ### 6.1 What the contract is
 
