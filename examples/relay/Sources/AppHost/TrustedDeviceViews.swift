@@ -129,15 +129,21 @@ struct ConnectionModeSection: View {
     let mode: ConnectionMode
     let servers: RelayServers
     var health: ServerHealth = .off
+    /// False where the screen shows the servers-down notice elsewhere
+    /// (Devices, at the top), so it isn't shown twice.
+    var showsDown = true
+    /// Whether the servers answer now, for the Servers screen, which reads
+    /// it again while it is open.
+    let readHealth: () -> ServerHealth
     let choose: (ConnectionMode) -> Void
     let chooseServers: (RelayServers) -> Void
 
-    /// `showsHealth`: false where the screen shows the servers-down notice
-    /// elsewhere (Devices, at the top), so it isn't shown twice.
     init(model: RelayModel, showsHealth: Bool = true) {
         mode = model.connectionMode
         servers = model.servers
-        health = showsHealth ? model.serverHealth : .off
+        health = model.serverHealth
+        showsDown = showsHealth
+        readHealth = { [core = model.core] in core.serverHealth() }
         choose = { mode in Task { await model.setConnectionMode(mode) } }
         chooseServers = { servers in Task { await model.setServers(servers) } }
     }
@@ -146,12 +152,14 @@ struct ConnectionModeSection: View {
         mode: ConnectionMode,
         servers: RelayServers,
         health: ServerHealth,
+        readHealth: @escaping () -> ServerHealth,
         choose: @escaping (ConnectionMode) -> Void,
         chooseServers: @escaping (RelayServers) -> Void
     ) {
         self.mode = mode
         self.servers = servers
         self.health = health
+        self.readHealth = readHealth
         self.choose = choose
         self.chooseServers = chooseServers
     }
@@ -166,14 +174,12 @@ struct ConnectionModeSection: View {
             .accessibilityIdentifier("devices.connectionMode")
             if mode == .hybrid {
                 NavigationLink {
-                    RelayServersView(servers: servers, choose: chooseServers)
+                    RelayServersView(servers: servers, readHealth: readHealth, choose: chooseServers)
                 } label: {
                     LabeledContent("Servers", value: Self.serversName(servers))
                 }
                 .accessibilityIdentifier("devices.servers")
-                if health == .unreachable {
-                    ServersDownNotice()
-                }
+                ServerHealthRow(health: health, showsDown: showsDown)
             }
         } header: {
             Text("Connections")
@@ -188,6 +194,39 @@ struct ConnectionModeSection: View {
         case .own: "Your Own"
         case .none: "None"
         }
+    }
+}
+
+/// While Relay checks the servers (for a few seconds after a change, or
+/// while it opens), says so, so the screen doesn't look idle; then the
+/// servers-down notice, or nothing once they answer.
+struct ServerHealthRow: View {
+    let health: ServerHealth
+    var showsDown = true
+
+    var body: some View {
+        switch health {
+        case .connecting:
+            ServersCheckingRow()
+        case .unreachable where showsDown:
+            ServersDownNotice()
+        default:
+            EmptyView()
+        }
+    }
+}
+
+/// "Checking the servers…" with a spinner.
+struct ServersCheckingRow: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+            Text("Checking the servers…")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("devices.serversChecking")
     }
 }
 
@@ -227,7 +266,9 @@ struct RelaySettingsSection: View {
             }
         }
         .onAppear { policy = core.pairingPolicy() }
-        ConnectionModeSection(mode: mode, servers: servers, health: health) { chosen in
+        ConnectionModeSection(
+            mode: mode, servers: servers, health: health, readHealth: { core.serverHealth() }
+        ) { chosen in
             mode = chosen
             Task {
                 do {
@@ -264,12 +305,19 @@ struct RelaySettingsSection: View {
 /// Advanced, under Everywhere: Relay's servers (the default), your own
 /// relay and lookup server, or none. Applies at once (N2).
 struct RelayServersView: View {
+    let readHealth: () -> ServerHealth
     let choose: (RelayServers) -> Void
     @State private var choice: RelayModel.ServerChoice
     @State private var relayURL: String
     @State private var lookupURL: String
+    @State private var health: ServerHealth = .off
 
-    init(servers: RelayServers, choose: @escaping (RelayServers) -> Void) {
+    init(
+        servers: RelayServers,
+        readHealth: @escaping () -> ServerHealth,
+        choose: @escaping (RelayServers) -> Void
+    ) {
+        self.readHealth = readHealth
         self.choose = choose
         let choice = RelayModel.ServerChoice(servers)
         _choice = State(initialValue: choice)
@@ -290,6 +338,13 @@ struct RelayServersView: View {
                 .accessibilityIdentifier("servers.choice")
             } footer: {
                 Text(footer)
+            }
+            // The servers just chosen are checked here, where they were
+            // chosen: checking, then down or nothing, without leaving.
+            if health == .connecting || health == .unreachable {
+                Section {
+                    ServerHealthRow(health: health)
+                }
             }
             if choice == .own {
                 Section("Your Own Servers") {
@@ -312,6 +367,12 @@ struct RelayServersView: View {
             }
         }
         .navigationTitle("Servers")
+        .task {
+            while !Task.isCancelled {
+                health = readHealth()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
         .onChange(of: choice) { _, chosen in
             switch chosen {
             case .relays: choose(ownRelayServers())
@@ -396,7 +457,16 @@ struct TrustedDeviceView: View {
                     Button {
                         pickingFiles = true
                     } label: {
-                        Label("Send Files", systemImage: "doc.badge.plus")
+                        // Copying the picked files in can take a moment.
+                        Label {
+                            Text(sending ? "Sending…" : "Send Files")
+                        } icon: {
+                            if sending {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "doc.badge.plus")
+                            }
+                        }
                     }
                     .disabled(sending)
                     .accessibilityIdentifier("trusted.sendFiles")
@@ -421,7 +491,15 @@ struct TrustedDeviceView: View {
                         asking = false
                     }
                 } label: {
-                    Label(asking ? "Asking…" : "Ask Again", systemImage: "arrow.clockwise")
+                    Label {
+                        Text(asking ? "Asking…" : "Ask Again")
+                    } icon: {
+                        if asking {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
                 }
                 .disabled(asking)
                 .accessibilityIdentifier("trusted.askStatus")
@@ -541,13 +619,13 @@ struct TrustedDeviceView: View {
         }
         .navigationTitle(device.name)
         .navigationBarTitleDisplayMode(.inline)
-        // Ask once when the device can be reached; Ask Again does it later.
+        // Ask each time the screen opens, offline or not: what it offers
+        // (a site) may have changed since, and "offline" may only mean
+        // nothing has connected lately. Ask Again does it later.
         .task(id: device.endpointId) {
-            if device.presence != .offline {
-                asking = true
-                await model.refreshStatus(of: device)
-                asking = false
-            }
+            asking = true
+            await model.refreshStatus(of: device)
+            asking = false
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

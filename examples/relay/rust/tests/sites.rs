@@ -99,11 +99,13 @@ fn fetch(
     block_on(viewer.fetch_site(host.to_string(), get(path)))
 }
 
-/// The site wouldn't open: the connection was refused, or (on one opened
-/// before the change) the request was answered 403.
+/// The site wouldn't open, and the viewer is told it isn't let in (not
+/// that the connection broke): refused at the connection, or (on one
+/// opened before the change) answered 403.
 fn refused(viewer: &RelayCore, host: &str) -> bool {
     match fetch(viewer, host, "/") {
-        Err(_) => true,
+        Err(relay_core::RelayError::Declined { .. }) => true,
+        Err(other) => panic!("refused, but said as {other:?}"),
         Ok(page) => page.status == 403,
     }
 }
@@ -235,8 +237,6 @@ fn revoking_the_device_ends_its_visit_and_its_grant() {
 fn a_computer_opens_the_site_in_any_browser_through_a_local_port() {
     let dir = tempfile::tempdir().unwrap();
     let (laptop, phone, laptop_id, phone_id) = laptop_and_phone(dir.path());
-    block_on(laptop.set_grant(phone_id, Capability::Sites, true)).unwrap();
-
     let port = phone.open_site_port(&laptop_id, 0).unwrap();
     let host = port
         .url
@@ -246,6 +246,15 @@ fn a_computer_opens_the_site_in_any_browser_through_a_local_port() {
         .unwrap()
         .to_string();
     assert!(host.ends_with(".localhost"), "{}", port.url);
+    // Without the grant the browser is told it isn't let in, not that
+    // the connection broke.
+    let answer = http_get(port.port, &host, "/notes/today.txt");
+    assert!(answer.starts_with("HTTP/1.1 403"), "{answer}");
+    assert!(
+        answer.contains("doesn't let this one open its site"),
+        "{answer}"
+    );
+    block_on(laptop.set_grant(phone_id, Capability::Sites, true)).unwrap();
     assert_eq!(host.len(), 52 + ".localhost".len(), "the whole id: {host}");
     for _ in 0..3 {
         let answer = http_get(port.port, &host, "/notes/today.txt");
@@ -260,7 +269,7 @@ fn a_computer_opens_the_site_in_any_browser_through_a_local_port() {
     // Revoked here, the open port stops reaching it.
     block_on(phone.revoke_device(laptop_id.clone())).unwrap();
     let answer = http_get(port.port, &host, "/notes/today.txt");
-    assert!(answer.starts_with("HTTP/1.1 502"), "{answer}");
+    assert!(answer.starts_with("HTTP/1.1 403"), "{answer}");
     assert!(!answer.contains("milk"), "{answer}");
     drop(port);
 }
