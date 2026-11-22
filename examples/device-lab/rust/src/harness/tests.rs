@@ -2003,6 +2003,22 @@ fn an_answer_saved_before_the_app_closed_lets_the_plan_go_on() {
     assert_eq!(view.state, PlanState::Blocked);
     assert!(view.state.needs_answer() && view.blocked.is_some());
     assert!(!view.can_continue());
+    // When that write failed, the plan is marked Failed in memory only:
+    // the question still stands, and Resume must not run the task.
+    let mut failed = decided.to_vec();
+    failed.push(Entry::PlanStatus {
+        plan: "plan-1".into(),
+        status: PlanState::Failed,
+        reason: Some("Could not save the plan status".into()),
+        at_ms: 3,
+    });
+    let view = plan::PlanView::read(&failed).unwrap();
+    assert_eq!(view.state, PlanState::Failed);
+    assert_eq!(
+        view.blocked.as_ref().map(|(_, q)| q.as_str()),
+        Some("Which file?")
+    );
+    assert!(!view.can_continue());
     entries.push(Entry::PersonAnswer {
         plan: "plan-1".into(),
         plan_task: first,

@@ -874,8 +874,7 @@ impl BonsaiHarness {
         if answer.is_empty() {
             return Err(HarnessError::EmptyTask);
         }
-        let (project, root, view) =
-            self.claim_plan(|view| view.state.needs_answer() && view.blocked.is_some())?;
+        let (project, root, view) = self.claim_plan(|view| view.blocked.is_some())?;
         let Some((task, _)) = view.blocked.clone() else {
             self.release();
             return Err(HarnessError::NoPlan);
@@ -1084,11 +1083,7 @@ fn plan_record(view: &PlanView) -> HarnessPlan {
         tasks,
         acceptance: view.criteria.iter().map(Criterion::describe).collect(),
         can_continue: view.can_continue(),
-        question: view
-            .blocked
-            .as_ref()
-            .filter(|_| view.state.needs_answer())
-            .map(|(_, question)| question.clone()),
+        question: view.blocked.as_ref().map(|(_, question)| question.clone()),
     }
 }
 
@@ -1266,6 +1261,10 @@ impl Run {
         let Some(view) = self.plan_view(plan) else {
             return;
         };
+        if view.blocked.is_some() {
+            // Nothing runs until the person answers the question.
+            return;
+        }
         if view.tasks.is_empty() {
             // It never got a plan: write one now.
             if let Err(end) = self

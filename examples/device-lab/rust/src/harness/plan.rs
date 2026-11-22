@@ -641,7 +641,9 @@ impl PlanView {
     /// Whether it can be approved or resumed: waiting for approval, ended
     /// early, or blocked with its question answered.
     pub fn can_continue(&self) -> bool {
-        self.state.can_continue() || (self.state == PlanState::Blocked && self.blocked.is_none())
+        // An unanswered question blocks the plan whatever its status says:
+        // a failed status write can leave it Failed in memory only.
+        self.blocked.is_none() && (self.state.can_continue() || self.state == PlanState::Blocked)
     }
 
     fn completed_owned(&self) -> Vec<String> {
