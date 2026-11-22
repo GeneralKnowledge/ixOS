@@ -487,14 +487,19 @@ impl RelayCore {
             crate::device::clean_offered_name(name, if collection { "folder" } else { "file" });
         let folder = host.folder();
         let placed = crate::code::place(&node, root, collection, &folder, &name).await;
-        let complete = placed.is_ok() || added_all(&node, root, collection).await;
+        // Whether it is all here, when placing failed: a storage error
+        // while checking is a reason to try again, not to drop it.
+        let complete = match &placed {
+            Ok(_) => Ok(true),
+            Err(_) => added_all(&node, root, collection).await,
+        };
         crate::code::release(&node, root).await;
         drop(added);
         let path = match placed {
             Ok(path) => path,
             // Not all of it came (a blob missing or not what it claimed):
             // never better on a later round.
-            Err(e) if !complete => {
+            Err(e) if matches!(complete, Ok(false)) => {
                 forge_runtime::logging::info!(
                     "relay: mailbox files that didn't verify were dropped: {e}"
                 );
@@ -506,16 +511,17 @@ impl RelayCore {
             }
         };
         let from = from.to_string();
+        // Saved means its history entry, message and id are committed;
+        // only then is the item acknowledged.
         let saved = tokio::task::spawn_blocking(move || {
             let entry = host.begin_file(&from, &name, size)?;
-            host.finish_file(
+            host.file_done(
                 entry,
                 &from,
                 id,
                 hash,
                 Ok(path.to_string_lossy().into_owned()),
-            );
-            Ok::<_, crate::model::RelayError>(())
+            )
         })
         .await;
         match saved {
@@ -527,25 +533,30 @@ impl RelayCore {
 
 /// Whether the store has the content `hash` complete: the blob, and for
 /// a folder every blob its collection lists.
-async fn added_all(node: &Node, hash: iroh_blobs::Hash, collection: bool) -> bool {
-    if !node.store.has(hash).await.unwrap_or(false) {
-        return false;
+/// An error is a storage problem, not missing content.
+async fn added_all(node: &Node, hash: iroh_blobs::Hash, collection: bool) -> Result<bool, String> {
+    let has = |h| async move { node.store.has(h).await.map_err(|e| e.to_string()) };
+    if !has(hash).await? {
+        return Ok(false);
     }
     if !collection {
-        return true;
+        return Ok(true);
     }
-    let Ok(list) = node.store.get_bytes(hash).await else {
-        return false;
-    };
+    let list = node
+        .store
+        .get_bytes(hash)
+        .await
+        .map_err(|e| e.to_string())?;
+    // A collection whose list doesn't read as one is invalid content.
     let Ok(seq) = iroh_blobs::hashseq::HashSeq::try_from(list) else {
-        return false;
+        return Ok(false);
     };
     for child in seq.iter() {
-        if !node.store.has(child).await.unwrap_or(false) {
-            return false;
+        if !has(child).await? {
+            return Ok(false);
         }
     }
-    true
+    Ok(true)
 }
 
 /// What became of an item collected from the mailbox.
