@@ -783,6 +783,14 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func setNotToday(notToday: Bool, now: LocalTime) async throws  -> TodayPlan
     
     /**
+     * The clock changes the phone expects in the coming week (daylight
+     * saving), from its time zone. The host sets them before
+     * `refresh_reminders`, so a reminder after a change keeps the owner's
+     * local time. Kept in memory: the host sets them on every launch.
+     */
+    func setOffsetChanges(changes: [OffsetChange]) 
+    
+    /**
      * The host reports the application lifecycle phase.
      */
     func setPhase(phase: AppPhase) 
@@ -1405,6 +1413,21 @@ open func setNotToday(notToday: Bool, now: LocalTime)async throws  -> TodayPlan 
             liftFunc: FfiConverterTypeTodayPlan_lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
+}
+    
+    /**
+     * The clock changes the phone expects in the coming week (daylight
+     * saving), from its time zone. The host sets them before
+     * `refresh_reminders`, so a reminder after a change keeps the owner's
+     * local time. Kept in memory: the host sets them on every launch.
+     */
+open func setOffsetChanges(changes: [OffsetChange])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_good_dog_app_fn_method_appcore_set_offset_changes(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeOffsetChange.lower(changes),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -3272,6 +3295,76 @@ public func FfiConverterTypeLocalTime_lift(_ buf: RustBuffer) throws -> LocalTim
 #endif
 public func FfiConverterTypeLocalTime_lower(_ value: LocalTime) -> RustBuffer {
     return FfiConverterTypeLocalTime.lower(value)
+}
+
+
+/**
+ * A change of the phone's offset from UTC expected soon (a clock change),
+ * so reminders after it keep the owner's local time.
+ */
+public struct OffsetChange: Equatable, Hashable {
+    /**
+     * When it happens, Unix milliseconds.
+     */
+    public var atMs: Int64
+    /**
+     * The offset from then on.
+     */
+    public var utcOffsetMinutes: Int32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * When it happens, Unix milliseconds.
+         */atMs: Int64, 
+        /**
+         * The offset from then on.
+         */utcOffsetMinutes: Int32) {
+        self.atMs = atMs
+        self.utcOffsetMinutes = utcOffsetMinutes
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension OffsetChange: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOffsetChange: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OffsetChange {
+        return
+            try OffsetChange(
+                atMs: FfiConverterInt64.read(from: &buf), 
+                utcOffsetMinutes: FfiConverterInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OffsetChange, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.atMs, into: &buf)
+        FfiConverterInt32.write(value.utcOffsetMinutes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOffsetChange_lift(_ buf: RustBuffer) throws -> OffsetChange {
+    return try FfiConverterTypeOffsetChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOffsetChange_lower(_ value: OffsetChange) -> RustBuffer {
+    return FfiConverterTypeOffsetChange.lower(value)
 }
 
 
@@ -6221,6 +6314,31 @@ fileprivate struct FfiConverterSequenceTypeLinkedText: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeOffsetChange: FfiConverterRustBuffer {
+    typealias SwiftType = [OffsetChange]
+
+    public static func write(_ value: [OffsetChange], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeOffsetChange.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [OffsetChange] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [OffsetChange]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeOffsetChange.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypePathwaySummary: FfiConverterRustBuffer {
     typealias SwiftType = [PathwaySummary]
 
@@ -6592,6 +6710,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_set_not_today() != 32623) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_good_dog_app_checksum_method_appcore_set_offset_changes() != 9417) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_set_phase() != 55972) {

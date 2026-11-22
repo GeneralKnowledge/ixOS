@@ -88,6 +88,8 @@ public final class GoodDogModel {
     public let host: ForgeHost<AppCore>
     public var core: AppCore? { host.core }
     private let clock: @Sendable () -> LocalTime
+    /// The phone's clock changes in the reminders' week; none on a fixed clock.
+    private let offsetChanges: @Sendable () -> [OffsetChange]
     /// Set up before the first read when the store has no dog yet.
     private let sampleDog: DogProfile?
 
@@ -103,10 +105,13 @@ public final class GoodDogModel {
         self.sampleDog = sampleDog
         if let clock {
             self.clock = clock
+            self.offsetChanges = { [] }
         } else if Self.usesTestData {
             self.clock = { LocalTime.uiTest }
+            self.offsetChanges = { [] }
         } else {
             self.clock = { LocalTime.now() }
+            self.offsetChanges = { LocalTime.offsetChanges() }
         }
     }
 
@@ -191,6 +196,7 @@ public final class GoodDogModel {
         } catch {
             log.warn("sample dog not saved: \(error)")
         }
+        core.setOffsetChanges(changes: offsetChanges())
         await core.refreshReminders(now: clock())
         await reload()
     }
@@ -218,6 +224,8 @@ public final class GoodDogModel {
     /// Back from the background, possibly on a new day: the reminders'
     /// week moves on and today's plan may be a new one.
     public func resumed() async {
+        // The time zone may have changed while the app was away.
+        core?.setOffsetChanges(changes: offsetChanges())
         await core?.refreshReminders(now: clock())
         await reload()
     }
@@ -527,5 +535,25 @@ extension LocalTime {
             ms: Int64(Date().timeIntervalSince1970 * 1000),
             utcOffsetMinutes: Int32(TimeZone.current.secondsFromGMT() / 60)
         )
+    }
+
+    /// The phone's clock changes (daylight saving) in the next `days`, so
+    /// Rust puts each day's reminder at that day's local time.
+    public static func offsetChanges(
+        in zone: TimeZone = .current,
+        from start: Date = Date(),
+        days: Int = 9
+    ) -> [OffsetChange] {
+        let end = start.addingTimeInterval(TimeInterval(days * 86_400))
+        var changes: [OffsetChange] = []
+        var after = start
+        while let next = zone.nextDaylightSavingTimeTransition(after: after), next <= end {
+            changes.append(OffsetChange(
+                atMs: Int64(next.timeIntervalSince1970 * 1000),
+                utcOffsetMinutes: Int32(zone.secondsFromGMT(for: next) / 60)
+            ))
+            after = next
+        }
+        return changes
     }
 }

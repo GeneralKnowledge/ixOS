@@ -413,6 +413,11 @@ uint64_t uniffi_good_dog_app_fn_method_appcore_set_goal_aside(uint64_t ptr, uint
 uint64_t uniffi_good_dog_app_fn_method_appcore_set_not_today(uint64_t ptr, int8_t not_today, RustBuffer now
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SET_OFFSET_CHANGES
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SET_OFFSET_CHANGES
+void uniffi_good_dog_app_fn_method_appcore_set_offset_changes(uint64_t ptr, RustBuffer changes, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SET_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SET_PHASE
 void uniffi_good_dog_app_fn_method_appcore_set_phase(uint64_t ptr, RustBuffer phase, RustCallStatus *_Nonnull out_status
@@ -994,6 +999,12 @@ uint16_t uniffi_good_dog_app_checksum_method_appcore_set_goal_aside(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_SET_NOT_TODAY
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_SET_NOT_TODAY
 uint16_t uniffi_good_dog_app_checksum_method_appcore_set_not_today(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_SET_OFFSET_CHANGES
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_SET_OFFSET_CHANGES
+uint16_t uniffi_good_dog_app_checksum_method_appcore_set_offset_changes(void
     
 );
 #endif
