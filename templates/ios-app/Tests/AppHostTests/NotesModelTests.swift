@@ -112,6 +112,24 @@ final class NotesModelTests: XCTestCase {
         XCTAssertNotNil(model.alert)
         XCTAssertEqual(model.alert?.buttons.map(\.identifier), ["alert.ok"])
         XCTAssertEqual(model.note(id: milk.id)?.text, "Buy oat milk")
+        // The refused text is kept for the note's screen, not lost with it.
+        XCTAssertEqual(model.unsavedText[milk.id], "   ")
+        model.discardUnsaved(milk.id)
+        XCTAssertNil(model.unsavedText[milk.id])
+        host.close()
+    }
+
+    @MainActor
+    func testAFailedSaveKeepsTheTextUntilItSaves() async throws {
+        let (host, model) = try await open(try makeDirectory())
+        try await model.add(text: "Draft")
+        let note = try XCTUnwrap(model.notes.first)
+
+        XCTAssertFalse(await model.update(note, text: "  "))
+        XCTAssertEqual(model.unsavedText[note.id], "  ")
+        XCTAssertTrue(await model.update(note, text: "Draft, finished"))
+        XCTAssertNil(model.unsavedText[note.id], "a save clears what was kept")
+        XCTAssertEqual(model.note(id: note.id)?.text, "Draft, finished")
         host.close()
     }
 

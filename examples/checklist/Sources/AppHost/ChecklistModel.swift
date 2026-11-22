@@ -89,16 +89,26 @@ public final class ChecklistModel {
     }
 
     /// The items matching `query`, or nil if the search was stopped (the
-    /// task was cancelled, or the app went to the background). Cancelling
-    /// the calling task stops the search in Rust.
+    /// task was cancelled, or the app went to the background) or failed.
+    /// Cancelling the calling task stops the search in Rust. A failure that
+    /// isn't a stop sets `errorMessage`, like the other commands, so a
+    /// broken search doesn't look like an empty one.
     public func search(_ query: String) async -> [Item]? {
         do {
             return try await withRustCancellation { cancellation in
                 try await self.core.search(query: query, cancellation: cancellation)
             }
         } catch {
+            if !Self.isStop(error) { errorMessage = Checklist.message(for: error) }
             return nil
         }
+    }
+
+    /// A cancelled or interrupted command: not something to report.
+    nonisolated public static func isStop(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if case .Stopped? = error as? ChecklistError { return true }
+        return false
     }
 
     /// Writes the checklist as text for sharing; nil (with `errorMessage`
