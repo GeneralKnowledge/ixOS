@@ -221,7 +221,18 @@ pub(crate) fn seal(
         from: *sender.public().as_bytes(),
         expires_ms,
     };
-    let signature = sender.sign(&signed(&header, payload));
+    seal_as(header, sender, to_key, payload)
+}
+
+/// Seals `payload` under `header`, signed by `signer`: [`seal`], and in
+/// tests a signer that isn't the header's `from`.
+fn seal_as(
+    header: Header,
+    signer: &SecretKey,
+    to_key: &[u8; 32],
+    payload: &[u8],
+) -> Result<SealedItem, MailboxError> {
+    let signature = signer.sign(&signed(&header, payload));
     let inner = Inner {
         signature: signature.to_bytes().to_vec(),
         payload: payload.to_vec(),
@@ -455,6 +466,26 @@ mod tests {
         assert_eq!(
             open(&key, &phone.public(), &item, NOW, |_| true),
             Err(MailboxError::Unreadable)
+        );
+    }
+
+    #[test]
+    fn a_signature_by_anyone_but_the_sender_is_refused() {
+        // Sealed properly to the phone, under the laptop's name, but signed
+        // inside by a stranger: the seal opens, the signature doesn't hold.
+        let (laptop, phone, stranger) = (device(1), device(2), device(3));
+        let key = MailboxKey::from_seed([9; 32]);
+        let header = Header {
+            version: VERSION,
+            id: [7; 16],
+            to: *phone.public().as_bytes(),
+            from: *laptop.public().as_bytes(),
+            expires_ms: LATER,
+        };
+        let item = seal_as(header, &stranger, &key.public(), b"hello").unwrap();
+        assert_eq!(
+            open(&key, &phone.public(), &item, NOW, |_| true),
+            Err(MailboxError::BadSignature)
         );
     }
 
