@@ -184,6 +184,27 @@ for key in sorted(listed.keys() - used):
         f"{key[1]} -> {key[2]}. Delete the entry"
     )
 
+# Third-party Swift packages. ixOS has one, approved for a test only:
+# Google's A2UI renderer in Device Lab (A2UI-1, Reuben 2026-11-22,
+# docs/research/external-projects/assessments/ai/a2ui.md). Anything else,
+# or A2UI anywhere but Device Lab (ForgeKit, an app, the templates), fails.
+SWIFT_PACKAGES_ALLOWED = {
+    ("examples/device-lab/Package.swift", "https://github.com/a2ui-project/a2ui"),
+}
+for manifest in sorted(root.rglob("Package.swift")):
+    rel = manifest.relative_to(root).as_posix()
+    if any(part in (".build", "target", "node_modules") for part in manifest.parts):
+        continue
+    for line in manifest.read_text().splitlines():
+        if line.strip().startswith("//"):
+            continue
+        for url in re.findall(r"\.package\(\s*url:\s*\"([^\"]+)\"", line):
+            if (rel, url.removesuffix(".git")) not in SWIFT_PACKAGES_ALLOWED:
+                errors.append(
+                    f"{rel}: third-party Swift package {url} isn't allowed here "
+                    f"(scripts/check-boundaries.sh, SWIFT_PACKAGES_ALLOWED)"
+                )
+
 if errors:
     for e in errors:
         print(f"error: {e}", file=sys.stderr)

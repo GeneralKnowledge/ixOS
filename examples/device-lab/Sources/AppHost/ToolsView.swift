@@ -12,6 +12,7 @@ struct ToolsView: View {
     @State private var llamaLab = LlamaLabModel()
     @State private var pythonLab = PythonLabModel.live()
     @State private var harness = BonsaiHarnessModel.live()
+    @State private var a2uiLab = A2uiLabModel()
 
     var body: some View {
         List {
@@ -94,6 +95,16 @@ struct ToolsView: View {
                 .accessibilityIdentifier("tools.bonsaiHarness")
             } footer: {
                 Text("Give Bonsai a Python task: it writes, runs and fixes the code on this phone, and the harness checks the result.")
+            }
+            Section {
+                NavigationLink {
+                    A2uiLabView(model: a2uiLab)
+                } label: {
+                    Label("A2UI Lab", systemImage: "rectangle.3.group")
+                }
+                .accessibilityIdentifier("tools.a2uiLab")
+            } footer: {
+                Text("An agent's reading plan drawn natively from A2UI messages, checked by the app, applied only when you confirm.")
             }
             Section {
                 NavigationLink {

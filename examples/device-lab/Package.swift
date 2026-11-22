@@ -49,6 +49,11 @@ let package = Package(
         .package(path: "../soundscape"),
         .package(path: "../urdu-naturally"),
         .package(path: "../relay"),
+        // A2UI-1 (A2UI Lab): Google's official A2UI renderer. ixOS's first
+        // third-party Swift package, approved for Device Lab only, to test
+        // it, not to adopt it: nothing else may depend on it
+        // (docs/research/external-projects/assessments/ai/a2ui.md).
+        .package(url: "https://github.com/a2ui-project/a2ui", .upToNextMinor(from: "0.11.0")),
     ],
     targets: [
         // llama.cpp's prebuilt framework (Metal kernels embedded, nothing to
@@ -132,6 +137,11 @@ let package = Package(
                 .product(name: "ForgeUI", package: "forgekit"),
                 // The interaction patterns page (PatternsView.swift).
                 .product(name: "ForgeAppKit", package: "forgekit"),
+                // A2UI Lab only (A2uiLabSurface.swift).
+                .product(name: "A2UISwiftCore", package: "a2ui"),
+                .product(name: "A2UISwiftUI", package: "a2ui"),
+                .product(name: "BasicCatalog", package: "a2ui"),
+                .product(name: "BasicCatalogSwiftUI", package: "a2ui"),
             ],
             path: "Sources/AppHost",
             swiftSettings: hostSettings

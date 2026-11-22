@@ -13,6 +13,7 @@
 //! dashboard is on screen; a snapshot only copies memory. Sensors run only
 //! while the app is active ([`DeviceLab::set_active`]).
 
+pub mod a2ui_lab;
 pub mod ai_lab;
 pub mod crash_test;
 pub mod harness;

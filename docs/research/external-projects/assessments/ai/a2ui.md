@@ -1,6 +1,6 @@
 # A2UI: agent-composed native interfaces beside ForgeUI?
 
-Status: 2026-11-22. Part of the [External Projects Atlas](../../README.md). Research only: nothing is added to ixOS by this page. This is milestone A2UI-0 of Reuben's A2UI plan (2026-11-22); it ends with a proposed A2UI-1 scope that waits for his approval.
+Status: 2026-11-22. Part of the [External Projects Atlas](../../README.md). Milestone A2UI-0 of Reuben's A2UI plan (2026-11-22). Reuben approved A2UI-1 the same day with the decisions and acceptance conditions [below](#decisions-reuben-2026-11-22); A2UI-1 is built in Device Lab ([A2UI-1 as built](#a2ui-1-as-built)).
 
 ## Question
 
@@ -139,7 +139,7 @@ Reuben's four app examples all have the same shape, which is what A2UI is good a
 
 Reopen when: the A2UI-1 spike builds (or fails) under xtool; Compose reaches A2UI 1.0; or a second app wants agent-composed UI after the first.
 
-## Next step: proposed A2UI-1 scope (waits for Reuben's approval)
+## Next step: proposed A2UI-1 scope (approved 2026-11-22)
 
 **A2UI Lab: one fixed reading-plan surface, rendered natively in Device Lab, no model.** One PR, Device Lab only, nothing in ForgeKit or any app.
 
@@ -152,8 +152,66 @@ Reopen when: the A2UI-1 spike builds (or fails) under xtool; Compose reaches A2U
 
 What A2UI-1 deliberately leaves out: any model (A2UI-4), Android (A2UI-2), agent-callable functions, any real app data (A2UI-5), and any ForgeKit module (only after a second app uses it, per the apps-first rule).
 
-### Open decisions for Reuben
+### Open decisions for Reuben (all decided, below)
 
 1. **The first third-party Swift dependency.** Allowing `a2ui` (and `swift-json-schema`, `swift-collections`) into Device Lab's `Package.swift` for the spike. The alternative is writing an ixOS renderer for a narrow slice of the v1.0 wire format on ForgeUI, which is reinvention and only worth it if the spike fails.
 2. **A2UI-2 (Android).** Recommend **deferring** it until Compose supports A2UI 1.0 and Android's A8 is done, since it would add Android scope beyond Pocket Library.
 3. **A2UI-4's first agent.** Recommend a typed plan filled by Apple's on-device model or Bonsai and rendered by Rust, before free-form UI from a model.
+
+## Decisions (Reuben, 2026-11-22)
+
+"Promising enough to prototype, but not yet proven enough to adopt." A2UI-1 goes ahead as proposed, deliberately small: eight components, one fixture, one update, one propose-only function, one app-owned confirmation flow.
+
+1. **First third-party Swift dependency: approved for Device Lab only.** Use the official Swift renderer, not a home-grown one. Keep it out of ForgeKit and production apps. Record build time, package resolution, generated-code (build plugin) behaviour and app-size impact. If the xtool build fails, **stop and report**: don't vendor the generated files or rewrite the integration. This is permission to test the dependency, not to adopt it.
+2. **Android deferred.** Android A2UI waits until Google's Compose renderer supports A2UI 1.0 **and** ixOS Android A8 is done. Prove iOS first.
+3. **Typed structure before free-form UI.** The progression: a model produces a typed reading-plan proposal; Rust validates its structure and constraints; Rust generates the A2UI messages; Swift renders them with the registered ForgeUI-backed components; the person edits the draft; Rust validates the proposed changes; the app-owned Confirm presents the actual change set; existing app logic applies it only after confirmation. If a fixed, typed structure gives a genuinely better interaction, that is the reason to explore more flexible generation later.
+
+### A2UI-1 acceptance conditions
+
+| Area | Requirement |
+|---|---|
+| Invalid input | Unknown component types, event names and malformed payloads are rejected safely |
+| Privacy | No user content or complete A2UI payloads in logs |
+| Accessibility | VoiceOver and Dynamic Type must work, not merely pass a visual inspection |
+| Confirmation | Confirm displays a Rust-derived change set, never a summary supplied by the A2UI surface |
+| Updates | An incremental update can't silently change the meaning of an existing action, or alter the proposed change set without the confirmation view reflecting it |
+
+## A2UI-1 as built
+
+Device Lab, Tools → **A2UI Lab**. Rust in `examples/device-lab/rust/src/a2ui_lab/`, Swift in `examples/device-lab/Sources/AppHost/A2uiLab*.swift`.
+
+| Step | Where | What it does |
+|---|---|---|
+| Typed proposal | `plan.rs` | `Proposal` holds book ids, priorities and dates only (no titles, no interface). Checked: known books, no repeats, 1 to 12 books, real dates, finish not before start, at most a year. A2UI-1's proposal and the agent's revision are fixed JSON, standing in for a model |
+| Messages | `surface.rs` | The same fixed tree every time: a book card template (title, author, priority chips, start and finish dates) and one Review button. The proposal only changes data |
+| Gate | `gate.rs` | Every agent-to-renderer payload, before Swift sees it: A2UI 1.0 only, the lab's surface and catalog, the eight components, no `@call` / `functionCall` / `callRendererFunction` / `deleteSurface` / `@catalogId`, the one registered event from the one registered button with exactly its context and no `userMessage`, no change to an existing component's action, data only at `/books` holding known books. All or nothing: a refused payload changes nothing |
+| Rendering | `A2uiLabSurface.swift` | `MessageProcessor` with `ValidationConfig.strict` and a catalog derived from A2UI's v1.0 basic catalog: Column, Row, Card, Divider, Button, DateTimeInput, ChoicePicker, and a ForgeUI Text; no functions at all. Cards are `ForgeCard`s and buttons use ForgeUI's theme through A2UI's style hooks |
+| Review | `A2uiLab::review` | The Review button's event comes back through the renderer's outbound listener. Rust checks the event name and source, the edited plan (same books as the proposal, one priority each, valid dates), and derives the change set from **its own books**: titles and authors from the library, plans from Rust's check, "Replaces" from what was saved |
+| Confirm | `A2uiReviewSheet` | App-owned sheet, outside the surface, showing only Rust's change set. `confirm(revision)` applies only if nothing changed since the review: an agent update or an edit on the surface drops the reviewed change set, and Confirm then refuses and asks for a new review. It writes a stand-in library only |
+| Logs | `mod.rs` | Codes and counts only (`refused: action_changed`, `reviewed: 4 changes`); never a payload, a title or a date |
+
+Tests (Linux, `cargo test --lib a2ui_lab` in `examples/device-lab/rust`, 15 tests): every hostile payload refused with the right code and nothing changed; the lab's own surface passes its gate with eight component types and exactly one action; titles in the change set come from the library even when the surface's data says otherwise; an update or an edit after review makes Confirm refuse; Confirm needs a review and applies once.
+
+The rule that only Device Lab may use A2UI is checked: `scripts/check-boundaries.sh` fails on any third-party Swift package outside its allowlist, which holds A2UI in `examples/device-lab/Package.swift` only.
+
+### Build spike record
+
+| Item | Result |
+|---|---|
+| Package resolution (time, what was fetched) | Not run yet |
+| Build-tool plugin (`A2UISchemaGeneratorPlugin`) under xtool | Not run yet |
+| Build time, clean and incremental | Not run yet |
+| App size before and after | Not run yet |
+| Swift compile of the lab | Not run yet |
+
+### Phone check (needs the iPhone, about 10 minutes)
+
+Proves the acceptance conditions on the device; only Reuben's report counts.
+
+1. Tools → A2UI Lab → **Show the Proposal**: four book cards in ForgeUI's look, light and dark.
+2. Change one book's priority and one date, then **Review changes**: the sheet lists only Rust's rows (titles from the library) and Confirm saves them; **Saved plans** shows them.
+3. Review again without changes: "Nothing would change", Confirm disabled.
+4. **Send the Agent's Update**: the intro text and the dates change, and nothing else does. Review: the rows show the agent's new dates. (Confirming a review made before an update or an edit is refused; the sheet covers the controls, so that path is proved by the Rust tests.)
+5. **Send a Bad Payload**, each of the eight: each is refused with a reason and the cards don't change.
+6. VoiceOver: each card reads its book title; the priority chips read their state; the date fields and Review button are reachable and named. Largest Dynamic Type size: nothing clipped, the screen scrolls.
+7. Tools → Logs, filter `a2ui_lab`: only codes and counts, no titles, dates or payloads.
