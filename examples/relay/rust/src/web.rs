@@ -214,6 +214,20 @@ fn bad(reason: &str) -> RelayError {
     }
 }
 
+/// The site's device closed `conn` because this one may not open its
+/// site (no grant, or nothing shared): said as such, not as a broken
+/// connection.
+fn not_let_in(conn: &Connection) -> Option<RelayError> {
+    matches!(
+        conn.close_reason(),
+        Some(iroh::endpoint::ConnectionError::ApplicationClosed(ref c))
+            if c.error_code == NOT_ALLOWED.into()
+    )
+    .then(|| RelayError::Declined {
+        reason: "That device doesn't let this one open its site.".into(),
+    })
+}
+
 /// Reads one request head (up to `MAX_HEAD`) from `read`.
 async fn read_head<R: tokio::io::AsyncRead + Unpin>(read: &mut R) -> Result<Head, RelayError> {
     let mut buf = Vec::with_capacity(4096);
@@ -796,45 +810,48 @@ async fn forward(
         // finished while it was being dialled couldn't close it, and one
         // that finishes from now on closes it (it is the kept one).
         route_now()?;
-        let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
-        send.write_all(&rewritten(&head, None))
-            .await
-            .map_err(|e| bad(&e.to_string()))?;
-        let (mut from_browser, mut to_browser) = browser.split();
-        let moving = Activity::new();
-        let upload = async {
-            copy_body(
-                &mut from_browser,
-                &mut send,
-                &head.extra,
-                head.content_length,
-                &moving,
-            )
-            .await?;
-            let _ = send.finish();
-            Ok(())
-        };
-        let download = async {
-            let mut first = [0u8; 1];
-            // The first byte shows the site answered at all.
-            let n = moving
-                .within(recv.read(&mut first))
-                .await
-                .map_err(|_| bad("the site stopped answering"))?
-                .map_err(|e| bad(&e.to_string()))?
-                .unwrap_or(0);
-            if n == 0 {
-                return Err(RelayError::Refused);
-            }
-            moving.moved();
-            answered.store(true, Ordering::SeqCst);
-            to_browser
-                .write_all(&first[..n])
+        let exchange = async {
+            let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
+            send.write_all(&rewritten(&head, None))
                 .await
                 .map_err(|e| bad(&e.to_string()))?;
-            copy_idle(&mut recv, &mut to_browser, &moving).await
+            let (mut from_browser, mut to_browser) = browser.split();
+            let moving = Activity::new();
+            let upload = async {
+                copy_body(
+                    &mut from_browser,
+                    &mut send,
+                    &head.extra,
+                    head.content_length,
+                    &moving,
+                )
+                .await?;
+                let _ = send.finish();
+                Ok(())
+            };
+            let download = async {
+                let mut first = [0u8; 1];
+                // The first byte shows the site answered at all.
+                let n = moving
+                    .within(recv.read(&mut first))
+                    .await
+                    .map_err(|_| bad("the site stopped answering"))?
+                    .map_err(|e| bad(&e.to_string()))?
+                    .unwrap_or(0);
+                if n == 0 {
+                    return Err(RelayError::Refused);
+                }
+                moving.moved();
+                answered.store(true, Ordering::SeqCst);
+                to_browser
+                    .write_all(&first[..n])
+                    .await
+                    .map_err(|e| bad(&e.to_string()))?;
+                copy_idle(&mut recv, &mut to_browser, &moving).await
+            };
+            both_ways(upload, download).await
         };
-        both_ways(upload, download).await
+        exchange.await.map_err(|e| not_let_in(&conn).unwrap_or(e))
     };
     let result = attempt.await;
     if let Some(err) = result
@@ -843,14 +860,19 @@ async fn forward(
         .filter(|_| !answered.load(Ordering::SeqCst))
     {
         // Tell the browser in words; the site may simply not be shared.
-        let text = match err {
-            RelayError::Refused => {
-                "The other device isn't sharing a site with this one.".to_string()
-            }
-            other => format!("Couldn't reach the site: {other}"),
+        let (status, text) = match err {
+            RelayError::Refused => (
+                "502 Bad Gateway",
+                "The other device isn't sharing a site with this one.".to_string(),
+            ),
+            RelayError::Declined { reason } => ("403 Forbidden", reason.clone()),
+            other => (
+                "502 Bad Gateway",
+                format!("Couldn't reach the site: {other}"),
+            ),
         };
         let page = format!(
-            "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+            "HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
             text.len()
         );
         let _ = browser.write_all(page.as_bytes()).await;
@@ -925,43 +947,46 @@ pub(crate) async fn fetch(
     let route_now = || route().inspect_err(|_| lock(cached).close(b"no route"));
     let conn = connection(node, cached, route_now).await?;
     route_now()?;
-    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
-    let mut answer = Vec::new();
-    let moving = Activity::new();
-    let upload = async {
-        send.write_all(&rewritten(&head, None))
-            .await
-            .map_err(|e| bad(&e.to_string()))?;
-        write_moving(&mut send, &request.body, &moving).await?;
-        let _ = send.finish();
-        Ok(())
-    };
-    // Read while the body goes up: the site may answer (and stop reading)
-    // before it has the whole body.
-    let download = async {
-        let mut chunk = [0u8; 16 * 1024];
-        loop {
-            let n = moving
-                .within(recv.read(&mut chunk))
+    let exchange = async {
+        let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
+        let mut answer = Vec::new();
+        let moving = Activity::new();
+        let upload = async {
+            send.write_all(&rewritten(&head, None))
                 .await
-                .map_err(|_| bad("the site stopped answering"))?
-                .map_err(|e| bad(&e.to_string()))?
-                .unwrap_or(0);
-            if n == 0 {
-                return Ok(answer.len() as u64);
+                .map_err(|e| bad(&e.to_string()))?;
+            write_moving(&mut send, &request.body, &moving).await?;
+            let _ = send.finish();
+            Ok(())
+        };
+        // Read while the body goes up: the site may answer (and stop reading)
+        // before it has the whole body.
+        let download = async {
+            let mut chunk = [0u8; 16 * 1024];
+            loop {
+                let n = moving
+                    .within(recv.read(&mut chunk))
+                    .await
+                    .map_err(|_| bad("the site stopped answering"))?
+                    .map_err(|e| bad(&e.to_string()))?
+                    .unwrap_or(0);
+                if n == 0 {
+                    return Ok(answer.len() as u64);
+                }
+                moving.moved();
+                if answer.len() + n > MAX_FETCHED {
+                    return Err(bad("the page is too big to show"));
+                }
+                answer.extend_from_slice(&chunk[..n]);
             }
-            moving.moved();
-            if answer.len() + n > MAX_FETCHED {
-                return Err(bad("the page is too big to show"));
-            }
-            answer.extend_from_slice(&chunk[..n]);
+        };
+        both_ways(upload, download).await?;
+        if answer.is_empty() {
+            return Err(RelayError::Refused);
         }
+        parse_response(&answer, is_head)
     };
-    both_ways(upload, download).await?;
-    if answer.is_empty() {
-        return Err(RelayError::Refused);
-    }
-    parse_response(&answer, is_head)
+    exchange.await.map_err(|e| not_let_in(&conn).unwrap_or(e))
 }
 
 /// A whole HTTP/1.1 response: status, headers, and the body, unchunked.
@@ -1363,7 +1388,7 @@ mod tests {
                 .unwrap();
             let mut answer = String::new();
             browser.read_to_string(&mut answer).await.unwrap();
-            assert!(answer.starts_with("HTTP/1.1 502"), "{answer}");
+            assert!(answer.starts_with("HTTP/1.1 403"), "{answer}");
             assert!(answer.contains("no longer trusted"), "{answer}");
             assert_eq!(
                 asked.load(Ordering::SeqCst),

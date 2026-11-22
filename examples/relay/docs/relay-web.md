@@ -58,8 +58,12 @@ Trust establishes identity, not permission (the review's rule). Hosting
 uses N5's grant **Sites** ("Can Open My Site"), off by default, turned on
 per device by the person, and cleared with the device's revocation. A
 device without it is refused on every request (403), and its connection
-is closed. Only a device with the grant sees "sites" among the offers in
-the host's status answer.
+is closed. The viewer says so in the same words: a browser on a computer
+gets 403 with "That device doesn't let this one open its site", and the
+iPhone's viewer a page saying the same, never "bad gateway". Only a
+device with the grant sees "sites" among the offers in the host's status
+answer, and the iPhone asks for that answer each time a device's screen
+opens, so **Open Its Site** appears without an Ask Again.
 
 The host chooses what to share: `relay listen --site <folder>`, or
 `relay site <folder | 127.0.0.1:port>` while `relay listen` runs, on a

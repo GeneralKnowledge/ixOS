@@ -13,11 +13,23 @@ import WebKit
 struct RelaySiteView: View {
     let device: Device
     let model: RelayModel
+    /// A page is on its way: over Relay that can take a few seconds, so
+    /// the screen says so rather than staying blank.
+    @State private var loading = true
 
     var body: some View {
         #if canImport(WebKit) && os(iOS)
-        RelaySiteWebView(endpointID: device.endpointId) { [core = model.core, id = device.endpointId] request in
+        RelaySiteWebView(endpointID: device.endpointId, loading: $loading) {
+            [core = model.core, id = device.endpointId] request in
             try await core.fetchSite(endpointId: id, request: request)
+        }
+        .overlay {
+            if loading {
+                ProgressView("Opening the site…")
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityIdentifier("site.loading")
+            }
         }
         .ignoresSafeArea(edges: .bottom)
         .navigationTitle("\(device.name)'s Site")
@@ -169,9 +181,10 @@ final class RelaySiteSchemeHandler: NSObject, WKURLSchemeHandler {
 /// internet, so the view never shows or reaches it.
 struct RelaySiteWebView: UIViewRepresentable {
     let endpointID: String
+    @Binding var loading: Bool
     let fetch: RelaySiteSchemeHandler.Fetch
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(loading: $loading) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -191,9 +204,13 @@ struct RelaySiteWebView: UIViewRepresentable {
         // place before the page loads; if it fails, nothing loads.
         WKContentRuleListStore.default().compileContentRuleList(
             forIdentifier: "relay.site-only", encodedContentRuleList: Self.internetBlocked
-        ) { [weak view] list, _ in
+        ) { [weak view, coordinator = context.coordinator] list, _ in
             MainActor.assumeIsolated {
-                guard let view, let list, let home else { return }
+                guard let view, let list, let home else {
+                    // Nothing will load: don't leave the spinner up.
+                    coordinator.loading.wrappedValue = false
+                    return
+                }
                 view.configuration.userContentController.add(list)
                 view.load(URLRequest(url: home))
             }
@@ -207,10 +224,35 @@ struct RelaySiteWebView: UIViewRepresentable {
          {"trigger": {"url-filter": "^wss?://"}, "action": {"type": "block"}}]
         """
 
-    func updateUIView(_ view: WKWebView, context: Context) {}
+    func updateUIView(_ view: WKWebView, context: Context) {
+        context.coordinator.loading = $loading
+    }
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate {
+        var loading: Binding<Bool>
+
+        init(loading: Binding<Bool>) {
+            self.loading = loading
+        }
+
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            loading.wrappedValue = true
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            loading.wrappedValue = false
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+            loading.wrappedValue = false
+        }
+
+        func webView(
+            _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error
+        ) {
+            loading.wrappedValue = false
+        }
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
