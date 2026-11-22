@@ -445,3 +445,13 @@ fn a_download_survives_a_merge_whose_offline_save_failed() {
     block(core.sync_downloads(None)).unwrap();
     assert_eq!(count(), 1);
 }
+
+#[test]
+fn nothing_moves_to_a_merged_song_that_has_gone() {
+    let mut file = soundscape_core::library::LibraryFile::default();
+    file.merged.insert("a".into(), "gone".into());
+    let mut offline = soundscape_core::offline::OfflineFile::default();
+    offline.wanted.insert("a".into(), 1);
+    assert!(!soundscape_core::merge::repair_offline(&file, &mut offline));
+    assert!(offline.wanted.contains_key("a"));
+}

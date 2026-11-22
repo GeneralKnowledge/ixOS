@@ -90,7 +90,9 @@ pub fn separate(file: &mut LibraryFile, id: &str) -> bool {
 pub fn repair_collection(file: &LibraryFile, collection: &mut CollectionFile) -> bool {
     let before = collection.clone();
     for from in file.merged.keys() {
-        if let Some(root) = merged_root(file, from) {
+        // Only into a song that is still there: a merge into a song that
+        // has gone leaves the song on its own.
+        if let Some(root) = merged_root(file, from).filter(|r| file.has_track(r)) {
             move_collection(collection, from, &root);
         }
     }
@@ -101,7 +103,9 @@ pub fn repair_collection(file: &LibraryFile, collection: &mut CollectionFile) ->
 pub fn repair_offline(file: &LibraryFile, offline: &mut OfflineFile) -> bool {
     let before = offline.wanted.clone();
     for from in file.merged.keys() {
-        if let Some(root) = merged_root(file, from) {
+        // Only into a song that is still there: a merge into a song that
+        // has gone leaves the song on its own.
+        if let Some(root) = merged_root(file, from).filter(|r| file.has_track(r)) {
             move_offline(offline, from, &root);
         }
     }
