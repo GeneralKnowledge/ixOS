@@ -1083,7 +1083,7 @@ def rule_no_silent_cut(app):
 
 
 SWIFT_LIMIT = re.compile(
-    r"\b(?:let|var)\s+\w*(?:max|Max|MAX|limit|Limit|LIMIT)\w*\s*(?::\s*Int\s*)?=\s*[\d_]+\s*$"
+    r"\b(?:let|var)\s+\w*(?:max|Max|MAX|limit|Limit|LIMIT)\w*\s*(?::\s*(?:U?Int\d*|Double|Float|CGFloat)\s*)?=\s*[\d_]+(?:\.[\d_]+)?\s*$"
 )
 
 
