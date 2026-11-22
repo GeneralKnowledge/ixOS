@@ -184,6 +184,119 @@ for key in sorted(listed.keys() - used):
         f"{key[1]} -> {key[2]}. Delete the entry"
     )
 
+# Third-party Swift packages. ixOS has one, approved for a test only:
+# Google's A2UI renderer in Device Lab (A2UI-1, Reuben 2026-11-22,
+# docs/research/external-projects/assessments/ai/a2ui.md). Anything else,
+# or A2UI anywhere but Device Lab (ForgeKit, an app, the templates), fails.
+def strip_swift_comments(source):
+    """Removes // and /* */ comments, leaving string literals untouched."""
+    out, i, quoted = [], 0, False
+    while i < len(source):
+        if quoted:
+            if source[i] == "\\":
+                out.append(source[i : i + 2])
+                i += 2
+                continue
+            if source[i] == '"':
+                quoted = False
+        elif source.startswith("//", i):
+            i = source.find("\n", i)
+            i = len(source) if i < 0 else i
+            continue
+        elif source.startswith("/*", i):
+            close = source.find("*/", i + 2)
+            i = len(source) if close < 0 else close + 2
+            out.append(" ")
+            continue
+        elif source[i] == '"':
+            quoted = True
+        out.append(source[i])
+        i += 1
+    return "".join(out)
+
+
+SWIFT_PACKAGES_ALLOWED = {
+    ("examples/device-lab/Package.swift", "https://github.com/a2ui-project/a2ui"),
+}
+
+
+def package_problems(rel, source):
+    """What is wrong with the .package( declarations in one manifest."""
+    errors = []
+    # Drop comments (outside string literals only), then scan the whole
+    # manifest, so a declaration split over lines reads like one on one line.
+    text = strip_swift_comments(source)
+    # Every `.package(` must be one of two plain shapes, read whole up to its
+    # closing bracket (brackets in strings and comments don't count):
+    #   .package(path: "<literal>")                   a local package, or
+    #   .package(url: "<literal>", <requirement>)     with an allowed URL.
+    # (`name:` may come first in either.) Anything else, such as a URL
+    # built from pieces or by a helper, fails: the check can't read it.
+    local_re = re.compile(r'\s*(?:name:\s*"[^"]*"\s*,\s*)?path:\s*"[^"]*"\s*')
+    remote_re = re.compile(
+        r'\s*(?:name:\s*"[^"]*"\s*,\s*)?url:\s*(#*)"([^"]*)"\1\s*(?:,|$)'
+    )
+    for m in re.finditer(r"\.package\s*\(", text):
+        depth, quoted, end, decl = 1, False, m.end(), []
+        while end < len(text):
+            c = text[end]
+            if not quoted and text.startswith("//", end):
+                end = text.find("\n", end)
+                end = len(text) if end < 0 else end
+                continue
+            if c == '"':
+                quoted = not quoted
+            elif not quoted:
+                depth += {"(": 1, ")": -1}.get(c, 0)
+                if depth == 0:
+                    break
+            decl.append(c)
+            end += 1
+        decl = "".join(decl)
+        if local_re.fullmatch(decl):
+            continue
+        remote = remote_re.match(decl)
+        if not remote:
+            errors.append(
+                f"{rel}: a .package declaration the check can't read; write "
+                f'.package(path: "...") or .package(url: "...", ...) with a '
+                f"plain URL (scripts/check-boundaries.sh)"
+            )
+            continue
+        url = remote.group(2)
+        if (rel, url.removesuffix(".git")) not in SWIFT_PACKAGES_ALLOWED:
+            errors.append(
+                f"{rel}: third-party Swift package {url} isn't allowed here "
+                f"(scripts/check-boundaries.sh, SWIFT_PACKAGES_ALLOWED)"
+            )
+
+    return errors
+
+
+# The checker's own cases: each must be refused outside the allowlist (and
+# the A2UI fork tricks even in Device Lab), so a later edit can't reopen one.
+_A2UI = "https://github.com/a2ui-project/a2ui"
+for _decl, _where in [
+    ('.package(url: "%s", from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package(\n  url: "%s",\n  from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package( // path: )\n url: "%s", from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package(/* x */ url: "%s", from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package(url: #"%s"#, from: "0.11.0")' % _A2UI, "examples/checklist/Package.swift"),
+    ('.package(url: repositoryURL(path: "org/repo"), from: "1.0.0")', "examples/checklist/Package.swift"),
+    ('.package(url: "%s" + "-fork", from: "0.11.0")' % _A2UI, "examples/device-lab/Package.swift"),
+    ('.package(url: "%s/*" + "-fork" + "*/", from: "0.11.0")' % _A2UI, "examples/device-lab/Package.swift"),
+]:
+    assert package_problems(_where, _decl), f"check-boundaries self-test passed: {_decl!r}"
+for _decl in ['.package(path: "../../forgekit")', '.package(url: "%s", .upToNextMinor(from: "0.11.0"))' % _A2UI]:
+    assert not package_problems("examples/device-lab/Package.swift", _decl), _decl
+
+
+for manifest in sorted(root.rglob("Package.swift")):
+    rel = manifest.relative_to(root).as_posix()
+    if any(part in (".build", "target", "node_modules") for part in manifest.parts):
+        continue
+    errors.extend(package_problems(rel, manifest.read_text()))
+
 if errors:
     for e in errors:
         print(f"error: {e}", file=sys.stderr)

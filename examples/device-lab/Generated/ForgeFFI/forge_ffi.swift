@@ -673,6 +673,311 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 /**
+ * The lab. One per screen; thread-safe.
+ */
+public protocol A2uiLabProtocol: AnyObject, Sendable {
+    
+    /**
+     * The agent's incremental update: a changed text and new dates. Drops
+     * any reviewed change set, so Confirm can't apply what the person
+     * reviewed before it.
+     */
+    func agentUpdate() throws  -> A2uiPayload
+    
+    func catalogId()  -> String
+    
+    /**
+     * Applies the change set reviewed at `revision`, if nothing has changed
+     * since. In A2UI-1 it writes only the stand-in library.
+     */
+    func confirm(revision: UInt64) throws  -> UInt32
+    
+    /**
+     * Bad payloads to try on the phone; each must be refused.
+     */
+    func hostileCases()  -> [A2uiHostileCase]
+    
+    /**
+     * The surface's review event, as Swift's renderer resolved it. Checks
+     * the event against the registry and the edited plan, and derives the
+     * change set. Swift shows only what this returns.
+     */
+    func review(name: String, sourceComponentId: String, contextJson: String) throws  -> A2uiChangeSet
+    
+    /**
+     * What Confirm has applied so far, in library order.
+     */
+    func savedPlans()  -> [A2uiSavedPlan]
+    
+    /**
+     * Sends hostile case `id` through the gate. Returns the payload if it
+     * were accepted (a bug), or the refusal as the error.
+     */
+    func sendHostile(id: String) throws  -> A2uiPayload
+    
+    /**
+     * Starts over: a new surface for the model's proposal. Saved plans are
+     * kept, so a second review shows what they replace.
+     */
+    func start() throws  -> A2uiPayload
+    
+    /**
+     * The person changed something on the surface: a reviewed change set
+     * no longer matches what they see. Returns whether one was dropped.
+     */
+    func surfaceEdited()  -> Bool
+    
+    /**
+     * The surface id and catalog id Swift registers.
+     */
+    func surfaceId()  -> String
+    
+}
+/**
+ * The lab. One per screen; thread-safe.
+ */
+open class A2uiLab: A2uiLabProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_a2uilab(self.handle, $0) }
+    }
+public convenience init() {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_constructor_a2uilab_new(uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_a2uilab(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The agent's incremental update: a changed text and new dates. Drops
+     * any reviewed change set, so Confirm can't apply what the person
+     * reviewed before it.
+     */
+open func agentUpdate()throws  -> A2uiPayload  {
+    return try  FfiConverterTypeA2uiPayload_lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_agent_update(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func catalogId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_catalog_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Applies the change set reviewed at `revision`, if nothing has changed
+     * since. In A2UI-1 it writes only the stand-in library.
+     */
+open func confirm(revision: UInt64)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_confirm(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Bad payloads to try on the phone; each must be refused.
+     */
+open func hostileCases() -> [A2uiHostileCase]  {
+    return try!  FfiConverterSequenceTypeA2uiHostileCase.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_hostile_cases(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The surface's review event, as Swift's renderer resolved it. Checks
+     * the event against the registry and the edited plan, and derives the
+     * change set. Swift shows only what this returns.
+     */
+open func review(name: String, sourceComponentId: String, contextJson: String)throws  -> A2uiChangeSet  {
+    return try  FfiConverterTypeA2uiChangeSet_lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_review(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(sourceComponentId),
+        FfiConverterString.lower(contextJson),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * What Confirm has applied so far, in library order.
+     */
+open func savedPlans() -> [A2uiSavedPlan]  {
+    return try!  FfiConverterSequenceTypeA2uiSavedPlan.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_saved_plans(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Sends hostile case `id` through the gate. Returns the payload if it
+     * were accepted (a bug), or the refusal as the error.
+     */
+open func sendHostile(id: String)throws  -> A2uiPayload  {
+    return try  FfiConverterTypeA2uiPayload_lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_send_hostile(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Starts over: a new surface for the model's proposal. Saved plans are
+     * kept, so a second review shows what they replace.
+     */
+open func start()throws  -> A2uiPayload  {
+    return try  FfiConverterTypeA2uiPayload_lift(try rustCallWithError(FfiConverterTypeA2uiLabError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_start(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The person changed something on the surface: a reviewed change set
+     * no longer matches what they see. Returns whether one was dropped.
+     */
+open func surfaceEdited() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_surface_edited(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The surface id and catalog id Swift registers.
+     */
+open func surfaceId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_a2uilab_surface_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiLab: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = A2uiLab
+
+    public static func lift(_ handle: UInt64) throws -> A2uiLab {
+        return A2uiLab(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: A2uiLab) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiLab {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: A2uiLab, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiLab_lift(_ handle: UInt64) throws -> A2uiLab {
+    return try FfiConverterTypeA2uiLab.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiLab_lower(_ value: A2uiLab) -> UInt64 {
+    return FfiConverterTypeA2uiLab.lower(value)
+}
+
+
+
+
+
+
+/**
  * The lab the host opens once. Thread-safe.
  */
 public protocol AiLabProtocol: AnyObject, Sendable {
@@ -6174,6 +6479,351 @@ public func FfiConverterTypeTransferSink_lower(_ value: TransferSink) -> UInt64 
 
 
 /**
+ * One line of a change set: what would change for one book. Titles and
+ * authors come from the app's books.
+ */
+public struct A2uiChangeRow: Equatable, Hashable {
+    public var bookId: String
+    public var title: String
+    public var author: String
+    /**
+     * "High priority, 1 Dec 2026 to 7 Dec 2026".
+     */
+    public var plan: String
+    /**
+     * The plan it replaces, if the book had one.
+     */
+    public var was: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(bookId: String, title: String, author: String, 
+        /**
+         * "High priority, 1 Dec 2026 to 7 Dec 2026".
+         */plan: String, 
+        /**
+         * The plan it replaces, if the book had one.
+         */was: String?) {
+        self.bookId = bookId
+        self.title = title
+        self.author = author
+        self.plan = plan
+        self.was = was
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension A2uiChangeRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiChangeRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiChangeRow {
+        return
+            try A2uiChangeRow(
+                bookId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                author: FfiConverterString.read(from: &buf), 
+                plan: FfiConverterString.read(from: &buf), 
+                was: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: A2uiChangeRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.bookId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.author, into: &buf)
+        FfiConverterString.write(value.plan, into: &buf)
+        FfiConverterOptionString.write(value.was, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiChangeRow_lift(_ buf: RustBuffer) throws -> A2uiChangeRow {
+    return try FfiConverterTypeA2uiChangeRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiChangeRow_lower(_ value: A2uiChangeRow) -> RustBuffer {
+    return FfiConverterTypeA2uiChangeRow.lower(value)
+}
+
+
+public struct A2uiChangeSet: Equatable, Hashable {
+    /**
+     * This review's own revision: Confirm must name it, so an older review
+     * can't confirm a newer one's entries.
+     */
+    public var revision: UInt64
+    /**
+     * Only books whose plan would change.
+     */
+    public var rows: [A2uiChangeRow]
+    /**
+     * Books in the plan that wouldn't change.
+     */
+    public var unchanged: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * This review's own revision: Confirm must name it, so an older review
+         * can't confirm a newer one's entries.
+         */revision: UInt64, 
+        /**
+         * Only books whose plan would change.
+         */rows: [A2uiChangeRow], 
+        /**
+         * Books in the plan that wouldn't change.
+         */unchanged: UInt32) {
+        self.revision = revision
+        self.rows = rows
+        self.unchanged = unchanged
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension A2uiChangeSet: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiChangeSet: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiChangeSet {
+        return
+            try A2uiChangeSet(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                rows: FfiConverterSequenceTypeA2uiChangeRow.read(from: &buf), 
+                unchanged: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: A2uiChangeSet, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterSequenceTypeA2uiChangeRow.write(value.rows, into: &buf)
+        FfiConverterUInt32.write(value.unchanged, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiChangeSet_lift(_ buf: RustBuffer) throws -> A2uiChangeSet {
+    return try FfiConverterTypeA2uiChangeSet.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiChangeSet_lower(_ value: A2uiChangeSet) -> RustBuffer {
+    return FfiConverterTypeA2uiChangeSet.lower(value)
+}
+
+
+/**
+ * A deliberately bad payload, for checking the gate on the phone.
+ */
+public struct A2uiHostileCase: Equatable, Hashable {
+    public var id: String
+    public var title: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String) {
+        self.id = id
+        self.title = title
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension A2uiHostileCase: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiHostileCase: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiHostileCase {
+        return
+            try A2uiHostileCase(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: A2uiHostileCase, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiHostileCase_lift(_ buf: RustBuffer) throws -> A2uiHostileCase {
+    return try FfiConverterTypeA2uiHostileCase.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiHostileCase_lower(_ value: A2uiHostileCase) -> RustBuffer {
+    return FfiConverterTypeA2uiHostileCase.lower(value)
+}
+
+
+/**
+ * Messages for Swift's renderer, already through the gate.
+ */
+public struct A2uiPayload: Equatable, Hashable {
+    /**
+     * A2UI v1.0 messages, one JSON object each, in order.
+     */
+    public var messages: [String]
+    /**
+     * Bumped by every accepted payload and every review; a change set is
+     * only good for the revision it was made at.
+     */
+    public var revision: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * A2UI v1.0 messages, one JSON object each, in order.
+         */messages: [String], 
+        /**
+         * Bumped by every accepted payload and every review; a change set is
+         * only good for the revision it was made at.
+         */revision: UInt64) {
+        self.messages = messages
+        self.revision = revision
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension A2uiPayload: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiPayload: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiPayload {
+        return
+            try A2uiPayload(
+                messages: FfiConverterSequenceString.read(from: &buf), 
+                revision: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: A2uiPayload, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.messages, into: &buf)
+        FfiConverterUInt64.write(value.revision, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiPayload_lift(_ buf: RustBuffer) throws -> A2uiPayload {
+    return try FfiConverterTypeA2uiPayload.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiPayload_lower(_ value: A2uiPayload) -> RustBuffer {
+    return FfiConverterTypeA2uiPayload.lower(value)
+}
+
+
+/**
+ * One saved plan in the stand-in library.
+ */
+public struct A2uiSavedPlan: Equatable, Hashable {
+    public var title: String
+    public var plan: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(title: String, plan: String) {
+        self.title = title
+        self.plan = plan
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension A2uiSavedPlan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiSavedPlan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiSavedPlan {
+        return
+            try A2uiSavedPlan(
+                title: FfiConverterString.read(from: &buf), 
+                plan: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: A2uiSavedPlan, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.plan, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiSavedPlan_lift(_ buf: RustBuffer) throws -> A2uiSavedPlan {
+    return try FfiConverterTypeA2uiSavedPlan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiSavedPlan_lower(_ value: A2uiSavedPlan) -> RustBuffer {
+    return FfiConverterTypeA2uiSavedPlan.lower(value)
+}
+
+
+/**
  * One ready-made experiment: the same request every time, so runs can be
  * compared.
  */
@@ -10430,6 +11080,100 @@ public func FfiConverterTypeVector3_lower(_ value: Vector3) -> RustBuffer {
 }
 
 
+public 
+enum A2uiLabError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * A payload, event or plan was refused. `code` is stable (tests,
+     * logs); `reason` is for the screen.
+     */
+    case Refused(code: String, reason: String
+    )
+    /**
+     * The plan changed after the review: review it again.
+     */
+    case Stale(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension A2uiLabError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeA2uiLabError: FfiConverterRustBuffer {
+    typealias SwiftType = A2uiLabError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> A2uiLabError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Refused(
+            code: try FfiConverterString.read(from: &buf), 
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Stale(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: A2uiLabError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Refused(code,reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(code, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Stale(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiLabError_lift(_ buf: RustBuffer) throws -> A2uiLabError {
+    return try FfiConverterTypeA2uiLabError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeA2uiLabError_lower(_ value: A2uiLabError) -> RustBuffer {
+    return FfiConverterTypeA2uiLabError.lower(value)
+}
+
+
 /**
  * What an experiment tests.
  */
@@ -13816,6 +14560,81 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeA2uiChangeRow: FfiConverterRustBuffer {
+    typealias SwiftType = [A2uiChangeRow]
+
+    public static func write(_ value: [A2uiChangeRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeA2uiChangeRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [A2uiChangeRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [A2uiChangeRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeA2uiChangeRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeA2uiHostileCase: FfiConverterRustBuffer {
+    typealias SwiftType = [A2uiHostileCase]
+
+    public static func write(_ value: [A2uiHostileCase], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeA2uiHostileCase.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [A2uiHostileCase] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [A2uiHostileCase]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeA2uiHostileCase.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeA2uiSavedPlan: FfiConverterRustBuffer {
+    typealias SwiftType = [A2uiSavedPlan]
+
+    public static func write(_ value: [A2uiSavedPlan], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeA2uiSavedPlan.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [A2uiSavedPlan] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [A2uiSavedPlan]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeA2uiSavedPlan.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeAiExperiment: FfiConverterRustBuffer {
     typealias SwiftType = [AiExperiment]
 
@@ -14784,6 +15603,36 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_devicelab_snapshot() != 18411) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_agent_update() != 10910) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_catalog_id() != 49052) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_confirm() != 18594) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_hostile_cases() != 40110) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_review() != 16111) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_saved_plans() != 45154) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_send_hostile() != 10567) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_start() != 45860) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_surface_edited() != 41493) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_a2uilab_surface_id() != 56798) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_ailab_begin_external() != 51981) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14989,6 +15838,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_devicelab_new() != 17449) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_constructor_a2uilab_new() != 57153) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_ailab_new() != 39479) {

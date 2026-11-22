@@ -674,6 +674,72 @@ void uniffi_forge_ffi_fn_method_devicelab_set_in_foreground(uint64_t ptr, int8_t
 RustBuffer uniffi_forge_ffi_fn_method_devicelab_snapshot(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_A2UILAB
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_A2UILAB
+uint64_t uniffi_forge_ffi_fn_clone_a2uilab(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_A2UILAB
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_A2UILAB
+void uniffi_forge_ffi_fn_free_a2uilab(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_A2UILAB_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_A2UILAB_NEW
+uint64_t uniffi_forge_ffi_fn_constructor_a2uilab_new(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_AGENT_UPDATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_AGENT_UPDATE
+RustBuffer uniffi_forge_ffi_fn_method_a2uilab_agent_update(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_CATALOG_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_CATALOG_ID
+RustBuffer uniffi_forge_ffi_fn_method_a2uilab_catalog_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_CONFIRM
+uint32_t uniffi_forge_ffi_fn_method_a2uilab_confirm(uint64_t ptr, uint64_t revision, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_HOSTILE_CASES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_HOSTILE_CASES
+RustBuffer uniffi_forge_ffi_fn_method_a2uilab_hostile_cases(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_REVIEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_REVIEW
+RustBuffer uniffi_forge_ffi_fn_method_a2uilab_review(uint64_t ptr, RustBuffer name, RustBuffer source_component_id, RustBuffer context_json, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_SAVED_PLANS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_SAVED_PLANS
+RustBuffer uniffi_forge_ffi_fn_method_a2uilab_saved_plans(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_SEND_HOSTILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_SEND_HOSTILE
+RustBuffer uniffi_forge_ffi_fn_method_a2uilab_send_hostile(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_START
+RustBuffer uniffi_forge_ffi_fn_method_a2uilab_start(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_SURFACE_EDITED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_SURFACE_EDITED
+int8_t uniffi_forge_ffi_fn_method_a2uilab_surface_edited(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_SURFACE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UILAB_SURFACE_ID
+RustBuffer uniffi_forge_ffi_fn_method_a2uilab_surface_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AILAB
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AILAB
 uint64_t uniffi_forge_ffi_fn_clone_ailab(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -1884,6 +1950,66 @@ uint16_t uniffi_forge_ffi_checksum_method_devicelab_snapshot(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_AGENT_UPDATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_AGENT_UPDATE
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_agent_update(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_CATALOG_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_CATALOG_ID
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_catalog_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_CONFIRM
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_confirm(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_HOSTILE_CASES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_HOSTILE_CASES
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_hostile_cases(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_REVIEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_REVIEW
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_review(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_SAVED_PLANS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_SAVED_PLANS
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_saved_plans(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_SEND_HOSTILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_SEND_HOSTILE
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_send_hostile(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_START
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_SURFACE_EDITED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_SURFACE_EDITED
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_surface_edited(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_SURFACE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UILAB_SURFACE_ID
+uint16_t uniffi_forge_ffi_checksum_method_a2uilab_surface_id(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_BEGIN_EXTERNAL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_BEGIN_EXTERNAL
 uint16_t uniffi_forge_ffi_checksum_method_ailab_begin_external(void
@@ -2295,6 +2421,12 @@ uint16_t uniffi_forge_ffi_checksum_method_transfersink_reconcile(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_DEVICELAB_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_DEVICELAB_NEW
 uint16_t uniffi_forge_ffi_checksum_constructor_devicelab_new(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_A2UILAB_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_A2UILAB_NEW
+uint16_t uniffi_forge_ffi_checksum_constructor_a2uilab_new(void
     
 );
 #endif

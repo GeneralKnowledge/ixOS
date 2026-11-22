@@ -1,0 +1,9 @@
+order = 67
+capability = "Agent-composed native UI (A2UI 1.0)"
+framework = "No"
+rust_api = "Partial: Device Lab's `A2uiLab` checks every message (`a2ui_lab::gate`), builds the surface from a typed plan, and derives the change set Confirm applies"
+ios_native = "Partial: Google's A2UI SwiftUI renderer 0.11 with an eight-component catalog (Text, Card and Button drawn in ForgeUI; the rest still the basic catalog look until A2UI-1b), Device Lab only (A2UI-1, the first third-party Swift package, for a test)"
+in_app = "Partial: Device Lab, Tools → A2UI Lab (a fixed reading-plan proposal, no model; stand-in library)"
+iphone = "Yes: A2UI Lab phone check passed, all seven steps (Reuben, 2026-11-22, Device Lab 1.29922371)"
+documented = "Partial: docs/research/external-projects/assessments/ai/a2ui.md"
+limits = "Five of the eight components not yet drawn through ForgeUI (A2UI-1b); no model drives it yet (A2UI-4); no Android (waits for Compose A2UI 1.0 and Android A8); no images, links or function calls; changes only a stand-in library"
