@@ -58,7 +58,7 @@ final class A2uiLabModel {
     /// gone: Rust dropped it, and Confirm would refuse it.
     func agentUpdate() {
         let hadReview = changeSet != nil
-        let ok = deliver(
+        let outcome = deliver(
             notice: Notice(
                 kind: hadReview ? .warning : .info,
                 text: hadReview
@@ -66,7 +66,9 @@ final class A2uiLabModel {
                     : "The agent updated the plan."
             )
         ) { try lab.agentUpdate() }
-        if ok {
+        // Once Rust accepts the update it is spent, even if the renderer
+        // then fails: retrying would only be refused, so Start Over it is.
+        if outcome != .refused {
             changeSet = nil
             updated = true
         }
@@ -105,8 +107,12 @@ final class A2uiLabModel {
     }
 
     /// A2UI's renderer reported a problem (only its code is shown).
+    /// A2UI's renderer validates each message as it goes and reports here,
+    /// so part of a batch may already be drawn: the way back is Start Over.
     func rendererError(code: String) {
-        notice = Notice(kind: .refused, text: "The renderer refused part of the surface (\(code)).")
+        notice = Notice(
+            kind: .refused,
+            text: "The renderer refused part of the surface (\(code)). Start Over to reload the proposal.")
     }
 
     /// The app-owned Confirm.
@@ -128,23 +134,32 @@ final class A2uiLabModel {
         changeSet = nil
     }
 
+    enum Delivery { case rendered, refused, renderFailed }
+
     /// Runs `payload`, renders what it returns, and shows `notice` on
-    /// success or the refusal on failure. Returns whether it was rendered.
+    /// success or the refusal on failure. A refusal from Rust changes
+    /// nothing; a render failure comes after Rust accepted the payload.
     @discardableResult
     private func deliver(
         notice success: Notice?, refused: String = "Refused", _ payload: () throws -> A2uiPayload
-    ) -> Bool {
+    ) -> Delivery {
+        let accepted: A2uiPayload
         do {
-            let accepted = try payload()
-            try renderer?.render(messages: accepted.messages)
-            notice = success
-            return true
-        } catch let error as A2uiLabError {
-            notice = Notice(kind: .refused, text: "\(refused): \(Self.reason(error))")
+            accepted = try payload()
         } catch {
-            notice = Notice(kind: .refused, text: "The renderer refused the update.")
+            notice = Notice(kind: .refused, text: "\(refused): \(Self.reason(error))")
+            return .refused
         }
-        return false
+        do {
+            try renderer?.render(messages: accepted.messages)
+        } catch {
+            notice = Notice(
+                kind: .refused,
+                text: "The renderer couldn't read the update. Start Over to reload the proposal.")
+            return .renderFailed
+        }
+        notice = success
+        return .rendered
     }
 
     static func reason(_ error: Error) -> String {

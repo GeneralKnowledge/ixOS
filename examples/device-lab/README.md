@@ -143,7 +143,7 @@ Not yet: a recording mode for scans, raw accelerometer, gyroscope and magnetomet
 
 Tools → A2UI Lab is milestone A2UI-1: an agent's reading-plan proposal drawn natively from [A2UI](https://github.com/a2ui-project/a2ui) 1.0 messages, edited on the surface, reviewed and confirmed with controls the app owns. Plan, decisions and phone check: [the A2UI assessment](../../docs/research/external-projects/assessments/ai/a2ui.md).
 
-- `rust/src/a2ui_lab/`: the typed plan, the message builder, the gate every payload passes, and the change set (tests: `cargo test --lib a2ui_lab`).
+- `rust/src/a2ui_lab/`: the typed plan, the message builder, the gate every payload passes, and the change set (tests: `cargo test --manifest-path rust/Cargo.toml --lib a2ui_lab`).
 - `A2uiLabModel.swift` (Foundation, Observation and ForgeFFI only) passes payloads to the renderer and the surface's event to Rust.
 - `A2uiLabSurface.swift` holds A2UI's message processor and the lab's catalog (eight components, ForgeUI looks); `A2uiLabView.swift` the screen and the app-owned review sheet.
 

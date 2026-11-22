@@ -195,15 +195,18 @@ for manifest in sorted(root.rglob("Package.swift")):
     rel = manifest.relative_to(root).as_posix()
     if any(part in (".build", "target", "node_modules") for part in manifest.parts):
         continue
-    for line in manifest.read_text().splitlines():
-        if line.strip().startswith("//"):
-            continue
-        for url in re.findall(r"\.package\(\s*url:\s*\"([^\"]+)\"", line):
-            if (rel, url.removesuffix(".git")) not in SWIFT_PACKAGES_ALLOWED:
-                errors.append(
-                    f"{rel}: third-party Swift package {url} isn't allowed here "
-                    f"(scripts/check-boundaries.sh, SWIFT_PACKAGES_ALLOWED)"
-                )
+    # Drop comments, then scan the whole manifest, so a declaration split
+    # over several lines is caught the same as one on a single line.
+    text = re.sub(r"/\*.*?\*/", "", manifest.read_text(), flags=re.S)
+    text = "\n".join(
+        l for l in text.splitlines() if not l.strip().startswith("//")
+    )
+    for url in re.findall(r"\.package\(\s*(?:name:\s*\"[^\"]*\"\s*,\s*)?url:\s*\"([^\"]+)\"", text):
+        if (rel, url.removesuffix(".git")) not in SWIFT_PACKAGES_ALLOWED:
+            errors.append(
+                f"{rel}: third-party Swift package {url} isn't allowed here "
+                f"(scripts/check-boundaries.sh, SWIFT_PACKAGES_ALLOWED)"
+            )
 
 if errors:
     for e in errors:

@@ -12,7 +12,10 @@
 //!   is never shown as the change set);
 //! - an update can't add, remove or change the action of a component that
 //!   already exists, so a later message can't change what a button does;
-//! - data updates hold only known books, checked like a proposal.
+//! - after the surface exists, an update may redraw only the components in
+//!   `UPDATABLE` (the intro text), so it can't relabel the review button;
+//! - data updates hold only known books, checked like a proposal, with each
+//!   book's own title and author.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -20,7 +23,7 @@ use serde_json::{Map, Value};
 
 use super::plan::{self, EditedBook};
 use super::surface::{
-    review_context, CATALOG_ID, COMPONENTS, REVIEW_COMPONENT, REVIEW_EVENT, SURFACE_ID,
+    review_context, CATALOG_ID, COMPONENTS, REVIEW_COMPONENT, REVIEW_EVENT, SURFACE_ID, UPDATABLE,
 };
 
 /// The largest payload accepted, in bytes.
@@ -136,6 +139,19 @@ fn check_message(
                 .get("components")
                 .ok_or_else(|| refuse("malformed", "updateComponents has no components."))?;
             check_components(components, state)?;
+            let locked = components.as_array().is_some_and(|list| {
+                list.iter().any(|c| {
+                    !c.get("id")
+                        .and_then(Value::as_str)
+                        .is_some_and(|id| UPDATABLE.contains(&id))
+                })
+            });
+            if locked {
+                return Err(refuse(
+                    "component_locked",
+                    "An update may only change the introduction, not the plan's controls.",
+                ));
+            }
             Ok(None)
         }
         "updateDataModel" => {
@@ -328,6 +344,14 @@ fn data_model(path: Option<&str>, value: &Value) -> Result<BTreeSet<&'static str
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| refuse("data", e.0))?;
+    // The surface shows these, so they must be the book's own.
+    for (b, e) in edited.iter().zip(&entries) {
+        let title = b.title.as_ref().and_then(Value::as_str);
+        let author = b.author.as_ref().and_then(Value::as_str);
+        if title != Some(e.book.title) || author != Some(e.book.author) {
+            return Err(refuse("data", "A book's title or author isn't the app's."));
+        }
+    }
     let ids: BTreeSet<&'static str> = entries.iter().map(|e| e.book.id).collect();
     if ids.len() != entries.len() || ids.is_empty() || ids.len() > plan::MAX_BOOKS {
         return Err(refuse(

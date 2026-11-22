@@ -39,6 +39,11 @@ fn review_action() -> Value {
     json!({ "event": { "name": REVIEW_EVENT, "context": review_context() } })
 }
 
+/// The components an update may redraw once the surface exists. Every
+/// other component, the review button and its label included, stays as
+/// created.
+pub const UPDATABLE: &[&str] = &["intro"];
+
 const INTRO: &str = "A proposed order for your next four books. Change any priority or date, then review the changes.";
 /// The text the agent's update puts in place of [`INTRO`].
 pub const UPDATED_INTRO: &str =

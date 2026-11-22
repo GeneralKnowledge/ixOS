@@ -143,7 +143,7 @@ Reopen when: the A2UI-1 spike builds (or fails) under xtool; Compose reaches A2U
 
 **A2UI Lab: one fixed reading-plan surface, rendered natively in Device Lab, no model.** One PR, Device Lab only, nothing in ForgeKit or any app.
 
-1. **Build spike.** Add the official package (`0.11.0`, `A2UISwiftCore` + `A2UISwiftUI` only, not the basic SwiftUI catalog) to Device Lab and build it with `scripts/check-ios-xtool.sh` on the laptop. Record whether the plugin and swift-syntax resolution work, and the app-size change. If the plugin fails: stop and report, with vendoring the generated files as the option.
+1. **Build spike.** Add the official package (`0.11.0`, `A2UISwiftCore` + `A2UISwiftUI` only, not the basic SwiftUI catalog; as built it also takes `BasicCatalog` and `BasicCatalogSwiftUI`, see below) to Device Lab and build it with `scripts/check-ios-xtool.sh` on the laptop. Record whether the plugin and swift-syntax resolution work, and the app-size change. If the plugin fails: stop and report, with vendoring the generated files as the option.
 2. **An ixOS catalog** (`catalog.json` in Device Lab, about eight components): Text (ForgeUI text roles), Card (ForgeCard), Row (ForgeRow), Badge (ForgeBadge), Column, Button, DateTimeInput, ChoicePicker or Slider for priority. No Image, Video, AudioPlayer or Modal; `openUrl` without a handler. Every control gets an `a2ui.<surface>.<id>` identifier and a VoiceOver label.
 3. **A fixed fixture**: the reading-plan surface from Reuben's scenario, as v1.0 JSON written by hand, plus a second message that updates it (a later date, a reordered book) to show incremental updates.
 4. **Rust side** in Device Lab's crate: loads the fixtures, receives the surface's events over the FFI, and checks every event name and its context against a registry. **One** registered function, `readingPlan.propose`, which returns a change set and writes nothing. Rust tests on Linux cover the registry rejecting unknown names, malformed context and anything not `rendererOnly`.
@@ -184,13 +184,15 @@ Device Lab, Tools → **A2UI Lab**. Rust in `examples/device-lab/rust/src/a2ui_l
 |---|---|---|
 | Typed proposal | `plan.rs` | `Proposal` holds book ids, priorities and dates only (no titles, no interface). Checked: known books, no repeats, 1 to 12 books, real dates, finish not before start, at most a year. A2UI-1's proposal and the agent's revision are fixed JSON, standing in for a model |
 | Messages | `surface.rs` | The same fixed tree every time: a book card template (title, author, priority chips, start and finish dates) and one Review button. The proposal only changes data |
-| Gate | `gate.rs` | Every agent-to-renderer payload, before Swift sees it: A2UI 1.0 only, the lab's surface and catalog, the eight components, no `@call` / `functionCall` / `callRendererFunction` / `deleteSurface` / `@catalogId`, the one registered event from the one registered button with exactly its context and no `userMessage`, no change to an existing component's action, data only at `/books` holding known books. All or nothing: a refused payload changes nothing |
+| Gate | `gate.rs` | Every agent-to-renderer payload, before Swift sees it: A2UI 1.0 only, the lab's surface and catalog, the eight components, no `@call` / `functionCall` / `callRendererFunction` / `deleteSurface` / `@catalogId`, the one registered event from the one registered button with exactly its context and no `userMessage`, no change to an existing component's action, after creation no redrawing of any component but the intro text (so an update can't relabel the Review button), data only at `/books` holding known books with their own titles and authors. All or nothing: a refused payload changes nothing |
 | Rendering | `A2uiLabSurface.swift` | `MessageProcessor` with `ValidationConfig.strict` and a catalog derived from A2UI's v1.0 basic catalog: Column, Row, Card, Divider, Button, DateTimeInput, ChoicePicker, and a ForgeUI Text; no functions at all. Cards are `ForgeCard`s and buttons use ForgeUI's theme through A2UI's style hooks |
 | Review | `A2uiLab::review` | The Review button's event comes back through the renderer's outbound listener. Rust checks the event name and source, the edited plan (same books as the proposal, one priority each, valid dates), and derives the change set from **its own books**: titles and authors from the library, plans from Rust's check, "Replaces" from what was saved |
-| Confirm | `A2uiReviewSheet` | App-owned sheet, outside the surface, showing only Rust's change set. `confirm(revision)` applies only if nothing changed since the review: an agent update or an edit on the surface drops the reviewed change set, and Confirm then refuses and asks for a new review. It writes a stand-in library only |
+| Confirm | `A2uiReviewSheet` | App-owned sheet, outside the surface, showing only Rust's change set. Every review gets its own revision, and `confirm(revision)` applies only that review's change set, and only if nothing changed since: an agent update or an edit on the surface drops the reviewed change set, and Confirm then refuses and asks for a new review. It writes a stand-in library only |
 | Logs | `mod.rs` | Codes and counts only (`refused: action_changed`, `reviewed: 4 changes`); never a payload, a title or a date |
 
-Tests (Linux, `cargo test --lib a2ui_lab` in `examples/device-lab/rust`, 15 tests): every hostile payload refused with the right code and nothing changed; the lab's own surface passes its gate with eight component types and exactly one action; titles in the change set come from the library even when the surface's data says otherwise; an update or an edit after review makes Confirm refuse; Confirm needs a review and applies once.
+Tests (Linux, `cargo test --manifest-path examples/device-lab/rust/Cargo.toml --lib a2ui_lab`, 16 tests): every hostile payload refused with the right code and nothing changed; the lab's own surface passes its gate with eight component types and exactly one action; titles in the change set come from the library even when the surface's data says otherwise; an update or an edit after review makes Confirm refuse; Confirm needs a review and applies once.
+
+**Wider than the proposed scope.** The proposal said `A2UISwiftCore` + `A2UISwiftUI` only. The lab also depends on `BasicCatalog` and `BasicCatalogSwiftUI` (the same package, the same official renderer), because the eight components are *derived* from A2UI's own v1.0 basic catalog rather than reimplemented, which is what "use the official renderer, not a home-grown replacement" asked for. Only Text is redrawn in ForgeUI. The build numbers below measure this wider graph.
 
 The rule that only Device Lab may use A2UI is checked: `scripts/check-boundaries.sh` fails on any third-party Swift package outside its allowlist, which holds A2UI in `examples/device-lab/Package.swift` only.
 
@@ -198,11 +200,17 @@ The rule that only Device Lab may use A2UI is checked: `scripts/check-boundaries
 
 | Item | Result |
 |---|---|
-| Package resolution (time, what was fetched) | Not run yet |
-| Build-tool plugin (`A2UISchemaGeneratorPlugin`) under xtool | Not run yet |
-| Build time, clean and incremental | Not run yet |
-| App size before and after | Not run yet |
-| Swift compile of the lab | Not run yet |
+Run 2026-11-22 on the laptop: xtool 1.24.0, Swift 6.2.3, `scripts/check-ios-xtool.sh --ref claude/project-thread-hzo4mj device-lab`, unsigned, no phone.
+
+| Item | Result |
+|---|---|
+| Swift compile of the lab | **Passes** under xtool, first time, at 7923015 and again at ddc9009 |
+| Package resolution | About 3 minutes, all from the laptop's SwiftPM cache: a2ui 0.11.0+swift 131.5 s (the whole monorepo, 240,700 objects), swift-json-schema 0.13.2 34 s, swift-syntax 604.0.0 10.5 s, swift-collections 1.7.6 2.3 s |
+| swift-syntax | Fetched and checked out, but **not compiled**: no SwiftSyntax, SwiftParser or macro module in the log |
+| Modules compiled | A2UICore (86 files), JSONSchema (34), A2UISwiftUI (9), A2UIJSON (3), A2UISchemaGenerator (1), plus the basic catalog |
+| Build-tool plugin (`A2UISchemaGeneratorPlugin`) under xtool | **Works.** The generator links, the plugin compiles and runs, and writes `GeneratedA2UIJSONSchemas.swift` (83 KB) and `GeneratedBasicCatalogComponents.swift` (103 KB) into the build directory. Nothing vendored |
+| Build time | Clean: 797 s in all (resolution about 3 min, Rust 4 min 7 s in a fresh worktree, Swift 267 s). Incremental after a branch change: 112 s (Swift 61 s), nothing fetched |
+| App size (debug) | 193 MB against 184 MB for the last combined build (fd095d77): **+9.1 MiB, about 5%**, an upper bound since the branch differs from that build in other ways too |
 
 ### Phone check (needs the iPhone, about 10 minutes)
 

@@ -222,6 +222,16 @@ fn gate_refuses_what_the_catalog_cannot_express() {
         // The review event sent from a second button.
         (update(json!([{ "id": "second", "component": "Button", "child": "reviewLabel",
             "action": { "event": { "name": surface::REVIEW_EVENT, "context": surface::review_context() } } }])), "unregistered_event"),
+        // Relabelling the review button, or adding a control, after creation.
+        (update(json!([{ "id": "reviewLabel", "component": "Text", "text": "Cancel" }])), "component_locked"),
+        (update(json!([{ "id": "extra", "component": "Divider" }])), "component_locked"),
+        // A known book shown with no title, or another book's author.
+        (json!([{ "version": "1.0", "updateDataModel": { "surfaceId": surface::SURFACE_ID,
+            "path": "/books", "value": [{ "id": "piranesi", "priority": ["high"],
+                "start": "2026-12-01", "finish": "2026-12-02" }] } }]).to_string(), "data"),
+        (json!([{ "version": "1.0", "updateDataModel": { "surfaceId": surface::SURFACE_ID,
+            "path": "/books", "value": [{ "id": "piranesi", "title": "Piranesi", "author": "George Eliot",
+                "priority": ["high"], "start": "2026-12-01", "finish": "2026-12-02" }] } }]).to_string(), "data"),
         // A bad component id.
         (update(json!([{ "id": "../x", "component": "Text", "text": "x" }])), "malformed"),
         // Two components with one id.
@@ -269,12 +279,13 @@ fn a_payload_is_all_or_nothing() {
     let mut state = gate_after_start();
     let payload = json!([
         { "version": "1.0", "updateComponents": { "surfaceId": surface::SURFACE_ID,
-            "components": [{ "id": "extra", "component": "Divider" }] } },
+            "components": [{ "id": "intro", "component": "Text", "text": "Changed" }] } },
         { "version": "1.0", "updateComponents": { "surfaceId": surface::SURFACE_ID,
             "components": [{ "id": "web", "component": "WebView" }] } }
     ]);
+    let before = state.actions.clone();
     assert!(gate::check(&payload.to_string(), &mut state).is_err());
-    assert!(!state.actions.contains_key("extra"));
+    assert_eq!(state.actions, before);
 }
 
 #[test]
@@ -301,7 +312,8 @@ fn review_derives_the_change_set_from_the_apps_books() {
     context["books"][0]["title"] = json!("Delete everything");
     context["books"][0]["priority"] = json!(["low"]);
     let set = review(&lab, &context).unwrap();
-    assert_eq!(set.revision, 1);
+    // The start was revision 1; this review is revision 2.
+    assert_eq!(set.revision, 2);
     assert_eq!(set.rows.len(), 4);
     assert_eq!(set.rows[0].title, "Piranesi");
     assert_eq!(set.rows[0].plan, "Low priority, 1 Dec 2026 to 7 Dec 2026");
@@ -377,10 +389,10 @@ fn an_update_after_review_makes_confirm_refuse() {
     let update = lab.agent_update().unwrap();
     assert_eq!(code(lab.confirm(set.revision)), "stale");
     assert!(lab.saved_plans().is_empty());
-    // Reviewing the updated plan gives a change set at the new revision,
-    // with the agent's new dates, and that one confirms.
+    // Reviewing the updated plan gives a change set after the update's
+    // revision, with the agent's new dates, and that one confirms.
     let set = review(&lab, &context_from(&update)).unwrap();
-    assert_eq!(set.revision, update.revision);
+    assert!(set.revision > update.revision);
     assert!(set.rows[3].plan.contains("1 Feb 2027"));
     assert_eq!(lab.confirm(set.revision).unwrap(), 4);
 }
@@ -417,4 +429,17 @@ fn starting_over_keeps_saved_plans() {
     let set = review(&lab, &context_from(&again)).unwrap();
     assert!(set.rows.is_empty());
     assert_eq!(set.unchanged, 4);
+}
+
+#[test]
+fn an_older_review_cannot_confirm_a_newer_one() {
+    let (lab, payload) = started();
+    let context = context_from(&payload);
+    let first = review(&lab, &context).unwrap();
+    let second = review(&lab, &context).unwrap();
+    assert_ne!(first.revision, second.revision);
+    assert_eq!(code(lab.confirm(first.revision)), "stale");
+    // The refused confirm dropped the pending review, so review again.
+    let third = review(&lab, &context).unwrap();
+    assert!(lab.confirm(third.revision).is_ok());
 }

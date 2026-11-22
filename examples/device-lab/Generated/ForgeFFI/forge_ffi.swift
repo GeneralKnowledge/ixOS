@@ -6561,6 +6561,10 @@ public func FfiConverterTypeA2uiChangeRow_lower(_ value: A2uiChangeRow) -> RustB
 
 
 public struct A2uiChangeSet: Equatable, Hashable {
+    /**
+     * This review's own revision: Confirm must name it, so an older review
+     * can't confirm a newer one's entries.
+     */
     public var revision: UInt64
     /**
      * Only books whose plan would change.
@@ -6573,7 +6577,11 @@ public struct A2uiChangeSet: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(revision: UInt64, 
+    public init(
+        /**
+         * This review's own revision: Confirm must name it, so an older review
+         * can't confirm a newer one's entries.
+         */revision: UInt64, 
         /**
          * Only books whose plan would change.
          */rows: [A2uiChangeRow], 
@@ -6696,8 +6704,8 @@ public struct A2uiPayload: Equatable, Hashable {
      */
     public var messages: [String]
     /**
-     * Bumped by every accepted payload; a change set is only good for the
-     * revision it was made at.
+     * Bumped by every accepted payload and every review; a change set is
+     * only good for the revision it was made at.
      */
     public var revision: UInt64
 
@@ -6708,8 +6716,8 @@ public struct A2uiPayload: Equatable, Hashable {
          * A2UI v1.0 messages, one JSON object each, in order.
          */messages: [String], 
         /**
-         * Bumped by every accepted payload; a change set is only good for the
-         * revision it was made at.
+         * Bumped by every accepted payload and every review; a change set is
+         * only good for the revision it was made at.
          */revision: UInt64) {
         self.messages = messages
         self.revision = revision

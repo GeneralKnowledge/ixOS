@@ -86,8 +86,8 @@ impl From<PlanError> for A2uiLabError {
 pub struct A2uiPayload {
     /// A2UI v1.0 messages, one JSON object each, in order.
     pub messages: Vec<String>,
-    /// Bumped by every accepted payload; a change set is only good for the
-    /// revision it was made at.
+    /// Bumped by every accepted payload and every review; a change set is
+    /// only good for the revision it was made at.
     pub revision: u64,
 }
 
@@ -106,6 +106,8 @@ pub struct A2uiChangeRow {
 
 #[derive(uniffi::Record, Debug, Clone, PartialEq)]
 pub struct A2uiChangeSet {
+    /// This review's own revision: Confirm must name it, so an older review
+    /// can't confirm a newer one's entries.
     pub revision: u64,
     /// Only books whose plan would change.
     pub rows: Vec<A2uiChangeRow>,
@@ -298,6 +300,9 @@ impl A2uiLab {
                 was: was.map(Entry::describe),
             });
         }
+        // Each review gets its own revision, so a confirmation names this
+        // change set and no other.
+        state.revision += 1;
         let revision = state.revision;
         state.pending = Some(Pending { revision, entries });
         logging::info!(target: "a2ui_lab", "reviewed: {} changes", rows.len());
