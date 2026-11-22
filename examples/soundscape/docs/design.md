@@ -162,6 +162,8 @@ queued a batch at a time, so there are many stations for free. It's a smarter sh
   in Now Playing and on Listen. When the retries run out it offers Try Again and Stop Radio. A station with
   nothing that fits (`NotInLibrary`) says so instead of retrying; a Jamendo failure with nothing else to play
   is Jamendo's error, so it is retried, not mistaken for an empty station.
+  The radio owns the top-up and its retries, not the screen that asked for it, so the queue moving on
+  or a view going away never cuts a wait short or restarts the count; only Stop or a new station ends it.
 
 **Next:**
 

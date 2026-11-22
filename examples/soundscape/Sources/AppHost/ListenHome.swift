@@ -118,19 +118,22 @@ struct ListenHome: View {
         }
         .task(id: model.jamendoClientId) { await loadPopular() }
         .overlay {
-            if isEmpty {
-                // The empty state only once the library has loaded.
-                switch model.phase {
-                case .loading:
-                    ForgeStateView.loading("Asking the take server")
-                case .failed(let message):
-                    ForgeStateView.failed(
-                        "Can't Load the Library", message: message,
-                        retry: ForgeStateAction("Try Again", identifier: "listen.homeRetry") {
-                            Task { await model.loadLibrary() }
-                        }
-                    )
-                case .ready:
+            // The library's phase comes first: loading and failed only
+            // happen while the library is empty, and stations or Jamendo's
+            // popular songs must not hide them. The empty state waits until
+            // the library is ready.
+            switch model.phase {
+            case .loading:
+                ForgeStateView.loading("Asking the take server")
+            case .failed(let message):
+                ForgeStateView.failed(
+                    "Can't Load the Library", message: message,
+                    retry: ForgeStateAction("Try Again", identifier: "listen.homeRetry") {
+                        Task { await model.loadLibrary() }
+                    }
+                )
+            case .ready:
+                if isEmpty {
                     ForgeStateView.empty(
                         "Nothing to Play Yet", systemImage: "music.note.house",
                         description: "Find music in Discover or Search, import your own files in Library, or add a take server."

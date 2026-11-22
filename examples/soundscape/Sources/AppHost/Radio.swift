@@ -35,7 +35,12 @@ final class Radio {
     /// Songs given so far, so a batch never repeats them.
     private var played: [String] = []
     private var artists: [String] = []
-    private var fetching = false
+    /// The top-up in progress, retries included. Radio owns it, so a
+    /// view's task ending (the queue moved, the screen changed) never cuts
+    /// a backoff short or restarts its count.
+    private var topUpTask: Task<Void, Never>?
+    /// Tells a finished top-up whether it is still the current one.
+    private var topUpNumber = 0
 
     /// Ask for more while fewer than this many songs are still to come.
     static let ahead = 4
@@ -61,6 +66,7 @@ final class Radio {
 
     /// Starts `seed` from its first batch.
     func start(_ seed: StationSeed, title: String, model: ListenModel, player: TakePlayer) async {
+        cancelTopUp()
         self.seed = seed
         self.title = title
         status = .playing
@@ -85,29 +91,44 @@ final class Radio {
 
     /// Called when the queue moves on: tops it up, or ends the radio when
     /// something else is playing now. A failed top-up is tried again after
-    /// each wait in `retries` while the station is still on air.
+    /// each wait in `retries` while the station is still on air; a call
+    /// while one is under way leaves it alone.
     func follow(model: ListenModel, player: TakePlayer) async {
-        guard let seed, !fetching, !isTuning else { return }
+        guard let seed, !isTuning else { return }
         if let current = player.current?.trackId, !played.contains(current) {
             stop()
             return
         }
-        guard player.upcoming.count < Self.ahead else { return }
+        guard topUpTask == nil, player.upcoming.count < Self.ahead else { return }
         if case .exhausted = status { return }
         if case .failed = status { return }
-        await topUp(seed, model: model, player: player)
+        beginTopUp(seed, model: model, player: player)
     }
 
     /// Try Again after the retries ran out or the station was empty.
     func retry(model: ListenModel, player: TakePlayer) async {
-        guard let seed, !fetching else { return }
+        guard let seed, topUpTask == nil else { return }
         status = .playing
-        await topUp(seed, model: model, player: player)
+        beginTopUp(seed, model: model, player: player)
+    }
+
+    private func beginTopUp(_ seed: StationSeed, model: ListenModel, player: TakePlayer) {
+        topUpNumber += 1
+        let number = topUpNumber
+        topUpTask = Task { [weak self] in
+            await self?.topUp(seed, model: model, player: player)
+            guard let self, self.topUpNumber == number else { return }
+            self.topUpTask = nil
+        }
+    }
+
+    private func cancelTopUp() {
+        topUpTask?.cancel()
+        topUpTask = nil
+        topUpNumber += 1
     }
 
     private func topUp(_ seed: StationSeed, model: ListenModel, player: TakePlayer) async {
-        fetching = true
-        defer { fetching = false }
         var attempt = 0
         while self.seed == seed, !Task.isCancelled {
             switch await model.stationBatch(seed, played: played, recentArtists: artists) {
@@ -118,7 +139,8 @@ final class Radio {
                 player.add(tracks, next: false)
                 return
             case .failure(let f):
-                // The screen moved on: the next follow carries on.
+                // Stopped (the radio went off, or the app left the
+                // foreground): the next follow starts again.
                 if f.stopped { return }
                 if f.nothingToPlay {
                     status = .exhausted
@@ -136,6 +158,7 @@ final class Radio {
     }
 
     func stop() {
+        cancelTopUp()
         seed = nil
         title = nil
         status = .playing
