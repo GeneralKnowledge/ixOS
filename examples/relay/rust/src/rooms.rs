@@ -417,6 +417,7 @@ fn answer(response: Response) -> Result<RoomAccount, chat_core::ChatError> {
         }
         status => Err(chat_core::ChatError::Http {
             status,
+            // cut: a server's error body, shown only as an error's reason
             reason: String::from_utf8_lossy(&response.body)
                 .trim()
                 .chars()

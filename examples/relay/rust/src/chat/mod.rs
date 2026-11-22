@@ -1458,6 +1458,7 @@ fn find_room_host(address: &str) -> Result<(crate::rooms::RoomHost, String), Cha
     if !(200..300).contains(&response.status) {
         return Err(ChatError::Http {
             status: response.status,
+            // cut: a server's error body, shown only as an error's reason
             reason: String::from_utf8_lossy(&response.body)
                 .chars()
                 .take(200)
