@@ -153,6 +153,8 @@ Disabled and pressed states come from SwiftUI (`.disabled(...)`); there is no `i
 
 Give `ForgeButton` an async action and it tracks the work itself: it is disabled as soon as it is tapped, and its spinner (and VoiceOver's "In progress") appear only if the work takes longer than 0.4 seconds. A fast local write doesn't flicker; a slow one is never silent. Use it for any button whose action awaits something ([silent waits](research/experience/forgeui-0.2.md#35-silent-waits)); keep `isWorking:` for work the model already tracks.
 
+Alerts, confirmation dialogs, swipe actions and menus close as soon as they are tapped, so they can't hold a spinner. Give the model a command that marks the affected row pending and runs the work itself, and let the row say so: Relay's trust offer calls `model.startTrusting(offer)`, and the device list shows "Trusting…" until Rust answers; a deleted message says "Deleting…" in its bubble. Work that outlives the screen goes in ForgeAppKit's running-work `forgeBanner`. Over about ten seconds, or with a known size, show real progress (below). The `silent-wait` [parity rule](app-parity.md) fails a `Button` or `onSubmit` that starts a `Task` that awaits, unless the closure sets a working flag the view shows; apps not yet moved are listed in `app-parity.toml`.
+
 For a control that isn't a `Button` (a `Menu`'s label, a renderer's own control), `.forgeButtonLook(.primary, expands:, isPressed:)` draws the same look. It is the one implementation: the button styles draw with it, so pressed, disabled, working, compact, Reduce Motion and the Dynamic Type minimum height all behave the same.
 
 ```swift
@@ -263,6 +265,19 @@ ForgeStat("Wind", value: "29", unit: "km/h", layout: .inline)   // in a card
 
 A row in a list with a trailing value is `ForgeRow(value:)`, not a stat. The `stat` [parity rule](app-parity.md) catches a hand-built figure over a grey caption.
 
+### Progress
+
+```swift
+ProgressView(value: done, total: total) {
+    Text("Receiving 12 MB")
+} currentValueLabel: {
+    Text("4 MB of 12 MB")
+}
+.progressViewStyle(.forge)                          // or .forge(tone: book.status.tone)
+```
+
+The style goes on SwiftUI's own `ProgressView`. The label takes the `rowTitle` role and the current value the `metadata` role with equal-width digits, on one line above the bar (the value moves under the label when they don't fit). The bar is SwiftUI's linear bar in the tone's solid colour, so VoiceOver hears the label, the value and the percentage as one element; write the value as "n of m" when there is a count. Values past either end draw as empty or full; with no value it is an indeterminate bar. There is no parity rule: a `ProgressView` without the style is still a correct native control.
+
 ### Ratings
 
 ```swift
@@ -338,7 +353,7 @@ ForgeStateView.noResults(for: model.searchText)
 
 Built on `ContentUnavailableView`, so they look like the system's own; `noResults` is the system's own search state, in the system's words and language. Keep the states apart:
 
-- Show `loading` until the model has loaded, never an empty list that is still loading.
+- Show `loading` until the model has loaded, never an empty list that is still loading. Its spinner appears after 0.4 seconds, like `ForgeButton`'s, so a quick load doesn't flash one and a slow one is never blank.
 - `noResults` is for every search that found nothing (with `advice:` and `action:` when the search has its own way forward); `empty` is for a screen with nothing in it yet, or an item that has gone (`"Book Deleted"`, no action).
 - `failed` takes a retry that repeats the operation that failed, and a model test shows it does.
 

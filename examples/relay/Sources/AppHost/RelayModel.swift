@@ -23,6 +23,8 @@ public final class RelayModel {
         case remove(transfer: UInt64)
         case revoke(endpointID: String)
         case forgetDevice(endpointID: String)
+        /// Trust (or trust again) a device: Try Again on a failed trust.
+        case trust(endpointID: String, name: String)
     }
 
     public var alert: ForgeAlert<Action>?
@@ -101,6 +103,13 @@ public final class RelayModel {
         await perform { try await $0.dismissSavedDataNotice() }
     }
 
+    /// The notice's OK: it closes at once and the model remembers the
+    /// answer.
+    public func startDismissingSavedDataNotice() {
+        savedDataNotice = nil
+        Task { await dismissSavedDataNotice() }
+    }
+
     /// An upgrade turned Relay's servers on (N2): said once, until the
     /// person dismisses it.
     public private(set) var awayNotice: String?
@@ -108,6 +117,13 @@ public final class RelayModel {
     public func dismissAwayNotice() async {
         awayNotice = nil
         await perform { try await $0.dismissAwayFromHomeNotice() }
+    }
+
+    /// The notice's OK: it closes at once and the model remembers the
+    /// answer.
+    public func startDismissingAwayNotice() {
+        awayNotice = nil
+        Task { await dismissAwayNotice() }
     }
 
     /// Whether anything is still on its way, so the screen refreshes its
@@ -160,11 +176,19 @@ public final class RelayModel {
             await perform { try await $0.revokeDevice(endpointId: id) }
         case .forgetDevice(let id):
             await perform { try await $0.forgetDevice(endpointId: id) }
+        case .trust(let id, let name):
+            await trust(endpointID: id, name: name)
         }
     }
 
     public func remove(_ transfer: Transfer) async {
         await perform { try await $0.removeTransfer(id: transfer.id) }
+    }
+
+    /// Removes a transfer from the history from a menu, which closes at
+    /// once: the model runs the (local, quick) write.
+    public func startRemoving(_ transfer: Transfer) {
+        Task { await remove(transfer) }
     }
 
     /// Reports a failure the views ran into themselves.
@@ -280,9 +304,37 @@ public final class RelayModel {
     /// The person answered Trust.
     public func trust(_ offer: TrustOffer) async {
         trustOffer = nil
-        await perform { try await $0.trustDevice(endpointId: offer.endpointId) }
+        await trust(endpointID: offer.endpointId, name: offer.name)
         // The next device waiting to be trusted, if any.
         refreshTrustOffer()
+    }
+
+    /// Trust from the trust offer's alert, which closes at once: the list
+    /// shows "Trusting…" for the device until Rust answers (`trusting`).
+    public func startTrusting(_ offer: TrustOffer) {
+        trusting[offer.endpointId] = offer.name
+        Task { await trust(offer) }
+    }
+
+    /// Devices being trusted right now, by endpoint id, with their names:
+    /// the list shows each as a pending row, since the alert or button that
+    /// asked has gone.
+    public private(set) var trusting: [String: String] = [:]
+
+    /// Trusts a device. A failure that might pass (the other device is out
+    /// of reach) offers Try Again in the alert.
+    private func trust(endpointID: String, name: String) async {
+        trusting[endpointID] = name
+        defer { trusting[endpointID] = nil }
+        do {
+            try await core.trustDevice(endpointId: endpointID)
+            reload()
+            feedback.play(.success)
+        } catch {
+            log.warn("trust failed: \(error)")
+            alert = .failure(error, retry: .trust(endpointID: endpointID, name: name))
+            feedback.play(.failure)
+        }
     }
 
     /// The person answered Not Now: nothing is remembered, and the next
@@ -294,7 +346,7 @@ public final class RelayModel {
 
     /// Trust Again, for a revoked device: the only way it is trusted again.
     public func trustAgain(_ device: Device) async {
-        await perform { try await $0.trustDevice(endpointId: device.endpointId) }
+        await trust(endpointID: device.endpointId, name: device.name)
     }
 
     public func askToRevoke(_ device: Device) {

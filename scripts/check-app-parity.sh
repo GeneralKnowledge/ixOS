@@ -987,6 +987,61 @@ def rule_stat(app):
     return True, ""
 
 
+# A button that waits must show it (ForgeUI 0.2 item 9, "silent waits"):
+# a slow load that shows nothing looks broken. A `Button` or `onSubmit`
+# whose action starts a `Task` that awaits passes only if the same closure
+# sets a working flag the view shows (`flag ?` or `if flag` elsewhere in the
+# file; a flag that only blocks a second tap doesn't count). Otherwise use
+# an async `ForgeButton` (disabled at once, a spinner after 0.4 s), put it
+# in `forgeFormToolbar`, or, for alerts, dialogs, swipes and menus that
+# close at once, give the model a command that marks the row pending
+# ("Trusting…") and runs the work itself. The rule can't time anything, so
+# fast local writes count too: the pattern makes showing work free.
+SILENT_START = re.compile(r"\b(?:Button\b[^{\n]*\{|\.onSubmit\s*(?:\([^)]*\))?\s*\{)")
+STARTS_TASK = re.compile(r"\bTask\s*(?:\([^)]*\))?\s*\{")
+SETS_FLAG = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*true\b")
+
+
+def closing_brace(code, i):
+    depth = 0
+    for j in range(i, len(code)):
+        if code[j] == "{":
+            depth += 1
+        elif code[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return j
+    return len(code)
+
+
+def rule_silent_wait(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in SILENT_START.finditer(code):
+            brace = m.end() - 1
+            end = closing_brace(code, brace)
+            body = code[brace:end]
+            if not STARTS_TASK.search(body) or not re.search(r"\bawait\b", body):
+                continue
+            rest = code[:brace] + code[end:]
+            shown = any(
+                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+{re.escape(flag)}\b|\b{re.escape(flag)}\s*&&", rest)
+                for flag in SETS_FLAG.findall(body)
+            )
+            # A running-work banner set before the task shows it too.
+            if shown or re.search(r"=\s*\.working\(", body):
+                continue
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, (
+            "a button waits without showing it; use an async ForgeButton, forgeFormToolbar, "
+            "or a model command with a pending row: " + ", ".join(bad)
+        )
+    return True, ""
+
+
 # Stars for a rating come from ForgeUI's ForgeRating: one adjustable
 # VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
 # app, and `<id>.star.<n>` identifiers. Soundscape and Pocket Library each
@@ -1187,6 +1242,7 @@ RULES = [
     ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
     ("choice", "Chips and one-of-several tiles through ForgeUI's `forgeChoice` style, never a hand-added `.isSelected`", rule_choice),
     ("stat", "Figures with their name (totals, measurements) through ForgeUI's `ForgeStat`", rule_stat),
+    ("silent-wait", "A button that waits shows it: an async `ForgeButton`, `forgeFormToolbar`, a shown working flag, or a pending row", rule_silent_wait),
     ("rating", "Ratings through ForgeUI's `ForgeRating`, never stars drawn by hand", rule_rating),
     ("thumbnail", "Pictures in ForgeUI's `ForgeThumbnail`, never an image clipped to a shape by hand", rule_thumbnail),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),

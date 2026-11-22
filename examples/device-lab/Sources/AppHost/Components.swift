@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeUI
 import SwiftUI
 
 /// A small line chart of recent values, scaled to its own range.
@@ -70,7 +71,7 @@ struct PermissionPrompt: View {
         case .notDetermined:
             VStack(alignment: .leading, spacing: 8) {
                 Text(explanation).font(.subheadline).foregroundStyle(.secondary)
-                Button(allowTitle) { Task { await request() } }
+                ForgeButton(LocalizedStringKey(allowTitle)) { await request() }
             }
         case .denied:
             VStack(alignment: .leading, spacing: 8) {

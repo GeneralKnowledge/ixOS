@@ -29,8 +29,8 @@ struct PythonLabView: View {
                     Button("Stop", systemImage: "stop.fill", role: .destructive) { model.stop() }
                         .accessibilityIdentifier("pythonLab.stop")
                 } else {
-                    Button("Run", systemImage: "play.fill") {
-                        Task { await model.run() }
+                    ForgeButton("Run", systemImage: "play.fill") {
+                        await model.run()
                     }
                     .disabled(!model.hasPython)
                     .accessibilityIdentifier("pythonLab.run")

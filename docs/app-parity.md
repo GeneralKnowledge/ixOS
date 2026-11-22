@@ -29,6 +29,7 @@ When the framework gains a better way to do something, every app moves to it, or
 | `icon-tile` | Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle |
 | `choice` | Chips and one-of-several tiles through ForgeUI's `forgeChoice` style, never a hand-added `.isSelected` |
 | `stat` | Figures with their name (totals, measurements) through ForgeUI's `ForgeStat` |
+| `silent-wait` | A button that waits shows it: an async `ForgeButton`, `forgeFormToolbar`, a shown working flag, or a pending row |
 | `rating` | Ratings through ForgeUI's `ForgeRating`, never stars drawn by hand |
 | `thumbnail` | Pictures in ForgeUI's `ForgeThumbnail`, never an image clipped to a shape by hand |
 | `rename` | Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused |
@@ -52,21 +53,21 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 ## Apps
 
-| App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `web-images` | `swipe-guard` | `forge-theme` | `state-views` | `root-loading` | `toned-text` | `resume` | `now-playing` | `floating-bars` | `notices` | `form-toolbar` | `icon-tile` | `choice` | `stat` | `rating` | `thumbnail` | `rename` | `share-file` | `no-silent-cut` | `row-actions` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `rust-cancellation` | `swift-logging` | `connectivity` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Not applicable | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | n/a | n/a | Yes |
-| fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | Yes | Yes | Yes |
-| good-dog | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| sums | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| urdu-naturally | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 5) | Yes | Yes | Yes |
-| weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (decision) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `web-images` | `swipe-guard` | `forge-theme` | `state-views` | `root-loading` | `toned-text` | `resume` | `now-playing` | `floating-bars` | `notices` | `form-toolbar` | `icon-tile` | `choice` | `stat` | `silent-wait` | `rating` | `thumbnail` | `rename` | `share-file` | `no-silent-cut` | `row-actions` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `rust-cancellation` | `swift-logging` | `connectivity` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (wave 5) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (wave 5) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Not applicable | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | n/a | n/a | Yes |
+| fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (wave 5) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | Yes | Yes | Yes |
+| good-dog | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Deferred (wave 5) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (wave 5) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (wave 5) | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (wave 5) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| sums | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (wave 5) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| urdu-naturally | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (wave 5) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 5) | Yes | Yes | Yes |
+| weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (decision) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 
 ## Known lag
 
@@ -79,7 +80,16 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | relay | `device-checks` | missing | CH-12 (Chat's, now Relay's messaging: data held by a second core) is proved by its twin test only; the phone can't open a second core from the UI | 4 |
 | sketchbook | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
 | soundscape | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
+| checklist | `silent-wait` | deferred | 5 buttons (Clear Done, exports, add) await quick local writes; move to async ForgeButton or model commands when Checklist's screens are next touched (ForgeUI 0.2 item 9) | 5 |
+| commonplace | `silent-wait` | deferred | 10 sites (Mark All Read, move feed, full-text toggle, folder menus); full text waits on the network, so it moves first, with its Try Again (UI Finish Audit E2), when Commonplace is next touched | 5 |
+| fieldkit | `silent-wait` | deferred | Delete note (row action) and the GPX and GeoJSON exports (a menu): a pending row and model command when FieldKit's trip screen is next touched | 5 |
+| good-dog | `silent-wait` | deferred | 17 sites (Today swap and shorten, goal pause and resume, Erase All), all local writes; moved screen by screen as Good Dog's GD work touches them | 5 |
+| pocket-library | `silent-wait` | deferred | Reader chapter buttons and the Personal Voice request; moved with the next reader change | 5 |
+| sketchbook | `silent-wait` | deferred | Duplicate (a menu) and undo and redo (toolbar, with a result to show); moved with Sketchbook's next change | 5 |
+| soundscape | `silent-wait` | deferred | 17 sites (Discover add, Keep on Phone, downloads, client ID); Discover's add and downloads wait on the network and move first, with Try Again (UI Finish Audit E2), at Soundscape's next player change | 5 |
+| sums | `silent-wait` | deferred | The calculator keys run Rust's engine in well under 0.4 s and must take the next tap at once; a key-press model command replaces the Task when Sums is next touched | 5 |
 | urdu-naturally | `device-checks` | missing | UN-3 (a failed save is an alert) is proved by its twin test only, as the phone can't make a save fail from the UI; UN-5 (pattern practice) gets a phone scenario after its first phone sitting | 5 |
+| urdu-naturally | `silent-wait` | deferred | Record, Start Over and the name setting; moved with the app's next Settings change (the same change as UI Finish Audit E4) | 5 |
 
 ## Not applicable
 
@@ -89,6 +99,7 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | device-lab | `forge-theme` | The lab shell keeps system styling; every hosted app sets its own theme at its own root |
 | device-lab | `now-playing` | AudioMonitor only records interruptions and route changes for the dashboard; it plays nothing |
 | device-lab | `resume` | Its dashboard reports the phase for its lab services and its transfer test, not a hosted app's model; each hosted app follows its own host |
+| forgeui-showcase | `silent-wait` | The Simulate menu exists to show the loading and failed states: the screen shows ForgeStateView.loading while the model reloads |
 | good-dog | `choice` | The session outcome is a Form section of rows with a checkmark, iOS's own one-of-several list (Settings), not chips or tiles; the trait is the native row's |
 | sketchbook | `share-file` | Its export screen previews the image and offers Save to Photos and Quick Look besides Share; sharing is one action of three, not a ready-to-share step |
 | weather | `choice` | The page dots are a page indicator over the sky, not a choice control; each dot marks the page shown |

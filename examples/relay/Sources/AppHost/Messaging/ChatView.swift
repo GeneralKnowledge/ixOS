@@ -274,7 +274,9 @@ struct ChatView: View {
                 presenting: deleting
             ) { message in
                 Button(message.status == .sent ? "Delete for Everyone" : "Delete", role: .destructive) {
-                    Task { await model.delete(message) }
+                    // The dialog closes at once; the bubble says "Deleting…"
+                    // until the server answers.
+                    model.startDeleting(message)
                 }
             }
     }
@@ -932,12 +934,18 @@ private struct MessageBubble: View {
                 if !message.reactions.isEmpty && !message.deleted {
                     ReactionsRow(reactions: message.reactions, react: actions.react)
                 }
-                if delivery != nil || (message.edited && !message.deleted) {
+                if delivery != nil || (message.edited && !message.deleted) || model.deleting.contains(message.id) {
                     HStack(spacing: 4) {
                         if message.edited && !message.deleted {
                             Text("Edited").font(.caption2).foregroundStyle(.secondary)
                         }
-                        if let delivery { DeliveryLabel(delivery: delivery) }
+                        if model.deleting.contains(message.id) {
+                            ForgeStatus("Deleting…", tone: .info)
+                                .font(.caption2)
+                                .accessibilityIdentifier("chat.deleting")
+                        } else if let delivery {
+                            DeliveryLabel(delivery: delivery)
+                        }
                     }
                     .padding(.horizontal, 4)
                 }

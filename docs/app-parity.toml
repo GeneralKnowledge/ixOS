@@ -98,3 +98,72 @@ app = "weather"
 rule = "choice"
 status = "not-applicable"
 reason = "The page dots are a page indicator over the sky, not a choice control; each dot marks the page shown"
+
+[[lag]]
+app = "checklist"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "5 buttons (Clear Done, exports, add) await quick local writes; move to async ForgeButton or model commands when Checklist's screens are next touched (ForgeUI 0.2 item 9)"
+
+[[lag]]
+app = "commonplace"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "10 sites (Mark All Read, move feed, full-text toggle, folder menus); full text waits on the network, so it moves first, with its Try Again (UI Finish Audit E2), when Commonplace is next touched"
+
+[[lag]]
+app = "fieldkit"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "Delete note (row action) and the GPX and GeoJSON exports (a menu): a pending row and model command when FieldKit's trip screen is next touched"
+
+[[lag]]
+app = "good-dog"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "17 sites (Today swap and shorten, goal pause and resume, Erase All), all local writes; moved screen by screen as Good Dog's GD work touches them"
+
+[[lag]]
+app = "pocket-library"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "Reader chapter buttons and the Personal Voice request; moved with the next reader change"
+
+[[lag]]
+app = "sketchbook"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "Duplicate (a menu) and undo and redo (toolbar, with a result to show); moved with Sketchbook's next change"
+
+[[lag]]
+app = "soundscape"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "17 sites (Discover add, Keep on Phone, downloads, client ID); Discover's add and downloads wait on the network and move first, with Try Again (UI Finish Audit E2), at Soundscape's next player change"
+
+[[lag]]
+app = "sums"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "The calculator keys run Rust's engine in well under 0.4 s and must take the next tap at once; a key-press model command replaces the Task when Sums is next touched"
+
+[[lag]]
+app = "urdu-naturally"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "Record, Start Over and the name setting; moved with the app's next Settings change (the same change as UI Finish Audit E4)"
+
+[[lag]]
+app = "forgeui-showcase"
+rule = "silent-wait"
+status = "not-applicable"
+reason = "The Simulate menu exists to show the loading and failed states: the screen shows ForgeStateView.loading while the model reloads"
