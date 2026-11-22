@@ -275,17 +275,21 @@ fn gate_refuses_what_the_catalog_cannot_express() {
 
 #[test]
 fn a_payload_is_all_or_nothing() {
-    // The first message is fine, the second isn't: nothing is accepted.
-    let mut state = gate_after_start();
-    let payload = json!([
-        { "version": "1.0", "updateComponents": { "surfaceId": surface::SURFACE_ID,
-            "components": [{ "id": "intro", "component": "Text", "text": "Changed" }] } },
-        { "version": "1.0", "updateComponents": { "surfaceId": surface::SURFACE_ID,
-            "components": [{ "id": "web", "component": "WebView" }] } }
-    ]);
-    let before = state.actions.clone();
-    assert!(gate::check(&payload.to_string(), &mut state).is_err());
-    assert_eq!(state.actions, before);
+    // A valid createSurface, then a bad message: nothing is committed, not
+    // even the surface the first message created.
+    let mut state = GateState::default();
+    let create: Value = surface::create(&proposal(PROPOSAL).unwrap());
+    let mut messages = create
+        .as_array()
+        .cloned()
+        .unwrap_or_else(|| vec![create.clone()]);
+    messages.push(
+        json!({ "version": "1.0", "updateComponents": { "surfaceId": surface::SURFACE_ID,
+        "components": [{ "id": "web", "component": "WebView" }] } }),
+    );
+    assert!(gate::check(&Value::Array(messages).to_string(), &mut state).is_err());
+    assert!(!state.created);
+    assert!(state.actions.is_empty());
 }
 
 #[test]
