@@ -20,6 +20,14 @@ struct BonsaiHarnessView: View {
             if model.isAvailable {
                 modelSection
                 if model.isRunning {
+                    if let snapshot = model.snapshot, let task = snapshot.task {
+                        BonsaiLiveSection(
+                            task: task.description,
+                            step: snapshot.phase == .thinking ? snapshot.steps.count + 1 : max(snapshot.steps.count, 1),
+                            phase: snapshot.phase,
+                            live: model.live
+                        )
+                    }
                     Section {
                         Button("Stop", systemImage: "stop.fill", role: .destructive) { model.stop() }
                             .accessibilityIdentifier("harness.stop")
@@ -111,13 +119,6 @@ struct BonsaiHarnessView: View {
                     .font(.footnote)
                     .forgeForeground(task.status == .completed ? .success : .danger)
                     .accessibilityIdentifier("harness.result")
-            }
-            if snapshot.running, !snapshot.draft.isEmpty {
-                Text(snapshot.draft)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(8)
-                    .accessibilityIdentifier("harness.draft")
             }
             if !snapshot.running {
                 ShareLink(item: model.transcript) {

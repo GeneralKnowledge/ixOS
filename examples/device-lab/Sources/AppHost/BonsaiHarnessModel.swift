@@ -11,6 +11,10 @@ import Observation
 @Observable
 public final class BonsaiHarnessModel {
     public private(set) var snapshot: HarnessSnapshot?
+    /// Bonsai's current step as it writes it: the thought, then the file.
+    /// Kept while the step runs, so the code stays on screen; cleared when
+    /// the task ends.
+    public private(set) var live: HarnessLive?
     public private(set) var ladder: [HarnessTask] = []
     public private(set) var files: [ProjectFile] = []
     /// The project's images, newest first, shown as thumbnails.
@@ -48,7 +52,7 @@ public final class BonsaiHarnessModel {
         LlamaModelFile.catalogue.filter(\.isDownloaded)
     }
 
-    /// Copies Rust's snapshot four times a second until the calling task is
+    /// Copies Rust's snapshot four times a second (ten while Bonsai writes) until the calling task is
     /// cancelled (attach with `.task`).
     public func follow() async {
         if !isScripted, !downloadedModels.contains(where: { $0.id == modelID }) {
@@ -64,7 +68,8 @@ public final class BonsaiHarnessModel {
             refresh()
             if wasRunning && !isRunning { loadFiles() }
             wasRunning = isRunning
-            try? await Task.sleep(for: .milliseconds(250))
+            // Faster while Bonsai writes, so the text streams smoothly.
+            try? await Task.sleep(for: .milliseconds(snapshot?.phase == .thinking ? 100 : 250))
         }
     }
 
@@ -72,6 +77,11 @@ public final class BonsaiHarnessModel {
         guard let harness else { return }
         let next = harness.snapshot()
         if next != snapshot { snapshot = next }
+        if let current = next.live {
+            if current != live { live = current }
+        } else if !next.running, live != nil {
+            live = nil
+        }
     }
 
     public func run(_ task: HarnessTask) {

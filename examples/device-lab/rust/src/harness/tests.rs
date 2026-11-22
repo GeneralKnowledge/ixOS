@@ -1005,3 +1005,45 @@ fn replay_skips_a_line_cut_inside_a_character() {
         }
     ));
 }
+
+#[test]
+fn the_live_view_reads_a_half_written_answer() {
+    let full = r#"{"thought": "Write the \"hello\" file.", "tool": "write_file", "path": "hello.py", "content": "print(\"Hello from Bonsai\")\nprint('é \u00e9')\n"}"#;
+    // Partway through the thought.
+    let live = super::live::read(&full[..full.find("hello").unwrap() + 1]);
+    assert_eq!(live.thought, "Write the \"h");
+    assert!(!live.thought_done);
+    assert_eq!(live.tool, None);
+    // Partway through the tool name: not shown until complete.
+    let cut = full.find("write_f").unwrap() + 5;
+    let live = super::live::read(&full[..cut]);
+    assert!(live.thought_done);
+    assert_eq!(live.thought, "Write the \"hello\" file.");
+    assert_eq!(live.tool, None);
+    // Partway through the file: path known, code growing.
+    let cut = full.find("Bonsai").unwrap();
+    let live = super::live::read(&full[..cut]);
+    assert_eq!(live.tool.as_deref(), Some("write_file"));
+    assert_eq!(live.path.as_deref(), Some("hello.py"));
+    assert_eq!(live.code, "print(\"Hello from ");
+    assert!(live.writing);
+    // A cut inside an escape or a \u sequence doesn't break anything.
+    let cut = full.find("\\u00e9").unwrap() + 3;
+    let live = super::live::read(&full[..cut]);
+    assert!(live.code.ends_with("print('é "), "{:?}", live.code);
+    // The whole answer.
+    let live = super::live::read(full);
+    assert_eq!(live.code, "print(\"Hello from Bonsai\")\nprint('é é')\n");
+    assert!(!live.writing);
+    // A key name inside the content is not taken for the key.
+    let tricky = r#"{"thought": "t", "tool": "write_file", "path": "a.py", "content": "x = '\"path\": \"no'"#;
+    let live = super::live::read(tricky);
+    assert_eq!(live.path.as_deref(), Some("a.py"));
+    assert_eq!(live.code, "x = '\"path\": \"no'");
+    // edit_file shows the new lines, with the old ones apart.
+    let edit = r#"{"thought": "Fix.", "tool": "edit_file", "path": "average.py", "old": "len(numbers) + 1", "new": "len(num"#;
+    let live = super::live::read(edit);
+    assert_eq!(live.replacing, "len(numbers) + 1");
+    assert_eq!(live.code, "len(num");
+    assert!(live.writing);
+}
