@@ -380,7 +380,7 @@ The current accents: Pocket Library orange, Good Dog green, Commonplace indigo, 
 
 ## What's not in 0.1
 
-Application patterns (alerts and destinations as model values, load and submission state) are [ForgeAppKit](forgeappkit.md), a separate, optional product on top of ForgeUI. Also not in 0.1: moving the template and demos onto ForgeUI, snapshot tests, custom fonts, and Android.
+Application patterns (alerts and destinations as model values, load and submission state) are [ForgeAppKit](forgeappkit.md), a separate, optional product on top of ForgeUI. Also not in 0.1: moving the template and demos onto ForgeUI, snapshot tests, custom fonts, and Android. What 0.2 adds, and why, is proposed in the [ForgeUI 0.2 audit and specification](research/experience/forgeui-0.2.md).
 
 ## Building on Linux
 
