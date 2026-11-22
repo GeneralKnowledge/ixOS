@@ -191,7 +191,7 @@ pub fn tracks_url(client_id: &str, ask: &Ask) -> String {
             "tags={}&order=popularity_week&type={BOTH_TYPES}",
             encode(tag, false)
         ),
-        Ask::Track(id) => format!("id={}", encode(id, false)),
+        Ask::Track(id) => format!("id={}&type={BOTH_TYPES}", encode(id, false)),
     };
     format!(
         "{API}/tracks/?client_id={}&format=json&limit={PAGE}&{what}&include=musicinfo&audioformat=mp32&imagesize=300",

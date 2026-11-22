@@ -463,7 +463,6 @@ struct JamendoClientIdForm: View {
         }
     }
 }
-#endif
 
 // MARK: Jamendo by artist and genre
 
@@ -577,3 +576,4 @@ struct JamendoTracksView: View {
         }
     }
 }
+#endif
