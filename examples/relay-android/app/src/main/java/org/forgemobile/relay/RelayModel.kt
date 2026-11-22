@@ -30,6 +30,7 @@ import uniffi.relay_core.Device
 import uniffi.relay_core.DeviceService
 import uniffi.relay_core.Direction
 import uniffi.relay_core.Identity
+import uniffi.relay_core.Item
 import uniffi.relay_core.NearbyDevice
 import uniffi.relay_core.NearbySender
 import uniffi.relay_core.PairingPolicy
@@ -240,6 +241,26 @@ class RelayModel(
     }
 
     suspend fun remove(transfer: Transfer) = perform { it.removeTransfer(transfer.id) }
+
+    /**
+     * Remove from History: a received file still here goes with its entry (Rust deletes Relay's
+     * copy), so that asks first; anything else goes at once.
+     */
+    suspend fun askToRemove(transfer: Transfer) {
+        val file = transfer.item as? Item.File
+        if (transfer.direction != Direction.RECEIVED || file?.path == null) {
+            remove(transfer)
+            return
+        }
+        _alert.value = ForgeAlert.confirm(
+            "Delete “${file.name}”?",
+            message = "Removing it from History deletes Relay's copy on this device. Anything you saved elsewhere stays.",
+            confirm = "Delete",
+            action = Action.Remove(transfer.id),
+            identifier = "history.confirmRemove",
+            destructive = true,
+        )
+    }
 
     /** Stops a send to a trusted device that is on its way, or takes it off the outbox. */
     fun cancel(transfer: Transfer) {

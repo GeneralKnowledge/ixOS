@@ -182,6 +182,26 @@ class RelayModelTest {
     }
 
     @Test
+    fun removingAReceivedFileAsksFirst() = runBlocking {
+        val phone = device("Pixel")
+        val laptop = device("Laptop")
+        codeTransfer(laptop, phone, file("b.txt", "b"))
+        val received = phone.state.value.transfers.single { it.direction == Direction.RECEIVED }
+        phone.askToRemove(received)
+        val ask = phone.alert.value!!
+        assertEquals("Delete “b.txt”?", ask.title)
+        assertEquals(1, phone.state.value.transfers.count { it.direction == Direction.RECEIVED })
+        phone.handle(ask.action("Delete")!!)
+        assertTrue(phone.state.value.transfers.none { it.direction == Direction.RECEIVED })
+
+        // What was sent goes at once: there is nothing of it to delete here.
+        val sent = laptop.state.value.transfers.first { it.direction == Direction.SENT }
+        laptop.askToRemove(sent)
+        assertNull(laptop.alert.value)
+        assertTrue(laptop.state.value.transfers.none { it.id == sent.id })
+    }
+
+    @Test
     fun revokingAsksFirstAndIsFinal() = runBlocking {
         val phone = device("Pixel")
         val laptop = device("Laptop")

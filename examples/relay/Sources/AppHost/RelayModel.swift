@@ -167,6 +167,24 @@ public final class RelayModel {
         await perform { try await $0.removeTransfer(id: transfer.id) }
     }
 
+    /// Remove from History: a received file still here goes with its entry
+    /// (Rust deletes Relay's copy), so that asks first; anything else goes
+    /// at once.
+    public func askToRemove(_ transfer: Transfer) async {
+        guard transfer.direction == .received, case .file(let name, _, let path) = transfer.item, path != nil else {
+            await remove(transfer)
+            return
+        }
+        alert = .confirm(
+            "Delete “\(name)”?",
+            message: "Removing it from History deletes Relay's copy on this device. Anything you saved elsewhere stays.",
+            confirm: "Delete",
+            action: .remove(transfer: transfer.id),
+            identifier: "history.confirmRemove",
+            destructive: true
+        )
+    }
+
     /// Reports a failure the views ran into themselves.
     public func report(_ error: Error) {
         log.warn("failed: \(error)")
@@ -430,6 +448,8 @@ public final class RelayModel {
             switch ServerChoice(servers) {
             case .relays:
                 "Your devices reach each other from anywhere. When there's no direct way, an encrypted connection passes through Relay's server, which can't read it but sees that two devices are connected, when and how much."
+            case .own where servers.relayUrl == nil:
+                "Your devices reach each other directly when they can, from anywhere: your lookup server tells trusted devices where to find this one. With no relay server, some networks keep them apart."
             case .own:
                 "Your devices reach each other from anywhere. When there's no direct way, an encrypted connection passes through your own server, which can't read it but sees that two devices are connected, when and how much."
             case .none:
@@ -511,6 +531,10 @@ public final class RelayModel {
 
     public private(set) var codeReceive: CodeReceive = .idle
 
+    /// The code receive in hand: one stopped (or replaced) while it looked
+    /// for its sender is dropped when the sender turns up.
+    private var receiveAttempt = 0
+
     public var isReceivingCode: Bool {
         switch codeReceive {
         case .finding, .receiving: true
@@ -528,8 +552,13 @@ public final class RelayModel {
             codeReceive = .failed(Self.message(error))
             return
         }
+        receiveAttempt += 1
+        let attempt = receiveAttempt
         codeReceive = .finding
-        switch await find(number) {
+        let sender = await find(number)
+        // Stopped while looking: nothing more.
+        guard attempt == receiveAttempt, case .finding = codeReceive else { return }
+        switch sender {
         case .none:
             codeReceive = .failed("No sender with code number \(number) on this Wi-Fi. Check the sender is still waiting, on the same network.")
         case .several:
@@ -557,8 +586,15 @@ public final class RelayModel {
         }
     }
 
+    /// Stop: while looking for the sender, stops looking (Rust hasn't been
+    /// asked yet); while receiving, Rust stops.
     public func cancelCodeReceive() {
-        core.cancelCodeReceive()
+        if case .finding = codeReceive {
+            receiveAttempt += 1
+            codeReceive = .idle
+        } else {
+            core.cancelCodeReceive()
+        }
     }
 
     public func resetCodeReceive() {
@@ -600,6 +636,7 @@ public final class RelayModel {
     /// Starts sending the files and folders at `paths` with one new code;
     /// the receiver gets them in one folder when there are several.
     public func send(paths: [String]) {
+        staging = 0
         do {
             try core.sendPathsWithCode(paths: paths)
             codeSend = core.codeSendStatus()
@@ -609,21 +646,45 @@ public final class RelayModel {
         }
     }
 
+    /// The pick being copied in before Rust has it (0: none). Each pick gets
+    /// its own number, so Stop, or a newer pick, drops an older one.
+    private var staging = 0
+    private var picks = 0
+
     /// Shows that a picked file is being made ready (copied in) before Rust
-    /// has it.
-    public func preparing(name: String) {
+    /// has it. Pass the number it returns to `send(paths:staged:)` or
+    /// `failSend(_:staged:)`.
+    @discardableResult
+    public func preparing(name: String) -> Int {
+        picks += 1
+        staging = picks
         codeSend = .preparing(name: name, size: 0)
+        return picks
+    }
+
+    /// Sends a pick once it is copied in, unless it was stopped or replaced
+    /// meanwhile.
+    public func send(paths: [String], staged pick: Int) {
+        guard pick == staging else { return }
+        send(paths: paths)
     }
 
     public func failSend(_ reason: String) {
+        staging = 0
         codeSend = .failed(reason: reason)
     }
 
+    /// A pick that couldn't be read, unless it was stopped or replaced.
+    public func failSend(_ reason: String, staged pick: Int) {
+        guard pick == staging else { return }
+        failSend(reason)
+    }
+
     public func refreshCodeSend() {
+        // Still copying the picked file in: Rust hasn't been asked yet, and
+        // what it says is about the send before.
+        if staging != 0 { return }
         let now = core.codeSendStatus()
-        // Still copying the picked file in: Rust hasn't been asked yet.
-        if case .idle = now, case .preparing = codeSend { return }
-        codeSend = now
         refreshTrustOffer()
     }
 
@@ -632,8 +693,15 @@ public final class RelayModel {
         core.codeSendNearby(senders: senders)
     }
 
+    /// Stop: while the pick copies in, drops it; once Rust sends, Rust
+    /// stops.
     public func cancelCodeSend() {
-        core.cancelCodeSend()
+        if staging != 0 {
+            staging = 0
+            codeSend = .idle
+        } else {
+            core.cancelCodeSend()
+        }
     }
 
     /// When the sheet opens: picks up a send still running in Rust (its code

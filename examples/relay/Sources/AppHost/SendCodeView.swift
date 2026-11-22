@@ -186,17 +186,17 @@ struct SendCodeSheet: View {
     /// previous send's copies are deleted when the next one starts.
     private func start(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        model.preparing(name: Self.name(urls.map(\.lastPathComponent)))
+        let pick = model.preparing(name: Self.name(urls.map(\.lastPathComponent)))
         Task {
             releaseOutgoing()
             do {
                 for url in urls {
                     outgoing.append(try await ForgePickedFile.copy(of: url))
                 }
-                model.send(paths: outgoing.map(\.url.path))
+                model.send(paths: outgoing.map(\.url.path), staged: pick)
             } catch {
                 releaseOutgoing()
-                model.failSend("Couldn't read what you chose: \(error.localizedDescription)")
+                model.failSend("Couldn't read what you chose: \(error.localizedDescription)", staged: pick)
             }
         }
     }
@@ -204,7 +204,7 @@ struct SendCodeSheet: View {
     /// Loads the picked photos and videos as files (the originals, not
     /// re-encoded where iOS can help it), then starts the send.
     private func start(photos: [PhotosPickerItem]) {
-        model.preparing(name: photos.count == 1 ? "a photo" : "\(photos.count) photos")
+        let pick = model.preparing(name: photos.count == 1 ? "a photo" : "\(photos.count) photos")
         Task {
             releaseOutgoing()
             do {
@@ -215,12 +215,12 @@ struct SendCodeSheet: View {
                     }
                 }
                 if paths.isEmpty {
-                    model.failSend("Couldn't read the photos you chose.")
+                    model.failSend("Couldn't read the photos you chose.", staged: pick)
                 } else {
-                    model.send(paths: paths)
+                    model.send(paths: paths, staged: pick)
                 }
             } catch {
-                model.failSend("Couldn't read the photos: \(error.localizedDescription)")
+                model.failSend("Couldn't read the photos: \(error.localizedDescription)", staged: pick)
             }
         }
     }
