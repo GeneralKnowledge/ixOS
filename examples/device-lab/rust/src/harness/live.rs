@@ -70,18 +70,23 @@ fn field(text: &str, key: &str) -> Option<(String, bool)> {
                     if (0xD800..0xDC00).contains(&unit) {
                         // A high surrogate: wait for its low half.
                         let mut ahead = chars.clone();
-                        let low = match (ahead.next(), ahead.next()) {
-                            (Some('\\'), Some('u')) => hex4(&mut ahead),
+                        match (ahead.next(), ahead.next()) {
                             (None, _) | (Some('\\'), None) => break,
-                            _ => None,
-                        };
-                        match low {
-                            Some(low) if (0xDC00..0xE000).contains(&low) => {
-                                let code = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
-                                out.extend(char::from_u32(code));
-                                chars = ahead;
+                            (Some('\\'), Some('u')) => {
+                                if ahead.as_str().chars().take(4).count() < 4 {
+                                    break;
+                                }
+                                match hex4(&mut ahead) {
+                                    Some(low) if (0xDC00..0xE000).contains(&low) => {
+                                        let code =
+                                            0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+                                        out.extend(char::from_u32(code));
+                                        chars = ahead;
+                                    }
+                                    _ => out.push(char::REPLACEMENT_CHARACTER),
+                                }
                             }
-                            None if ahead.clone().next().is_none() => break,
+                            // Something else follows: a lone high surrogate.
                             _ => out.push(char::REPLACEMENT_CHARACTER),
                         }
                     } else {

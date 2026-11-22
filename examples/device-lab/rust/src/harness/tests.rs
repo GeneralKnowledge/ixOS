@@ -1051,4 +1051,9 @@ fn the_live_view_reads_a_half_written_answer() {
     assert_eq!(super::live::read(emoji).code, "print('😀')");
     let half = &emoji[..emoji.find("\\uDE00").unwrap() + 2];
     assert_eq!(super::live::read(half).code, "print('");
+    // A lone high surrogate right before the closing quote is finished.
+    let lone = r#"{"thought": "t", "tool": "write_file", "path": "a.py", "content": "x\uD83D""#;
+    let live = super::live::read(lone);
+    assert_eq!(live.code, "x\u{FFFD}");
+    assert!(!live.writing);
 }

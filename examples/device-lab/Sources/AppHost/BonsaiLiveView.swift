@@ -87,7 +87,9 @@ struct BonsaiLiveSection: View {
     }
 }
 
-/// Code with line numbers that follows the end as it grows.
+/// Code with line numbers that follows the caret as it grows: down to the
+/// newest line, right along a long line, and back to the left when Bonsai
+/// starts a new one.
 private struct LiveCode: View {
     let text: String
     let writing: Bool
@@ -97,38 +99,51 @@ private struct LiveCode: View {
         ScrollViewReader { proxy in
             ScrollView([.vertical, .horizontal]) {
                 VStack(alignment: .leading, spacing: 0) {
-                    numbered
-                        .font(.system(.caption, design: .monospaced))
-                        .fixedSize(horizontal: true, vertical: false)
-                        .textSelection(.enabled)
-                    Color.clear.frame(height: 1).id("end")
+                    if lines.count > 1 {
+                        numbered(lines.dropLast(), from: 1)
+                    }
+                    // The last line carries the caret, so scrolling to the
+                    // caret shows where Bonsai is writing now.
+                    HStack(spacing: 0) {
+                        numbered(lines.suffix(1), from: lines.count)
+                        Text(writing ? "▍" : "")
+                            .foregroundStyle(.tint)
+                            .id("caret")
+                    }
                 }
+                .font(.system(.caption, design: .monospaced))
+                .fixedSize(horizontal: true, vertical: false)
+                .textSelection(.enabled)
                 .padding(10)
             }
             .frame(maxHeight: removed ? 90 : 280)
-            .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(.bottomLeading)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
             .onChange(of: text) {
-                proxy.scrollTo("end", anchor: .bottom)
+                // Trailing edge to the caret: on a short new line the offset
+                // can't go below zero, so the view slides back to the left.
+                proxy.scrollTo("caret", anchor: .bottomTrailing)
             }
         }
     }
 
-    /// The lines with their numbers in a quieter colour, and a caret at the
-    /// end while Bonsai is still writing.
-    private var numbered: Text {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+    private var lines: [String] {
+        text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    }
+
+    /// Lines with their numbers in a quieter colour, padded to the width of
+    /// the largest number.
+    private func numbered(_ slice: some Collection<String>, from first: Int) -> Text {
         let width = String(lines.count).count
         var out = Text("")
-        for (index, line) in lines.enumerated() {
-            let label = String(index + 1)
+        for (offset, line) in slice.enumerated() {
+            let label = String(first + offset)
             let number = String(repeating: " ", count: width - label.count) + label + "  "
-            var code = Text(String(line))
+            var code = Text(line)
             if removed { code = code.strikethrough().foregroundStyle(.secondary) }
+            if offset > 0 { out = out + Text("\n") }
             out = out + Text(number).foregroundStyle(.tertiary) + code
-            if index < lines.count - 1 { out = out + Text("\n") }
         }
-        if writing { out = out + Text("▍").foregroundStyle(.tint) }
         return out
     }
 }
