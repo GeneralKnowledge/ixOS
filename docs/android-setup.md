@@ -86,7 +86,7 @@ What you get:
 
 ## Storage
 
-The Kotlin host passes an app-private directory string into `ForgeCounterApp` (typically under `Context.filesDir`). Domain persistence stays in Rust; do not hardcode paths in `forge-storage`.
+The Kotlin host passes app-private directory strings into the app's core (Pocket Library for Android builds its `ForgeEnvironment` from `Context.filesDir`). Domain persistence stays in Rust; do not hardcode paths in `forge-storage`.
 
 ## Troubleshooting
 

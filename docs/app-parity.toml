@@ -86,3 +86,21 @@ app = "sketchbook"
 rule = "share-file"
 status = "not-applicable"
 reason = "Its export screen previews the image and offers Save to Photos and Quick Look besides Share; sharing is one action of three, not a ready-to-share step"
+
+[[lag]]
+app = "good-dog"
+rule = "document"
+wave = 4
+reason = "Written before Document existed; its own save logic over JsonFile (half-baked audit H10). Moves when Good Dog's store next changes"
+
+[[lag]]
+app = "pocket-library"
+rule = "document"
+wave = 4
+reason = "Written before Document existed; JsonFile with its own migration (half-baked audit H10). Moves when the library's schema next changes"
+
+[[lag]]
+app = "sums"
+rule = "document"
+wave = 4
+reason = "Saves its history through its own JsonFile (half-baked audit H10). Moves if Sums gets more than the reference's behaviour"

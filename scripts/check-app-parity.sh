@@ -165,6 +165,26 @@ def rule_connectivity(app):
     return False, f"own network monitor ({own[0].name}), not the `connectivity` service"
 
 
+# An app's own state saved as JSON goes through forge-app's Document (change
+# a copy, save, then keep it; never replace an unreadable file; set it aside
+# only when the person asks), not a JsonFile the app holds with its own save
+# logic (half-baked work audit H10). Reading an old JsonFile once to migrate
+# it is fine; holding one as the app's store is not. Apps saving no JSON
+# state (SQLite only, or nothing) are n/a.
+def rule_document(app):
+    held, uses_document = [], False
+    for path in rust_sources(app):
+        for i, line in enumerate(read(path).splitlines()):
+            code = line.split("//", 1)[0]
+            if re.search(r":\s*JsonFile<", code):
+                held.append(f"{path.name}:{i + 1}")
+            if re.search(r"\bDocument\s*(<|::)", code):
+                uses_document = True
+    if held:
+        return False, "keeps its state in its own JsonFile; use forge_app::Document: " + ", ".join(held)
+    return (True, "") if uses_document else None
+
+
 # Rust work cancelled from Swift goes through ForgeKit's withRustCancellation,
 # not a Cancellation wired to withTaskCancellationHandler by hand (framework
 # candidates PR A, 2026-11-17). withTaskCancellationHandler on its own (an
@@ -1184,6 +1204,7 @@ RULES = [
     ("swift6-traps", "No Swift 6.2 errors only the iOS build shows: no `await` inside an XCTest assertion, no shared closure default in an environment key", rule_swift6_traps),
     ("swift-logging", "Swift logs through `ForgeLog`, never `print` or `NSLog`", rule_swift_logging),
     ("connectivity", "Network changes through the `connectivity` service, no own `NWPathMonitor`", rule_connectivity),
+    ("document", "App state saved as JSON through forge-app's `Document`, never a `JsonFile` the app holds itself", rule_document),
     ("requirements", "requirements.toml, every requirement with a test", rule_requirements),
     ("device-checks", "Every requirement has a device scenario", rule_device_checks),
     ("ui-test", "At least one `uitests/*.toml` scenario for `forge ui run`", rule_ui_test),

@@ -34,7 +34,7 @@ Install Swift for your distro — see [linux-setup.md](linux-setup.md).
 
 Swift 6.2 emits calls to this runtime function, and the iOS 18 SDK from Xcode 16 does not export it (`libswiftCore.tbd` has no such symbol), so the compiler and SDK versions do not match. Run `xtool setup` again with `Xcode.xip` from Xcode 26, whose iOS 26.0 SDK exports it.
 
-Results with Swift 6.2.3 and xtool 1.24.0 on Linux:
+Results with Swift 6.2.3 and xtool 1.24.0 on Linux, recorded on 2026-11-06 (Counter has since been retired and Chat merged into Relay; the rows are kept as the record):
 
 | App | Xcode 16.0 (iOS 18.0 SDK), debug | Xcode 16.0, release | Xcode 26 (iOS 26.0 SDK), debug | Xcode 26, release |
 |-----|------|------|------|------|

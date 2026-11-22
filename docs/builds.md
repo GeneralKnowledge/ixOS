@@ -6,9 +6,9 @@ Forge has several ways to build an app. They differ in the host machine, the too
 
 | Command or tool | Host | Platform tool | Runs on | Swift / Kotlin config | Rust profile | Status |
 |---|---|---|---|---|---|---|
-| `forge build ios` | Linux (or macOS) | xtool (`xtool dev build`) | iPhone (device) | debug | forge-dev | Supported. Counter, Weather and Chat installed on an iPhone (2026-11-06) |
+| `forge build ios` | Linux (or macOS) | xtool (`xtool dev build`) | iPhone (device) | debug | forge-dev | Supported. Every app goes on the phone this way inside Device Lab (first installs, of Weather and Chat among others, 2026-11-06) |
 | `forge run ios` | Linux (or macOS) | xtool (`xtool dev build`, then `xtool install` of that build once an iPhone is connected) | iPhone, installed (open it from the home screen; xtool does not launch apps) | debug | forge-dev | Supported, same runs as above |
-| `forge build ios --release`, `forge run ios --release` | Linux (or macOS) | xtool (`xtool dev build -c release`) | iPhone (device) | release | release | Supported. Counter, Weather and Chat built in release with xtool on Linux (2026-11-06); not yet recorded on a device through this flag |
+| `forge build ios --release`, `forge run ios --release` | Linux (or macOS) | xtool (`xtool dev build -c release`) | iPhone (device) | release | release | Supported. Weather and Chat (since merged into Relay) built in release with xtool on Linux (2026-11-06); not yet recorded on a device through this flag |
 | `forge build ios --package-only`, then Xcode | macOS | Xcode (`xcodebuild`) | iPhone (device) | Debug or Release, chosen in Xcode | forge-dev (`FORGE_IOS_PROFILE=release` for a release build) | Supported. CI does unsigned Debug builds of the Chat, Pocket Library and freshly generated Xcode projects |
 | `forge check swift` in an iOS app | Linux (or macOS) | Cargo, then plain SwiftPM (`swift test`), no iOS SDK | the host | debug | debug | Supported. Compiles the Swift files that import nothing Apple-only (view model, bindings) and runs the tests that need no SwiftUI; views are left out |
 | `forge test` in an iOS app | Linux or macOS | Cargo, then SwiftPM (`swift test`) on macOS | the host | debug | debug | Supported, CI. The app's Rust tests run everywhere; the XCTest suite only on macOS (skipped with a note on Linux) |
