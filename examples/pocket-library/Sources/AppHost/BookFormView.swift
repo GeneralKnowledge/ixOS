@@ -110,7 +110,7 @@ struct BookFormView: View {
                 }
 
                 Section("Rating") {
-                    StarRating(rating: input.rating, idPrefix: "bookForm") { input.rating = $0 }
+                    RatingRow(rating: input.rating, identifier: "bookForm.rating") { input.rating = $0 }
                     fieldMessage("rating")
                 }
 

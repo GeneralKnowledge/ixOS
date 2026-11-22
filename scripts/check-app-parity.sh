@@ -923,6 +923,26 @@ def rule_icon_tile(app):
     return True, ""
 
 
+# Stars for a rating come from ForgeUI's ForgeRating: one adjustable
+# VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
+# app, and `<id>.star.<n>` identifiers. Soundscape and Pocket Library each
+# drew their own, with different colours, sizes and VoiceOver (ForgeUI 0.2,
+# item 4). This finds a `star` symbol that switches with `star.fill`, the
+# shape of a hand-drawn rating.
+HAND_STARS = re.compile(r'"star\.fill"\s*:\s*"star"|"star"\s*:\s*"star\.fill"')
+
+
+def rule_rating(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        for m in HAND_STARS.finditer(text):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws rating stars by hand; use ForgeUI's ForgeRating: " + ", ".join(bad)
+    return True, ""
+
+
 # A file the app has just written (an export, a backup) goes to the system
 # share sheet with ForgeUI's forgeShareFile as soon as it is ready. Four
 # apps had their own "your file is ready" sheet or row with a ShareLink on
@@ -1101,6 +1121,7 @@ RULES = [
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
     ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
+    ("rating", "Ratings through ForgeUI's `ForgeRating`, never stars drawn by hand", rule_rating),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
     ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),

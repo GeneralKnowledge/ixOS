@@ -1047,7 +1047,7 @@ private struct RecordingRow: View {
                 }
                 if let rate {
                     HStack(spacing: 12) {
-                        Stars(value: Int(recording.stars), identifier: "recording", rate: rate)
+                        ForgeRating(value: Int(recording.stars), identifier: "recording.rating") { rate($0 ?? 0) }
                         if let note {
                             Button(recording.note.isEmpty ? "Add Note" : "Edit Note", action: note)
                                 .font(.subheadline)

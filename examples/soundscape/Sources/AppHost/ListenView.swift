@@ -392,36 +392,13 @@ private struct TakeRow: View {
                 if !details.isEmpty {
                     Text(details).font(.caption).foregroundStyle(.secondary)
                 }
-                Stars(value: Int(take.stars), rate: rate)
+                ForgeRating(value: Int(take.stars), identifier: "take.rating") { rate($0 ?? 0) }
                 if !take.note.isEmpty {
                     Text(take.note).font(.callout).foregroundStyle(.secondary)
                 }
             }
         }
         .padding(.vertical, 2)
-    }
-}
-
-struct Stars: View {
-    let value: Int
-    var identifier = "take"
-    let rate: (Int) -> Void
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(1...5, id: \.self) { n in
-                Button { rate(n) } label: {
-                    Image(systemName: n <= value ? "star.fill" : "star")
-                        .foregroundStyle(n <= value ? Color.orange : Color.secondary)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("\(n) \(n == 1 ? "star" : "stars")")
-                .accessibilityIdentifier("\(identifier).star\(n)")
-            }
-        }
-        .font(.subheadline)
-        .accessibilityElement(children: .contain)
-        .accessibilityValue("\(value) of 5")
     }
 }
 
@@ -726,11 +703,10 @@ private struct NowPlayingView: View {
                             if !player.isComparing, let trackId = current.trackId,
                                let recording = model.track(trackId)?.recordings.first(where: { $0.id == current.id }),
                                recording.kind == .generated {
-                                Stars(value: Int(recording.stars), identifier: "nowPlayingSheet") { n in
-                                    Task { _ = await model.rate(recording, of: trackId, stars: n) }
+                                ForgeRating("Rate this take", value: Int(recording.stars), identifier: "nowPlayingSheet.rating") { n in
+                                    Task { _ = await model.rate(recording, of: trackId, stars: n ?? 0) }
                                 }
                                 .font(.title3)
-                                .accessibilityLabel("Rate this take")
                             }
                             if let lyrics = current.lyrics, !lyricLines(lyrics: lyrics).isEmpty {
                                 Button {

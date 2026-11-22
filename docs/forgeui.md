@@ -217,6 +217,26 @@ ForgeDetailHeader(book.title, subtitle: book.author, systemImage: "book.closed.f
 
 Inside a `List`, `Section("Account")` already gives the right header; `ForgeSectionHeader` is for screens built from cards.
 
+### Ratings
+
+```swift
+ForgeRating(value: book.rating, identifier: "bookDetail.rating") { model.rate(book, $0) }
+ForgeRating("Rate this take", value: take.stars, identifier: "take.rating") { rate($0 ?? 0) }
+ForgeRating(value: review.stars, identifier: "review.rating")   // read-only
+```
+
+| Aspect | ForgeRating |
+|---|---|
+| States | unrated, 1 to `maximum` (5), disabled (`.disabled()`), read-only (no `onChange`) |
+| Input | tap a star to set it; tap the current star to clear it (`allowsClearing`, default on). `onChange` is called only when the value changes |
+| VoiceOver | one element: the label (default "Rating") and "3 of 5 stars" or "Not rated"; swipe up and down to change it. Read-only drops the adjustable action |
+| Dynamic Type | stars scale with the surrounding font (`.font(.title3)` where the rating is the point); each star is at least 44 pt to tap |
+| Identifiers | `<identifier>` on the element, `<identifier>.star.<n>` on each star |
+| Colour | the warning tone's solid colour, checked as a shape by `contrastIssues()`, never the accent |
+| Model | the value is an `Int?` the view model owns (0 or out of range draws as unrated); no rating rules in Swift |
+
+The `rating` [parity rule](app-parity.md) catches stars drawn by hand (`"star.fill"` switching with `"star"`).
+
 ### Notices
 
 When something is wrong but the screen still works (offline, the map can't update, the server refused the account), say so inside the screen with `ForgeNotice`: what is wrong, what still works, and at most one action.
