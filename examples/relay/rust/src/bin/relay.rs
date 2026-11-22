@@ -73,6 +73,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use chat_core::MessageStatus;
 use forge_services::ai::{ChatMessage, ChatRequest, Collect, LanguageModel};
 use relay_core::{
     word_code_number, CodeSend, ConnectionMode, Direction, Item, NearbySender, RelayCore,
@@ -234,24 +235,12 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 .device_messages(&device.endpoint_id)
                 .map_err(|e| e.to_string())?
             {
-                let who = if m.author_id == device.endpoint_id {
-                    device.name.as_str()
-                } else {
-                    "me"
-                };
+                let mine = m.author_id != device.endpoint_id;
+                let who = if mine { "me" } else { device.name.as_str() };
                 // An attachment's message has no text: say what it carries.
-                let files: Vec<String> = m
-                    .attachments
-                    .iter()
-                    .map(|a| format!("[file {}, {} bytes]", a.name, a.size))
-                    .collect();
-                let line = [m.body.clone()]
-                    .into_iter()
-                    .filter(|b| !b.is_empty())
-                    .chain(files)
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                out += &format!("{who}: {line}\n");
+                let line = message_line(&m);
+                let status = if mine { message_status(&m) } else { "" };
+                out += &format!("{who}: {line}{status}\n");
             }
             Ok(())
         })(),
@@ -908,8 +897,15 @@ fn listen(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
         Err(err) => println!("Waiting. Ctrl-C to stop. (Other terminals can't use it: {err}.)"),
     }
     let mut seen = core.transfers().first().map(|t| t.id).unwrap_or(0);
+    let mut cursors = HashMap::new();
+    watch_messages(core, &mut cursors, true);
+    let mut round = 0u32;
     loop {
         std::thread::sleep(Duration::from_millis(300));
+        round = round.wrapping_add(1);
+        if round.is_multiple_of(3) {
+            watch_messages(core, &mut cursors, false);
+        }
         for t in core.transfers().into_iter().rev() {
             if t.id > seen
                 && !matches!(
@@ -1540,6 +1536,65 @@ fn ask(core: &RelayCore, args: &[String]) -> Result<(), String> {
     }
 }
 
+/// How one of our messages stands, after its text: nothing once the
+/// device has it.
+fn message_status(m: &chat_core::Message) -> &'static str {
+    match m.status {
+        MessageStatus::Sent => "",
+        MessageStatus::Failed => "  (not delivered)",
+        _ if m.in_mailbox => "  (in its mailbox: it collects it when it next opens Relay)",
+        _ => "  (waiting: it goes when the device is reached)",
+    }
+}
+
+/// A message's text and files on one line.
+fn message_line(m: &chat_core::Message) -> String {
+    [m.body.clone()]
+        .into_iter()
+        .filter(|b| !b.is_empty())
+        .chain(
+            m.attachments
+                .iter()
+                .map(|a| format!("[file {}, {} bytes]", a.name, a.size)),
+        )
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Prints what changed in device conversations since `cursors` (per
+/// device, a change stamp): messages that arrived, directly or from the
+/// mailbox, and ours that were delivered or left in a mailbox. With
+/// `quiet`, only moves the cursors (the first look, at start).
+fn watch_messages(core: &RelayCore, cursors: &mut HashMap<String, i64>, quiet: bool) {
+    for device in core.devices().into_iter().filter(|d| d.trusted) {
+        let since = cursors.get(&device.endpoint_id).copied().unwrap_or(0);
+        let Ok(changed) = core.device_messages_since(&device.endpoint_id, since) else {
+            continue;
+        };
+        for m in changed {
+            cursors.insert(device.endpoint_id.clone(), m.changed_at().max(since));
+            if quiet {
+                continue;
+            }
+            if m.author_id == device.endpoint_id {
+                // Once: a message from a device only changes when it arrives.
+                if m.updated_at.is_none() {
+                    println!("from {}: {}", device.name, message_line(&m));
+                }
+            } else if m.status == MessageStatus::Sent {
+                println!("to {}: {}, delivered", device.name, message_line(&m));
+            } else if m.in_mailbox || m.status == MessageStatus::Failed {
+                println!(
+                    "to {}: {}{}",
+                    device.name,
+                    message_line(&m),
+                    message_status(&m)
+                );
+            }
+        }
+    }
+}
+
 fn describe(t: &relay_core::Transfer) -> String {
     let arrow = match t.direction {
         Direction::Sent => format!("to {}", t.peer_name),
@@ -1561,4 +1616,26 @@ fn describe(t: &relay_core::Transfer) -> String {
         TransferStatus::Failed { reason } => format!("failed: {reason}"),
     };
     format!("{arrow}: {what}, {status}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn our_messages_say_where_they_are_and_nothing_once_delivered() {
+        let mut m = chat_core::Message {
+            body: "hi".into(),
+            status: MessageStatus::Queued,
+            ..Default::default()
+        };
+        assert!(message_status(&m).contains("waiting"));
+        m.in_mailbox = true;
+        assert!(message_status(&m).contains("mailbox"));
+        m.status = MessageStatus::Failed;
+        assert!(message_status(&m).contains("not delivered"));
+        m.status = MessageStatus::Sent;
+        assert_eq!(message_status(&m), "");
+        assert_eq!(message_line(&m), "hi");
+    }
 }
