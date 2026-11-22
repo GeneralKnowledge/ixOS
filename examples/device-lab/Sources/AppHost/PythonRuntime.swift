@@ -328,7 +328,8 @@ extension BonsaiHarnessModel {
         let projects = PythonLabProjects.folder
         try? FileManager.default.createDirectory(at: projects, withIntermediateDirectories: true)
         return BonsaiHarnessModel(
-            harness: BonsaiHarness(python: PythonRuntime.shared, projectsFolder: projects.path))
+            harness: BonsaiHarness(python: PythonRuntime.shared, projectsFolder: projects.path),
+            workspace: try? Workspace(projectsFolder: projects.path))
     }
 }
 #else

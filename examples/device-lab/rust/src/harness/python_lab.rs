@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use super::artifacts;
@@ -66,6 +66,22 @@ pub struct PythonLab {
     run_limit: Duration,
     network: bool,
     running: AtomicBool,
+    /// The SHA-256 of each file as Bonsai last read or wrote it in this
+    /// task, so a write over a file someone changed since (in Python Lab,
+    /// or through the Files app) is refused (python-lab-workspace-plan.md,
+    /// PL1e). Its own runs' changes are Bonsai's, so they update it.
+    seen: Mutex<BTreeMap<String, String>>,
+}
+
+fn lock_seen(
+    seen: &Mutex<BTreeMap<String, String>>,
+) -> std::sync::MutexGuard<'_, BTreeMap<String, String>> {
+    seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// The SHA-256 of the file at `path`, or None when it can't be read.
+fn digest(path: &Path) -> Option<String> {
+    forge_storage::files::sha256_file(path).ok()
 }
 
 impl PythonLab {
@@ -76,6 +92,7 @@ impl PythonLab {
             run_limit,
             network: false,
             running: AtomicBool::new(false),
+            seen: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -193,7 +210,10 @@ impl PythonLab {
             Err(err) => return ToolOutcome::failed(err),
         };
         match fs::read_to_string(&full) {
-            Ok(text) => ToolOutcome::ok(numbered(&text)),
+            Ok(text) => {
+                self.remember(path, &full);
+                ToolOutcome::ok(numbered(&text))
+            }
             Err(_) if !full.exists() => ToolOutcome::failed(format!(
                 "{path} does not exist. Use list_files to see the files."
             )),
@@ -214,6 +234,9 @@ impl PythonLab {
             Ok(full) => full,
             Err(err) => return ToolOutcome::failed(err),
         };
+        if let Some(refusal) = self.changed_outside(path, &full) {
+            return refusal;
+        }
         let Ok(text) = fs::read_to_string(&full) else {
             return ToolOutcome::failed(format!(
                 "{path} does not exist. Use write_file to create it."
@@ -252,6 +275,9 @@ impl PythonLab {
             Ok(full) => full,
             Err(err) => return ToolOutcome::failed(err),
         };
+        if let Some(refusal) = self.changed_outside(path, &full) {
+            return refusal;
+        }
         if content.len() > FILE_MAX_BYTES {
             return ToolOutcome::failed(format!(
                 "That file is {} bytes; the limit is {FILE_MAX_BYTES}. Split it into smaller modules.",
@@ -266,9 +292,11 @@ impl PythonLab {
                 return ToolOutcome::failed(format!("Could not create the folder: {err}"));
             }
         }
-        if let Err(err) = fs::write(&full, content) {
+        // Atomic, so the person (or the Files app) never sees half a file.
+        if let Err(err) = forge_storage::write_atomic(&full, content.as_bytes()) {
             return ToolOutcome::failed(format!("Could not write {path}: {err}"));
         }
+        self.remember(path, &full);
         let lines = content.lines().count();
         if !path.ends_with(".py") {
             return ToolOutcome {
@@ -300,6 +328,39 @@ impl PythonLab {
                 path: path.into(),
                 syntax_ok,
             }],
+        }
+    }
+
+    /// Records `path`'s contents as Bonsai now knows them.
+    fn remember(&self, path: &str, full: &Path) {
+        if let Some(sum) = digest(full) {
+            lock_seen(&self.seen).insert(path.to_string(), sum);
+        }
+    }
+
+    /// A refusal when `path` changed since Bonsai last read or wrote it (a
+    /// file it never read can be written; one deleted since can be
+    /// written again).
+    fn changed_outside(&self, path: &str, full: &Path) -> Option<ToolOutcome> {
+        let known = lock_seen(&self.seen).get(path).cloned()?;
+        let now = digest(full)?;
+        (now != known).then(|| {
+            ToolOutcome::failed(format!(
+                "{path} changed outside Bonsai since you read it; read it again with read_file before changing it."
+            ))
+        })
+    }
+
+    /// After a run: what Bonsai's own script changed is Bonsai's.
+    fn refresh_seen(&self) {
+        let paths: Vec<String> = lock_seen(&self.seen).keys().cloned().collect();
+        for path in paths {
+            let sum = self.full(&path).ok().and_then(|full| digest(&full));
+            let mut seen = lock_seen(&self.seen);
+            match sum {
+                Some(sum) => seen.insert(path, sum),
+                None => seen.remove(&path),
+            };
         }
     }
 
@@ -524,8 +585,16 @@ impl Environment for PythonLab {
             "read_file" => self.read(call.arg("path")),
             "write_file" => self.write(call.arg("path"), call.arg("content")),
             "edit_file" => self.edit(call.arg("path"), call.arg("old"), call.arg("new")),
-            "run_python" => self.run_python(call.arg("path")),
-            "run_tests" => self.run_tests(),
+            "run_python" => {
+                let outcome = self.run_python(call.arg("path"));
+                self.refresh_seen();
+                outcome
+            }
+            "run_tests" => {
+                let outcome = self.run_tests();
+                self.refresh_seen();
+                outcome
+            }
             other => ToolOutcome::failed(format!("There is no tool called {other:?}.")),
         }
     }

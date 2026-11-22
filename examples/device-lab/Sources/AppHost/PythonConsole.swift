@@ -133,6 +133,9 @@ public final class PythonActivity {
 
     /// A Python Lab script is waiting for `input()`.
     public internal(set) var labWaitingForInput = false
+    /// The project Bonsai Harness is working in while a task of the
+    /// person's runs, which Python Lab shows read-only meanwhile (PL1e).
+    public internal(set) var bonsaiProject: String?
 
     public init() {}
 }

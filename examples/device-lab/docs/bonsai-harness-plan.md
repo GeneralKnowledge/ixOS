@@ -199,6 +199,8 @@ A persistent project summary the harness keeps up to date from the journal; file
 
 Projects listed in Python Lab; browse, edit and run their files yourself, and the harness sees your edits; a per-project network switch, off by default, asked for explicitly. Ladder: T12 a three-file program with tests, built from one request.
 
+Python Lab's PL1 (python-lab-workspace-plan.md) already delivers the first half: the person's own tasks run in the Python Lab project they choose, Bonsai Harness has "Open in Python Lab", Python Lab shows that project read-only while Bonsai works in it, and a `write_file` or `edit_file` over a file changed since Bonsai read it (its SHA-256) is refused with "read it again". What remains of H7 is the per-project network switch and T12.
+
 ### H8: the benchmark
 
 Reuben's expenses task, word for word, offline, three attempts on each model. It passes when the finished project has a working program and its tests pass in Python's own output, and Reuben has looked at the project on the phone.

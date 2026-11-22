@@ -1,6 +1,7 @@
 @preconcurrency import ForgeFFI
 import SwiftUI
 import ForgeUI
+import UniformTypeIdentifiers
 
 /// Python Lab: a project of Python files, the open one in the editor (saved
 /// as you type), and Run running it on the phone with the embedded CPython
@@ -15,13 +16,16 @@ struct PythonLabView: View {
 
     var body: some View {
         List {
+            if model.isLockedByBonsai {
+                BonsaiLockBanner()
+            }
             if model.hasWorkspace {
                 projectSection
             }
             Section {
                 PythonCodeEditor(
                     text: $model.code,
-                    isEditable: !(model.hasWorkspace && model.openFile == nil),
+                    isEditable: !(model.hasWorkspace && model.openFile == nil) && !model.isLockedByBonsai,
                     accessibilityLabel: model.openFile.map { "Python file \($0)" } ?? "Python script")
                     .frame(minHeight: 320)
                     .listRowInsets(EdgeInsets())
@@ -41,7 +45,7 @@ struct PythonLabView: View {
                     Button(runTitle, systemImage: "play.fill") {
                         Task { await model.run() }
                     }
-                    .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil))
+                    .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil) || model.isLockedByBonsai)
                     .accessibilityIdentifier("pythonLab.run")
                 }
             } header: {
@@ -84,6 +88,10 @@ struct PythonLabView: View {
             await model.prepare()
         }
         .onDisappear { model.flush() }
+        .onChange(of: model.isLockedByBonsai) { _, locked in
+            // Save before Bonsai reads the files; read its work after.
+            if locked { model.flush() } else { model.reloadFromDisk() }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { model.flush() }
         }
@@ -139,7 +147,7 @@ struct PythonLabView: View {
                     Button("Rerun", systemImage: "arrow.clockwise") {
                         Task { await model.run() }
                     }
-                    .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil))
+                    .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil) || model.isLockedByBonsai)
                     .accessibilityIdentifier("pythonLab.rerun")
                 }
                 Spacer()
@@ -369,9 +377,26 @@ struct PythonFilesView: View {
     @State private var newFolderIn: NameTarget?
     @State private var renaming: NameTarget?
     @State private var deleting: WorkspaceEntry?
+    @State private var importing = false
+    @State private var importRefusal: String?
+    /// The project's .zip, once exported, for the share button.
+    @State private var exported: URL?
 
     var body: some View {
         List {
+            if model.isLockedByBonsai {
+                BonsaiLockBanner()
+            }
+            if let exported {
+                ShareLink(item: exported) {
+                    Label("Share \(exported.lastPathComponent)", systemImage: "square.and.arrow.up")
+                }
+                .accessibilityIdentifier("pythonLab.files.shareExport")
+            }
+            if let importRefusal {
+                Text(importRefusal).font(.footnote).forgeForeground(.danger)
+                    .accessibilityIdentifier("pythonLab.files.importError")
+            }
             // A file that wouldn't open, or a list that couldn't be read,
             // says so here, not on the screen underneath.
             if let error = model.listError ?? model.error {
@@ -384,10 +409,12 @@ struct PythonFilesView: View {
                 row(entry)
                     .forgeRowActions {
                         Button("Delete", systemImage: "trash", role: .destructive) { deleting = entry }
+                            .disabled(model.isLockedByBonsai)
                             .accessibilityIdentifier("pythonLab.file.delete")
                         Button("Rename", systemImage: "pencil") {
                             renaming = NameTarget(id: entry.path, name: Self.name(entry.path))
                         }
+                        .disabled(model.isLockedByBonsai)
                         .accessibilityIdentifier("pythonLab.file.rename")
                         if entry.isFolder {
                             Button("New File Here", systemImage: "doc.badge.plus") {
@@ -416,10 +443,28 @@ struct PythonFilesView: View {
                     .accessibilityIdentifier("pythonLab.files.newFile")
                 Button("New Folder", systemImage: "folder.badge.plus") { newFolderIn = NameTarget(id: "", name: "") }
                     .accessibilityIdentifier("pythonLab.files.newFolder")
+                Button("Import from Files", systemImage: "square.and.arrow.down") { importing = true }
+                    .accessibilityIdentifier("pythonLab.files.import")
             } label: {
                 Label("Add", systemImage: "plus")
             }
+            .disabled(model.isLockedByBonsai)
             .accessibilityIdentifier("pythonLab.files.add")
+            Button("Export Project", systemImage: "square.and.arrow.up") {
+                exported = model.exportProject()
+            }
+            .accessibilityLabel("Export \(model.project) as a zip file")
+            .accessibilityIdentifier("pythonLab.files.export")
+        }
+        .fileImporter(
+            isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls):
+                importRefusal = model.importFiles(urls)
+            case .failure(let error):
+                importRefusal = error.localizedDescription
+            }
         }
         .onAppear {
             model.flush()
@@ -514,5 +559,19 @@ struct PythonFilesView: View {
 
     static func name(_ path: String) -> String {
         path.split(separator: "/").last.map(String.init) ?? path
+    }
+}
+
+/// Says Bonsai Harness is working in the open project, which is read-only
+/// until it finishes (PL1e).
+struct BonsaiLockBanner: View {
+    var body: some View {
+        Label(
+            "Bonsai is working in this project. It's read-only until Bonsai finishes, so you and Bonsai never change a file at once.",
+            systemImage: "hammer"
+        )
+        .font(.footnote)
+        .forgeForeground(.warning)
+        .accessibilityIdentifier("pythonLab.bonsaiWorking")
     }
 }

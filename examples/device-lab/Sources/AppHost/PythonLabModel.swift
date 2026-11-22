@@ -69,7 +69,8 @@ public final class PythonLabModel {
     public var code: String {
         get { text }
         set {
-            guard newValue != text else { return }
+            // Read-only while Bonsai works in this project.
+            guard newValue != text, !isLockedByBonsai else { return }
             text = newValue
             saveState = .unsaved
             scheduleSave()
@@ -173,6 +174,73 @@ public final class PythonLabModel {
 
     /// The file Run will run.
     public var fileToRun: String? { runFile ?? openFile }
+
+    /// Bonsai Harness is working in the open project: it is shown
+    /// read-only, so the person and Bonsai never write one file at once
+    /// (PL1e).
+    public var isLockedByBonsai: Bool {
+        hasWorkspace && activity.bonsaiProject == project
+    }
+
+    /// Reads the open file and the project's files again from disk, after
+    /// Bonsai worked on them. Edits not yet saved are kept, not replaced.
+    public func reloadFromDisk() {
+        guard let workspace else { return }
+        reloadEntries()
+        loadArtifacts()
+        guard let openFile, saveState == .saved else { return }
+        if let fresh = try? workspace.readText(project: project, path: openFile), fresh != text {
+            text = fresh
+        } else if !entries.contains(where: { $0.path == openFile }) {
+            // Bonsai removed or renamed it: the text stays on screen,
+            // unsaved, so nothing of it is lost.
+            saveState = .unsaved
+        }
+    }
+
+    /// Why a change to the project is refused while Bonsai works in it.
+    static let bonsaiWorking = "Bonsai is working in this project. Wait until it finishes, or stop it in Bonsai Harness."
+
+    // MARK: Import and export
+
+    /// Copies files the person picked in the Files app into the project
+    /// (into `folder`, if given). Returns why any couldn't be, or nil.
+    public func importFiles(_ urls: [URL], into folder: String? = nil) -> String? {
+        guard let workspace else { return nil }
+        if isLockedByBonsai { return Self.bonsaiWorking }
+        var refusals: [String] = []
+        for url in urls {
+            // A file from the picker may be outside the app's sandbox.
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            do {
+                _ = try workspace.importFile(project: project, folder: folder ?? "", source: url.path)
+            } catch {
+                refusals.append("\(url.lastPathComponent): \(Self.message(error))")
+            }
+        }
+        reloadEntries()
+        loadArtifacts()
+        return refusals.isEmpty ? nil : refusals.joined(separator: "\n")
+    }
+
+    /// The open project as a .zip in a temporary folder, to share. Python
+    /// Lab's projects are also plain folders in the Files app.
+    public func exportProject() -> URL? {
+        guard let workspace else { return nil }
+        flush()
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Python Lab export \(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let path = try workspace.exportProject(project: project, outFolder: folder.path)
+            error = nil
+            return URL(fileURLWithPath: path)
+        } catch {
+            self.error = "Couldn't export \(project): \(Self.message(error))"
+            return nil
+        }
+    }
 
     /// Starts the interpreter if it hasn't started, for the version line.
     public func prepare() async {
@@ -331,6 +399,7 @@ public final class PythonLabModel {
     /// A new file in the project (in `folder`, if given), opened.
     public func createFile(_ name: String, in folder: String? = nil, text: String = "") -> String? {
         guard let workspace else { return nil }
+        if isLockedByBonsai { return Self.bonsaiWorking }
         // The new file opens next, so the open one must save first; if it
         // can't, nothing is created.
         guard savedBeforeLeaving() else { return error }
@@ -348,6 +417,7 @@ public final class PythonLabModel {
 
     public func createFolder(_ name: String, in folder: String? = nil) -> String? {
         guard let workspace else { return nil }
+        if isLockedByBonsai { return Self.bonsaiWorking }
         do {
             try workspace.createFolder(project: project, path: Self.join(folder, name))
         } catch {
@@ -360,6 +430,7 @@ public final class PythonLabModel {
     /// Renames a file or folder in place (same folder, new name).
     public func rename(_ entry: WorkspaceEntry, to name: String) -> String? {
         guard let workspace else { return nil }
+        if isLockedByBonsai { return Self.bonsaiWorking }
         let parent = entry.path.split(separator: "/").dropLast().joined(separator: "/")
         let target = Self.join(parent.isEmpty ? nil : parent, name)
         flush()
@@ -377,6 +448,10 @@ public final class PythonLabModel {
 
     public func delete(_ entry: WorkspaceEntry) {
         guard let workspace else { return }
+        if isLockedByBonsai {
+            error = Self.bonsaiWorking
+            return
+        }
         let inside = { (path: String?) in
             path.map { $0 == entry.path || $0.hasPrefix(entry.path + "/") } ?? false
         }
@@ -421,6 +496,10 @@ public final class PythonLabModel {
     public func load(_ sample: PythonLabSample) {
         guard let workspace else {
             text = sample.code
+            return
+        }
+        if isLockedByBonsai {
+            error = Self.bonsaiWorking
             return
         }
         guard savedBeforeLeaving() else { return }
@@ -498,7 +577,7 @@ public final class PythonLabModel {
     // MARK: Running
 
     public func run() async {
-        guard let runtime, !isRunning else { return }
+        guard let runtime, !isRunning, !isLockedByBonsai else { return }
         // Taken before the first wait, so a second tap can't start a
         // second run while Python starts.
         isRunning = true

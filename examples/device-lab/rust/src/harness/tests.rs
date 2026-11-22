@@ -1388,3 +1388,101 @@ fn the_live_view_reads_a_half_written_answer() {
     assert_eq!(live.code, "x\u{FFFD}");
     assert!(!live.writing);
 }
+
+// MARK: PL1e, Bonsai in the person's projects
+
+#[test]
+fn a_write_over_a_file_changed_since_bonsai_read_it_is_refused() {
+    if !has_python() {
+        return;
+    }
+    let (_dir, lab) = seeded("t1-hello");
+    let wrote = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "notes.txt", "content": "one\n"}"#,
+    ));
+    assert!(wrote.ok, "{}", wrote.text);
+    // Someone edits it in Python Lab or the Files app.
+    std::fs::write(lab.root().join("notes.txt"), "one\nmine\n").unwrap();
+    let refused = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "notes.txt", "content": "two\n"}"#,
+    ));
+    assert!(!refused.ok);
+    assert!(
+        refused.text.contains("notes.txt changed outside Bonsai"),
+        "{}",
+        refused.text
+    );
+    let edit = lab.execute(&call(
+        r#"{"tool": "edit_file", "path": "notes.txt", "old": "one", "new": "1"}"#,
+    ));
+    assert!(!edit.ok && edit.text.contains("changed outside Bonsai"));
+    assert_eq!(
+        std::fs::read_to_string(lab.root().join("notes.txt")).unwrap(),
+        "one\nmine\n"
+    );
+    // Once it has read the new text, it may change it.
+    assert!(
+        lab.execute(&call(r#"{"tool": "read_file", "path": "notes.txt"}"#))
+            .ok
+    );
+    let wrote = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "notes.txt", "content": "two\n"}"#,
+    ));
+    assert!(wrote.ok, "{}", wrote.text);
+}
+
+#[test]
+fn what_bonsais_own_script_changes_is_not_an_outside_change() {
+    if !has_python() {
+        return;
+    }
+    let (_dir, lab) = seeded("t1-hello");
+    assert!(
+        lab.execute(&call(
+            r#"{"tool": "write_file", "path": "data.txt", "content": "a\n"}"#
+        ))
+        .ok
+    );
+    assert!(lab
+        .execute(&call(
+            r#"{"tool": "write_file", "path": "grow.py", "content": "open('data.txt', 'a').write('b\\n')\n"}"#
+        ))
+        .ok);
+    let ran = lab.execute(&call(r#"{"tool": "run_python", "path": "grow.py"}"#));
+    assert!(ran.ok, "{}", ran.text);
+    let wrote = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "data.txt", "content": "c\n"}"#,
+    ));
+    assert!(wrote.ok, "{}", wrote.text);
+}
+
+#[test]
+fn a_request_runs_in_the_chosen_project() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let h = harness(&dir);
+    // A project that doesn't exist is refused, not made.
+    assert!(matches!(
+        h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), "My Work"),
+        Err(HarnessError::Storage { .. })
+    ));
+    assert!(!dir.path().join("My Work").exists());
+    // Hidden names and ladder names aren't a person's projects.
+    for bad in [".ladder", "t1-hello", "../x"] {
+        assert!(
+            h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), bad)
+                .is_err(),
+            "{bad}"
+        );
+    }
+    std::fs::create_dir(dir.path().join("My Work")).unwrap();
+    h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), "My Work")
+        .unwrap();
+    let snapshot = wait(&h);
+    assert_eq!(snapshot.project.as_deref(), Some("My Work"));
+    // The task's journal is in that project, not in scratch.
+    assert!(dir.path().join("My Work").join(Journal::FILE).is_file());
+    assert!(!dir.path().join("scratch").exists());
+}

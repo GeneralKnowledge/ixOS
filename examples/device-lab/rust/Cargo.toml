@@ -22,7 +22,7 @@ forge-runtime = { path = "../../../crates/forge-runtime" }
 # services selected in src/lib.rs. See docs/native-services.md.
 forge-services = { path = "../../../crates/forge-services", features = ["transfers", "ai"] }
 # The folder background downloads are delivered into.
-forge-storage = { path = "../../../crates/forge-storage" }
+forge-storage = { path = "../../../crates/forge-storage", features = ["backup"] }
 thiserror = "2"
 # Bonsai Harness: tool calls and its journal are JSON (src/harness).
 serde = { version = "1", features = ["derive"] }

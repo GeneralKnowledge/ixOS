@@ -847,7 +847,7 @@ RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_snapshot(uint64_t ptr, RustC
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM
-void uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(uint64_t ptr, uint64_t model, RustBuffer request, RustCallStatus *_Nonnull out_status
+void uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(uint64_t ptr, uint64_t model, RustBuffer request, RustBuffer project, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_LADDER
@@ -1408,6 +1408,16 @@ void uniffi_forge_ffi_fn_method_workspace_delete_project(uint64_t ptr, RustBuffe
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_ENTRIES
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_ENTRIES
 RustBuffer uniffi_forge_ffi_fn_method_workspace_entries(uint64_t ptr, RustBuffer project, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_EXPORT_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_EXPORT_PROJECT
+RustBuffer uniffi_forge_ffi_fn_method_workspace_export_project(uint64_t ptr, RustBuffer project, RustBuffer out_folder, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_IMPORT_FILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_IMPORT_FILE
+RustBuffer uniffi_forge_ffi_fn_method_workspace_import_file(uint64_t ptr, RustBuffer project, RustBuffer folder, RustBuffer source, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_WORKSPACE_PROJECT_FOLDER
@@ -2591,6 +2601,18 @@ uint16_t uniffi_forge_ffi_checksum_method_workspace_delete_project(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_ENTRIES
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_ENTRIES
 uint16_t uniffi_forge_ffi_checksum_method_workspace_entries(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_EXPORT_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_EXPORT_PROJECT
+uint16_t uniffi_forge_ffi_checksum_method_workspace_export_project(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_IMPORT_FILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_WORKSPACE_IMPORT_FILE
+uint16_t uniffi_forge_ffi_checksum_method_workspace_import_file(void
     
 );
 #endif

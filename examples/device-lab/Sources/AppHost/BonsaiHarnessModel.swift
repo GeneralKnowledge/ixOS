@@ -24,6 +24,10 @@ public final class BonsaiHarnessModel {
     public private(set) var error: String?
     /// The person's own task.
     public var request = ""
+    /// The Python Lab project the person's own tasks run in.
+    public private(set) var project = "scratch"
+    /// Python Lab's projects, to choose from.
+    public private(set) var projects: [String] = ["scratch"]
     /// Which model runs the task: a `LlamaModelFile` id, or
     /// `scriptedID` for the known-good answers that test the harness itself.
     public var modelID: String = LlamaModelFile.catalogue[0].id
@@ -34,6 +38,8 @@ public final class BonsaiHarnessModel {
     public var isScripted: Bool { modelID == Self.scriptedID }
 
     @ObservationIgnored private let harness: BonsaiHarness?
+    @ObservationIgnored private let workspace: Workspace?
+    @ObservationIgnored private let activity: PythonActivity
     @ObservationIgnored private var models: [String: LlamaCppModel] = [:]
     /// The project's images when the task started, to tell what it made.
     @ObservationIgnored private var imagesBefore: [String: ProjectArtifact]?
@@ -41,8 +47,12 @@ public final class BonsaiHarnessModel {
     /// it ended before a poll saw it running.
     @ObservationIgnored private var pendingRefresh = false
 
-    public init(harness: BonsaiHarness?) {
+    public init(
+        harness: BonsaiHarness?, workspace: Workspace? = nil, activity: PythonActivity = .shared
+    ) {
         self.harness = harness
+        self.workspace = workspace
+        self.activity = activity
         if let harness {
             ladder = harness.ladder()
             snapshot = harness.snapshot()
@@ -65,10 +75,11 @@ public final class BonsaiHarnessModel {
         if !isScripted, !downloadedModels.contains(where: { $0.id == modelID }) {
             modelID = downloadedModels.first?.id ?? Self.scriptedID
         }
+        reloadProjects()
         if snapshot?.task == nil, let harness {
-            // Show the last task of the scratch project after a relaunch
+            // Show the last task of the chosen project after a relaunch
             // (a task the app closed during is marked stopped).
-            try? harness.openProject(name: "scratch")
+            try? harness.openProject(name: project)
         }
         var wasRunning = isRunning
         while !Task.isCancelled {
@@ -87,6 +98,10 @@ public final class BonsaiHarnessModel {
         guard let harness else { return }
         let next = harness.snapshot()
         if next != snapshot { snapshot = next }
+        // Ladder projects are hidden, so only the person's project is
+        // ever one Python Lab has open.
+        let working = next.running ? next.project : nil
+        if activity.bonsaiProject != working { activity.bonsaiProject = working }
         if let current = next.live {
             if current != live { live = current }
         } else if !next.running, live != nil {
@@ -105,9 +120,39 @@ public final class BonsaiHarnessModel {
     }
 
     public func runRequest() {
-        perform { [request] harness, model in
-            try harness.startCustom(model: model, request: request)
+        // The project on screen first, so what the task makes is told
+        // apart from what was there.
+        if snapshot?.project != project, !isRunning {
+            try? harness?.openProject(name: project)
         }
+        perform { [request, project] harness, model in
+            try harness.startCustom(model: model, request: request, project: project)
+        }
+    }
+
+    /// Python Lab's projects again (one may have been made or renamed).
+    public func reloadProjects() {
+        guard let workspace else { return }
+        projects = workspace.projects().map(\.name)
+        if !projects.contains(project) { project = "scratch" }
+    }
+
+    /// The project the person's own tasks run in, and its last task on
+    /// screen. Not while a task runs.
+    public func choose(project name: String) {
+        guard !isRunning, let harness, name != project else { return }
+        do {
+            try harness.openProject(name: name)
+            project = name
+            error = nil
+        } catch let failure as HarnessError {
+            error = failure.message
+        } catch {
+            self.error = "\(error)"
+        }
+        refresh()
+        made = []
+        loadFiles()
     }
 
     public func stop() {

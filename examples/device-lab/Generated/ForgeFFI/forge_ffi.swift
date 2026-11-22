@@ -1982,10 +1982,12 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
     func snapshot()  -> HarnessSnapshot
     
     /**
-     * Starts a task in the person's own words, in the scratch project
-     * (kept between tasks).
+     * Starts a task in the person's own words, in their Python Lab
+     * project `project` (`scratch` by default; kept between tasks), so
+     * Bonsai works on the person's files and they open its work in Python
+     * Lab (python-lab-workspace-plan.md, PL1e).
      */
-    func startCustom(model: HarnessModel, request: String) throws 
+    func startCustom(model: HarnessModel, request: String, project: String) throws 
     
     /**
      * Starts a ladder task in a fresh project of its own (the last run's
@@ -2155,15 +2157,18 @@ open func snapshot() -> HarnessSnapshot  {
 }
     
     /**
-     * Starts a task in the person's own words, in the scratch project
-     * (kept between tasks).
+     * Starts a task in the person's own words, in their Python Lab
+     * project `project` (`scratch` by default; kept between tasks), so
+     * Bonsai works on the person's files and they open its work in Python
+     * Lab (python-lab-workspace-plan.md, PL1e).
      */
-open func startCustom(model: HarnessModel, request: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+open func startCustom(model: HarnessModel, request: String, project: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(
             self.uniffiCloneHandle(),
         FfiConverterTypeHarnessModel_lower(model),
-        FfiConverterString.lower(request),uniffiCallStatus
+        FfiConverterString.lower(request),
+        FfiConverterString.lower(project),uniffiCallStatus
     )
 }
 }
@@ -6542,6 +6547,23 @@ public protocol WorkspaceProtocol: AnyObject, Sendable {
     func entries(project: String) throws  -> [WorkspaceEntry]
     
     /**
+     * Writes the whole project as `<out_folder>/<project>.zip` (forge-storage's
+     * backup archive: its files plus a small manifest; hidden folders such
+     * as Bonsai's journal and the editor state are left out) and returns
+     * the archive's path, for the share sheet.
+     */
+    func exportProject(project: String, outFolder: String) throws  -> String
+    
+    /**
+     * Copies the file at `source` (one the person picked in the Files app)
+     * into `folder` of the project ("" for its top), under its own name, or
+     * "name 2.py" and so on when that is taken. Text files keep the 1 MB
+     * limit; other files (images, data) may be up to 20 MB. Returns the new
+     * file's path in the project.
+     */
+    func importFile(project: String, folder: String, source: String) throws  -> String
+    
+    /**
      * The folder of a project, for running its files and showing images.
      */
     func projectFolder(project: String) throws  -> String
@@ -6720,6 +6742,42 @@ open func entries(project: String)throws  -> [WorkspaceEntry]  {
     uniffi_forge_ffi_fn_method_workspace_entries(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(project),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Writes the whole project as `<out_folder>/<project>.zip` (forge-storage's
+     * backup archive: its files plus a small manifest; hidden folders such
+     * as Bonsai's journal and the editor state are left out) and returns
+     * the archive's path, for the share sheet.
+     */
+open func exportProject(project: String, outFolder: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_export_project(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(outFolder),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Copies the file at `source` (one the person picked in the Files app)
+     * into `folder` of the project ("" for its top), under its own name, or
+     * "name 2.py" and so on when that is taken. Text files keep the 1 MB
+     * limit; other files (images, data) may be up to 20 MB. Returns the new
+     * file's path in the project.
+     */
+open func importFile(project: String, folder: String, source: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_import_file(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(folder),
+        FfiConverterString.lower(source),uniffiCallStatus
     )
 })
 }
@@ -16898,7 +16956,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_snapshot() != 53706) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom() != 36010) {
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom() != 9195) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder() != 34402) {
@@ -17076,6 +17134,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_workspace_entries() != 18400) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_export_project() != 10143) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_import_file() != 61881) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_workspace_project_folder() != 42712) {
