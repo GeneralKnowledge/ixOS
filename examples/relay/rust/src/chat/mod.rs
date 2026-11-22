@@ -291,11 +291,11 @@ impl ChatCore {
             token: String::new(),
             room: Some(found),
         };
-        self.ensure_running()?;
         let same = current
             .as_ref()
             .is_some_and(|c| c.user_id == stored.user_id);
         let mut session = self.lock();
+        self.ensure_running()?;
         if same {
             if let Some(old) = session.take() {
                 old.client.shutdown();
@@ -1306,8 +1306,9 @@ impl ChatCore {
     /// Changes the signed-in account over to its moved form, if it is
     /// still the account that was moved.
     fn commit_move(&self, moved: StoredAccount) -> Result<bool, ChatError> {
-        self.ensure_running()?;
         let mut session = self.lock();
+        // Checked under the lock: a shutdown that got there first wins.
+        self.ensure_running()?;
         // Still the account that was moved: then it changes over, its
         // chats staying where they are.
         if self.credentials.load()?.as_ref().map(|a| &a.user_id) != Some(&moved.user_id) {
