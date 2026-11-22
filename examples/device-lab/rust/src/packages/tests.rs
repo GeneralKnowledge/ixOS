@@ -336,7 +336,7 @@ fn uninstalling_leaves_files_another_package_owns() {
         true,
     );
     package_install_wheel(path, sum, site_text.clone()).unwrap();
-    // As if an older build kept the wheel's own RECORD, claiming keeper's file.
+    // A RECORD that claims keeper's file anyway.
     let record = site.join("liar-1.0.dist-info/RECORD");
     let mut text = fs::read_to_string(&record).unwrap();
     text += "keeper/__init__.py,,\n./keeper/__init__.py,,\nliar/./../keeper/__init__.py,,\n";
@@ -443,7 +443,7 @@ fn upgrading_leaves_files_another_package_owns() {
         let (path, sum) = wheel(dir.path(), name, "1.0", &[(file, "")], &[], true);
         package_install_wheel(path, sum, site_text.clone()).unwrap();
     }
-    // As if an older build kept the wheel's own RECORD, claiming keeper's file.
+    // A RECORD that claims keeper's file anyway.
     let record = site.join("liar-1.0.dist-info/RECORD");
     let mut text = fs::read_to_string(&record).unwrap();
     text += "keeper/__init__.py,,\n";
@@ -625,4 +625,75 @@ fn an_upgrade_never_reuses_a_kept_backup() {
         fs::read_to_string(kept.join("keeper/only-copy.txt")).unwrap(),
         "saved"
     );
+}
+
+#[test]
+fn a_package_python_lab_didnt_install_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    for (name, file) in [
+        ("keeper", "keeper/__init__.py"),
+        ("liar", "liar/__init__.py"),
+    ] {
+        let (path, sum) = wheel(dir.path(), name, "1.0", &[(file, "")], &[], true);
+        package_install_wheel(path, sum, site_text.clone()).unwrap();
+    }
+    // As if liar were copied in by hand, with a RECORD claiming keeper's file
+    // and keeper's own RECORD gone.
+    fs::remove_file(site.join("liar-1.0.dist-info/INSTALLER")).unwrap();
+    fs::write(
+        site.join("liar-1.0.dist-info/RECORD"),
+        "liar/__init__.py,,\nkeeper/__init__.py,,\n",
+    )
+    .unwrap();
+    fs::remove_file(site.join("keeper-1.0.dist-info/RECORD")).unwrap();
+    assert!(matches!(
+        package_uninstall(site_text.clone(), "liar".into()),
+        Err(PackageError::Invalid { .. })
+    ));
+    let (path, sum) = wheel(
+        dir.path(),
+        "liar",
+        "2.0",
+        &[("liar/__init__.py", "")],
+        &[],
+        true,
+    );
+    assert!(matches!(
+        package_install_wheel(path, sum, site_text),
+        Err(PackageError::Invalid { .. })
+    ));
+    assert!(site.join("keeper/__init__.py").exists());
+    assert!(site.join("liar/__init__.py").exists());
+    assert!(site.join("liar-1.0.dist-info").exists());
+}
+
+#[test]
+fn a_wheels_own_installer_file_is_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    let (path, sum) = wheel(
+        dir.path(),
+        "tool",
+        "1.0",
+        &[
+            ("tool/__init__.py", ""),
+            ("tool-1.0.dist-info/INSTALLER", "pip\n"),
+        ],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    let info = site.join("tool-1.0.dist-info");
+    assert_eq!(
+        fs::read_to_string(info.join("INSTALLER")).unwrap(),
+        "Python Lab\n"
+    );
+    let record = fs::read_to_string(info.join("RECORD")).unwrap();
+    assert_eq!(record.matches("INSTALLER").count(), 1);
+    package_uninstall(site_text, "tool".into()).unwrap();
+    assert!(!site.join("tool").exists());
+    assert!(!info.exists());
 }

@@ -359,8 +359,8 @@ pub fn package_install_wheel(
     let mut owned_by_old: BTreeSet<String> = BTreeSet::new();
     let mut old_files: BTreeSet<String> = BTreeSet::new();
     if let Some((old_info, _)) = &old {
-        // Never what another package lists (an older build kept the
-        // wheel's own RECORD, which could claim anything).
+        refuse_unless_ours(site, old_info, &package.name)?;
+        // Never what another package lists.
         let others = other_tops(site, old_info);
         owned_by_old = record_tops(site, old_info)
             .into_iter()
@@ -401,12 +401,18 @@ pub fn package_install_wheel(
     // The installer's own RECORD: the files it put in place, where they
     // went (a `.data/purelib` file under its final path). Uninstalling
     // removes these and nothing a wheel's own RECORD claims.
+    // INSTALLER marks the RECORD as this installer's, so only these are
+    // trusted when the package is later removed or replaced.
+    let installer = format!("{dist_info}/INSTALLER");
     let record: String = plan
         .iter()
-        .map(|(_, target)| format!("{},,\n", target.to_string_lossy()))
-        .chain(std::iter::once(format!("{dist_info}/RECORD,,\n")))
+        .map(|(_, target)| target.to_string_lossy().into_owned())
+        .filter(|target| *target != installer)
+        .chain([installer.clone(), format!("{dist_info}/RECORD")])
+        .map(|target| format!("{target},,\n"))
         .collect();
     let unpacked = unpacked
+        .and_then(|_| fs::write(staging.join(&installer), INSTALLER).map_err(storage))
         .and_then(|_| fs::write(staging.join(&dist_info).join("RECORD"), record).map_err(storage));
     if let Err(err) = unpacked {
         let _ = fs::remove_dir_all(&staging);
@@ -548,7 +554,25 @@ pub fn package_uninstall(site_packages: String, name: String) -> Result<(), Pack
     else {
         return Err(PackageError::NotFound { name });
     };
+    refuse_unless_ours(site, &info, &name)?;
     remove_package(site, &info)
+}
+
+/// What this installer writes to each package's `.dist-info/INSTALLER`.
+const INSTALLER: &str = "Python Lab\n";
+
+/// A package's RECORD decides what is deleted, so only one this installer
+/// wrote is trusted: anything else (copied in by hand, or left by another
+/// tool) could claim another package's files.
+fn refuse_unless_ours(site: &Path, dist_info: &str, name: &str) -> Result<(), PackageError> {
+    let installer = fs::read_to_string(site.join(dist_info).join("INSTALLER")).unwrap_or_default();
+    if installer == INSTALLER {
+        return Ok(());
+    }
+    Err(invalid(format!(
+        "{name} wasn't installed by Python Lab, so it was left as it is. \
+         Delete its folders in Files to remove it."
+    )))
 }
 
 /// Each `.dist-info` folder in `site` with what its METADATA says.
@@ -617,8 +641,7 @@ fn record_tops(site: &Path, dist_info: &str) -> BTreeSet<String> {
 }
 
 fn remove_package(site: &Path, dist_info: &str) -> Result<(), PackageError> {
-    // What other packages list is theirs, whatever this RECORD claims (one
-    // installed by an older build carries the wheel's own RECORD).
+    // What other packages list is theirs, whatever this RECORD claims.
     let others = other_tops(site, dist_info);
     let mut folders: BTreeSet<PathBuf> = BTreeSet::new();
     // Only plain relative paths inside site-packages.
