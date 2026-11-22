@@ -38,6 +38,8 @@ mod resolver;
 mod store;
 pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind, ServerHealth};
 mod hex;
+mod mailbox;
+pub mod mailbox_server;
 mod trust;
 
 use std::collections::{HashMap, VecDeque};
@@ -744,6 +746,9 @@ pub struct Device {
     pub introduced_by: Option<String>,
     /// The name of the introducer that revoked it, when the person didn't.
     pub revoked_by: Option<String>,
+    /// The person it belongs to, when it isn't one of the person's own
+    /// devices (N4 step 1). Chats shows this name rather than `name`.
+    pub person: Option<String>,
     /// Whether the app sees it on this network now.
     pub nearby: bool,
     /// Nearby, reachable (a trusted connection worked in the last few
@@ -875,6 +880,7 @@ impl RelayCore {
                     sees_devices: d.sees_devices,
                     introduced_by: d.introduced_by.as_deref().map(name_of),
                     revoked_by: d.revoked_by.as_deref().map(name_of),
+                    person: d.person.clone(),
                     nearby: is_nearby,
                     presence: if trusted {
                         presence::presence(is_nearby, last_seen_ms, now)
@@ -1093,6 +1099,7 @@ impl RelayCore {
         } else {
             name
         };
+        let offers = self.trust_offers.clone();
         self.rt
             .command("trust-device", move |state| {
                 state.change(|r| {
@@ -1103,7 +1110,11 @@ impl RelayCore {
                         None => r.devices.trust(&endpoint_id, &name, now_ms()),
                     }
                     Ok(())
-                })
+                })?;
+                // A sync that ran after the offer was taken above, but
+                // before this command, may have offered the device again.
+                lock(&offers).retain(|o| o.endpoint_id != endpoint_id);
+                Ok(())
             })
             .await
     }
@@ -1188,6 +1199,29 @@ impl RelayCore {
             self.sync_later(endpoint_id);
         }
         Ok(())
+    }
+
+    /// Marks a trusted device as a person's, with their name, or (with
+    /// `None`) as one of the person's own devices (N4 step 1). A person's
+    /// device may send messages and files, never introduces devices or
+    /// sees the device list, and Chats shows the person's name.
+    pub async fn set_person(
+        &self,
+        endpoint_id: String,
+        person: Option<String>,
+    ) -> Result<(), RelayError> {
+        let person = person.map(|n| model::clean_name(&n)).transpose()?;
+        self.rt
+            .command("person", move |state| {
+                state.change(|r| {
+                    if r.devices.set_person(&endpoint_id, person.as_deref()) {
+                        Ok(())
+                    } else {
+                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                    }
+                })
+            })
+            .await
     }
 
     /// Whether `endpoint_id` may see the devices trusted here, so this
@@ -1665,7 +1699,7 @@ impl CoreDevices {
             .get()
             .devices
             .get(from)
-            .map(|d| d.name.clone())
+            .map(|d| d.shown_name().to_string())
             .unwrap_or_default();
         Ok(chat_core::Message {
             id: message.id,
@@ -1704,7 +1738,7 @@ impl CoreDevices {
             .get()
             .devices
             .get(from)
-            .map(|d| d.name.clone())
+            .map(|d| d.shown_name().to_string())
             .unwrap_or_default();
         Ok(chat_core::Message {
             id,

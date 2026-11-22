@@ -245,6 +245,12 @@ public final class RelayModel {
         serverHealth = core.serverHealth()
     }
 
+    /// Re-reads only whether Relay's servers answer.
+    public func refreshServerHealth() {
+        let health = core.serverHealth()
+        if health != serverHealth { serverHealth = health }
+    }
+
     /// "Nearby", "Reachable, seen 2 min ago" or "Offline, seen 3 h ago".
     nonisolated public static func whereNow(_ device: Device, now: Date = Date()) -> String {
         let word: String
@@ -324,6 +330,13 @@ public final class RelayModel {
     /// offered to you, and what it revoked is revoked here, saying so.
     public func setIntroduces(_ on: Bool, for device: Device) async {
         await perform { try await $0.setIntroduces(endpointId: device.endpointId, on: on) }
+    }
+
+    /// Marks `device` as a person's, with their name, or (with `nil`) as
+    /// one of your own devices. A person's device sends messages and
+    /// files, never sees your devices, and Chats shows their name.
+    public func setPerson(_ name: String?, for device: Device) async {
+        await perform { try await $0.setPerson(endpointId: device.endpointId, person: name) }
     }
 
     /// Whether `device` may see which devices this one trusts.

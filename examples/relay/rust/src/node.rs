@@ -101,11 +101,39 @@ pub(crate) struct Node {
     /// When they last changed: a relay set moments ago is still
     /// connecting, not down.
     servers_since: Mutex<std::time::Instant>,
+    /// The relay was found down since the servers last changed. Stays set
+    /// until it connects, so a retry in progress (when iroh clears its
+    /// last error) doesn't hide the notice and show it again.
+    relay_down: std::sync::atomic::AtomicBool,
 }
 
 /// How long a newly set relay is given to connect before it counts as
 /// down.
 const RELAY_GRACE: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// The relay's health from iroh's view, latched: once down, it stays down
+/// until the relay connects, whatever iroh says between retries.
+fn health_from(
+    connected: bool,
+    failed: bool,
+    settling: bool,
+    down: &std::sync::atomic::AtomicBool,
+) -> crate::resolver::ServerHealth {
+    use crate::resolver::ServerHealth;
+    use std::sync::atomic::Ordering;
+    if connected {
+        down.store(false, Ordering::Relaxed);
+        return ServerHealth::Reachable;
+    }
+    if failed || !settling {
+        down.store(true, Ordering::Relaxed);
+    }
+    if down.load(Ordering::Relaxed) {
+        ServerHealth::Unreachable
+    } else {
+        ServerHealth::Connecting
+    }
+}
 
 impl Node {
     /// Opens the store in `store_dir` and binds the endpoint with the key
@@ -157,6 +185,7 @@ impl Node {
             router,
             servers: Mutex::new(servers.clone()),
             servers_since: Mutex::new(std::time::Instant::now()),
+            relay_down: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -164,10 +193,19 @@ impl Node {
     /// is swapped, and the lookup server is published to (and asked) or
     /// not. Nothing waits for the next time Relay opens.
     pub async fn use_servers(&self, next: RelayServers) {
-        let before = std::mem::replace(&mut *forge_runtime::lock(&self.servers), next.clone());
-        if before != next {
-            *forge_runtime::lock(&self.servers_since) = std::time::Instant::now();
-        }
+        // The swap and the reset under one lock, the one `relay_health`
+        // holds while it reads: a read either finishes before (and its
+        // latch is cleared here) or sees the new servers.
+        let before = {
+            let mut servers = forge_runtime::lock(&self.servers);
+            let before = std::mem::replace(&mut *servers, next.clone());
+            if before != next {
+                *forge_runtime::lock(&self.servers_since) = std::time::Instant::now();
+                self.relay_down
+                    .store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+            before
+        };
         if before.relay() != next.relay() {
             if let Some(url) = before.relay() {
                 self.endpoint.remove_relay(&url).await;
@@ -210,19 +248,23 @@ impl Node {
     pub fn relay_health(&self) -> crate::resolver::ServerHealth {
         use crate::resolver::ServerHealth;
         use iroh::Watcher;
-        if forge_runtime::lock(&self.servers).relay().is_none() {
+        // Held through the latch (servers, then servers_since): see
+        // `use_servers`.
+        let servers = forge_runtime::lock(&self.servers);
+        let Some(url) = servers.relay() else {
             return ServerHealth::Off;
-        }
+        };
+        // Only the relay in use now: a relay just replaced can still be
+        // listed with its last error.
         let statuses = self.endpoint.home_relay_status().get();
-        if statuses.iter().any(|s| s.is_connected()) {
-            return ServerHealth::Reachable;
+        let current = statuses.iter().filter(|s| *s.url() == url);
+        let (mut connected, mut failed) = (false, false);
+        for status in current {
+            connected |= status.is_connected();
+            failed |= status.last_error().is_some();
         }
-        let failed = statuses.iter().any(|s| s.last_error().is_some());
-        if !failed && forge_runtime::lock(&self.servers_since).elapsed() < RELAY_GRACE {
-            ServerHealth::Connecting
-        } else {
-            ServerHealth::Unreachable
-        }
+        let settling = forge_runtime::lock(&self.servers_since).elapsed() < RELAY_GRACE;
+        health_from(connected, failed, settling, &self.relay_down)
     }
 
     pub fn id(&self) -> EndpointId {
@@ -666,6 +708,21 @@ fn gate(allowed: Vec<Allowed>) -> EventSender {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_relay_found_down_stays_down_until_it_connects() {
+        use crate::resolver::ServerHealth::*;
+        let down = std::sync::atomic::AtomicBool::new(false);
+        // Just set, nothing heard yet.
+        assert_eq!(health_from(false, false, true, &down), Connecting);
+        // It fails, then iroh retries and clears its error: still down.
+        assert_eq!(health_from(false, true, true, &down), Unreachable);
+        assert_eq!(health_from(false, false, true, &down), Unreachable);
+        assert_eq!(health_from(false, false, false, &down), Unreachable);
+        // It connects, and only that clears it.
+        assert_eq!(health_from(true, false, false, &down), Reachable);
+        assert_eq!(health_from(false, false, true, &down), Connecting);
+    }
 
     #[test]
     fn the_key_is_made_once_and_kept() {
