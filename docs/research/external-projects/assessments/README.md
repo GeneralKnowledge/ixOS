@@ -7,7 +7,7 @@ Part of the [External Projects Atlas](../README.md). One file per evidence-backe
 | Networking and device communication | [networking/](networking/) | [Lightning P2P](networking/lightning-p2p.md): Borrow |
 | Local-first data and sync | [local-first/](local-first/) | None yet |
 | Security and privacy | [privacy/](privacy/) | None yet |
-| On-device AI | [ai/](ai/) | [FluidAudio](ai/fluidaudio.md): Watch |
+| On-device AI | [ai/](ai/) | [FluidAudio](ai/fluidaudio.md): Watch; [A2UI](ai/a2ui.md): Study, build spike next |
 | Accessibility and interaction quality | [accessibility/](accessibility/) | [a11y-check](accessibility/a11y-check.md): Adopt as a CI tool |
 | Images, documents and media | [media/](media/) | [Offscan](media/offscan.md): Borrow and Study |
 | Reading and personal libraries | [reading/](reading/) | [dom_smoothie](reading/dom-smoothie.md): Adopt (Commonplace) |
