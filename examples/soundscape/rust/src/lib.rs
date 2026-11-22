@@ -26,6 +26,7 @@ pub mod offline;
 pub mod playback;
 pub mod queue;
 pub mod search;
+pub mod test_catalogue;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,6 +64,7 @@ use playback::PlaybackFile;
 pub use playback::SavedPlayback;
 pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
 pub use search::CatalogueSearch;
+pub use test_catalogue::TestTrack;
 
 uniffi::setup_scaffolding!();
 
@@ -168,6 +170,8 @@ pub struct SoundscapeCore {
     imported: PathBuf,
     offline: Arc<Published<OfflineFile>>,
     downloads: PathBuf,
+    /// The test catalogue's files (`test_catalogue::FOLDER`).
+    test_files: PathBuf,
     progress: Arc<Mutex<Progress>>,
     playback: Arc<Published<PlaybackFile>>,
     /// True while `sync_downloads` runs, so a second one returns at once.
@@ -757,6 +761,23 @@ impl SoundscapeCore {
             .await
     }
 
+    /// The fixed test catalogue (`test_catalogue`): its files are written
+    /// the first time (about 18 MB, a second or two), then reused.
+    /// On-screen work.
+    pub async fn test_catalogue(
+        &self,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<TestTrack>, SoundscapeError> {
+        let dir = self.test_files.clone();
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("test-catalogue", work, move |_| {
+                test_catalogue::ensure(&dir)?;
+                Ok(test_catalogue::tracks(&dir))
+            })
+            .await
+    }
+
     /// The genres Discover offers for Jamendo, in the order shown.
     pub fn jamendo_genres(&self) -> Vec<JamendoGenre> {
         jamendo::genres()
@@ -1266,11 +1287,13 @@ impl SoundscapeCore {
     pub fn library_track(&self, id: String) -> Result<TrackDetail, SoundscapeError> {
         let artwork = self.artwork_url();
         let music = self.imported_url();
+        let test = self.test_url();
         let mut detail = library::build_track(
             &self.library.get(),
             &library::Locate {
                 artwork: &artwork,
                 music: &music,
+                test: &test,
             },
             &id,
         )
@@ -1544,6 +1567,12 @@ impl SoundscapeCore {
         stored_url(self.artwork.clone())
     }
 
+    /// Follows a saved test catalogue URL to where its file is now.
+    fn test_url(&self) -> impl Fn(&str) -> Option<String> {
+        let dir = self.test_files.clone();
+        move |url: &str| test_catalogue::relocate(url, &dir)
+    }
+
     fn imported_url(&self) -> impl Fn(&str) -> Option<String> {
         stored_url(self.imported.clone())
     }
@@ -1571,11 +1600,13 @@ impl SoundscapeCore {
     fn kept_library(&self) -> Library {
         let artwork = self.artwork_url();
         let music = self.imported_url();
+        let test = self.test_url();
         library::build_library(
             &self.library.get(),
             &library::Locate {
                 artwork: &artwork,
                 music: &music,
+                test: &test,
             },
         )
     }
@@ -1720,6 +1751,7 @@ impl SoundscapeCore {
             );
         }
         let playback_published = Arc::new(Published::new(playback_doc.value().clone()));
+        let test_files = directory.path().join(test_catalogue::FOLDER);
         let state = State {
             listen,
             listen_published: Arc::clone(&listen_published),
@@ -1743,6 +1775,7 @@ impl SoundscapeCore {
             imported: imported_root,
             offline: offline_published,
             downloads: downloads_root,
+            test_files,
             playback: playback_published,
             progress: Arc::default(),
             syncing: Arc::default(),

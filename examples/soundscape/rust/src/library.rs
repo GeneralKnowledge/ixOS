@@ -462,6 +462,9 @@ pub fn file_url(path: &std::path::Path) -> String {
 pub struct Locate<'a> {
     pub artwork: &'a dyn Fn(&str) -> Option<String>,
     pub music: &'a dyn Fn(&str) -> Option<String>,
+    /// Where the test catalogue's files are now
+    /// ([`crate::test_catalogue::relocate`]).
+    pub test: &'a dyn Fn(&str) -> Option<String>,
 }
 
 /// The library from what is kept.
@@ -839,6 +842,22 @@ fn sources(file: &LibraryFile, locate: &Locate<'_>) -> Vec<(Source, Origin)> {
         ));
     }
     for (id, saved) in &file.catalogue {
+        // The test catalogue's files move with the app's data folder.
+        let moved;
+        let saved = if id.starts_with(crate::test_catalogue::PREFIX) {
+            moved = CatalogueTrack {
+                audio_url: (locate.test)(&saved.audio_url)
+                    .unwrap_or_else(|| saved.audio_url.clone()),
+                artwork_url: saved
+                    .artwork_url
+                    .as_ref()
+                    .map(|a| (locate.test)(a).unwrap_or_else(|| a.clone())),
+                ..saved.clone()
+            };
+            &moved
+        } else {
+            saved
+        };
         out.push((
             Source {
                 id: id.clone(),
