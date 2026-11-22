@@ -339,7 +339,7 @@ fn uninstalling_leaves_files_another_package_owns() {
     // As if an older build kept the wheel's own RECORD, claiming keeper's file.
     let record = site.join("liar-1.0.dist-info/RECORD");
     let mut text = fs::read_to_string(&record).unwrap();
-    text += "keeper/__init__.py,,\n";
+    text += "keeper/__init__.py,,\n./keeper/__init__.py,,\nliar/./../keeper/__init__.py,,\n";
     fs::write(&record, text).unwrap();
     package_uninstall(site_text, "liar".into()).unwrap();
     assert!(site.join("keeper/__init__.py").exists());

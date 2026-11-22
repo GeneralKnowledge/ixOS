@@ -564,12 +564,27 @@ fn installed_dist_infos(site: &Path) -> Vec<(String, InstalledPackage)> {
 
 /// The paths a package's RECORD lists.
 fn record_paths(site: &Path, dist_info: &str) -> BTreeSet<String> {
+    record_entries(site, dist_info).into_iter().collect()
+}
+
+/// The paths a package's RECORD lists, as plain relative paths inside
+/// site-packages (`./` parts dropped, so `./keeper/x` is `keeper/x`);
+/// anything absolute, empty or climbing out is left out.
+fn record_entries(site: &Path, dist_info: &str) -> Vec<String> {
     fs::read_to_string(site.join(dist_info).join("RECORD"))
         .unwrap_or_default()
         .lines()
         .filter_map(|line| line.split(',').next())
-        .filter(|p| !p.is_empty())
-        .map(str::to_string)
+        .filter_map(|path| {
+            if path.starts_with('/') || path.contains('\\') {
+                return None;
+            }
+            let parts: Vec<&str> = path.split('/').filter(|p| *p != ".").collect();
+            if parts.is_empty() || parts.iter().any(|p| p.is_empty() || *p == "..") {
+                return None;
+            }
+            Some(parts.join("/"))
+        })
         .collect()
 }
 
@@ -589,30 +604,19 @@ fn other_tops(site: &Path, dist_info: &str) -> BTreeSet<String> {
 
 /// The top-level names a package's RECORD lists.
 fn record_tops(site: &Path, dist_info: &str) -> BTreeSet<String> {
-    fs::read_to_string(site.join(dist_info).join("RECORD"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| line.split(',').next())
-        .filter_map(|path| path.split('/').next())
-        .filter(|top| !top.is_empty() && *top != ".." && !top.starts_with('/'))
-        .map(str::to_string)
+    record_entries(site, dist_info)
+        .into_iter()
+        .filter_map(|path| path.split('/').next().map(str::to_string))
         .collect()
 }
 
 fn remove_package(site: &Path, dist_info: &str) -> Result<(), PackageError> {
-    let record = fs::read_to_string(site.join(dist_info).join("RECORD")).unwrap_or_default();
     // What other packages list is theirs, whatever this RECORD claims (one
     // installed by an older build carries the wheel's own RECORD).
     let others = other_tops(site, dist_info);
     let mut folders: BTreeSet<PathBuf> = BTreeSet::new();
-    for line in record.lines() {
-        let Some(path) = line.split(',').next().filter(|p| !p.is_empty()) else {
-            continue;
-        };
-        // Only plain relative paths inside site-packages.
-        if path.starts_with('/') || path.split('/').any(|p| p == ".." || p.is_empty()) {
-            continue;
-        }
+    // Only plain relative paths inside site-packages.
+    for path in record_entries(site, dist_info) {
         if path
             .split('/')
             .next()
@@ -620,7 +624,7 @@ fn remove_package(site: &Path, dist_info: &str) -> Result<(), PackageError> {
         {
             continue;
         }
-        let full = site.join(path);
+        let full = site.join(&path);
         let _ = fs::remove_file(&full);
         let mut parent = full.parent();
         while let Some(dir) = parent {
