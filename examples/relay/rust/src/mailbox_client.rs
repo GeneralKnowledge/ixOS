@@ -6,7 +6,8 @@
 //!   recipient told this device its mailbox (in the Hello), the outbox seals
 //!   it to the recipient's mailbox key and leaves it there under the
 //!   recipient's pass. It then waits for a receipt; the next item goes on.
-//!   Files still wait for a direct route (a later step).
+//!   Files and folders go too, as their blobs, up to [`FILES_MAX`]; bigger
+//!   ones wait for a direct route.
 //! - **Collecting** runs once when the node starts, every 30 seconds while
 //!   Relay runs, and when Relay comes to the foreground. Each round
 //!   registers the passes of the devices trusted here (and deregisters the
@@ -38,6 +39,11 @@ use crate::{ConnectionMode, RelayCore};
 /// How often the collector looks while Relay runs.
 const EVERY: Duration = Duration::from_secs(30);
 
+/// The largest files item (all its blobs together) left in a mailbox.
+/// Sealing holds it in memory a few times over, so this stays well under
+/// the server's 100 MB until it is streamed; bigger ones go direct.
+pub(crate) const FILES_MAX: u64 = 50 * 1024 * 1024;
+
 /// What a sealed item holds: the outbox's item. A new variant is a new
 /// kind of item; an older build drops it (and still acknowledges it).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -51,10 +57,22 @@ pub(crate) enum Posted {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reply_to: Option<String>,
     },
+    /// Files and folders: the content's BLAKE3 hash (a folder's is its
+    /// collection), and every blob it needs. The receiver checks each
+    /// blob by hashing it, so only the content named by `hash` is saved.
+    Files {
+        #[serde(with = "serde_bytes")]
+        hash: Vec<u8>,
+        collection: bool,
+        name: String,
+        size: u64,
+        blobs: Vec<serde_bytes::ByteBuf>,
+    },
 }
 
 impl Posted {
-    /// What of `payload` the mailbox takes: messages and notes.
+    /// Messages and notes as the mailbox takes them; files need their
+    /// blobs read ([`Posted::files`]).
     pub(crate) fn of(payload: &Payload) -> Option<Self> {
         match payload {
             Payload::Note { text } => Some(Posted::Note { text: text.clone() }),
@@ -65,6 +83,49 @@ impl Posted {
             }),
             Payload::Files { .. } => None,
         }
+    }
+
+    /// A files payload with its blobs read from this device's store, or
+    /// why it can't go through the mailbox.
+    async fn files(node: &Node, payload: &Payload) -> Result<Self, String> {
+        let Payload::Files {
+            hash,
+            collection,
+            name,
+            size,
+            hashes,
+        } = payload
+        else {
+            return Err("not files".into());
+        };
+        if *size > FILES_MAX {
+            return Err("too large for the mailbox: it waits for a direct route".into());
+        }
+        let root = unhex(hash).ok_or("a damaged hash")?;
+        let mut blobs = Vec::with_capacity(hashes.len());
+        let mut total = 0u64;
+        for blob in hashes {
+            let blob: [u8; 32] = unhex(blob)
+                .and_then(|b| b.try_into().ok())
+                .ok_or("a damaged hash")?;
+            let bytes = node
+                .store
+                .get_bytes(iroh_blobs::Hash::from_bytes(blob))
+                .await
+                .map_err(|e| format!("the files aren't all here: {e}"))?;
+            total += bytes.len() as u64;
+            if total > FILES_MAX {
+                return Err("too large for the mailbox: it waits for a direct route".into());
+            }
+            blobs.push(serde_bytes::ByteBuf::from(bytes.to_vec()));
+        }
+        Ok(Posted::Files {
+            hash: root,
+            collection: *collection,
+            name: name.clone(),
+            size: *size,
+            blobs,
+        })
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -141,7 +202,6 @@ impl RelayCore {
         if self.connection_mode() != ConnectionMode::Hybrid {
             return Err("only Hybrid uses the mailbox".into());
         }
-        let posted = Posted::of(&d.payload).ok_or("files wait for a direct route")?;
         let mailbox = self
             .record
             .get()
@@ -153,6 +213,10 @@ impl RelayCore {
         let to: PublicKey = d.to.parse().map_err(|_| "not a device id")?;
         let id = id16(&d.id).ok_or("a damaged delivery id")?;
         let node = self.node.started().ok_or("Relay isn't open to devices")?;
+        let posted = match Posted::of(&d.payload) {
+            Some(posted) => posted,
+            None => Posted::files(&node, &d.payload).await?,
+        };
         let payload = posted.encode();
         crate::code::TOKIO
             .spawn(async move { leave(&node, &to, &mailbox, Kind::Item, id, &payload).await })
@@ -331,6 +395,18 @@ impl RelayCore {
             );
             return Taken::Dropped;
         }
+        if let Posted::Files {
+            hash,
+            collection,
+            name,
+            size,
+            blobs,
+        } = posted
+        {
+            return self
+                .take_files(from, id, hash, collection, &name, size, blobs)
+                .await;
+        }
         let from = from.to_string();
         let saved = tokio::task::spawn_blocking(move || match posted {
             Posted::Note { text } => {
@@ -343,6 +419,7 @@ impl RelayCore {
                 &from,
                 crate::device_chat::PeerMessage { id, body, reply_to },
             ),
+            Posted::Files { .. } => unreachable!("taken above"),
         })
         .await;
         match saved {
@@ -354,6 +431,132 @@ impl RelayCore {
             Err(_) => Taken::Retry,
         }
     }
+}
+
+impl RelayCore {
+    /// Saves files from the mailbox once, as a direct delivery would: the
+    /// blobs go into the store (each named by its own hash), and only the
+    /// content `hash` names is placed in the received folder.
+    #[allow(clippy::too_many_arguments)]
+    async fn take_files(
+        &self,
+        from: &str,
+        id: [u8; 16],
+        hash: Vec<u8>,
+        collection: bool,
+        name: &str,
+        size: u64,
+        blobs: Vec<serde_bytes::ByteBuf>,
+    ) -> Taken {
+        use crate::device::DeviceInbound as _;
+        let host = crate::CoreDevices {
+            core: self.me.clone(),
+        };
+        if host.received_before(from, &id) {
+            return Taken::Saved;
+        }
+        let Ok(hash) = <[u8; 32]>::try_from(hash) else {
+            forge_runtime::logging::info!("relay: a mailbox item with a damaged hash was dropped");
+            return Taken::Dropped;
+        };
+        let Some(node) = self.node.started() else {
+            return Taken::Retry;
+        };
+        let root = iroh_blobs::Hash::from_bytes(hash);
+        let content = if collection {
+            iroh_blobs::HashAndFormat::hash_seq(root)
+        } else {
+            iroh_blobs::HashAndFormat::raw(root)
+        };
+        if crate::code::hold(&node, content).await.is_err() {
+            return Taken::Retry;
+        }
+        // Kept from collection until placed; dropped together after.
+        let mut added = Vec::with_capacity(blobs.len());
+        for blob in blobs {
+            match node.store.add_bytes(blob.into_vec()).temp_tag().await {
+                Ok(tag) => added.push(tag),
+                Err(e) => {
+                    forge_runtime::logging::warn!("relay: mailbox files weren't stored: {e}");
+                    crate::code::release(&node, root).await;
+                    return Taken::Retry;
+                }
+            }
+        }
+        let name =
+            crate::device::clean_offered_name(name, if collection { "folder" } else { "file" });
+        let folder = host.folder();
+        let placed = crate::code::place(&node, root, collection, &folder, &name).await;
+        // Whether it is all here, when placing failed: a storage error
+        // while checking is a reason to try again, not to drop it.
+        let complete = match &placed {
+            Ok(_) => Ok(true),
+            Err(_) => added_all(&node, root, collection).await,
+        };
+        crate::code::release(&node, root).await;
+        drop(added);
+        let path = match placed {
+            Ok(path) => path,
+            // Not all of it came (a blob missing or not what it claimed):
+            // never better on a later round.
+            Err(e) if matches!(complete, Ok(false)) => {
+                forge_runtime::logging::info!(
+                    "relay: mailbox files that didn't verify were dropped: {e}"
+                );
+                return Taken::Dropped;
+            }
+            Err(e) => {
+                forge_runtime::logging::warn!("relay: mailbox files weren't saved: {e}");
+                return Taken::Retry;
+            }
+        };
+        let from = from.to_string();
+        // Saved means its history entry, message and id are committed;
+        // only then is the item acknowledged.
+        let saved = tokio::task::spawn_blocking(move || {
+            let entry = host.begin_file(&from, &name, size)?;
+            host.file_done(
+                entry,
+                &from,
+                id,
+                hash,
+                Ok(path.to_string_lossy().into_owned()),
+            )
+        })
+        .await;
+        match saved {
+            Ok(Ok(())) => Taken::Saved,
+            _ => Taken::Retry,
+        }
+    }
+}
+
+/// Whether the store has the content `hash` complete: the blob, and for
+/// a folder every blob its collection lists.
+/// An error is a storage problem, not missing content.
+async fn added_all(node: &Node, hash: iroh_blobs::Hash, collection: bool) -> Result<bool, String> {
+    let has = |h| async move { node.store.has(h).await.map_err(|e| e.to_string()) };
+    if !has(hash).await? {
+        return Ok(false);
+    }
+    if !collection {
+        return Ok(true);
+    }
+    let list = node
+        .store
+        .get_bytes(hash)
+        .await
+        .map_err(|e| e.to_string())?;
+    // A collection whose list doesn't read as one is invalid content.
+    let Ok(seq) = iroh_blobs::hashseq::HashSeq::try_from(list) else {
+        return Ok(false);
+    };
+    for child in seq.iter() {
+        if !has(child).await? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 /// What became of an item collected from the mailbox.
@@ -379,6 +582,13 @@ mod tests {
                 id: "m1".into(),
                 body: "hello".into(),
                 reply_to: Some("m0".into()),
+            },
+            Posted::Files {
+                hash: vec![7; 32],
+                collection: true,
+                name: "trip".into(),
+                size: 3,
+                blobs: vec![serde_bytes::ByteBuf::from(b"abc".to_vec())],
             },
         ] {
             assert_eq!(Posted::decode(&posted.encode()), Some(posted));

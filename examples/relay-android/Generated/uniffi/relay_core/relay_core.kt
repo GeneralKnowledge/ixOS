@@ -1905,7 +1905,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_relay_core_checksum_func_device_conversation_id() and 0xFFFF) != 5838) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_relay_core_checksum_func_chat_delivery() and 0xFFFF) != 64205) {
+    if ((lib.uniffi_relay_core_checksum_func_chat_delivery() and 0xFFFF) != 7415) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_func_chat_error_kind() and 0xFFFF) != 39415) {
@@ -12731,6 +12731,12 @@ data class ChatMessage (
      * `ChatCore::fetch_attachment`.
      */
     var `attachments`: List<ChatAttachment>
+    , 
+    /**
+     * Relay only: still sending, and waiting in its device's mailbox for
+     * that device to collect it (it wasn't reachable).
+     */
+    var `inMailbox`: kotlin.Boolean
     
 ){
     
@@ -12760,6 +12766,7 @@ public object FfiConverterTypeChatMessage: FfiConverterRustBuffer<ChatMessage> {
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceTypeChatReaction.read(buf),
             FfiConverterSequenceTypeChatAttachment.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -12776,7 +12783,8 @@ public object FfiConverterTypeChatMessage: FfiConverterRustBuffer<ChatMessage> {
             FfiConverterBoolean.allocationSize(value.`edited`) +
             FfiConverterBoolean.allocationSize(value.`deleted`) +
             FfiConverterSequenceTypeChatReaction.allocationSize(value.`reactions`) +
-            FfiConverterSequenceTypeChatAttachment.allocationSize(value.`attachments`)
+            FfiConverterSequenceTypeChatAttachment.allocationSize(value.`attachments`) +
+            FfiConverterBoolean.allocationSize(value.`inMailbox`)
     )
 
     override fun write(value: ChatMessage, buf: ByteBuffer) {
@@ -12793,6 +12801,7 @@ public object FfiConverterTypeChatMessage: FfiConverterRustBuffer<ChatMessage> {
             FfiConverterBoolean.write(value.`deleted`, buf)
             FfiConverterSequenceTypeChatReaction.write(value.`reactions`, buf)
             FfiConverterSequenceTypeChatAttachment.write(value.`attachments`, buf)
+            FfiConverterBoolean.write(value.`inMailbox`, buf)
     }
 }
 
@@ -15210,6 +15219,11 @@ public object FfiConverterTypeCapability: FfiConverterRustBuffer<Capability> {
 enum class ChatDelivery {
     
     SENDING,
+    /**
+     * Relay only: left in its device's mailbox, which the device collects
+     * when it next opens Relay with a network.
+     */
+    IN_MAILBOX,
     SENT,
     /**
      * Someone else in the room has read it (their read cursor passed it).
@@ -19324,7 +19338,8 @@ public object FfiConverterSequenceTypeCapability: FfiConverterRustBuffer<List<Ca
 
         /**
          * The delivery state of `message` in `conversation`: `Read` once another
-         * account's read cursor has passed one of our sent messages. Only
+         * account's read cursor has passed one of our sent messages, and
+         * `InMailbox` while one waits in a Relay device's mailbox. Only
          * meaningful for our own messages.
          */ fun `chatDelivery`(`message`: ChatMessage, `conversation`: ChatConversation?): ChatDelivery {
             return FfiConverterTypeChatDelivery.lift(
