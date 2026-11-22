@@ -401,7 +401,7 @@ fn t3_completes_only_once_the_evidence_shows_it() {
         .result
         .contains("not been run since the last change"));
     // A checkpoint of the verified files.
-    let checkpoints = dir.path().join("t3-one-fix/.harness/checkpoints");
+    let checkpoints = dir.path().join(".ladder/t3-one-fix/.harness/checkpoints");
     let task_dir = std::fs::read_dir(&checkpoints)
         .unwrap()
         .next()
@@ -574,7 +574,7 @@ fn a_ladder_run_keeps_the_previous_runs_journal() {
     let runs = std::fs::read_dir(dir.path().join(".runs")).unwrap().count();
     assert_eq!(runs, 1);
     // The fresh project has only its own task.
-    let entries = Journal::replay(&dir.path().join("t1-hello"));
+    let entries = Journal::replay(&dir.path().join(".ladder/t1-hello"));
     assert_eq!(
         entries
             .iter()

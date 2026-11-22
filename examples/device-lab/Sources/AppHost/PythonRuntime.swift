@@ -69,10 +69,20 @@ extension PythonLabModel {
     }
 }
 
-/// Where Python Lab's projects live (Bonsai Harness's too).
+/// Where Python Lab's projects live (Bonsai Harness's too): Documents,
+/// which Device Lab shows in the Files app (On My iPhone > Device Lab >
+/// Python Lab), so every project is a normal folder there.
 enum PythonLabProjects {
-    static let folder = URL.applicationSupportDirectory
-        .appendingPathComponent("Python Lab/Projects", isDirectory: true)
+    static let folder: URL = {
+        let folder = URL.documentsDirectory
+            .appendingPathComponent("Python Lab", isDirectory: true)
+        // Builds before the workspace kept them where only the app could
+        // see them; move them once.
+        let old = URL.applicationSupportDirectory
+            .appendingPathComponent("Python Lab/Projects", isDirectory: true)
+        _ = try? workspaceMoveProjects(old: old.path, new: folder.path)
+        return folder
+    }()
 }
 
 /// Bonsai Harness runs its wrapper scripts through the same interpreter

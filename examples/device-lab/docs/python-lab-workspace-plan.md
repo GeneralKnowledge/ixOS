@@ -1,6 +1,6 @@
 # Python Lab: from script runner to workspace
 
-Status: **plan, nothing built** (Reuben, 2026-11-22). Reuben's review of Python Lab found that it runs Python well but is still a script runner, not a place to work. This plan covers his first stage, **PL1 Workspace and interactive development**, in five small PRs. It checks his reading of the code first, and lists his later stages so that none of them is started early.
+Status: **plan agreed in outline, PL1a built** (Reuben, 2026-11-22). PL1a's Rust is tested on Linux; its one Swift change (the projects folder) is not compiled yet. Reuben's review of Python Lab found that it runs Python well but is still a script runner, not a place to work. This plan covers his first stage, **PL1 Workspace and interactive development**, in five small PRs. It checks his reading of the code first, and lists his later stages so that none of them is started early.
 
 It builds on [visual-labs-spec.md](visual-labs-spec.md) (graphics) and [bonsai-harness-plan.md](bonsai-harness-plan.md) (Bonsai). It changes neither of their decisions.
 
@@ -42,7 +42,9 @@ Two more facts that shape the design:
 
 One rule throughout: **Rust owns the workspace** (projects, files, paths, limits, the wrapper), as it already owns the harness's projects, so it is tested on Linux. Swift draws it and hosts the interpreter.
 
-### PL1a. Projects and files (Rust, one PR)
+### PL1a. Projects and files (Rust, one PR) — built
+
+Built as `rust/src/workspace.rs` (the `Workspace` object and `workspace_move_projects`), with 14 Linux tests. Names may use any letters, digits and spaces (no `/`, `\`, `:`, control characters or leading dot); Bonsai's own tools still reach only plain ASCII names, so a file called `my data.csv` is the person's, which Bonsai can see listed but not open by name. Nothing on screen uses it until PL1b.
 
 A `workspace` module in the Device Lab crate (beside `harness/`), exported through UniFFI:
 
@@ -88,9 +90,9 @@ Bracket matching and several open files are PL2.
 - **Import:** files from the Files app into the open project (the system file picker; text and images; the PL1a limits apply). **Export:** share a file, or the whole project as a `.zip`, with forge-storage's existing zip support (the `backup` feature), so no new dependency enters.
 - Bonsai plan: H7 is updated to say what PL1 already delivered.
 
-## Decision for Reuben
+## Decided: projects live in Files
 
-**Where projects live.** Today they are in `Application Support/Python Lab/Projects`, which only the app can see. Device Lab already shows its `Documents` folder in the Files app (Relay's received files are there). Moving projects to `Documents/Python Lab` would make every project a normal folder in Files (On My iPhone ▸ Device Lab ▸ Python Lab): import, export and opening a file in another app would need no screens of ours, and a project would survive being shared out. The cost is that the person, or another app through Files, could change a project while Bonsai works in it; the harness already checks files from disk each step, so it would notice, not break. Recommended: move to `Documents`, keep PL1e's in-app import and export for convenience, and migrate the existing folder once. If not, PL1e's import and export are the only way in or out.
+**Reuben, 2026-11-22: projects move to `Documents/Python Lab`.** Device Lab already shows its `Documents` folder in the Files app (Relay's received files are there), so every project is a normal folder under On My iPhone ▸ Device Lab ▸ Python Lab: import, export and opening a file in another app need no screens of ours. Built in PL1a: `PythonLabProjects.folder` points there, and on first use `workspace_move_projects` moves the old `Application Support/Python Lab/Projects` across once (only while the new folder holds nothing but an empty `scratch`, so it never overwrites work). The cost: the person, or another app through Files, can change a project while Bonsai works in it; the harness reads files from disk at every step, so it notices rather than breaks. PL1e keeps in-app import and export for convenience.
 
 ## Not in PL1 (Reuben's avoid list, kept)
 

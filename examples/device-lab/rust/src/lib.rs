@@ -21,6 +21,7 @@ pub mod logs;
 pub mod power;
 pub mod stats;
 pub mod transfer_test;
+pub mod workspace;
 
 use std::sync::{Arc, Mutex};
 
