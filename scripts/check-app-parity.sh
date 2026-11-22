@@ -842,6 +842,28 @@ def rule_rename(app):
     return True, ""
 
 
+# A form sheet's Cancel and confirm buttons are ForgeUI's forgeFormToolbar:
+# the confirm button turns into a labelled spinner while it saves, Cancel
+# waits, and the sheet can't be swiped away while it saves or holds changes.
+# Seven sheets in five apps built the same toolbar by hand, each with its own
+# identifiers and its own swipe guard (ForgeUI 0.2, item 1). A hand-built one
+# shows as a `.confirmationAction` toolbar item that holds a ProgressView.
+CONFIRM_ITEM = re.compile(r"\bToolbarItem\(\s*placement:\s*\.confirmationAction\s*\)")
+
+
+def rule_form_toolbar(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in CONFIRM_ITEM.finditer(code):
+            if "ProgressView" in brace_block(code, m.end()):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "builds a form toolbar by hand; use ForgeUI's forgeFormToolbar: " + ", ".join(bad)
+    return True, ""
+
+
 # A file the app has just written (an export, a backup) goes to the system
 # share sheet with ForgeUI's forgeShareFile as soon as it is ready. Four
 # apps had their own "your file is ready" sheet or row with a ShareLink on
@@ -1018,6 +1040,7 @@ RULES = [
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
+    ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
     ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),

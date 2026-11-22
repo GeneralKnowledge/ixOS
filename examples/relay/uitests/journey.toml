@@ -62,7 +62,7 @@ tap = { id = "chats.new" }
 type = { id = "newConversation.title", text = "UI test room" }
 
 [[step]]
-tap = { id = "newConversation.create" }
+tap = { id = "newConversation.confirm" }
 
 [[step]]
 expect = { id = "chat.composer" }

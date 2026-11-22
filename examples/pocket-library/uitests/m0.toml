@@ -37,7 +37,7 @@ type = { id = "bookForm.title", text = "Hello from Forge" }
 expect = { id = "bookForm.title", value = "Hello from Forge" }
 
 [[step]]
-expect = { id = "bookForm.save", enabled = true }
+expect = { id = "bookForm.confirm", enabled = true }
 
 [[step]]
 tree = true

@@ -142,30 +142,19 @@ struct BookFormView: View {
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(isEditing ? "Edit Book" : "New Book")
             .inlineNavigationTitle()
+            .forgeFormToolbar(
+                id: "bookForm", confirmTitle: isEditing ? "Save" : "Add",
+                canConfirm: !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                submission: saving, hasChanges: hasChanges, cancel: { dismiss() }, confirm: save
+            )
+            #if os(iOS)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("bookForm.cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if saving.isWorking {
-                        ProgressView()
-                            .accessibilityLabel("Saving")
-                    } else {
-                        Button(isEditing ? "Save" : "Add") { save() }
-                            .disabled(input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            .accessibilityIdentifier("bookForm.save")
-                    }
-                }
-                #if os(iOS)
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") { focused = nil }
                 }
-                #endif
             }
-            .forgeSwipeGuard(saving.isWorking || hasChanges)
-            .forgeAlert(failure: $saving.failure)
+            #endif
             .onAppear { if !isEditing { focused = .title } }
         }
     }

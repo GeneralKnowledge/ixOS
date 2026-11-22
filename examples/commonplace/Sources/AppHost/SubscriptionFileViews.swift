@@ -63,22 +63,10 @@ struct ImportSubscriptionsView: View {
             #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("import.cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if importing {
-                        ProgressView().accessibilityLabel("Importing")
-                    } else {
-                        Button("Import") { Task { await runImport() } }
-                            .disabled(picked.isEmpty && preview.filters == 0)
-                            .accessibilityIdentifier("import.save")
-                    }
-                }
-            }
-            .forgeSwipeGuard(importing)
+            .forgeFormToolbar(
+                id: "import", confirmTitle: "Import", canConfirm: !(picked.isEmpty && preview.filters == 0),
+                isWorking: importing, cancel: { dismiss() }
+            ) { Task { await runImport() } }
         }
     }
 

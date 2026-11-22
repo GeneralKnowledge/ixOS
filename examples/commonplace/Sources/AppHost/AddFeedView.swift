@@ -54,24 +54,10 @@ struct AddFeedView: View {
             #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("addFeed.cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if adding.isWorking {
-                        ProgressView()
-                            .accessibilityLabel("Adding")
-                    } else {
-                        Button("Add") { Task { await add() } }
-                            .disabled(trimmed.isEmpty)
-                            .accessibilityIdentifier("addFeed.save")
-                    }
-                }
-            }
-            .forgeSwipeGuard(adding.isWorking)
-            .forgeAlert(failure: $adding.failure)
+            .forgeFormToolbar(
+                id: "addFeed", confirmTitle: "Add", canConfirm: !trimmed.isEmpty,
+                submission: adding, cancel: { dismiss() }
+            ) { Task { await add() } }
             // Straight to typing when the person has feeds; a new library
             // starts with the suggestions in view, not under the keyboard.
             .onAppear { isFocused = !model.feeds.isEmpty }

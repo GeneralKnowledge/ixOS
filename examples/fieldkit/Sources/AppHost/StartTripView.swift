@@ -27,22 +27,10 @@ struct StartTripView: View {
             #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("start.cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if starting.isWorking {
-                        ProgressView().accessibilityLabel("Starting")
-                    } else {
-                        Button("Start") { Task { await start() } }
-                            .disabled(trimmed.isEmpty)
-                            .accessibilityIdentifier("start.go")
-                    }
-                }
-            }
-            .forgeAlert(failure: $starting.failure)
+            .forgeFormToolbar(
+                id: "start", confirmTitle: "Start", canConfirm: !trimmed.isEmpty,
+                submission: starting, cancel: { dismiss() }
+            ) { Task { await start() } }
         }
     }
 
