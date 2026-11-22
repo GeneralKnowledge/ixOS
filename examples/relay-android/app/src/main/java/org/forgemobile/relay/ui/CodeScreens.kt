@@ -108,6 +108,19 @@ fun SendCodeScreen(
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         start(uris, if (uris.size == 1) "a photo" else "${uris.size} photos")
     }
+    // A folder goes as one item, as on the iPhone: its tree is copied in first, file by file.
+    val folder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree == null) return@rememberLauncherForActivityResult
+        model.sendPicked("your folder") {
+            picked.release()
+            try {
+                listOf(picked.copyTree(tree))
+            } catch (e: Exception) {
+                picked.release()
+                throw e
+            }
+        }
+    }
 
     // While there is a code: its status twice a second, and its advert on the network.
     LaunchedEffect(sending) {
@@ -171,6 +184,14 @@ fun SendCodeScreen(
                                 },
                                 modifier = Modifier.testTag("sendCode.photos"),
                             )
+                            DropdownMenuItem(
+                                text = { Text("A Folder") },
+                                onClick = {
+                                    choosing = false
+                                    folder.launch(null)
+                                },
+                                modifier = Modifier.testTag("sendCode.folder"),
+                            )
                         }
                     }
                 },
@@ -200,7 +221,7 @@ private fun SendStatus(send: CodeSend) {
     val tag = Modifier.testTag("sendCode.status")
     when (send) {
         is CodeSend.Idle -> Text(
-            "Choose files or photos, and Relay shows a code for the receiver.",
+            "Choose files, photos or a folder, and Relay shows a code for the receiver.",
             style = Forge.text(ForgeTextRole.METADATA),
             modifier = tag,
         )

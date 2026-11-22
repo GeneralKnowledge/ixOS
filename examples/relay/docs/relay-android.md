@@ -45,12 +45,12 @@ value first; each starts when the one before has merged.
 |---|---|---|
 | Send | Send files with a word code; the code shown with Copy Code | **1** |
 | Send | Send photos | **1** (Android's photo picker) |
-| Send | Send a whole folder | 3 (a tree picked with SAF has to be copied file by file) |
+| Send | Send a whole folder | **3** (the tree picked with SAF is copied in file by file) |
 | Send | Code shown as a QR code | 4 (needs a QR library: a dependency decision) |
 | Send | Advertising the code on the network, avoiding numbers other senders use | **1** |
 | Receive | Type a code, find the sender, receive with progress, resume | **1** |
 | Receive | Scan the sender's QR code | 4 (camera plus a QR library) |
-| Receive | Received files in the Files app | **1**: opened from the history; "Save to Downloads" in 3 |
+| Receive | Received files in the Files app | **1**: opened from the history; Save to Device (a file where the person picks, a folder into a picked folder) in **3** |
 | Devices | Trust offer after a code transfer (Ask to Trust), introduced devices | **1** |
 | Devices | Trusted and revoked lists, presence ("Reachable, seen 2 min ago") | **1** |
 | Devices | Device page: send files, where it is, platform, offers, Ask Again | **1** |

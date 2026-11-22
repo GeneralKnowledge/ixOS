@@ -1,6 +1,6 @@
 // Opening what arrived: a received file opens in whichever app shows its type, through a
-// FileProvider (Quick Look on the iPhone). Received files stay in Relay's private folder; saving
-// them to Downloads is stage 3 (docs/relay-android.md).
+// FileProvider (Quick Look on the iPhone). Received files stay in Relay's private folder;
+// Save to Device (SaveToDevice.kt) copies one out.
 package org.forgemobile.relay.ui
 
 import android.content.ActivityNotFoundException
@@ -16,7 +16,7 @@ object ReceivedFiles {
     fun open(context: Context, path: String, fail: (ForgeFailure) -> Unit, mime: String? = null) {
         val file = File(path)
         if (file.isDirectory) {
-            fail(ForgeFailure("A Folder", "Several items arrived together in this folder. Opening folders comes in a later version of Relay for Android."))
+            fail(ForgeFailure("A Folder", "Several items arrived together in this folder. To open them, long-press it and choose Save to Device…, then open it in the Files app."))
             return
         }
         if (!file.exists()) {

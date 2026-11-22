@@ -88,7 +88,7 @@ class DevicesFlowTest {
         compose.onNodeWithTag("devices.empty").assertIsDisplayed()
         compose.onNodeWithTag("devices.sendFirst").performClick()
         compose.onNodeWithTag("sendCode.status").assertIsDisplayed()
-        compose.onNodeWithText("Choose files or photos, and Relay shows a code for the receiver.").assertIsDisplayed()
+        compose.onNodeWithText("Choose files, photos or a folder, and Relay shows a code for the receiver.").assertIsDisplayed()
         compose.onNodeWithTag("sendCode.close").performClick()
         compose.onNodeWithTag("devices.empty").assertIsDisplayed()
     }

@@ -454,6 +454,7 @@ private fun MessageBubble(
     val context = LocalContext.current
     val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     var menu by remember { mutableStateOf(false) }
+    val save = rememberSaveToDevice { failure -> failure?.let(model::show) }
     val mine = message.isMine
     val failed = mine && message.status == ChatMessageStatus.FAILED
     val bubbleColor = when {
@@ -560,6 +561,23 @@ private fun MessageBubble(
                     },
                     modifier = Modifier.testTag("chat.reply"),
                 )
+                message.attachments.forEachIndexed { index, attachment ->
+                    DropdownMenuItem(
+                        text = { Text(if (attachment.isImage) "Save Photo to Device…" else "Save ${attachment.name} to Device…") },
+                        onClick = {
+                            menu = false
+                            scope.launch {
+                                val path = model.localFile(attachment)
+                                if (path == null) {
+                                    model.show(ForgeFailure("Can't Save This", "The file is no longer on this device."))
+                                } else {
+                                    save(path)
+                                }
+                            }
+                        },
+                        modifier = Modifier.testTag("chat.save.$index"),
+                    )
+                }
                 if (message.body.isNotEmpty()) {
                     DropdownMenuItem(
                         text = { Text("Copy") },
