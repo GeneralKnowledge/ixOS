@@ -94,10 +94,18 @@ struct DiscoverView: View {
     }
 
     private var list: some View {
-        List {
-            switch source {
-            case .jamendo: jamendo
-            case .archive: archive
+        Group {
+            // Before a search: Jamendo as an editorial page of shelves
+            // (S5); a search, or the Archive, is a list.
+            if source == .jamendo && query.isEmpty && !results.isEmpty {
+                DiscoverHome(model: model, player: player, popular: results)
+            } else {
+                List {
+                    switch source {
+                    case .jamendo: jamendo
+                    case .archive: archive
+                    }
+                }
             }
         }
         .searchable(text: $search, prompt: source == .jamendo ? "Search Jamendo" : "Search the Internet Archive")

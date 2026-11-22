@@ -2244,6 +2244,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func deletePlaylist(id: UInt64) async throws  -> MusicCollection
     
     /**
+     * Jamendo genres for Discover's shelves, yours first (see
+     * [`station::discover_genres`]).
+     */
+    func discoverGenres(limit: UInt32)  -> [JamendoGenre]
+    
+    /**
      * A song's download state.
      */
     func downloadState(trackId: String)  -> DownloadState
@@ -3026,6 +3032,20 @@ open func deletePlaylist(id: UInt64)async throws  -> MusicCollection  {
             liftFunc: FfiConverterTypeMusicCollection_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
+}
+    
+    /**
+     * Jamendo genres for Discover's shelves, yours first (see
+     * [`station::discover_genres`]).
+     */
+open func discoverGenres(limit: UInt32) -> [JamendoGenre]  {
+    return try!  FfiConverterSequenceTypeJamendoGenre.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_discover_genres(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(limit),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -11865,6 +11885,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_delete_playlist() != 35469) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_discover_genres() != 34508) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_download_state() != 23422) {

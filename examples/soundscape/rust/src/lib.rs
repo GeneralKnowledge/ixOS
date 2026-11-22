@@ -970,6 +970,12 @@ impl SoundscapeCore {
             .await
     }
 
+    /// Jamendo genres for Discover's shelves, yours first (see
+    /// [`station::discover_genres`]).
+    pub fn discover_genres(&self, limit: u32) -> Vec<JamendoGenre> {
+        station::discover_genres(&self.library(), &self.collection.get(), limit as usize)
+    }
+
     /// Saves a station at the front of Hear Nonstop Music, or forgets it.
     pub async fn set_station_saved(
         &self,

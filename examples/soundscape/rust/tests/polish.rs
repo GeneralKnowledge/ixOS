@@ -251,3 +251,18 @@ fn an_artists_top_songs_lead_with_plays_then_favourites() {
     assert_eq!(titles(&core), ["Three"]);
     assert_eq!(core.artist_top_tracks(artist, 0).len(), 0);
 }
+
+#[test]
+fn discover_genres_lead_with_the_libraries_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    // Three jazz songs and one rock in the library.
+    let genres: Vec<String> = core
+        .discover_genres(3)
+        .into_iter()
+        .map(|g| g.name)
+        .collect();
+    assert_eq!(genres.len(), 3);
+    assert_eq!(genres[0], "Jazz");
+    assert_eq!(genres[1], "Rock");
+}

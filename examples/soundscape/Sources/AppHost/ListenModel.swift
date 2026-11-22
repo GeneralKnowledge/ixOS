@@ -260,6 +260,11 @@ public final class ListenModel {
 
     /// The genres to browse Jamendo by, in the order shown.
     public var jamendoGenres: [JamendoGenre] { core.jamendoGenres() }
+    /// Jamendo genres for Discover's shelves, the person's own first.
+    public func discoverGenres(limit: Int = 3) -> [JamendoGenre] {
+        _ = collection
+        return core.discoverGenres(limit: UInt32(limit))
+    }
 
     /// Jamendo tracks in `genre`, this week's most popular first.
     public func jamendoTracks(in genre: JamendoGenre) async -> Result<[CatalogueTrack], ListenFailure> {

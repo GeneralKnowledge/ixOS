@@ -310,6 +310,46 @@ pub fn jamendo_tag(genre: &str) -> Option<String> {
         .or_else(|| jamendo::clean_tag(&key).ok())
 }
 
+/// Jamendo's genres for Discover's shelves, `limit` of them: the ones your
+/// library plays and keeps most first (only genres Jamendo has), then
+/// Jamendo's own order.
+pub fn discover_genres(
+    library: &Library,
+    collection: &CollectionFile,
+    limit: usize,
+) -> Vec<jamendo::JamendoGenre> {
+    let plays = play_counts(collection);
+    let mut score: BTreeMap<String, f64> = BTreeMap::new();
+    for t in &library.tracks {
+        if let Some(g) = t.genre.as_deref() {
+            let key = genre_key(g);
+            if !key.is_empty() {
+                *score.entry(key).or_insert(0.0) +=
+                    1.0 + plays.get(t.id.as_str()).copied().unwrap_or(0) as f64;
+            }
+        }
+    }
+    let all = jamendo::genres();
+    let mut ranked: Vec<(f64, usize)> = all
+        .iter()
+        .enumerate()
+        .map(|(i, g)| {
+            let mine = score
+                .get(&genre_key(&g.name))
+                .or_else(|| score.get(&genre_key(&g.tag)))
+                .copied()
+                .unwrap_or(0.0);
+            (mine, i)
+        })
+        .collect();
+    ranked.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+    ranked
+        .into_iter()
+        .take(limit)
+        .map(|(_, i)| all[i].clone())
+        .collect()
+}
+
 /// Stations to offer: the saved ones, newest first, then
 /// [`SUGGESTED`] more: your most played and most kept genres, your most
 /// played artists, then (with a Jamendo client ID and room left) Jamendo's
