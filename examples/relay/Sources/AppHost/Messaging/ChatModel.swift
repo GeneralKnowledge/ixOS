@@ -38,6 +38,10 @@ public func makeChatHost(storageDirectory: String? = nil, useKeychain: Bool? = n
     )
 }
 
+/// Longest message text, in Unicode scalars (chat-core's `MAX_BODY_CHARS`):
+/// the composer says so before Rust would refuse it.
+public let MAX_MESSAGE_CHARS_SWIFT = 4000
+
 /// Swift-side attachment failures, in the same log as Rust's
 /// (`forge device logs`, the live stream).
 let attachmentLog = ForgeLog("Attachments")
@@ -381,20 +385,25 @@ public final class ChatModel {
     /// Sends `text`, as an answer to `replyTo` if given. The bubble
     /// appears through `.messageReceived`. Offline, it waits in Rust's
     /// outbox (still "Sending…") and goes out when the server is back, even
-    /// after a relaunch. Sending clears the room's draft.
-    public func send(_ text: String, to conversationId: String, replyTo: String? = nil) async {
-        guard let core else { return }
+    /// after a relaunch. Sending clears the room's draft. False when Rust
+    /// refused it before keeping it (too long, say): no bubble holds the
+    /// words, so the screen gives the text back.
+    @discardableResult
+    public func send(_ text: String, to conversationId: String, replyTo: String? = nil) async -> Bool {
+        guard let core else { return false }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return }
+        guard !body.isEmpty else { return false }
         sendError[conversationId] = nil
-        sentCount += 1
+        defer { updateWaitingCount() }
         do {
             _ = try await core.sendReply(
                 conversationId: conversationId, body: body, replyTo: replyTo)
+            sentCount += 1
+            return true
         } catch {
             sendError[conversationId] = Self.describe(error)
+            return !Self.refusedBeforeKeeping(error)
         }
-        updateWaitingCount()
     }
 
     /// Sends a failed (or still waiting) message again now.
@@ -411,22 +420,27 @@ public final class ChatModel {
 
     /// Sends photos and documents (copied into Rust's attachment store at
     /// once), with `text` as an optional caption. Like `send`, they wait in
-    /// the outbox while the server cannot be reached.
+    /// the outbox while the server cannot be reached. False when Rust
+    /// refused them before keeping them, so the screen gives the files and
+    /// caption back.
+    @discardableResult
     public func send(
         files: [ChatOutgoingFile], text: String, to conversationId: String, replyTo: String? = nil
-    ) async {
-        guard let core, !files.isEmpty else { return }
+    ) async -> Bool {
+        guard let core, !files.isEmpty else { return false }
         sendError[conversationId] = nil
-        sentCount += 1
+        defer { updateWaitingCount() }
         do {
             _ = try await core.sendFiles(
                 conversationId: conversationId,
                 body: text.trimmingCharacters(in: .whitespacesAndNewlines),
                 replyTo: replyTo, files: files)
+            sentCount += 1
+            return true
         } catch {
             sendError[conversationId] = Self.describe(error)
+            return !Self.refusedBeforeKeeping(error)
         }
-        updateWaitingCount()
     }
 
     /// The attachment's file on this iPhone, fetching it from the server
@@ -445,15 +459,19 @@ public final class ChatModel {
         }
     }
 
-    /// Replaces the text of one of our sent messages, for everyone.
-    public func edit(_ message: ChatMessage, to text: String) async {
-        guard let core else { return }
+    /// Replaces the text of one of our sent messages, for everyone. False
+    /// when it failed (the alert says why), so the screen keeps the edit.
+    @discardableResult
+    public func edit(_ message: ChatMessage, to text: String) async -> Bool {
+        guard let core else { return false }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty, body != message.body else { return }
+        guard !body.isEmpty, body != message.body else { return true }
         do {
             upsert(try await core.editMessage(messageId: message.id, body: body))
+            return true
         } catch {
             actionError = Self.failure(error)
+            return false
         }
     }
 
@@ -635,6 +653,14 @@ public final class ChatModel {
     }
 
     // MARK: Helpers
+
+    /// Whether Rust refused a message by its rules (too long, too many
+    /// files, a reply to a message that is gone) before keeping it. Any
+    /// other failure leaves a bubble that says "Not Sent" and can be retried.
+    nonisolated static func refusedBeforeKeeping(_ error: Error) -> Bool {
+        if case .InvalidInput? = error as? ChatError { return true }
+        return false
+    }
 
     /// Whether this launch uses throwaway test data (`-ForgeUITestData`, or
     /// ForgeKit's `-ForgeTemporaryData`, so one argument works for every app

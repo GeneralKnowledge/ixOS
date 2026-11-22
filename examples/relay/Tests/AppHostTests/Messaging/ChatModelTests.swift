@@ -34,6 +34,30 @@ final class ChatModelTests: XCTestCase {
         XCTAssertEqual(model.feedback.count, 1)
     }
 
+    /// A message Rust refuses by its rules (over 4,000 characters) reports
+    /// false, so the composer gives the text back; one Rust kept reports
+    /// true, so it isn't given back twice.
+    func testARefusedMessageReportsThatNothingWasKept() async throws {
+        let server = try ChatServer.start()
+        defer { server.stop() }
+        let me = try model()
+        await me.open()
+        try await me.signUp(serverURL: server.url, displayName: "Reuben")
+        await waitUntil("rooms listed") { me.conversations.map(\.id).contains("general") }
+
+        let tooLong = String(repeating: "x", count: MAX_MESSAGE_CHARS_SWIFT + 1)
+        let refused = await me.send(tooLong, to: "general")
+        XCTAssertFalse(refused)
+        XCTAssertNotNil(me.sendError["general"])
+        XCTAssertFalse(me.messages(in: "general").contains { $0.body == tooLong })
+
+        let longest = String(repeating: "x", count: MAX_MESSAGE_CHARS_SWIFT)
+        let kept = await me.send(longest, to: "general")
+        XCTAssertTrue(kept)
+        XCTAssertNil(me.sendError["general"])
+        me.close()
+    }
+
     func testSignUpThenSendAndReceive() async throws {
         let server = try ChatServer.start()
         defer { server.stop() }

@@ -481,18 +481,29 @@ struct ChatView: View {
         replyingTo = nil
     }
 
+    /// Clears the composer at once, and gives everything back if Rust
+    /// refuses it (too long, say), unless something new has been started
+    /// meanwhile: a refusal never loses what was written.
     private func send() {
         let text = draft
+        let answering = replyingTo
         if editing == nil && !staged.isEmpty {
             let sending = staged
-            let replyTo = replyingTo?.id
             staged = []
             replyingTo = nil
             draft = ""
-            // Rust copies the files into its store during the send, so the
-            // private copies go once it has finished, sent or not.
             Task {
-                await model.send(files: sending.map(\.outgoing), text: text, to: conversationId, replyTo: replyTo)
+                let kept = await model.send(
+                    files: sending.map(\.outgoing), text: text, to: conversationId, replyTo: answering?.id)
+                // Refused: the files and caption come back to the composer.
+                if !kept && staged.isEmpty && draft.isEmpty && editing == nil {
+                    staged = sending
+                    draft = text
+                    replyingTo = answering
+                    return
+                }
+                // Rust copied the files into its store during the send, so
+                // the private copies can go.
                 sending.forEach { $0.release() }
             }
             return
@@ -501,14 +512,27 @@ struct ChatView: View {
         if let message = editing {
             editing = nil
             draft = stashedDraft
-            Task { await model.edit(message, to: text) }
+            Task {
+                // Failed (the alert says why): back to editing, with the edit.
+                let saved = await model.edit(message, to: text)
+                if !saved, editing == nil, draft == stashedDraft {
+                    replyingTo = nil
+                    editing = message
+                    draft = text
+                }
+            }
             return
         }
-        let replyTo = replyingTo?.id
         replyingTo = nil
         draft = ""
         // Not tied to the view: leaving the room does not cancel the send.
-        Task { await model.send(text, to: conversationId, replyTo: replyTo) }
+        Task {
+            let kept = await model.send(text, to: conversationId, replyTo: answering?.id)
+            if !kept && draft.isEmpty && editing == nil {
+                draft = text
+                replyingTo = answering
+            }
+        }
     }
 }
 
@@ -723,10 +747,24 @@ private struct Composer: View {
         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (isEditing || staged.isEmpty)
     }
 
+    /// How far the text is over Rust's limit, counted as Rust counts
+    /// (Unicode scalars of the trimmed text, so an emoji may count as more
+    /// than one); 0 when it fits.
+    private var overLimit: Int {
+        let count = draft.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count
+        return max(0, count - MAX_MESSAGE_CHARS_SWIFT)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let problem {
                 ForgeNotice(problem, systemImage: "exclamationmark.circle")
+            }
+            if overLimit > 0 {
+                ForgeNotice(
+                    String(localized: "A message can be up to \(MAX_MESSAGE_CHARS_SWIFT) characters. Remove \(overLimit) to send it."),
+                    systemImage: "exclamationmark.circle")
+                    .accessibilityIdentifier("chat.tooLong")
             }
             if let context {
                 contextBar(context)
@@ -784,7 +822,7 @@ private struct Composer: View {
                 Button(isEditing ? "Save" : "Send", systemImage: isEditing ? "checkmark.circle.fill" : "arrow.up.circle.fill", action: send)
                     .labelStyle(.iconOnly)
                     .font(.title)
-                    .disabled(empty)
+                    .disabled(empty || overLimit > 0)
                     .keyboardShortcut(.return, modifiers: .command)
                     .accessibilityIdentifier("chat.send")
             }
