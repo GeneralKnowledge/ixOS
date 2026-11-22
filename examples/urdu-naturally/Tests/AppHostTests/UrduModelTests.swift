@@ -98,15 +98,18 @@ final class UrduModelTests: XCTestCase {
     func testAFreeChatAnswersWhatYouSay() async throws {
         let (_, model) = try await open(try makeDirectory())
         XCTAssertEqual(model.characters().count, 4)
-        let opened = try XCTUnwrap(await model.chatStart("ali"))
+        let started = await model.chatStart("ali")
+        let opened = try XCTUnwrap(started)
         XCTAssertEqual(opened.lines.count, 1)
         let line = try XCTUnwrap(opened.suggestions.first)
         // No phone model on Linux: saying one of your lines still works.
-        let chat = try XCTUnwrap(await model.chatSay(line.roman.lowercased(), model: nil))
+        let said = await model.chatSay(line.roman.lowercased(), model: nil)
+        let chat = try XCTUnwrap(said)
         XCTAssertEqual(chat.lines[1].heard, .said)
         XCTAssertEqual(chat.lines[2].speaker, .character)
         XCTAssertGreaterThan(model.phrase(line.id)?.skills.speaking ?? 0, 0)
-        let missed = try XCTUnwrap(await model.chatSay("qwzx", model: nil))
+        let unheard = await model.chatSay("qwzx", model: nil)
+        let missed = try XCTUnwrap(unheard)
         XCTAssertEqual(missed.lines.last?.heard, .missed)
     }
 }
