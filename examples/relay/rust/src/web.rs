@@ -867,9 +867,9 @@ const MAX_FETCHED: usize = 64 * 1024 * 1024;
 /// answer (the iPhone's viewer, which has no local port).
 pub(crate) async fn fetch(
     node: &Node,
-    to: EndpointAddr,
     cached: &Mutex<Kept>,
     request: SiteRequest,
+    route: &(dyn Fn() -> Result<EndpointAddr, RelayError> + Send + Sync),
 ) -> Result<SiteResponse, RelayError> {
     if !request.path.starts_with('/') || request.path.contains(['\r', '\n', ' ']) {
         return Err(bad("a site path starts with / and has no spaces"));
@@ -896,7 +896,12 @@ pub(crate) async fn fetch(
         extra: Vec::new(),
         content_length: request.body.len() as u64,
     };
+    // As for a computer's port: the route is asked again once the
+    // connection is kept, so a revocation during the dial stops it.
+    let route_now = || route().inspect_err(|_| lock(cached).close(b"no route"));
+    let to = route_now()?;
     let conn = connection(node, to, cached).await?;
+    route_now()?;
     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
     let mut answer = Vec::new();
     let moving = Activity::new();
@@ -1292,6 +1297,31 @@ mod tests {
             assert!(keep(&cached, generation, late.clone()).is_err());
             assert!(lock(&cached).conn.is_none());
             assert!(late.close_reason().is_some(), "and it is closed");
+
+            // The iPhone's fetch asks again after the dial too.
+            let asked = AtomicUsize::new(0);
+            let addr = host.endpoint.addr();
+            let route = move || {
+                if asked.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Ok(addr.clone())
+                } else {
+                    Err(RelayError::Declined {
+                        reason: "That device is no longer trusted here.".into(),
+                    })
+                }
+            };
+            let request = SiteRequest {
+                method: "GET".into(),
+                path: "/".into(),
+                headers: vec![],
+                body: vec![],
+            };
+            let fetched = fetch(&viewer, &cached, request, &route).await;
+            assert!(
+                matches!(fetched, Err(RelayError::Declined { .. })),
+                "{fetched:?}"
+            );
+            assert!(lock(&cached).conn.is_none());
             drop(tunnel);
             viewer.shutdown().await;
             host.shutdown().await;

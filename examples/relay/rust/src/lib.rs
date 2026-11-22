@@ -238,6 +238,17 @@ impl RelayCore {
         Ok(addr)
     }
 
+    /// `site_addr` for `endpoint_id`, to ask before each request.
+    fn site_addr_now(&self, endpoint_id: &str) -> web::SiteRoute {
+        let me = self.me.clone();
+        let id = endpoint_id.to_string();
+        Arc::new(move || {
+            me.upgrade()
+                .ok_or(RelayError::Refused)
+                .and_then(|core| core.site_addr(&id))
+        })
+    }
+
     /// Closes the kept site connections: to one device, or (`None`) all.
     /// A dial running at the time isn't kept either.
     fn close_site_connections(&self, endpoint_id: Option<&str>) {
@@ -256,13 +267,7 @@ impl RelayCore {
     /// Connections allow now. It stays open until the returned tunnel is
     /// dropped.
     pub fn open_site_port(&self, endpoint_id: &str, port: u16) -> Result<SitePort, RelayError> {
-        let me = self.me.clone();
-        let id = endpoint_id.to_string();
-        let route: web::SiteRoute = Arc::new(move || {
-            me.upgrade()
-                .ok_or(RelayError::Refused)
-                .and_then(|core| core.site_addr(&id))
-        });
+        let route = self.site_addr_now(endpoint_id);
         let host = web::site_host(endpoint_id);
         forge_runtime::block_on(async {
             let (node, _, cached) = self.site_route(endpoint_id).await?;
@@ -1476,9 +1481,10 @@ impl RelayCore {
         endpoint_id: String,
         request: SiteRequest,
     ) -> Result<SiteResponse, RelayError> {
-        let (node, addr, cached) = self.site_route(&endpoint_id).await?;
+        let (node, _, cached) = self.site_route(&endpoint_id).await?;
+        let route = self.site_addr_now(&endpoint_id);
         code::TOKIO
-            .spawn(async move { web::fetch(&node, addr, &cached, request).await })
+            .spawn(async move { web::fetch(&node, &cached, request, route.as_ref()).await })
             .await
             .unwrap_or_else(|e| Err(code::connection(e)))
     }
