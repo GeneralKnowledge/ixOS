@@ -7,7 +7,7 @@ Can a compiled Python package ship inside Device Lab's Python Lab, built on Linu
 iOS loads only native code that was signed into the app, so numpy can't be installed from the phone. It is built into the app bundle instead, as part of a curated set.
 
 - PyPI has numpy 2.5.5 wheels for CPython 3.15 on macOS and Linux, but none for iOS. cibuildwheel builds iOS wheels only on a Mac, and BeeWare's mobile-forge recipe is for numpy 1.26.
-- `scripts/build-numpy.sh` cross-compiles numpy's source release with the tools xtool installed for the app build: Swift's clang, the iPhoneOS SDK from Xcode.xip, and its ld64.lld.
+- `scripts/build-package.sh numpy` (formerly `build-numpy.sh`) cross-compiles numpy's source release with the tools xtool installed for the app build: Swift's clang, the iPhoneOS SDK from Xcode.xip, and its ld64.lld.
   - A Meson cross file tells numpy's own copy of Meson that the target is iOS.
   - A wrapper answers Meson's questions about the target Python from python.org's iOS sysconfig data.
   - Cython and ninja come into a private build environment.
@@ -67,6 +67,30 @@ for fmt in ("PNG", "JPEG", "WEBP"):
     buf = io.BytesIO(); img.save(buf, fmt); print(fmt, len(buf.getvalue()), "bytes")
 print(Image.open(io.BytesIO(buf.getvalue())).size)   # (200, 100)
 print(features.check("freetype2"), features.check("jpg"), features.check("webp"))  # True True True
+```
+
+## matplotlib
+
+matplotlib 3.11.2 and contourpy 1.4.0 have no iOS wheels, so `scripts/build-package.sh` builds them the same way as numpy. Each package has a recipe (version, source SHA-256, Meson options) in the script. Both use pybind11, which the build environment provides through a `pybind11.pc` file. matplotlib downloads and builds its own FreeType, HarfBuzz, libraqm, SheenBidi and Qhull as Meson subprojects. It is built without the Cocoa backend (`-Dmacosx=false`) and draws with Agg. kiwisolver comes from its official iOS wheel. The pure-Python dependencies (cycler, fonttools, packaging, pyparsing, python-dateutil, six) come from their wheels in the same `WHEELS` list as Pillow.
+
+A `sitecustomize.py` in the standard library sets `MPLCONFIGDIR` to `~/Library/Caches/matplotlib` and `MPLBACKEND` to `Agg`. matplotlib's default config folder, `~/.matplotlib`, is not writable in an iOS app, so without this it would rebuild its font cache at every launch.
+
+Phone check, in Python Lab:
+
+```python
+import io, time
+t = time.perf_counter()
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+print("import", round(time.perf_counter() - t, 2), "s", matplotlib.__version__, matplotlib.get_backend())  # ... agg
+x = np.linspace(0, 2 * np.pi, 200)
+fig, ax = plt.subplots()
+ax.plot(x, np.sin(x), label="sin")
+ax.contourf(*np.meshgrid(x, x), np.sin(np.add.outer(x, x)), alpha=0.3)
+ax.set_title("Hello from the iPhone"); ax.legend()
+buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=100)
+print("PNG", len(buf.getvalue()), "bytes")   # tens of kB
 ```
 
 ## Open questions
