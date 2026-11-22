@@ -210,7 +210,12 @@ impl BonsaiHarness {
     pub fn result_card(&self) -> Result<A2uiPayload, A2uiLabError> {
         // One read of the state: the files are those of the project the
         // task ran in.
-        let (task, steps, files) = self.last_task_with_files();
+        let (task, steps, files) =
+            self.last_task_with_files()
+                .ok_or_else(|| A2uiLabError::Refused {
+                    code: "running".into(),
+                    reason: "The harness is running a task. Show the card when it finishes.".into(),
+                })?;
         let card = task
             .as_ref()
             .and_then(|task| Card::verified(task, &files, steps))

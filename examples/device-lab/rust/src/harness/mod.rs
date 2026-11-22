@@ -548,18 +548,23 @@ impl BonsaiHarness {
     /// The last task, its step count and the paths of its project's
     /// files, all from one read of the state: the root is the one the task
     /// ran in (a ladder task's lives under the ladder folder). Paths only;
-    /// nothing is read.
-    pub(crate) fn last_task_with_files(&self) -> (Option<HarnessTaskRecord>, u32, Vec<String>) {
-        let (task, steps, root) = {
-            let state = lock(&self.shared.state);
-            let task = journal::last_task(&state.entries);
-            (
-                prompt::record(task),
-                prompt::steps(task).len() as u32,
-                state.root.clone(),
-            )
-        };
-        let files = root
+    /// nothing is read. `None` while a run is claimed: a new run resets its
+    /// project (claim first, then reset), so its files aren't the last
+    /// task's until it finishes.
+    pub(crate) fn last_task_with_files(
+        &self,
+    ) -> Option<(Option<HarnessTaskRecord>, u32, Vec<String>)> {
+        // The files are listed while the lock is held, so a new run can't
+        // reset the root between reading the task and listing its files.
+        // Listing names only, in a small project folder, keeps this short.
+        let state = lock(&self.shared.state);
+        if state.running {
+            return None;
+        }
+        let task = journal::last_task(&state.entries);
+        let files = state
+            .root
+            .clone()
             .map(|root| {
                 PythonLab::new(root, Arc::clone(&self.python), Duration::ZERO)
                     .files()
@@ -568,7 +573,11 @@ impl BonsaiHarness {
                     .collect()
             })
             .unwrap_or_default();
-        (task, steps, files)
+        Some((
+            prompt::record(task),
+            prompt::steps(task).len() as u32,
+            files,
+        ))
     }
 
     pub fn with_limits(
