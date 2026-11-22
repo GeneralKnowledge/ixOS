@@ -192,3 +192,29 @@ fn a_play_counts_after_thirty_seconds_or_half_a_short_song() {
     assert!(!counts_as_played(19.0, Some(40.0)));
     assert!(counts_as_played(30.0, None));
 }
+
+#[test]
+fn a_playlist_plan_is_checked_against_the_library_then_made() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir, CATALOG);
+    let snapshot: soundscape_core::playlist_plan::PlaylistSnapshot =
+        serde_json::from_str(&core.playlist_snapshot_json()).unwrap();
+    assert!(!snapshot.tracks.is_empty());
+    let plan = soundscape_core::playlist_plan::PlaylistPlan {
+        name: " Evening ".into(),
+        track_ids: vec![track_id("two"), track_id("one")],
+    };
+    let made = block(core.apply_playlist_plan_json(serde_json::to_string(&plan).unwrap())).unwrap();
+    assert_eq!(made.playlist.name, "Evening");
+    assert_eq!(
+        titles(made.entries.iter().map(|e| e.track.clone())),
+        ["Two", "One"]
+    );
+    // A song the library doesn't have refuses the whole plan.
+    let ghost = soundscape_core::playlist_plan::PlaylistPlan {
+        name: "Ghost".into(),
+        track_ids: vec!["ghost".into()],
+    };
+    assert!(block(core.apply_playlist_plan_json(serde_json::to_string(&ghost).unwrap())).is_err());
+    assert_eq!(core.collection().playlists.len(), 1);
+}

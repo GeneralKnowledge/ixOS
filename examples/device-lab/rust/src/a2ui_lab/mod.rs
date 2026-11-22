@@ -19,9 +19,13 @@
 //! Nothing here touches another app's data: the library is a stand-in.
 //! Logs carry codes and counts only, never the plan or a payload.
 
+pub mod feeds;
 pub mod gate;
 pub mod plan;
+pub mod playlist;
+pub mod review;
 pub mod surface;
+pub mod task_card;
 
 #[cfg(test)]
 mod tests;
