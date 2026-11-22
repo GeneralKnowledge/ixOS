@@ -14,6 +14,7 @@ It builds on the [ForgeUI coverage audit](forgeui-coverage.md) (#325, 2026-11-18
 6. **For A2UI**, the useful contract is a small closed catalogue whose every entry names its ForgeUI (or native) target, typed properties drawn from ForgeUI's tokens, the accessibility it must carry and the events it may send. Section 6 proposes it. Four of the five new components are also what an agent-composed surface most needs, which is a good sign the two plans line up.
 
 7. **Silent waits** (added 2026-11-22 after Reuben saw Relay sit on a blank-looking screen while it loaded): 72 buttons across 10 apps start work with `Task { await … }` and show nothing while it runs. Most of that work is fast, local Rust, but the code can't tell which isn't, and neither can a check. Section 3.5 proposes one pattern that makes "always show work" free for fast calls, plus a `silent-wait` parity rule.
+8. **Interaction polish is the next audit, not more 0.2 scope** (Reuben, 2026-11-22): errors and retry, form validation, success and Undo, wider accessibility, layout resilience, keyboard and focus, offline states. Section 8 records the plan.
 
 So 0.2 is: one fix, one parameter, one public look, five components, a working-button pattern, four adoption rules, and a showcase that shows states. That is smaller than Reuben's stage list for 0.2, and in one place (thumbnails) it pulls forward something he had in 0.3, because the apps say so.
 
@@ -261,3 +262,29 @@ The contract is a component *specification*, not shared code: SwiftUI components
 2. **Choice style API.** A toggle style for chips plus a button style for one-of-several tiles (two small APIs on real controls), rather than a `ForgeChoices` component that would duplicate `Picker`. Recommended as written.
 3. **Rating colour.** A fixed warm rating tone (checked for contrast) instead of the accent, so stars look like stars in every app. Recommended.
 4. **Catalogue file.** Keep the contract as this table until the adapter leaves Device Lab, then make it a tested projection of ForgeUI (6.1). Agreed by Reuben 2026-11-22.
+
+## 8. After 0.2: the UI Finish Audit
+
+**Reuben, 2026-11-22:** finish 0.2 without widening its scope, then audit every app for the interaction details that make an app feel finished. That audit is a separate piece of work with its own doc, not more 0.2 items. Recorded here so 0.2 isn't stretched to cover it.
+
+**Three layers, three owners.**
+
+| Layer | What | Owner |
+|---|---|---|
+| Visual consistency | Colours, type, spacing, icons, buttons, rows, thumbnails, progress | ForgeUI (this doc) |
+| Interaction consistency | Loading, errors, validation, confirmation, success, Undo, focus, accessibility | The UI Finish Audit; shared primitives into ForgeUI, shared workflows into ForgeAppKit, only where they repeat |
+| Product consistency | Onboarding, permissions, settings, first use, destructive actions, recovery workflows | Each app |
+
+**Audit areas, in priority order.** Each starts by checking what ForgeUI and ForgeAppKit already cover (`ForgeNotice`, `ForgeStateView`, `forgeBanner`, `forgeFormToolbar`, the Undo banner) before proposing anything new.
+
+| Priority | Area | Questions | Likely outcome |
+|---|---|---|---|
+| P0 | Error, retry and recovery | Does a failure say what went wrong? Is Retry obvious? Does a failed image or attachment offer an alternative? Does a failed save keep the input? Can a permission denial be recovered without starting over? | Consistent recovery patterns |
+| P0 | Form validation | Inline validation rather than an alert after Save; required vs optional; clear reasons; Save disabled vs Save with errors shown; keyboard types; focus moves to the first invalid field; unsaved changes on dismiss | Shared recipes and accessibility rules |
+| P1 | Success and Undo | Did the save, move, download, delete or export happen, and where did the file go? Did background work finish after the screen closed? Proportionate feedback (an updated row or Undo banner before a toast); destructive actions show their outcome; reversible ones offer Undo | Consistent completion behaviour |
+| P1 | Accessibility beyond VoiceOver | Increase Contrast, Differentiate Without Color, Reduce Motion, Voice Control, Switch Control, Full Keyboard Access, touch target sizes, accessibility values on changing progress and status. Selected, failed, pending and disabled never shown by colour alone | A wider state matrix (5.4) |
+| P1 | Layout resilience | Long titles and user text, large Dynamic Type, small screens, landscape, safe areas, rows missing an image or optional metadata, long localised strings (Weather's two-column grid is the known case) | Visual regression cases |
+| P2 | Keyboard and focus | Keyboard covering the field or Save, Return moving focus, tap-outside dismissal, focus restored after a sheet, hardware keyboards | Shared SwiftUI recipes |
+| P2 | Offline and connectivity | Tell apart no connection, server unavailable, timed out, still running, and unavailable offline by design. No global offline banner: show it only where the current task depends on the network | App-level patterns, shared later if they repeat |
+
+Silent waits (3.5) belong to this layer too; they went into 0.2 because Reuben hit one and the fix is a `ForgeButton` change already in scope.
