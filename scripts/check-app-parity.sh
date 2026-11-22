@@ -899,16 +899,83 @@ def rule_row_actions(app):
 RUST_CUT = re.compile(r"\.chars\(\)\s*\.take\(")
 
 
+def rust_code_mask(text):
+    """The Rust code with the insides of comments, strings, raw strings and
+    char literals blanked (newlines kept), so `//` in a URL or a call written
+    inside a string is not taken for code."""
+    out = list(text)
+    i, n = 0, len(text)
+
+    def blank(start, end):
+        for k in range(start, end):
+            if out[k] != "\n":
+                out[k] = " "
+
+    while i < n:
+        c = text[i]
+        if text.startswith("//", i):
+            end = text.find("\n", i)
+            end = n if end == -1 else end
+            blank(i, end)
+            i = end
+        elif text.startswith("/*", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                if text.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif text.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            blank(i, j)
+            i = j
+        elif (m := re.match(r'b?r(#*)"', text[i:])) and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            close = '"' + m.group(1)
+            end = text.find(close, i + m.end())
+            end = n if end == -1 else end + len(close)
+            blank(i, end)
+            i = end
+        elif c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            blank(i, j + 1)
+            i = j + 1
+        elif c == "'" and (m := re.match(r"'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^\\'\n])'", text[i:])):
+            blank(i, i + m.end())
+            i += m.end()
+        else:
+            i += 1
+    return "".join(out)
+
+
+def without_test_items(code):
+    """Blanks each `#[cfg(test)]` item (a module, a function, a `use`) and
+    keeps scanning after it."""
+    out = list(code)
+    for m in re.finditer(r"#\[cfg\(test\)\]", code):
+        j = m.end()
+        while j < len(code) and code[j] not in "{;":
+            j += 1
+        if j < len(code) and code[j] == "{":
+            depth = 0
+            while j < len(code):
+                if code[j] == "{":
+                    depth += 1
+                elif code[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+        for k in range(m.start(), min(j + 1, len(code))):
+            if out[k] != "\n":
+                out[k] = " "
+    return "".join(out)
+
+
 def silent_cut_problems(text):
     lines = text.splitlines()
-    end = len(lines)
-    for i, line in enumerate(lines):
-        if re.match(r"\s*#\[cfg\(test\)\]", line):
-            end = i
-            break
-    # Comments out, then the calls found across lines (`.chars()` on one
-    # line and `.take(` on the next).
-    code = "\n".join(l.split("//", 1)[0] for l in lines[:end])
+    code = without_test_items(rust_code_mask(text))
     found = []
     for m in RUST_CUT.finditer(code):
         first = code.count("\n", 0, m.start())
