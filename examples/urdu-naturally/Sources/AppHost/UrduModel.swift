@@ -122,6 +122,24 @@ public final class UrduModel {
         }
     }
 
+    /// The longest name Rust keeps (`MAX_NAME_CHARS`), counted as Rust
+    /// counts (Unicode scalars).
+    public static let maxNameChars = 40
+
+    /// `name` cut to what Rust keeps, on a whole character, so the field
+    /// can't hold a name that saving would refuse (and leaving Settings
+    /// would then lose).
+    public static func fitName(_ name: String) -> String {
+        var kept = ""
+        var scalars = 0
+        for character in name {
+            scalars += character.unicodeScalars.count
+            if scalars > maxNameChars { break }
+            kept.append(character)
+        }
+        return kept
+    }
+
     public func setName(_ name: String) async {
         await run { try await self.core.setName(name: name) }
     }

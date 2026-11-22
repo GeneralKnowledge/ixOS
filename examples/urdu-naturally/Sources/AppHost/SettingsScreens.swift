@@ -15,6 +15,12 @@ struct SettingsScreen: View {
             Section {
                 TextField("Your name", text: $name)
                     .autocorrectionDisabled()
+                    // Rust keeps up to 40 characters; the field stops there,
+                    // so leaving the screen never loses the name.
+                    .onChange(of: name) { _, typed in
+                        let fitted = UrduModel.fitName(typed)
+                        if fitted != typed { name = fitted }
+                    }
                     .submitLabel(.done)
                     .onSubmit { Task { await model.setName(name) } }
                     .accessibilityIdentifier("settings.name")

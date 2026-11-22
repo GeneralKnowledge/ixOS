@@ -36,6 +36,24 @@ final class UrduModelTests: XCTestCase {
         XCTAssertTrue(scenario.turns.contains { $0.speaker == .you })
     }
 
+    /// The Settings field stops at the length Rust keeps, so a long name is
+    /// never refused when leaving the screen (defect hunt finding 7).
+    @MainActor
+    func testTheNameFieldStopsWhereRustDoes() async throws {
+        let (_, model) = try await open(try makeDirectory())
+        let long = String(repeating: "a", count: UrduModel.maxNameChars + 5)
+        let fitted = UrduModel.fitName(long)
+        XCTAssertEqual(fitted.count, UrduModel.maxNameChars)
+        await model.setName(fitted)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.settings.name, fitted)
+        // An emoji made of several scalars is kept whole or not at all.
+        let family = "👨‍👩‍👧"
+        let edge = String(repeating: "a", count: UrduModel.maxNameChars - 2) + family
+        XCTAssertEqual(UrduModel.fitName(edge), String(repeating: "a", count: UrduModel.maxNameChars - 2))
+        XCTAssertEqual(UrduModel.fitName("Sam"), "Sam")
+    }
+
     @MainActor
     func testProgressAndNameSurviveARestart() async throws {
         let dir = try makeDirectory()
