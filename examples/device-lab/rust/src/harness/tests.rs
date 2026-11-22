@@ -1464,6 +1464,36 @@ fn a_run_does_not_forgive_an_earlier_outside_change() {
 }
 
 #[test]
+fn a_run_that_touches_a_file_changed_outside_does_not_bless_it() {
+    if !has_python() {
+        return;
+    }
+    let (_dir, lab) = seeded("t1-hello");
+    assert!(
+        lab.execute(&call(
+            r#"{"tool": "write_file", "path": "notes.txt", "content": "one\n"}"#
+        ))
+        .ok
+    );
+    std::fs::write(lab.root().join("notes.txt"), "mine\n").unwrap();
+    assert!(
+        lab.execute(&call(
+            r#"{"tool": "write_file", "path": "append.py", "content": "open('notes.txt', 'a').write('more\\n')\n"}"#
+        ))
+        .ok
+    );
+    let _ = lab.execute(&call(r#"{"tool": "run_python", "path": "append.py"}"#));
+    let refused = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "notes.txt", "content": "two\n"}"#,
+    ));
+    assert!(!refused.ok, "{}", refused.text);
+    assert_eq!(
+        std::fs::read_to_string(lab.root().join("notes.txt")).unwrap(),
+        "mine\nmore\n"
+    );
+}
+
+#[test]
 fn what_bonsais_own_script_changes_is_not_an_outside_change() {
     if !has_python() {
         return;
@@ -1643,9 +1673,6 @@ fn debug_run(
     breakpoints: &[(&str, u32)],
     commands: &[&str],
 ) -> (bool, String, String) {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-    const HOST: &str = "import sys, types, traceback\nio = types.ModuleType('_devicelab_io')\ndef _write(kind, text):\n    if kind == 6:\n        sys.__stdout__.write('PAUSE ' + text + '\\n')\n    else:\n        (sys.__stdout__ if kind == 1 else sys.__stderr__).write(text)\nio.write = _write\nio.readline = lambda: sys.__stdin__.readline()\nsys.modules['_devicelab_io'] = io\ntry:\n    exec(compile(sys.argv[1], '<console>', 'exec'), {'__name__': '__devicelab__'})\nexcept BaseException as e:\n    if not getattr(e, '_devicelab_shown', False):\n        traceback.print_exc()\n    sys.exit(1)\n";
     let breakpoints = breakpoints
         .iter()
         .map(|(file, line)| crate::workspace::DebugBreakpoint {
@@ -1658,11 +1685,20 @@ fn debug_run(
         path.into(),
         breakpoints,
     );
+    debug_host(&script, commands)
+}
+
+const DEBUG_HOST: &str = "import sys, types, traceback\nio = types.ModuleType('_devicelab_io')\ndef _write(kind, text):\n    if kind == 6:\n        sys.__stdout__.write('PAUSE ' + text + '\\n')\n    else:\n        (sys.__stdout__ if kind == 1 else sys.__stderr__).write(text)\nio.write = _write\nio.readline = lambda: sys.__stdin__.readline()\nsys.modules['_devicelab_io'] = io\ntry:\n    exec(compile(sys.argv[1], '<console>', 'exec'), {'__name__': '__devicelab__'})\nexcept BaseException as e:\n    if not getattr(e, '_devicelab_shown', False):\n        traceback.print_exc()\n    sys.exit(1)\n";
+
+/// Runs `script` in `debug_run`'s stand-in host.
+fn debug_host(script: &str, commands: &[&str]) -> (bool, String, String) {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
     let mut child = Command::new("python3")
         .arg("-I")
         .arg("-c")
-        .arg(HOST)
-        .arg(&script)
+        .arg(DEBUG_HOST)
+        .arg(script)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1798,4 +1834,51 @@ fn debug_pause_json_is_read() {
     .unwrap();
     assert_eq!(pause.variables[0].value, "1");
     assert!(pause.more_variables);
+}
+
+#[test]
+fn debug_pauses_in_a_trailing_call() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(
+        root.join("main.py"),
+        "def main():\n    value = 3\n    return value * 2\n\nmain()\n",
+    )
+    .unwrap();
+    let (ok, out, err) = debug_run(root, "main.py", &[("main.py", 3)], &["continue"]);
+    assert!(ok, "{out}{err}");
+    let places: Vec<_> = pauses(&out).iter().map(at).collect();
+    assert_eq!(places, [("main.py".into(), 3, "main".into())], "{out}");
+    // The last expression's value is still printed.
+    assert!(out.ends_with("6\n"), "{out}");
+}
+
+#[test]
+fn a_debug_session_forgets_the_last_ones_breakpoints() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("main.py"), "a = 1\nb = 2\nprint(a + b)\n").unwrap();
+    let with = |lines: Vec<crate::workspace::DebugBreakpoint>| {
+        super::python_lab::python_lab_debug_script(
+            root.display().to_string(),
+            "main.py".into(),
+            lines,
+        )
+    };
+    let first = with(vec![crate::workspace::DebugBreakpoint {
+        file: "main.py".into(),
+        line: 2,
+    }]);
+    let second = with(Vec::new());
+    // Both sessions in one interpreter, as on the phone.
+    let (ok, out, err) = debug_host(&format!("{first}\n{second}"), &["continue"]);
+    assert!(ok, "{out}{err}");
+    assert_eq!(pauses(&out).len(), 1, "{out}");
+    assert_eq!(out.matches("3\n").count(), 2, "{out}");
 }

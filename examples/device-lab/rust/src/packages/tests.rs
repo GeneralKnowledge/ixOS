@@ -363,3 +363,96 @@ fn requires_python_is_checked() {
     let err = package_choose_wheel("future".into(), json.into()).unwrap_err();
     assert!(err.to_string().contains("needs Python >=3.16"), "{err}");
 }
+
+#[test]
+fn an_upgrade_keeps_files_the_package_saved_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "1.0",
+        &[("keeper/__init__.py", "X = 1\n"), ("keeper/old.py", "")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    fs::create_dir_all(site.join("keeper/data/__pycache__")).unwrap();
+    fs::write(site.join("keeper/data/state.sqlite"), "saved").unwrap();
+    fs::write(site.join("keeper/data/__pycache__/x.pyc"), "cache").unwrap();
+    fs::create_dir_all(site.join("keeper/__pycache__")).unwrap();
+    fs::write(site.join("keeper/__pycache__/old.cpython-313.pyc"), "").unwrap();
+
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "2.0",
+        &[("keeper/__init__.py", "X = 2\n")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text).unwrap();
+    assert_eq!(
+        fs::read_to_string(site.join("keeper/data/state.sqlite")).unwrap(),
+        "saved"
+    );
+    assert!(!site.join("keeper/old.py").exists());
+    assert!(!site.join("keeper/__pycache__").exists());
+    assert!(!site.join("keeper/data/__pycache__").exists());
+    // Nothing left beside site-packages' own entries.
+    let mut entries: Vec<_> = fs::read_dir(&site)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    entries.sort();
+    assert_eq!(entries, ["keeper", "keeper-2.0.dist-info"]);
+}
+
+#[test]
+fn a_file_name_record_cant_hold_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let (path, sum) = wheel(
+        dir.path(),
+        "commas",
+        "1.0",
+        &[("commas/a,b.py", "")],
+        &[],
+        true,
+    );
+    assert!(matches!(
+        package_install_wheel(path, sum, site.display().to_string()),
+        Err(PackageError::Invalid { .. })
+    ));
+}
+
+#[test]
+fn upgrading_leaves_files_another_package_owns() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    for (name, file) in [
+        ("keeper", "keeper/__init__.py"),
+        ("liar", "liar/__init__.py"),
+    ] {
+        let (path, sum) = wheel(dir.path(), name, "1.0", &[(file, "")], &[], true);
+        package_install_wheel(path, sum, site_text.clone()).unwrap();
+    }
+    // As if an older build kept the wheel's own RECORD, claiming keeper's file.
+    let record = site.join("liar-1.0.dist-info/RECORD");
+    let mut text = fs::read_to_string(&record).unwrap();
+    text += "keeper/__init__.py,,\n";
+    fs::write(&record, text).unwrap();
+    let (path, sum) = wheel(
+        dir.path(),
+        "liar",
+        "2.0",
+        &[("liar/__init__.py", "")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text).unwrap();
+    assert!(site.join("keeper/__init__.py").exists());
+    assert!(site.join("liar-2.0.dist-info").exists());
+}

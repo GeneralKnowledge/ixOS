@@ -365,22 +365,27 @@ impl PythonLab {
         })
     }
 
-    /// The digest now of each file Bonsai knows, before a run.
+    /// The digest now of each file Bonsai knows, before a run. A file
+    /// that already changed outside is left out, so the run can't make
+    /// that change known.
     fn snapshot_seen(&self) -> BTreeMap<String, Option<String>> {
-        let paths: Vec<String> = lock_seen(&self.seen).keys().cloned().collect();
-        paths
+        let known: Vec<(String, String)> = lock_seen(&self.seen)
+            .iter()
+            .map(|(path, sum)| (path.clone(), sum.clone()))
+            .collect();
+        known
             .into_iter()
-            .map(|path| {
+            .filter_map(|(path, seen)| {
                 let sum = self.full(&path).ok().and_then(|full| digest(&full));
-                (path, sum)
+                (sum.as_deref() == Some(seen.as_str())).then_some((path, sum))
             })
             .collect()
     }
 
     /// After a run: what changed during it is Bonsai's own script's work,
     /// so it becomes known. A file that changed outside before the run
-    /// (and that the run left alone) keeps its old digest, so a later
-    /// write is still refused.
+    /// stays as it was known, whatever the run did to it, so a later
+    /// write is still refused until Bonsai reads it again.
     fn refresh_seen(&self, before: BTreeMap<String, Option<String>>) {
         for (path, was) in before {
             let now = self.full(&path).ok().and_then(|full| digest(&full));
@@ -983,6 +988,11 @@ pub fn python_lab_debug_script(
 const DEBUGGER: &str = r#"import bdb, json, reprlib, _devicelab_io
 class _LabDebugger(bdb.Bdb):
     def __init__(self, root, breakpoints):
+        # The interpreter is shared: forget breakpoints an earlier
+        # session left behind, which Bdb.__init__ would otherwise load.
+        bdb.Breakpoint.next = 1
+        bdb.Breakpoint.bplist = {}
+        bdb.Breakpoint.bpbynumber = [None]
         bdb.Bdb.__init__(self)
         self._lab_root = root
         self._lab_first = True
@@ -993,6 +1003,11 @@ class _LabDebugger(bdb.Bdb):
             setattr(self._lab_repr, _kind, 20)
         for _file, _line in breakpoints:
             self.set_break(os.path.join(root, _file), _line)
+    def reset(self):
+        # Each run (the file, then its last expression) starts by running
+        # on to the first breakpoint.
+        bdb.Bdb.reset(self)
+        self._lab_first = True
     def _lab_mine(self, frame):
         return self.canonic(frame.f_code.co_filename).startswith(self._lab_root + os.sep)
     def stop_here(self, frame):
@@ -1059,16 +1074,16 @@ fn file_script(
                 .join(", ");
             (
                 DEBUGGER.replace('\n', "\n    "),
-                format!("_LabDebugger(_root, [{list}]).run(compile(_tree, _name, 'exec'), _main.__dict__)"),
+                format!("_lab = _LabDebugger(_root, [{list}])\n        try:\n            _lab.run(compile(_tree, _name, 'exec'), _main.__dict__)\n            _value = _lab.runeval(compile(_last, _name, 'eval'), _main.__dict__) if _last is not None else None\n        finally:\n            _lab.clear_all_breaks()"),
             )
         }
         None => (
             String::new(),
-            "exec(compile(_tree, _name, 'exec'), _main.__dict__)".to_string(),
+            "exec(compile(_tree, _name, 'exec'), _main.__dict__)\n        _value = eval(compile(_last, _name, 'eval'), _main.__dict__) if _last is not None else None".to_string(),
         ),
     };
     let action = format!(
-        "{debugger}import ast, types\n    _name = os.path.join(_root, {path})\n    if not os.path.realpath(_name).startswith(_root + os.sep):\n        raise PermissionError('That file is outside the project.')\n    with open(_name, encoding='utf-8') as _f:\n        _source = _f.read()\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _main = types.ModuleType('__main__')\n    _main.__file__ = _name\n    _main.__builtins__ = __builtins__\n    sys.path[0] = os.path.dirname(_name)\n    if sys.path[0] != _root:\n        sys.path.insert(1, _root)\n    _host_main = sys.modules.get('__main__')\n    sys.modules['__main__'] = _main\n    try:\n        {exec}\n        if _last is not None:\n            _value = eval(compile(_last, _name, 'eval'), _main.__dict__)\n            if _value is not None:\n                print(repr(_value))\n    finally:\n        if _host_main is None:\n            sys.modules.pop('__main__', None)\n        else:\n            sys.modules['__main__'] = _host_main\n",
+        "{debugger}import ast, types\n    _name = os.path.join(_root, {path})\n    if not os.path.realpath(_name).startswith(_root + os.sep):\n        raise PermissionError('That file is outside the project.')\n    with open(_name, encoding='utf-8') as _f:\n        _source = _f.read()\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _main = types.ModuleType('__main__')\n    _main.__file__ = _name\n    _main.__builtins__ = __builtins__\n    sys.path[0] = os.path.dirname(_name)\n    if sys.path[0] != _root:\n        sys.path.insert(1, _root)\n    _host_main = sys.modules.get('__main__')\n    sys.modules['__main__'] = _main\n    try:\n        {exec}\n        if _value is not None:\n            print(repr(_value))\n    finally:\n        if _host_main is None:\n            sys.modules.pop('__main__', None)\n        else:\n            sys.modules['__main__'] = _host_main\n",
         path = py_str(path)
     );
     wrapper(Path::new(project), true, &action, console)

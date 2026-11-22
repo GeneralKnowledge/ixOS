@@ -328,6 +328,14 @@ pub fn package_install_wheel(
         }
         let target = target.to_string_lossy().replace('\\', "/");
         let target = target.trim_start_matches("./").to_string();
+        // RECORD is comma- and line-separated; a name with either would
+        // let one entry pose as another.
+        if target.contains([',', '\r', '\n']) {
+            return Err(invalid(format!(
+                "{} {} has a file name RECORD can't hold.",
+                package.name, package.version
+            )));
+        }
         if let Some(top) = target.split('/').next() {
             tops.insert(top.to_string());
         }
@@ -341,9 +349,17 @@ pub fn package_install_wheel(
         .into_iter()
         .find(|(_, p)| normalize(&p.name) == normalize(&package.name));
     let mut owned_by_old: BTreeSet<String> = BTreeSet::new();
+    let mut old_files: BTreeSet<String> = BTreeSet::new();
     if let Some((old_info, _)) = &old {
-        owned_by_old = record_tops(site, old_info);
+        // Never what another package lists (an older build kept the
+        // wheel's own RECORD, which could claim anything).
+        let others = other_tops(site, old_info);
+        owned_by_old = record_tops(site, old_info)
+            .into_iter()
+            .filter(|top| !others.contains(top))
+            .collect();
         owned_by_old.insert(old_info.clone());
+        old_files = record_paths(site, old_info);
     }
     for top in &tops {
         if site.join(top).exists() && !owned_by_old.contains(top) {
@@ -430,9 +446,50 @@ pub fn package_install_wheel(
         let _ = fs::remove_dir_all(&backup);
         return Err(err);
     }
+    // Files the old version didn't install (a package's own saved data)
+    // stay, unless the new version brings a file of that name.
+    for top in &set_aside {
+        if top.ends_with(".dist-info") {
+            continue;
+        }
+        keep_unrecorded(&backup, site, Path::new(top), &old_files);
+    }
     let _ = fs::remove_dir_all(&staging);
     let _ = fs::remove_dir_all(&backup);
     Ok(package)
+}
+
+/// Moves each file under `backup/rel` that `recorded` doesn't list (and
+/// isn't a Python cache) to the same place under `site`, if nothing is
+/// there.
+fn keep_unrecorded(backup: &Path, site: &Path, rel: &Path, recorded: &BTreeSet<String>) {
+    let from = backup.join(rel);
+    let Ok(meta) = fs::symlink_metadata(&from) else {
+        return;
+    };
+    if meta.is_dir() {
+        if rel.file_name().is_some_and(|n| n == "__pycache__") {
+            return;
+        }
+        let Ok(read) = fs::read_dir(&from) else {
+            return;
+        };
+        for entry in read.filter_map(Result::ok) {
+            keep_unrecorded(backup, site, &rel.join(entry.file_name()), recorded);
+        }
+        return;
+    }
+    let key = rel.to_string_lossy().replace('\\', "/");
+    let to = site.join(rel);
+    if !meta.is_file() || recorded.contains(&key) || fs::symlink_metadata(&to).is_ok() {
+        return;
+    }
+    if let Some(parent) = to.parent() {
+        if fs::create_dir_all(parent).is_err() {
+            return;
+        }
+    }
+    let _ = fs::rename(&from, &to);
 }
 
 /// The packages in `site_packages`, by name.
@@ -477,6 +534,31 @@ fn installed_dist_infos(site: &Path) -> Vec<(String, InstalledPackage)> {
         .collect()
 }
 
+/// The paths a package's RECORD lists.
+fn record_paths(site: &Path, dist_info: &str) -> BTreeSet<String> {
+    fs::read_to_string(site.join(dist_info).join("RECORD"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| line.split(',').next())
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// The top-level names every installed package but `dist_info` lists,
+/// and their `.dist-info` folders.
+fn other_tops(site: &Path, dist_info: &str) -> BTreeSet<String> {
+    installed_dist_infos(site)
+        .into_iter()
+        .filter(|(info, _)| info != dist_info)
+        .flat_map(|(info, _)| {
+            let mut tops = record_tops(site, &info);
+            tops.insert(info);
+            tops
+        })
+        .collect()
+}
+
 /// The top-level names a package's RECORD lists.
 fn record_tops(site: &Path, dist_info: &str) -> BTreeSet<String> {
     fs::read_to_string(site.join(dist_info).join("RECORD"))
@@ -493,15 +575,7 @@ fn remove_package(site: &Path, dist_info: &str) -> Result<(), PackageError> {
     let record = fs::read_to_string(site.join(dist_info).join("RECORD")).unwrap_or_default();
     // What other packages list is theirs, whatever this RECORD claims (one
     // installed by an older build carries the wheel's own RECORD).
-    let others: BTreeSet<String> = installed_dist_infos(site)
-        .into_iter()
-        .filter(|(info, _)| info != dist_info)
-        .flat_map(|(info, _)| {
-            let mut tops = record_tops(site, &info);
-            tops.insert(info);
-            tops
-        })
-        .collect();
+    let others = other_tops(site, dist_info);
     let mut folders: BTreeSet<PathBuf> = BTreeSet::new();
     for line in record.lines() {
         let Some(path) = line.split(',').next().filter(|p| !p.is_empty()) else {

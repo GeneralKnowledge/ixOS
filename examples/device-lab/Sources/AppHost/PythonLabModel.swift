@@ -73,10 +73,16 @@ public final class PythonLabModel {
             guard newValue != text, !isLockedByBonsai else { return }
             text = newValue
             saveState = .unsaved
+            // A new edit after the warning: the person chose to save it.
+            heldBack = false
             scheduleSave()
         }
     }
     public private(set) var saveState: SaveState = .saved
+    /// Text whose save failed when Bonsai started in this project: it
+    /// stays on screen but isn't written over Bonsai's work, until the
+    /// person edits it again.
+    private var heldBack = false
     /// The last run's console: stdout, stderr, the answers given, notes.
     public private(set) var console = PythonConsoleText()
     /// The console as plain text.
@@ -132,6 +138,8 @@ public final class PythonLabModel {
     /// Where the debugger paused and what it sees; nil while the script
     /// runs on.
     public private(set) var debugPause: DebugPause?
+    /// The project the debugger runs in: pauses open its files only there.
+    private var debugProject: String?
     /// The debugger is waiting for Continue or a step.
     public private(set) var awaitingDebugCommand = false
 
@@ -230,6 +238,9 @@ public final class PythonLabModel {
         // Tabs whose files Bonsai removed close (the one in the editor stays).
         openFiles.removeAll { tab in
             tab != openFile && !entries.contains { $0.path == tab }
+        }
+        if heldBack, let openFile, !isLockedByBonsai {
+            error = "Your changes to \(openFile) couldn't be saved before Bonsai started, and Bonsai may have changed the file since. They're still on screen, not saved; your next edit saves them over Bonsai's version."
         }
         guard let openFile, saveState == .saved else { return }
         if let fresh = try? workspace.readText(project: project, path: openFile), fresh != text {
@@ -620,6 +631,10 @@ public final class PythonLabModel {
         pendingSave?.cancel()
         pendingSave = nil
         guard saveState != .saved, let workspace, let openFile else { return }
+        // Text whose save already failed isn't retried while Bonsai works
+        // in the project (edits from before it started still save).
+        if case .failed = saveState, isLockedByBonsai { heldBack = true }
+        guard !heldBack else { return }
         do {
             try workspace.writeText(project: project, path: openFile, text: code)
             saveState = .saved
@@ -684,6 +699,12 @@ public final class PythonLabModel {
             console.append("Stopped before it started.", as: .note)
             return
         }
+        // Bonsai started in this project while Python started.
+        if isLockedByBonsai {
+            isRunning = false
+            error = Self.bonsaiWorking
+            return
+        }
         // Saved after Python started, so edits made while it started run too.
         flush()
         if case .failed(let reason) = saveState {
@@ -704,6 +725,7 @@ public final class PythonLabModel {
         var script = code
         var before: [String: ProjectArtifact] = [:]
         let startedIn = project
+        debugProject = debugging ? startedIn : nil
         let folder = projectFolder
         let file = fileToRun
         if let folder, let file {
@@ -825,7 +847,8 @@ public final class PythonLabModel {
     private func paused(_ json: String) {
         guard let pause = pythonDebugPause(json: json) else { return }
         debugPause = pause
-        if let top = pause.stack.last {
+        // Only in the project being debugged, not one opened since.
+        if project == debugProject, let top = pause.stack.last {
             show(top)
         }
     }

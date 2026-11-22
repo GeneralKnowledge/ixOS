@@ -222,7 +222,7 @@ struct SVGView: UIViewRepresentable {
             _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction
         ) async -> WKNavigationActionPolicy {
             // loadHTMLString with no base URL loads as about:blank.
-            navigationAction.request.url?.scheme?.lowercased() == "about" ? .allow : .cancel
+            navigationAction.request.url?.absoluteString == "about:blank" ? .allow : .cancel
         }
     }
 
@@ -445,7 +445,17 @@ struct ArtifactHTMLView: View {
             let read = await Task.detached { () -> Result<String, ArtifactHTMLError> in
                 let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
                 guard size <= limit else { return .failure(.tooLarge) }
-                guard let data = try? Data(contentsOf: url) else { return .failure(.unreadable) }
+                // Read no more than the limit, even if the file grew since.
+                guard let handle = try? FileHandle(forReadingFrom: url) else { return .failure(.unreadable) }
+                defer { try? handle.close() }
+                let data: Data
+                do {
+                    // nil at the end: an empty file.
+                    data = try handle.read(upToCount: limit + 1) ?? Data()
+                } catch {
+                    return .failure(.unreadable)
+                }
+                guard data.count <= limit else { return .failure(.tooLarge) }
                 return .success(String(decoding: data, as: UTF8.self))
             }.value
             switch read {
