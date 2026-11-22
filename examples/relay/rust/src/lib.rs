@@ -205,7 +205,9 @@ impl RelayCore {
         &self,
         endpoint_id: &str,
     ) -> Result<(Arc<node::Node>, iroh::EndpointAddr, Arc<Mutex<web::Kept>>), RelayError> {
-        self.site_addr(endpoint_id)?;
+        // Trusted, before anything starts; the route is chosen once the
+        // network is known (this network's own IPv6 prefix is Local).
+        self.trusted_site_device(endpoint_id)?;
         let node = self.node().await?;
         self.watch_network(&node);
         let addr = self.site_addr(endpoint_id)?;
@@ -220,16 +222,7 @@ impl RelayCore {
     /// Where a trusted device's site may be dialled now, by the route the
     /// person's Connections allow.
     fn site_addr(&self, endpoint_id: &str) -> Result<iroh::EndpointAddr, RelayError> {
-        let saved = self
-            .record
-            .get()
-            .devices
-            .get(endpoint_id)
-            .filter(|d| d.trust == SavedTrust::Trusted)
-            .cloned()
-            .ok_or_else(|| RelayError::Declined {
-                reason: "That device is no longer trusted here.".into(),
-            })?;
+        let saved = self.trusted_site_device(endpoint_id)?;
         let Some((addr, _)) = self.dial(&saved) else {
             return Err(RelayError::Unreachable {
                 reason: self.problem_of(endpoint_id).unwrap_or_default(),
@@ -247,6 +240,19 @@ impl RelayCore {
                 .ok_or(RelayError::Refused)
                 .and_then(|core| core.site_addr(&id))
         })
+    }
+
+    /// The saved record of `endpoint_id`, if it is trusted here.
+    fn trusted_site_device(&self, endpoint_id: &str) -> Result<trust::SavedDevice, RelayError> {
+        self.record
+            .get()
+            .devices
+            .get(endpoint_id)
+            .filter(|d| d.trust == SavedTrust::Trusted)
+            .cloned()
+            .ok_or_else(|| RelayError::Declined {
+                reason: "That device is no longer trusted here.".into(),
+            })
     }
 
     /// Closes the kept site connections: to one device, or (`None`) all.

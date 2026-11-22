@@ -60,16 +60,15 @@ impl Activity {
         *lock(&self.0) = tokio::time::Instant::now();
     }
 
-    /// Runs `step`, giving up once nothing has moved for `IDLE`.
+    /// Runs `step`, giving up once nothing has moved for `IDLE`. The
+    /// caller says when bytes moved (`moved`): an end or an error isn't
+    /// progress.
     async fn within<F: std::future::Future>(&self, step: F) -> Result<F::Output, RelayError> {
         tokio::pin!(step);
         loop {
             let deadline = *lock(&self.0) + IDLE;
             tokio::select! {
-                out = &mut step => {
-                    self.moved();
-                    return Ok(out);
-                }
+                out = &mut step => return Ok(out),
                 _ = tokio::time::sleep_until(deadline) => {
                     if *lock(&self.0) + IDLE <= tokio::time::Instant::now() {
                         return Err(bad("idle"));
@@ -512,6 +511,7 @@ where
         if n == 0 {
             return Ok(total);
         }
+        moving.moved();
         write_moving(to, &buf[..n], moving).await?;
         total += n as u64;
     }
@@ -531,6 +531,7 @@ where
         if n == 0 {
             return Err(bad("the other side stopped taking data"));
         }
+        moving.moved();
         bytes = &bytes[n..];
     }
     Ok(())
@@ -705,28 +706,39 @@ pub(crate) async fn open_tunnel(
     Ok(Tunnel { port, url, stop })
 }
 
-/// The connection to the site's device, opened once and reused.
+/// The connection to the site's device, opened once and reused. The
+/// generation is read before the route is asked for, so a route found
+/// under an old Connections choice (or before a revocation) is never
+/// kept: the dial is dropped and the route asked for again.
 async fn connection(
     node: &Node,
-    to: EndpointAddr,
     cached: &Mutex<Kept>,
+    route: impl Fn() -> Result<EndpointAddr, RelayError>,
 ) -> Result<Connection, RelayError> {
-    let generation = {
-        let kept = lock(cached);
-        if let Some(c) = kept.live() {
-            return Ok(c.clone());
+    for _ in 0..3 {
+        let generation = {
+            let kept = lock(cached);
+            if let Some(c) = kept.live() {
+                return Ok(c.clone());
+            }
+            kept.generation
+        };
+        let to = route()?;
+        let c = tokio::time::timeout(crate::code::STEP, node.endpoint.connect(to, WEB_ALPN))
+            .await
+            .map_err(|_| RelayError::Unreachable {
+                reason: "the other device didn't answer".into(),
+            })?
+            .map_err(|e| RelayError::Unreachable {
+                reason: e.to_string(),
+            })?;
+        if let Some(c) = keep(cached, generation, c) {
+            return Ok(c);
         }
-        kept.generation
-    };
-    let c = tokio::time::timeout(crate::code::STEP, node.endpoint.connect(to, WEB_ALPN))
-        .await
-        .map_err(|_| RelayError::Unreachable {
-            reason: "the other device didn't answer".into(),
-        })?
-        .map_err(|e| RelayError::Unreachable {
-            reason: e.to_string(),
-        })?;
-    keep(cached, generation, c)
+    }
+    Err(RelayError::Unreachable {
+        reason: "the way to the device kept changing; try again".into(),
+    })
 }
 
 /// Keeps `c`, dialled in `generation`. A connection closed since then (a
@@ -734,20 +746,18 @@ async fn connection(
 /// allowed, so it isn't kept. Another request that dialled at the same
 /// time keeps its own: one connection, so closing it closes every one in
 /// use.
-fn keep(cached: &Mutex<Kept>, generation: u64, c: Connection) -> Result<Connection, RelayError> {
+fn keep(cached: &Mutex<Kept>, generation: u64, c: Connection) -> Option<Connection> {
     let mut kept = lock(cached);
     if kept.generation != generation {
         c.close(0u32.into(), b"route changed");
-        return Err(RelayError::Unreachable {
-            reason: "the way to the device changed; try again".into(),
-        });
+        return None;
     }
     if let Some(other) = kept.live() {
         c.close(0u32.into(), b"duplicate");
-        return Ok(other.clone());
+        return Some(other.clone());
     }
     kept.conn = Some(c.clone());
-    Ok(c)
+    Some(c)
 }
 
 /// One browser connection: one request over a new stream, one response.
@@ -783,8 +793,7 @@ async fn forward(
     // can only end the connection: a 502 after it would read as its body.
     let answered = AtomicBool::new(false);
     let attempt = async {
-        let to = route_now()?;
-        let conn = connection(node, to, cached).await?;
+        let conn = connection(node, cached, route_now).await?;
         // Asked again once the connection is kept: a revocation that
         // finished while it was being dialled couldn't close it, and one
         // that finishes from now on closes it (it is the kept one).
@@ -819,6 +828,7 @@ async fn forward(
             if n == 0 {
                 return Err(RelayError::Refused);
             }
+            moving.moved();
             answered.store(true, Ordering::SeqCst);
             to_browser
                 .write_all(&first[..n])
@@ -915,8 +925,7 @@ pub(crate) async fn fetch(
     // As for a computer's port: the route is asked again once the
     // connection is kept, so a revocation during the dial stops it.
     let route_now = || route().inspect_err(|_| lock(cached).close(b"no route"));
-    let to = route_now()?;
-    let conn = connection(node, to, cached).await?;
+    let conn = connection(node, cached, route_now).await?;
     route_now()?;
     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| bad(&e.to_string()))?;
     let mut answer = Vec::new();
@@ -943,6 +952,7 @@ pub(crate) async fn fetch(
             if n == 0 {
                 return Ok(answer.len() as u64);
             }
+            moving.moved();
             if answer.len() + n > MAX_FETCHED {
                 return Err(bad("the page is too big to show"));
             }
@@ -1208,6 +1218,22 @@ mod tests {
             assert!(moving.within(tokio::time::sleep(IDLE * 3)).await.is_err());
         });
 
+        // An end of the data isn't progress: it doesn't put off the limit.
+        rt.block_on(async {
+            let moving = Activity::new();
+            tokio::time::sleep(IDLE * 9 / 10).await;
+            let mut empty: &[u8] = b"";
+            assert_eq!(
+                copy_idle(&mut empty, &mut tokio::io::sink(), &moving)
+                    .await
+                    .unwrap(),
+                0
+            );
+            let started = tokio::time::Instant::now();
+            assert!(moving.within(tokio::time::sleep(IDLE)).await.is_err());
+            assert!(started.elapsed() <= IDLE / 10);
+        });
+
         // A slow reader that keeps taking a byte every half IDLE isn't
         // idle, though the whole write takes longer than IDLE.
         rt.block_on(async {
@@ -1330,7 +1356,7 @@ mod tests {
                 .await
                 .unwrap();
             lock(&cached).close(b"closed");
-            assert!(keep(&cached, generation, late.clone()).is_err());
+            assert!(keep(&cached, generation, late.clone()).is_none());
             assert!(lock(&cached).conn.is_none());
             assert!(late.close_reason().is_some(), "and it is closed");
 
