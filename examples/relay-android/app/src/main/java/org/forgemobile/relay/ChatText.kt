@@ -86,6 +86,7 @@ object ChatText {
         ChatDelivery.SENDING -> "Sending…"
         ChatDelivery.SENT -> "Delivered"
         ChatDelivery.READ -> "Read"
+        ChatDelivery.IN_MAILBOX -> "In the Mailbox"
         ChatDelivery.FAILED -> "Not Delivered. Tap to Try Again."
     }
 

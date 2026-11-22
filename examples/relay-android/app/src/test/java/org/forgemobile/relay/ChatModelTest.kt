@@ -242,7 +242,7 @@ class ChatModelTest {
     ) = ChatMessage(
         id = id, conversationId = "c", author = author, authorId = if (mine) "me" else author, isMine = mine,
         body = body, sentAt = at, status = status, replyTo = null, edited = false, deleted = false,
-        reactions = emptyList(), attachments = emptyList(),
+        reactions = emptyList(), attachments = emptyList(), inMailbox = false,
     )
 
     @Test
