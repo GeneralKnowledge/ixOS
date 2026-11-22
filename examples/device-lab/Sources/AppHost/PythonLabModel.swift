@@ -69,13 +69,20 @@ public final class PythonLabModel {
     public var code: String {
         get { text }
         set {
-            guard newValue != text else { return }
+            // Read-only while Bonsai works in this project.
+            guard newValue != text, !isLockedByBonsai else { return }
             text = newValue
             saveState = .unsaved
+            // A new edit after the warning: the person chose to save it.
+            heldBack = false
             scheduleSave()
         }
     }
     public private(set) var saveState: SaveState = .saved
+    /// Text whose save failed when Bonsai started in this project: it
+    /// stays on screen but isn't written over Bonsai's work, until the
+    /// person edits it again.
+    private var heldBack = false
     /// The last run's console: stdout, stderr, the answers given, notes.
     public private(set) var console = PythonConsoleText()
     /// The console as plain text.
@@ -84,6 +91,13 @@ public final class PythonLabModel {
     public private(set) var waitingForInput = false
     /// The run waits for a Bonsai Harness run to finish first.
     public private(set) var queuedBehindBonsai = false
+    /// The project's lines in the last run's traceback, outermost first,
+    /// to open where the error happened (PL2b).
+    public private(set) var errorFrames: [TracebackFrame] = []
+    /// The line the editor should show next.
+    public private(set) var lineRequest: PythonLineRequest?
+    /// The open project's runs, newest first (PL2c).
+    public private(set) var runs: [RunRecord] = []
     /// Whether the last run finished without an exception (nil before one).
     public private(set) var succeeded: Bool?
     public private(set) var isRunning = false
@@ -109,12 +123,43 @@ public final class PythonLabModel {
     public private(set) var entries: [WorkspaceEntry] = []
     /// The file in the editor, relative to the project.
     public private(set) var openFile: String?
+    /// The files open as tabs above the editor, in the order opened (PL2);
+    /// `openFile` is one of them. Only the one in the editor is held in
+    /// memory: switching saves it and reads the next.
+    public private(set) var openFiles: [String] = []
+
+    /// At most this many tabs; opening another closes the oldest.
+    public static let maxOpenFiles = 8
+
+    /// Where Debug pauses in this project (PL2f), kept with the project.
+    public private(set) var breakpoints: [DebugBreakpoint] = []
+    /// The run is under the debugger.
+    public private(set) var isDebugging = false
+    /// Where the debugger paused and what it sees; nil while the script
+    /// runs on.
+    public private(set) var debugPause: DebugPause?
+    /// The project the debugger runs in: pauses open its files only there.
+    private var debugProject: String?
+    /// The debugger is waiting for Continue or a step.
+    public private(set) var awaitingDebugCommand = false
+
+    /// The open file's breakpoint lines, for the editor's gutter.
+    public var breakpointLines: Set<Int> {
+        Set(breakpoints.filter { $0.file == openFile }.map { Int($0.line) })
+    }
+
+    /// The paused line, when it is in the open file.
+    public var pausedLine: Int? {
+        guard let top = debugPause?.stack.last, top.file == openFile else { return nil }
+        return Int(top.line)
+    }
     /// The file Run starts; nil runs the open file.
     public private(set) var runFile: String?
 
-    /// The project's images, newest first.
+    /// The project's outputs (images, tables, text, anything but Python),
+    /// newest first (PL2e).
     public private(set) var artifacts: [ProjectArtifact] = []
-    /// The images the last run made or changed.
+    /// The outputs the last run made or changed.
     public private(set) var madeByLastRun: [ProjectArtifact] = []
 
     public let samples: [PythonLabSample]
@@ -129,6 +174,8 @@ public final class PythonLabModel {
     /// Remembers the last project between launches.
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let activity: PythonActivity
+    /// Pure-Python packages from PyPI (PL2a); nil in a build with no Python.
+    @ObservationIgnored public let packages: PythonPackagesModel?
     static let lastProjectKey = "pythonLab.lastProject"
 
     /// `workspace` nil keeps the code in memory only (a build or test with
@@ -136,10 +183,11 @@ public final class PythonLabModel {
     public init(
         runtime: (any PythonRunning)?, workspace: Workspace? = nil,
         timeLimit: Duration = .seconds(30), defaults: UserDefaults = .standard,
-        activity: PythonActivity = .shared
+        activity: PythonActivity = .shared, packages: PythonPackagesModel? = nil
     ) {
         self.runtime = runtime
         self.activity = activity
+        self.packages = packages
         self.workspace = workspace
         self.timeLimit = timeLimit
         self.defaults = defaults
@@ -173,6 +221,87 @@ public final class PythonLabModel {
 
     /// The file Run will run.
     public var fileToRun: String? { runFile ?? openFile }
+
+    /// Bonsai Harness is working in the open project: it is shown
+    /// read-only, so the person and Bonsai never write one file at once
+    /// (PL1e).
+    public var isLockedByBonsai: Bool {
+        hasWorkspace && activity.bonsaiProject == project
+    }
+
+    /// Bonsai is about to work in `name`: text whose save just failed
+    /// there is held back now, whether or not Python Lab is on screen.
+    public func bonsaiStarting(in name: String) {
+        guard hasWorkspace, name == project, case .failed = saveState else { return }
+        heldBack = true
+    }
+
+    /// Reads the open file and the project's files again from disk, after
+    /// Bonsai worked on them. Edits not yet saved are kept, not replaced.
+    public func reloadFromDisk() {
+        guard let workspace else { return }
+        reloadEntries()
+        loadArtifacts()
+        // Tabs whose files Bonsai removed close (the one in the editor stays).
+        openFiles.removeAll { tab in
+            tab != openFile && !entries.contains { $0.path == tab }
+        }
+        if heldBack, let openFile, !isLockedByBonsai {
+            error = "Your changes to \(openFile) couldn't be saved before Bonsai started, and Bonsai may have changed the file since. They're still on screen, not saved; your next edit saves them over Bonsai's version."
+        }
+        guard let openFile, saveState == .saved else { return }
+        if let fresh = try? workspace.readText(project: project, path: openFile), fresh != text {
+            text = fresh
+        } else if !entries.contains(where: { $0.path == openFile }) {
+            // Bonsai removed or renamed it: the text stays on screen,
+            // unsaved, so nothing of it is lost.
+            saveState = .unsaved
+        }
+    }
+
+    /// Why a change to the project is refused while Bonsai works in it.
+    static let bonsaiWorking = "Bonsai is working in this project. Wait until it finishes, or stop it in Bonsai Harness."
+
+    // MARK: Import and export
+
+    /// Copies files the person picked in the Files app into the project
+    /// (into `folder`, if given). Returns why any couldn't be, or nil.
+    public func importFiles(_ urls: [URL], into folder: String? = nil) -> String? {
+        guard let workspace else { return nil }
+        if isLockedByBonsai { return Self.bonsaiWorking }
+        var refusals: [String] = []
+        for url in urls {
+            // A file from the picker may be outside the app's sandbox.
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            do {
+                _ = try workspace.importFile(project: project, folder: folder ?? "", source: url.path)
+            } catch {
+                refusals.append("\(url.lastPathComponent): \(Self.message(error))")
+            }
+        }
+        reloadEntries()
+        loadArtifacts()
+        return refusals.isEmpty ? nil : refusals.joined(separator: "\n")
+    }
+
+    /// The open project as a .zip in a temporary folder, to share. Python
+    /// Lab's projects are also plain folders in the Files app.
+    public func exportProject() -> URL? {
+        guard let workspace else { return nil }
+        flush()
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Python Lab export \(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let path = try workspace.exportProject(project: project, outFolder: folder.path)
+            error = nil
+            return URL(fileURLWithPath: path)
+        } catch {
+            self.error = "Couldn't export \(project): \(Self.message(error))"
+            return nil
+        }
+    }
 
     /// Starts the interpreter if it hasn't started, for the version line.
     public func prepare() async {
@@ -212,10 +341,13 @@ public final class PythonLabModel {
         project = target
         defaults.set(target, forKey: Self.lastProjectKey)
         let state = (try? workspace.state(project: target)) ?? WorkspaceState(
-            runFile: nil, currentFile: nil, openFiles: [])
+            runFile: nil, currentFile: nil, openFiles: [], breakpoints: [])
         runFile = state.runFile
         entries = listed
         listError = nil
+        // Rust already left out tabs whose files are gone.
+        openFiles = Array(state.openFiles.prefix(Self.maxOpenFiles))
+        breakpoints = state.breakpoints
         if let current = state.currentFile {
             open(file: current)
         } else if let first = entries.first(where: { !$0.isFolder && $0.path.hasSuffix(".py") }) {
@@ -224,6 +356,7 @@ public final class PythonLabModel {
             createFirstFile()
         }
         loadArtifacts()
+        loadRuns()
         madeByLastRun = []
         if !isRunning {
             succeeded = nil
@@ -244,6 +377,8 @@ public final class PythonLabModel {
 
     public func renameProject(_ old: String, to new: String) -> String? {
         guard let workspace else { return nil }
+        // Bonsai's task works in it by name.
+        if activity.bonsaiProject == old { return Self.bonsaiWorking }
         if old == project { flush() }
         do {
             try workspace.renameProject(from: old, to: new)
@@ -261,6 +396,10 @@ public final class PythonLabModel {
 
     public func deleteProject(_ name: String) {
         guard let workspace else { return }
+        if activity.bonsaiProject == name {
+            error = Self.bonsaiWorking
+            return
+        }
         do {
             try workspace.deleteProject(name: name)
             error = nil
@@ -320,6 +459,7 @@ public final class PythonLabModel {
             let text = try workspace.readText(project: project, path: path)
             self.text = text
             openFile = path
+            addTab(path)
             saveState = .saved
             error = nil
             saveProjectState()
@@ -328,9 +468,36 @@ public final class PythonLabModel {
         }
     }
 
+    /// Closes a tab. Closing the one in the editor saves it and shows the
+    /// tab beside it; the last tab can't be closed (the editor always has
+    /// a file).
+    public func close(file path: String) {
+        guard openFiles.count > 1, let index = openFiles.firstIndex(of: path) else { return }
+        if path == openFile {
+            let next = openFiles[index + 1 < openFiles.count ? index + 1 : index - 1]
+            open(file: next)
+            // Not switched (the save failed): the tab stays.
+            guard openFile == next else { return }
+        }
+        openFiles.removeAll { $0 == path }
+        saveProjectState()
+    }
+
+    private func addTab(_ path: String) {
+        guard !openFiles.contains(path) else { return }
+        openFiles.append(path)
+        if openFiles.count > Self.maxOpenFiles {
+            // The oldest tab that isn't the one just opened.
+            if let oldest = openFiles.firstIndex(where: { $0 != path }) {
+                openFiles.remove(at: oldest)
+            }
+        }
+    }
+
     /// A new file in the project (in `folder`, if given), opened.
     public func createFile(_ name: String, in folder: String? = nil, text: String = "") -> String? {
         guard let workspace else { return nil }
+        if isLockedByBonsai { return Self.bonsaiWorking }
         // The new file opens next, so the open one must save first; if it
         // can't, nothing is created.
         guard savedBeforeLeaving() else { return error }
@@ -348,6 +515,7 @@ public final class PythonLabModel {
 
     public func createFolder(_ name: String, in folder: String? = nil) -> String? {
         guard let workspace else { return nil }
+        if isLockedByBonsai { return Self.bonsaiWorking }
         do {
             try workspace.createFolder(project: project, path: Self.join(folder, name))
         } catch {
@@ -360,6 +528,7 @@ public final class PythonLabModel {
     /// Renames a file or folder in place (same folder, new name).
     public func rename(_ entry: WorkspaceEntry, to name: String) -> String? {
         guard let workspace else { return nil }
+        if isLockedByBonsai { return Self.bonsaiWorking }
         let parent = entry.path.split(separator: "/").dropLast().joined(separator: "/")
         let target = Self.join(parent.isEmpty ? nil : parent, name)
         flush()
@@ -369,6 +538,10 @@ public final class PythonLabModel {
             return Self.message(error)
         }
         openFile = openFile.map { Self.moved($0, from: entry.path, to: target) }
+        openFiles = openFiles.map { Self.moved($0, from: entry.path, to: target) }
+        breakpoints = breakpoints.map {
+            DebugBreakpoint(file: Self.moved($0.file, from: entry.path, to: target), line: $0.line)
+        }
         runFile = runFile.map { Self.moved($0, from: entry.path, to: target) }
         saveProjectState()
         reloadEntries()
@@ -377,6 +550,10 @@ public final class PythonLabModel {
 
     public func delete(_ entry: WorkspaceEntry) {
         guard let workspace else { return }
+        if isLockedByBonsai {
+            error = Self.bonsaiWorking
+            return
+        }
         let inside = { (path: String?) in
             path.map { $0 == entry.path || $0.hasPrefix(entry.path + "/") } ?? false
         }
@@ -398,9 +575,15 @@ public final class PythonLabModel {
         }
         if inside(runFile) { runFile = nil }
         reloadEntries()
+        openFiles.removeAll { inside($0) && $0 != openFile }
+        breakpoints.removeAll { inside($0.file) }
         if inside(openFile) {
+            let gone = openFile
             openFile = nil
-            if let first = entries.first(where: { !$0.isFolder && $0.path.hasSuffix(".py") }) {
+            openFiles.removeAll { $0 == gone }
+            if let tab = openFiles.last {
+                open(file: tab)
+            } else if let first = entries.first(where: { !$0.isFolder && $0.path.hasSuffix(".py") }) {
                 open(file: first.path)
             } else {
                 text = ""
@@ -421,6 +604,10 @@ public final class PythonLabModel {
     public func load(_ sample: PythonLabSample) {
         guard let workspace else {
             text = sample.code
+            return
+        }
+        if isLockedByBonsai {
+            error = Self.bonsaiWorking
             return
         }
         guard savedBeforeLeaving() else { return }
@@ -451,11 +638,17 @@ public final class PythonLabModel {
         pendingSave?.cancel()
         pendingSave = nil
         guard saveState != .saved, let workspace, let openFile else { return }
+        // Text whose save already failed isn't retried while Bonsai works
+        // in the project (edits from before it started still save).
+        if case .failed = saveState, isLockedByBonsai { heldBack = true }
+        guard !heldBack else { return }
         do {
             try workspace.writeText(project: project, path: openFile, text: code)
             saveState = .saved
         } catch {
             saveState = .failed(Self.message(error))
+            // Failing while Bonsai works: not retried over its work later.
+            if isLockedByBonsai { heldBack = true }
         }
     }
 
@@ -472,7 +665,7 @@ public final class PythonLabModel {
     private func saveProjectState() {
         guard let workspace else { return }
         let state = WorkspaceState(
-            runFile: runFile, currentFile: openFile, openFiles: openFile.map { [$0] } ?? [])
+            runFile: runFile, currentFile: openFile, openFiles: openFiles, breakpoints: breakpoints)
         do {
             try workspace.saveState(project: project, state: state)
         } catch {
@@ -497,8 +690,12 @@ public final class PythonLabModel {
 
     // MARK: Running
 
-    public func run() async {
-        guard let runtime, !isRunning else { return }
+    /// Runs the file, or with `debugging` runs it under the debugger so it
+    /// pauses on the project's breakpoints (PL2f).
+    public func run(debugging: Bool = false) async {
+        guard let runtime, !isRunning, !isLockedByBonsai else { return }
+        // Debugging needs a project file to set breakpoints in.
+        if debugging && (projectFolder == nil || fileToRun == nil) { return }
         // Taken before the first wait, so a second tap can't start a
         // second run while Python starts.
         isRunning = true
@@ -509,6 +706,12 @@ public final class PythonLabModel {
             isRunning = false
             console = PythonConsoleText()
             console.append("Stopped before it started.", as: .note)
+            return
+        }
+        // Bonsai started in this project while Python started.
+        if isLockedByBonsai {
+            isRunning = false
+            error = Self.bonsaiWorking
             return
         }
         // Saved after Python started, so edits made while it started run too.
@@ -523,6 +726,7 @@ public final class PythonLabModel {
             return
         }
         console = PythonConsoleText()
+        errorFrames = []
         succeeded = nil
         error = nil
         let id = UUID()
@@ -530,15 +734,21 @@ public final class PythonLabModel {
         var script = code
         var before: [String: ProjectArtifact] = [:]
         let startedIn = project
+        debugProject = debugging ? startedIn : nil
         let folder = projectFolder
         let file = fileToRun
         if let folder, let file {
-            script = pythonLabConsoleScript(project: folder, path: file)
+            script = debugging
+                ? pythonLabDebugScript(project: folder, path: file, breakpoints: breakpoints)
+                : pythonLabConsoleScript(project: folder, path: file)
             before = Dictionary(
-                projectArtifacts(project: folder).map { ($0.path, $0) },
+                projectOutputs(project: folder).map { ($0.path, $0) },
                 uniquingKeysWith: { first, _ in first })
         }
         lastRunFile = file
+        isDebugging = debugging
+        debugPause = nil
+        awaitingDebugCommand = false
         // Output reaches the screen at most every 50 ms.
         let inbox = ConsoleInbox()
         let pump = Task { [weak self] in
@@ -560,7 +770,11 @@ public final class PythonLabModel {
         // A run whose project is no longer open shows its output, but its
         // images and file list belong to that project, not this one.
         if let folder, project == startedIn {
-            artifacts = projectArtifacts(project: folder)
+            if !result.ok {
+                let stderr = console.segments.filter { $0.kind == .error }.map(\.text).joined()
+                errorFrames = pythonTracebackFrames(output: stderr)
+            }
+            artifacts = projectOutputs(project: folder)
             madeByLastRun = artifacts.filter { artifact in
                 guard let old = before[artifact.path] else { return true }
                 return old.bytes != artifact.bytes || old.modifiedMs != artifact.modifiedMs
@@ -579,7 +793,96 @@ public final class PythonLabModel {
         lastSeconds = Double(elapsed.components.seconds)
             + Double(elapsed.components.attoseconds) / 1e18
         succeeded = result.ok
+        if let workspace, let file {
+            let record = RunRecord(
+                file: file,
+                startedMs: Int64(Date().timeIntervalSince1970 * 1000 - (lastSeconds ?? 0) * 1000),
+                seconds: lastSeconds ?? 0, ok: result.ok, timedOut: result.timedOut,
+                output: console.plainText)
+            // In the project it ran in, even if another is open now.
+            do {
+                try workspace.recordRun(project: startedIn, run: record)
+            } catch {
+                self.error = "The run finished but couldn't be added to History: \(Self.message(error))"
+            }
+            if project == startedIn { loadRuns() }
+        }
+        isDebugging = false
+        debugPause = nil
+        awaitingDebugCommand = false
         isRunning = false
+    }
+
+    // MARK: Debugging
+
+    /// Adds a breakpoint on `line` of the open file, or removes the one
+    /// there.
+    public func toggleBreakpoint(line: Int) {
+        guard let openFile, line > 0 else { return }
+        let point = DebugBreakpoint(file: openFile, line: UInt32(line))
+        if breakpoints.contains(point) {
+            breakpoints.removeAll { $0 == point }
+        } else {
+            breakpoints.append(point)
+        }
+        saveProjectState()
+    }
+
+    /// Removes every breakpoint in the project.
+    public func clearBreakpoints() {
+        breakpoints = []
+        saveProjectState()
+    }
+
+    public enum DebugCommand: String, Sendable {
+        case `continue`
+        /// Into a call on this line.
+        case step
+        /// Over this line.
+        case next
+        /// On to the caller.
+        case out
+    }
+
+    /// Tells the paused debugger what to do next.
+    @discardableResult
+    public func debug(_ command: DebugCommand) -> Bool {
+        guard let runtime, let runID, awaitingDebugCommand else { return false }
+        awaitingDebugCommand = false
+        return runtime.send(input: command.rawValue, id: runID)
+    }
+
+    /// The debugger paused: show where, in the editor.
+    private func paused(_ json: String) {
+        guard let pause = pythonDebugPause(json: json) else { return }
+        debugPause = pause
+        // Only in the project being debugged, not one opened since.
+        if project == debugProject, let top = pause.stack.last {
+            show(top)
+        }
+    }
+
+    /// Reads the open project's run history again.
+    public func loadRuns() {
+        runs = (try? workspace?.runs(project: project)) ?? []
+    }
+
+    /// Forgets the open project's runs.
+    public func clearRuns() {
+        do {
+            try workspace?.clearRuns(project: project)
+        } catch {
+            self.error = Self.message(error)
+        }
+        loadRuns()
+    }
+
+    /// Opens a traceback's file at its line.
+    public func show(_ frame: TracebackFrame) {
+        open(file: frame.file)
+        if openFile == frame.file {
+            lineRequest = PythonLineRequest(line: Int(frame.line))
+        }
     }
 
     /// Shows what the run sent since the last batch.
@@ -594,12 +897,26 @@ public final class PythonLabModel {
                 console.append(text, as: .output)
             case .error(let text):
                 console.append(text, as: .error)
+            case .debugPaused(let json):
+                paused(json)
             case .waitingForInput:
-                waitingForInput = true
+                if debugPause != nil {
+                    // The debugger reads its command, not the script.
+                    awaitingDebugCommand = true
+                } else {
+                    waitingForInput = true
+                }
                 activity.labWaitingForInput = true
             case .inputEnded(let line):
-                waitingForInput = false
                 activity.labWaitingForInput = false
+                if debugPause != nil {
+                    // A command, not an answer: nothing for the console.
+                    awaitingDebugCommand = false
+                    debugPause = nil
+                    if line == nil { isDebugging = false }
+                    continue
+                }
+                waitingForInput = false
                 if let line {
                     console.append(line + "\n", as: .input)
                 }
@@ -626,10 +943,10 @@ public final class PythonLabModel {
         }
     }
 
-    /// Reads the project's images again (after a delete, or on opening).
+    /// Reads the project's outputs again (after a delete, or on opening).
     public func loadArtifacts() {
         guard let projectFolder else { return }
-        artifacts = projectArtifacts(project: projectFolder)
+        artifacts = projectOutputs(project: projectFolder)
     }
 
     /// Where an artifact is, to show or share it.

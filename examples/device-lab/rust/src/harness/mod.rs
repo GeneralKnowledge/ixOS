@@ -503,24 +503,29 @@ impl BonsaiHarness {
         self.start(Arc::new(ScriptBrain::new(evidence::script(task.id))), task)
     }
 
-    /// Starts a task in the person's own words, in the scratch project
-    /// (kept between tasks).
+    /// Starts a task in the person's own words, in their Python Lab
+    /// project `project` (`scratch` by default; kept between tasks), so
+    /// Bonsai works on the person's files and they open its work in Python
+    /// Lab (python-lab-workspace-plan.md, PL1e).
     pub fn start_custom(
         &self,
         model: Arc<dyn HarnessModel>,
         request: String,
+        project: String,
     ) -> Result<(), HarnessError> {
-        self.start_request(Arc::new(HostBrain(model)), request, false)
+        self.start_request(Arc::new(HostBrain(model)), request, &project, false)
     }
 
     /// Plans a task in the person's own words as several tasks, then runs
-    /// them (after approval, when that's on), in the scratch project.
+    /// them (after approval, when that's on), in the person's Python Lab
+    /// project `project`, as [`Self::start_custom`] does.
     pub fn start_custom_plan(
         &self,
         model: Arc<dyn HarnessModel>,
         request: String,
+        project: String,
     ) -> Result<(), HarnessError> {
-        self.start_request(Arc::new(HostBrain(model)), request, true)
+        self.start_request(Arc::new(HostBrain(model)), request, &project, true)
     }
 
     /// Runs the plan on screen: approves it, or resumes it from its last
@@ -742,8 +747,12 @@ impl BonsaiHarness {
         }
     }
 
+    /// A person's project: named as Python Lab names them (any letters,
+    /// spaces; never hidden, never a ladder task's name).
     fn project_root(&self, name: &str) -> Result<PathBuf, HarnessError> {
-        calls::check_path(name).map_err(|reason| HarnessError::Storage { reason })?;
+        let name = crate::workspace::project_name(name).map_err(|err| HarnessError::Storage {
+            reason: err.to_string(),
+        })?;
         Ok(self.projects.join(name))
     }
 
@@ -787,13 +796,22 @@ impl BonsaiHarness {
         &self,
         brain: Arc<dyn Brain>,
         request: String,
+        project: &str,
         planned: bool,
     ) -> Result<(), HarnessError> {
         let request = request.trim().to_string();
         if request.is_empty() {
             return Err(HarnessError::EmptyTask);
         }
-        let root = self.project_root(SCRATCH_PROJECT)?;
+        let root = self.project_root(project)?;
+        // Only scratch is made when missing: any other project is one the
+        // person made in Python Lab, and a missing one was renamed or
+        // deleted there.
+        if project != SCRATCH_PROJECT && !root.is_dir() {
+            return Err(HarnessError::Storage {
+                reason: format!("There is no project called {project} any more. Choose another."),
+            });
+        }
         let lab = PythonLab::new(
             root.clone(),
             Arc::clone(&self.python),
@@ -818,7 +836,7 @@ impl BonsaiHarness {
                 criteria: vec![Criterion::WorkRuns],
             }
         };
-        self.launch(brain, Arc::new(lab), SCRATCH_PROJECT, job)
+        self.launch(brain, Arc::new(lab), project, job)
     }
 
     /// `model`, or the Scripted model picking up its answers where the
