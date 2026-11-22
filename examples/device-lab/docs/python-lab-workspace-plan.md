@@ -163,6 +163,7 @@ Each PR's Swift goes into the one combined Device Lab build through the merge th
 5. (PL1a, PL1b) Rename and delete a project; `scratch` can't be deleted.
 6. (PL1e) In Python Lab, create a project `handoff`, then in Bonsai Harness choose `handoff` as the project and ask "write hello.py that prints hi and run it"; tap Open in Python Lab and run hello.py. (Ladder tasks stay in the hidden `.ladder` folder; T1 is run separately as in the Bonsai plan.)
 7. (any build) Left over from P1: the SVG `<script>` and `https://` check, the thumbnail refreshing after a rerun, `sum(range(10**10))` past the limit, and ladder task T-P1 (`tp1-svg-chart`) with the Scripted model and with Bonsai 4B. Each gets its own row in the results table.
+8. (PL2e) An HTML output whose page has `<meta http-equiv="refresh" content="0; url=https://example.com">` opens in the preview and stays there: no navigation, nothing loaded from the network.
 
 Each result is recorded passed or failed from what Reuben sees, in this document's results table, none assumed.
 
