@@ -10,7 +10,7 @@ Device Lab (Apps, then Sketchbook) and on its own.
 | Step | What | State |
 |---|---|---|
 | S1 | Rust core (`rust/`): sketches, layers, one undo history per sketch, export plans | Done, tested on Linux |
-| S2 | SwiftUI app: sketch grid, PencilKit canvas per layer, layer panel, PNG/PDF export with Save to Photos, Share and Quick Look, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
+| S2 | SwiftUI app: sketch grid, PencilKit canvas per layer, layer panel, PNG/PDF export with Save to Photos, Share and Quick Look, hosted in Device Lab | Compiled for the iPhone in every combined Device Lab build; never yet tried on the phone (SK-1, `uitests/smoke.toml`) |
 
 ## How the work is split
 
