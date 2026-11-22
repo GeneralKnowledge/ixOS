@@ -90,16 +90,29 @@ public final class PythonPackagesModel {
         isWorking = true
         error = nil
         log = []
-        var have = Set((installed + bundled).map { packageNormalizedName(name: $0.name) })
+        // What is here already, by name, with what it needs.
+        var present: [String: InstalledPackage] = [:]
+        for package in installed {
+            present[packageNormalizedName(name: package.name)] = package
+        }
+        // Built in: never installed, and what they need is the build's job.
+        let builtIn = Set(bundled.map { packageNormalizedName(name: $0.name) })
         // The one asked for is installed again (an upgrade) even if here.
-        have.remove(packageNormalizedName(name: requested))
+        present[packageNormalizedName(name: requested)] = nil
+        // Each name once, so a cycle of requirements ends.
+        var visited: Set<String> = []
         var queue = [requested]
         var count = 0
         while let next = queue.first {
             queue.removeFirst()
             let key = packageNormalizedName(name: next)
-            if have.contains(key) { continue }
-            have.insert(key)
+            guard visited.insert(key).inserted, !builtIn.contains(key) else { continue }
+            if let here = present[key] {
+                // Not downloaded again, but what it needs is checked: a
+                // requirement an earlier install couldn't finish is retried.
+                queue += here.requires
+                continue
+            }
             count += 1
             if count > Self.maxPackages {
                 error = "Stopped after \(Self.maxPackages) packages: \(requested) needs too many."
@@ -108,7 +121,7 @@ public final class PythonPackagesModel {
             do {
                 let package = try await installOne(next)
                 log.append("Installed \(package.name) \(package.version)")
-                queue += package.requires.filter { !have.contains(packageNormalizedName(name: $0)) }
+                queue += package.requires
             } catch {
                 self.error = next == requested
                     ? Self.message(error)
@@ -147,6 +160,8 @@ public final class PythonPackagesModel {
     /// Removes a package the person installed. One already imported keeps
     /// working until Device Lab restarts.
     public func remove(_ package: InstalledPackage) {
+        // An install in progress counts on what is here when it started.
+        guard !isWorking else { return }
         do {
             try packageUninstall(sitePackages: sitePackages, name: package.name)
             error = nil

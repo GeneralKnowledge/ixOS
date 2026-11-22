@@ -31,7 +31,11 @@ struct PythonLabView: View {
                     text: $model.code,
                     isEditable: !(model.hasWorkspace && model.openFile == nil) && !model.isLockedByBonsai,
                     accessibilityLabel: model.openFile.map { "Python file \($0)" } ?? "Python script",
-                    goTo: model.lineRequest)
+                    goTo: model.lineRequest,
+                    breakpoints: model.breakpointLines,
+                    pausedLine: model.pausedLine,
+                    onToggleBreakpoint: model.hasWorkspace && model.openFile != nil
+                        ? { model.toggleBreakpoint(line: $0) } : nil)
                     .frame(minHeight: 320)
                     .listRowInsets(EdgeInsets())
                 Menu {
@@ -52,13 +56,20 @@ struct PythonLabView: View {
                     }
                     .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil) || model.isLockedByBonsai)
                     .accessibilityIdentifier("pythonLab.run")
+                    if model.hasWorkspace {
+                        Button(debugTitle, systemImage: "ladybug") {
+                            Task { await model.run(debugging: true) }
+                        }
+                        .disabled(!model.hasPython || model.fileToRun == nil || model.isLockedByBonsai)
+                        .accessibilityIdentifier("pythonLab.debug")
+                    }
                 }
             } header: {
                 Text(model.openFile ?? "Script")
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     saveLine
-                    Text("Runs on this iPhone with CPython. If the last line is an expression, its value is shown. A script is stopped after \(model.timeLimit.components.seconds) s of running; time spent waiting for your answer to input() doesn't count.")
+                    Text("Runs on this iPhone with CPython. If the last line is an expression, its value is shown. A script is stopped after \(model.timeLimit.components.seconds) s of running; time spent waiting for your answer to input() doesn't count." + (model.hasWorkspace ? " Tap a line number to set a breakpoint, then Debug to pause there." : ""))
                 }
             }
             if let error = model.error ?? model.listError {
@@ -66,6 +77,9 @@ struct PythonLabView: View {
                     Text(error).font(.footnote).forgeForeground(.danger)
                         .accessibilityIdentifier("pythonLab.error")
                 }
+            }
+            if model.isDebugging {
+                PythonDebugSection(model: model)
             }
             consoleSection
             if model.hasWorkspace {
@@ -98,6 +112,9 @@ struct PythonLabView: View {
         .task {
             model.reloadProjects()
             model.loadArtifacts()
+            // Bonsai may have changed the open file while this screen was
+            // closed; edits not yet saved are kept.
+            model.reloadFromDisk()
             await model.prepare()
         }
         .onDisappear { model.flush() }
@@ -235,6 +252,15 @@ struct PythonLabView: View {
     private func sendAnswer() {
         if model.sendInput(answer) {
             answer = ""
+        }
+    }
+
+    /// "Debug", or how many breakpoints it stops at.
+    private var debugTitle: String {
+        switch model.breakpoints.count {
+        case 0: "Debug"
+        case 1: "Debug (1 breakpoint)"
+        case let n: "Debug (\(n) breakpoints)"
         }
     }
 
@@ -661,6 +687,7 @@ struct PythonPackagesView: View {
                             Button("Remove", systemImage: "trash", role: .destructive) {
                                 model.remove(package)
                             }
+                            .disabled(model.isWorking)
                             .accessibilityIdentifier("pythonLab.packages.remove")
                         }
                 }
@@ -797,5 +824,90 @@ struct PythonFileTabs: View {
         .foregroundStyle(current ? theme.colors.tone(.accent).text : theme.colors.textSecondary)
         .buttonStyle(.borderless)
         .id(path)
+    }
+}
+
+/// While Debug runs (PL2f): where it paused, the controls, the paused
+/// frame's variables and the call stack. Tapping a frame opens its line.
+struct PythonDebugSection: View {
+    @Bindable var model: PythonLabModel
+
+    var body: some View {
+        Section {
+            if let pause = model.debugPause, let top = pause.stack.last {
+                Button {
+                    model.show(top)
+                } label: {
+                    LabeledContent("Paused at", value: "\(top.file), line \(top.line) in \(top.function)")
+                }
+                .accessibilityIdentifier("pythonLab.debug.location")
+                controls
+                if pause.variables.isEmpty {
+                    Text("No variables here yet.").foregroundStyle(.secondary)
+                        .accessibilityIdentifier("pythonLab.debug.noVariables")
+                }
+                ForEach(pause.variables, id: \.name) { variable in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(variable.name).font(.body.monospaced())
+                            Spacer()
+                            Text(variable.kind).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Text(variable.value)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(4)
+                            .textSelection(.enabled)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("pythonLab.debug.variable.\(variable.name)")
+                }
+                if pause.moreVariables {
+                    Text("Only the first 100 variables are shown.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if pause.stack.count > 1 {
+                    DisclosureGroup("Call Stack (\(pause.stack.count))") {
+                        ForEach(Array(pause.stack.reversed().enumerated()), id: \.offset) { index, frame in
+                            Button("\(frame.function), \(frame.file) line \(frame.line)") {
+                                model.show(frame)
+                            }
+                            .font(.footnote.monospaced())
+                            .accessibilityIdentifier("pythonLab.debug.frame.\(index)")
+                        }
+                    }
+                    .accessibilityIdentifier("pythonLab.debug.stack")
+                }
+            } else {
+                Label("Running until a breakpoint…", systemImage: "ladybug")
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("pythonLab.debug.running")
+            }
+        } header: {
+            Text("Debug")
+        } footer: {
+            Text("Step Over runs this line; Step Into goes into a function it calls; Step Out runs to the caller. Only your project's files pause. Breakpoints stay on their line numbers as you edit.")
+        }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 8) {
+            control("Continue", "play.fill", .continue, id: "continue")
+            control("Step Over", "arrow.turn.down.right", .next, id: "next")
+            control("Step Into", "arrow.down.to.line", .step, id: "step")
+            control("Step Out", "arrow.up.to.line", .out, id: "out")
+        }
+        .buttonStyle(.bordered)
+        .labelStyle(.iconOnly)
+        .disabled(!model.awaitingDebugCommand)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func control(
+        _ title: String, _ symbol: String, _ command: PythonLabModel.DebugCommand, id: String
+    ) -> some View {
+        Button(title, systemImage: symbol) { model.debug(command) }
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("pythonLab.debug.\(id)")
     }
 }

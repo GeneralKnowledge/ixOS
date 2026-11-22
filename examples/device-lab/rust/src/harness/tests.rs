@@ -1432,6 +1432,38 @@ fn a_write_over_a_file_changed_since_bonsai_read_it_is_refused() {
 }
 
 #[test]
+fn a_run_does_not_forgive_an_earlier_outside_change() {
+    if !has_python() {
+        return;
+    }
+    let (_dir, lab) = seeded("t1-hello");
+    assert!(
+        lab.execute(&call(
+            r#"{"tool": "write_file", "path": "notes.txt", "content": "one\n"}"#
+        ))
+        .ok
+    );
+    std::fs::write(lab.root().join("notes.txt"), "mine\n").unwrap();
+    // A run that fails at once, and one that leaves notes.txt alone.
+    let _ = lab.execute(&call(r#"{"tool": "run_python", "path": "missing.py"}"#));
+    assert!(
+        lab.execute(&call(
+            r#"{"tool": "write_file", "path": "quiet.py", "content": "x = 1\n"}"#
+        ))
+        .ok
+    );
+    let _ = lab.execute(&call(r#"{"tool": "run_python", "path": "quiet.py"}"#));
+    let refused = lab.execute(&call(
+        r#"{"tool": "write_file", "path": "notes.txt", "content": "two\n"}"#,
+    ));
+    assert!(!refused.ok, "{}", refused.text);
+    assert_eq!(
+        std::fs::read_to_string(lab.root().join("notes.txt")).unwrap(),
+        "mine\n"
+    );
+}
+
+#[test]
 fn what_bonsais_own_script_changes_is_not_an_outside_change() {
     if !has_python() {
         return;
@@ -1538,7 +1570,7 @@ fn outputs_list_every_kind_but_python() {
 
 #[test]
 fn tables_read_like_python_csv_writes_them() {
-    use super::artifacts::{parse_table, CELL_MAX_CHARS, TABLE_MAX_ROWS};
+    use super::artifacts::{parse_table, CELL_MAX_CHARS, TABLE_MAX_COLUMNS, TABLE_MAX_ROWS};
     let table = parse_table(
         "\u{feff}name,note\r\nAda,\"likes, commas\"\r\nBo,\"said \"\"hi\"\"\nthen left\"\r\n",
         ',',
@@ -1560,11 +1592,19 @@ fn tables_read_like_python_csv_writes_them() {
     assert_eq!(tsv.rows, vec![vec!["a", "b"], vec!["1", ""]]);
 
     let long = "x".repeat(CELL_MAX_CHARS + 5);
-    let many: String = (0..TABLE_MAX_ROWS + 10).map(|n| format!("{n},{long}\n")).collect();
+    let many: String = (0..TABLE_MAX_ROWS + 10)
+        .map(|n| format!("{n},{long}\n"))
+        .collect();
     let big = parse_table(&many, ',', true);
     assert_eq!(big.rows.len(), TABLE_MAX_ROWS);
     assert_eq!(big.total_rows, (TABLE_MAX_ROWS + 10) as u64);
     assert!(big.cut && big.partial);
+    let wide: String = (0..TABLE_MAX_COLUMNS + 100)
+        .map(|n| format!("{n},"))
+        .collect();
+    let wide = parse_table(&wide, ',', false);
+    assert_eq!(wide.rows[0].len(), TABLE_MAX_COLUMNS);
+    assert!(wide.cut);
     assert_eq!(big.rows[0][1].chars().count(), CELL_MAX_CHARS + 1);
 }
 
@@ -1580,7 +1620,10 @@ fn json_is_indented_and_text_is_cut_at_a_character() {
 
     let broken = dir.path().join("broken.json");
     std::fs::write(&broken, "{not json").unwrap();
-    assert_eq!(artifact_text(broken.to_string_lossy().into()).unwrap().text, "{not json");
+    assert_eq!(
+        artifact_text(broken.to_string_lossy().into()).unwrap().text,
+        "{not json"
+    );
 
     let long = dir.path().join("long.txt");
     std::fs::write(&long, "é".repeat(TEXT_MAX_BYTES)).unwrap();
@@ -1589,4 +1632,170 @@ fn json_is_indented_and_text_is_cut_at_a_character() {
     assert!(cut.text.len() <= TEXT_MAX_BYTES);
 
     assert!(artifact_text(dir.path().join("missing.txt").to_string_lossy().into()).is_err());
+}
+
+/// Runs `path` under Python Lab's debugger with `breakpoints`, answering
+/// each pause with the next of `commands`. A stand-in `_devicelab_io`
+/// prints each pause as `PAUSE <json>`. Returns (ok, stdout, stderr).
+fn debug_run(
+    project: &std::path::Path,
+    path: &str,
+    breakpoints: &[(&str, u32)],
+    commands: &[&str],
+) -> (bool, String, String) {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    const HOST: &str = "import sys, types, traceback\nio = types.ModuleType('_devicelab_io')\ndef _write(kind, text):\n    if kind == 6:\n        sys.__stdout__.write('PAUSE ' + text + '\\n')\n    else:\n        (sys.__stdout__ if kind == 1 else sys.__stderr__).write(text)\nio.write = _write\nio.readline = lambda: sys.__stdin__.readline()\nsys.modules['_devicelab_io'] = io\ntry:\n    exec(compile(sys.argv[1], '<console>', 'exec'), {'__name__': '__devicelab__'})\nexcept BaseException as e:\n    if not getattr(e, '_devicelab_shown', False):\n        traceback.print_exc()\n    sys.exit(1)\n";
+    let breakpoints = breakpoints
+        .iter()
+        .map(|(file, line)| crate::workspace::DebugBreakpoint {
+            file: file.to_string(),
+            line: *line,
+        })
+        .collect();
+    let script = super::python_lab::python_lab_debug_script(
+        project.display().to_string(),
+        path.into(),
+        breakpoints,
+    );
+    let mut child = Command::new("python3")
+        .arg("-I")
+        .arg("-c")
+        .arg(HOST)
+        .arg(&script)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let input: String = commands.iter().map(|c| format!("{c}\n")).collect();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+fn pauses(stdout: &str) -> Vec<super::python_lab::DebugPause> {
+    stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix("PAUSE "))
+        .map(|j| super::python_lab::python_debug_pause(j.to_string()).expect("a pause"))
+        .collect()
+}
+
+fn at(pause: &super::python_lab::DebugPause) -> (String, u32, String) {
+    let top = pause.stack.last().unwrap();
+    (top.file.clone(), top.line, top.function.clone())
+}
+
+#[test]
+fn debug_pauses_on_breakpoints_and_steps() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("lib")).unwrap();
+    std::fs::write(
+        root.join("lib/helper.py"),
+        "def half(n):\n    result = n / 2\n    return result\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("main.py"),
+        "import json\nfrom lib.helper import half\ntotal = 10\nitems = [1, 2, 3]\nx = half(total)\ny = json.dumps(items)\nprint('done', x, y)\n",
+    )
+    .unwrap();
+    // Pause on line 5, step into half, step over a line, out, then continue.
+    // The json module's own lines never pause.
+    let (ok, out, err) = debug_run(
+        root,
+        "main.py",
+        &[("main.py", 5)],
+        &["step", "next", "out", "continue"],
+    );
+    assert!(ok, "{out}{err}");
+    assert!(out.contains("done 5.0 [1, 2, 3]"), "{out}");
+    let p = pauses(&out);
+    let places: Vec<_> = p.iter().map(at).collect();
+    assert_eq!(
+        places,
+        [
+            ("main.py".into(), 5, "<module>".into()),
+            ("lib/helper.py".into(), 2, "half".into()),
+            ("lib/helper.py".into(), 3, "half".into()),
+            // Out of half: the caller's next line.
+            ("main.py".into(), 6, "<module>".into()),
+        ],
+        "{out}"
+    );
+    // Module variables, without modules or functions.
+    let names: Vec<_> = p[0].variables.iter().map(|v| v.name.as_str()).collect();
+    assert_eq!(names, ["total", "items"]);
+    assert_eq!(p[0].variables[1].kind, "list");
+    assert_eq!(p[0].variables[1].value, "[1, 2, 3]");
+    // In half: its argument, then its local once set.
+    assert_eq!(p[1].stack.len(), 2);
+    assert_eq!(p[2].variables[1].name, "result");
+    assert_eq!(p[2].variables[1].value, "5.0");
+}
+
+#[test]
+fn debug_without_a_reachable_breakpoint_just_runs() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(
+        root.join("main.py"),
+        "print('one')\nif False:\n    print('never')\nprint('two')\n",
+    )
+    .unwrap();
+    let (ok, out, err) = debug_run(root, "main.py", &[("main.py", 3)], &[]);
+    assert!(ok, "{out}{err}");
+    assert_eq!(out, "one\ntwo\n");
+    // A breakpoint on the first line pauses there; an empty command continues.
+    let (ok, out, _) = debug_run(root, "main.py", &[("main.py", 1)], &[""]);
+    assert!(ok);
+    assert_eq!(pauses(&out).len(), 1);
+    assert!(out.ends_with("one\ntwo\n"), "{out}");
+}
+
+#[test]
+fn debug_errors_still_show_the_projects_traceback() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("main.py"), "a = 1\nb = 0\nprint(a / b)\n").unwrap();
+    let (ok, out, err) = debug_run(root, "main.py", &[("main.py", 2)], &["continue"]);
+    assert!(!ok);
+    assert_eq!(pauses(&out).len(), 1);
+    assert!(err.contains("File \"main.py\", line 3"), "{err}");
+    assert!(err.contains("ZeroDivisionError"), "{err}");
+    let frames = super::python_lab::python_traceback_frames(err);
+    assert_eq!(frames.len(), 1);
+}
+
+#[test]
+fn debug_pause_json_is_read() {
+    use super::python_lab::python_debug_pause;
+    assert!(python_debug_pause("not json".into()).is_none());
+    assert!(python_debug_pause(r#"{"stack": [], "variables": []}"#.into()).is_none());
+    let pause = python_debug_pause(
+        r#"{"stack": [{"file": "main.py", "line": 2, "function": "<module>"}], "variables": [{"name": "x", "kind": "int", "value": "1"}], "more": true}"#.into(),
+    )
+    .unwrap();
+    assert_eq!(pause.variables[0].value, "1");
+    assert!(pause.more_variables);
 }

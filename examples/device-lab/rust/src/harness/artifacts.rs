@@ -260,6 +260,12 @@ pub fn parse_table(text: &str, separator: char, partial: bool) -> ArtifactTable 
         }
     };
     let push_cell = |cell: &mut String, row: &mut Vec<String>, cut: &mut bool| {
+        // Cells past the last column shown are counted out, never kept.
+        if row.len() >= TABLE_MAX_COLUMNS {
+            cell.clear();
+            *cut = true;
+            return;
+        }
         if cell.chars().count() > CELL_MAX_CHARS {
             // cut: a preview cell, ending in "…"; `cut` makes the screen say so
             *cell = cell.chars().take(CELL_MAX_CHARS).collect::<String>() + "…";

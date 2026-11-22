@@ -1507,9 +1507,19 @@ RustBuffer uniffi_forge_ffi_fn_func_project_artifacts(RustBuffer project, RustCa
 RustBuffer uniffi_forge_ffi_fn_func_project_outputs(RustBuffer project, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_DEBUG_PAUSE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_DEBUG_PAUSE
+RustBuffer uniffi_forge_ffi_fn_func_python_debug_pause(RustBuffer json, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_CONSOLE_SCRIPT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_CONSOLE_SCRIPT
 RustBuffer uniffi_forge_ffi_fn_func_python_lab_console_script(RustBuffer project, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_DEBUG_SCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_DEBUG_SCRIPT
+RustBuffer uniffi_forge_ffi_fn_func_python_lab_debug_script(RustBuffer project, RustBuffer path, RustBuffer breakpoints, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PYTHON_LAB_FILE_SCRIPT
@@ -1984,9 +1994,21 @@ uint16_t uniffi_forge_ffi_checksum_func_project_outputs(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_DEBUG_PAUSE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_DEBUG_PAUSE
+uint16_t uniffi_forge_ffi_checksum_func_python_debug_pause(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_CONSOLE_SCRIPT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_CONSOLE_SCRIPT
 uint16_t uniffi_forge_ffi_checksum_func_python_lab_console_script(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_DEBUG_SCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_PYTHON_LAB_DEBUG_SCRIPT
+uint16_t uniffi_forge_ffi_checksum_func_python_lab_debug_script(void
     
 );
 #endif

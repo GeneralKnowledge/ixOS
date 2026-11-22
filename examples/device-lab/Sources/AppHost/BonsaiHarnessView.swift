@@ -139,7 +139,14 @@ struct BonsaiHarnessView: View {
             TextField("Your own task", text: $model.request, axis: .vertical)
                 .lineLimit(2...5)
                 .accessibilityIdentifier("harness.request")
-            Button("Run My Task", systemImage: "play.fill") { model.runRequest() }
+            Button("Run My Task", systemImage: "play.fill") {
+                // Python Lab's last second of typing is saved before Bonsai
+                // reads the project. A save that fails shows in Python Lab and
+                // the task still starts; the unsaved text stays on screen
+                // there, and Python Lab keeps it rather than reload over it.
+                pythonLab?.flush()
+                model.runRequest()
+            }
                 .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.runRequest")
         } header: {

@@ -320,6 +320,11 @@ fn unmatched_and_mismatched_brackets_have_no_partner() {
     assert_eq!(bracket("print(|1"), Some((5, None)));
     assert_eq!(bracket("(1]|"), Some((2, None)));
     assert_eq!(bracket("(|1]"), Some((0, None)));
+    // A wrong pair inside isn't skipped over; right nesting still pairs.
+    assert_eq!(bracket("(|[})"), Some((0, None)));
+    assert_eq!(bracket("([})|"), Some((3, None)));
+    assert_eq!(bracket("(|[])"), Some((0, Some(3))));
+    assert_eq!(bracket("([])|"), Some((3, Some(0))));
     // UTF-16 offsets after characters outside the BMP.
     assert_eq!(bracket("s = '😀'; f(|)"), Some((11, Some(12))));
 }

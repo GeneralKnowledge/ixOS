@@ -238,8 +238,9 @@ fn real_pypi_packages_install() {
         return;
     };
     let dir = Path::new(&dir);
-    let site = dir.join("site");
-    let _ = fs::remove_dir_all(&site);
+    // PYPI_DIR is only read; the packages go into a fresh folder.
+    let install_root = tempfile::tempdir().unwrap();
+    let site = install_root.path().join("site");
     let mut queue: Vec<String> = std::env::var("PYPI_NAMES")
         .unwrap()
         .split(',')
@@ -265,4 +266,100 @@ fn real_pypi_packages_install() {
         );
         queue.extend(installed.requires);
     }
+}
+
+#[test]
+fn purelib_files_install_and_uninstall_where_they_went() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let (path, sum) = wheel(
+        dir.path(),
+        "data-pkg",
+        "1.0",
+        &[
+            ("data_pkg/__init__.py", ""),
+            ("data_pkg-1.0.data/purelib/data_extra.py", "Z = 3\n"),
+            ("data_pkg-1.0.data/scripts/tool", "#!/bin/sh\n"),
+        ],
+        &[],
+        true,
+    );
+    let site_text = site.display().to_string();
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    assert!(site.join("data_extra.py").exists());
+    assert!(!site.join("tool").exists());
+    package_uninstall(site_text, "data-pkg".into()).unwrap();
+    assert!(!site.join("data_extra.py").exists());
+    assert_eq!(fs::read_dir(&site).unwrap().count(), 0);
+}
+
+#[test]
+fn a_purelib_path_never_climbs_out_of_site_packages() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("lib/site");
+    let (path, sum) = wheel(
+        dir.path(),
+        "sneaky",
+        "1.0",
+        &[("sneaky-1.0.data/purelib/sub/../../../escaped.py", "X = 1\n")],
+        &[],
+        true,
+    );
+    // zip resolves the `..` first (to `escaped.py`, at the top), and the
+    // installer checks the path again after taking `.data/purelib/` off:
+    // either way nothing lands outside site-packages.
+    let _ = package_install_wheel(path, sum, site.display().to_string());
+    assert!(!dir.path().join("escaped.py").exists());
+    assert!(!dir.path().join("lib/escaped.py").exists());
+}
+
+#[test]
+fn uninstalling_leaves_files_another_package_owns() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = dir.path().join("site");
+    let site_text = site.display().to_string();
+    let (path, sum) = wheel(
+        dir.path(),
+        "keeper",
+        "1.0",
+        &[("keeper/__init__.py", "K = 1\n")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    let (path, sum) = wheel(
+        dir.path(),
+        "liar",
+        "1.0",
+        &[("liar/__init__.py", "")],
+        &[],
+        true,
+    );
+    package_install_wheel(path, sum, site_text.clone()).unwrap();
+    // As if an older build kept the wheel's own RECORD, claiming keeper's file.
+    let record = site.join("liar-1.0.dist-info/RECORD");
+    let mut text = fs::read_to_string(&record).unwrap();
+    text += "keeper/__init__.py,,\n";
+    fs::write(&record, text).unwrap();
+    package_uninstall(site_text, "liar".into()).unwrap();
+    assert!(site.join("keeper/__init__.py").exists());
+    assert!(!site.join("liar").exists());
+}
+
+#[test]
+fn requires_python_is_checked() {
+    assert!(python_allowed(""));
+    assert!(python_allowed(">=3.9"));
+    assert!(python_allowed(">=3.8, <4"));
+    assert!(python_allowed("!=3.0.*,!=3.1.*,>=2.7"));
+    assert!(!python_allowed(">=3.16"));
+    assert!(!python_allowed("<3.12"));
+    assert!(!python_allowed("!=3.15.*"));
+    let json = r#"{
+      "info": {"name": "future", "version": "9.0", "requires_python": ">=3.16"},
+      "urls": [
+        {"filename": "future-9.0-py3-none-any.whl", "packagetype": "bdist_wheel", "url": "https://files/f.whl", "digests": {"sha256": "AA"}, "size": 10}
+      ]}"#;
+    let err = package_choose_wheel("future".into(), json.into()).unwrap_err();
+    assert!(err.to_string().contains("needs Python >=3.16"), "{err}");
 }

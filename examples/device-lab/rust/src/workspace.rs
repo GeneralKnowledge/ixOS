@@ -117,6 +117,18 @@ pub struct WorkspaceState {
     /// Files open, in order.
     #[serde(default)]
     pub open_files: Vec<String>,
+    /// Where Debug pauses (PL2f).
+    #[serde(default)]
+    pub breakpoints: Vec<DebugBreakpoint>,
+}
+
+/// A line Debug pauses on, in a file of the project.
+#[derive(uniffi::Record, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DebugBreakpoint {
+    /// Relative to the project.
+    pub file: String,
+    /// 1 is the first line.
+    pub line: u32,
 }
 
 /// The person's projects. Thread-safe: every call goes to the disk.
@@ -364,6 +376,7 @@ impl Workspace {
         state.open_files.retain(present);
         state.current_file = state.current_file.filter(present);
         state.run_file = state.run_file.filter(present);
+        state.breakpoints.retain(|b| b.line > 0 && present(&b.file));
         Ok(state)
     }
 
@@ -1225,11 +1238,28 @@ mod tests {
             run_file: Some(s("main.py")),
             current_file: Some(s("gone.py")),
             open_files: vec![s("main.py"), s("gone.py")],
+            breakpoints: vec![
+                DebugBreakpoint {
+                    file: s("main.py"),
+                    line: 3,
+                },
+                DebugBreakpoint {
+                    file: s("gone.py"),
+                    line: 1,
+                },
+            ],
         };
         ws.save_state(p.clone(), state).unwrap();
         ws.delete_entry(p.clone(), s("gone.py")).unwrap();
         let back = ws.state(p.clone()).unwrap();
         assert_eq!(back.run_file.as_deref(), Some("main.py"));
+        assert_eq!(
+            back.breakpoints,
+            [DebugBreakpoint {
+                file: s("main.py"),
+                line: 3
+            }]
+        );
         assert_eq!(back.current_file, None);
         assert_eq!(back.open_files, [s("main.py")]);
         // The state folder isn't a file of the project.

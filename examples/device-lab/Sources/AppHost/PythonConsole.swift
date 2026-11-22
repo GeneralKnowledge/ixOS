@@ -16,6 +16,9 @@ public enum PythonConsoleEvent: Sendable, Equatable {
     /// `input()` stopped waiting: with the answer it got, or nil when Stop
     /// cancelled it.
     case inputEnded(String?)
+    /// Debug paused (PL2f): the JSON `pythonDebugPause` reads. The
+    /// debugger then waits for its command as `input()` would.
+    case debugPaused(String)
 }
 
 /// Asks the editor to show a line (1 is the first), once per request.

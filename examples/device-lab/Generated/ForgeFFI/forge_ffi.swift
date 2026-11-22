@@ -8762,6 +8762,221 @@ public func FfiConverterTypeConnectivityStatus_lower(_ value: ConnectivityStatus
 
 
 /**
+ * A line Debug pauses on, in a file of the project.
+ */
+public struct DebugBreakpoint: Equatable, Hashable {
+    /**
+     * Relative to the project.
+     */
+    public var file: String
+    /**
+     * 1 is the first line.
+     */
+    public var line: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Relative to the project.
+         */file: String, 
+        /**
+         * 1 is the first line.
+         */line: UInt32) {
+        self.file = file
+        self.line = line
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DebugBreakpoint: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDebugBreakpoint: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DebugBreakpoint {
+        return
+            try DebugBreakpoint(
+                file: FfiConverterString.read(from: &buf), 
+                line: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DebugBreakpoint, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.file, into: &buf)
+        FfiConverterUInt32.write(value.line, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugBreakpoint_lift(_ buf: RustBuffer) throws -> DebugBreakpoint {
+    return try FfiConverterTypeDebugBreakpoint.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugBreakpoint_lower(_ value: DebugBreakpoint) -> RustBuffer {
+    return FfiConverterTypeDebugBreakpoint.lower(value)
+}
+
+
+/**
+ * Where Debug paused and what it sees (PL2f), from the JSON line
+ * `python_lab_debug_script` writes.
+ */
+public struct DebugPause: Equatable, Hashable {
+    /**
+     * The project's frames, outermost first; the last is where it paused.
+     */
+    public var stack: [TracebackFrame]
+    /**
+     * The paused frame's variables (not modules, functions or classes),
+     * each shown as `repr` cut short.
+     */
+    public var variables: [DebugVariable]
+    /**
+     * There were more than the 100 shown.
+     */
+    public var moreVariables: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The project's frames, outermost first; the last is where it paused.
+         */stack: [TracebackFrame], 
+        /**
+         * The paused frame's variables (not modules, functions or classes),
+         * each shown as `repr` cut short.
+         */variables: [DebugVariable], 
+        /**
+         * There were more than the 100 shown.
+         */moreVariables: Bool) {
+        self.stack = stack
+        self.variables = variables
+        self.moreVariables = moreVariables
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DebugPause: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDebugPause: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DebugPause {
+        return
+            try DebugPause(
+                stack: FfiConverterSequenceTypeTracebackFrame.read(from: &buf), 
+                variables: FfiConverterSequenceTypeDebugVariable.read(from: &buf), 
+                moreVariables: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DebugPause, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeTracebackFrame.write(value.stack, into: &buf)
+        FfiConverterSequenceTypeDebugVariable.write(value.variables, into: &buf)
+        FfiConverterBool.write(value.moreVariables, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugPause_lift(_ buf: RustBuffer) throws -> DebugPause {
+    return try FfiConverterTypeDebugPause.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugPause_lower(_ value: DebugPause) -> RustBuffer {
+    return FfiConverterTypeDebugPause.lower(value)
+}
+
+
+public struct DebugVariable: Equatable, Hashable {
+    public var name: String
+    /**
+     * Its type's name, like `int` or `list`.
+     */
+    public var kind: String
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, 
+        /**
+         * Its type's name, like `int` or `list`.
+         */kind: String, value: String) {
+        self.name = name
+        self.kind = kind
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DebugVariable: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDebugVariable: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DebugVariable {
+        return
+            try DebugVariable(
+                name: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DebugVariable, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugVariable_lift(_ buf: RustBuffer) throws -> DebugVariable {
+    return try FfiConverterTypeDebugVariable.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugVariable_lower(_ value: DebugVariable) -> RustBuffer {
+    return FfiConverterTypeDebugVariable.lower(value)
+}
+
+
+/**
  * A URL the app was opened with (custom scheme, universal link
  * or notification tap), split into parts.
  */
@@ -12477,6 +12692,10 @@ public struct WorkspaceState: Equatable, Hashable {
      * Files open, in order.
      */
     public var openFiles: [String]
+    /**
+     * Where Debug pauses (PL2f).
+     */
+    public var breakpoints: [DebugBreakpoint]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -12489,10 +12708,14 @@ public struct WorkspaceState: Equatable, Hashable {
          */currentFile: String?, 
         /**
          * Files open, in order.
-         */openFiles: [String]) {
+         */openFiles: [String], 
+        /**
+         * Where Debug pauses (PL2f).
+         */breakpoints: [DebugBreakpoint]) {
         self.runFile = runFile
         self.currentFile = currentFile
         self.openFiles = openFiles
+        self.breakpoints = breakpoints
     }
 
     
@@ -12513,7 +12736,8 @@ public struct FfiConverterTypeWorkspaceState: FfiConverterRustBuffer {
             try WorkspaceState(
                 runFile: FfiConverterOptionString.read(from: &buf), 
                 currentFile: FfiConverterOptionString.read(from: &buf), 
-                openFiles: FfiConverterSequenceString.read(from: &buf)
+                openFiles: FfiConverterSequenceString.read(from: &buf), 
+                breakpoints: FfiConverterSequenceTypeDebugBreakpoint.read(from: &buf)
         )
     }
 
@@ -12521,6 +12745,7 @@ public struct FfiConverterTypeWorkspaceState: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.runFile, into: &buf)
         FfiConverterOptionString.write(value.currentFile, into: &buf)
         FfiConverterSequenceString.write(value.openFiles, into: &buf)
+        FfiConverterSequenceTypeDebugBreakpoint.write(value.breakpoints, into: &buf)
     }
 }
 
@@ -16139,6 +16364,30 @@ fileprivate struct FfiConverterOptionTypeConnectivityStatus: FfiConverterRustBuf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeDebugPause: FfiConverterRustBuffer {
+    typealias SwiftType = DebugPause?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDebugPause.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDebugPause.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeDeviceInfo: FfiConverterRustBuffer {
     typealias SwiftType = DeviceInfo?
 
@@ -16644,6 +16893,56 @@ fileprivate struct FfiConverterSequenceTypeConnectivityChange: FfiConverterRustB
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeConnectivityChange.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeDebugBreakpoint: FfiConverterRustBuffer {
+    typealias SwiftType = [DebugBreakpoint]
+
+    public static func write(_ value: [DebugBreakpoint], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDebugBreakpoint.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DebugBreakpoint] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DebugBreakpoint]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDebugBreakpoint.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeDebugVariable: FfiConverterRustBuffer {
+    typealias SwiftType = [DebugVariable]
+
+    public static func write(_ value: [DebugVariable], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDebugVariable.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DebugVariable] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DebugVariable]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDebugVariable.read(from: &buf))
         }
         return seq
     }
@@ -17384,6 +17683,17 @@ public func projectOutputs(project: String) -> [ProjectArtifact]  {
 })
 }
 /**
+ * Reads a pause the debugger wrote; none if it isn't one.
+ */
+public func pythonDebugPause(json: String) -> DebugPause?  {
+    return try!  FfiConverterOptionTypeDebugPause.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_debug_pause(
+        FfiConverterString.lower(json),uniffiCallStatus
+    )
+})
+}
+/**
  * [`python_lab_file_script`] for Python Lab's live console (PL1d): run it
  * with PythonBridge's streaming runner, which gives it a stdin that waits
  * for the person. Its output is final as it streams: tracebacks already
@@ -17395,6 +17705,25 @@ public func pythonLabConsoleScript(project: String, path: String) -> String  {
     uniffi_forge_ffi_fn_func_python_lab_console_script(
         FfiConverterString.lower(project),
         FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
+/**
+ * Python Lab's Debug (PL2f): `python_lab_console_script` run under a
+ * debugger (`bdb`) that pauses on `breakpoints`. Each pause writes the
+ * stack and variables as JSON to the console stream with kind 6
+ * (`python_debug_pause` reads it), then waits on the console's input for
+ * a command: `continue`, `step` (into a call), `next` (over it) or `out`
+ * (to the caller). Only the project's own files pause; stepping goes
+ * over the standard library and packages.
+ */
+public func pythonLabDebugScript(project: String, path: String, breakpoints: [DebugBreakpoint]) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_lab_debug_script(
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),
+        FfiConverterSequenceTypeDebugBreakpoint.lower(breakpoints),uniffiCallStatus
     )
 })
 }
@@ -17815,7 +18144,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_project_outputs() != 5403) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_python_debug_pause() != 20708) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_python_lab_console_script() != 54637) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_lab_debug_script() != 41092) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_python_lab_file_script() != 14378) {

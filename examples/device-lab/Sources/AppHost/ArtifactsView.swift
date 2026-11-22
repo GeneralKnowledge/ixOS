@@ -124,13 +124,7 @@ struct ArtifactDetailView: View {
             case "json", "text":
                 ArtifactTextView(url: url, kind: artifact.kind)
             case "html":
-                if let url, let html = try? String(contentsOf: url, encoding: .utf8) {
-                    SVGView(svg: html, wholePage: true)
-                        .accessibilityLabel("Web page \(artifact.path)")
-                        .accessibilityIdentifier("artifacts.html")
-                } else {
-                    unreadable
-                }
+                ArtifactHTMLView(url: url, name: artifact.path)
             case "png", "jpeg", "gif", "svg":
                 image
             default:
@@ -217,11 +211,27 @@ struct SVGView: UIViewRepresentable {
     /// same policy goes in front of it, and scripts stay off either way.
     var wholePage = false
 
+    func makeCoordinator() -> NavigationGuard { NavigationGuard() }
+
+    /// The page may show itself and nothing else: a link, a meta refresh
+    /// or a form can't take the preview to another page or reach the
+    /// network.
+    @MainActor
+    final class NavigationGuard: NSObject, WKNavigationDelegate {
+        func webView(
+            _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction
+        ) async -> WKNavigationActionPolicy {
+            // loadHTMLString with no base URL loads as about:blank.
+            navigationAction.request.url?.scheme?.lowercased() == "about" ? .allow : .cancel
+        }
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         configuration.websiteDataStore = .nonPersistent()
         let view = WKWebView(frame: .zero, configuration: configuration)
+        view.navigationDelegate = context.coordinator
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.backgroundColor = .clear
@@ -400,4 +410,55 @@ struct ArtifactQuickLook: View {
         .quickLookPreview($previewing)
         #endif
     }
+}
+
+/// An HTML file a script wrote, read off the main thread and shown in the
+/// script-free, network-free web view; one over 2 MB is offered to share
+/// instead (PL2e).
+struct ArtifactHTMLView: View {
+    let url: URL?
+    let name: String
+    @State private var html: String?
+    @State private var failure: String?
+
+    static let maxBytes = 2 * 1024 * 1024
+
+    var body: some View {
+        Group {
+            if let html {
+                SVGView(svg: html, wholePage: true)
+                    .accessibilityLabel("Web page \(name)")
+                    .accessibilityIdentifier("artifacts.html")
+            } else if let failure {
+                Text(failure).foregroundStyle(.secondary).padding()
+                    .accessibilityIdentifier("artifacts.unreadable")
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: url) {
+            guard let url else {
+                failure = "This file can't be shown."
+                return
+            }
+            let limit = Self.maxBytes
+            let read = await Task.detached { () -> Result<String, ArtifactHTMLError> in
+                let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                guard size <= limit else { return .failure(.tooLarge) }
+                guard let data = try? Data(contentsOf: url) else { return .failure(.unreadable) }
+                return .success(String(decoding: data, as: UTF8.self))
+            }.value
+            switch read {
+            case .success(let text): html = text
+            case .failure(.tooLarge):
+                failure = "This page is over 2 MB, too large to preview. Share it to open it elsewhere."
+            case .failure(.unreadable): failure = "This file can't be shown."
+            }
+        }
+    }
+}
+
+enum ArtifactHTMLError: Error {
+    case tooLarge
+    case unreadable
 }

@@ -235,11 +235,13 @@ private final class StreamSink: @unchecked Sendable {
 
     /// `kind` is PythonBridge.h's PYBRIDGE_STDOUT (1), PYBRIDGE_STDERR (2),
     /// PYBRIDGE_INPUT_WAITING (3), PYBRIDGE_INPUT_ENDED (4) or
-    /// PYBRIDGE_INPUT_CANCELLED (5).
+    /// PYBRIDGE_INPUT_CANCELLED (5); or 6, which Python Lab's debugger
+    /// writes through `_devicelab_io.write` when it pauses (PL2f).
     func receive(kind: Int, text: String) {
         switch kind {
         case 1: events(.output(text))
         case 2: events(.error(text))
+        case 6: events(.debugPaused(text))
         case 3:
             clock.pause()
             events(.waitingForInput)

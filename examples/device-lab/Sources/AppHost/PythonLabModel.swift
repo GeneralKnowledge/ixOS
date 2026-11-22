@@ -124,6 +124,27 @@ public final class PythonLabModel {
 
     /// At most this many tabs; opening another closes the oldest.
     public static let maxOpenFiles = 8
+
+    /// Where Debug pauses in this project (PL2f), kept with the project.
+    public private(set) var breakpoints: [DebugBreakpoint] = []
+    /// The run is under the debugger.
+    public private(set) var isDebugging = false
+    /// Where the debugger paused and what it sees; nil while the script
+    /// runs on.
+    public private(set) var debugPause: DebugPause?
+    /// The debugger is waiting for Continue or a step.
+    public private(set) var awaitingDebugCommand = false
+
+    /// The open file's breakpoint lines, for the editor's gutter.
+    public var breakpointLines: Set<Int> {
+        Set(breakpoints.filter { $0.file == openFile }.map { Int($0.line) })
+    }
+
+    /// The paused line, when it is in the open file.
+    public var pausedLine: Int? {
+        guard let top = debugPause?.stack.last, top.file == openFile else { return nil }
+        return Int(top.line)
+    }
     /// The file Run starts; nil runs the open file.
     public private(set) var runFile: String?
 
@@ -302,12 +323,13 @@ public final class PythonLabModel {
         project = target
         defaults.set(target, forKey: Self.lastProjectKey)
         let state = (try? workspace.state(project: target)) ?? WorkspaceState(
-            runFile: nil, currentFile: nil, openFiles: [])
+            runFile: nil, currentFile: nil, openFiles: [], breakpoints: [])
         runFile = state.runFile
         entries = listed
         listError = nil
         // Rust already left out tabs whose files are gone.
         openFiles = Array(state.openFiles.prefix(Self.maxOpenFiles))
+        breakpoints = state.breakpoints
         if let current = state.currentFile {
             open(file: current)
         } else if let first = entries.first(where: { !$0.isFolder && $0.path.hasSuffix(".py") }) {
@@ -337,6 +359,8 @@ public final class PythonLabModel {
 
     public func renameProject(_ old: String, to new: String) -> String? {
         guard let workspace else { return nil }
+        // Bonsai's task works in it by name.
+        if activity.bonsaiProject == old { return Self.bonsaiWorking }
         if old == project { flush() }
         do {
             try workspace.renameProject(from: old, to: new)
@@ -354,6 +378,10 @@ public final class PythonLabModel {
 
     public func deleteProject(_ name: String) {
         guard let workspace else { return }
+        if activity.bonsaiProject == name {
+            error = Self.bonsaiWorking
+            return
+        }
         do {
             try workspace.deleteProject(name: name)
             error = nil
@@ -493,6 +521,9 @@ public final class PythonLabModel {
         }
         openFile = openFile.map { Self.moved($0, from: entry.path, to: target) }
         openFiles = openFiles.map { Self.moved($0, from: entry.path, to: target) }
+        breakpoints = breakpoints.map {
+            DebugBreakpoint(file: Self.moved($0.file, from: entry.path, to: target), line: $0.line)
+        }
         runFile = runFile.map { Self.moved($0, from: entry.path, to: target) }
         saveProjectState()
         reloadEntries()
@@ -527,6 +558,7 @@ public final class PythonLabModel {
         if inside(runFile) { runFile = nil }
         reloadEntries()
         openFiles.removeAll { inside($0) && $0 != openFile }
+        breakpoints.removeAll { inside($0.file) }
         if inside(openFile) {
             let gone = openFile
             openFile = nil
@@ -609,7 +641,7 @@ public final class PythonLabModel {
     private func saveProjectState() {
         guard let workspace else { return }
         let state = WorkspaceState(
-            runFile: runFile, currentFile: openFile, openFiles: openFiles)
+            runFile: runFile, currentFile: openFile, openFiles: openFiles, breakpoints: breakpoints)
         do {
             try workspace.saveState(project: project, state: state)
         } catch {
@@ -634,8 +666,12 @@ public final class PythonLabModel {
 
     // MARK: Running
 
-    public func run() async {
+    /// Runs the file, or with `debugging` runs it under the debugger so it
+    /// pauses on the project's breakpoints (PL2f).
+    public func run(debugging: Bool = false) async {
         guard let runtime, !isRunning, !isLockedByBonsai else { return }
+        // Debugging needs a project file to set breakpoints in.
+        if debugging && (projectFolder == nil || fileToRun == nil) { return }
         // Taken before the first wait, so a second tap can't start a
         // second run while Python starts.
         isRunning = true
@@ -671,12 +707,17 @@ public final class PythonLabModel {
         let folder = projectFolder
         let file = fileToRun
         if let folder, let file {
-            script = pythonLabConsoleScript(project: folder, path: file)
+            script = debugging
+                ? pythonLabDebugScript(project: folder, path: file, breakpoints: breakpoints)
+                : pythonLabConsoleScript(project: folder, path: file)
             before = Dictionary(
                 projectOutputs(project: folder).map { ($0.path, $0) },
                 uniquingKeysWith: { first, _ in first })
         }
         lastRunFile = file
+        isDebugging = debugging
+        debugPause = nil
+        awaitingDebugCommand = false
         // Output reaches the screen at most every 50 ms.
         let inbox = ConsoleInbox()
         let pump = Task { [weak self] in
@@ -735,7 +776,58 @@ public final class PythonLabModel {
             }
             if project == startedIn { loadRuns() }
         }
+        isDebugging = false
+        debugPause = nil
+        awaitingDebugCommand = false
         isRunning = false
+    }
+
+    // MARK: Debugging
+
+    /// Adds a breakpoint on `line` of the open file, or removes the one
+    /// there.
+    public func toggleBreakpoint(line: Int) {
+        guard let openFile, line > 0 else { return }
+        let point = DebugBreakpoint(file: openFile, line: UInt32(line))
+        if breakpoints.contains(point) {
+            breakpoints.removeAll { $0 == point }
+        } else {
+            breakpoints.append(point)
+        }
+        saveProjectState()
+    }
+
+    /// Removes every breakpoint in the project.
+    public func clearBreakpoints() {
+        breakpoints = []
+        saveProjectState()
+    }
+
+    public enum DebugCommand: String, Sendable {
+        case `continue`
+        /// Into a call on this line.
+        case step
+        /// Over this line.
+        case next
+        /// On to the caller.
+        case out
+    }
+
+    /// Tells the paused debugger what to do next.
+    @discardableResult
+    public func debug(_ command: DebugCommand) -> Bool {
+        guard let runtime, let runID, awaitingDebugCommand else { return false }
+        awaitingDebugCommand = false
+        return runtime.send(input: command.rawValue, id: runID)
+    }
+
+    /// The debugger paused: show where, in the editor.
+    private func paused(_ json: String) {
+        guard let pause = pythonDebugPause(json: json) else { return }
+        debugPause = pause
+        if let top = pause.stack.last {
+            show(top)
+        }
     }
 
     /// Reads the open project's run history again.
@@ -773,12 +865,26 @@ public final class PythonLabModel {
                 console.append(text, as: .output)
             case .error(let text):
                 console.append(text, as: .error)
+            case .debugPaused(let json):
+                paused(json)
             case .waitingForInput:
-                waitingForInput = true
+                if debugPause != nil {
+                    // The debugger reads its command, not the script.
+                    awaitingDebugCommand = true
+                } else {
+                    waitingForInput = true
+                }
                 activity.labWaitingForInput = true
             case .inputEnded(let line):
-                waitingForInput = false
                 activity.labWaitingForInput = false
+                if debugPause != nil {
+                    // A command, not an answer: nothing for the console.
+                    awaitingDebugCommand = false
+                    debugPause = nil
+                    if line == nil { isDebugging = false }
+                    continue
+                }
+                waitingForInput = false
                 if let line {
                     console.append(line + "\n", as: .input)
                 }

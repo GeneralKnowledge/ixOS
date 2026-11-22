@@ -108,9 +108,11 @@ Reuben asked for bigger strides overnight, so PL2 started straight after PL1e, i
 
 **Packages** in Python Lab's Interpreter section: type a name, Install. Rust's `packages.rs` does the work Swift can't test on Linux: `package_choose_wheel` takes PyPI's JSON (`https://pypi.org/pypi/<name>/json`) and picks the newest release's pure wheel (`py3-none-any`, at most 50 MB); `package_install_wheel` checks the download's SHA-256 against PyPI's, refuses compiled code (`.so`, `.dylib`, a wheel that isn't `Root-Is-Purelib`, `platlib` data) and paths that leave the folder, unpacks beside `site-packages` and then moves it in, replacing an older version of the same package but never another package's files; it returns the requirements this phone needs (PEP 508 markers evaluated for CPython 3.15 on iOS, extras left out, an unreadable marker left out). Swift downloads the JSON and wheel and installs requirements in turn (at most 40). Packages built into the app (the numpy spike's) are listed apart and can't be replaced. Removing uses the package's `RECORD`. A package already imported keeps its old version until Device Lab restarts, which the screen says.
 
+After review (CodeRabbit on #419): a wheel whose `Requires-Python` excludes 3.15 is skipped, with a plain message when no wheel fits; a path is checked again after `.data/purelib/` comes off; the installer writes its own `RECORD` of where each file went, and uninstalling never removes a file whose top-level folder another installed package lists; an upgrade moves the old version aside and puts it back if moving the new one in fails; WHEEL and METADATA are read only up to 4 MB; Remove waits while an install runs; and an install also walks the requirements of packages already here, so one an earlier install couldn't finish is retried.
+
 Checked on Linux: five tests with wheels built in the test (install, upgrade, uninstall, a bad checksum, compiled code, a non-pure wheel, another package's files, markers), plus an `#[ignore]` test that installed the real PyPI wheels of rich (with markdown-it-py, pygments and mdurl), attrs and six from a folder downloaded beforehand.
 
-Not in PL2a: version pins (always the newest release), per-project environments (PL4), and source-only packages (no build tools on the phone).
+Not in PL2a: version pins and requirement ranges (always the newest release; `dep<2` installs the newest `dep`), per-project environments (PL4), and source-only packages (no build tools on the phone).
 
 ### PL2b. Tracebacks you can tap — built
 
@@ -130,9 +132,17 @@ Putting the cursor beside a bracket marks it and its partner; a bracket with no 
 
 Artifacts now lists every file a run made or changed, not only images: anything in the project except Python files, hidden folders and `__pycache__` (Rust's `project_outputs`; Bonsai's image check still uses `project_artifacts`). Each opens in a preview that fits it: images as before; CSV and TSV as a grid with the header row in bold (Rust's `artifact_table` reads quoted cells as Python's `csv` writes them, and keeps the first 500 rows, 50 columns and 200 characters a cell, saying so when it cuts); text and JSON as selectable monospaced text, JSON indented (`artifact_text`, first 256 KB); HTML in the same script-free web view as SVG; PDFs and anything else in Quick Look. Every preview shares the file. In the Files list, text, JSON and CSV still open in the editor.
 
-### Still in PL2
+### PL2f. Debugging — built
 
-Debugging (breakpoints, stepping, variables).
+Tap a line number (or the key row's breakpoint key, for VoiceOver) to set a breakpoint; it shows as a marked number and is kept with the project (`breakpoints` in `.workspace/state.json`, dropped when their file goes; renaming a file carries them). **Debug**, beside Run, runs the file under Python's own `bdb` and pauses at a breakpoint: the line is highlighted, the editor opens it, and a Debug section shows where it paused, the frame's variables (their `repr`, cut short by `reprlib`; modules, functions and classes left out; the first 100) and the call stack, each frame opening its line. Continue, Step Over, Step Into and Step Out drive it; Stop ends it as before.
+
+How it works, with no change to the C bridge: `python_lab_debug_script` (Rust) wraps the same console script in a small `bdb.Bdb` subclass. At a pause it writes the stack and variables as JSON through `_devicelab_io.write` with kind 6, which `PythonRuntime` passes on as `.debugPaused` (`python_debug_pause` reads it), then reads its command from the console's input, so the time limit pauses while it waits just as it does for `input()`, and Bonsai's runs wait too. Only the project's files pause: stepping goes over the standard library and packages. A script's own `input()` still works while debugging. Tested on Linux with the machine's python3 (pausing, stepping into another file, stepping out, variables, an error after a pause still showing the project's traceback).
+
+Limits: breakpoints keep their line numbers while you edit lines above them; no conditional breakpoints, watch expressions or changing variables (later, if wanted).
+
+### PL2 done
+
+Everything in the PL2 row is built. PL3 (Matplotlib, NumPy and pandas) builds on the numpy-on-iPhone spike, which has its own thread; its CSV and JSON inspection is partly here already in the artifact browser (PL2e).
 
 ## Decided: projects live in Files
 

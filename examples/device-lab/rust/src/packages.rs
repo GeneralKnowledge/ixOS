@@ -22,6 +22,8 @@ pub const PYTHON_VERSION: &str = "3.15";
 pub const WHEEL_MAX_BYTES: u64 = 50 * 1024 * 1024;
 /// The most a wheel may unpack to.
 const UNPACKED_MAX_BYTES: u64 = 200 * 1024 * 1024;
+/// The most a wheel's WHEEL or METADATA file may unpack to.
+const METADATA_MAX_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Error, thiserror::Error)]
 pub enum PackageError {
@@ -122,6 +124,7 @@ pub fn package_choose_wheel(name: String, pypi_json: String) -> Result<WheelChoi
     let version = info["version"].as_str().unwrap_or_default().to_string();
     let files = json["urls"].as_array().cloned().unwrap_or_default();
     let mut has_wheel = false;
+    let mut needs_newer: Option<String> = None;
     for file in &files {
         let filename = file["filename"].as_str().unwrap_or_default();
         if file["packagetype"].as_str() != Some("bdist_wheel") || file["yanked"] == true {
@@ -129,6 +132,15 @@ pub fn package_choose_wheel(name: String, pypi_json: String) -> Result<WheelChoi
         }
         has_wheel = true;
         if !is_pure_wheel(filename) {
+            continue;
+        }
+        // The file's own Requires-Python, else the release's.
+        let requires = file["requires_python"]
+            .as_str()
+            .or_else(|| info["requires_python"].as_str())
+            .unwrap_or_default();
+        if !python_allowed(requires) {
+            needs_newer = Some(requires.to_string());
             continue;
         }
         let Some(sha256) = file["digests"]["sha256"].as_str() else {
@@ -155,6 +167,11 @@ pub fn package_choose_wheel(name: String, pypi_json: String) -> Result<WheelChoi
             bytes,
         });
     }
+    if let Some(requires) = needs_newer {
+        return Err(invalid(format!(
+            "{project} {version} needs Python {requires}, and this app has Python {PYTHON_VERSION}."
+        )));
+    }
     Err(PackageError::NotPure {
         reason: if has_wheel {
             format!(
@@ -166,6 +183,21 @@ pub fn package_choose_wheel(name: String, pypi_json: String) -> Result<WheelChoi
             )
         },
     })
+}
+
+/// Whether this app's Python meets a `Requires-Python` specifier such as
+/// `>=3.9,<4` (empty, or a clause it can't read, allows it).
+pub(crate) fn python_allowed(spec: &str) -> bool {
+    const OPERATORS: [&str; 8] = ["===", "~=", "==", "!=", "<=", ">=", "<", ">"];
+    spec.split(',')
+        .map(str::trim)
+        .filter(|clause| !clause.is_empty())
+        .all(|clause| {
+            let Some(op) = OPERATORS.iter().find(|op| clause.starts_with(**op)) else {
+                return true;
+            };
+            compare_versions(PYTHON_VERSION, op, clause[op.len()..].trim()).unwrap_or(true)
+        })
 }
 
 /// `name-version(-build)?-python-abi-platform.whl` with the platform `any`,
@@ -281,8 +313,21 @@ pub fn package_install_wheel(
                 _ => continue,
             }
         } else {
-            text
+            text.clone()
         };
+        // Checked again after `.data/purelib/` comes off: `enclosed_name`
+        // counted those two parts, so `..` in the rest could climb out.
+        let target = PathBuf::from(target);
+        if target.components().any(|part| {
+            !matches!(
+                part,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        }) {
+            return Err(invalid(format!("{text} points outside the package.")));
+        }
+        let target = target.to_string_lossy().replace('\\', "/");
+        let target = target.trim_start_matches("./").to_string();
         if let Some(top) = target.split('/').next() {
             tops.insert(top.to_string());
         }
@@ -329,20 +374,64 @@ pub fn package_install_wheel(
         }
         Ok::<(), PackageError>(())
     })();
+    // The installer's own RECORD: the files it put in place, where they
+    // went (a `.data/purelib` file under its final path). Uninstalling
+    // removes these and nothing a wheel's own RECORD claims.
+    let record: String = plan
+        .iter()
+        .map(|(_, target)| format!("{},,\n", target.to_string_lossy()))
+        .chain(std::iter::once(format!("{dist_info}/RECORD,,\n")))
+        .collect();
+    let unpacked = unpacked
+        .and_then(|_| fs::write(staging.join(&dist_info).join("RECORD"), record).map_err(storage));
     if let Err(err) = unpacked {
         let _ = fs::remove_dir_all(&staging);
         return Err(err);
     }
-    if let Some((old_info, _)) = &old {
-        remove_package(site, old_info)?;
-    }
-    for top in &tops {
-        if let Err(err) = fs::rename(staging.join(top), site.join(top)) {
-            let _ = fs::remove_dir_all(&staging);
-            return Err(storage(err));
+    // The old version moves aside, not away, until the new one is in place.
+    let backup = site.join(format!(
+        ".replaced-{}-{}",
+        normalize(&package.name),
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&backup);
+    let mut set_aside: Vec<String> = Vec::new();
+    let mut placed: Vec<String> = Vec::new();
+    let published = (|| {
+        if !owned_by_old.is_empty() {
+            fs::create_dir_all(&backup).map_err(storage)?;
         }
+        for top in &owned_by_old {
+            if site.join(top).exists() {
+                fs::rename(site.join(top), backup.join(top)).map_err(storage)?;
+                set_aside.push(top.clone());
+            }
+        }
+        for top in &tops {
+            fs::rename(staging.join(top), site.join(top)).map_err(storage)?;
+            placed.push(top.clone());
+        }
+        Ok::<(), PackageError>(())
+    })();
+    if let Err(err) = published {
+        // Back as it was: the new files out, the old ones in.
+        for top in &placed {
+            let path = site.join(top);
+            let _ = if path.is_dir() {
+                fs::remove_dir_all(&path)
+            } else {
+                fs::remove_file(&path)
+            };
+        }
+        for top in &set_aside {
+            let _ = fs::rename(backup.join(top), site.join(top));
+        }
+        let _ = fs::remove_dir_all(&staging);
+        let _ = fs::remove_dir_all(&backup);
+        return Err(err);
     }
     let _ = fs::remove_dir_all(&staging);
+    let _ = fs::remove_dir_all(&backup);
     Ok(package)
 }
 
@@ -402,6 +491,17 @@ fn record_tops(site: &Path, dist_info: &str) -> BTreeSet<String> {
 
 fn remove_package(site: &Path, dist_info: &str) -> Result<(), PackageError> {
     let record = fs::read_to_string(site.join(dist_info).join("RECORD")).unwrap_or_default();
+    // What other packages list is theirs, whatever this RECORD claims (one
+    // installed by an older build carries the wheel's own RECORD).
+    let others: BTreeSet<String> = installed_dist_infos(site)
+        .into_iter()
+        .filter(|(info, _)| info != dist_info)
+        .flat_map(|(info, _)| {
+            let mut tops = record_tops(site, &info);
+            tops.insert(info);
+            tops
+        })
+        .collect();
     let mut folders: BTreeSet<PathBuf> = BTreeSet::new();
     for line in record.lines() {
         let Some(path) = line.split(',').next().filter(|p| !p.is_empty()) else {
@@ -409,6 +509,13 @@ fn remove_package(site: &Path, dist_info: &str) -> Result<(), PackageError> {
         };
         // Only plain relative paths inside site-packages.
         if path.starts_with('/') || path.split('/').any(|p| p == ".." || p.is_empty()) {
+            continue;
+        }
+        if path
+            .split('/')
+            .next()
+            .is_some_and(|top| others.contains(top))
+        {
             continue;
         }
         let full = site.join(path);
@@ -452,10 +559,18 @@ fn read_entry(zip: &mut zip::ZipArchive<fs::File>, name: &str) -> Result<String,
     let mut entry = zip
         .by_name(name)
         .map_err(|_| invalid(format!("That wheel has no {name}.")))?;
+    // Read at most a little over the limit, so a wheel whose metadata
+    // unpacks to gigabytes is refused before it fills memory.
     let mut text = String::new();
-    entry
+    (&mut entry)
+        .take(METADATA_MAX_BYTES + 1)
         .read_to_string(&mut text)
         .map_err(|_| invalid(format!("{name} isn't text.")))?;
+    if text.len() as u64 > METADATA_MAX_BYTES {
+        return Err(invalid(format!(
+            "{name} is larger than a package's metadata can be."
+        )));
+    }
     Ok(text)
 }
 
@@ -716,7 +831,13 @@ fn compare_versions(a: &str, op: &str, b: &str) -> Option<bool> {
                 order == Equal
             }
         }
-        "!=" => order != Equal,
+        "!=" => {
+            if b.ends_with(".*") {
+                !x.starts_with(&y)
+            } else {
+                order != Equal
+            }
+        }
         "<" => order == Less,
         "<=" => order != Greater,
         ">" => order == Greater,

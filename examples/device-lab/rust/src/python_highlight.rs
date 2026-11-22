@@ -120,9 +120,10 @@ pub fn python_matching_bracket(source: String, cursor: u32) -> Option<BracketMat
         ']' => '[',
         _ => '{',
     };
-    let wanted = pair(chars[here]);
     let forward = open(chars[here]);
-    let mut depth = 0usize;
+    // The brackets still waiting for their partner, innermost last; `here`
+    // is the first. A partner of the wrong kind (`([})`) ends the search.
+    let mut waiting = vec![chars[here]];
     let mut i = here;
     let partner = loop {
         i = match (forward, i) {
@@ -134,11 +135,17 @@ pub fn python_matching_bracket(source: String, cursor: u32) -> Option<BracketMat
             continue;
         }
         if open(chars[i]) == forward {
-            depth += 1;
-        } else if depth > 0 {
-            depth -= 1;
-        } else {
-            break (chars[i] == wanted).then_some(i);
+            waiting.push(chars[i]);
+            continue;
+        }
+        let Some(last) = waiting.pop() else {
+            break None;
+        };
+        if pair(last) != chars[i] {
+            break None;
+        }
+        if waiting.is_empty() {
+            break Some(i);
         }
     };
     Some(BracketMatch {

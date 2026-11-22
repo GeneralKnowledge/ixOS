@@ -16,6 +16,13 @@ struct PythonCodeEditor: UIViewRepresentable {
     var accessibilityLabel: String
     /// A line to show and put the cursor at (a traceback's line, PL2b).
     var goTo: PythonLineRequest? = nil
+    /// Lines with a breakpoint, marked in the gutter (PL2f).
+    var breakpoints: Set<Int> = []
+    /// The line Debug paused on, highlighted.
+    var pausedLine: Int? = nil
+    /// Tapping a line number, or the key row's breakpoint key, toggles a
+    /// breakpoint there; nil turns both off.
+    var onToggleBreakpoint: ((Int) -> Void)? = nil
 
     @Environment(\.forgeTheme) private var theme
 
@@ -55,6 +62,10 @@ struct PythonCodeEditor: UIViewRepresentable {
         view.isEditable = isEditable
         view.accessibilityLabel = accessibilityLabel
         coordinator.setTheme(theme)
+        coordinator.onToggleBreakpoint = onToggleBreakpoint
+        view.onGutterTap = onToggleBreakpoint
+        view.breakpointLines = breakpoints
+        view.pausedLine = pausedLine
         if view.text != text {
             view.text = text
             view.textChanged()
@@ -84,6 +95,11 @@ struct PythonCodeEditor: UIViewRepresentable {
         var bracket: UIColor
         /// Behind a bracket with no partner.
         var unmatched: UIColor
+        /// A breakpoint's mark in the gutter (PL2f).
+        var breakpoint: UIColor
+        var onBreakpoint: UIColor
+        /// Behind the line Debug paused on.
+        var paused: UIColor
 
         init(theme: ForgeTheme) {
             let colors = theme.colors
@@ -97,6 +113,9 @@ struct PythonCodeEditor: UIViewRepresentable {
             decorator = UIColor(colors.tone(.warning).text)
             bracket = UIColor(colors.tone(.accent).soft)
             unmatched = UIColor(colors.tone(.danger).soft)
+            breakpoint = UIColor(colors.tone(.danger).solid)
+            onBreakpoint = UIColor(colors.tone(.danger).onSolid)
+            paused = UIColor(colors.tone(.warning).soft)
         }
 
         func colour(_ kind: HighlightKind) -> UIColor {
@@ -117,6 +136,7 @@ struct PythonCodeEditor: UIViewRepresentable {
         weak var view: CodeTextView?
         /// The last `goTo` done, so it happens once.
         var lastGoTo: UUID?
+        var onToggleBreakpoint: ((Int) -> Void)?
         private var colours: EditorColours?
         private var theme: ForgeTheme?
         private var colouring: Task<Void, Never>?
@@ -146,6 +166,9 @@ struct PythonCodeEditor: UIViewRepresentable {
         func fontChanged() {
             guard let view, let colours else { return }
             view.gutterColour = colours.gutter
+            view.breakpointColour = colours.breakpoint
+            view.breakpointTextColour = colours.onBreakpoint
+            view.pausedColour = colours.paused
             view.font = font
             view.typingAttributes = [.font: font, .foregroundColor: colours.plain]
             view.textChanged()
@@ -395,6 +418,10 @@ struct PythonCodeEditor: UIViewRepresentable {
             for (snippet, label, id) in Self.keys {
                 stack.addArrangedSubview(key(title: snippet, label: label, id: id) { $0.insert(snippet) })
             }
+            stack.addArrangedSubview(key(symbol: "circle.fill", label: "Toggle breakpoint on this line", id: "breakpoint") {
+                guard let view = $0.view, let toggle = $0.onToggleBreakpoint else { return }
+                toggle(view.line(at: view.selectedRange.location))
+            })
             stack.addArrangedSubview(key(symbol: "arrow.uturn.backward", label: "Undo", id: "undo") {
                 $0.view?.undoManager?.undo()
                 $0.changed()
@@ -446,6 +473,27 @@ final class CodeTextView: UITextView {
         didSet { setNeedsDisplay() }
     }
     var onIndent: ((_ outdent: Bool) -> Void)?
+    /// A tap in the gutter, with the 1-based line beside it (PL2f).
+    var onGutterTap: ((Int) -> Void)?
+    var breakpointLines: Set<Int> = [] {
+        didSet { if breakpointLines != oldValue { setNeedsDisplay() } }
+    }
+    var pausedLine: Int? {
+        didSet { if pausedLine != oldValue { setNeedsDisplay() } }
+    }
+    var breakpointColour: UIColor = .systemRed {
+        didSet { setNeedsDisplay() }
+    }
+    var breakpointTextColour: UIColor = .white {
+        didSet { setNeedsDisplay() }
+    }
+    var pausedColour: UIColor = .systemYellow.withAlphaComponent(0.25) {
+        didSet { setNeedsDisplay() }
+    }
+    private lazy var gutterTap: UITapGestureRecognizer = {
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tappedGutter(_:)))
+        return tap
+    }()
 
     /// Where each line starts, in UTF-16 units, for numbering the visible lines.
     private var lineStarts: [Int] = [0]
@@ -454,11 +502,31 @@ final class CodeTextView: UITextView {
         super.init(frame: frame, textContainer: textContainer)
         contentMode = .redraw
         textContainerInset = UIEdgeInsets(top: 8, left: 36, bottom: 8, right: 8)
+        addGestureRecognizer(gutterTap)
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         contentMode = .redraw
+        addGestureRecognizer(gutterTap)
+    }
+
+    /// Only taps on the line numbers are the gutter's; the text keeps the rest.
+    override func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+        guard recognizer === gutterTap else { return super.gestureRecognizerShouldBegin(recognizer) }
+        return onGutterTap != nil && recognizer.location(in: self).x < textContainerInset.left
+    }
+
+    @objc private func tappedGutter(_ recognizer: UITapGestureRecognizer) {
+        let point = recognizer.location(in: self)
+        let y = point.y - textContainerInset.top
+        let extra = layoutManager.extraLineFragmentRect
+        if !extra.isEmpty, y >= extra.minY {
+            onGutterTap?(lineStarts.count)
+            return
+        }
+        let glyph = layoutManager.glyphIndex(for: CGPoint(x: 0, y: max(0, y)), in: textContainer)
+        onGutterTap?(line(at: layoutManager.characterIndexForGlyph(at: glyph)))
     }
 
     func textChanged() {
@@ -498,10 +566,22 @@ final class CodeTextView: UITextView {
         let width = inset.left - 8
         func number(_ line: Int, atY y: CGFloat, height: CGFloat) {
             let label = "\(line)" as NSString
-            let size = label.size(withAttributes: attributes)
+            if line == pausedLine {
+                // Behind the text, which draws in a view above this one.
+                pausedColour.setFill()
+                UIRectFill(CGRect(x: 0, y: y + inset.top, width: bounds.width, height: height))
+            }
+            var numberAttributes = attributes
+            if breakpointLines.contains(line) {
+                let mark = CGRect(x: 2, y: y + inset.top + 1, width: width + 2, height: height - 2)
+                breakpointColour.setFill()
+                UIBezierPath(roundedRect: mark, cornerRadius: min(6, mark.height / 2)).fill()
+                numberAttributes[.foregroundColor] = breakpointTextColour
+            }
+            let size = label.size(withAttributes: numberAttributes)
             label.draw(
                 at: CGPoint(x: width - size.width, y: y + inset.top + (height - size.height) / 2),
-                withAttributes: attributes)
+                withAttributes: numberAttributes)
         }
         let visible = rect.offsetBy(dx: -inset.left, dy: -inset.top)
         let glyphs = manager.glyphRange(forBoundingRect: visible, in: textContainer)
@@ -518,7 +598,7 @@ final class CodeTextView: UITextView {
     }
 
     /// The 1-based line holding UTF-16 offset `offset`.
-    private func line(at offset: Int) -> Int {
+    func line(at offset: Int) -> Int {
         var low = 0
         var high = lineStarts.count
         while low + 1 < high {
@@ -548,6 +628,9 @@ struct PythonCodeEditor: View {
     var accessibilityLabel: String
     /// A line to show and put the cursor at (a traceback's line, PL2b).
     var goTo: PythonLineRequest? = nil
+    var breakpoints: Set<Int> = []
+    var pausedLine: Int? = nil
+    var onToggleBreakpoint: ((Int) -> Void)? = nil
 
     var body: some View {
         TextEditor(text: $text)
