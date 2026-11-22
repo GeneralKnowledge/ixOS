@@ -28,7 +28,7 @@ BLAS is left out, so linear algebra uses numpy's own code and not Accelerate. Ac
 | numpy build | 125 s for the first build (2 min 12 s for the whole prepare step); cached afterwards, so later builds add nothing |
 | App growth | about 15 MB: Python 32 MB → 47 MB (numpy's Python side 4.1 MB, 13 extension module frameworks, `_multiarray_umath` 3.9 MB) |
 | Binaries | Mach-O arm64 dylibs, iOS minos 17.0, linked to `@rpath/Python.framework/Python`, libc++ and libSystem |
-| Phone | not yet run |
+| Phone | PASS, reported by Reuben on 2026-11-22 on Device Lab 1.29922692 (combined 4b062bb5, iPhone 15 Pro Max, iOS 26.3.1): the check script below worked. Import time not recorded |
 
 The 13 frameworks are `numpy._core._multiarray_umath`, `numpy.fft._pocketfft_umath`, `numpy.linalg.lapack_lite` and `numpy.linalg._umath_linalg`, plus nine in `numpy.random`. numpy's tests and test-only modules (`_multiarray_tests`, `_simd` and others) are left out.
 
