@@ -22,6 +22,14 @@
 //!                                    to anyone on this network (the phone
 //!                                    can scan the code's QR)
 //! relay receive <code>               receive what someone sends with a code
+//! relay grant <device> sites on|off  whether a trusted device may open
+//!                                    the site this one shares (N5)
+//! relay site [FOLDER | 127.0.0.1:PORT | --stop]
+//!                                    share a folder, or a server on this
+//!                                    machine's localhost, as this device's
+//!                                    site, while `relay listen` runs (N6)
+//! relay web <device> [--port N]      open a trusted device's site at
+//!                                    http://127.0.0.1:N in any browser here
 //! relay status                       this device: Connections, servers,
 //!                                    and whether they answer
 //! relay status <device>              ask a trusted device about itself
@@ -75,7 +83,8 @@ const USAGE: &str = "usage: relay listen | devices | send PATH... | receive <cod
 send <device> (--text TEXT | PATH...) [--to host:port] | \
 messages <device> | status [<device>] | revoke <device> | forget <device> | \
 trust <device> | asks <device> on|off | introduces <device> on|off | \
-sees-devices <device> on|off | person <device> (NAME | --mine) | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
+sees-devices <device> on|off | grant <device> sites on|off | \
+site [FOLDER | 127.0.0.1:PORT | --stop] | web <device> [--port N] | listen [--site FOLDER|127.0.0.1:PORT] | person <device> (NAME | --mine) | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
 connections [everywhere | private | this-network] | servers [--own] [--relay URL] [--lookup URL] [--none] | \
 history | name [NEW] | \
 serve-ai --upstream URL [--model M] | \
@@ -115,9 +124,25 @@ fn run(args: Vec<String>) -> Result<(), String> {
         Err(RelayError::InUse) => return control::forward(&args),
         Err(err) => return Err(err.to_string()),
     };
-    if let Some(result) = shared(&core, command, rest) {
+    if command == "site" && !rest.is_empty() {
         core.shutdown();
-        return result.map(|out| print!("{out}"));
+        return Err(
+            "a site is shared only while Relay listens: `relay listen --site FOLDER`, \
+             or `relay site ...` while `relay listen` runs"
+                .into(),
+        );
+    }
+    if let Some(result) = shared(&core, command, rest) {
+        let result = result.map(|out| print!("{out}"));
+        if command == "web" && result.is_ok() {
+            // The site stays open here until Ctrl-C.
+            println!("Ctrl-C to stop.");
+            loop {
+                std::thread::sleep(Duration::from_secs(3600));
+            }
+        }
+        core.shutdown();
+        return result;
     }
     let result = match command.as_str() {
         "listen" => listen(&core, rest),
@@ -257,8 +282,13 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                     Some(person) => format!(" ({person}'s)"),
                     None => String::new(),
                 };
+                let sites = if d.grants.contains(&relay_core::Capability::Sites) {
+                    ", may open your site"
+                } else {
+                    ""
+                };
                 out += &format!(
-                    "{}{whose}  {state}{takes}{asks}{introduces}{sees}  {}  {}\n",
+                    "{}{whose}  {state}{takes}{asks}{introduces}{sees}{sites}  {}  {}\n",
                     d.name,
                     where_now(&d),
                     d.endpoint_id
@@ -361,6 +391,67 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
                 _ => "trusted",
             };
             out += &format!("{}: {what}.\n", device.name);
+            Ok(())
+        })(),
+        // N5: a capability granted to a trusted device. Off when trusted.
+        "grant" => (|| {
+            let (who, capability, on) = match rest {
+                [who, what, on] if on == "on" => (who, what, true),
+                [who, what, off] if off == "off" => (who, what, false),
+                _ => return Err(USAGE.to_string()),
+            };
+            let capability = relay_core::Capability::ALL
+                .into_iter()
+                .find(|c| c.name() == capability)
+                .ok_or_else(|| format!("no capability {capability}; there is: sites"))?;
+            let device = find_device(core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            block_on(core.set_grant(device.endpoint_id.clone(), capability, on))
+                .map_err(|e| e.to_string())?;
+            let what = match (capability, on) {
+                (relay_core::Capability::Sites, true) => "may open this device's site",
+                (relay_core::Capability::Sites, false) => "may not open this device's site",
+            };
+            out += &format!("{}: {what}.\n", device.name);
+            Ok(())
+        })(),
+        // N6: the site this device shares while it listens.
+        "site" => (|| {
+            match rest {
+                [] => {}
+                [stop] if stop == "--stop" => core.stop_site(),
+                [site] => {
+                    block_on(core.share_site(site_source(site)?)).map_err(|e| e.to_string())?
+                }
+                _ => return Err(USAGE.to_string()),
+            }
+            out += &match core.shared_site() {
+                Some(site) => site_line(&site) + "\n",
+                None => "No site is shared.\n".to_string(),
+            };
+            Ok(())
+        })(),
+        // N6: a trusted device's site, on a port on this machine.
+        "web" => (|| {
+            let (who, port) = match rest {
+                [who] => (who, 0),
+                [who, flag, port] if flag == "--port" => (
+                    who,
+                    port.parse().map_err(|_| format!("not a port: {port}"))?,
+                ),
+                _ => return Err(USAGE.to_string()),
+            };
+            let device = find_device(core, who)
+                .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))?;
+            let opened = core
+                .open_site_port(&device.endpoint_id, port)
+                .map_err(|e| e.to_string())?;
+            out += &format!(
+                "{}'s site: http://127.0.0.1:{}/\n",
+                device.name, opened.port
+            );
+            // Kept open for as long as this process runs.
+            lock_ports().push(opened);
             Ok(())
         })(),
         // Whether a trusted device may ask this one's AI: off when trusted.
@@ -599,6 +690,19 @@ mod control {
         let Some(cwd) = cwd else {
             return args;
         };
+        if args.first().map(String::as_str) == Some("site") {
+            // `relay site FOLDER`: a relative folder is the caller's.
+            return args
+                .into_iter()
+                .map(|arg| {
+                    if arg != "site" && !arg.starts_with("--") && cwd.join(&arg).is_dir() {
+                        cwd.join(&arg).to_string_lossy().into_owned()
+                    } else {
+                        arg
+                    }
+                })
+                .collect();
+        }
         if args.first().map(String::as_str) != Some("send") {
             return args;
         }
@@ -753,9 +857,11 @@ fn block_on<F: std::future::Future>(future: F) -> F::Output {
 }
 
 fn listen(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
-    if !args.is_empty() {
-        return Err(USAGE.into());
-    }
+    let site = match args {
+        [] => None,
+        [flag, site] if flag == "--site" => Some(site_source(site)?),
+        _ => return Err(USAGE.into()),
+    };
     // Trusted devices reach this one on iroh while it listens.
     let service = block_on(core.device_service()).map_err(|e| e.to_string())?;
     let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
@@ -768,6 +874,10 @@ fn listen(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
         service.endpoint_id
     );
     println!("To trust a new device, send it something with a word code first.");
+    if let Some(site) = site {
+        block_on(core.share_site(site.clone())).map_err(|e| e.to_string())?;
+        println!("{}", site_line(&site));
+    }
     match control::serve(core.clone()) {
         Ok(()) => println!(
             "Waiting. Ctrl-C to stop. In another terminal, other `relay` commands \
@@ -826,6 +936,43 @@ fn mode_name(mode: relay_core::ConnectionMode) -> &'static str {
             "everywhere (the same network, Tailscale, the internet, then the relay)"
         }
     }
+}
+
+/// The sites opened with `relay web`, open while this process runs.
+fn lock_ports() -> std::sync::MutexGuard<'static, Vec<relay_core::SitePort>> {
+    static PORTS: Mutex<Vec<relay_core::SitePort>> = Mutex::new(Vec::new());
+    PORTS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A site from the command line: `127.0.0.1:PORT` or `localhost:PORT` is
+/// a server on this machine, anything else a folder.
+fn site_source(arg: &str) -> Result<relay_core::SiteSource, String> {
+    for host in ["127.0.0.1:", "localhost:"] {
+        if let Some(port) = arg.strip_prefix(host) {
+            let port = port.parse().map_err(|_| format!("not a port: {port}"))?;
+            return Ok(relay_core::SiteSource::Local { port });
+        }
+    }
+    if arg.contains("://") || arg.parse::<std::net::SocketAddr>().is_ok() {
+        return Err("a site's server must be on this machine: 127.0.0.1:PORT".into());
+    }
+    let folder = std::path::Path::new(arg)
+        .canonicalize()
+        .map_err(|_| format!("no folder {arg}"))?;
+    Ok(relay_core::SiteSource::Folder {
+        path: folder.to_string_lossy().into_owned(),
+    })
+}
+
+fn site_line(site: &relay_core::SiteSource) -> String {
+    let what = match site {
+        relay_core::SiteSource::Folder { path } => format!("the folder {path}"),
+        relay_core::SiteSource::Local { port } => format!("http://127.0.0.1:{port}"),
+    };
+    format!(
+        "Sharing {what} as this device's site, with devices granted it \
+         (`relay grant <device> sites on`)."
+    )
 }
 
 fn find_device(core: &RelayCore, who: &str) -> Option<relay_core::Device> {

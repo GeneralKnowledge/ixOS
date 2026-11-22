@@ -91,6 +91,9 @@ qrcode = { version = "0.14", default-features = false, optional = true }
 # The `relay` command advertises and finds word codes with mDNS, as the app
 # does with Bonjour (`_forgerelay._udp`). The same crate as the M0 spike.
 mdns-sd = { version = "0.13", optional = true }
+# Sites over Relay (N6, src/web.rs): reads HTTP/1.1 request and response
+# heads. Already in the tree through iroh.
+httparse = "1.10"
 hpke = { version = "0.15.1", default-features = false, features = ["alloc", "x25519", "chacha", "getrandom"] }
 
 [dev-dependencies]

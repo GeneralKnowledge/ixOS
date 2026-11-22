@@ -15,6 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::capability::Capability;
 use crate::resolver::{ConnectionMode, RelayServers, RouteKind};
 
 /// What happens after a word-code transfer with a device (Settings).
@@ -102,9 +103,28 @@ pub struct SavedDevice {
     /// and Chats shows this name rather than the device's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub person: Option<String>,
+    /// The capabilities granted to it, by name (N5): each off until the
+    /// person turns it on, and cleared when it is revoked, forgotten or
+    /// trusted again. A name this version doesn't know is kept, and grants
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grants: Vec<String>,
 }
 
 impl SavedDevice {
+    /// Whether it may use `capability` here: trusted, and granted it.
+    pub fn has(&self, capability: Capability) -> bool {
+        self.trust == SavedTrust::Trusted && self.grants.iter().any(|g| g == capability.name())
+    }
+
+    /// The capabilities granted to it that this version knows.
+    pub fn capabilities(&self) -> Vec<Capability> {
+        Capability::ALL
+            .into_iter()
+            .filter(|c| self.has(*c))
+            .collect()
+    }
+
     /// The name Chats shows: the person's, or else the device's.
     pub fn shown_name(&self) -> &str {
         self.person.as_deref().unwrap_or(&self.name)
@@ -207,6 +227,7 @@ impl Devices {
                 d.sees_devices = false;
                 d.introduced_by = None;
                 d.revoked_by = None;
+                d.grants.clear();
                 if !name.is_empty() {
                     d.name = name.into();
                 }
@@ -229,6 +250,7 @@ impl Devices {
                 introduced_by: None,
                 revoked_by: None,
                 person: None,
+                grants: Vec::new(),
             }),
         }
     }
@@ -371,6 +393,7 @@ impl Devices {
                 d.trust = SavedTrust::Revoked;
                 d.addresses.clear();
                 d.revoked_by = None;
+                d.grants.clear();
                 true
             }
             None => false,
@@ -384,11 +407,34 @@ impl Devices {
             Some(d) if d.trust == SavedTrust::Trusted => {
                 d.trust = SavedTrust::Forgotten;
                 d.addresses.clear();
+                d.grants.clear();
                 true
             }
             Some(_) => true,
             None => false,
         }
+    }
+
+    /// Grants `capability` to the device, or takes it away (N5). Only for a
+    /// trusted device, a person's too; returns false otherwise.
+    pub fn set_grant(&mut self, endpoint_id: &str, capability: Capability, on: bool) -> bool {
+        match self.get_mut(endpoint_id) {
+            Some(d) if d.trust == SavedTrust::Trusted => {
+                let name = capability.name();
+                d.grants.retain(|g| g != name);
+                if on {
+                    d.grants.push(name.to_string());
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether the device may use `capability` here now: trusted, and
+    /// granted it.
+    pub fn granted(&self, endpoint_id: &str, capability: Capability) -> bool {
+        self.get(endpoint_id).is_some_and(|d| d.has(capability))
     }
 
     /// Whether the device may send files and notes here. Only for a
@@ -649,5 +695,54 @@ mod tests {
         assert_eq!(one.last_seen_ms, None);
         assert_eq!(one.platform, None);
         assert!(one.offers.is_empty());
+    }
+
+    #[test]
+    fn a_capability_is_granted_per_device_and_never_by_trust() {
+        let mut devices = Devices::default();
+        devices.trust("laptop", "Laptop", 1);
+        devices.trust("sam", "iPhone", 1);
+        assert!(devices.set_person("sam", Some("Sam")));
+        assert!(
+            !devices.granted("laptop", Capability::Sites),
+            "trust grants nothing"
+        );
+        assert!(!devices.set_grant("nobody", Capability::Sites, true));
+
+        // Granted per device; a person's device may be granted it too.
+        assert!(devices.set_grant("laptop", Capability::Sites, true));
+        assert!(devices.set_grant("laptop", Capability::Sites, true));
+        assert_eq!(devices.get("laptop").unwrap().grants, ["sites"]);
+        assert!(devices.granted("laptop", Capability::Sites));
+        assert!(!devices.granted("sam", Capability::Sites));
+        assert!(devices.set_grant("sam", Capability::Sites, true));
+        assert!(devices.set_grant("sam", Capability::Sites, false));
+        assert!(!devices.granted("sam", Capability::Sites));
+
+        // Revoking clears it, and it can't be granted while revoked.
+        devices.revoke("laptop");
+        assert!(!devices.granted("laptop", Capability::Sites));
+        assert!(!devices.set_grant("laptop", Capability::Sites, true));
+        // Trusting again starts with none.
+        devices.trust("laptop", "Laptop", 2);
+        assert!(!devices.granted("laptop", Capability::Sites));
+        assert!(devices.get("laptop").unwrap().capabilities().is_empty());
+
+        // Forgetting clears it too.
+        assert!(devices.set_grant("laptop", Capability::Sites, true));
+        devices.forget("laptop");
+        assert!(devices.get("laptop").unwrap().grants.is_empty());
+
+        // A name from a newer version is kept, and grants nothing here.
+        devices.trust("tablet", "Tablet", 1);
+        let tablet = devices
+            .list
+            .iter_mut()
+            .find(|d| d.endpoint_id == "tablet")
+            .unwrap();
+        tablet.grants.push("terminal".into());
+        assert!(devices.get("tablet").unwrap().capabilities().is_empty());
+        assert!(devices.set_grant("tablet", Capability::Sites, true));
+        assert_eq!(devices.get("tablet").unwrap().grants, ["terminal", "sites"]);
     }
 }

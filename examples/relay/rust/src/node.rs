@@ -168,6 +168,12 @@ impl Node {
             )
             .accept(iroh_blobs::ALPN, blobs)
             .accept(
+                crate::web::WEB_ALPN,
+                crate::web::WebHandler {
+                    host: Arc::clone(&devices),
+                },
+            )
+            .accept(
                 DEVICE_ALPN,
                 DeviceHandler {
                     host: devices,

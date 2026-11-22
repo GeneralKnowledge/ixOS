@@ -211,8 +211,8 @@ messages over 5G, was run. N2's acceptance run covers them. The stages after the
 | N2 | Away from home | Secure communication beyond the home network, without manual networking. Chosen next on 2026-11-21; plan: [relay-away-from-home.md](relay-away-from-home.md) |
 | N3 | The encrypted mailbox | Somewhere things wait while a device is away: its own security, retention and availability questions ([review, refinement 3](relay-review-2026-11.md)). N2 passed on the phone on 2026-11-22; plan: [relay-mailbox.md](relay-mailbox.md), built together with N4 |
 | N4 | One messaging security model | The chat server path on Relay's identities and encryption; plan: [relay-chat-on-relay.md](relay-chat-on-relay.md) |
-| N5 | Capabilities and permissions | Devices offer services safely, each behind its own right |
-| N6 | The first capability | Sites, or transcription on the laptop: proof that new functions come from the layer |
+| N5 | Capabilities and permissions | Devices offer services safely, each behind its own right. Started 2026-11-22 with N6; plan: [relay-capabilities.md](relay-capabilities.md) |
+| N6 | The first capability | Sites: proof that new functions come from the layer. Plan: [relay-web.md](relay-web.md) |
 | N7 | Groups and people | Rooms and Spaces on MLS, people beyond your own devices |
 | N8 | Continuity and cooperation | Sync, handover, tasks (Workshop) |
 | N9 | Federation and other participants | Nostr interoperability; AI agents with restricted rights, last |
@@ -236,7 +236,7 @@ Not started yet, on purpose: Social, Computing and Workshop.
 | Rooms on Nostr ([relay-rooms-protocols.md](relay-rooms-protocols.md)) | N7 |
 | Foundations R0 to R7 ([study](relay-foundations-study.md)) | Research behind N5 to N8 |
 | Review P5 My Devices, P6 mailbox ([review](relay-review-2026-11.md)) | N1, N3 |
-| Sites over Relay (parked, [audit](relay-audit-2026-11.md)) | N6 |
+| Sites over Relay (parked in the [audit](relay-audit-2026-11.md), started 2026-11-22: [relay-web.md](relay-web.md)) | N6 |
 | Chat's server mode ([relay-chat-merge.md](relay-chat-merge.md)) | N4 |
 
 ## Research underneath

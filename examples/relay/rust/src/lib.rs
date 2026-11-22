@@ -22,6 +22,7 @@
 //! The first Relay paired devices by QR code over TCP and Noise; that path
 //! is gone (M1 PR 3b). Its history stays readable.
 
+mod capability;
 pub mod chat;
 mod code;
 mod code_send;
@@ -41,6 +42,7 @@ mod hex;
 mod mailbox;
 pub mod mailbox_server;
 mod trust;
+mod web;
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -53,6 +55,7 @@ use forge_runtime::{lock, now_ms};
 use forge_services::ai::{AiError, ChatRequest, LanguageModel, ModelInfo, TextOut};
 use forge_storage::FileStore;
 
+pub use capability::Capability;
 use code::CodeProgress;
 pub use code::{CodeReceipt, CODE_SERVICE_TYPE};
 use code_send::CodeSendShared;
@@ -63,6 +66,7 @@ use node::NodeCell;
 pub use presence::Presence;
 pub use trust::PairingPolicy;
 use trust::{AfterCode, SavedTrust};
+pub use web::{SiteHeader, SiteRequest, SiteResponse, SiteSource, Tunnel as SitePort};
 
 pub use device::AskReport;
 pub use model::{
@@ -186,7 +190,65 @@ pub struct RelayCore {
     /// Wakes a device conversation's outbox when the device is reached:
     /// set by the chat core that holds those conversations.
     chat_waker: Mutex<Option<ChatWaker>>,
+    /// The site this device shares now (N6): in memory only, so on the
+    /// iPhone it lasts while Relay is open.
+    site: Mutex<Option<SiteSource>>,
+    /// One `relay/web/1` connection per device whose site this one opens.
+    site_connections: Mutex<HashMap<String, Arc<Mutex<Option<iroh::endpoint::Connection>>>>>,
     me: Weak<RelayCore>,
+}
+
+impl RelayCore {
+    /// The way to a trusted device's site: the running node, where to dial
+    /// it, and the connection kept for it.
+    async fn site_route(
+        &self,
+        endpoint_id: &str,
+    ) -> Result<
+        (
+            Arc<node::Node>,
+            iroh::EndpointAddr,
+            Arc<Mutex<Option<iroh::endpoint::Connection>>>,
+        ),
+        RelayError,
+    > {
+        let saved = self
+            .record
+            .get()
+            .devices
+            .get(endpoint_id)
+            .filter(|d| d.trust == SavedTrust::Trusted)
+            .cloned()
+            .ok_or_else(|| RelayError::UnknownPeer {
+                id: endpoint_id.to_string(),
+            })?;
+        let node = self.node().await?;
+        self.watch_network(&node);
+        let Some((addr, _)) = self.dial(&saved) else {
+            return Err(RelayError::Unreachable {
+                reason: self.problem_of(endpoint_id).unwrap_or_default(),
+            });
+        };
+        let cached = Arc::clone(
+            lock(&self.site_connections)
+                .entry(endpoint_id.to_string())
+                .or_default(),
+        );
+        Ok((node, addr, cached))
+    }
+
+    /// Opens a site on this computer (N6, `relay web`): a port on
+    /// 127.0.0.1 (`port` 0 picks one) whose requests go to the trusted
+    /// device's site. It stays open until the returned tunnel is dropped.
+    pub fn open_site_port(&self, endpoint_id: &str, port: u16) -> Result<SitePort, RelayError> {
+        forge_runtime::block_on(async {
+            let (node, addr, cached) = self.site_route(endpoint_id).await?;
+            code::TOKIO
+                .spawn(async move { web::open_tunnel(node, addr, cached, port).await })
+                .await
+                .unwrap_or_else(|e| Err(code::connection(e)))
+        })
+    }
 }
 
 #[uniffi::export]
@@ -352,6 +414,8 @@ impl RelayCore {
             outbox: outbox::Outbox::default(),
             peer_logs,
             chat_waker: Mutex::new(None),
+            site: Mutex::new(None),
+            site_connections: Mutex::new(HashMap::new()),
             me: me.clone(),
         });
         Ok(core)
@@ -765,6 +829,9 @@ pub struct Device {
     pub route: Option<String>,
     /// Why Relay couldn't reach it the last time it tried, in words.
     pub problem: Option<String>,
+    /// The capabilities granted to it here (N5): none until the person
+    /// turns one on for it.
+    pub grants: Vec<Capability>,
 }
 
 /// Saved data Relay couldn't read when it opened: what happened, in words,
@@ -894,6 +961,7 @@ impl RelayCore {
                     problem: trusted
                         .then(|| lock(&self.problems).get(&d.endpoint_id).cloned())
                         .flatten(),
+                    grants: d.capabilities(),
                 }
             })
             .collect();
@@ -1329,6 +1397,64 @@ impl RelayCore {
             .await
     }
 
+    /// Grants `capability` to a trusted device, or takes it away (N5).
+    /// Taking it away ends any use of it at once.
+    pub async fn set_grant(
+        &self,
+        endpoint_id: String,
+        capability: Capability,
+        on: bool,
+    ) -> Result<(), RelayError> {
+        self.rt
+            .command("grant", move |state| {
+                state.change(|r| {
+                    if r.devices.set_grant(&endpoint_id, capability, on) {
+                        Ok(())
+                    } else {
+                        Err(RelayError::UnknownPeer { id: endpoint_id })
+                    }
+                })
+            })
+            .await
+    }
+
+    /// Shares `source` as this device's site (N6), replacing any other:
+    /// trusted devices granted `Capability::Sites` can open it while
+    /// Relay runs. A folder must exist; a server must be on this device's
+    /// localhost.
+    pub async fn share_site(&self, source: SiteSource) -> Result<(), RelayError> {
+        let source = source.checked()?;
+        // The node must be running for anyone to reach the site.
+        self.node().await?;
+        *lock(&self.site) = Some(source);
+        Ok(())
+    }
+
+    /// Stops sharing the site: open visits end at once.
+    pub fn stop_site(&self) {
+        *lock(&self.site) = None;
+    }
+
+    /// The site this device shares now, if any.
+    pub fn shared_site(&self) -> Option<SiteSource> {
+        lock(&self.site).clone()
+    }
+
+    /// Asks a trusted device's site for one request (N6), for the iPhone's
+    /// in-app viewer: refused unless that device shares a site and has
+    /// granted this one `Capability::Sites`.
+    pub async fn fetch_site(
+        &self,
+        endpoint_id: String,
+        request: SiteRequest,
+    ) -> Result<SiteResponse, RelayError> {
+        let (node, addr, cached) = self.site_route(&endpoint_id).await?;
+        code::TOKIO
+            .spawn(async move { web::fetch(&node, addr, &cached, request).await })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)))
+    }
+
     /// Sends files and folders to a trusted device as one transfer, with
     /// no code. Several items arrive in one folder named "N items". They
     /// are copied into Relay's store first, so they can wait in the outbox
@@ -1762,6 +1888,18 @@ impl device::DeviceInbound for CoreDevices {
         Ok(())
     }
 
+    fn granted(&self, from: &str, capability: Capability) -> bool {
+        self.core
+            .upgrade()
+            .is_some_and(|core| core.record.get().devices.granted(from, capability))
+    }
+
+    fn site(&self) -> Option<SiteSource> {
+        self.core
+            .upgrade()
+            .and_then(|core| lock(&core.site).clone())
+    }
+
     fn rights(&self, from: &str) -> Option<device::Rights> {
         let core = self.core.upgrade()?;
         let record = core.record.get();
@@ -1824,7 +1962,7 @@ impl device::DeviceInbound for CoreDevices {
             .unwrap_or_default()
     }
 
-    fn status(&self) -> device::StatusReport {
+    fn status(&self, asker: &str) -> device::StatusReport {
         let Some(core) = self.core.upgrade() else {
             return device::StatusReport::default();
         };
@@ -1834,6 +1972,11 @@ impl device::DeviceInbound for CoreDevices {
             .collect();
         if lock(&core.answers_with).is_some() {
             offers.push("ai".into());
+        }
+        // A capability is offered only to a device that may use it (N5).
+        if lock(&core.site).is_some() && core.record.get().devices.granted(asker, Capability::Sites)
+        {
+            offers.push(Capability::Sites.name().into());
         }
         device::StatusReport {
             name: core.identity().name,

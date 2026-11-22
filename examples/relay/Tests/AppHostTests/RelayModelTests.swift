@@ -146,7 +146,7 @@ final class RelayModelTests: XCTestCase {
             Device(endpointId: "id", name: "create", trusted: true, sinceMs: 0, receivesFrom: true, mayAsk: false,
                    introduces: false, seesDevices: false, introducedBy: nil, revokedBy: nil, person: nil,
                    nearby: nearby, presence: nearby ? .nearby : presence, lastSeenMs: nil,
-                   platform: nil, offers: [], route: route, problem: problem)
+                   platform: nil, offers: [], route: route, problem: problem, grants: [])
         }
         XCTAssertEqual(RelayModel.reach(device(nearby: true, route: "Private network", problem: "x")),
                        "create is nearby. No code needed.")
