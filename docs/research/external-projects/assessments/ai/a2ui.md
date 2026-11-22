@@ -87,9 +87,9 @@ The surface's data model living in Swift is a deviation from "Rust owns state", 
 |---|---|
 | No arbitrary code execution | A2UI carries no code by design. The ixOS catalog adds **no** expression or scripting functions beyond the basic validation and formatting ones |
 | Generated UI calls only explicitly registered app functions | The ixOS catalog lists them; the Swift renderer rejects anything else; Rust rejects it again (the agent is untrusted, so is the renderer's input) |
-| No unrestricted app APIs | Functions default to `rendererOnly`. **No ixOS function is `agentOnly` or `rendererOrAgent` in the first milestones**: the agent can draw, not act |
+| No unrestricted app APIs | Functions default to `rendererOnly`, which stops the agent calling them directly but not the surface: a `rendererOnly` function bound into a component can run without a tap unless it also has `requiresUserActivation`. So **no ixOS function is `agentOnly` or `rendererOrAgent` in the first milestones**, any later propose function sets `requiresUserActivation`, and the A2UI-1 catalog declares **no functions at all** (Rust's gate also refuses `@call` and `functionCall`): the agent can draw, not act |
 | No direct database writes from generated UI | Registered functions only *propose* (for example "plan these books for these dates"), returning a change set. Applying it is a separate step |
-| The person confirms | The **Confirm** control is app-owned and sits **outside** the agent's surface, so an agent can't draw a fake one, pre-press one or hide what it does. It shows the change set from Rust, not from the surface |
+| The person confirms | The **Confirm** control is app-owned and sits **outside** the agent's surface, in the review sheet's toolbar. An agent can draw a button *labelled* Confirm inside its surface, but that button can only send the one registered review event, which opens the review; it can't apply anything, pre-press the real Confirm or hide what it does. The real one is told apart by place (the sheet the app opens, never the surface) and content (the change set from Rust, not from the surface) |
 
 Two risks the A2UI docs don't make obvious for an on-device personal app:
 
