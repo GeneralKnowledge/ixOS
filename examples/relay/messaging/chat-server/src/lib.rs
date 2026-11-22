@@ -28,6 +28,11 @@
 //! to everyone; `read` events (`{"conversation_id","user_id","up_to"}`)
 //! carry cursor moves instead.
 //!
+//! Since N4 the same API is served on `relay/room/1` over iroh
+//! ([`room`]), where the caller is its key, accounts are made by joining
+//! with a code (`POST /join`), and an old account moves to a key with
+//! `POST /accounts/claim`. The HTTP listener below runs only with `--http`.
+//!
 //! Every call except `POST /accounts` needs `Authorization: Bearer <token>`;
 //! the author of a message is the token's account. A missing or unknown
 //! token is `401`. [`AppState::allow_anonymous`] also accepts requests
@@ -80,6 +85,9 @@ use axum::{Json, Router};
 use futures_util::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
+
+pub mod room;
+use room::room_key;
 
 /// The rooms a new server starts with: `(id, title)`.
 pub const ROOMS: &[(&str, &str)] = &[
@@ -359,8 +367,15 @@ enum Viewer<'a> {
 struct User {
     id: String,
     display_name: String,
+    /// The account's bearer token, for the old HTTP API. Empty once the
+    /// account moved to a key (`POST /accounts/claim`) or was made by
+    /// joining with a code.
+    #[serde(default)]
     token: String,
     created_at: i64,
+    /// The iroh endpoint id that is this account on `relay/room/1` (N4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    key: Option<String>,
 }
 
 struct Room {
@@ -467,13 +482,21 @@ struct Inner {
     next_server_id: u64,
     /// Where to save; `None` keeps everything in memory.
     data_file: Option<PathBuf>,
+    /// Invitations of an in-memory server (else in the invitations file).
+    invites: Vec<room::Invite>,
+    /// When wrong invitation codes came, for the limit on guessing.
+    wrong_codes: Vec<i64>,
 }
 
 impl Inner {
     fn user_by_token(&self, token: &str) -> Option<&User> {
         self.users
             .iter()
-            .find(|u| constant_time_eq(&u.token, token))
+            .find(|u| !u.token.is_empty() && constant_time_eq(&u.token, token))
+    }
+
+    fn user_by_key(&self, key: &str) -> Option<&User> {
+        self.users.iter().find(|u| u.key.as_deref() == Some(key))
     }
 
     fn stored(&self) -> Stored {
@@ -592,6 +615,8 @@ impl AppState {
                 users: stored.users,
                 next_server_id: stored.next_server_id,
                 data_file,
+                invites: Vec::new(),
+                wrong_codes: Vec::new(),
             })),
             blobs: Arc::new(Blobs::Memory(Mutex::new(HashMap::new()))),
             heartbeat,
@@ -735,6 +760,19 @@ impl Inner {
 /// valid; no token is only allowed with [`AppState::allow_anonymous`].
 /// `Err` is why the caller is refused (answered with 401).
 fn caller(state: &AppState, headers: &HeaderMap) -> Result<Caller, &'static str> {
+    // Over relay/room/1 the caller is its key, which the connection proved
+    // (the header is set by the room transport and removed from anything
+    // else); a token there counts for nothing.
+    if let Some(key) = room_key(headers) {
+        let inner = state.lock();
+        let user = inner
+            .user_by_key(key)
+            .ok_or("not a member here; join with a code")?;
+        return Ok(Caller::User {
+            id: user.id.clone(),
+            display_name: user.display_name.clone(),
+        });
+    }
     let header = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok());
@@ -787,7 +825,18 @@ fn clean_display_name(name: &str) -> Result<String, &'static str> {
     Ok(name.to_string())
 }
 
-async fn register(State(state): State<AppState>, Json(body): Json<RegisterBody>) -> Response {
+async fn register(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<RegisterBody>,
+) -> Response {
+    if room_key(&headers).is_some() {
+        return (
+            StatusCode::FORBIDDEN,
+            "accounts here are made by joining with a code",
+        )
+            .into_response();
+    }
     let display_name = match clean_display_name(&body.display_name) {
         Ok(name) => name,
         Err(why) => return (StatusCode::BAD_REQUEST, why).into_response(),
@@ -804,6 +853,7 @@ async fn register(State(state): State<AppState>, Json(body): Json<RegisterBody>)
         display_name: display_name.clone(),
         token: token.clone(),
         created_at: now_ms(),
+        key: None,
     };
     let mut inner = state.lock();
     inner.users.push(user);
@@ -1368,7 +1418,12 @@ pub fn router(state: AppState) -> Router {
             post(upload_attachment).layer(DefaultBodyLimit::max(MAX_ATTACHMENT_BYTES)),
         )
         .route("/attachments/{id}", get(download_attachment))
+        .route("/join", post(room::join))
+        .route("/accounts/claim", post(room::claim))
         .with_state(state)
+        // Only the room transport says who is calling by key: the header is
+        // set from the connection there, and removed from every other request.
+        .layer(axum::middleware::map_request(room::caller_header))
 }
 
 #[cfg(test)]
@@ -1387,6 +1442,7 @@ mod tests {
                 display_name: "Ana".into(),
                 token: "secret".into(),
                 created_at: 1,
+                key: None,
             });
             inner
                 .rooms
@@ -1476,6 +1532,7 @@ mod tests {
             display_name: "U".into(),
             token: "t".into(),
             created_at: 1,
+            key: None,
         };
         let other = User {
             id: "o".into(),

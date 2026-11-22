@@ -16,10 +16,19 @@ serde = { workspace = true }
 # Attachments are stored under the SHA-256 of their bytes.
 sha2 = "0.10"
 serde_json = { workspace = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }
+# Rooms on Relay's model (N4): relay/room/1 over iroh, each stream an
+# HTTP/1.1 connection to the same API.
+iroh = { version = "1", default-features = false, features = ["tls-ring"] }
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]
 tempfile = "3.14"
+# A plain HTTP/1.1 client over relay/room/1 streams (tests/room.rs).
+hyper = { version = "1", features = ["client", "http1"] }
+http-body-util = "0.1"
 chat-core = { workspace = true, features = ["ureq"] }
 # HTTPS end-to-end test: a TLS front for the mock server with a throwaway CA.
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }

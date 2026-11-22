@@ -39,6 +39,7 @@ mod store;
 pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind, ServerHealth};
 mod hex;
 mod mailbox;
+pub mod mailbox_server;
 mod trust;
 
 use std::collections::{HashMap, VecDeque};
