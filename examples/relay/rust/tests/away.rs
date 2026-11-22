@@ -13,6 +13,7 @@ fn defaults() -> RelayServers {
     RelayServers {
         relay_url: Some("https://relay.invalid".into()),
         lookup_url: Some("https://lookup.invalid/pkarr".into()),
+        mailbox: None,
     }
 }
 
@@ -105,6 +106,7 @@ fn a_person_who_chose_private_or_their_own_servers_keeps_it() {
     let own = RelayServers {
         relay_url: Some("https://relay.example.invalid".into()),
         lookup_url: None,
+        mailbox: None,
     };
     older_build(
         dir.path(),

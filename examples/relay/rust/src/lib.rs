@@ -40,6 +40,7 @@ mod store;
 pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind, ServerHealth};
 mod hex;
 mod mailbox;
+mod mailbox_client;
 pub mod mailbox_server;
 mod trust;
 mod web;
@@ -414,7 +415,12 @@ impl RelayCore {
             device_chat::PeerLogs::new(directory.path().join("devices"), Arc::clone(&store));
         let store_dir = code_dir.join("store");
         // Outside Hybrid the endpoint has no relay and no lookup server.
-        let servers = record.devices.servers.in_mode(record.devices.mode);
+        let servers = record
+            .devices
+            .servers
+            .clone()
+            .upgraded()
+            .in_mode(record.devices.mode);
         let state = State {
             record,
             store,
@@ -938,13 +944,15 @@ impl RelayCore {
         })
     }
 
-    /// Tries every trusted device something waits for, now: Relay came
-    /// back to the foreground. (Seeing a device, or it connecting here,
-    /// tries it too; so does a timer while Relay is open.)
+    /// Tries every trusted device something waits for, now, and collects
+    /// the mailbox: Relay came back to the foreground. (Seeing a device, or
+    /// it connecting here, tries it too; so does each mailbox round, every
+    /// 30 s while Relay is open, for items the mailbox has let expire.)
     pub fn deliver_waiting(&self) {
         for to in self.record.get().waiting_for() {
             self.try_now(&to);
         }
+        self.collect_mailbox();
     }
 
     /// Trusted and revoked devices, by name. Forgotten ones aren't listed.
@@ -1097,7 +1105,7 @@ impl RelayCore {
 
     /// Relay's own servers: a relay and a lookup server (M2 PR 7).
     pub fn servers(&self) -> RelayServers {
-        self.record.get().devices.servers.clone()
+        self.record.get().devices.servers.clone().upgraded()
     }
 
     /// Whether Relay's relay answers now: `Off` when none is in use (none
@@ -1123,6 +1131,10 @@ impl RelayCore {
         let clean = RelayServers {
             relay_url: servers.relay_url.filter(|u| !u.trim().is_empty()),
             lookup_url: servers.lookup_url.filter(|u| !u.trim().is_empty()),
+            mailbox: servers
+                .mailbox
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty()),
         };
         clean
             .check()
@@ -1243,6 +1255,8 @@ impl RelayCore {
         self.close_site_connections(Some(&endpoint_id));
         // What waited for it ends: No longer trusted.
         self.wake(&endpoint_id);
+        // Its pass is taken back from the mailbox now.
+        self.collect_mailbox();
         Ok(())
     }
 
@@ -1263,6 +1277,7 @@ impl RelayCore {
             .await?;
         self.close_site_connections(Some(&endpoint_id));
         self.wake(&endpoint_id);
+        self.collect_mailbox();
         Ok(())
     }
 
@@ -1773,6 +1788,8 @@ impl RelayCore {
                 .await
             })
             .await;
+        // A new mailbox gets this device's passes registered now.
+        self.collect_mailbox();
     }
 
     /// Asks the introducer `endpoint_id` for its list in the background;
@@ -2035,18 +2052,27 @@ impl device::DeviceInbound for CoreDevices {
         }
     }
 
-    fn met(&self, from: &str, addresses: Vec<String>, route: Option<RouteKind>) {
+    fn met(
+        &self,
+        from: &str,
+        addresses: Vec<String>,
+        route: Option<RouteKind>,
+        mailbox: Option<mailbox::PeerMailbox>,
+    ) {
         let Some(core) = self.core.upgrade() else {
             return;
         };
         lock(&core.problems).remove(from);
+        // It has just been told this device's pass: registered now, so
+        // whatever it leaves while this device is closed is taken.
+        core.collect_mailbox();
         let from = from.to_string();
         code::TOKIO.spawn(async move {
             let _ = core
                 .rt
                 .command("device-met", move |state| {
                     state.change(|r| {
-                        r.devices.met(&from, &addresses, route);
+                        r.devices.met(&from, &addresses, route, mailbox);
                         Ok(())
                     })
                 })
