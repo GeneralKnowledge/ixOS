@@ -19,11 +19,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.forgemobile.ffi.ForgeAndroid
+import org.forgemobile.relay.host.ForgeBackgroundWorker
 import org.forgemobile.relay.host.ForgeEnvironment
 import org.forgemobile.relay.host.AndroidNotifier
 import org.forgemobile.relay.host.ForgeHost
 import org.forgemobile.relay.host.ForgeServices
 import org.forgemobile.relay.host.NotificationReceiver
+import org.forgemobile.relay.kit.ForgeAppLockState
 import org.forgemobile.relay.kit.ForgeFailure
 import uniffi.forge_app.AppPhase
 import uniffi.relay_core.deliverNotificationResponse
@@ -56,6 +58,9 @@ class RelayApplication : Application() {
     /** The Chats tab's model, beside [model]; null while closed or when Chats couldn't open. */
     val chat: StateFlow<ChatModel?> = _chat.asStateFlow()
 
+    /** The app lock (shown while the Chats setting is on), for the life of the process. */
+    val appLock = ForgeAppLockState()
+
     /** Whether the app is on screen: the Devices screen advertises and looks only then. */
     private val _onScreen = MutableStateFlow(false)
     val onScreen: StateFlow<Boolean> = _onScreen.asStateFlow()
@@ -64,25 +69,19 @@ class RelayApplication : Application() {
         super.onCreate()
         // Android's trust store for Rust's HTTPS (Relay's servers), as on every Forge app.
         ForgeAndroid.init(this)
-        // The Keystore, notifications and permissions, before any Rust core opens.
+        // The Keystore, notifications, permissions, biometrics and background work, before any
+        // Rust core opens.
         try {
-            ForgeServices.install(this)
+            ForgeServices.install(this, backgroundTasks = BACKGROUND_TASKS)
         } catch (e: Exception) {
             // Without them Relay still opens: its key stays in `device.key`, and Chats keeps a
             // chat server account only until it closes.
             android.util.Log.w("Relay", "platform services not installed: ${e.javaClass.simpleName}")
         }
         // A Reply or Mark as Read with Relay closed opens its cores in the background first.
-        NotificationReceiver.onResponse = {
-            withContext(Dispatchers.Main.immediate) {
-                // Opens here (a no-op while an open is already under way, which is waited for).
-                if (host.core == null) host.start()
-                val opened = host.status.first { it is ForgeHost.Status.Ready || it is ForgeHost.Status.Failed }
-                // Rust's handler is Chats': Relay can open with Chats closed (chatProblem), and
-                // a reply handed over then would wait in memory and be lost with the process.
-                opened is ForgeHost.Status.Ready && host.core?.chat != null
-            }
-        }
+        NotificationReceiver.onResponse = ::openForChats
+        // So does a background catch-up (WorkManager): its handler is Chats' too.
+        ForgeBackgroundWorker.prepare = ::openForChats
         // The reply in the outbox (or the room marked read): Rust holds it as finishing work.
         NotificationReceiver.settled = {
             while (host.core?.chat?.backgroundWorkPending() == true) delay(50)
@@ -135,12 +134,14 @@ class RelayApplication : Application() {
         // The process's lifecycle is the app's.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
+                appLock.returned()
                 host.report(AppPhase.INACTIVE)
                 _onScreen.value = true
             }
             override fun onResume(owner: LifecycleOwner) = host.report(AppPhase.ACTIVE)
             override fun onPause(owner: LifecycleOwner) = host.report(AppPhase.INACTIVE)
             override fun onStop(owner: LifecycleOwner) {
+                appLock.left()
                 _onScreen.value = false
                 host.report(AppPhase.BACKGROUND)
             }
@@ -158,6 +159,18 @@ class RelayApplication : Application() {
      * an activity Android brought back after ending the process: its intent was handled
      * before, so a notification it carries isn't opened again over the restored screens.
      */
+    /**
+     * Opens Relay's cores if they aren't (a no-op while an open is under way, which is waited
+     * for), for work that starts with Relay closed. True once Chats is open: Rust's handlers for
+     * notification answers and background catch-up are Chats', and Relay can open with Chats
+     * closed (chatProblem), when work handed over would wait in memory and be lost.
+     */
+    private suspend fun openForChats(): Boolean = withContext(Dispatchers.Main.immediate) {
+        if (host.core == null) host.start()
+        val opened = host.status.first { it is ForgeHost.Status.Ready || it is ForgeHost.Status.Failed }
+        opened is ForgeHost.Status.Ready && host.core?.chat != null
+    }
+
     fun launch(intent: Intent, restored: Boolean = false) {
         launched = true
         // Tests only: any app can start the activity, so a release build never lets an extra
@@ -206,4 +219,9 @@ class RelayApplication : Application() {
     private fun deviceName(): String =
         Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME)?.takeIf { it.isNotBlank() }
             ?: Build.MODEL
+
+    private companion object {
+        /** Relay's background tasks: forge.toml's `[ios] background_tasks` (Chats' catch-up). */
+        val BACKGROUND_TASKS = listOf("org.forgemobile.chat.refresh")
+    }
 }

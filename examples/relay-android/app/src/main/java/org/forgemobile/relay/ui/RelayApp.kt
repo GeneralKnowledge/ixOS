@@ -53,7 +53,9 @@ import org.forgemobile.relay.RelayApplication
 import org.forgemobile.relay.RelayModel
 import org.forgemobile.relay.RelayNetwork
 import org.forgemobile.relay.host.ForgeHost
+import org.forgemobile.relay.host.ForgeServices
 import org.forgemobile.relay.kit.ForgeAlertDialog
+import org.forgemobile.relay.kit.ForgeAppLock
 import org.forgemobile.relay.kit.ForgeFailure
 import org.forgemobile.relay.kit.ForgeLoad
 import org.forgemobile.relay.kit.ForgeLoadView
@@ -116,7 +118,15 @@ fun RelayApp(app: RelayApplication) {
                 current != null -> {
                     val chat by app.chat.collectAsState()
                     val link by app.link.collectAsState()
-                    RelayScreens(current, chat, app.host.core?.chatProblem, app.network, app.onScreen, link, app::takeLink)
+                    val chatState = chat?.state?.collectAsState()
+                    // The app lock is a Chats setting, as on the iPhone (Rust keeps it there).
+                    ForgeAppLock(
+                        state = app.appLock,
+                        enabled = chatState?.value?.appLock == true,
+                        authenticate = { ForgeServices.biometrics.authenticate("Unlock Relay") },
+                    ) {
+                        RelayScreens(current, chat, app.host.core?.chatProblem, app.network, app.onScreen, link, app::takeLink, app.appLock::settingChanged)
+                    }
                 }
                 status is ForgeHost.Status.Failed -> {
                     val failure = ForgeFailure(
@@ -156,6 +166,8 @@ private fun RelayScreens(
     /** A conversation a notification opened, until it is shown. */
     link: ChatLink?,
     tookLink: () -> Unit,
+    /** The app lock setting was turned on or off. */
+    lockChanged: () -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -248,7 +260,7 @@ private fun RelayScreens(
                     LaunchedEffect(Unit) { chatsStack = listOf(Route.Chats.key) }
                 }
                 Route.ChatServer -> if (chat != null) {
-                    ChatServerScreen(chat, back)
+                    ChatServerScreen(chat, lockChanged, back)
                 } else {
                     LaunchedEffect(Unit) { chatsStack = listOf(Route.Chats.key) }
                 }

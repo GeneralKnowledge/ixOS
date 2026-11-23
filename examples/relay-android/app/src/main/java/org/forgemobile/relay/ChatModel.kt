@@ -75,6 +75,8 @@ data class ChatState(
     val accountProblem: String? = null,
     /** Our messages waiting in Rust's outbox; Rust sends them by itself. */
     val waitingCount: Int = 0,
+    /** Whether Relay asks for the screen lock when it opens (Rust keeps the setting). */
+    val appLock: Boolean = false,
 ) {
     fun conversation(id: String): ChatConversation? = conversations.firstOrNull { it.id == id }
 
@@ -142,6 +144,7 @@ class ChatModel(
             }
         }
         showAccount(core.account(), force = true)
+        _state.update { it.copy(appLock = core.appLock()) }
         // Each trusted device is a conversation, signed in or not.
         core.useRelay(relay)
         scope.launch { refresh() }
@@ -169,6 +172,22 @@ class ChatModel(
     fun signOut() = perform {
         core.signOut()
         showAccount(null)
+    }
+
+    /**
+     * Turns the app lock on or off. Rust refuses to turn it on when the phone has no screen
+     * lock, since it could never open. True when the setting changed.
+     */
+    fun setAppLock(enabled: Boolean): Boolean {
+        val changed = try {
+            core.setAppLock(enabled)
+            true
+        } catch (e: Exception) {
+            fail(e)
+            false
+        }
+        _state.update { it.copy(appLock = core.appLock()) }
+        return changed
     }
 
     /** Creates a room on the chat server and returns its id, ready to open. Throws for the form. */
