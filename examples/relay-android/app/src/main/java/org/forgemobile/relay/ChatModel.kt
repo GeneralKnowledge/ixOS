@@ -545,6 +545,8 @@ class ChatModel(
             account = account,
             conversations = runCatching { core.cachedConversations() }.getOrDefault(emptyList()),
             waitingCount = runCatching { core.outboxCount().toInt() }.getOrDefault(0),
+            // The device's setting, not the account's: a new account keeps the lock on.
+            appLock = runCatching { core.appLock() }.getOrDefault(_state.value.appLock),
         )
         if (!force) scope.launch { refresh() }
     }
