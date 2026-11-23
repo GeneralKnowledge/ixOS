@@ -2234,6 +2234,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func downloadState(trackId: String)  -> DownloadState
     
     /**
+     * Songs that look like one song from several sources, to offer
+     * merging: linked to the same MusicBrainz recording, or the same
+     * title, artist and length. Groups the person kept apart are left out.
+     */
+    func duplicateSongs()  -> [DuplicateSongs]
+    
+    /**
      * Changes a track's title, artist, album, number or genre on the
      * phone. An empty text goes back to what the server says.
      */
@@ -2282,6 +2289,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * The genres Discover offers for Jamendo, in the order shown.
      */
     func jamendoGenres()  -> [JamendoGenre]
+    
+    /**
+     * Remembers that these songs aren't one song, so they aren't offered
+     * for merging again.
+     */
+    func keepSongsApart(ids: [String]) async throws 
     
     /**
      * What the runtime found at open (unfinished background work).
@@ -2344,6 +2357,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * pick made just before leaving the app still arrives.
      */
     func markTake(slug: String, takeId: String, mark: TakeMark) async throws  -> SongDetail
+    
+    /**
+     * Merges the songs `ids` into the song `into`: one song whose
+     * recordings come from every source. Favourites, playlists, history
+     * and songs wanted offline move to `into`. Returns the merged song.
+     */
+    func mergeSongs(into: String, ids: [String]) async throws  -> TrackDetail
     
     /**
      * More from Jamendo for the Jamendo track `track_id`
@@ -2450,6 +2470,14 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func searchLibrary(query: String)  -> LibrarySearch
     
     /**
+     * Brings a merged song back as a song of its own, with its own
+     * recordings. Favourites, playlist entries, history and offline
+     * choices moved at the merge stay with the kept song. Returns
+     * the library.
+     */
+    func separateSong(id: String) async throws  -> Library
+    
+    /**
      * Uses the picture at `source_path` (JPEG or PNG) as an artist's,
      * album's or track's artwork. The file is copied into Soundscape.
      */
@@ -2513,6 +2541,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * title, artist, album and artwork when the library has its song.
      */
     func takeQueueTrack(song: SongDetail, take: Take)  -> QueueTrack
+    
+    /**
+     * The fixed test catalogue (`test_catalogue`): its files are written
+     * the first time (about 18 MB, a second or two), then reused.
+     * On-screen work.
+     */
+    func testCatalogue(cancellation: Cancellation?) async throws  -> [TestTrack]
     
     /**
      * Songs waiting for a pick: two or more takes and none picked, most
@@ -2903,6 +2938,20 @@ open func downloadState(trackId: String) -> DownloadState  {
 }
     
     /**
+     * Songs that look like one song from several sources, to offer
+     * merging: linked to the same MusicBrainz recording, or the same
+     * title, artist and length. Groups the person kept apart are left out.
+     */
+open func duplicateSongs() -> [DuplicateSongs]  {
+    return try!  FfiConverterSequenceTypeDuplicateSongs.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_duplicate_songs(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Changes a track's title, artist, album, number or genre on the
      * phone. An empty text goes back to what the server says.
      */
@@ -3043,6 +3092,26 @@ open func jamendoGenres() -> [JamendoGenre]  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Remembers that these songs aren't one song, so they aren't offered
+     * for merging again.
+     */
+open func keepSongsApart(ids: [String])async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_keep_songs_apart(
+                        self.uniffiCloneHandle(),FfiConverterSequenceString.lower(ids)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_void,
+            completeFunc: ffi_soundscape_core_rust_future_complete_void,
+            freeFunc: ffi_soundscape_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -3211,6 +3280,27 @@ open func markTake(slug: String, takeId: String, mark: TakeMark)async throws  ->
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeSongDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Merges the songs `ids` into the song `into`: one song whose
+     * recordings come from every source. Favourites, playlists, history
+     * and songs wanted offline move to `into`. Returns the merged song.
+     */
+open func mergeSongs(into: String, ids: [String])async throws  -> TrackDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_merge_songs(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(into),FfiConverterSequenceString.lower(ids)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeTrackDetail_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -3521,6 +3611,28 @@ open func searchLibrary(query: String) -> LibrarySearch  {
 }
     
     /**
+     * Brings a merged song back as a song of its own, with its own
+     * recordings. Favourites, playlist entries, history and offline
+     * choices moved at the merge stay with the kept song. Returns
+     * the library.
+     */
+open func separateSong(id: String)async throws  -> Library  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_separate_song(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLibrary_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Uses the picture at `source_path` (JPEG or PNG) as an artist's,
      * album's or track's artwork. The file is copied into Soundscape.
      */
@@ -3703,6 +3815,27 @@ open func takeQueueTrack(song: SongDetail, take: Take) -> QueueTrack  {
         FfiConverterTypeTake_lower(take),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * The fixed test catalogue (`test_catalogue`): its files are written
+     * the first time (about 18 MB, a second or two), then reused.
+     * On-screen work.
+     */
+open func testCatalogue(cancellation: Cancellation?)async throws  -> [TestTrack]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_test_catalogue(
+                        self.uniffiCloneHandle(),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeTestTrack.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -4276,6 +4409,71 @@ public func FfiConverterTypeDeepLink_lift(_ buf: RustBuffer) throws -> DeepLink 
 #endif
 public func FfiConverterTypeDeepLink_lower(_ value: DeepLink) -> RustBuffer {
     return FfiConverterTypeDeepLink.lower(value)
+}
+
+
+/**
+ * Songs that look like one song from several sources, to offer merging.
+ */
+public struct DuplicateSongs: Equatable, Hashable {
+    public var reason: DuplicateReason
+    /**
+     * The suggested song to keep first (the take server's, else a
+     * catalogue's, else your file), then the others.
+     */
+    public var tracks: [LibraryTrack]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(reason: DuplicateReason, 
+        /**
+         * The suggested song to keep first (the take server's, else a
+         * catalogue's, else your file), then the others.
+         */tracks: [LibraryTrack]) {
+        self.reason = reason
+        self.tracks = tracks
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DuplicateSongs: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDuplicateSongs: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DuplicateSongs {
+        return
+            try DuplicateSongs(
+                reason: FfiConverterTypeDuplicateReason.read(from: &buf), 
+                tracks: FfiConverterSequenceTypeLibraryTrack.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DuplicateSongs, into buf: inout [UInt8]) {
+        FfiConverterTypeDuplicateReason.write(value.reason, into: &buf)
+        FfiConverterSequenceTypeLibraryTrack.write(value.tracks, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDuplicateSongs_lift(_ buf: RustBuffer) throws -> DuplicateSongs {
+    return try FfiConverterTypeDuplicateSongs.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDuplicateSongs_lower(_ value: DuplicateSongs) -> RustBuffer {
+    return FfiConverterTypeDuplicateSongs.lower(value)
 }
 
 
@@ -5160,6 +5358,10 @@ public struct LibraryTrack: Equatable, Hashable {
      * The MusicBrainz recording it was linked to, if any.
      */
     public var musicbrainzId: String?
+    /**
+     * The songs merged into this one, each a source of more recordings.
+     */
+    public var merged: [MergedSong]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -5192,7 +5394,10 @@ public struct LibraryTrack: Equatable, Hashable {
          */downloaded: Bool, 
         /**
          * The MusicBrainz recording it was linked to, if any.
-         */musicbrainzId: String?) {
+         */musicbrainzId: String?, 
+        /**
+         * The songs merged into this one, each a source of more recordings.
+         */merged: [MergedSong]) {
         self.id = id
         self.title = title
         self.artistId = artistId
@@ -5211,6 +5416,7 @@ public struct LibraryTrack: Equatable, Hashable {
         self.edited = edited
         self.downloaded = downloaded
         self.musicbrainzId = musicbrainzId
+        self.merged = merged
     }
 
     
@@ -5246,7 +5452,8 @@ public struct FfiConverterTypeLibraryTrack: FfiConverterRustBuffer {
                 updatedMs: FfiConverterInt64.read(from: &buf), 
                 edited: FfiConverterBool.read(from: &buf), 
                 downloaded: FfiConverterBool.read(from: &buf), 
-                musicbrainzId: FfiConverterOptionString.read(from: &buf)
+                musicbrainzId: FfiConverterOptionString.read(from: &buf), 
+                merged: FfiConverterSequenceTypeMergedSong.read(from: &buf)
         )
     }
 
@@ -5269,6 +5476,7 @@ public struct FfiConverterTypeLibraryTrack: FfiConverterRustBuffer {
         FfiConverterBool.write(value.edited, into: &buf)
         FfiConverterBool.write(value.downloaded, into: &buf)
         FfiConverterOptionString.write(value.musicbrainzId, into: &buf)
+        FfiConverterSequenceTypeMergedSong.write(value.merged, into: &buf)
     }
 }
 
@@ -5607,6 +5815,77 @@ public func FfiConverterTypeLyricWord_lift(_ buf: RustBuffer) throws -> LyricWor
 #endif
 public func FfiConverterTypeLyricWord_lower(_ value: LyricWord) -> RustBuffer {
     return FfiConverterTypeLyricWord.lower(value)
+}
+
+
+/**
+ * A song merged into another, as its source had it.
+ */
+public struct MergedSong: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var artist: String
+    /**
+     * Where it came from: "Take server", "Your file", "Jamendo"...
+     */
+    public var source: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, artist: String, 
+        /**
+         * Where it came from: "Take server", "Your file", "Jamendo"...
+         */source: String) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.source = source
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MergedSong: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMergedSong: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MergedSong {
+        return
+            try MergedSong(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artist: FfiConverterString.read(from: &buf), 
+                source: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MergedSong, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.artist, into: &buf)
+        FfiConverterString.write(value.source, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMergedSong_lift(_ buf: RustBuffer) throws -> MergedSong {
+    return try FfiConverterTypeMergedSong.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMergedSong_lower(_ value: MergedSong) -> RustBuffer {
+    return FfiConverterTypeMergedSong.lower(value)
 }
 
 
@@ -6930,6 +7209,12 @@ public struct Recording: Equatable, Hashable {
      * for the person's own music.
      */
     public var rights: Rights?
+    /**
+     * The song it belonged to before that song was merged into this one;
+     * `None` for the song's own recordings. Downloads, picks and stars
+     * stay with that song.
+     */
+    public var mergedFrom: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6946,7 +7231,12 @@ public struct Recording: Equatable, Hashable {
         /**
          * What a catalogue recording's licence allows, and its credit. `None`
          * for the person's own music.
-         */rights: Rights?) {
+         */rights: Rights?, 
+        /**
+         * The song it belonged to before that song was merged into this one;
+         * `None` for the song's own recordings. Downloads, picks and stars
+         * stay with that song.
+         */mergedFrom: String?) {
         self.id = id
         self.label = label
         self.kind = kind
@@ -6961,6 +7251,7 @@ public struct Recording: Equatable, Hashable {
         self.generation = generation
         self.lyrics = lyrics
         self.rights = rights
+        self.mergedFrom = mergedFrom
     }
 
     
@@ -6992,7 +7283,8 @@ public struct FfiConverterTypeRecording: FfiConverterRustBuffer {
                 preferred: FfiConverterBool.read(from: &buf), 
                 generation: FfiConverterOptionTypeGeneration.read(from: &buf), 
                 lyrics: FfiConverterOptionString.read(from: &buf), 
-                rights: FfiConverterOptionTypeRights.read(from: &buf)
+                rights: FfiConverterOptionTypeRights.read(from: &buf), 
+                mergedFrom: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -7011,6 +7303,7 @@ public struct FfiConverterTypeRecording: FfiConverterRustBuffer {
         FfiConverterOptionTypeGeneration.write(value.generation, into: &buf)
         FfiConverterOptionString.write(value.lyrics, into: &buf)
         FfiConverterOptionTypeRights.write(value.rights, into: &buf)
+        FfiConverterOptionString.write(value.mergedFrom, into: &buf)
     }
 }
 
@@ -7672,6 +7965,69 @@ public func FfiConverterTypeTakeMark_lower(_ value: TakeMark) -> RustBuffer {
 
 
 /**
+ * One test track and what it is there to check.
+ */
+public struct TestTrack: Equatable, Hashable {
+    public var track: CatalogueTrack
+    /**
+     * What to look for when playing it, in a sentence.
+     */
+    public var checks: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(track: CatalogueTrack, 
+        /**
+         * What to look for when playing it, in a sentence.
+         */checks: String) {
+        self.track = track
+        self.checks = checks
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TestTrack: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTestTrack: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TestTrack {
+        return
+            try TestTrack(
+                track: FfiConverterTypeCatalogueTrack.read(from: &buf), 
+                checks: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TestTrack, into buf: inout [UInt8]) {
+        FfiConverterTypeCatalogueTrack.write(value.track, into: &buf)
+        FfiConverterString.write(value.checks, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTestTrack_lift(_ buf: RustBuffer) throws -> TestTrack {
+    return try FfiConverterTypeTestTrack.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTestTrack_lower(_ value: TestTrack) -> RustBuffer {
+    return FfiConverterTypeTestTrack.lower(value)
+}
+
+
+/**
  * A track with all its recordings, newest last, and the words that went
  * into generating it.
  */
@@ -8094,6 +8450,81 @@ public func FfiConverterTypeDownloadState_lift(_ buf: RustBuffer) throws -> Down
 #endif
 public func FfiConverterTypeDownloadState_lower(_ value: DownloadState) -> RustBuffer {
     return FfiConverterTypeDownloadState.lower(value)
+}
+
+
+
+/**
+ * Why songs look like the same song.
+ */
+
+public enum DuplicateReason: Equatable, Hashable {
+    
+    /**
+     * Linked to the same MusicBrainz recording.
+     */
+    case sameRecording
+    /**
+     * The same title and artist, and the same length where both are known.
+     */
+    case sameDetails
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension DuplicateReason: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDuplicateReason: FfiConverterRustBuffer {
+    typealias SwiftType = DuplicateReason
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DuplicateReason {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .sameRecording
+        
+        case 2: return .sameDetails
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DuplicateReason, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .sameRecording:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .sameDetails:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDuplicateReason_lift(_ buf: RustBuffer) throws -> DuplicateReason {
+    return try FfiConverterTypeDuplicateReason.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDuplicateReason_lower(_ value: DuplicateReason) -> RustBuffer {
+    return FfiConverterTypeDuplicateReason.lower(value)
 }
 
 
@@ -10031,6 +10462,31 @@ fileprivate struct FfiConverterSequenceTypeCatalogueTrack: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeDuplicateSongs: FfiConverterRustBuffer {
+    typealias SwiftType = [DuplicateSongs]
+
+    public static func write(_ value: [DuplicateSongs], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDuplicateSongs.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DuplicateSongs] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DuplicateSongs]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDuplicateSongs.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHttpHeader: FfiConverterRustBuffer {
     typealias SwiftType = [HttpHeader]
 
@@ -10198,6 +10654,31 @@ fileprivate struct FfiConverterSequenceTypeLyricWord: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeLyricWord.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMergedSong: FfiConverterRustBuffer {
+    typealias SwiftType = [MergedSong]
+
+    public static func write(_ value: [MergedSong], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMergedSong.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MergedSong] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MergedSong]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMergedSong.read(from: &buf))
         }
         return seq
     }
@@ -10577,6 +11058,31 @@ fileprivate struct FfiConverterSequenceTypeTake: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTestTrack: FfiConverterRustBuffer {
+    typealias SwiftType = [TestTrack]
+
+    public static func write(_ value: [TestTrack], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTestTrack.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TestTrack] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TestTrack]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTestTrack.read(from: &buf))
+        }
+        return seq
+    }
+}
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
 
@@ -10737,6 +11243,17 @@ public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
         uniffiCallStatus in
     uniffi_soundscape_core_fn_func_forge_log_enabled(
         FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
+    )
+})
+}
+/**
+ * The longest title, artist, album or genre a song keeps, in characters,
+ * so Edit Song can name the limit.
+ */
+public func songFieldMaxChars() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_song_field_max_chars(uniffiCallStatus
     )
 })
 }
@@ -11061,6 +11578,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_func_forge_log_enabled() != 19347) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_func_song_field_max_chars() != 52764) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_func_counts_as_played() != 36228) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11187,6 +11707,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_download_state() != 23422) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_duplicate_songs() != 41792) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_edit_track() != 47127) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11212,6 +11735,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_genres() != 17256) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_keep_songs_apart() != 6266) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_launch_report() != 4480) {
@@ -11242,6 +11768,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_mark_take() != 58743) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_merge_songs() != 10817) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_more_from_jamendo() != 23671) {
@@ -11298,6 +11827,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_search_library() != 65130) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_separate_song() != 18698) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_artwork() != 31551) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11326,6 +11858,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_take_queue_track() != 39737) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_test_catalogue() != 5802) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_tracks_to_pick() != 21309) {

@@ -132,6 +132,8 @@ pub fn provider_of(id: &str) -> Option<&'static str> {
         Some(crate::jamendo::PROVIDER)
     } else if id.starts_with(crate::archive::PREFIX) {
         Some(crate::archive::PROVIDER)
+    } else if crate::test_catalogue::spec(id).is_some() {
+        Some(crate::test_catalogue::PROVIDER)
     } else {
         None
     }

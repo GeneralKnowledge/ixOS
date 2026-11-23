@@ -50,6 +50,7 @@ class RelayTextTest {
             item = Item.File("a.txt", 200u, null), status = status, atMs = 0,
         )
         assertEquals("Waiting for Mac", RelayFormat.status(transfer(TransferStatus.Waiting)))
+        assertEquals("In the Mailbox", RelayFormat.status(transfer(TransferStatus.InMailbox)))
         assertEquals("Sending 50%", RelayFormat.status(transfer(TransferStatus.InProgress(100u))))
         assertEquals("Receiving 25%", RelayFormat.status(transfer(TransferStatus.InProgress(50u), Direction.RECEIVED)))
         assertEquals("Sent", RelayFormat.status(transfer(TransferStatus.Done)))

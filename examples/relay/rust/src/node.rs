@@ -302,6 +302,11 @@ impl Node {
     /// device's relay (the mailbox runs on Relay's own server, on the same
     /// relay), so it is reached without waiting on the lookup server;
     /// iroh moves to a direct path when it can.
+    /// The relay this node uses now, if any.
+    pub fn relay(&self) -> Option<iroh::RelayUrl> {
+        forge_runtime::lock(&self.servers).relay()
+    }
+
     pub fn mailbox_addr(&self, id: iroh::PublicKey) -> iroh::EndpointAddr {
         let relay = forge_runtime::lock(&self.servers).relay();
         iroh::EndpointAddr::from_parts(id, relay.map(iroh::TransportAddr::Relay))

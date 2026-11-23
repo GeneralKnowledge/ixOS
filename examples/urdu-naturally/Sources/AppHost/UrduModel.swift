@@ -126,8 +126,8 @@ public final class UrduModel {
     }
 
     /// The longest name Rust keeps (`MAX_NAME_CHARS`), counted as Rust
-    /// counts (Unicode scalars).
-    public static let maxNameChars = 40
+    /// counts (Unicode scalars), from Rust.
+    public static let maxNameChars = Int(urduMaxNameChars())
 
     /// Whether Rust keeps `name`: at most `maxNameChars` scalars once the
     /// spaces round it are trimmed, as `set_name` counts. The field takes

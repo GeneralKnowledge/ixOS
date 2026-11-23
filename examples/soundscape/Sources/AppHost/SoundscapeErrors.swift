@@ -33,8 +33,8 @@ public enum SoundscapeErrors {
     }
 
     /// The longest title, artist, album or genre Rust keeps for a song
-    /// (`library::MAX_FIELD_CHARS`).
-    nonisolated public static let maxFieldChars = 200
+    /// (`library::MAX_FIELD_CHARS`), from Rust.
+    nonisolated public static let maxFieldChars = Int(songFieldMaxChars())
 
     /// The song fields Rust names when one is too long (`TrackEdit::merge`).
     nonisolated static let songFields: Set<String> = ["title", "artist", "album", "genre"]

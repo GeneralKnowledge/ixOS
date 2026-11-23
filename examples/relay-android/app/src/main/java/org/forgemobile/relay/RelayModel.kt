@@ -70,7 +70,7 @@ data class RelayState(
     val isTransferring: Boolean get() = transfers.any { it.status is TransferStatus.InProgress }
 
     /** Whether anything waits in the outbox for a trusted device. */
-    val isWaiting: Boolean get() = transfers.any { it.status is TransferStatus.Waiting }
+    val isWaiting: Boolean get() = transfers.any { it.status is TransferStatus.Waiting || it.status is TransferStatus.InMailbox }
 
     fun device(endpointId: String): Device? = devices.firstOrNull { it.endpointId == endpointId }
 }

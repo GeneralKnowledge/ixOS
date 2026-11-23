@@ -78,6 +78,30 @@ is pure, so it's tested on Linux with every combination.
 at two sources, not two songs. When they don't match but the title, artist and length do, Soundscape offers to
 link them and never merges by itself.
 
+### Reconciliation, as built
+
+Built before stable ids and the resolver (step 5 and 6), on today's track ids, so it needs no schema bump:
+
+- **Offered, never automatic.** `merge::duplicates` groups songs linked to the same MusicBrainz recording, then songs
+  with the same title and artist (letters and digits only, case ignored) whose lengths are within 3 seconds or
+  unknown (a song of unknown length joins only when the known lengths agree, so it never ties a 200 s and a
+  400 s version together). The take server's song comes first, then a catalogue's, then your file; the first is the
+  song kept. **Keep Apart** remembers the group (`library.json` `distinct`) so it isn't offered again.
+- **Merging** (`merge_songs`) records each absorbed track id with the song it joined (`library.json` `merged`);
+  merges of merges collapse. The absorbed songs leave the lists, and their recordings show under the kept song
+  with `merged_from` naming where each came from. Nothing is deleted.
+- **What plays:** a recording the person chose from one of the merged songs (`library.json` `prefer`, set by
+  Choose on a take that came with a merge), else your own file when the merged song has one (resolver step 1),
+  else the kept song's own preferred recording.
+- **What follows the song:** favourites, playlist entries, history and songs wanted offline move to the kept song
+  at the merge. The library is saved first; if a later save fails, opening the app finishes the move
+  (`merge::repair_collection`, `repair_offline`). Downloads, picks, stars and notes stay with the song that owns the recording (the core finds it
+  through `merged_from`), so picking a take merged into a Jamendo song still goes to the take server.
+- **Separate** (`separate_song`) removes the entry and the song is back as it was; moved favourites and playlist
+  entries stay with the kept song, and so do songs that had been merged into it before it was merged (merges
+  collapse, so they belong to the kept song).
+- Not yet: matching by file hash, which waits for the server's `sha256` (step 7).
+
 ## The server
 
 Grow `serve.py` rather than start a new server:
@@ -106,7 +130,7 @@ catalogues comes first, so Soundscape can be tested with full-length tracks. Jam
 timed lyrics) waits, and the question of where "your own server" lives waits with it.
 
 1. **Jamendo**, **Internet Archive** and **MusicBrainz** matching (all built; phone checks next), then a fixed test
-   catalogue ([sources.md](sources.md#order-of-work)).
+   catalogue (built: [sources.md](sources.md#test-catalogue-as-built)).
 2. **P0, finish what's written.** Recheck #328 and #334 on the phone. The other P0 items are already done.
 3. **Remove Studio** (old PR 6). Done: `project.rs`, `dsp.rs`, the Studio screens and the microphone permission are
    gone, and Soundscape opens straight on the library (one stack, no tab bar: Discover and Your Music are rows at

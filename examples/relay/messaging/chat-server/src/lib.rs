@@ -486,6 +486,8 @@ struct Inner {
     invites: Vec<room::Invite>,
     /// When wrong invitation codes came, for the limit on guessing.
     wrong_codes: Vec<i64>,
+    /// The endpoint rooms are served from, for `GET /host`.
+    room_endpoint: Option<iroh::Endpoint>,
 }
 
 impl Inner {
@@ -617,6 +619,7 @@ impl AppState {
                 data_file,
                 invites: Vec::new(),
                 wrong_codes: Vec::new(),
+                room_endpoint: None,
             })),
             blobs: Arc::new(Blobs::Memory(Mutex::new(HashMap::new()))),
             heartbeat,
@@ -1420,6 +1423,7 @@ pub fn router(state: AppState) -> Router {
         .route("/attachments/{id}", get(download_attachment))
         .route("/join", post(room::join))
         .route("/accounts/claim", post(room::claim))
+        .route("/host", get(room::host))
         .with_state(state)
         // Only the room transport says who is calling by key: the header is
         // set from the connection there, and removed from every other request.

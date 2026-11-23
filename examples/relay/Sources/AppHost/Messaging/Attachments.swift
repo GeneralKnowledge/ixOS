@@ -83,6 +83,7 @@ struct StagedFile: Identifiable, Equatable {
 
 enum AttachmentFiles {
     /// Photos are sent at most this many pixels on their longer side.
+    // swift-only: Swift scales the photo before Rust sees it.
     static let maxPhotoPixels = 2048
 
     /// A fresh folder in the temporary directory for one picked file.
