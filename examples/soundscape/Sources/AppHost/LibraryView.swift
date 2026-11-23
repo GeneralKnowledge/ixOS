@@ -906,13 +906,50 @@ extension TrackView {
                  : "Linked. Other copies of this recording in your library show below.")
         }
         if !detail.sameRecording.isEmpty {
-            Section("Also in Your Library") {
+            Section {
                 ForEach(detail.sameRecording, id: \.id) { other in
                     NavigationLink(value: ListenRoute.track(other.id)) {
                         LabeledContent(other.title, value: Self.sourceName(other))
                     }
                     .accessibilityIdentifier("track.sameRecording")
                 }
+                Button {
+                    Task {
+                        if let d = await model.merge(detail.sameRecording.map(\.id), into: track.id) {
+                            self.detail = d
+                        }
+                    }
+                } label: {
+                    Label("Merge into This Song", systemImage: "square.on.square")
+                }
+                .accessibilityIdentifier("track.mergeSameRecording")
+            } header: {
+                Text("Also in Your Library")
+            } footer: {
+                Text("Merging makes one song with every recording; your own file plays when there is one.")
+            }
+        }
+        if !track.merged.isEmpty {
+            Section {
+                ForEach(track.merged, id: \.id) { song in
+                    LabeledContent(song.title, value: song.source)
+                        .swipeActions {
+                            Button("Separate", systemImage: "square.split.2x1") {
+                                Task { await model.separate(song.id) }
+                            }
+                            .accessibilityIdentifier("track.separate")
+                        }
+                        .contextMenu {
+                            Button("Separate", systemImage: "square.split.2x1") {
+                                Task { await model.separate(song.id) }
+                            }
+                            .accessibilityIdentifier("track.separateMenu")
+                        }
+                }
+            } header: {
+                Text("Merged Sources")
+            } footer: {
+                Text("Their recordings are listed with this song's. Separate one to bring it back as its own song; favourites and playlists stay with this one.")
             }
         }
     }

@@ -548,8 +548,9 @@ struct ChatView: View {
     }
 }
 
-/// Most files one message may carry (Rust's `MAX_ATTACHMENTS_PER_MESSAGE`).
-let MAX_ATTACHMENTS_PER_MESSAGE_SWIFT = 10
+/// Most files one message may carry, from Rust
+/// (`MAX_ATTACHMENTS_PER_MESSAGE`).
+let MAX_ATTACHMENTS_PER_MESSAGE_SWIFT = Int(chatMaxAttachmentsPerMessage())
 
 /// The reactions offered at the top of a bubble's menu.
 let quickReactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"]

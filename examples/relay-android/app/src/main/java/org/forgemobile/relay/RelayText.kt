@@ -113,6 +113,7 @@ object RelayFormat {
     /** "Waiting for MacBook", "Sending 40%", "Sent", "Received", "Failed: …". */
     fun status(transfer: Transfer): String = when (val status = transfer.status) {
         is TransferStatus.Waiting -> "Waiting for ${transfer.peerName}"
+        is TransferStatus.InMailbox -> "In the Mailbox"
         is TransferStatus.InProgress -> {
             val verb = if (transfer.direction == Direction.SENT) "Sending" else "Receiving"
             val item = transfer.item

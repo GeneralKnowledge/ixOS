@@ -1,4 +1,5 @@
 import AppHost
+import ForgeFFI
 import Foundation
 import XCTest
 
@@ -140,6 +141,38 @@ final class PythonConsoleTests: XCTestCase {
         XCTAssertEqual(lab.output, "KeyboardInterrupt\n")
         XCTAssertEqual(lab.succeeded, false)
         XCTAssertFalse(lab.waitingForInput)
+    }
+
+    func testDebugPausesTakesCommandsAndKeepsThemOutOfTheConsole() async throws {
+        let pause = #"{"stack": [{"file": "main.py", "line": 1, "function": "<module>"}], "variables": [{"name": "x", "kind": "int", "value": "1"}], "more": false}"#
+        let runtime = FakeRuntime { fake, events in
+            events(.debugPaused(pause))
+            let command = await fake.readLine(events)
+            events(.output("after \(command ?? "stop")\n"))
+            return PythonRunResult(ok: true, output: "")
+        }
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("debug-\(UUID().uuidString)")
+        let lab = PythonLabModel(
+            runtime: runtime, workspace: try Workspace(projectsFolder: folder.path),
+            defaults: UserDefaults(suiteName: "PythonConsoleTests.\(UUID())")!,
+            activity: PythonActivity())
+        lab.toggleBreakpoint(line: 1)
+        XCTAssertEqual(lab.breakpointLines, [1])
+        XCTAssertFalse(lab.debug(.next))
+        let run = Task { await lab.run(debugging: true) }
+        try await waitUntil("the debugger waits") { lab.awaitingDebugCommand }
+        XCTAssertTrue(lab.isDebugging)
+        XCTAssertEqual(lab.pausedLine, 1)
+        XCTAssertEqual(lab.debugPause?.variables.first?.value, "1")
+        XCTAssertFalse(lab.waitingForInput)
+        XCTAssertTrue(lab.debug(.next))
+        await run.value
+        XCTAssertEqual(lab.output, "after next\n")
+        XCTAssertFalse(lab.isDebugging)
+        XCTAssertNil(lab.debugPause)
+        lab.toggleBreakpoint(line: 1)
+        XCTAssertTrue(lab.breakpoints.isEmpty)
     }
 
     func testTheTimeLimitIsNoted() async {
