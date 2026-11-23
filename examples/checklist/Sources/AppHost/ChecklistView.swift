@@ -1,5 +1,6 @@
 #if canImport(SwiftUI)
 import ChecklistFFI
+import Combine
 import ForgeKit
 import ForgeUI
 import SwiftUI
@@ -32,6 +33,8 @@ struct ChecklistScreen: View {
     /// still running and the screen must not say "No Results".
     @State private var resultsFor = ""
     @State private var editing: Editing?
+    @State private var dueEditing: Editing?
+    @State private var showing: Showing = .all
     @State private var export: URL?
     @State private var importing = false
     @State private var imported: CsvImportSummary?
@@ -45,22 +48,38 @@ struct ChecklistScreen: View {
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
     private var shown: [Item] { searching ? (results ?? []) : model.items }
+    private var showingAgenda: Bool { !searching && showing == .agenda }
 
     var body: some View {
         NavigationStack {
             List {
                 if !searching {
-                    addRow
-                }
-                Section {
-                    ForEach(shown, id: \.id) { item in
-                        row(item)
+                    Picker("Show", selection: $showing) {
+                        Text("All").tag(Showing.all)
+                        Text("Agenda").tag(Showing.agenda)
                     }
-                } footer: {
-                    if !searching && model.summary.total > 0 {
-                        Text("\(model.summary.done) of \(model.summary.total) done")
-                            .forgeText(.note)
-                            .accessibilityIdentifier("checklist.summary")
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                    .accessibilityIdentifier("checklist.showing")
+                }
+                if showingAgenda {
+                    agendaSection("Overdue", model.agenda.overdue, id: "overdue")
+                    agendaSection("Today", model.agenda.today, id: "today")
+                    agendaSection("Upcoming", model.agenda.upcoming, id: "upcoming")
+                } else {
+                    if !searching {
+                        addRow
+                    }
+                    Section {
+                        ForEach(shown, id: \.id) { item in
+                            row(item)
+                        }
+                    } footer: {
+                        if !searching && model.summary.total > 0 {
+                            Text("\(model.summary.done) of \(model.summary.total) done")
+                                .forgeText(.note)
+                                .accessibilityIdentifier("checklist.summary")
+                        }
                     }
                 }
             }
@@ -75,6 +94,9 @@ struct ChecklistScreen: View {
                 let reason = model.errorMessage
                 model.errorMessage = nil
                 return reason ?? String(localized: "The item couldn't be renamed.")
+            }
+            .sheet(item: $dueEditing) { editing in
+                DueDateSheet(model: model, item: editing.item)
             }
             .forgeShareFile($export)
             .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText]) { result in
@@ -106,11 +128,14 @@ struct ChecklistScreen: View {
             } message: {
                 Text(importMessage)
             }
-            // Held back while the Rename sheet is up; it shows once the
-            // sheet closes.
+            // Held back while the Rename or Due Date sheet is up; it shows
+            // once the sheet closes.
             .alert(
                 "Couldn't do that",
-                isPresented: Binding(get: { editing == nil && model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
+                isPresented: Binding(
+                    get: { editing == nil && dueEditing == nil && model.errorMessage != nil },
+                    set: { if !$0 { model.errorMessage = nil } }
+                )
             ) {
                 Button("OK", role: .cancel) {}
                     .accessibilityIdentifier("checklist.errorOK")
@@ -121,6 +146,10 @@ struct ChecklistScreen: View {
         // Rust committed something (or the app came back from the
         // background): re-read.
         .onChange(of: changes) { model.reload() }
+        // Midnight passed with the app open: the agenda's Today moves on.
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            model.reload()
+        }
         // Restarted on every keystroke and change; the previous search is
         // cancelled in Rust.
         .task(id: SearchKey(query: query, changes: changes)) {
@@ -159,15 +188,20 @@ struct ChecklistScreen: View {
                     // `.tint` is the theme's accent (forgeTheme sets it).
                     .foregroundStyle(item.done ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                     .imageScale(.large)
-                Text(item.title)
-                    .strikethrough(item.done)
-                    .foregroundStyle(item.done ? .secondary : .primary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .strikethrough(item.done)
+                        .foregroundStyle(item.done ? .secondary : .primary)
+                    if let due = dueText(item) {
+                        dueLabel(due, overdue: isOverdue(item))
+                    }
+                }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(item.title)
-        .accessibilityValue(item.done ? "Done" : "Not done")
+        .accessibilityValue(([item.done ? "Done" : "Not done"] + [dueText(item)].compactMap { $0 }).joined(separator: ", "))
         .accessibilityHint("Double-tap to mark it \(item.done ? "not done" : "done").")
         .accessibilityIdentifier("checklist.item.\(item.id)")
         .forgeRowActions {
@@ -183,14 +217,74 @@ struct ChecklistScreen: View {
                 Label("Rename", systemImage: "pencil")
             }
             .accessibilityIdentifier("checklist.rename.\(item.id)")
+            Button {
+                dueEditing = Editing(item: item)
+            } label: {
+                Label("Due Date", systemImage: "calendar")
+            }
+            .accessibilityIdentifier("checklist.due.\(item.id)")
         }
+    }
+
+    @ViewBuilder
+    private func agendaSection(_ title: LocalizedStringKey, _ items: [Item], id: String) -> some View {
+        if !items.isEmpty {
+            Section {
+                ForEach(items, id: \.id) { item in
+                    row(item)
+                }
+            } header: {
+                Text(title).accessibilityIdentifier("checklist.agenda.\(id)")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dueLabel(_ text: String, overdue: Bool) -> some View {
+        let label = Label(text, systemImage: "calendar").font(.footnote)
+        if overdue {
+            label.forgeForeground(.warning)
+        } else {
+            label.foregroundStyle(.secondary)
+        }
+    }
+
+    /// Late: not done, and due before today.
+    private func isOverdue(_ item: Item) -> Bool {
+        guard let due = item.due, !item.done else { return false }
+        return due < model.today
+    }
+
+    /// "Due today", "Due tomorrow", "Overdue: 20 Nov", "Due 24 Nov".
+    private func dueText(_ item: Item) -> String? {
+        guard let due = item.due, let date = ChecklistDay.date(from: due) else { return nil }
+        if due == model.today { return String(localized: "Due today") }
+        let calendar = Calendar.current
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())),
+           ChecklistDay.string(from: tomorrow) == due {
+            return String(localized: "Due tomorrow")
+        }
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: Date())
+        let day = sameYear
+            ? date.formatted(.dateTime.day().month(.abbreviated))
+            : date.formatted(.dateTime.day().month(.abbreviated).year())
+        return isOverdue(item) ? String(localized: "Overdue: \(day)") : String(localized: "Due \(day)")
     }
 
     @ViewBuilder
     private var emptyState: some View {
         if searching && resultsFor == query && results?.isEmpty == true {
             ForgeStateView.noResults(for: query)
-        } else if !searching && model.items.isEmpty {
+        } else if showingAgenda && model.agenda.overdue.isEmpty && model.agenda.today.isEmpty
+            && model.agenda.upcoming.isEmpty
+        {
+            ForgeStateView.empty(
+                "Nothing due",
+                systemImage: "calendar",
+                description: "Give an item a due date from its menu to see it here."
+            )
+            .allowsHitTesting(false)
+        } else if !searching && !showingAgenda && model.items.isEmpty {
             ForgeStateView.empty(
                 "Nothing to do",
                 systemImage: "checklist",
@@ -273,5 +367,75 @@ private struct SearchKey: Equatable {
 private struct Editing: Identifiable {
     let item: Item
     var id: UInt64 { item.id }
+}
+
+private enum Showing: Hashable {
+    case all, agenda
+}
+
+/// Picks the day an item is due, or removes it. Shows a refusal itself: the
+/// screen's alert can't present over a sheet.
+private struct DueDateSheet: View {
+    let model: ChecklistModel
+    let item: Item
+
+    @State private var day: Date
+    @State private var saving = false
+    @State private var failure: String?
+    @Environment(\.dismiss) private var dismiss
+
+    init(model: ChecklistModel, item: Item) {
+        self.model = model
+        self.item = item
+        _day = State(initialValue: item.due.flatMap(ChecklistDay.date(from:)) ?? Date())
+    }
+
+    private var changed: Bool { ChecklistDay.string(from: day) != item.due }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker("Due", selection: $day, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .accessibilityIdentifier("due.date")
+                if item.due != nil {
+                    Section {
+                        Button("Remove Due Date", role: .destructive) {
+                            Task { await save(nil) }
+                        }
+                        .disabled(saving)
+                        .accessibilityIdentifier("due.remove")
+                    }
+                }
+            }
+            .navigationTitle("Due Date")
+            #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .forgeFormToolbar(
+                id: "due", isWorking: saving, hasChanges: changed, cancel: { dismiss() }
+            ) { Task { await save(day) } }
+            .alert(
+                "Couldn't set the date",
+                isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+                    .accessibilityIdentifier("due.errorOK")
+            } message: {
+                Text(failure ?? "")
+            }
+        }
+    }
+
+    private func save(_ date: Date?) async {
+        saving = true
+        defer { saving = false }
+        do {
+            try await model.setDue(item, to: date)
+            dismiss()
+        } catch {
+            failure = Checklist.message(for: error)
+        }
+    }
 }
 #endif

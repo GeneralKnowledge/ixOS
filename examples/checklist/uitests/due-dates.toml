@@ -1,0 +1,77 @@
+# CL-4 on a real iPhone, in Device Lab (the app on the phone): give an item
+# a due date from its menu, see "Due today" on the row and the item under
+# Today in the agenda, then remove the date again.
+# Starts on throwaway data, so the person's own checklist is never used.
+#   forge ui run examples/checklist/uitests/due-dates.toml
+
+name = "CL-4: a due date shows on the row and in the agenda"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "checklist"] }
+
+[[step]]
+type = { id = "checklist.newTitle", text = "Post the parcel" }
+
+[[step]]
+tap = { id = "checklist.add" }
+
+[[step]]
+expect = { label = "Post the parcel", value = "Not done" }
+
+# The row's menu (a long press; the same actions as the swipe).
+[[step]]
+long_press = { label = "Post the parcel" }
+
+[[step]]
+tap = { label = "Due Date" }
+
+# The sheet opens on today; Save keeps it.
+[[step]]
+expect = { id = "due.date" }
+
+[[step]]
+tap = { id = "due.confirm" }
+
+[[step]]
+expect = { label = "Post the parcel", value = "Not done, Due today" }
+
+[[step]]
+tap = { label = "Agenda" }
+
+[[step]]
+expect = { id = "checklist.agenda.today" }
+
+[[step]]
+expect = { label = "Post the parcel", value = "Not done, Due today" }
+
+[[step]]
+screenshot = "1-agenda-today"
+
+# Ticked off, it leaves the agenda.
+[[step]]
+tap = { label = "Post the parcel" }
+
+[[step]]
+expect = { label = "Post the parcel", count = 0 }
+
+[[step]]
+screenshot = "2-agenda-empty"
+
+[[step]]
+tap = { label = "All" }
+
+[[step]]
+long_press = { label = "Post the parcel" }
+
+[[step]]
+tap = { label = "Due Date" }
+
+[[step]]
+tap = { id = "due.remove" }
+
+[[step]]
+expect = { label = "Post the parcel", value = "Done" }
