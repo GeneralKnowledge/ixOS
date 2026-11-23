@@ -812,3 +812,130 @@ fn a_shut_down_core_frees_its_folder_at_once() {
     }
     assert!(ChatCore::with_memory_credentials(path).is_ok());
 }
+
+/// N4: an account on the old HTTP API moves to the device's key on its
+/// server's room host once Relay is attached, keeping its history and
+/// dropping the token; a second device joins by word code with the
+/// server's address; both talk over relay/room/1.
+#[test]
+fn an_http_account_moves_onto_relay_and_another_device_joins_by_code() {
+    let state = chat_server::AppState::new(Duration::from_millis(100));
+    let server = Server::start(state.clone());
+    let _rooms = server.runtime.as_ref().unwrap().block_on(async {
+        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::Minimal)
+            .relay_mode(iroh::RelayMode::Disabled)
+            .bind()
+            .await
+            .unwrap();
+        chat_server::room::serve(state.clone(), endpoint)
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let relay = |name: &str| {
+        let core = crate::RelayCore::with_default_servers(
+            dir.path().join(name).to_string_lossy().into_owned(),
+            name.into(),
+            crate::RelayServers::default(),
+        )
+        .unwrap();
+        block_on(core.device_service()).unwrap();
+        core
+    };
+
+    // The old way: an account with a token, and a message.
+    let credentials: Arc<dyn Credentials> = Arc::new(MemoryCredentials::default());
+    let ana = ChatCore::open(dir.path().join("ana-chat"), Arc::clone(&credentials)).unwrap();
+    let account = block_on(ana.sign_up(server.url.clone(), "Ana".into())).unwrap();
+    assert!(!account.on_relay);
+    block_on(ana.send_message("general".into(), "before the move".into())).unwrap();
+    let token = credentials.load().unwrap().unwrap().token;
+
+    // Relay attached: it moves, once, keeping the account and its chats.
+    let ana_relay = relay("ana");
+    Arc::clone(&ana).use_relay(Arc::clone(&ana_relay));
+    wait_until("the account moved", || {
+        ana.account().is_some_and(|a| a.on_relay)
+    });
+    let moved = credentials.load().unwrap().unwrap();
+    assert_eq!(moved.user_id, account.user_id);
+    assert!(moved.token.is_empty(), "no token kept");
+    assert!(moved.room.is_some());
+    let history = block_on(ana.sync_messages("general".into())).unwrap();
+    assert!(history.iter().any(|m| m.body == "before the move"));
+    // The server deleted the token: the old API no longer takes it.
+    let old = chat_core::HttpRepo::with_ureq(server.url.clone()).with_token(token);
+    assert!(old.identity().is_err());
+
+    // Another device joins with a code and the server's address.
+    let bo = ChatCore::with_memory_credentials(
+        dir.path().join("bo-chat").to_string_lossy().into_owned(),
+    )
+    .unwrap();
+    let wrong = block_on(bo.join_room(server.url.clone(), "x".into(), "Bo".into()));
+    assert!(
+        matches!(wrong, Err(ChatError::UnsupportedOnHost { .. })),
+        "needs Relay: {wrong:?}"
+    );
+    let bo_relay = relay("bo");
+    Arc::clone(&bo).use_relay(Arc::clone(&bo_relay));
+    let wrong = block_on(bo.join_room(server.url.clone(), "not-the-code".into(), "Bo".into()));
+    assert!(
+        matches!(wrong, Err(ChatError::Http { status: 403, .. })),
+        "{wrong:?}"
+    );
+    let code = state.invite().unwrap();
+    let joined = block_on(bo.join_room(server.url.clone(), code, "Bo".into())).unwrap();
+    assert!(joined.on_relay);
+    assert_eq!(joined.display_name, "Bo");
+
+    block_on(bo.send_message("general".into(), "hello from Bo".into())).unwrap();
+    wait_until("Ana sees Bo's message", || {
+        block_on(ana.sync_messages("general".into()))
+            .is_ok_and(|list| list.iter().any(|m| m.body == "hello from Bo"))
+    });
+}
+
+/// N4: a move whose answer was lost (the host has the key, the device
+/// still holds the old token) finishes on the next try, with no token.
+#[test]
+fn a_move_whose_answer_was_lost_finishes_without_the_token() {
+    let state = chat_server::AppState::new(Duration::from_millis(100));
+    let server = Server::start(state.clone());
+    let _rooms = server.runtime.as_ref().unwrap().block_on(async {
+        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::Minimal)
+            .relay_mode(iroh::RelayMode::Disabled)
+            .bind()
+            .await
+            .unwrap();
+        chat_server::room::serve(state.clone(), endpoint)
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let credentials: Arc<dyn Credentials> = Arc::new(MemoryCredentials::default());
+    let ana = ChatCore::open(dir.path().join("ana-chat"), Arc::clone(&credentials)).unwrap();
+    let account = block_on(ana.sign_up(server.url.clone(), "Ana".into())).unwrap();
+    let token = credentials.load().unwrap().unwrap().token;
+    let ana_relay = crate::RelayCore::with_default_servers(
+        dir.path().join("ana").to_string_lossy().into_owned(),
+        "ana".into(),
+        crate::RelayServers::default(),
+    )
+    .unwrap();
+    block_on(ana_relay.device_service()).unwrap();
+
+    // The host moves the account, but the answer never reaches the app.
+    let (host, _) = find_room_host(&server.url).unwrap();
+    let transport = crate::rooms::RoomTransport::new(&ana_relay, host);
+    let claimed = crate::rooms::claim_with(&transport, &token).unwrap();
+    assert_eq!(claimed.user_id, account.user_id);
+    assert_eq!(credentials.load().unwrap().unwrap().token, token);
+
+    // Attached: the token is refused now, and the key alone finishes it.
+    Arc::clone(&ana).use_relay(Arc::clone(&ana_relay));
+    wait_until("the account moved", || {
+        ana.account().is_some_and(|a| a.on_relay)
+    });
+    let moved = credentials.load().unwrap().unwrap();
+    assert_eq!(moved.user_id, account.user_id);
+    assert!(moved.token.is_empty());
+    ana.shutdown();
+    ana_relay.shutdown();
+}

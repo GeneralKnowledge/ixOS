@@ -12,8 +12,6 @@ use serde::{Deserialize, Serialize};
 use crate::training::{local_day, Stored};
 use crate::{native, LocalTime, OffsetChange};
 
-use good_dog_core::coaching::DAY_MS;
-
 /// The notification category with the two buttons.
 pub(crate) const CATEGORY: &str = "gooddog.reminder";
 /// Every reminder's id starts with this, then the local day number.
@@ -87,25 +85,16 @@ impl Stored {
 }
 
 /// The moment `at_minute` past local midnight on local `day` happens, by
-/// the offset in force then: today's, or the last of `changes` before it.
+/// the offset in force then (`forge_runtime::time::local_time_ms`).
 fn unix_ms_at(day: i64, at_minute: u32, now: LocalTime, changes: &[OffsetChange]) -> i64 {
-    let local = day * DAY_MS + i64::from(at_minute) * 60_000;
-    let offset_at = |utc_ms: i64| {
-        changes
-            .iter()
-            .filter(|c| c.at_ms > now.ms && c.at_ms <= utc_ms)
-            .max_by_key(|c| c.at_ms)
-            .map_or(now.utc_offset_minutes, |c| c.utc_offset_minutes)
-    };
-    let guess = local - i64::from(now.utc_offset_minutes) * 60_000;
-    let utc = local - i64::from(offset_at(guess)) * 60_000;
-    if offset_at(utc) == offset_at(guess) {
-        utc
-    } else {
-        // A time the clocks skip (01:30 when they go forward at 01:00):
-        // it falls just after the change, never before it.
-        guess
-    }
+    let changes: Vec<forge_runtime::time::OffsetChange> = changes
+        .iter()
+        .map(|c| forge_runtime::time::OffsetChange {
+            at_ms: c.at_ms,
+            utc_offset_minutes: c.utc_offset_minutes,
+        })
+        .collect();
+    forge_runtime::time::local_time_ms(day, at_minute, now.ms, now.utc_offset_minutes, &changes)
 }
 
 /// The local day a reminder is for, from its id.

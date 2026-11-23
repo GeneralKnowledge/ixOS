@@ -339,6 +339,19 @@ pub fn download(
     destination: &Path,
     cancel: &CancelHandle,
 ) -> Result<u64, SoundscapeError> {
+    // A file the app made itself (the test catalogue) is copied. No other
+    // song's download may read a file on the phone.
+    if let Some(path) = fetch.url.strip_prefix("file://") {
+        if crate::test_catalogue::spec(&fetch.recording_id).is_none() {
+            return Err(SoundscapeError::Server {
+                reason: "this recording isn't a download".into(),
+            });
+        }
+        let source = crate::listen::decode(path);
+        return std::fs::copy(&source, destination).map_err(|err| SoundscapeError::Storage {
+            reason: format!("copy the recording: {err}"),
+        });
+    }
     let response = forge_net::download_to_file(
         http,
         &Request::get(fetch.url.clone()),

@@ -972,6 +972,10 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_relay_core_checksum_func_app_lock_method(
     ): Int
+    external fun uniffi_relay_core_checksum_func_chat_max_attachments_per_message(
+    ): Int
+    external fun uniffi_relay_core_checksum_func_chat_max_message_chars(
+    ): Int
     external fun uniffi_relay_core_checksum_func_chat_message_link(
     ): Int
     external fun uniffi_relay_core_checksum_func_device_conversation_id(
@@ -1153,6 +1157,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_relay_core_checksum_method_chatcore_events(
     ): Int
     external fun uniffi_relay_core_checksum_method_chatcore_fetch_attachment(
+    ): Int
+    external fun uniffi_relay_core_checksum_method_chatcore_join_room(
     ): Int
     external fun uniffi_relay_core_checksum_method_chatcore_launch_report(
     ): Int
@@ -1498,6 +1504,8 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_relay_core_fn_method_chatcore_fetch_attachment(`ptr`: Long,`attachmentId`: RustBuffer.ByValue,
     ): Long
+    external fun uniffi_relay_core_fn_method_chatcore_join_room(`ptr`: Long,`host`: RustBuffer.ByValue,`code`: RustBuffer.ByValue,`displayName`: RustBuffer.ByValue,
+    ): Long
     external fun uniffi_relay_core_fn_method_chatcore_launch_report(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBufferLaunchReport.ByValue
     external fun uniffi_relay_core_fn_method_chatcore_list_conversations(`ptr`: Long,
@@ -1730,6 +1738,10 @@ internal object UniffiLib {
     ): Int
     external fun uniffi_relay_core_fn_func_app_lock_method(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_relay_core_fn_func_chat_max_attachments_per_message(uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
+    external fun uniffi_relay_core_fn_func_chat_max_message_chars(uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
     external fun uniffi_relay_core_fn_func_chat_message_link(`conversationId`: RustBuffer.ByValue,`messageId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_relay_core_fn_func_device_conversation_id(`endpointId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1899,6 +1911,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_relay_core_checksum_func_app_lock_method() and 0xFFFF) != 35032) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_relay_core_checksum_func_chat_max_attachments_per_message() and 0xFFFF) != 15158) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_func_chat_max_message_chars() and 0xFFFF) != 35942) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_relay_core_checksum_func_chat_message_link() and 0xFFFF) != 46272) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1971,7 +1989,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_relay_core_checksum_method_relaycore_cancel_code_send() and 0xFFFF) != 14930) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_relay_core_checksum_method_relaycore_cancel_transfer() and 0xFFFF) != 49543) {
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_cancel_transfer() and 0xFFFF) != 50284) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_method_relaycore_code_receive_size() and 0xFFFF) != 28847) {
@@ -2170,6 +2188,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_method_chatcore_fetch_attachment() and 0xFFFF) != 4397) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_method_chatcore_join_room() and 0xFFFF) != 55862) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_method_chatcore_launch_report() and 0xFFFF) != 49427) {
@@ -6149,6 +6170,16 @@ public interface ChatCoreInterface {
     suspend fun `fetchAttachment`(`attachmentId`: kotlin.String): kotlin.String
     
     /**
+     * Joins a room host's rooms with a word code from `chat-server
+     * invite` (N4). `host` is the host's address: its server URL
+     * (`http://…`, asked where its rooms are) or its key (64 hex
+     * characters); empty uses the current account's server. The account
+     * is this device's key there; a different account on this device is
+     * signed out first. Needs Relay (`use_relay`). Emits `AccountChanged`.
+     */
+    suspend fun `joinRoom`(`host`: kotlin.String, `code`: kotlin.String, `displayName`: kotlin.String): ChatAccount
+    
+    /**
      * What the runtime found at open (unfinished background work).
      */
     fun `launchReport`(): LaunchReport
@@ -6757,6 +6788,38 @@ open class ChatCore: Disposable, AutoCloseable, ChatCoreInterface
         { future -> UniffiLib.ffi_relay_core_rust_future_free_rust_buffer(future) },
         // lift function
         { FfiConverterString.lift(it) },
+        // Error FFI converter
+        ChatException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Joins a room host's rooms with a word code from `chat-server
+     * invite` (N4). `host` is the host's address: its server URL
+     * (`http://…`, asked where its rooms are) or its key (64 hex
+     * characters); empty uses the current account's server. The account
+     * is this device's key there; a different account on this device is
+     * signed out first. Needs Relay (`use_relay`). Emits `AccountChanged`.
+     */
+    @Throws(ChatException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `joinRoom`(`host`: kotlin.String, `code`: kotlin.String, `displayName`: kotlin.String) : ChatAccount {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_relay_core_fn_method_chatcore_join_room(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`host`),
+        FfiConverterString.lower(`code`),
+        FfiConverterString.lower(`displayName`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_relay_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_relay_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_relay_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeChatAccount.lift(it) },
         // Error FFI converter
         ChatException.ErrorHandler,
     )
@@ -9451,7 +9514,9 @@ public interface RelayCoreInterface {
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */
     fun `cancelTransfer`(`id`: kotlin.ULong)
     
@@ -9975,7 +10040,9 @@ open class RelayCore: Disposable, AutoCloseable, RelayCoreInterface
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */override fun `cancelTransfer`(`id`: kotlin.ULong)
         = 
     callWithHandle {
@@ -12467,6 +12534,12 @@ data class ChatAccount (
      * The chat server this account lives on.
      */
     var `serverUrl`: kotlin.String
+    , 
+    /**
+     * Its rooms come over Relay's encrypted connection, and the account
+     * is this device's key there (N4); false on the old HTTP API.
+     */
+    var `onRelay`: kotlin.Boolean = false 
     
 ){
     
@@ -12486,19 +12559,22 @@ public object FfiConverterTypeChatAccount: FfiConverterRustBuffer<ChatAccount> {
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
     override fun allocationSize(value: ChatAccount) = (
             FfiConverterString.allocationSize(value.`userId`) +
             FfiConverterString.allocationSize(value.`displayName`) +
-            FfiConverterString.allocationSize(value.`serverUrl`)
+            FfiConverterString.allocationSize(value.`serverUrl`) +
+            FfiConverterBoolean.allocationSize(value.`onRelay`)
     )
 
     override fun write(value: ChatAccount, buf: ByteBuffer) {
             FfiConverterString.write(value.`userId`, buf)
             FfiConverterString.write(value.`displayName`, buf)
             FfiConverterString.write(value.`serverUrl`, buf)
+            FfiConverterBoolean.write(value.`onRelay`, buf)
     }
 }
 
@@ -14102,6 +14178,56 @@ public object FfiConverterTypeRelayServers: FfiConverterRustBuffer<RelayServers>
 
 
 /**
+ * Where a room host is: its key, and how to reach it. With no relay
+ * named, this device's own relay is used (as for the mailbox).
+ */
+data class RoomHost (
+    var `endpointId`: kotlin.String
+    , 
+    var `relayUrl`: kotlin.String?
+    , 
+    /**
+     * Direct addresses (`ip:port`) to try as well, e.g. on the same Wi-Fi.
+     */
+    var `addresses`: List<kotlin.String>
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRoomHost: FfiConverterRustBuffer<RoomHost> {
+    override fun read(buf: ByteBuffer): RoomHost {
+        return RoomHost(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RoomHost) = (
+            FfiConverterString.allocationSize(value.`endpointId`) +
+            FfiConverterOptionalString.allocationSize(value.`relayUrl`) +
+            FfiConverterSequenceString.allocationSize(value.`addresses`)
+    )
+
+    override fun write(value: RoomHost, buf: ByteBuffer) {
+            FfiConverterString.write(value.`endpointId`, buf)
+            FfiConverterOptionalString.write(value.`relayUrl`, buf)
+            FfiConverterSequenceString.write(value.`addresses`, buf)
+    }
+}
+
+
+
+/**
  * Saved data Relay couldn't read when it opened: what happened, in words,
  * and where it is kept on this device.
  */
@@ -15324,7 +15450,22 @@ sealed class ChatException: kotlin.Exception() {
             get() = "detail=${ `detail` }"
     }
     
+    /**
+     * Refused before anything was kept: the composer gives the text back.
+     */
     class InvalidInput(
+        
+        val `reason`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * Kept on this device and shown as not sent, but it couldn't go for a
+     * reason a retry won't fix by itself (one of its files is gone).
+     */
+    class NotSent(
         
         val `reason`: kotlin.String
         ) : ChatException() {
@@ -15430,18 +15571,21 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
             8 -> ChatException.InvalidInput(
                 FfiConverterString.read(buf),
                 )
-            9 -> ChatException.NotSignedIn()
-            10 -> ChatException.Unauthorized(
+            9 -> ChatException.NotSent(
                 FfiConverterString.read(buf),
                 )
-            11 -> ChatException.Storage(
+            10 -> ChatException.NotSignedIn()
+            11 -> ChatException.Unauthorized(
                 FfiConverterString.read(buf),
                 )
-            12 -> ChatException.InUse(
+            12 -> ChatException.Storage(
                 FfiConverterString.read(buf),
                 )
-            13 -> ChatException.ShutDown()
-            14 -> ChatException.Internal(
+            13 -> ChatException.InUse(
+                FfiConverterString.read(buf),
+                )
+            14 -> ChatException.ShutDown()
+            15 -> ChatException.Internal(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -15486,6 +15630,11 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
                 + FfiConverterString.allocationSize(value.`detail`)
             )
             is ChatException.InvalidInput -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is ChatException.NotSent -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterString.allocationSize(value.`reason`)
@@ -15563,31 +15712,36 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.NotSignedIn -> {
+            is ChatException.NotSent -> {
                 buf.putInt(9)
-                Unit
-            }
-            is ChatException.Unauthorized -> {
-                buf.putInt(10)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.Storage -> {
+            is ChatException.NotSignedIn -> {
+                buf.putInt(10)
+                Unit
+            }
+            is ChatException.Unauthorized -> {
                 buf.putInt(11)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.InUse -> {
+            is ChatException.Storage -> {
                 buf.putInt(12)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.ShutDown -> {
+            is ChatException.InUse -> {
                 buf.putInt(13)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ChatException.ShutDown -> {
+                buf.putInt(14)
                 Unit
             }
             is ChatException.Internal -> {
-                buf.putInt(14)
+                buf.putInt(15)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
@@ -17987,6 +18141,14 @@ sealed class TransferStatus {
     
     
     /**
+     * Left sealed in the recipient's mailbox, collected the next time it
+     * opens Relay. It can no longer be cancelled: it is out of this
+     * device's hands.
+     */
+    object InMailbox : TransferStatus()
+    
+    
+    /**
      * Bytes so far, out of the item's size.
      */
     data class InProgress(
@@ -18027,11 +18189,12 @@ public object FfiConverterTypeTransferStatus : FfiConverterRustBuffer<TransferSt
     override fun read(buf: ByteBuffer): TransferStatus {
         return when(buf.getInt()) {
             1 -> TransferStatus.Waiting
-            2 -> TransferStatus.InProgress(
+            2 -> TransferStatus.InMailbox
+            3 -> TransferStatus.InProgress(
                 FfiConverterULong.read(buf),
                 )
-            3 -> TransferStatus.Done
-            4 -> TransferStatus.Failed(
+            4 -> TransferStatus.Done
+            5 -> TransferStatus.Failed(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
@@ -18040,6 +18203,12 @@ public object FfiConverterTypeTransferStatus : FfiConverterRustBuffer<TransferSt
 
     override fun allocationSize(value: TransferStatus): ULong = when(value) {
         is TransferStatus.Waiting -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is TransferStatus.InMailbox -> {
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
                 4UL
@@ -18073,17 +18242,21 @@ public object FfiConverterTypeTransferStatus : FfiConverterRustBuffer<TransferSt
                 buf.putInt(1)
                 Unit
             }
-            is TransferStatus.InProgress -> {
+            is TransferStatus.InMailbox -> {
                 buf.putInt(2)
+                Unit
+            }
+            is TransferStatus.InProgress -> {
+                buf.putInt(3)
                 FfiConverterULong.write(value.`done`, buf)
                 Unit
             }
             is TransferStatus.Done -> {
-                buf.putInt(3)
+                buf.putInt(4)
                 Unit
             }
             is TransferStatus.Failed -> {
-                buf.putInt(4)
+                buf.putInt(5)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
@@ -19298,6 +19471,33 @@ public object FfiConverterSequenceTypeCapability: FfiConverterRustBuffer<List<Ca
             return FfiConverterOptionalString.lift(
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_relay_core_fn_func_app_lock_method(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * The most files one message may carry.
+         */ fun `chatMaxAttachmentsPerMessage`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_relay_core_fn_func_chat_max_attachments_per_message(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * The longest message text, in characters (Unicode scalars), so the
+         * composer can say so before Rust refuses it.
+         */ fun `chatMaxMessageChars`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_relay_core_fn_func_chat_max_message_chars(
     
         _status)
 }

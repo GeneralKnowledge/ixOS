@@ -16,6 +16,39 @@ public enum PythonConsoleEvent: Sendable, Equatable {
     /// `input()` stopped waiting: with the answer it got, or nil when Stop
     /// cancelled it.
     case inputEnded(String?)
+    /// Debug paused (PL2f): the JSON `pythonDebugPause` reads. The
+    /// debugger then waits for its command as `input()` would.
+    case debugPaused(String)
+}
+
+/// Asks the editor to show a line (1 is the first), once per request.
+public struct PythonLineRequest: Equatable, Sendable {
+    public let id = UUID()
+    public let line: Int
+
+    public init(line: Int) {
+        self.line = line
+    }
+
+    /// Where line `line` is in `text`, in UTF-16 units; the end of the
+    /// text when it has fewer lines.
+    public static func range(ofLine line: Int, in text: NSString) -> NSRange {
+        var start = 0
+        var current = 1
+        while current < line, start < text.length {
+            let rest = NSRange(location: start, length: text.length - start)
+            let newline = text.range(of: "\n", options: [], range: rest)
+            if newline.location == NSNotFound {
+                return NSRange(location: text.length, length: 0)
+            }
+            start = newline.location + 1
+            current += 1
+        }
+        let end = text.range(
+            of: "\n", options: [], range: NSRange(location: start, length: text.length - start))
+        let length = (end.location == NSNotFound ? text.length : end.location) - start
+        return NSRange(location: start, length: length)
+    }
 }
 
 /// A stretch of the console in one style.
@@ -133,6 +166,9 @@ public final class PythonActivity {
 
     /// A Python Lab script is waiting for `input()`.
     public internal(set) var labWaitingForInput = false
+    /// The project Bonsai Harness is working in while a task of the
+    /// person's runs, which Python Lab shows read-only meanwhile (PL1e).
+    public internal(set) var bonsaiProject: String?
 
     public init() {}
 }

@@ -29,6 +29,7 @@ struct DiscoverView: View {
     @State private var editingClientId = false
     @State private var attempt = 0
     @State private var opened = false
+    @State private var showingTestCatalogue = false
 
     /// Opens on `search` when given (More in Discover, from the library's
     /// search), else on the source's popular list.
@@ -69,12 +70,19 @@ struct DiscoverView: View {
         }
         .navigationTitle("Discover")
         .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                Button("Test Catalogue", systemImage: "testtube.2") { showingTestCatalogue = true }
+                    .accessibilityIdentifier("discover.testCatalogue")
+            }
             if model.jamendoClientId != nil {
                 ToolbarItem(placement: .secondaryAction) {
                     Button("Jamendo Client ID", systemImage: "key") { editingClientId = true }
                         .accessibilityIdentifier("discover.clientId")
                 }
             }
+        }
+        .navigationDestination(isPresented: $showingTestCatalogue) {
+            TestCatalogueView(model: model, player: player)
         }
         .sheet(isPresented: $editingClientId) {
             NavigationStack {
@@ -468,6 +476,81 @@ struct JamendoClientIdForm: View {
 // MARK: Jamendo by artist and genre
 
 /// Jamendo's genres, each opening its most popular tracks this week.
+// MARK: Test catalogue
+
+/// The fixed test catalogue: eight tracks Soundscape makes itself (short,
+/// long, no artwork, no tags, two recordings of one work, the same
+/// recording twice, stream only), each saying what it checks. Works with no
+/// network and no Jamendo client ID.
+struct TestCatalogueView: View {
+    let model: ListenModel
+    let player: TakePlayer
+
+    @State private var tests: [TestTrack]?
+    @State private var problem: String?
+    @State private var attempt = 0
+
+    private var tracks: [CatalogueTrack] { tests?.map(\.track) ?? [] }
+
+    var body: some View {
+        List {
+            if let tests, !tests.isEmpty {
+                Section {
+                    PlayShuffleButtons(disabled: false) { shuffle in
+                        player.play(model.queue(tracks), shuffle: shuffle)
+                    }
+                    let missing = tracks.filter { !model.inLibrary($0.id) }
+                    Button {
+                        Task { await model.addToLibrary(missing) }
+                    } label: {
+                        Label(missing.isEmpty ? "All in Your Library" : "Add All to Library",
+                              systemImage: missing.isEmpty ? "checkmark.circle" : "plus.circle")
+                    }
+                    .disabled(missing.isEmpty)
+                    .accessibilityIdentifier("testCatalogue.addAll")
+                } footer: {
+                    Text("Tones Soundscape writes itself, in WAV, AIFF and CAF, so every check sounds the same on every phone. They take about 18 MB.")
+                }
+                ForEach(Array(tests.enumerated()), id: \.element.track.id) { index, test in
+                    Section {
+                        CatalogueRow(model: model, player: player, track: test.track) {
+                            player.play(model.queue(tracks), from: index)
+                        }
+                    } footer: {
+                        Text(test.checks)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Test Catalogue")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: attempt) {
+            switch await model.testCatalogue() {
+            case .success(let found):
+                tests = found
+                problem = nil
+            case .failure(let failure):
+                if !failure.stopped { problem = failure.message }
+            }
+        }
+        .onChange(of: model.resumes) {
+            // Making the files stopped by leaving the app starts again.
+            if tests == nil && problem == nil { attempt += 1 }
+        }
+        .overlay {
+            if let problem, tests == nil {
+                ForgeStateView.failed(
+                    "Can't Make the Test Catalogue", message: problem,
+                    retry: ForgeStateAction("Try Again", identifier: "testCatalogue.retry") { attempt += 1 }
+                )
+            } else if tests == nil {
+                ForgeStateView.loading("Making the Test Tracks")
+            }
+        }
+        .forgeFeedback(model.feedback)
+    }
+}
+
 struct JamendoGenresView: View {
     let model: ListenModel
 

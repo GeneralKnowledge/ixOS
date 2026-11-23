@@ -8,6 +8,9 @@ import ForgeUI
 /// (docs/bonsai-harness-plan.md).
 struct BonsaiHarnessView: View {
     @Bindable var model: BonsaiHarnessModel
+    /// Python Lab, to open the project Bonsai worked in.
+    var pythonLab: PythonLabModel?
+    @State private var showPythonLab = false
     /// The step on screen when going back through a finished task; nil
     /// follows the last one.
     @State private var replayPosition: Int?
@@ -55,6 +58,23 @@ struct BonsaiHarnessView: View {
                         position: $replayPosition
                     )
                 }
+                if let snapshot = model.snapshot, let plan = snapshot.plan {
+                    BonsaiPlanSection(
+                        plan: plan,
+                        draft: snapshot.task == nil ? snapshot.draft : "",
+                        running: snapshot.running,
+                        answer: $model.planAnswer,
+                        approve: {
+                            handOff(snapshot.project ?? model.project)
+                            model.continuePlan()
+                        },
+                        discard: model.discardPlan,
+                        send: {
+                            handOff(snapshot.project ?? model.project)
+                            model.answerPlan()
+                        }
+                    )
+                }
                 if let snapshot = model.snapshot, let task = snapshot.task {
                     statusSection(snapshot, task)
                 }
@@ -71,6 +91,11 @@ struct BonsaiHarnessView: View {
         .navigationTitle("Bonsai Harness")
         .inlineNavigationTitle()
         .task { await model.follow() }
+        .navigationDestination(isPresented: $showPythonLab) {
+            if let pythonLab {
+                PythonLabView(model: pythonLab)
+            }
+        }
         .onChange(of: model.snapshot?.task?.id) { replayPosition = nil }
         .onChange(of: model.isRunning) { if model.isRunning { replayPosition = nil } }
     }
@@ -115,20 +140,48 @@ struct BonsaiHarnessView: View {
                         Text(task.request).font(.footnote).foregroundStyle(.secondary)
                         Text("Done when \(task.acceptance.joined(separator: "; ")).")
                             .font(.caption).foregroundStyle(.secondary)
+                        if task.planned {
+                            Label("Bonsai plans it as several tasks first", systemImage: "list.number")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if task.endsBlocked {
+                            Label("It can't succeed here: it should stop and ask you", systemImage: "questionmark.bubble")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .accessibilityIdentifier("harness.task.\(task.id)")
             }
+            if model.projects.count > 1 {
+                Picker(
+                    "Project",
+                    selection: Binding(get: { model.project }, set: { model.choose(project: $0) })
+                ) {
+                    ForEach(model.projects, id: \.self) { Text($0).tag($0) }
+                }
+                .accessibilityIdentifier("harness.project")
+            }
             TextField("Your own task", text: $model.request, axis: .vertical)
                 .lineLimit(2...5)
                 .accessibilityIdentifier("harness.request")
-            Button("Run My Task", systemImage: "play.fill") { model.runRequest() }
+            Button("Run My Task", systemImage: "play.fill") {
+                handOff(model.project)
+                model.runRequest()
+            }
                 .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.runRequest")
+            Button("Plan My Task", systemImage: "list.number") {
+                handOff(model.project)
+                model.runPlan()
+            }
+                .disabled(model.isScripted || model.request.isEmpty)
+                .accessibilityIdentifier("harness.planRequest")
+            Toggle("Show Plans Before They Run", isOn: $model.approvePlans)
+                .accessibilityIdentifier("harness.approvePlans")
         } header: {
             Text("Tasks")
         } footer: {
-            Text("Each ladder task starts from a fresh project. Your own tasks share one project, kept between tasks.")
+            Text("Each ladder task starts from a fresh project. Your own tasks work in the Python Lab project you choose, on its files, and Python Lab shows that project read-only while Bonsai works. A planned task is split into small tasks, each checked before the next starts.")
         }
     }
 
@@ -231,10 +284,30 @@ struct BonsaiHarnessView: View {
             if model.files.isEmpty {
                 Text("No files yet.").foregroundStyle(.secondary)
             }
+            if let pythonLab, let name = snapshot.project, model.projects.contains(name) {
+                Button("Open in Python Lab", systemImage: "chevron.left.forwardslash.chevron.right") {
+                    // Python Lab opens either way: when it couldn't switch
+                    // (an unsaved file, a folder it can't list), its banner
+                    // says why it stayed on the project it has open.
+                    pythonLab.open(project: name)
+                    showPythonLab = true
+                }
+                .accessibilityIdentifier("harness.openInPythonLab")
+            }
         } header: {
             Text("Project \(snapshot.project ?? "")")
         }
         .onAppear { model.loadFiles() }
+    }
+
+    /// Python Lab's last second of typing is saved before Bonsai reads or
+    /// restores `project`, for every start, approval, Resume and answer. A
+    /// save that fails shows in Python Lab and the work still starts; the
+    /// unsaved text stays on screen there and isn't written over Bonsai's
+    /// work until edited again.
+    private func handOff(_ project: String) {
+        pythonLab?.flush()
+        pythonLab?.bonsaiStarting(in: project)
     }
 
     private func phase(_ phase: HarnessPhase) -> String {
