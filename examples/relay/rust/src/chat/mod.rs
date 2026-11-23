@@ -1555,26 +1555,96 @@ impl ChatCore {
                 ),
             });
         }
-        for file in files {
+        // The caption too: it follows the files, and a refusal after they
+        // went would leave them sent with the screen still holding them.
+        if body.chars().count() > chat_core::MAX_BODY_CHARS {
+            return Err(ChatError::InvalidInput {
+                reason: format!(
+                    "message body is longer than {} characters",
+                    chat_core::MAX_BODY_CHARS
+                ),
+            });
+        }
+        // And the message the caption replies to, which can have been
+        // deleted meanwhile: chat-core would refuse it after the files went.
+        if let (false, Some(target)) = (body.is_empty(), reply_to.as_deref()) {
+            let found = relay
+                .device_messages(&endpoint_id)
+                .map_err(crate::device_chat::chat_error)?
+                .iter()
+                .any(|m| m.id == target && !m.deleted);
+            if !found {
+                return Err(ChatError::InvalidInput {
+                    reason: format!("no message {target:?} to reply to"),
+                });
+            }
+        }
+        // And the device: one that is no longer trusted would refuse the
+        // first file, with nothing sent and the screen told it was kept.
+        if relay.trusted(&endpoint_id).is_err() {
+            return Err(ChatError::InvalidInput {
+                reason: "that device is no longer trusted".into(),
+            });
+        }
+        // Every copy before the first send, so a copy that fails refuses
+        // the whole message rather than half of it (and leaves no copies).
+        let mut paths = Vec::with_capacity(files.len());
+        let mut dirs = Vec::new();
+        for file in &files {
             // Under the name the person sees: Relay names an item after its
             // file, and a picked photo waits under a temporary one.
-            let staged = named_copy(&file).map_err(|e| ChatError::Storage {
-                reason: e.to_string(),
-            })?;
-            let path = staged
-                .as_ref()
-                .map(|(_, path)| path.clone())
-                .unwrap_or_else(|| std::path::PathBuf::from(&file.path));
+            match named_copy(file) {
+                Ok(Some((dir, path))) => {
+                    dirs.push(dir);
+                    paths.push(path);
+                }
+                Ok(None) => paths.push(std::path::PathBuf::from(&file.path)),
+                Err(e) => {
+                    for dir in &dirs {
+                        let _ = std::fs::remove_dir_all(dir);
+                    }
+                    return Err(ChatError::Storage {
+                        reason: e.to_string(),
+                    });
+                }
+            }
+        }
+        let count = paths.len();
+        for (sent, path) in paths.into_iter().enumerate() {
             // The staged copy stays in the temporary folder (the system
             // clears it): when Relay couldn't keep its own copy, the
             // conversation opens the file from there.
-            relay
-                .send_to_device(
+            let kept = std::sync::atomic::AtomicBool::new(false);
+            let result = relay
+                .send_to_device_kept(
                     endpoint_id.clone(),
                     vec![path.to_string_lossy().into_owned()],
+                    &kept,
                 )
-                .await
-                .map_err(crate::device_chat::chat_error)?;
+                .await;
+            if let Err(e) = result {
+                // A send can fail before its message is kept (nothing in
+                // the conversation) or after (the delivery was refused: a
+                // "Not Sent" message that can be retried). Only a first
+                // file that left nothing behind refuses the whole message,
+                // so the screen keeps it all. Otherwise files are in the
+                // conversation, and sending them again would repeat them:
+                // the screen lets the message go.
+                let kept = kept.load(std::sync::atomic::Ordering::SeqCst);
+                return Err(if sent == 0 && !kept {
+                    ChatError::Storage {
+                        reason: e.to_string(),
+                    }
+                } else if kept {
+                    crate::device_chat::chat_error(e).into()
+                } else {
+                    ChatError::Internal {
+                        reason: format!(
+                            "{sent} of {count} files went; the rest weren't sent ({e})"
+                        ),
+                    }
+                });
+            }
         }
         if !body.is_empty() {
             return self.send_reply(conversation_id, body, reply_to).await;
@@ -1611,6 +1681,9 @@ fn named_copy(
     ));
     std::fs::create_dir_all(&dir)?;
     let to = dir.join(name);
-    std::fs::copy(from, &to)?;
+    if let Err(e) = std::fs::copy(from, &to) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return Err(e);
+    }
     Ok(Some((dir, to)))
 }

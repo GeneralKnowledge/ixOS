@@ -664,14 +664,15 @@ public final class ChatModel {
     // MARK: Helpers
 
     /// Whether Rust refused a message before keeping it: by its rules (too
-    /// long, too many files, a reply to a message that is gone), or because
-    /// there is no account or the app is closing. Rust promises that every
-    /// other failure leaves a bubble that says "Not Sent" and can be
-    /// retried (a file that went missing after the message was kept is
-    /// `NotSent`, not `InvalidInput`).
+    /// long, too many files, a reply to a message that is gone), because
+    /// there is no account or the app is closing, or because a picked file
+    /// couldn't be copied in (`Storage`, before any file went). Rust
+    /// promises that every other failure leaves a bubble that says
+    /// "Not Sent" and can be retried (a file that went missing after the
+    /// message was kept is `NotSent`, not `InvalidInput`).
     nonisolated static func refusedBeforeKeeping(_ error: Error) -> Bool {
         switch error as? ChatError {
-        case .InvalidInput?, .NotSignedIn?, .ShutDown?: return true
+        case .InvalidInput?, .NotSignedIn?, .Storage?, .ShutDown?: return true
         default: return false
         }
     }
