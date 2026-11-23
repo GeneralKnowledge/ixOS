@@ -48,9 +48,15 @@ class AndroidBiometrics(private val context: Context) : BiometricAuthenticator {
     override suspend fun authenticate(reason: String): AuthenticationResult {
         if (!canLock) return AuthenticationResult.UNAVAILABLE
         // Asked from the background (a notification), nothing can show the prompt.
-        val shown = withTimeoutOrNull(ACTIVITY_WAIT_MS) { activity.filterNotNull().first() }
+        withTimeoutOrNull(ACTIVITY_WAIT_MS) { activity.filterNotNull().first() }
             ?: return AuthenticationResult.CANCELLED
         return withContext(Dispatchers.Main) {
+            // Read again on the main thread: the activity may have gone, or saved its state, since.
+            // BiometricPrompt would then show nothing and never call back.
+            val shown = activity.value
+            if (shown == null || shown.isFinishing || shown.isDestroyed || shown.supportFragmentManager.isStateSaved) {
+                return@withContext AuthenticationResult.CANCELLED
+            }
             suspendCancellableCoroutine { done ->
                 val prompt = BiometricPrompt(
                     shown,

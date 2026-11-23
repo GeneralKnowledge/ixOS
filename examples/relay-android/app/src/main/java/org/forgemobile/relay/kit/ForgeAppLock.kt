@@ -28,12 +28,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,8 +86,12 @@ class ForgeAppLockState(
         leftAt = null
     }
 
-    /** Asks [authenticate] once (a second call while it asks does nothing). */
-    suspend fun unlock(authenticate: suspend () -> AuthenticationResult) {
+    /**
+     * Asks [authenticate] once (a second call while it asks does nothing). [canLock] says
+     * whether the phone has any way to unlock at all, asked again when the answer is
+     * `UNAVAILABLE`: only a phone with none opens without one.
+     */
+    suspend fun unlock(canLock: () -> Boolean, authenticate: suspend () -> AuthenticationResult) {
         synchronized(this) {
             if (_authenticating.value || !_locked.value) return
             _authenticating.value = true
@@ -97,12 +101,20 @@ class ForgeAppLockState(
         } finally {
             _authenticating.value = false
         }
+        // No screen lock at all any more: a lock that can never open helps nobody. A sensor
+        // that is only busy or missing, on a phone that still has a screen lock, stays locked.
+        val nothingToAsk = result == AuthenticationResult.UNAVAILABLE && !canLock()
         synchronized(this) {
             when (result) {
-                // No screen lock at all any more: a lock that can never open helps nobody.
-                AuthenticationResult.AUTHENTICATED, AuthenticationResult.UNAVAILABLE -> {
+                AuthenticationResult.AUTHENTICATED -> {
                     _locked.value = false
                     _message.value = null
+                }
+                AuthenticationResult.UNAVAILABLE -> if (nothingToAsk) {
+                    _locked.value = false
+                    _message.value = null
+                } else {
+                    _message.value = "Can't ask right now. Try again in a moment."
                 }
                 AuthenticationResult.LOCKED_OUT -> _message.value = "Too many attempts. Try again later, or use your screen lock."
                 AuthenticationResult.CANCELLED, AuthenticationResult.FAILED -> _message.value = null
@@ -114,13 +126,17 @@ class ForgeAppLockState(
 /**
  * Covers [content] with a lock screen while [enabled] and [state] is locked, and asks
  * [authenticate] at once. While [enabled], the window is also kept out of the recent apps
- * screen and screenshots (`FLAG_SECURE`), as iOS hides the app in the app switcher. The lock
- * screen's button is `appLock.unlock`.
+ * screen and screenshots (`FLAG_SECURE`), as iOS hides the app in the app switcher. While
+ * locked, [content] leaves the composition, so a dialog or menu it had open (each in its own
+ * window, which the lock screen can't cover) closes with it; what it keeps with
+ * `rememberSaveable` comes back on unlock. [canLock] is whether the phone can unlock at all
+ * (see [ForgeAppLockState.unlock]). The lock screen's button is `appLock.unlock`.
  */
 @Composable
 fun ForgeAppLock(
     state: ForgeAppLockState,
     enabled: Boolean,
+    canLock: () -> Boolean,
     authenticate: suspend () -> AuthenticationResult,
     content: @Composable () -> Unit,
 ) {
@@ -130,6 +146,7 @@ fun ForgeAppLock(
     val showing = enabled && locked
     val activity = LocalContext.current.activity()
     val scope = rememberCoroutineScope()
+    val saved = rememberSaveableStateHolder()
 
     DisposableEffect(enabled, activity) {
         val window = activity?.window
@@ -137,12 +154,12 @@ fun ForgeAppLock(
         onDispose { }
     }
     LaunchedEffect(showing) {
-        if (showing) state.unlock(authenticate)
+        if (showing) state.unlock(canLock, authenticate)
     }
 
     Box(Modifier.fillMaxSize()) {
-        // Hidden from TalkBack too while locked.
-        Box(if (showing) Modifier.fillMaxSize().clearAndSetSemantics { } else Modifier.fillMaxSize()) { content() }
+        // Not composed at all while locked: an overlay can't cover a dialog's own window.
+        if (!showing) saved.SaveableStateProvider("content") { content() }
         if (showing) {
             // Back leaves the app rather than reaching the screen underneath.
             BackHandler { activity?.moveTaskToBack(true) }
@@ -168,7 +185,7 @@ fun ForgeAppLock(
                         Text(it, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                     }
                     Button(
-                        onClick = { scope.launch { state.unlock(authenticate) } },
+                        onClick = { scope.launch { state.unlock(canLock, authenticate) } },
                         enabled = !authenticating,
                         modifier = Modifier.testTag("appLock.unlock"),
                     ) { Text("Unlock") }

@@ -123,6 +123,7 @@ fun RelayApp(app: RelayApplication) {
                     ForgeAppLock(
                         state = app.appLock,
                         enabled = chatState?.value?.appLock == true,
+                        canLock = { ForgeServices.biometrics.canLock },
                         authenticate = { ForgeServices.biometrics.authenticate("Unlock Relay") },
                     ) {
                         RelayScreens(current, chat, app.host.core?.chatProblem, app.network, app.onScreen, link, app::takeLink, app.appLock::settingChanged)

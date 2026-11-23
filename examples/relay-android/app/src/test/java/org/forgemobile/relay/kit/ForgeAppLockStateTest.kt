@@ -17,7 +17,10 @@ class ForgeAppLockStateTest {
     private var now = 0L
     private val state = ForgeAppLockState(graceMillis = 60_000, clock = { now })
 
-    private suspend fun unlocked() = state.unlock { AuthenticationResult.AUTHENTICATED }
+    private var lockable = true
+    private val canLock = { lockable }
+
+    private suspend fun unlocked() = state.unlock(canLock) { AuthenticationResult.AUTHENTICATED }
 
     @Test
     fun startsLockedAndOpensOnSuccess() = runTest {
@@ -57,7 +60,7 @@ class ForgeAppLockStateTest {
         now += 120_000
         state.returned()
         assertTrue(state.locked.value)
-        val job = launch { state.unlock { asked.await() } }
+        val job = launch { state.unlock(canLock) { asked.await() } }
         yield()
         assertTrue(state.authenticating.value)
         state.left()
@@ -72,9 +75,9 @@ class ForgeAppLockStateTest {
     fun aSecondUnlockWhileAskingDoesNothing() = runTest {
         var asks = 0
         val asked = CompletableDeferred<AuthenticationResult>()
-        val first = launch { state.unlock { asks++; asked.await() } }
+        val first = launch { state.unlock(canLock) { asks++; asked.await() } }
         yield()
-        state.unlock { asks++; AuthenticationResult.AUTHENTICATED }
+        state.unlock(canLock) { asks++; AuthenticationResult.AUTHENTICATED }
         assertEquals(1, asks)
         asked.complete(AuthenticationResult.CANCELLED)
         first.join()
@@ -84,17 +87,28 @@ class ForgeAppLockStateTest {
 
     @Test
     fun lockedOutSaysSoAndStaysLocked() = runTest {
-        state.unlock { AuthenticationResult.LOCKED_OUT }
+        state.unlock(canLock) { AuthenticationResult.LOCKED_OUT }
         assertTrue(state.locked.value)
         assertEquals("Too many attempts. Try again later, or use your screen lock.", state.message.value)
-        state.unlock { AuthenticationResult.CANCELLED }
+        state.unlock(canLock) { AuthenticationResult.CANCELLED }
         assertTrue(state.locked.value)
         assertNull(state.message.value)
     }
 
     @Test
     fun noScreenLockAtAllOpensIt() = runTest {
-        state.unlock { AuthenticationResult.UNAVAILABLE }
+        lockable = false
+        state.unlock(canLock) { AuthenticationResult.UNAVAILABLE }
+        assertFalse(state.locked.value)
+    }
+
+    @Test
+    fun aBusySensorOnALockedPhoneStaysLocked() = runTest {
+        // ERROR_HW_UNAVAILABLE ("try again later") is UNAVAILABLE too: never a way in.
+        state.unlock(canLock) { AuthenticationResult.UNAVAILABLE }
+        assertTrue(state.locked.value)
+        assertEquals("Can't ask right now. Try again in a moment.", state.message.value)
+        unlocked()
         assertFalse(state.locked.value)
     }
 
