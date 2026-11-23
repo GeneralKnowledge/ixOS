@@ -4,27 +4,27 @@ import Combine
 import Foundation
 import SwiftUI
 
-// A2UI's official renderer drives the lab's one surface; every component is
+// A2UI's official renderer drives each lab surface; every component is
 // drawn by the ForgeUI adapter (A2uiForgeCatalog.swift). Device Lab only: no
 // other target depends on A2UI
 // (docs/research/external-projects/assessments/ai/a2ui.md).
 
-/// Owns A2UI's message processor for the lab's one surface. A view-side
-/// class because A2UI's core uses Combine; everything it decides goes to
-/// `A2uiLabModel`, which asks Rust.
+/// Owns A2UI's message processor for one surface. A view-side class
+/// because A2UI's core uses Combine; everything it decides goes to the
+/// surface's owner (`A2uiSurfaceOwner`), which asks Rust.
 @MainActor
 final class A2uiSurfaceHost: ObservableObject, A2uiRendering {
     @Published private(set) var surface: SurfaceViewModel?
     let catalog: Catalog<ComponentImplementation>
 
     private let surfaceId: String
-    private weak var model: A2uiLabModel?
+    private weak var model: (any A2uiSurfaceOwner)?
     private var processor: MessageProcessor?
     private var edits: AnyCancellable?
 
     enum HostError: Error { case noCatalog }
 
-    init(model: A2uiLabModel) {
+    init(model: any A2uiSurfaceOwner) {
         self.model = model
         surfaceId = model.surfaceId
         catalog = A2uiLabCatalog.make(id: model.catalogId)

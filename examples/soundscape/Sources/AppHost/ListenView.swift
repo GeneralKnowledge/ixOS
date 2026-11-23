@@ -395,36 +395,13 @@ private struct TakeRow: View {
                 if !details.isEmpty {
                     Text(details).font(.caption).foregroundStyle(.secondary)
                 }
-                Stars(value: Int(take.stars), rate: rate)
+                ForgeRating(value: Int(take.stars), identifier: "take.rating") { rate($0 ?? 0) }
                 if !take.note.isEmpty {
                     Text(take.note).font(.callout).foregroundStyle(.secondary)
                 }
             }
         }
         .padding(.vertical, 2)
-    }
-}
-
-struct Stars: View {
-    let value: Int
-    var identifier = "take"
-    let rate: (Int) -> Void
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(1...5, id: \.self) { n in
-                Button { rate(n) } label: {
-                    Image(systemName: n <= value ? "star.fill" : "star")
-                        .foregroundStyle(n <= value ? Color.orange : Color.secondary)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("\(n) \(n == 1 ? "star" : "stars")")
-                .accessibilityIdentifier("\(identifier).star\(n)")
-            }
-        }
-        .font(.subheadline)
-        .accessibilityElement(children: .contain)
-        .accessibilityValue("\(value) of 5")
     }
 }
 
@@ -526,14 +503,9 @@ private struct ComparePanel: View {
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, minHeight: 72)
-            .background(on ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 12))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12).stroke(on ? Color.accentColor : .clear, lineWidth: 2)
-            }
         }
+        .buttonStyle(.forgeChoice(isSelected: on, shape: .tile))
         .accessibilityLabel(hidden ? "Hear \(label)" : "Hear \(label), \(take.label)")
-        .accessibilityAddTraits(on ? .isSelected : [])
         .accessibilityIdentifier(side == .a ? "compare.a" : "compare.b")
     }
 }
@@ -667,7 +639,9 @@ struct Artwork: View {
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        Group {
+        // The coloured initial is Soundscape's own stand-in (its look), in
+        // ForgeUI's thumbnail frame.
+        ForgeThumbnail(width: size, shape: circle ? .circle : .rounded) {
             if let url, let link = URL(string: url) {
                 ForgeRemoteImage(url: link, maxPixels: ForgeImages.pixels(size, scale: displayScale)) { image in
                     image.resizable().scaledToFill()
@@ -678,9 +652,6 @@ struct Artwork: View {
                 standIn
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(circle ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.12)))
-        .accessibilityHidden(true)
     }
 
     private var standIn: some View {
@@ -729,11 +700,10 @@ private struct NowPlayingView: View {
                             if !player.isComparing, let trackId = current.trackId,
                                let recording = model.track(trackId)?.recordings.first(where: { $0.id == current.id }),
                                recording.kind == .generated {
-                                Stars(value: Int(recording.stars), identifier: "nowPlayingSheet") { n in
-                                    Task { _ = await model.rate(recording, of: trackId, stars: n) }
+                                ForgeRating("Rate this take", value: Int(recording.stars), identifier: "nowPlayingSheet.rating") { n in
+                                    Task { _ = await model.rate(recording, of: trackId, stars: n ?? 0) }
                                 }
                                 .font(.title3)
-                                .accessibilityLabel("Rate this take")
                             }
                             if let lyrics = current.lyrics, !lyricLines(lyrics: lyrics).isEmpty {
                                 Button {
@@ -903,14 +873,10 @@ private struct NowPlayingView: View {
                 Button { player.hear(side) } label: {
                     Text(side == .a ? "A" : "B")
                         .font(.largeTitle.bold())
-                        .frame(width: 72, height: 72)
-                        .background(
-                            player.active == side ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12),
-                            in: Circle()
-                        )
+                        .frame(width: 56, height: 56)
                 }
+                .buttonStyle(.forgeChoice(isSelected: player.active == side, shape: .circle))
                 .accessibilityLabel(side == .a ? "Hear A" : "Hear B")
-                .accessibilityAddTraits(player.active == side ? .isSelected : [])
                 .accessibilityIdentifier(side == .a ? "nowPlayingSheet.a" : "nowPlayingSheet.b")
             }
             Button { player.toggle() } label: {

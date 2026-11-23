@@ -28,9 +28,9 @@ struct TripDetailView: View {
                         .frame(height: 280)
                         .listRowInsets(EdgeInsets())
                     HStack {
-                        Stat(title: "Distance", value: TripFormat.distance(trip.distanceM))
-                        Stat(title: "Time", value: TripFormat.elapsed(trip))
-                        Stat(title: "Climb", value: TripFormat.distance(trip.climbM))
+                        ForgeStat("Distance", value: TripFormat.distance(trip.distanceM))
+                        ForgeStat("Time", value: TripFormat.elapsed(trip))
+                        ForgeStat("Climb", value: TripFormat.distance(trip.climbM))
                     }
                 }
                 Section("Elevation") {

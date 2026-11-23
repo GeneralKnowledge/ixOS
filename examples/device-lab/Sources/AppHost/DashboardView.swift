@@ -234,6 +234,7 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         LabeledContent("Storage", value: "\(Format.storage(free)) free of \(Format.storage(total))")
                         ProgressView(value: Double(total - min(free, total)), total: Double(total))
+                            .progressViewStyle(.forge)
                     }
                 }
                 if let footprint = status.memoryFootprintBytes {

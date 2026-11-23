@@ -118,6 +118,7 @@ struct ReceiveCodeSheet: View {
                     } currentValueLabel: {
                         Text("\(RelayFormat.size(size.done)) of \(RelayFormat.size(size.total))")
                     }
+                    .progressViewStyle(.forge)
                 } else {
                     Label {
                         Text("Checking the code…")

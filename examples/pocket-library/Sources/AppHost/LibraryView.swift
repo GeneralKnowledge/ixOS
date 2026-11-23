@@ -245,7 +245,7 @@ struct BookRow: View {
                     .foregroundStyle(.secondary)
                     if book.status == .reading, book.totalPages != nil {
                         ProgressView(value: book.progress)
-                            .tint(theme.colors.tone(book.status.tone).solid)
+                            .progressViewStyle(.forge(tone: book.status.tone))
                     }
                 } else {
                     HStack(spacing: 6) {
@@ -254,7 +254,7 @@ struct BookRow: View {
                             .accessibilityHidden(true)
                         if book.status == .reading, book.totalPages != nil {
                             ProgressView(value: book.progress)
-                                .tint(theme.colors.tone(book.status.tone).solid)
+                                .progressViewStyle(.forge(tone: book.status.tone))
                                 .frame(maxWidth: 90)
                         }
                         Text(book.pageSummary)

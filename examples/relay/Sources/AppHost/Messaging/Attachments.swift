@@ -1,5 +1,6 @@
 @preconcurrency import RelayFFI
 import ForgeAppKit
+import ForgeUI
 import Foundation
 import ImageIO
 import SwiftUI
@@ -262,25 +263,15 @@ private struct PhotoThumbnail: View {
     @State private var failed = false
 
     var body: some View {
-        Group {
+        ForgeThumbnail(width: 220) {
             if let image {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .scaledToFill()
             } else {
-                ZStack {
-                    Color.secondary.opacity(0.15)
-                    if failed {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ProgressView()
-                    }
-                }
+                ForgeThumbnailPlaceholder(failed ? .failed : .loading, systemImage: "photo")
             }
         }
-        .frame(width: 220, height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .task(id: attachment.id) {
             guard image == nil else { return }
             guard let url = await model.localFile(for: attachment) else {
@@ -332,11 +323,11 @@ private struct DocumentRow: View {
     @ViewBuilder
     private var preview: some View {
         if let page {
-            Image(decorative: page, scale: displayScale)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 32, height: 42)
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            ForgeThumbnail(width: 32, aspectRatio: 32 / 42) {
+                Image(decorative: page, scale: displayScale)
+                    .resizable()
+                    .scaledToFit()
+            }
         } else {
             Image(systemName: AttachmentFiles.symbol(for: attachment.mime))
                 .font(.title2)

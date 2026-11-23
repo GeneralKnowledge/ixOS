@@ -168,6 +168,7 @@ struct ReaderView: View {
             Spacer()
             VStack(spacing: 2) {
                 ProgressView(value: bookFraction(contents, chapter))
+                    .progressViewStyle(.forge)
                 Text("Chapter \(index + 1) of \(count) · \(Int((bookFraction(contents, chapter) * 100).rounded()))%")
                     .font(.caption)
                     .foregroundStyle(.secondary)

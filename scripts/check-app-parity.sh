@@ -1003,6 +1003,149 @@ def rule_icon_tile(app):
     return True, ""
 
 
+# Pictures (covers, photos, artwork) sit in ForgeUI's ForgeThumbnail, which
+# sizes, shapes and outlines them the same everywhere and draws one
+# placeholder for empty, loading and failed. Five apps clipped their own,
+# with five corner radii and three placeholders (ForgeUI 0.2, item 5). This
+# finds an image clipped to a fixed-radius rectangle or a circle by hand.
+HAND_THUMBNAIL = re.compile(r"\.clipShape\(\s*(?:RoundedRectangle\(\s*cornerRadius:\s*[\d.]+|Circle\(\))")
+
+
+def rule_thumbnail(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in HAND_THUMBNAIL.finditer(code):
+            if re.match(r"(?:Image|ForgeRemoteImage|AsyncImage)\(", chain_root(code, m.start())):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "clips a picture by hand; put it in ForgeUI's ForgeThumbnail: " + ", ".join(bad)
+    return True, ""
+
+
+# A choice among several (chips, tiles, A/B) wears ForgeUI's choice style
+# (`.buttonStyle(.forgeChoice(isSelected:))`, `.toggleStyle(.forgeChoice)`),
+# which adds the `.isSelected` trait, a 44-point tap and a chosen look that
+# isn't colour alone. Three apps built their own, each with its own colours
+# and sizes (ForgeUI 0.2, item 6). An app adding the trait itself has built
+# one by hand.
+HAND_SELECTED = re.compile(r"\.accessibilityAddTraits\([^)\n]*\.isSelected")
+
+
+def rule_choice(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in HAND_SELECTED.finditer(code):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "marks a choice selected by hand; use ForgeUI's forgeChoice style: " + ", ".join(bad)
+    return True, ""
+
+
+# A figure with its name (a total, a measurement) is ForgeUI's ForgeStat:
+# the figure and figureCaption text roles, equal-width digits and one
+# VoiceOver element ("Distance, 4.2 kilometres"). FieldKit and Weather drew
+# their own (ForgeUI 0.2, item 7). This finds the hand-built shape: a VStack
+# whose first Text has monospaced digits and whose next is a grey caption.
+HAND_STAT = re.compile(
+    r"VStack[^{\n]*\{\s*\n\s*Text\([^\n]*\)\s*\n\s*\.font\([^\n]*monospacedDigit[^\n]*\)\s*\n"
+    r"(?:\s*\.[^\n]*\n){0,3}\s*Text\([^\n]*\)\s*\n\s*\.font\(\.caption[^\n]*\n\s*\.foregroundStyle\(\.secondary\)"
+)
+
+
+def rule_stat(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        for m in HAND_STAT.finditer(text):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws a figure over a caption by hand; use ForgeUI's ForgeStat: " + ", ".join(bad)
+    return True, ""
+
+
+# A button that waits must show it (ForgeUI 0.2 item 9, "silent waits"):
+# a slow load that shows nothing looks broken. A `Button` or `onSubmit`
+# whose action starts a `Task` that awaits passes only if the same closure
+# sets a working flag the view shows (`flag ?`, `if flag` or `if !flag` elsewhere in the
+# file; a flag that only blocks a second tap doesn't count). Otherwise use
+# an async `ForgeButton` (disabled at once, a spinner after 0.4 s), put it
+# in `forgeFormToolbar`, or, for alerts, dialogs, swipes and menus that
+# close at once, give the model a command that marks the row pending
+# ("Trusting…") and runs the work itself. The rule can't time anything, so
+# fast local writes count too: the pattern makes showing work free.
+SILENT_START = re.compile(r"(?:\bButton\b[^{\n]*\{|\.onSubmit\s*(?:\([^)]*\))?\s*\{)")
+STARTS_TASK = re.compile(r"\bTask\s*(?:\([^)]*\))?\s*\{")
+SETS_FLAG = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*true\b")
+
+
+def closing_brace(code, i):
+    depth = 0
+    for j in range(i, len(code)):
+        if code[j] == "{":
+            depth += 1
+        elif code[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return j
+    return len(code)
+
+
+def rule_silent_wait(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in SILENT_START.finditer(code):
+            brace = m.end() - 1
+            end = closing_brace(code, brace)
+            body = code[brace:end]
+            awaiting = re.search(r"\bawait\b", body)
+            if not STARTS_TASK.search(body) or not awaiting:
+                continue
+            first_await = awaiting.start()
+            rest = code[:brace] + code[end:]
+            shown = any(
+                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+(?:!\s*)?{re.escape(flag)}\b", rest)
+                # Only a flag set before the wait shows it; one set after
+                # (`saved = true`) is a result, not a pending state.
+                for flag in (f.group(1) for f in SETS_FLAG.finditer(body) if f.start() < first_await)
+            )
+            # A running-work banner set before the task shows it too.
+            if shown or re.search(r"=\s*\.working\(", body):
+                continue
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, (
+            "a button waits without showing it; use an async ForgeButton, forgeFormToolbar, "
+            "or a model command with a pending row: " + ", ".join(bad)
+        )
+    return True, ""
+
+
+# Stars for a rating come from ForgeUI's ForgeRating: one adjustable
+# VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
+# app, and one `<id>` identifier. Soundscape and Pocket Library each
+# drew their own, with different colours, sizes and VoiceOver (ForgeUI 0.2,
+# item 4). This finds a `star` symbol that switches with `star.fill`, the
+# shape of a hand-drawn rating.
+HAND_STARS = re.compile(r'"star\.fill"\s*:\s*"star"|"star"\s*:\s*"star\.fill"')
+
+
+def rule_rating(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        for m in HAND_STARS.finditer(text):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws rating stars by hand; use ForgeUI's ForgeRating: " + ", ".join(bad)
+    return True, ""
+
+
 # A file the app has just written (an export, a backup) goes to the system
 # share sheet with ForgeUI's forgeShareFile as soon as it is ready. Four
 # apps had their own "your file is ready" sheet or row with a ShareLink on
@@ -1251,6 +1394,11 @@ RULES = [
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
     ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
+    ("choice", "Chips and one-of-several tiles through ForgeUI's `forgeChoice` style, never a hand-added `.isSelected`", rule_choice),
+    ("stat", "Figures with their name (totals, measurements) through ForgeUI's `ForgeStat`", rule_stat),
+    ("silent-wait", "A button that waits shows it: an async `ForgeButton`, `forgeFormToolbar`, a shown working flag, or a pending row", rule_silent_wait),
+    ("rating", "Ratings through ForgeUI's `ForgeRating`, never stars drawn by hand", rule_rating),
+    ("thumbnail", "Pictures in ForgeUI's `ForgeThumbnail`, never an image clipped to a shape by hand", rule_thumbnail),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
     ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),

@@ -75,6 +75,12 @@ public final class PythonPackagesModel {
         bundled = bundledSite.map { packagesInstalled(sitePackages: $0) } ?? []
     }
 
+    /// Install from the name field's Return key: the list shows
+    /// "Installing…" (`isWorking`) while it runs.
+    public func startInstalling() {
+        Task { await install() }
+    }
+
     /// Installs the package typed in, or upgrades it, and then whatever it
     /// needs that isn't here yet.
     public func install() async {

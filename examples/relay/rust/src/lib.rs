@@ -1197,11 +1197,12 @@ impl RelayCore {
     /// device trusted again from the list. The only way a revoked device
     /// becomes trusted again.
     pub async fn trust_device(&self, endpoint_id: String) -> Result<(), RelayError> {
-        let offered = {
-            let mut offers = lock(&self.trust_offers);
-            let at = offers.iter().position(|o| o.endpoint_id == endpoint_id);
-            at.and_then(|at| offers.remove(at))
-        };
+        // The offer stays until trust is saved (the command below removes
+        // it), so a failed save can be tried again.
+        let offered = lock(&self.trust_offers)
+            .iter()
+            .find(|o| o.endpoint_id == endpoint_id)
+            .cloned();
         let introducer = offered.as_ref().and_then(|o| o.introducer_id.clone());
         let name = match offered {
             Some(o) => o.name,
@@ -1229,8 +1230,8 @@ impl RelayCore {
                     }
                     Ok(())
                 })?;
-                // A sync that ran after the offer was taken above, but
-                // before this command, may have offered the device again.
+                // Trust is saved: drop the offer (and any repeat a sync
+                // added meanwhile).
                 lock(&offers).retain(|o| o.endpoint_id != endpoint_id);
                 Ok(())
             })
@@ -1524,81 +1525,8 @@ impl RelayCore {
         endpoint_id: String,
         paths: Vec<String>,
     ) -> Result<Transfer, RelayError> {
-        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-        if paths.is_empty() {
-            return Err(RelayError::File {
-                reason: "nothing to send".into(),
-            });
-        }
-        if let Some(missing) = paths.iter().find(|p| !p.is_file() && !p.is_dir()) {
-            return Err(RelayError::File {
-                reason: format!("there is no file or folder at {}", missing.display()),
-            });
-        }
-        let name = code_send::send_name(&paths);
-        let size = code_send::items_in(&paths)
-            .map(|f| f.iter().map(|(_, _, n)| n).sum())
-            .unwrap_or(0);
-        let file = match paths.as_slice() {
-            [one] => Some(one.to_string_lossy().into_owned()),
-            _ => None,
-        };
-        let item = SavedItem::File {
-            name: name.clone(),
-            size,
-            file: file.clone(),
-        };
-        self.trusted(&endpoint_id)?;
-        let id = outbox::new_id();
-        let node = self.node().await?;
-        let offer = code::TOKIO
-            .spawn(async move {
-                let (offer, _tags) = code_send::prepare(&paths, name, &node, true).await?;
-                let content = if offer.collection {
-                    iroh_blobs::HashAndFormat::hash_seq(offer.hash)
-                } else {
-                    iroh_blobs::HashAndFormat::raw(offer.hash)
-                };
-                node.store
-                    .tags()
-                    .set(outbox::tag_name(&hex::hex(&id)), content)
-                    .await
-                    .map_err(node::file_error)?;
-                Ok::<_, RelayError>(offer)
-            })
+        self.send_to_device_kept(endpoint_id, paths, &AtomicBool::new(false))
             .await
-            .unwrap_or_else(|e| Err(code::connection(e)))?;
-        // The conversation shows it as a message with one attachment,
-        // Queued until the delivery ends.
-        let delivery = hex::hex(&id);
-        let local = file.as_deref().map(Path::new);
-        let attachment = device_chat::files_attachment(
-            &hex::hex(offer.hash.as_bytes()),
-            offer.collection,
-            &offer.name,
-            size,
-        );
-        let me = self.identity();
-        let log = self.peer_logs.get(&endpoint_id)?;
-        let kept = local.and_then(|file| log.keep(file, &attachment.id));
-        let message = chat_core::Message {
-            id: device_chat::files_message_id(&delivery),
-            author: me.name,
-            author_id: device_chat::ME.into(),
-            attachments: vec![attachment],
-            status: chat_core::MessageStatus::Queued,
-            ..chat_core::Message::default()
-        };
-        // The message and its delivery are saved together (P3).
-        let path = kept.or_else(|| local.map(Path::to_path_buf));
-        self.queue_with(
-            id,
-            endpoint_id,
-            item,
-            outbox::Payload::files(&offer),
-            Some((message, path)),
-        )
-        .await
     }
 
     /// Stops a send to a trusted device that is still going, or takes it
@@ -2242,3 +2170,93 @@ impl LanguageModel for OneAtATime {
 }
 
 forge_app::export_runtime!(RelayCore, rt);
+
+impl RelayCore {
+    /// [`send_to_device`](RelayCore::send_to_device), setting `queued` once
+    /// its message is in the conversation: a failure after that (the other
+    /// device refused it) leaves a "Not Sent" message, one before it
+    /// leaves nothing.
+    pub(crate) async fn send_to_device_kept(
+        &self,
+        endpoint_id: String,
+        paths: Vec<String>,
+        queued: &AtomicBool,
+    ) -> Result<Transfer, RelayError> {
+        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        if paths.is_empty() {
+            return Err(RelayError::File {
+                reason: "nothing to send".into(),
+            });
+        }
+        if let Some(missing) = paths.iter().find(|p| !p.is_file() && !p.is_dir()) {
+            return Err(RelayError::File {
+                reason: format!("there is no file or folder at {}", missing.display()),
+            });
+        }
+        let name = code_send::send_name(&paths);
+        let size = code_send::items_in(&paths)
+            .map(|f| f.iter().map(|(_, _, n)| n).sum())
+            .unwrap_or(0);
+        let file = match paths.as_slice() {
+            [one] => Some(one.to_string_lossy().into_owned()),
+            _ => None,
+        };
+        let item = SavedItem::File {
+            name: name.clone(),
+            size,
+            file: file.clone(),
+        };
+        self.trusted(&endpoint_id)?;
+        let id = outbox::new_id();
+        let node = self.node().await?;
+        let offer = code::TOKIO
+            .spawn(async move {
+                let (offer, _tags) = code_send::prepare(&paths, name, &node, true).await?;
+                let content = if offer.collection {
+                    iroh_blobs::HashAndFormat::hash_seq(offer.hash)
+                } else {
+                    iroh_blobs::HashAndFormat::raw(offer.hash)
+                };
+                node.store
+                    .tags()
+                    .set(outbox::tag_name(&hex::hex(&id)), content)
+                    .await
+                    .map_err(node::file_error)?;
+                Ok::<_, RelayError>(offer)
+            })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)))?;
+        // The conversation shows it as a message with one attachment,
+        // Queued until the delivery ends.
+        let delivery = hex::hex(&id);
+        let local = file.as_deref().map(Path::new);
+        let attachment = device_chat::files_attachment(
+            &hex::hex(offer.hash.as_bytes()),
+            offer.collection,
+            &offer.name,
+            size,
+        );
+        let me = self.identity();
+        let log = self.peer_logs.get(&endpoint_id)?;
+        let kept = local.and_then(|file| log.keep(file, &attachment.id));
+        let message = chat_core::Message {
+            id: device_chat::files_message_id(&delivery),
+            author: me.name,
+            author_id: device_chat::ME.into(),
+            attachments: vec![attachment],
+            status: chat_core::MessageStatus::Queued,
+            ..chat_core::Message::default()
+        };
+        // The message and its delivery are saved together (P3).
+        let path = kept.or_else(|| local.map(Path::to_path_buf));
+        self.queue_with(
+            id,
+            endpoint_id,
+            item,
+            outbox::Payload::files(&offer),
+            Some((message, path)),
+            Some(queued),
+        )
+        .await
+    }
+}

@@ -64,8 +64,8 @@ struct RevokedDeviceRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Trust Again") {
-                Task { await model.trustAgain(device) }
+            ForgeButton("Trust Again") {
+                await model.trustAgain(device)
             }
             .buttonStyle(.borderless)
             .accessibilityIdentifier("revoked.trustAgain")
@@ -416,6 +416,7 @@ struct TrustedDeviceView: View {
     @State private var asking = false
     /// "This Is a Person" turned on, before a name is saved.
     @State private var namingPerson = false
+    @State private var savingPerson = false
     @State private var personName = ""
     @State private var syncing = false
     @State private var synced: String?
@@ -564,12 +565,19 @@ struct TrustedDeviceView: View {
                         .onSubmit {
                             let name = personName.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !name.isEmpty else { return }
+                            savingPerson = true
                             Task {
                                 await model.setPerson(name, for: device)
+                                savingPerson = false
                                 namingPerson = false
                             }
                         }
+                        .disabled(savingPerson)
                         .accessibilityIdentifier("trusted.personName")
+                    if savingPerson {
+                        ForgeStatus("Saving…", tone: .info)
+                            .accessibilityIdentifier("trusted.savingPerson")
+                    }
                 }
             } header: {
                 Text("Whose Device")

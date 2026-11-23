@@ -91,10 +91,10 @@ struct BookSummarySheet: View {
         VStack(alignment: .leading, spacing: 12) {
             ProgressView(value: state.fractionDone) {
                 Text(state.headline)
-                    .font(.headline)
             } currentValueLabel: {
                 Text(state.detail)
             }
+            .progressViewStyle(.forge)
             .animation(.default, value: state.fractionDone)
             if let startedAt = state.startedAt {
                 TimelineView(.periodic(from: startedAt, by: 1)) { context in

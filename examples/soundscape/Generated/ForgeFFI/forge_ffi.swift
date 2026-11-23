@@ -2155,6 +2155,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func albumTracks(albumId: String)  -> [LibraryTrack]
     
     /**
+     * Makes the playlist a confirmed plan ([`playlist_plan::PlaylistPlan`]
+     * as JSON) describes, after checking it again against the library as
+     * it is now. Searches, downloads and plays nothing.
+     */
+    func applyPlaylistPlanJson(planJson: String) async throws  -> PlaylistDetail
+    
+    /**
      * An Internet Archive item's playable tracks, in order, each with the
      * item's licence. On-screen work.
      */
@@ -2384,6 +2391,14 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func phase()  -> AppPhase
     
     func playlist(id: UInt64) throws  -> PlaylistDetail
+    
+    /**
+     * "Make me a playlist": the library's songs a playlist plan may use, as
+     * JSON ([`playlist_plan::PlaylistSnapshot`]). JSON because it travels
+     * through Swift to Device Lab's A2UI Lab, which reads it with these
+     * same Rust types.
+     */
+    func playlistSnapshotJson()  -> String
     
     /**
      * One recording of a track, to play instead of the preferred one.
@@ -2699,6 +2714,27 @@ open func albumTracks(albumId: String) -> [LibraryTrack]  {
         FfiConverterString.lower(albumId),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Makes the playlist a confirmed plan ([`playlist_plan::PlaylistPlan`]
+     * as JSON) describes, after checking it again against the library as
+     * it is now. Searches, downloads and plays nothing.
+     */
+open func applyPlaylistPlanJson(planJson: String)async throws  -> PlaylistDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_apply_playlist_plan_json(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(planJson)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypePlaylistDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -3357,6 +3393,21 @@ open func playlist(id: UInt64)throws  -> PlaylistDetail  {
     uniffi_soundscape_core_fn_method_soundscapecore_playlist(
             self.uniffiCloneHandle(),
         FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * "Make me a playlist": the library's songs a playlist plan may use, as
+     * JSON ([`playlist_plan::PlaylistSnapshot`]). JSON because it travels
+     * through Swift to Device Lab's A2UI Lab, which reads it with these
+     * same Rust types.
+     */
+open func playlistSnapshotJson() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_playlist_snapshot_json(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -11662,6 +11713,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_album_tracks() != 41674) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_apply_playlist_plan_json() != 19243) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_archive_item_tracks() != 9877) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11783,6 +11837,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_playlist() != 53541) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_playlist_snapshot_json() != 61084) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_queue_recording() != 23683) {

@@ -149,20 +149,19 @@ private struct SketchTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack {
-                PaperBackground(paper: sketch.paper)
-                #if canImport(UIKit)
-                if let path = sketch.thumbnailPath, let image = UIImage(contentsOfFile: path) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .padding(8)
+            ForgeThumbnail(aspectRatio: 3 / 4) {
+                ZStack {
+                    PaperBackground(paper: sketch.paper)
+                    #if canImport(UIKit)
+                    if let path = sketch.thumbnailPath, let image = UIImage(contentsOfFile: path) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .padding(8)
+                    }
+                    #endif
                 }
-                #endif
             }
-            .aspectRatio(3 / 4, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
             // The file keeps its name when it changes; this redraws it.
             .id("\(sketch.modifiedMs)-\(version)")
             Text(sketch.title)

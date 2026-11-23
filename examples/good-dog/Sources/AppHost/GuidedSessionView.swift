@@ -107,6 +107,7 @@ struct GuidedSessionView: View {
                 heading
                 if let number = card.stepNumber {
                     ProgressView(value: Double(number), total: Double(max(card.stepCount, 1)))
+                        .progressViewStyle(.forge)
                         .accessibilityHidden(true)  // the heading says it
                 }
                 LinkedTextView(text: card.text)

@@ -718,27 +718,6 @@ extension DetailTile where Graphic == EmptyView {
     }
 }
 
-/// One line of a wide card: "29" big, then "KM/H" over "Wind".
-private struct MeasureRow: View {
-    let number: String
-    let unit: String
-    let label: String
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Text(number).font(.title2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.7)
-            VStack(alignment: .leading, spacing: 0) {
-                if !unit.isEmpty {
-                    Text(unit.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
-                }
-                Text(label).font(.subheadline)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 6)
-    }
-}
-
 /// "29 km/h" as ("29", "km/h").
 private func splitUnit(_ text: String) -> (String, String) {
     guard let space = text.firstIndex(of: " ") else { return (text, "") }
@@ -758,21 +737,23 @@ private struct WindCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(spacing: 0) {
-                        MeasureRow(number: speed, unit: unit, label: "Wind")
+                        ForgeStat("Wind", value: speed, unit: unit, layout: .inline).padding(.vertical, 6)
                         if let gusts = wind.gustsKmh {
                             Divider().overlay(.white.opacity(0.25))
                             let g = splitUnit(WeatherFormat.speed(kmh: gusts, units: units))
-                            MeasureRow(number: g.0, unit: g.1, label: "Gusts")
+                            ForgeStat("Gusts", value: g.0, unit: g.1, layout: .inline).padding(.vertical, 6)
                         }
                         if let direction = wind.direction {
                             Divider().overlay(.white.opacity(0.25))
                             let d = splitUnit(direction)
-                            MeasureRow(number: d.0, unit: d.1, label: "Direction")
+                            ForgeStat("Direction", value: d.0, unit: d.1, layout: .inline).padding(.vertical, 6)
                         }
                     }
                     WindCompass(directionDeg: wind.directionDeg.map(Double.init), speed: speed, unit: unit)
                         .frame(width: 130)
                 }
+                // The sky card is the surface; the stats draw in its colours.
+                .forgeStatBackground(.hidden)
                 Text(wind.note)
                     .font(.footnote)
                     .fixedSize(horizontal: false, vertical: true)
