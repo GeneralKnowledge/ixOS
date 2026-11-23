@@ -115,12 +115,12 @@ struct A2uiFeedsView: View {
                 }
                 if model.started, let surface = host.surface {
                     A2uiSurfaceView(surface: surface, catalog: host.catalog)
-                    Button("Start Over") { Task { await model.start() } }
+                    ForgeButton("Start Over") { await model.start() }
                         .buttonStyle(.forge(.tertiary, expands: true))
                         .disabled(model.busy)
                         .accessibilityIdentifier("a2uiFeeds.startOver")
                 } else {
-                    Button("Suggest Folders") { Task { await model.start() } }
+                    ForgeButton("Suggest Folders") { await model.start() }
                         .buttonStyle(.forge(.primary, expands: true))
                         .accessibilityIdentifier("a2uiFeeds.start")
                 }
@@ -220,12 +220,12 @@ struct A2uiPlaylistView: View {
                 }
                 if model.started, let surface = host.surface {
                     A2uiSurfaceView(surface: surface, catalog: host.catalog)
-                    Button("Start Over") { Task { await model.start() } }
+                    ForgeButton("Start Over") { await model.start() }
                         .buttonStyle(.forge(.tertiary, expands: true))
                         .disabled(model.busy)
                         .accessibilityIdentifier("a2uiPlaylist.startOver")
                 } else {
-                    Button("Suggest a Playlist") { Task { await model.start() } }
+                    ForgeButton("Suggest a Playlist") { await model.start() }
                         .buttonStyle(.forge(.primary, expands: true))
                         .accessibilityIdentifier("a2uiPlaylist.start")
                 }
