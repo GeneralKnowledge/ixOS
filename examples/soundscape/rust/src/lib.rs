@@ -1222,9 +1222,13 @@ impl SoundscapeCore {
         };
         let size = (size as usize).clamp(1, 50);
         let mut ids = station::mix(&candidates, &played, size, seed_number);
-        // A song seed plays first when the station starts.
+        // A song seed plays first when the station starts, when it can be
+        // played from here (Jamendo's related songs leave the seed out, so
+        // one only in the catalogue would take a place and then drop).
         if let StationSeed::Track { id } = &seed {
-            if played.ids.is_empty() {
+            let playable =
+                library.tracks.iter().any(|t| &t.id == id) || catalogue.iter().any(|t| &t.id == id);
+            if played.ids.is_empty() && playable {
                 ids.retain(|i| i != id);
                 ids.insert(0, id.clone());
                 ids.truncate(size);

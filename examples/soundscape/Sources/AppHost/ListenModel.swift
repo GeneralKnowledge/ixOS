@@ -4,6 +4,12 @@ import ForgeAppKit
 import Foundation
 import Observation
 
+/// A queue and the place in it to start from.
+public struct QueueStart {
+    public let tracks: [QueueTrack]
+    public let start: Int
+}
+
 private let log = ForgeLog("Listen")
 
 /// What the Listen screens show: the music library (artists, albums,
@@ -363,15 +369,18 @@ public final class ListenModel {
         core.queueTracks(trackIds: tracks.map(\.id))
     }
 
-    /// Where the song at `index` lands in `queue(tracks)`: songs that can't
-    /// be played are left out of the queue, so the ones before it count
-    /// only when they are in it.
-    public func queueIndex(_ index: Int, in tracks: [LibraryTrack]) -> Int {
-        queue(Array(tracks.prefix(index))).count
+    /// The queue for a list and where the song at `index` lands in it:
+    /// songs that can't be played are left out, so the ones before it
+    /// count only when they are in it. Built as the songs before and from
+    /// it, so the start always matches the queue handed back.
+    public func queue(_ tracks: [LibraryTrack], from index: Int) -> QueueStart {
+        let before = queue(Array(tracks.prefix(index)))
+        return QueueStart(tracks: before + queue(Array(tracks.dropFirst(index))), start: before.count)
     }
 
-    public func queueIndex(_ index: Int, in tracks: [CatalogueTrack]) -> Int {
-        queue(Array(tracks.prefix(index))).count
+    public func queue(_ tracks: [CatalogueTrack], from index: Int) -> QueueStart {
+        let before = queue(Array(tracks.prefix(index)))
+        return QueueStart(tracks: before + queue(Array(tracks.dropFirst(index))), start: before.count)
     }
 
     /// One recording of a track, to play instead of the preferred one.

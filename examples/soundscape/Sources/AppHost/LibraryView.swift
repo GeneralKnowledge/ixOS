@@ -146,7 +146,7 @@ struct SearchTab: View {
                 ForEach(Array(found.tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
                         remember()
-                        player.play(model.queue(found.tracks), from: model.queueIndex(index, in: found.tracks))
+                        player.play(model.queue(found.tracks, from: index))
                     }
                 }
             }
@@ -221,7 +221,7 @@ extension SearchTab {
                     ForEach(Array(jamendo.enumerated()), id: \.element.id) { index, track in
                         CatalogueRow(model: model, player: player, track: track) {
                             remember()
-                            player.play(model.queue(jamendo), from: model.queueIndex(index, in: jamendo))
+                            player.play(model.queue(jamendo, from: index))
                         }
                     }
                 } header: {
