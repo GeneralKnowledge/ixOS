@@ -339,6 +339,9 @@ impl CollectionFile {
     /// Notes a play, keeping the newest [`MAX_HISTORY`] in the history and
     /// counting every one.
     pub fn record_play(&mut self, track_id: &str, recording_id: &str, now: i64) {
+        // If the backfill at open wasn't saved, do it now, so this play
+        // doesn't start the counts afresh without the history behind it.
+        self.fill_tally();
         let tally = PlayTally {
             count: 1,
             first_ms: now,

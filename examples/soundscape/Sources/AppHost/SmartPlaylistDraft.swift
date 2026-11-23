@@ -121,7 +121,7 @@ public struct SmartRuleDraft: Identifiable, Equatable {
         }
         switch kind {
         case .plays:
-            return .number(field: .playCount, test: numberTest, value: number.rounded())
+            return .number(field: .playCount, test: numberTest, value: number)
         case .length:
             return .number(field: .lengthSeconds, test: numberTest, value: number * 60)
         case .added:

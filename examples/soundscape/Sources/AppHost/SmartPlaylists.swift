@@ -94,7 +94,7 @@ struct SmartPlaylistView: View {
     let id: String
 
     @State private var detail: SmartPlaylistDetail?
-    @State private var editing: SmartPlaylistDraft?
+    @State private var editing: EditorItem?
     @State private var freezing = false
     @State private var details: String?
     @State private var confirmingDelete = false
@@ -125,10 +125,7 @@ struct SmartPlaylistView: View {
                 ToolbarItem(placement: .primaryAction) { menu(detail) }
             }
         }
-        .sheet(item: Binding(
-            get: { editing.map { EditorItem(draft: $0) } },
-            set: { if $0 == nil { editing = nil } }
-        )) { item in
+        .sheet(item: $editing) { item in
             SmartPlaylistEditor(model: model, editing: detail?.playlist.builtIn == false ? id : nil,
                                 start: item.draft) { saved in
                 if saved.playlist.id == id {
@@ -160,12 +157,12 @@ struct SmartPlaylistView: View {
             let list = detail.playlist
             if list.builtIn {
                 Button("Make Your Own from These Rules", systemImage: "plus.square.on.square") {
-                    editing = SmartPlaylistDraft(name: "\(list.name) (Mine)", rules: list.rules)
+                    editing = EditorItem(draft: SmartPlaylistDraft(name: "\(list.name) (Mine)", rules: list.rules))
                 }
                 .accessibilityIdentifier("smartPlaylist.copy")
             } else {
                 Button("Edit Rules", systemImage: "slider.horizontal.3") {
-                    editing = SmartPlaylistDraft(name: list.name, rules: list.rules)
+                    editing = EditorItem(draft: SmartPlaylistDraft(name: list.name, rules: list.rules))
                 }
                 .accessibilityIdentifier("smartPlaylist.editRules")
             }
@@ -215,7 +212,7 @@ struct SmartPlaylistView: View {
                 ForEach(Array(detail.entries.enumerated()), id: \.element.track.id) { index, entry in
                     TrackRow(model: model, player: player, track: entry.track,
                              showDetails: { details = entry.track.id }) {
-                        player.play(model.queue(tracks), from: index)
+                        player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                     }
                     .badge(counted ? Text("\(entry.playCount)") : nil)
                 }
@@ -247,7 +244,8 @@ struct SmartPlaylistView: View {
     }
 }
 
-/// A draft in a sheet: a new identity each time the editor opens.
+/// A draft in a sheet: a new identity each time the editor opens, kept
+/// while it is open so a library update doesn't replace the sheet.
 private struct EditorItem: Identifiable {
     let id = UUID()
     let draft: SmartPlaylistDraft

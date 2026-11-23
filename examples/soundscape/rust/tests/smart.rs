@@ -341,3 +341,22 @@ fn rules_that_mean_nothing_are_refused() {
         Err(SoundscapeError::EmptyName)
     ));
 }
+
+#[test]
+fn a_play_before_the_backfill_is_saved_keeps_the_older_counts() {
+    use soundscape_core::collection::{CollectionFile, Play};
+    let mut file = CollectionFile::default();
+    for at_ms in [1, 2] {
+        file.history.push(Play {
+            track_id: "a".into(),
+            recording_id: "r".into(),
+            at_ms,
+        });
+    }
+    // The backfill at open was never saved, so the counts are still empty.
+    assert!(file.plays.is_empty());
+    file.record_play("a", "r", 3);
+    let tally = file.plays["a"];
+    assert_eq!(tally.count, 3);
+    assert_eq!((tally.first_ms, tally.last_ms), (1, 3));
+}
