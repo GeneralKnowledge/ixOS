@@ -740,6 +740,88 @@ int8_t uniffi_forge_ffi_fn_method_a2uilab_surface_edited(uint64_t ptr, RustCallS
 RustBuffer uniffi_forge_ffi_fn_method_a2uilab_surface_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_A2UIFEEDS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_A2UIFEEDS
+uint64_t uniffi_forge_ffi_fn_clone_a2uifeeds(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_A2UIFEEDS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_A2UIFEEDS
+void uniffi_forge_ffi_fn_free_a2uifeeds(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_A2UIFEEDS_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_A2UIFEEDS_NEW
+uint64_t uniffi_forge_ffi_fn_constructor_a2uifeeds_new(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_CONFIRM
+RustBuffer uniffi_forge_ffi_fn_method_a2uifeeds_confirm(uint64_t ptr, uint64_t revision, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_REVIEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_REVIEW
+RustBuffer uniffi_forge_ffi_fn_method_a2uifeeds_review(uint64_t ptr, RustBuffer name, RustBuffer source_component_id, RustBuffer context_json, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_START
+RustBuffer uniffi_forge_ffi_fn_method_a2uifeeds_start(uint64_t ptr, RustBuffer snapshot_json, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_SURFACE_EDITED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_SURFACE_EDITED
+int8_t uniffi_forge_ffi_fn_method_a2uifeeds_surface_edited(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_SURFACE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIFEEDS_SURFACE_ID
+RustBuffer uniffi_forge_ffi_fn_method_a2uifeeds_surface_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_A2UIPLAYLIST
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_A2UIPLAYLIST
+uint64_t uniffi_forge_ffi_fn_clone_a2uiplaylist(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_A2UIPLAYLIST
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_A2UIPLAYLIST
+void uniffi_forge_ffi_fn_free_a2uiplaylist(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_A2UIPLAYLIST_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_A2UIPLAYLIST_NEW
+uint64_t uniffi_forge_ffi_fn_constructor_a2uiplaylist_new(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_CONFIRM
+RustBuffer uniffi_forge_ffi_fn_method_a2uiplaylist_confirm(uint64_t ptr, uint64_t revision, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_REVIEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_REVIEW
+RustBuffer uniffi_forge_ffi_fn_method_a2uiplaylist_review(uint64_t ptr, RustBuffer name, RustBuffer source_component_id, RustBuffer context_json, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_START
+RustBuffer uniffi_forge_ffi_fn_method_a2uiplaylist_start(uint64_t ptr, RustBuffer snapshot_json, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_SURFACE_EDITED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_SURFACE_EDITED
+int8_t uniffi_forge_ffi_fn_method_a2uiplaylist_surface_edited(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_SURFACE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_A2UIPLAYLIST_SURFACE_ID
+RustBuffer uniffi_forge_ffi_fn_method_a2uiplaylist_surface_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AILAB
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AILAB
 uint64_t uniffi_forge_ffi_fn_clone_ailab(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -813,6 +895,16 @@ void uniffi_forge_ffi_fn_free_bonsaiharness(uint64_t handle, RustCallStatus *_No
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_BONSAIHARNESS_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_BONSAIHARNESS_NEW
 uint64_t uniffi_forge_ffi_fn_constructor_bonsaiharness_new(uint64_t python, RustBuffer projects_folder, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_RESULT_CARD
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_RESULT_CARD
+RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_result_card(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_RESULT_CARD_SURFACE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_RESULT_CARD_SURFACE_ID
+RustBuffer uniffi_forge_ffi_fn_method_bonsaiharness_result_card_surface_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_ANSWER_PLAN
@@ -1510,6 +1602,12 @@ RustBuffer uniffi_forge_ffi_fn_method_workspace_state(uint64_t ptr, RustBuffer p
 void uniffi_forge_ffi_fn_method_workspace_write_text(uint64_t ptr, RustBuffer project, RustBuffer path, RustBuffer text, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_A2UI_CATALOG_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_A2UI_CATALOG_ID
+RustBuffer uniffi_forge_ffi_fn_func_a2ui_catalog_id(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_AI_LAB_EXPERIMENTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_AI_LAB_EXPERIMENTS
 RustBuffer uniffi_forge_ffi_fn_func_ai_lab_experiments(RustCallStatus *_Nonnull out_status
@@ -1993,6 +2091,12 @@ void ffi_forge_ffi_rust_future_free_void(uint64_t handle
 void ffi_forge_ffi_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_A2UI_CATALOG_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_A2UI_CATALOG_ID
+uint16_t uniffi_forge_ffi_checksum_func_a2ui_catalog_id(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_AI_LAB_EXPERIMENTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_AI_LAB_EXPERIMENTS
 uint16_t uniffi_forge_ffi_checksum_func_ai_lab_experiments(void
@@ -2347,6 +2451,66 @@ uint16_t uniffi_forge_ffi_checksum_method_a2uilab_surface_id(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_CONFIRM
+uint16_t uniffi_forge_ffi_checksum_method_a2uifeeds_confirm(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_REVIEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_REVIEW
+uint16_t uniffi_forge_ffi_checksum_method_a2uifeeds_review(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_START
+uint16_t uniffi_forge_ffi_checksum_method_a2uifeeds_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_SURFACE_EDITED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_SURFACE_EDITED
+uint16_t uniffi_forge_ffi_checksum_method_a2uifeeds_surface_edited(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_SURFACE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIFEEDS_SURFACE_ID
+uint16_t uniffi_forge_ffi_checksum_method_a2uifeeds_surface_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_CONFIRM
+uint16_t uniffi_forge_ffi_checksum_method_a2uiplaylist_confirm(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_REVIEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_REVIEW
+uint16_t uniffi_forge_ffi_checksum_method_a2uiplaylist_review(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_START
+uint16_t uniffi_forge_ffi_checksum_method_a2uiplaylist_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_SURFACE_EDITED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_SURFACE_EDITED
+uint16_t uniffi_forge_ffi_checksum_method_a2uiplaylist_surface_edited(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_SURFACE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_A2UIPLAYLIST_SURFACE_ID
+uint16_t uniffi_forge_ffi_checksum_method_a2uiplaylist_surface_id(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_BEGIN_EXTERNAL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_BEGIN_EXTERNAL
 uint16_t uniffi_forge_ffi_checksum_method_ailab_begin_external(void
@@ -2398,6 +2562,18 @@ uint16_t uniffi_forge_ffi_checksum_method_ailab_stop_requested(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_UPDATE_EXTERNAL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AILAB_UPDATE_EXTERNAL
 uint16_t uniffi_forge_ffi_checksum_method_ailab_update_external(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_RESULT_CARD
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_RESULT_CARD
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_result_card(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_RESULT_CARD_SURFACE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_RESULT_CARD_SURFACE_ID
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_result_card_surface_id(void
     
 );
 #endif
@@ -2926,6 +3102,18 @@ uint16_t uniffi_forge_ffi_checksum_constructor_devicelab_new(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_A2UILAB_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_A2UILAB_NEW
 uint16_t uniffi_forge_ffi_checksum_constructor_a2uilab_new(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_A2UIFEEDS_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_A2UIFEEDS_NEW
+uint16_t uniffi_forge_ffi_checksum_constructor_a2uifeeds_new(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_A2UIPLAYLIST_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_A2UIPLAYLIST_NEW
+uint16_t uniffi_forge_ffi_checksum_constructor_a2uiplaylist_new(void
     
 );
 #endif

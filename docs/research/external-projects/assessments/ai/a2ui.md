@@ -209,7 +209,7 @@ A2UI-1 answered the protocol questions (build, gate, confirmation, logs) with th
 
 **A2UI-1b phone check (Reuben, 2026-11-22, Device Lab 1.29922445, #385 at `862b178`): all four steps pass.** (1) Cards, chips, date fields and divider look like the rest of Device Lab in light and dark, with the selected chip filled and ticked; (2) VoiceOver reads each chip's name and selected state; (3) at a large text size the Start and Finish dates stack instead of clipping; (4) a first review shows "New plan" rows, counted apart from changes.
 
-**Next (Reuben, 2026-11-22):** no more A2UI components for now; the eight prove the architecture, and the adapter stays in Device Lab. The proposed next milestone is an **app capability audit**: the typed actions and data each app could safely expose to A2UI, so an agent composes interfaces around real app capabilities. It starts only when Reuben says so.
+**Next (Reuben, 2026-11-22):** no more A2UI components for now; the eight prove the architecture, and the adapter stays in Device Lab. The proposed next milestone is an **app capability audit**: the typed actions and data each app could safely expose to A2UI, so an agent composes interfaces around real app capabilities. Reuben approved it on 2026-11-22: [app-capability-audit.md](../../../app-capability-audit.md).
 
 **Longer term**, an adapter shared through ForgeKit (after a second app, per the apps-first rule) would give every ixOS app the same kind of agent-composed surface, a reading plan in Commonplace, a task flow in Checklist, a queue in Soundscape, while each still looks and behaves like an ixOS app.
 
