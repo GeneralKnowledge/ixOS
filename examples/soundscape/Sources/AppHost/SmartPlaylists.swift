@@ -212,7 +212,7 @@ struct SmartPlaylistView: View {
                 ForEach(Array(detail.entries.enumerated()), id: \.element.track.id) { index, entry in
                     TrackRow(model: model, player: player, track: entry.track,
                              showDetails: { details = entry.track.id }) {
-                        player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
+                        player.play(model.queue(tracks, from: index))
                     }
                     .badge(counted ? Text("\(entry.playCount)") : nil)
                 }
