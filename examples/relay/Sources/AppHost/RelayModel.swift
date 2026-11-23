@@ -318,7 +318,9 @@ public final class RelayModel {
     /// Re-reads the trust offer: the sending side learns the other's name
     /// a moment after its code send ends.
     public func refreshTrustOffer() {
-        trustOffer = core.trustOffer()
+        // An offer stays in Rust until its trust is saved; don't ask again
+        // while it is being trusted.
+        trustOffer = core.trustOffer().flatMap { trusting[$0.endpointId] == nil ? $0 : nil }
     }
 
     /// The person answered Trust.

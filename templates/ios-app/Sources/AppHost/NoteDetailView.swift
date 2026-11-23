@@ -12,6 +12,10 @@ struct NoteDetailView: View {
     @State private var text = ""
     @State private var isConfirmingDelete = false
     @State private var isDeleting = false
+    /// Whether this editor opened on text an earlier save failed to keep.
+    /// Only then may matching the saved text drop that draft: a draft from
+    /// a save that failed after this editor opened is kept for next time.
+    @State private var loadedDraft = false
     @FocusState private var isEditing: Bool
     @Environment(\.dismiss) private var dismiss
 
@@ -83,7 +87,10 @@ struct NoteDetailView: View {
             } message: {
                 Text("This can't be undone.")
             }
-            .onAppear { text = model.unsavedText[note.id] ?? note.text }
+            .onAppear {
+                loadedDraft = model.unsavedText[note.id] != nil
+                text = model.unsavedText[note.id] ?? note.text
+            }
             // Saves when the screen closes and when the app leaves the
             // screen (iOS may end it later without warning).
             .forgeSaveOnLeave {
@@ -100,7 +107,7 @@ struct NoteDetailView: View {
         let saved = model.note(id: note.id) ?? note
         guard !trimmed.isEmpty, trimmed != saved.text else {
             // Back to the saved text: nothing is left unsaved.
-            if trimmed == saved.text { model.discardUnsaved(note.id) }
+            if trimmed == saved.text && loadedDraft { model.discardUnsaved(note.id) }
             return
         }
         // A failure shows in the list's alert, and the model keeps the text

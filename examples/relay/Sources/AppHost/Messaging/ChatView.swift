@@ -1104,6 +1104,7 @@ private struct MessageBubble: View {
             text += ", \(reaction.emoji) \(reaction.count)"
         }
         if let delivery { text += ", \(DeliveryLabel.text(delivery))" }
+        if model.deleting.contains(message.id) { text += ", deleting" }
         return text
     }
 }

@@ -1083,14 +1083,28 @@ private struct RecordingRow: View {
                     Text(recording.note).font(.callout).foregroundStyle(.secondary)
                 }
                 if let rate {
-                    HStack(spacing: 12) {
-                        ForgeRating(value: Int(recording.stars), identifier: "recording.rating") { rate($0 ?? 0) }
-                        if let note {
-                            Button(recording.note.isEmpty ? "Add Note" : "Edit Note", action: note)
-                                .font(.subheadline)
-                                .buttonStyle(.borderless)
-                                .accessibilityIdentifier("recording.note")
+                    let rating = ForgeRating(value: Int(recording.stars), identifier: "recording.rating") {
+                        rate($0 ?? 0)
+                    }
+                    if let note {
+                        let noteButton = Button(recording.note.isEmpty ? "Add Note" : "Edit Note", action: note)
+                            .font(.subheadline)
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("recording.note")
+                        // The note goes under the stars when both don't fit
+                        // on one line (narrow phones, large text).
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) {
+                                rating
+                                noteButton.fixedSize()
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                rating
+                                noteButton
+                            }
                         }
+                    } else {
+                        rating
                     }
                 }
                 if !recording.preferred {

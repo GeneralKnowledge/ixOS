@@ -1027,7 +1027,7 @@ def rule_silent_wait(app):
                 continue
             rest = code[:brace] + code[end:]
             shown = any(
-                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+{re.escape(flag)}\b|\b{re.escape(flag)}\s*&&", rest)
+                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+{re.escape(flag)}\b", rest)
                 for flag in SETS_FLAG.findall(body)
             )
             # A running-work banner set before the task shows it too.
@@ -1044,7 +1044,7 @@ def rule_silent_wait(app):
 
 # Stars for a rating come from ForgeUI's ForgeRating: one adjustable
 # VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
-# app, and `<id>.star.<n>` identifiers. Soundscape and Pocket Library each
+# app, and one `<id>` identifier. Soundscape and Pocket Library each
 # drew their own, with different colours, sizes and VoiceOver (ForgeUI 0.2,
 # item 4). This finds a `star` symbol that switches with `star.fill`, the
 # shape of a hand-drawn rating.
