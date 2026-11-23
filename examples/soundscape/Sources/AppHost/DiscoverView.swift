@@ -102,10 +102,18 @@ struct DiscoverView: View {
     }
 
     private var list: some View {
-        List {
-            switch source {
-            case .jamendo: jamendo
-            case .archive: archive
+        Group {
+            // Before a search: Jamendo as an editorial page of shelves
+            // (S5); a search, or the Archive, is a list.
+            if source == .jamendo && query.isEmpty && !results.isEmpty {
+                DiscoverHome(model: model, player: player, popular: results)
+            } else {
+                List {
+                    switch source {
+                    case .jamendo: jamendo
+                    case .archive: archive
+                    }
+                }
             }
         }
         .searchable(text: $search, prompt: source == .jamendo ? "Search Jamendo" : "Search the Internet Archive")
@@ -142,7 +150,7 @@ struct DiscoverView: View {
         Section {
             ForEach(Array(results.enumerated()), id: \.element.id) { index, track in
                 CatalogueRow(model: model, player: player, track: track) {
-                    player.play(model.queue(results), from: index)
+                    player.play(model.queue(results), from: model.queueIndex(index, in: results))
                 }
             }
         } header: {
@@ -263,7 +271,7 @@ struct ArchiveItemView: View {
                 Section {
                     ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                         CatalogueRow(model: model, player: player, track: track) {
-                            player.play(model.queue(tracks), from: index)
+                            player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                         }
                     }
                 } footer: {
@@ -371,14 +379,7 @@ struct CatalogueRow: View {
             }
         }
         .contextMenu {
-            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: true)
-            }
-            .accessibilityIdentifier("discover.playNext")
-            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: false)
-            }
-            .accessibilityIdentifier("discover.addToQueue")
+            SongMenu(model: model, player: player, song: SongRef(track, model: model), identifier: "discover")
             if !added {
                 Button("Add to Library", systemImage: "plus") {
                     Task { await model.addToLibrary([track]) }
@@ -513,7 +514,7 @@ struct TestCatalogueView: View {
                 ForEach(Array(tests.enumerated()), id: \.element.track.id) { index, test in
                     Section {
                         CatalogueRow(model: model, player: player, track: test.track) {
-                            player.play(model.queue(tracks), from: index)
+                            player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                         }
                     } footer: {
                         Text(test.checks)
@@ -605,7 +606,7 @@ struct JamendoTracksView: View {
                 Section {
                     ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                         CatalogueRow(model: model, player: player, track: track) {
-                            player.play(model.queue(tracks), from: index)
+                            player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                         }
                     }
                 } header: {

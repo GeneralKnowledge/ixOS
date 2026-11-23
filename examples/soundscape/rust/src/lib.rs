@@ -27,6 +27,7 @@ pub mod playback;
 pub mod playlist_plan;
 pub mod queue;
 pub mod search;
+pub mod station;
 pub mod test_catalogue;
 
 use std::path::{Path, PathBuf};
@@ -65,6 +66,7 @@ use playback::PlaybackFile;
 pub use playback::SavedPlayback;
 pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
 pub use search::CatalogueSearch;
+pub use station::{Feeling, Station, StationSeed};
 pub use test_catalogue::TestTrack;
 
 uniffi::setup_scaffolding!();
@@ -430,6 +432,104 @@ impl SoundscapeCore {
         Ok(self.collection())
     }
 
+    /// Adds queued catalogue songs (a radio find) to the library, so they
+    /// can be favourites; anything else is left as it is.
+    pub async fn add_queued_to_library(
+        &self,
+        tracks: Vec<QueueTrack>,
+    ) -> Result<Library, SoundscapeError> {
+        let found: Vec<CatalogueTrack> = tracks
+            .into_iter()
+            .filter(|t| !self.in_library(t.track_id.clone()))
+            .filter_map(catalogue_track)
+            .collect();
+        if found.is_empty() {
+            return Ok(self.library());
+        }
+        self.add_catalogue_tracks(found).await
+    }
+
+    /// Undo for [`Self::delete_playlist`]: brings the playlist deleted
+    /// last back, under its old id.
+    pub async fn restore_playlist(&self, id: u64) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("playlist-restore", move |state| {
+                state.change_collection(|c| c.restore_playlist(id))
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    /// Puts a playlist's songs back as they were, by track id in order
+    /// (Undo after removing one).
+    pub async fn set_playlist_tracks(
+        &self,
+        id: u64,
+        track_ids: Vec<String>,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        self.rt
+            .command("playlist-set-tracks", move |state| {
+                state.change_collection(|c| c.set_playlist_tracks(id, track_ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
+    /// Makes a playlist of what is in the queue, in play order, each song
+    /// once. Catalogue songs not in the library yet are added to it (a
+    /// playlist only shows library songs); anything else the library
+    /// doesn't have, such as a take from the take server, is left out.
+    pub async fn save_queue_as_playlist(
+        &self,
+        name: String,
+        tracks: Vec<QueueTrack>,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        if tracks.len() > collection::MAX_PLAYLIST_TRACKS {
+            return Err(SoundscapeError::range("playlist songs"));
+        }
+        let id = self
+            .rt
+            .command("playlist-from-queue", move |state| {
+                let lib = state.library.value();
+                let mut seen = std::collections::HashSet::new();
+                let mut ids = Vec::new();
+                let mut adding = Vec::new();
+                for track in tracks {
+                    if !seen.insert(track.track_id.clone()) {
+                        continue;
+                    }
+                    if lib.has_track(&track.track_id) {
+                        ids.push(track.track_id);
+                    } else if let Some(found) = catalogue_track(track) {
+                        ids.push(found.id.clone());
+                        adding.push(found);
+                    }
+                }
+                if ids.is_empty() {
+                    return Err(SoundscapeError::NotInLibrary { id: "queue".into() });
+                }
+                // What `create_playlist` would refuse is refused before any
+                // catalogue song joins the library.
+                model::clean_name(&name)?;
+                if state.collection.value().playlists.len() >= collection::MAX_PLAYLISTS {
+                    return Err(SoundscapeError::range("playlists"));
+                }
+                if !adding.is_empty() {
+                    let now = now_ms();
+                    state.change_library(|lib| {
+                        for (i, mut track) in adding.into_iter().enumerate() {
+                            track.added_ms = now + i as i64;
+                            lib.catalogue.entry(track.id.clone()).or_insert(track);
+                        }
+                        Ok(())
+                    })?;
+                }
+                state.change_collection(|c| c.create_playlist(&name, ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
     /// Adds songs at the end of a playlist.
     pub async fn add_to_playlist(
         &self,
@@ -470,6 +570,19 @@ impl SoundscapeCore {
             })
             .await?;
         self.playlist(id)
+    }
+
+    /// Every song a playlist keeps, in order, including those the library
+    /// no longer has (which `playlist` leaves out), so Undo can put back
+    /// exactly what was there.
+    pub fn playlist_track_ids(&self, id: u64) -> Result<Vec<String>, SoundscapeError> {
+        self.collection
+            .get()
+            .playlists
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.track_ids.clone())
+            .ok_or_else(|| collection::no_playlist(id))
     }
 
     pub fn playlist(&self, id: u64) -> Result<PlaylistDetail, SoundscapeError> {
@@ -730,22 +843,23 @@ impl SoundscapeCore {
 
     /// Removes a song the person added: an imported file (deleting
     /// Soundscape's copy; the original, wherever it was, is untouched) or a
-    /// catalogue track. Its download goes on the next pass.
+    /// catalogue track. Its download goes on the next pass. Kept, file
+    /// and all, until the next removal, for [`Self::restore_removed`].
     pub async fn remove_imported(&self, track_id: String) -> Result<Library, SoundscapeError> {
         self.rt
             .command("library-remove-imported", move |state| {
-                let lib = state.library.value();
-                if !lib.imported.contains_key(&track_id) && !lib.catalogue.contains_key(&track_id) {
-                    return Err(SoundscapeError::NotInLibrary { id: track_id });
-                }
-                state.change_library(|lib| {
-                    lib.imported.remove(&track_id);
-                    lib.catalogue.remove(&track_id);
-                    lib.edits.remove(&track_id);
-                    lib.artwork.remove(&track_id);
-                    lib.musicbrainz.remove(&track_id);
-                    Ok(())
-                })
+                state.change_library(|lib| lib.remove_added(&track_id))
+            })
+            .await?;
+        Ok(self.library())
+    }
+
+    /// Undo for [`Self::remove_imported`]: puts the song removed last back,
+    /// file, changes and artwork included.
+    pub async fn restore_removed(&self, track_id: String) -> Result<Library, SoundscapeError> {
+        self.rt
+            .command("library-restore-removed", move |state| {
+                state.change_library(|lib| lib.restore_removed(&track_id))
             })
             .await?;
         Ok(self.library())
@@ -935,6 +1049,207 @@ impl SoundscapeCore {
                 archive::item_tracks(http.as_ref(), &identifier, cancel)
             })
             .await
+    }
+
+    // MARK: Stations
+
+    /// How the person feels about a song for stations, if they said.
+    pub fn feeling(&self, track_id: String) -> Option<Feeling> {
+        self.collection.get().feelings.get(&track_id).copied()
+    }
+
+    /// Likes or dislikes a song (any track id, in the library or from a
+    /// catalogue), or forgets it with `None`. Disliked songs never play on
+    /// a station; liked ones come up more.
+    pub async fn set_feeling(
+        &self,
+        track_id: String,
+        feeling: Option<Feeling>,
+    ) -> Result<(), SoundscapeError> {
+        self.rt
+            .command("collection-feeling", move |state| {
+                state.change_collection(|c| c.set_feeling(&track_id, feeling))
+            })
+            .await
+    }
+
+    /// Jamendo genres for Discover's shelves, yours first (see
+    /// [`station::discover_genres`]).
+    pub fn discover_genres(&self, limit: u32) -> Vec<JamendoGenre> {
+        station::discover_genres(&self.library(), &self.collection.get(), limit as usize)
+    }
+
+    /// Saves a station at the front of Hear Nonstop Music, or forgets it.
+    pub async fn set_station_saved(
+        &self,
+        seed: StationSeed,
+        title: String,
+        saved: bool,
+    ) -> Result<(), SoundscapeError> {
+        self.rt
+            .command("collection-station-saved", move |state| {
+                state.change_collection(|c| c.set_station_saved(seed, &title, saved, now_ms()))
+            })
+            .await
+    }
+
+    pub fn is_station_saved(&self, seed: StationSeed) -> bool {
+        self.collection.get().is_station_saved(&seed)
+    }
+
+    /// Remembers a search for Search's Recent list.
+    pub async fn note_search(&self, query: String) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("collection-note-search", move |state| {
+                state.change_collection(|c| {
+                    c.note_search(&query);
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    pub async fn clear_recent_searches(&self) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("collection-clear-searches", move |state| {
+                state.change_collection(|c| {
+                    c.recent_searches.clear();
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    /// Stations to offer on the Listen screen: the saved ones first, then
+    /// your top genres and most played artists, then Jamendo's genres when
+    /// there is a client ID.
+    pub fn suggested_stations(&self) -> Vec<Station> {
+        station::suggested(
+            &self.library(),
+            &self.collection.get(),
+            self.jamendo_client_id().is_some(),
+        )
+    }
+
+    /// The next `size` songs (at most 50) for a station: your music that
+    /// fits the seed, weighted by likes, favourites and plays, with about
+    /// two in five new to you (unplayed songs, and Jamendo's in the
+    /// station's genre when there is a client ID). `played` are the
+    /// station's songs so far, `recent_artists` the last artists played
+    /// (newest last), `seed_number` makes the mix repeatable. Jamendo
+    /// failing leaves its songs out; with nothing else to play its error
+    /// is the answer (worth retrying), and a station with nothing in it at
+    /// all is `NotInLibrary`.
+    /// On-screen work.
+    pub async fn station_batch(
+        &self,
+        seed: StationSeed,
+        played: Vec<String>,
+        recent_artists: Vec<String>,
+        size: u32,
+        seed_number: u64,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<QueueTrack>, SoundscapeError> {
+        let library = self.library();
+        let collection = self.collection.get();
+        let mut candidates = station::library_candidates(&seed, &library, &collection);
+        let mut catalogue: Vec<CatalogueTrack> = Vec::new();
+        // Why Jamendo gave nothing, when it failed: the answer when nothing
+        // else can play either, so a dropped connection is told apart from
+        // a station with nothing in it.
+        let mut jamendo_failure: Option<SoundscapeError> = None;
+        if let Some(client_id) = self.jamendo_client_id() {
+            let genre = station::seed_genre(&seed, &library);
+            let http = Arc::clone(&self.http);
+            let work = self.rt.foreground(cancellation.as_deref());
+            let seed_for_work = seed.clone();
+            let found = self
+                .rt
+                .run("station-jamendo", work, move |cancel| {
+                    match (
+                        &seed_for_work,
+                        genre.as_deref().and_then(station::jamendo_tag),
+                    ) {
+                        (_, Some(tag)) => jamendo::tracks(
+                            http.as_ref(),
+                            &client_id,
+                            &jamendo::Ask::Genre(tag),
+                            cancel,
+                        ),
+                        // A Jamendo song not in the library: Jamendo knows its genre.
+                        (StationSeed::Track { id }, None) if id.starts_with("jamendo:") => {
+                            jamendo::more(http.as_ref(), &client_id, id, JamendoMore::Genre, cancel)
+                                .map(|more| more.tracks)
+                        }
+                        _ => Ok(Vec::new()),
+                    }
+                })
+                .await;
+            match found {
+                Ok(tracks) => catalogue = tracks,
+                Err(SoundscapeError::Stopped { kind }) => {
+                    return Err(SoundscapeError::Stopped { kind })
+                }
+                Err(error) => {
+                    forge_runtime::logging::warn!("station: Jamendo left out: {error}");
+                    jamendo_failure = Some(error);
+                }
+            }
+        }
+        let known: std::collections::HashSet<String> =
+            candidates.iter().map(|c| c.id.clone()).collect();
+        let plays = station::play_counts(&collection);
+        for t in &catalogue {
+            if known.contains(&t.id)
+                || !t.rights.may_stream
+                || collection.feelings.get(&t.id) == Some(&Feeling::Dislike)
+            {
+                continue;
+            }
+            let liked = collection.feelings.get(&t.id) == Some(&Feeling::Like);
+            candidates.push(station::Candidate {
+                id: t.id.clone(),
+                artist: t.artist.clone().unwrap_or_default(),
+                weight: if liked { 4.0 } else { 1.0 },
+                heard: plays.contains_key(t.id.as_str()),
+            });
+        }
+        let played = station::Played {
+            ids: played.into_iter().collect(),
+            artists: recent_artists,
+        };
+        let size = (size as usize).clamp(1, 50);
+        let mut ids = station::mix(&candidates, &played, size, seed_number);
+        // A song seed plays first when the station starts.
+        if let StationSeed::Track { id } = &seed {
+            if played.ids.is_empty() {
+                ids.retain(|i| i != id);
+                ids.insert(0, id.clone());
+                ids.truncate(size);
+            }
+        }
+        let tracks: Vec<QueueTrack> = ids
+            .iter()
+            .filter_map(|id| {
+                if let Some(t) = library.tracks.iter().find(|t| &t.id == id) {
+                    library::queue_track(t)
+                } else {
+                    catalogue.iter().find(|t| &t.id == id).and_then(|t| {
+                        self.catalogue_queue_tracks(vec![t.clone()])
+                            .into_iter()
+                            .next()
+                    })
+                }
+            })
+            .collect();
+        if tracks.is_empty() {
+            return Err(jamendo_failure.unwrap_or(SoundscapeError::NotInLibrary {
+                id: "station".into(),
+            }));
+        }
+        Ok(tracks)
     }
 
     // MARK: MusicBrainz
@@ -1351,6 +1666,24 @@ impl SoundscapeCore {
             .into_iter()
             .filter(|t| t.artist_id.as_deref() == Some(artist_id.as_str()))
             .collect()
+    }
+
+    /// An artist's top songs for their page, at most `limit`: most played
+    /// first, then favourites and liked songs, then by title. With nothing
+    /// played yet, favourites and likes lead and the rest follow by title.
+    pub fn artist_top_tracks(&self, artist_id: String, limit: u32) -> Vec<LibraryTrack> {
+        let collection = self.collection.get();
+        let plays = station::play_counts(&collection);
+        let mut tracks = self.artist_tracks(artist_id);
+        let score = |t: &LibraryTrack| {
+            let kept = collection.is_favourite(&t.id)
+                || collection.feelings.get(&t.id) == Some(&Feeling::Like);
+            (plays.get(t.id.as_str()).copied().unwrap_or(0), kept)
+        };
+        tracks.retain(|t| collection.feelings.get(&t.id) != Some(&Feeling::Dislike));
+        tracks.sort_by(|a, b| score(b).cmp(&score(a)).then_with(|| a.title.cmp(&b.title)));
+        tracks.truncate(limit as usize);
+        tracks
     }
 
     /// A track with every recording of it.
@@ -1904,3 +2237,29 @@ fn default_http() -> Arc<dyn HttpClient> {
 }
 
 forge_app::export_runtime!(SoundscapeCore, rt);
+
+/// A queued catalogue song as the catalogue track it came from, to add it
+/// to the library; `None` for anything else.
+fn catalogue_track(track: QueueTrack) -> Option<CatalogueTrack> {
+    let library::AudioSource::Catalogue { provider } = track.recording.source else {
+        return None;
+    };
+    let rights = track.recording.rights?;
+    if catalogue::provider_of(&track.track_id).is_none() || !rights.may_stream {
+        return None;
+    }
+    Some(CatalogueTrack {
+        id: track.track_id,
+        provider,
+        title: track.title,
+        artist: (track.artist != library::UNKNOWN_ARTIST).then_some(track.artist),
+        album: track.album,
+        number: None,
+        genre: None,
+        duration_seconds: track.recording.duration_seconds,
+        artwork_url: track.artwork_url,
+        audio_url: track.recording.audio_url,
+        rights,
+        added_ms: 0,
+    })
+}

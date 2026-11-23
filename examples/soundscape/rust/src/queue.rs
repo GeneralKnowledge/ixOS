@@ -211,6 +211,26 @@ pub fn queue_remove(queue: PlayQueue, position: u32) -> PlayQueue {
     queue
 }
 
+/// Undo for [`queue_remove`]: puts the song at `index` in `tracks` back
+/// at `position` in the play order, kept after the song playing now (it
+/// may have moved on meanwhile) and within the order.
+#[uniffi::export]
+pub fn queue_put_back(queue: PlayQueue, index: u32, position: u32) -> PlayQueue {
+    let mut queue = queue;
+    if index as usize >= queue.tracks.len() {
+        return queue;
+    }
+    let len = queue.order.len() as u32;
+    let earliest = if len == 0 {
+        0
+    } else {
+        (queue.position + 1).min(len)
+    };
+    let at = position.clamp(earliest, len);
+    queue.order.insert(at as usize, index);
+    queue
+}
+
 /// The songs after the current one, in play order. With repeat All the
 /// list doesn't wrap: it shows what's left of this time through.
 #[uniffi::export]

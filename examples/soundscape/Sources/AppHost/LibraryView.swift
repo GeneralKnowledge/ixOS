@@ -6,63 +6,38 @@ import PhotosUI
 import UniformTypeIdentifiers
 import SwiftUI
 
-// MARK: The library's first screen
+// MARK: The Search tab
 
-/// Artists, albums and songs, and search across all three. A song plays
-/// when tapped (from there on in the list); its details are one tap on the
-/// ellipsis away.
-struct LibraryHome: View {
+/// One search for your music, Jamendo and the Internet Archive, your own
+/// music first. Before you type, your recent searches and genres to
+/// browse. A search is remembered when it is submitted, a result is
+/// played, or the person goes on from its results.
+struct SearchTab: View {
     let model: ListenModel
     let player: TakePlayer
 
-    enum Shelf: String, CaseIterable, Identifiable {
-        case songs = "Songs", albums = "Albums", artists = "Artists"
-        var id: String { rawValue }
-    }
-
-    @AppStorage("library.shelf") private var shelf: Shelf = .songs
     @State private var search = ""
     @State private var details: String?
     /// The catalogues' answer to `query`, once it arrives.
     @State private var catalogues: CatalogueSearch?
     @State private var cataloguesProblem: String?
 
-    private var library: Library { model.library }
     private var query: String { search.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
         List {
-            if let problem = model.refreshProblem {
-                Section {
-                    ForgeNotice(problem, systemImage: "exclamationmark.icloud")
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                        .accessibilityIdentifier("library.refreshProblem")
-                }
-            }
             if query.isEmpty {
-                YourMusicSection(model: model, player: player, showDetails: { details = $0 })
-                Section {
-                    Picker("Show", selection: $shelf) {
-                        ForEach(Shelf.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("library.shelf")
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                }
-                switch shelf {
-                case .songs: songs(library.tracks)
-                case .albums: albums(library.albums)
-                case .artists: artists(library.artists)
-                }
+                browse
             } else {
                 results(model.search(query))
                 catalogueResults
             }
         }
         .listStyle(.insetGrouped)
+        .navigationTitle("Search")
         .searchable(text: $search, prompt: "Your music, Jamendo and the Archive")
+        .onSubmit(of: .search) { remember() }
+        .onDisappear { if catalogues != nil { remember() } }
         .task(id: query) {
             catalogues = nil
             cataloguesProblem = nil
@@ -79,56 +54,72 @@ struct LibraryHome: View {
                 if !failure.stopped { cataloguesProblem = failure.message }
             }
         }
-        .refreshable { await model.loadLibrary(fresh: true) }
         .navigationDestination(item: $details) { id in
             TrackView(model: model, player: player, id: id)
         }
-        .toolbar {
-            ToolbarItem(placement: .secondaryAction) {
-                ImportMusicButton(model: model)
-            }
-        }
         .overlay {
-            if library.tracks.isEmpty && query.isEmpty {
-                ForgeStateView.empty(
-                    "No Music Yet", systemImage: "music.note.list",
-                    description: "Find music in Discover, import your own files, or add a take server."
-                )
-            } else if !query.isEmpty && model.search(query).isEmpty && catalogues?.isEmpty == true {
+            if !query.isEmpty && model.search(query).isEmpty && catalogues?.isEmpty == true {
                 ForgeStateView.noResults(for: query)
             }
         }
     }
 
-    @ViewBuilder private func songs(_ tracks: [LibraryTrack]) -> some View {
-        Section {
-            PlayShuffleButtons(disabled: tracks.isEmpty) { shuffle in
-                player.play(model.queue(tracks), shuffle: shuffle)
-            }
-        }
-        Section("\(tracks.count) \(tracks.count == 1 ? "Song" : "Songs")") {
-            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
-                    player.play(model.queue(tracks), from: index)
+    private func remember() {
+        let query = query
+        Task { await model.noteSearch(query) }
+    }
+
+    /// Before typing: recent searches, then Jamendo's genres as coloured
+    /// tiles, or what search covers when there is no Jamendo client ID.
+    @ViewBuilder private var browse: some View {
+        let recent = model.collection.recentSearches
+        if !recent.isEmpty {
+            Section {
+                ForEach(recent, id: \.self) { past in
+                    Button {
+                        search = past
+                    } label: {
+                        Label(past, systemImage: "clock.arrow.circlepath")
+                            .foregroundStyle(.primary)
+                    }
+                    .accessibilityHint("Searches for it again")
+                    .accessibilityIdentifier("search.recent")
+                }
+            } header: {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Recent")
+                        .font(.shelfTitle)
+                        .foregroundStyle(.primary)
+                        .textCase(nil)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    Button("Clear") { Task { await model.clearRecentSearches() } }
+                        .font(.subheadline)
+                        .textCase(nil)
+                        .accessibilityLabel("Clear Recent Searches")
+                        .accessibilityIdentifier("search.clearRecent")
                 }
             }
         }
-    }
-
-    @ViewBuilder private func albums(_ albums: [LibraryAlbum]) -> some View {
-        Section {
-            ForEach(albums) { album in
-                NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album, model: model) }
-                    .accessibilityIdentifier("library.album")
+        if model.jamendoClientId != nil {
+            Section {
+                GenreGrid(genres: model.jamendoGenres)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    .listRowBackground(Color.clear)
+            } header: {
+                Text("Browse by Genre")
+                    .font(.shelfTitle)
+                    .foregroundStyle(.primary)
+                    .textCase(nil)
+                    .accessibilityAddTraits(.isHeader)
             }
-        }
-    }
-
-    @ViewBuilder private func artists(_ artists: [LibraryArtist]) -> some View {
-        Section {
-            ForEach(artists) { artist in
-                NavigationLink(value: ListenRoute.artist(artist)) { ArtistRow(artist: artist) }
-                    .accessibilityIdentifier("library.artist")
+        } else {
+            Section {
+                Label("Search your songs, albums and artists, and the Internet Archive's free music. Add a Jamendo client ID in Discover to search Jamendo too.",
+                      systemImage: "magnifyingglass")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("search.hint")
             }
         }
     }
@@ -154,11 +145,56 @@ struct LibraryHome: View {
             Section("Songs") {
                 ForEach(Array(found.tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
-                        player.play(model.queue(found.tracks), from: index)
+                        remember()
+                        player.play(model.queue(found.tracks), from: model.queueIndex(index, in: found.tracks))
                     }
                 }
             }
         }
+    }
+}
+
+/// Genres as tiles, each in its own colour (from its name, as artwork
+/// stand-ins are), two to a row.
+struct GenreGrid: View {
+    let genres: [JamendoGenre]
+
+    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 12) {
+            ForEach(genres, id: \.tag) { genre in
+                NavigationLink(value: ListenRoute.jamendoGenre(genre)) {
+                    GenreTile(name: genre.name)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("search.genre")
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+struct GenreTile: View {
+    let name: String
+
+    var body: some View {
+        let hue = ArtworkPalette.standInHue(name)
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: [Color(hue: hue, saturation: 0.6, brightness: 0.75),
+                         Color(hue: (hue + 0.08).truncatingRemainder(dividingBy: 1), saturation: 0.75, brightness: 0.45)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            Text(name)
+                .font(.system(.headline, design: .rounded).weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .padding(12)
+        }
+        .frame(minHeight: 96)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -173,7 +209,7 @@ extension CatalogueSearch {
     }
 }
 
-extension LibraryHome {
+extension SearchTab {
     /// Under the library's own results: what Jamendo and the Internet
     /// Archive found, each in its own section, or why not.
     @ViewBuilder fileprivate var catalogueResults: some View {
@@ -184,7 +220,8 @@ extension LibraryHome {
                 Section {
                     ForEach(Array(jamendo.enumerated()), id: \.element.id) { index, track in
                         CatalogueRow(model: model, player: player, track: track) {
-                            player.play(model.queue(jamendo), from: index)
+                            remember()
+                            player.play(model.queue(jamendo), from: model.queueIndex(index, in: jamendo))
                         }
                     }
                 } header: {
@@ -272,8 +309,8 @@ struct PlayShuffleButtons: View {
     }
 }
 
-/// A song: tap to play, the ellipsis for its details, and Play Next / Add
-/// to Queue on a long press or swipe.
+/// A song: tap to play, the ellipsis for its details, the song menu
+/// (`SongMenu`) on a long press, and Play Next / Add to Queue on a swipe.
 struct TrackRow: View {
     let model: ListenModel
     let player: TakePlayer
@@ -283,8 +320,6 @@ struct TrackRow: View {
     var remove: (() -> Void)? = nil
     let showDetails: () -> Void
     let play: () -> Void
-
-    @State private var addingToPlaylist = false
 
     private var isCurrent: Bool { player.current?.id == track.preferred?.id && !player.isComparing }
 
@@ -345,22 +380,7 @@ struct TrackRow: View {
             .accessibilityIdentifier("library.songDetails")
         }
         .contextMenu {
-            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: true)
-            }
-            .accessibilityIdentifier("library.playNext")
-            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: false)
-            }
-            .accessibilityIdentifier("library.addToQueue")
-            Button("Add to Playlist…", systemImage: "text.badge.plus") { addingToPlaylist = true }
-                .accessibilityIdentifier("library.addToPlaylist")
-            let favourite = model.isFavourite(track.id)
-            Button(favourite ? "Remove from Favourites" : "Add to Favourites",
-                   systemImage: favourite ? "heart.slash" : "heart") {
-                Task { await model.toggleFavourite(track.id) }
-            }
-            .accessibilityIdentifier("library.favouriteMenu")
+            SongMenu(model: model, player: player, song: SongRef(track, model: model), identifier: "library")
             DownloadMenuItem(model: model, tracks: [track], identifier: "library.downloadMenu")
             Button("Details", systemImage: "info.circle", action: showDetails)
                 .accessibilityIdentifier("library.detailsMenu")
@@ -368,9 +388,6 @@ struct TrackRow: View {
                 Button("Remove from Playlist", systemImage: "minus.circle", role: .destructive, action: remove)
                     .accessibilityIdentifier("playlist.removeMenu")
             }
-        }
-        .sheet(isPresented: $addingToPlaylist) {
-            AddToPlaylistSheet(model: model, trackIds: [track.id])
         }
         .swipeActions(edge: .leading) {
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
@@ -409,8 +426,12 @@ struct AlbumRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Artwork(title: album.title, url: album.artworkUrl, size: 56)
+                .surfaceSource(.album(album))
             VStack(alignment: .leading, spacing: 2) {
-                Text(album.title).font(.headline).lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(album.title).font(.headline).lineLimit(1)
+                    if let model { DownloadBadge(state: model.downloadState(of: model.tracks(of: album))) }
+                }
                 Text("\(album.artist) · \(album.trackCount) \(album.trackCount == 1 ? "song" : "songs")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -432,6 +453,7 @@ struct ArtistRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Artwork(title: artist.name, url: artist.artworkUrl, size: 48, circle: true)
+                .surfaceSource(.artist(artist))
             VStack(alignment: .leading, spacing: 2) {
                 Text(artist.name).font(.headline).lineLimit(1)
                 Text(TakeFormat.artistSummary(artist))
@@ -440,169 +462,6 @@ struct ArtistRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: An artist
-
-struct ArtistView: View {
-    let model: ListenModel
-    let player: TakePlayer
-    let artist: LibraryArtist
-
-    @State private var editingArtwork = false
-    @State private var details: String?
-
-    /// The artist as the library has it now (artwork may have changed).
-    private var current: LibraryArtist { model.library.artists.first { $0.id == artist.id } ?? artist }
-
-    var body: some View {
-        let albums = model.albums(of: current)
-        let tracks = model.tracks(of: current)
-        List {
-            Section {
-                VStack(spacing: 12) {
-                    Artwork(title: current.name, url: current.artworkUrl, size: 180, circle: true)
-                        .shadow(radius: 8, y: 4)
-                    Text(current.name).font(.title.bold()).multilineTextAlignment(.center)
-                    Text(TakeFormat.artistSummary(current)).font(.subheadline).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .listRowBackground(Color.clear)
-            }
-            Section {
-                PlayShuffleButtons(disabled: tracks.isEmpty) { shuffle in
-                    player.play(model.queue(tracks), shuffle: shuffle)
-                }
-            }
-            if !albums.isEmpty {
-                Section("Albums") {
-                    ForEach(albums) { album in
-                        NavigationLink(value: ListenRoute.album(album)) { AlbumRow(album: album, model: model) }
-                            .accessibilityIdentifier("artist.album")
-                    }
-                }
-            }
-            Section("Songs") {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
-                        player.play(model.queue(tracks), from: index)
-                    }
-                }
-            }
-        }
-        .navigationTitle(current.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                FavouriteButton(model: model, id: current.id, identifier: "artist.favourite")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button("Artwork", systemImage: "photo") { editingArtwork = true }
-                    .accessibilityIdentifier("artist.artwork")
-            }
-        }
-        .sheet(isPresented: $editingArtwork) {
-            ArtworkSheet(model: model, title: current.name, url: current.artworkUrl,
-                         target: .artist(id: current.id), circle: true)
-        }
-    }
-}
-
-// MARK: An album
-
-struct AlbumView: View {
-    let model: ListenModel
-    let player: TakePlayer
-    let album: LibraryAlbum
-
-    @State private var editingArtwork = false
-    @State private var details: String?
-    @State private var addingToPlaylist = false
-
-    private var current: LibraryAlbum { model.library.albums.first { $0.id == album.id } ?? album }
-    private var artist: LibraryArtist? { model.library.artists.first { $0.id == current.artistId } }
-
-    var body: some View {
-        let tracks = model.tracks(of: current)
-        List {
-            Section {
-                VStack(spacing: 10) {
-                    Artwork(title: current.title, url: current.artworkUrl, size: 240)
-                        .shadow(radius: 10, y: 5)
-                    Text(current.title).font(.title2.bold()).multilineTextAlignment(.center)
-                    if let artist {
-                        NavigationLink(value: ListenRoute.artist(artist)) {
-                            Text(artist.name).font(.title3).foregroundStyle(.tint)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("album.artist")
-                    } else {
-                        Text(current.artist).font(.title3).foregroundStyle(.secondary)
-                    }
-                    Text(albumLength(tracks)).font(.caption).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .listRowBackground(Color.clear)
-            }
-            Section {
-                PlayShuffleButtons(disabled: tracks.isEmpty) { shuffle in
-                    player.play(model.queue(tracks), shuffle: shuffle)
-                }
-                AlbumDownloadButton(model: model, tracks: tracks)
-            }
-            Section {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(
-                        model: model, player: player, track: track,
-                        number: track.number ?? UInt32(index + 1),
-                        showDetails: { details = track.id }
-                    ) {
-                        player.play(model.queue(tracks), from: index)
-                    }
-                }
-            }
-        }
-        .navigationTitle(current.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                FavouriteButton(model: model, id: current.id, identifier: "album.favourite")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Menu("More", systemImage: "ellipsis.circle") {
-                    Button("Add to Playlist…", systemImage: "text.badge.plus") { addingToPlaylist = true }
-                        .accessibilityIdentifier("album.addToPlaylist")
-                    DownloadMenuItem(model: model, tracks: model.tracks(of: current), identifier: "album.download")
-                    Button("Artwork", systemImage: "photo") { editingArtwork = true }
-                        .accessibilityIdentifier("album.artwork")
-                }
-                .accessibilityIdentifier("album.more")
-            }
-        }
-        .sheet(isPresented: $addingToPlaylist) {
-            AddToPlaylistSheet(model: model, trackIds: model.tracks(of: current).map(\.id))
-        }
-        .forgeFeedback(model.feedback)
-        .sheet(isPresented: $editingArtwork) {
-            ArtworkSheet(model: model, title: current.title, url: current.artworkUrl,
-                         target: .album(id: current.id), circle: false)
-        }
-    }
-
-    /// "5 songs, 18 minutes".
-    private func albumLength(_ tracks: [LibraryTrack]) -> String {
-        let seconds = tracks.compactMap(\.durationSeconds).reduce(0, +)
-        let songs = "\(tracks.count) \(tracks.count == 1 ? "song" : "songs")"
-        guard seconds > 0 else { return songs }
-        let minutes = Int((seconds / 60).rounded())
-        return "\(songs), \(minutes) \(minutes == 1 ? "minute" : "minutes")"
     }
 }
 
@@ -1230,7 +1089,7 @@ private struct EditTrackSheet: View {
 
 /// Choose a picture from Photos for an artist, album or song, or go back
 /// to the take server's (or the stand-in).
-private struct ArtworkSheet: View {
+struct ArtworkSheet: View {
     let model: ListenModel
     let title: String
     let url: String?
