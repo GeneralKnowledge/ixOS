@@ -274,7 +274,9 @@ struct ChatView: View {
                 presenting: deleting
             ) { message in
                 Button(message.status == .sent ? "Delete for Everyone" : "Delete", role: .destructive) {
-                    Task { await model.delete(message) }
+                    // The dialog closes at once; the bubble says "Deleting…"
+                    // until the server answers.
+                    model.startDeleting(message)
                 }
             }
     }
@@ -937,12 +939,18 @@ private struct MessageBubble: View {
                 if !message.reactions.isEmpty && !message.deleted {
                     ReactionsRow(reactions: message.reactions, react: actions.react)
                 }
-                if delivery != nil || (message.edited && !message.deleted) {
+                if delivery != nil || (message.edited && !message.deleted) || model.deleting.contains(message.id) {
                     HStack(spacing: 4) {
                         if message.edited && !message.deleted {
                             Text("Edited").font(.caption2).foregroundStyle(.secondary)
                         }
-                        if let delivery { DeliveryLabel(delivery: delivery) }
+                        if model.deleting.contains(message.id) {
+                            ForgeStatus("Deleting…", tone: .info)
+                                .font(.caption2)
+                                .accessibilityIdentifier("chat.deleting")
+                        } else if let delivery {
+                            DeliveryLabel(delivery: delivery)
+                        }
                     }
                     .padding(.horizontal, 4)
                 }
@@ -1095,7 +1103,11 @@ private struct MessageBubble: View {
         for reaction in message.reactions {
             text += ", \(reaction.emoji) \(reaction.count)"
         }
-        if let delivery { text += ", \(DeliveryLabel.text(delivery))" }
+        if model.deleting.contains(message.id) {
+            text += ", deleting"
+        } else if let delivery {
+            text += ", \(DeliveryLabel.text(delivery))"
+        }
         return text
     }
 }
@@ -1144,23 +1156,16 @@ private struct ReactionsRow: View {
     var body: some View {
         HStack(spacing: 4) {
             ForEach(reactions, id: \.emoji) { reaction in
-                Button {
-                    react(reaction.emoji)
-                } label: {
+                // A chip that is on while one of the reactions is yours;
+                // tapping adds or takes back yours (Rust decides).
+                Toggle(isOn: Binding(get: { reaction.mine }, set: { _ in react(reaction.emoji) })) {
                     Text("\(reaction.emoji) \(reaction.count)")
                         .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule().fill(
-                                reaction.mine ? Color.accentColor.opacity(0.25) : Color.incomingBubble)
-                        )
-                        .overlay {
-                            if reaction.mine { Capsule().strokeBorder(Color.accentColor) }
-                        }
                 }
-                .buttonStyle(.plain)
+                .toggleStyle(.forgeChoice)
+                .controlSize(.small)
                 .accessibilityLabel("\(reaction.emoji), \(reaction.count)\(reaction.mine ? ", including you" : "")")
+                .accessibilityIdentifier("chat.reaction.\(reaction.emoji)")
             }
         }
         .padding(.horizontal, 4)

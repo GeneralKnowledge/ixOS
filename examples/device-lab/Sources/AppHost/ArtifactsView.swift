@@ -63,9 +63,9 @@ struct ArtifactRow: View {
             ArtifactDetailView(artifact: artifact, url: url)
         } label: {
             HStack(spacing: 12) {
-                ArtifactThumbnail(artifact: artifact, url: url)
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                ForgeThumbnail(width: 56) {
+                    ArtifactThumbnail(artifact: artifact, url: url)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(artifact.path).font(.body)
                     Text(details).font(.caption).foregroundStyle(.secondary)
@@ -91,16 +91,13 @@ struct ArtifactThumbnail: View {
     let url: URL?
 
     var body: some View {
-        ZStack {
-            Rectangle().fill(.quaternary)
+        Group {
             if artifact.kind == "svg" || !ArtifactKind.images.contains(artifact.kind) {
-                Image(systemName: ArtifactKind.symbol(artifact.kind))
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
+                ForgeThumbnailPlaceholder(systemImage: ArtifactKind.symbol(artifact.kind))
             } else if let image = ArtifactImage.load(url) {
                 image.resizable().scaledToFill()
             } else {
-                Image(systemName: "photo").foregroundStyle(.secondary)
+                ForgeThumbnailPlaceholder(.failed, systemImage: "photo")
             }
         }
         .id("\(artifact.path)-\(artifact.modifiedMs)-\(artifact.bytes)")

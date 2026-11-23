@@ -85,8 +85,8 @@ struct ChapterSummarySheet: View {
         VStack(alignment: .leading, spacing: 12) {
             ProgressView(value: state.fractionDone) {
                 Text(state.stageText)
-                    .font(.subheadline)
             }
+            .progressViewStyle(.forge)
             .animation(.default, value: state.fractionDone)
             if !state.draft.isEmpty {
                 Text(state.draft)

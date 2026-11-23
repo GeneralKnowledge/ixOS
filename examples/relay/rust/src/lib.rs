@@ -1197,11 +1197,12 @@ impl RelayCore {
     /// device trusted again from the list. The only way a revoked device
     /// becomes trusted again.
     pub async fn trust_device(&self, endpoint_id: String) -> Result<(), RelayError> {
-        let offered = {
-            let mut offers = lock(&self.trust_offers);
-            let at = offers.iter().position(|o| o.endpoint_id == endpoint_id);
-            at.and_then(|at| offers.remove(at))
-        };
+        // The offer stays until trust is saved (the command below removes
+        // it), so a failed save can be tried again.
+        let offered = lock(&self.trust_offers)
+            .iter()
+            .find(|o| o.endpoint_id == endpoint_id)
+            .cloned();
         let introducer = offered.as_ref().and_then(|o| o.introducer_id.clone());
         let name = match offered {
             Some(o) => o.name,
@@ -1229,8 +1230,8 @@ impl RelayCore {
                     }
                     Ok(())
                 })?;
-                // A sync that ran after the offer was taken above, but
-                // before this command, may have offered the device again.
+                // Trust is saved: drop the offer (and any repeat a sync
+                // added meanwhile).
                 lock(&offers).retain(|o| o.endpoint_id != endpoint_id);
                 Ok(())
             })

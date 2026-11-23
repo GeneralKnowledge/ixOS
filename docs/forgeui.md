@@ -153,6 +153,8 @@ Disabled and pressed states come from SwiftUI (`.disabled(...)`); there is no `i
 
 Give `ForgeButton` an async action and it tracks the work itself: it is disabled as soon as it is tapped, and its spinner (and VoiceOver's "In progress") appear only if the work takes longer than 0.4 seconds. A fast local write doesn't flicker; a slow one is never silent. Use it for any button whose action awaits something ([silent waits](research/experience/forgeui-0.2.md#35-silent-waits)); keep `isWorking:` for work the model already tracks.
 
+Alerts, confirmation dialogs, swipe actions and menus close as soon as they are tapped, so they can't hold a spinner. Give the model a command that marks the affected row pending and runs the work itself, and let the row say so: Relay's trust offer calls `model.startTrusting(offer)`, and the device list shows "Trusting…" until Rust answers; a deleted message says "Deleting…" in its bubble. Work that outlives the screen goes in ForgeAppKit's running-work `forgeBanner`. Over about ten seconds, or with a known size, show real progress (below). The `silent-wait` [parity rule](app-parity.md) fails a `Button` or `onSubmit` that starts a `Task` that awaits, unless the closure sets a working flag the view shows; apps not yet moved are listed in `app-parity.toml`.
+
 For a control that isn't a `Button` (a `Menu`'s label, a renderer's own control), `.forgeButtonLook(.primary, expands:, isPressed:)` draws the same look. It is the one implementation: the button styles draw with it, so pressed, disabled, working, compact, Reduce Motion and the Dynamic Type minimum height all behave the same.
 
 ```swift
@@ -217,6 +219,107 @@ ForgeDetailHeader(book.title, subtitle: book.author, systemImage: "book.closed.f
 
 Inside a `List`, `Section("Account")` already gives the right header; `ForgeSectionHeader` is for screens built from cards.
 
+### Choices
+
+```swift
+// One of several: the model owns which.
+Button("A") { player.hear(.a) }
+    .buttonStyle(.forgeChoice(isSelected: player.active == .a, shape: .circle))
+Button { model.set(.passed, for: check) } label: { Label("Passed", systemImage: "checkmark.circle") }
+    .buttonStyle(.forgeChoice(isSelected: answer == .passed, shape: .tile, tone: .success))
+
+// On and off, several at once (filters, reactions).
+Toggle("Unread", isOn: $unreadOnly).toggleStyle(.forgeChoice)
+```
+
+| Aspect | Choice style |
+|---|---|
+| Shapes | `.chip` (a capsule, the default), `.tile` (a rounded tile around larger content), `.circle` (a letter or symbol) |
+| Chosen look | the tone's soft fill, a solid outline and a semibold label, plus a checkmark on chips: never colour alone. Unchosen sits on a neutral fill |
+| VoiceOver | the `.isSelected` trait ("Selected"); a toggle chip reads as a button that is selected when on |
+| Size | at least 44 pt to tap; `.controlSize(.small)` draws a smaller chip with the same tap area (Relay's reactions) |
+| Tone | the accent, unless the choice means something (`tone: .success` for a passed check) |
+| Not for | a `Form` list with a checkmark (iOS's own one-of-several rows) and segmented `Picker`s: keep those native |
+
+`forgeChoiceLook(isSelected:shape:tone:isPressed:)` puts the look on a control that isn't a `Button`. The `choice` [parity rule](app-parity.md) catches a hand-added `.isSelected` trait.
+
+### Stats
+
+```swift
+HStack {
+    ForgeStat("Distance", value: "4.2 km", spokenValue: "4.2 kilometres")
+    ForgeStat("Time", value: "1:12:05", spokenValue: "1 hour 12 minutes")
+}
+ForgeStat("Wind", value: "29", unit: "km/h", layout: .inline)   // in a card
+    .forgeStatBackground(.hidden)
+```
+
+| Aspect | ForgeStat |
+|---|---|
+| Parts | a value, a label, an optional `unit`, `spokenValue` and `tone` |
+| Layout | `.stacked` (figure over label, centred, fills its share of an `HStack`) or `.inline` (figure, then unit over label) |
+| Text | the `figure` role (equal-width digits) and `figureCaption`; the figure shrinks to 70% before it truncates |
+| VoiceOver | one element: "Distance, 4.2 kilometres" (`spokenValue`, else value and unit as shown) |
+| Surface | a soft tile by default; `.forgeStatBackground(.hidden)` drops it, and the text takes the colours around it (Weather's sky) |
+| Tone | colours the figure only when the number means something (over a limit) |
+
+A row in a list with a trailing value is `ForgeRow(value:)`, not a stat. The `stat` [parity rule](app-parity.md) catches a hand-built figure over a grey caption.
+
+### Progress
+
+```swift
+ProgressView(value: done, total: total) {
+    Text("Receiving 12 MB")
+} currentValueLabel: {
+    Text("4 MB of 12 MB")
+}
+.progressViewStyle(.forge)                          // or .forge(tone: book.status.tone)
+```
+
+The style goes on SwiftUI's own `ProgressView`. The label takes the `rowTitle` role and the current value the `metadata` role with equal-width digits, on one line above the bar (the value moves under the label when they don't fit). The bar is SwiftUI's linear bar in the tone's solid colour, so VoiceOver hears the label, the value and the percentage as one element; write the value as "n of m" when there is a count. Values past either end draw as empty or full; with no value it is an indeterminate bar. There is no parity rule: a `ProgressView` without the style is still a correct native control.
+
+### Ratings
+
+```swift
+ForgeRating(value: book.rating, identifier: "bookDetail.rating") { model.rate(book, $0) }
+ForgeRating("Rate this take", value: take.stars, identifier: "take.rating") { rate($0 ?? 0) }
+ForgeRating(value: review.stars, identifier: "review.rating")   // read-only
+```
+
+| Aspect | ForgeRating |
+|---|---|
+| States | unrated, 1 to `maximum` (5), disabled (`.disabled()`), read-only (no `onChange`) |
+| Input | tap a star to set it; tap the current star to clear it (`allowsClearing`, default on). `onChange` is called only when the value changes |
+| VoiceOver | one element: the label (default "Rating") and "3 of 5 stars" or "Not rated"; swipe up and down to change it. Read-only drops the adjustable action |
+| Dynamic Type | stars scale with the surrounding font (`.font(.title3)` where the rating is the point); each star is at least 44 pt to tap |
+| Identifiers | `<identifier>` on the one element; UI tests read its value and change it with the adjustable action (the stars are not separate elements) |
+| Colour | the warning tone's solid colour, checked as a shape by `contrastIssues()`, never the accent |
+| Model | the value is an `Int?` the view model owns (0 or out of range draws as unrated); no rating rules in Swift |
+
+The `rating` [parity rule](app-parity.md) catches stars drawn by hand (`"star.fill"` switching with `"star"`).
+
+### Thumbnails
+
+```swift
+ForgeThumbnail(width: 44, aspectRatio: 2 / 3) {          // a book cover
+    ForgeRemoteImage(url: cover, maxPixels: 132) { $0.resizable().scaledToFill() } placeholder: { failed in
+        ForgeThumbnailPlaceholder(failed ? .failed : .loading, systemImage: "book.closed")
+    }
+}
+ForgeThumbnail(width: 40, shape: .circle) { artistPicture }
+ForgeThumbnail(aspectRatio: 3 / 4) { sketchPreview }      // fills a grid cell's width
+```
+
+| Aspect | ForgeThumbnail |
+|---|---|
+| States | picture, or `ForgeThumbnailPlaceholder` for `.empty`, `.loading` (small spinner) and `.failed` (drawn like empty: a broken picture looks calm) |
+| Shape | `.rounded` (a tenth of the width, up to the card radius; the medium radius when it fills its space), `.circle`, `.square`; a hairline outline on all three |
+| Size | a fixed `width` and `aspectRatio` (width over height), or no width to fill what it's offered |
+| VoiceOver | hidden, since a thumbnail sits beside the words that name it; with `label:` it is one image element |
+| Loading | the content's job: `ForgeRemoteImage`, `ForgeImages.thumbnail`, a `CGImage`. ForgeUI depends on none of them |
+
+An app whose stand-in is part of its look (Soundscape's coloured initial) draws its own inside the frame. The `thumbnail` [parity rule](app-parity.md) catches an `Image` clipped to a fixed-radius rectangle or a circle by hand.
+
 ### Notices
 
 When something is wrong but the screen still works (offline, the map can't update, the server refused the account), say so inside the screen with `ForgeNotice`: what is wrong, what still works, and at most one action.
@@ -250,7 +353,7 @@ ForgeStateView.noResults(for: model.searchText)
 
 Built on `ContentUnavailableView`, so they look like the system's own; `noResults` is the system's own search state, in the system's words and language. Keep the states apart:
 
-- Show `loading` until the model has loaded, never an empty list that is still loading.
+- Show `loading` until the model has loaded, never an empty list that is still loading. Its spinner appears after 0.4 seconds, like `ForgeButton`'s, so a quick load doesn't flash one and a slow one is never blank.
 - `noResults` is for every search that found nothing (with `advice:` and `action:` when the search has its own way forward); `empty` is for a screen with nothing in it yet, or an item that has gone (`"Book Deleted"`, no action).
 - `failed` takes a retry that repeats the operation that failed, and a model test shows it does.
 

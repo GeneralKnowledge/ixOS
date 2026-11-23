@@ -76,7 +76,7 @@ struct BookDetailView: View {
                 }
             }
             Section("Rating") {
-                StarRating(rating: book.rating, idPrefix: "bookDetail") { stars in
+                RatingRow(rating: book.rating, identifier: "bookDetail.rating") { stars in
                     var input = BookInput(book)
                     input.rating = stars
                     run { try await model.update(book.id, input) }
@@ -222,7 +222,7 @@ struct BookDetailView: View {
         if let total = book.totalPages {
             VStack(alignment: .leading, spacing: 6) {
                 ProgressView(value: book.progress)
-                    .tint(theme.colors.tone(book.status.tone).solid)
+                    .progressViewStyle(.forge(tone: book.status.tone))
                 Text("\(Int((book.progress * 100).rounded()))% · page \(book.currentPage) of \(total)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -300,51 +300,24 @@ struct BookDetailView: View {
     }
 }
 
-/// 1–5 stars; tapping the current rating clears it. VoiceOver reads it as one
-/// adjustable control ("Rating, 3 of 5 stars"; swipe up or down to change),
-/// identified as `<idPrefix>.rating`. UI automation can still see the stars
-/// themselves, so each has its own name and identifier (`<idPrefix>.star.3`)
-/// rather than five buttons all called `star`.
-struct StarRating: View {
+/// A book's stars (ForgeRating), with "Not rated" written beside them
+/// when there are none. Ratings are 1 to 5; nil is unrated.
+struct RatingRow: View {
     let rating: UInt8?
-    let idPrefix: String
+    let identifier: String
     let onChange: (UInt8?) -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            ForEach(1...5, id: \.self) { star in
-                let filled = Int(rating ?? 0) >= star
-                Button {
-                    onChange(Int(rating ?? 0) == star ? nil : UInt8(star))
-                } label: {
-                    Image(systemName: filled ? "star.fill" : "star")
-                        .font(.title3)
-                        .foregroundStyle(filled ? .yellow : .secondary)
-                        // An SF Symbol's name becomes its identifier, and UI
-                        // automation still sees the image inside the button.
-                        .accessibilityIdentifier("\(idPrefix).star.\(star).image")
-                        .accessibilityHidden(true)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(star == 1 ? "1 star" : "\(star) stars")
-                .accessibilityIdentifier("\(idPrefix).star.\(star)")
+        HStack {
+            ForgeRating(value: rating.map(Int.init), identifier: identifier) { stars in
+                onChange(stars.map(UInt8.init))
             }
+            .font(.title3)
             Spacer()
             if rating == nil {
+                // VoiceOver already hears "Not rated" from the stars.
                 Text("Not rated").font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Rating")
-        .accessibilityIdentifier("\(idPrefix).rating")
-        .accessibilityValue(rating.map { "\($0) of 5 stars" } ?? "Not rated")
-        .accessibilityAdjustableAction { direction in
-            let current = Int(rating ?? 0)
-            switch direction {
-            case .increment where current < 5: onChange(UInt8(current + 1))
-            case .decrement where current > 1: onChange(UInt8(current - 1))
-            case .decrement where current == 1: onChange(nil)
-            default: break
+                    .accessibilityHidden(true)
             }
         }
     }

@@ -51,14 +51,14 @@ struct PythonLabView: View {
                     Button("Stop", systemImage: "stop.fill", role: .destructive) { model.stop() }
                         .accessibilityIdentifier("pythonLab.stop")
                 } else {
-                    Button(runTitle, systemImage: "play.fill") {
-                        Task { await model.run() }
+                    ForgeButton(LocalizedStringKey(runTitle), systemImage: "play.fill") {
+                        await model.run()
                     }
                     .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil) || model.isLockedByBonsai)
                     .accessibilityIdentifier("pythonLab.run")
                     if model.hasWorkspace {
-                        Button(debugTitle, systemImage: "ladybug") {
-                            Task { await model.run(debugging: true) }
+                        ForgeButton(LocalizedStringKey(debugTitle), systemImage: "ladybug") {
+                            await model.run(debugging: true)
                         }
                         .disabled(!model.hasPython || model.fileToRun == nil || model.isLockedByBonsai)
                         .accessibilityIdentifier("pythonLab.debug")
@@ -187,8 +187,8 @@ struct PythonLabView: View {
                     Button("Stop", systemImage: "stop.fill", role: .destructive) { model.stop() }
                         .accessibilityIdentifier("pythonLab.console.stop")
                 } else {
-                    Button("Rerun", systemImage: "arrow.clockwise") {
-                        Task { await model.run() }
+                    ForgeButton("Rerun", systemImage: "arrow.clockwise") {
+                        await model.run()
                     }
                     .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil) || model.isLockedByBonsai)
                     .accessibilityIdentifier("pythonLab.rerun")
@@ -654,15 +654,15 @@ struct PythonPackagesView: View {
                     .noAutocapitalization()
                     .autocorrectionDisabled()
                     .submitLabel(.go)
-                    .onSubmit { Task { await model.install() } }
+                    .onSubmit { model.startInstalling() }
                     .disabled(model.isWorking)
                     .accessibilityIdentifier("pythonLab.packages.name")
                 if model.isWorking {
                     ProgressView("Installing…")
                         .accessibilityIdentifier("pythonLab.packages.working")
                 } else {
-                    Button("Install", systemImage: "arrow.down.circle") {
-                        Task { await model.install() }
+                    ForgeButton("Install", systemImage: "arrow.down.circle") {
+                        await model.install()
                     }
                     .disabled(model.name.trimmingCharacters(in: .whitespaces).isEmpty)
                     .accessibilityIdentifier("pythonLab.packages.install")
@@ -810,18 +810,15 @@ struct PythonFileTabs: View {
                 .font(.footnote.monospaced())
                 .lineLimit(1)
                 .accessibilityLabel(current ? "\(path), open" : path)
-                .accessibilityAddTraits(current ? .isSelected : [])
                 .accessibilityIdentifier("pythonLab.tab.\(path)")
             Button("Close \(path)", systemImage: "xmark") { model.close(file: path) }
                 .labelStyle(.iconOnly)
                 .font(.caption2)
                 .accessibilityIdentifier("pythonLab.tab.close.\(path)")
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
-        .background(
-            Capsule().fill(current ? theme.colors.tone(.accent).soft : theme.colors.tone(.neutral).soft))
-        .foregroundStyle(current ? theme.colors.tone(.accent).text : theme.colors.textSecondary)
+        // ForgeUI's choice chip: the open file is the chosen one.
+        .forgeChoiceLook(isSelected: current)
+        .controlSize(.small)
         .buttonStyle(.borderless)
         .id(path)
     }

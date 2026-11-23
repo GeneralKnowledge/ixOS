@@ -118,9 +118,22 @@ struct DevicesView: View {
                     ServersDownNotice()
                 }
             }
-            if !model.trustedDevices.isEmpty {
+            if !model.trustedDevices.isEmpty || !model.trusting.isEmpty {
                 Section {
-                    ForEach(model.trustedDevices) { device in
+                    // Trusting from the offer's alert: the alert has gone,
+                    // so the row says the work is under way.
+                    ForEach(model.trusting.sorted(by: { $0.key < $1.key }), id: \.key) { entry in
+                        HStack(spacing: 12) {
+                            ProgressView()
+                                .frame(width: 28)
+                            Text(entry.value)
+                            Spacer()
+                            ForgeStatus("Trusting…", tone: .info)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("devices.trusting")
+                    }
+                    ForEach(model.trustedDevices.filter { model.trusting[$0.endpointId] == nil }) { device in
                         NavigationLink(value: TrustedRoute(endpointID: device.endpointId)) {
                             TrustedDeviceRow(device: device)
                         }
@@ -201,7 +214,7 @@ struct DevicesView: View {
                 ),
                 presenting: model.trustOffer
             ) { offer in
-                Button("Trust") { Task { await model.trust(offer) } }
+                Button("Trust") { model.startTrusting(offer) }
                     .accessibilityIdentifier("trustOffer.trust")
                 Button("Not Now", role: .cancel) { model.dismissTrustOffer() }
                     .accessibilityIdentifier("trustOffer.notNow")
@@ -222,7 +235,7 @@ struct DevicesView: View {
                 ),
                 presenting: model.savedDataNotice
             ) { _ in
-                Button("OK") { Task { await model.dismissSavedDataNotice() } }
+                Button("OK") { model.startDismissingSavedDataNotice() }
                     .accessibilityIdentifier("savedData.ok")
             } message: { notice in
                 Text(notice.message)
@@ -236,7 +249,7 @@ struct DevicesView: View {
                 ),
                 presenting: model.awayNotice
             ) { _ in
-                Button("OK") { Task { await model.dismissAwayNotice() } }
+                Button("OK") { model.startDismissingAwayNotice() }
                     .accessibilityIdentifier("awayNotice.ok")
             } message: { notice in
                 Text(notice)
@@ -347,7 +360,7 @@ struct TransferRow: View {
                 .accessibilityIdentifier("history.cancel")
             }
             Button("Remove from History", systemImage: "trash", role: .destructive) {
-                Task { await model.askToRemove(transfer) }
+                model.startRemoving(transfer)
             }
             .accessibilityIdentifier("history.remove")
         }

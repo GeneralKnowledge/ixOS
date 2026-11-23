@@ -51,6 +51,7 @@ struct LlamaLabView: View {
                 ProgressView(value: fraction) {
                     Text("Downloading \(Format.percent(fraction))")
                 }
+                .progressViewStyle(.forge)
                 .accessibilityIdentifier("llamaLab.progress.\(file.id)")
                 Button("Cancel Download", role: .cancel) { model.cancel(file) }
                     .accessibilityIdentifier("llamaLab.cancel.\(file.id)")
