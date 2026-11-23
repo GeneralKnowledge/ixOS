@@ -1985,7 +1985,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_relay_core_checksum_method_relaycore_cancel_code_send() and 0xFFFF) != 14930) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_relay_core_checksum_method_relaycore_cancel_transfer() and 0xFFFF) != 49543) {
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_cancel_transfer() and 0xFFFF) != 50284) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_method_relaycore_code_receive_size() and 0xFFFF) != 28847) {
@@ -9465,7 +9465,9 @@ public interface RelayCoreInterface {
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */
     fun `cancelTransfer`(`id`: kotlin.ULong)
     
@@ -9989,7 +9991,9 @@ open class RelayCore: Disposable, AutoCloseable, RelayCoreInterface
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */override fun `cancelTransfer`(`id`: kotlin.ULong)
         = 
     callWithHandle {
@@ -18029,6 +18033,14 @@ sealed class TransferStatus {
     
     
     /**
+     * Left sealed in the recipient's mailbox, collected the next time it
+     * opens Relay. It can no longer be cancelled: it is out of this
+     * device's hands.
+     */
+    object InMailbox : TransferStatus()
+    
+    
+    /**
      * Bytes so far, out of the item's size.
      */
     data class InProgress(
@@ -18069,11 +18081,12 @@ public object FfiConverterTypeTransferStatus : FfiConverterRustBuffer<TransferSt
     override fun read(buf: ByteBuffer): TransferStatus {
         return when(buf.getInt()) {
             1 -> TransferStatus.Waiting
-            2 -> TransferStatus.InProgress(
+            2 -> TransferStatus.InMailbox
+            3 -> TransferStatus.InProgress(
                 FfiConverterULong.read(buf),
                 )
-            3 -> TransferStatus.Done
-            4 -> TransferStatus.Failed(
+            4 -> TransferStatus.Done
+            5 -> TransferStatus.Failed(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
@@ -18082,6 +18095,12 @@ public object FfiConverterTypeTransferStatus : FfiConverterRustBuffer<TransferSt
 
     override fun allocationSize(value: TransferStatus): ULong = when(value) {
         is TransferStatus.Waiting -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is TransferStatus.InMailbox -> {
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
                 4UL
@@ -18115,17 +18134,21 @@ public object FfiConverterTypeTransferStatus : FfiConverterRustBuffer<TransferSt
                 buf.putInt(1)
                 Unit
             }
-            is TransferStatus.InProgress -> {
+            is TransferStatus.InMailbox -> {
                 buf.putInt(2)
+                Unit
+            }
+            is TransferStatus.InProgress -> {
+                buf.putInt(3)
                 FfiConverterULong.write(value.`done`, buf)
                 Unit
             }
             is TransferStatus.Done -> {
-                buf.putInt(3)
+                buf.putInt(4)
                 Unit
             }
             is TransferStatus.Failed -> {
-                buf.putInt(4)
+                buf.putInt(5)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }

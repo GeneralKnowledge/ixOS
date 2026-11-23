@@ -744,12 +744,15 @@ impl RelayCore {
                 None => inbox.get(name).map(|p| p.to_string_lossy().into_owned()),
             },
             |id| progress.get(&id).copied().unwrap_or(0),
+            now_ms(),
         )
     }
 
     /// Removes a history entry and, for a received file, the file.
     pub async fn remove_transfer(&self, id: u64) -> Result<(), RelayError> {
         // Taken off the outbox first, if it is waiting: it is never sent.
+        // One already in the recipient's mailbox still arrives; only its
+        // row goes.
         self.cancel_delivery(id).await;
         let received = self.received();
         self.rt
@@ -1598,8 +1601,13 @@ impl RelayCore {
     }
 
     /// Stops a send to a trusted device that is still going, or takes it
-    /// off the outbox if it is waiting.
+    /// off the outbox if it is waiting. Does nothing to one already in the
+    /// recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+    /// anyway, so it can't be cancelled.
     pub fn cancel_transfer(&self, id: u64) {
+        if self.out_of_hands(id) {
+            return;
+        }
         if let Some(stop) = lock(&self.device_stops).get(&id) {
             stop.store(true, Ordering::SeqCst);
             return;
