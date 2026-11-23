@@ -910,7 +910,9 @@ fn listen(core: &Arc<RelayCore>, args: &[String]) -> Result<(), String> {
             if t.id > seen
                 && !matches!(
                     t.status,
-                    TransferStatus::InProgress { .. } | TransferStatus::Waiting
+                    TransferStatus::InProgress { .. }
+                        | TransferStatus::Waiting
+                        | TransferStatus::InMailbox
                 )
             {
                 println!("{}", describe(&t));
@@ -1615,6 +1617,9 @@ fn describe(t: &relay_core::Transfer) -> String {
         TransferStatus::Done => "done".to_string(),
         TransferStatus::Waiting => {
             "waiting: it goes when the device is reached, while relay listen runs".to_string()
+        }
+        TransferStatus::InMailbox => {
+            "in the mailbox: it arrives when the device next opens relay".to_string()
         }
         TransferStatus::InProgress { done } => format!("{done} bytes so far"),
         TransferStatus::Failed { reason } => format!("failed: {reason}"),

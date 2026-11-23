@@ -58,10 +58,21 @@ fn finish_spec() -> ToolSpec {
     )
 }
 
-/// The environment's tools plus `finish`, in prompt and grammar order.
+/// The tool that ends a task that can't be done as written, with the
+/// reason (H5): better than trying until the step limit. In a plan, the
+/// harness then goes to Recovery mode.
+pub const GIVE_UP: &str = "give_up";
+
+/// The environment's tools plus `finish` and `give_up`, in prompt and
+/// grammar order.
 pub fn with_finish(tools: &[ToolSpec]) -> Vec<ToolSpec> {
     let mut all = tools.to_vec();
     all.push(finish_spec());
+    all.push(ToolSpec::new(
+        GIVE_UP,
+        &[("reason", ArgKind::Text)],
+        "say the task can't be done as written, and why (something it needs is missing or not allowed)",
+    ));
     all
 }
 
@@ -140,7 +151,13 @@ pub fn grammar(tools: &[ToolSpec]) -> String {
         text += &rule;
         text.push('\n');
     }
-    text += &format!(
+    text + &common_rules()
+}
+
+/// The rules every harness grammar shares: a project path, the thought, a
+/// JSON string and its characters.
+pub fn common_rules() -> String {
+    let mut text = format!(
         "path ::= \"\\\"\" [A-Za-z0-9_] [A-Za-z0-9_./-]{{0,{}}} \"\\\"\"\n",
         PATH_MAX - 1
     );
@@ -161,6 +178,8 @@ pub fn example(tool: &ToolSpec) -> String {
             (_, "content", _) => "…the whole file…",
             (_, _, ArgKind::Path) => "name.py",
             (_, "summary", _) => "what you did",
+            (_, "reason", _) => "what is missing or not allowed",
+            (_, "name", _) => "function_name",
             (_, "old", _) => "    return a - b\\n",
             (_, "new", _) => "    return a + b\\n",
             _ => "…",

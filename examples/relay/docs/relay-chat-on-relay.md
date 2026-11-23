@@ -109,6 +109,20 @@ but on Relay's model:
   it dropped was only on the server. `chat-server export` writes the full history
   out, so a server you're retiring can be kept as a file.
 
+**Built so far (step 3, 2026-11-22).** The app's rooms go over
+`relay/room/1` from Relay's own node (`rooms.rs`: the chat repo's HTTP
+client, one kept iroh connection, a stream per request, the event stream
+as one long answer). An account on the old HTTP API moves by itself once
+Relay is open: the app asks its server where its rooms are (`GET
+/host`: the host's key, relay and direct addresses), claims the account
+over `relay/room/1` with its token, then forgets the token; rooms,
+messages and read state stay, here and on the host. Settings, Join a Room
+takes the code, a name and the host (its server address, or its key as
+`chat-server invite` prints it; empty uses the current account's server).
+Finding a host from the code alone (trusted devices that offer rooms, a
+rooms entry in Relay's servers) is still to come; so is a room host on
+Hetzner.
+
 ## How N3 and N4 are built together
 
 They share one piece of groundwork: the trust record and the outbox. Apart

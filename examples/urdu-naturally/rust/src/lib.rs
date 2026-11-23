@@ -369,6 +369,13 @@ pub enum UrduError {
 
 forge_app::app_error_conversions!(UrduError: Stopped, OpenError, DocumentError);
 
+/// The longest name `set_name` keeps, in characters (Unicode scalars), so
+/// the field can stop there.
+#[uniffi::export]
+pub fn urdu_max_name_chars() -> u32 {
+    MAX_NAME_CHARS
+}
+
 /// The framework kind of an error, so ForgeKit can present any of them.
 #[uniffi::export]
 pub fn urdu_error_kind(error: UrduError) -> ErrorKind {

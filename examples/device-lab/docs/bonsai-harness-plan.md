@@ -183,21 +183,49 @@ Phone sitting: Scripted T1 to T5, then T4 and T5 on the 4B and the 9B, comparing
 
 The ladder also has **T-P1** (`tp1-svg-chart`, from Visual Labs P1): write chart.py that saves a bar chart of [3, 7, 5] as chart.svg with the standard library; accepted when a run after the last change made chart.svg and it contains an `<svg>` element (`ProducesImage`). Since the 2026-11-22 phone run (4B passed with every bar the same height), it must also draw the numbers: `SvgBars` wants `<rect>` heights or widths that rank like 3, 7, 5 and each value as a `<text>` label. The same run spent five steps on double quotes inside a double-quoted string, so a parse error for an unterminated string now names that cause.
 
-### H4: planning and multi-task orchestration
+### H4: planning and multi-task orchestration (built 2026-11-22)
 
 Planner mode: the request becomes a constrained plan (tasks, dependencies, acceptance criteria chosen from the harness's list). As in Cline's Plan and Act, the plan is shown before anything changes, with an approval switch (approve each plan, or run on). The harness runs ready tasks in dependency order, one executor at a time, each with a fresh context, and shows the plan with each task's status (as in "3 / 6 tasks passed"). The journal now resumes a half-finished plan from its last verified task, and the model can be unloaded between tasks. Ladder: T6 "a module with two functions, each with its own test" as a two-task plan; T7 a three-task plan with a dependency.
 
-### H5: recovery and replanning
+What was built (`rust/src/harness/plan.rs`), tested on Linux against python3; Swift not compiled yet, nothing run on the phone yet:
+
+- **The plan is one JSON object** under its own grammar, generated like the executor's: a thought, then one to six tasks, each with an id, what to do (at most 400 characters), the ids of earlier tasks it needs (`after`) and one to four checks chosen from `tests_pass`, `work_runs`, `run_prints(path, text)` and `makes_image(path, svg|png)`. Rust checks it again: unique ids, `after` naming only earlier tasks (so a plan can't have a cycle and runs in the order written), paths inside the project, a text for `run_prints`. A plan that fails a check goes back to the planner with the reason; three in a row and the plan fails.
+- **Approval:** a switch on the screen, on by default. With it on, the plan is shown with each task, its dependencies and checks, and nothing changes until **Approve and Run** (or **Discard Plan**). With it off, the plan runs as soon as it parses.
+- **Running:** the first task not yet verified whose dependencies all are; one executor at a time, each with a fresh history. Its request is its own description, the whole request for context, and one line per task already done (what it was and the evidence that verified it). A task that fails or stops ends the plan there (recovery is H5). Once every task is verified, the request's own checks (a ladder task's) are made against the evidence of the whole plan.
+- **Journal and resume:** new entries `plan_request`, `plan_invalid`, `plan` and `plan_status`, and each executor task names its plan and plan task. A checkpoint is taken before the first task and after each verified one. Opening a project whose plan was running when the app closed marks it Stopped; **Resume from Last Verified Task** puts the files back as that checkpoint kept them and runs the rest. The Scripted model picks up its answers at the same place.
+- **Not done:** unloading the model between tasks. The model stays loaded for the whole plan; whether unloading is worth the reload time waits for a memory measurement on the phone.
+- **Ladder:** T6 (`textutil.py` with `shout` and `whisper`, a test file each, as two tasks) and T7 (`grades.py`'s `letter`, its tests, and `report.py` printing `Ana: A`, `Ben: C`, `Cy: B`, as three tasks where the tests and the report both need the function). Both have Scripted answers, plan included.
+- **Phone check (next combined build):** Scripted T6 with approval on (plan shown, Approve and Run, both tasks pass); Scripted T7 with approval off; then T6 and T7 on the 4B and 9B, recording the plan each writes.
+
+### H5: recovery and replanning (built 2026-11-22)
 
 Failed tasks go to Recovery mode: the files roll back to the last checkpoint, and the model gets the failure's evidence and chooses retry with a diagnosis, a revised task, or blocked. Reviewer mode judges criteria a fixed rule can't. Asking the person a question or for permission (Blocked) is shown on screen and answered there. Ladder: T8 a seeded project whose plan must change halfway (a dependency is missing); T9 a task that can't succeed ends Blocked with a clear reason, not a loop.
 
-### H6: context management
+What was built, tested on Linux against python3; Swift not compiled yet, nothing run on the phone yet:
+
+- **`give_up(reason)`**, a tool every executor has beside `finish`: a task that can't be done as written (a missing module, the network) ends at once with the reason instead of using up its steps. Outside a plan the task simply fails with it.
+- **Recovery mode** takes up a plan task that failed (gave up, used its steps, got stuck, ran out of time; not a Stop, and not a model or journal failure, which Recovery can't fix). The files go back to the last verified task's checkpoint first. The model gets the task, why it failed, its last three results and the project as it now is, and answers under its own grammar with one decision: `retry` with a diagnosis (the rerun is told it), `revise` with the task rewritten and its checks, `replan` with what is missing (the planner writes a new plan for what is left; the tasks done stay, their ids can't be reused), or `blocked` with a question. A task gets at most two recoveries; the third failure ends the plan.
+- **Blocked:** the plan stops with the question on screen and a field to answer it. The answer is journaled and given to the blocked task's rerun ("You asked the person … They answered …").
+- **Not built yet: Reviewer mode** (a model judging a criterion a fixed rule can't). It comes when a ladder task needs it; every check so far is one the harness can make from Python's output.
+- **Ladder:** T8 (seeded `report.py` imports a `stats` module no one wrote; the executor gives up, Recovery replans as "write stats.py and its test, then run the report") and T9 (download the weather from wttr.in: the network is off, so it must end Blocked with a question, not loop; answered "use a sample", it finishes). Both have Scripted answers.
+- **Phone check (next combined build):** Scripted T8 and T9 (answer T9's question on screen); then both on the 4B and 9B, recording what Recovery mode decides.
+
+### H6: context management (first part built 2026-11-22)
 
 A persistent project summary the harness keeps up to date from the journal; file excerpts retrieved by name and symbol (through the project map) instead of whole files; measuring 8,192 tokens of context if memory allows (the KV cache sits next to Python and the 9B). Interruption tested hard: iOS ending the app mid-step, low-memory warnings unloading the model. Ladder: T10 kill the app mid-plan, reopen, resume; T11 a second request on an earlier project ("now add…").
+
+What was built, tested on Linux against python3; Swift unchanged:
+
+- **Earlier work from the journal.** The project summary is derived from the journal rather than kept in a second file that could drift from it: each executor task and each plan is told "Earlier work in this project", one line per task or plan that ended before it (newest last, at most six, with its status and evidence or reason). A task inside a plan is covered by the plan's line. A second request on the scratch project now knows what the first one made.
+- **`read_symbol(path, name)`**, a new tool: one function or class (or `Class.method`, or a method by its own name when only one fits), decorators included, with line numbers, found by Python's own `ast`. The model reads one definition instead of a whole file; a name that isn't there lists the ones that are.
+- **Ladder:** T11 seeds T4's finished project with the journal of the task that made it, and asks to add `square_area` and print a 4 by 4 square while keeping the rest; done when `main.py` prints 16, 15 and 12.57. Scripted T11 reads `circle_area` with `read_symbol`, then edits.
+- **Still to do on the phone:** 8,192 tokens of context if memory allows (measured with the 9B loaded and Python running); T10 (end the app mid-plan from the app switcher, reopen, Resume from Last Verified Task; the resume logic is tested on Linux by H4's tests); a low-memory warning unloading the model.
 
 ### H7: a small multi-file project in Python Lab
 
 Projects listed in Python Lab; browse, edit and run their files yourself, and the harness sees your edits; a per-project network switch, off by default, asked for explicitly. Ladder: T12 a three-file program with tests, built from one request.
+
+Python Lab's PL1 (python-lab-workspace-plan.md) already delivers the first half: the person's own tasks run in the Python Lab project they choose, Bonsai Harness has "Open in Python Lab", Python Lab shows that project read-only while Bonsai works in it, and a `write_file` or `edit_file` over a file changed since Bonsai read it (its SHA-256) is refused with "read it again". What remains of H7 is the per-project network switch and T12.
 
 ### H8: the benchmark
 

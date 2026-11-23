@@ -256,6 +256,31 @@ pub fn encode(text: &str, keep_slashes: bool) -> String {
     out
 }
 
+/// Undoes [`encode`]: `%XX` becomes its byte. A `%` not followed by two
+/// hex digits is kept as it is.
+pub fn decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = bytes
+            .get(i + 1..i + 3)
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
+        match (bytes[i], hex) {
+            (b'%', Some(b)) => {
+                out.push(b);
+                i += 3;
+            }
+            (b, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 // ------------------------------------------------------------ the server's JSON
 
 #[derive(Deserialize)]

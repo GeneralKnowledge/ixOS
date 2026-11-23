@@ -19,6 +19,9 @@ struct SettingsView: View {
                 Section("Account") {
                     LabeledContent("Name", value: account.displayName)
                     LabeledContent("Server", value: account.serverUrl)
+                    if account.onRelay {
+                        LabeledContent("Connection", value: "Encrypted, over Relay")
+                    }
                     LabeledContent("Account ID", value: account.userId)
                         .textSelection(.enabled)
                     LabeledContent("Storage", value: storageEngine())
@@ -26,12 +29,12 @@ struct SettingsView: View {
             }
             if model.account == nil {
                 Section {
-                    Button("Join a Chat Server") { joining = true }
+                    Button(model.hasDevices ? "Join a Room" : "Join a Chat Server") { joining = true }
                         .accessibilityIdentifier("settings.joinServer")
                 } header: {
-                    Text("Chat Server")
+                    Text(model.hasDevices ? "Rooms" : "Chat Server")
                 } footer: {
-                    Text("Your trusted devices are in Chats already. A chat server adds conversations with other people.")
+                    Text("Your trusted devices are in Chats already. Rooms add conversations with other people.")
                 }
             }
             if let problem = model.accountProblem {
@@ -98,7 +101,11 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .sheet(isPresented: $joining) {
-            SignUpView(model: model)
+            if model.hasDevices {
+                JoinRoomView(model: model)
+            } else {
+                SignUpView(model: model)
+            }
         }
         .onChange(of: model.account != nil) { _, signedIn in
             if signedIn { joining = false }

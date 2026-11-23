@@ -33,8 +33,14 @@ public final class ListenModel {
     public private(set) var crossfadeSeconds: UInt32
     /// The library as kept on the phone; refreshed from the take server.
     public private(set) var library: Library {
-        didSet { collection = core.collection() }
+        didSet {
+            collection = core.collection()
+            duplicates = core.duplicateSongs()
+        }
     }
+    /// Songs that look like one song from several sources, offered for
+    /// merging.
+    public private(set) var duplicates: [DuplicateSongs]
     /// Favourites, playlists and recently played, against the library now.
     public private(set) var collection: MusicCollection
     /// The songs chosen for the phone and how far along they are.
@@ -64,6 +70,7 @@ public final class ListenModel {
         crossfadeSeconds = core.crossfadeSeconds()
         library = core.library()
         collection = core.collection()
+        duplicates = core.duplicateSongs()
         offline = core.offline()
         downloadStates = Dictionary(
             offline.tracks.map { ($0.track.id, $0.state) }, uniquingKeysWith: { a, _ in a }
@@ -227,6 +234,19 @@ public final class ListenModel {
             return .success(found)
         } catch {
             if !Self.isStop(error) { log.warn("catalogue search failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// The fixed test catalogue, its files made the first time.
+    public func testCatalogue() async -> Result<[TestTrack], ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.testCatalogue(cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("test catalogue failed: \(error)") }
             return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
         }
     }
@@ -414,6 +434,46 @@ public final class ListenModel {
         } catch {
             report(error)
             return nil
+        }
+    }
+
+    // MARK: One song, several sources
+
+    /// Merges `others` into `track`: one song with every source's
+    /// recordings. Returns the merged song.
+    public func merge(_ others: [String], into track: String) async -> TrackDetail? {
+        do {
+            let detail = try await core.mergeSongs(into: track, ids: others)
+            library = core.library()
+            // Favourites and songs chosen for the phone moved to the kept song.
+            collection = core.collection()
+            offline = core.offline()
+            feedback.play(.success)
+            return detail
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
+    /// Brings a merged song back as a song of its own.
+    public func separate(_ id: String) async {
+        do {
+            library = try await core.separateSong(id: id)
+            // What plays may have changed, and with it what is downloaded.
+            offline = core.offline()
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Stops offering these songs for merging.
+    public func keepApart(_ ids: [String]) async {
+        do {
+            try await core.keepSongsApart(ids: ids)
+            duplicates = core.duplicateSongs()
+        } catch {
+            report(error)
         }
     }
 

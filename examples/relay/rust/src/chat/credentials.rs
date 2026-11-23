@@ -17,7 +17,13 @@ pub struct StoredAccount {
     pub server_url: String,
     pub user_id: String,
     pub display_name: String,
+    /// The old API's account token; empty once the account is a key on a
+    /// room host (`room`).
     pub token: String,
+    /// The room host this account lives on, over `relay/room/1` (N4): the
+    /// account is this device's key there, and no token is sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room: Option<crate::rooms::RoomHost>,
 }
 
 impl StoredAccount {
@@ -27,6 +33,7 @@ impl StoredAccount {
             user_id: self.user_id.clone(),
             display_name: self.display_name.clone(),
             server_url: self.server_url.clone(),
+            on_relay: self.room.is_some(),
         }
     }
 }

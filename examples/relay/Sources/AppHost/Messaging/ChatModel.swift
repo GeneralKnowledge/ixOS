@@ -38,9 +38,9 @@ public func makeChatHost(storageDirectory: String? = nil, useKeychain: Bool? = n
     )
 }
 
-/// Longest message text, in Unicode scalars (chat-core's `MAX_BODY_CHARS`):
-/// the composer says so before Rust would refuse it.
-public let MAX_MESSAGE_CHARS_SWIFT = 4000
+/// Longest message text, in Unicode scalars, from Rust (chat-core's
+/// `MAX_BODY_CHARS`): the composer says so before Rust would refuse it.
+public let MAX_MESSAGE_CHARS_SWIFT = Int(chatMaxMessageChars())
 
 /// Swift-side attachment failures, in the same log as Rust's
 /// (`forge device logs`, the live stream).
@@ -199,6 +199,15 @@ public final class ChatModel {
     public func signUp(serverURL: String, displayName: String) async throws {
         guard let core else { throw ChatError.ShutDown }
         let account = try await core.signUp(serverUrl: serverURL, displayName: displayName)
+        showAccount(account)
+    }
+
+    /// Joins a room host's rooms with a word code (N4): the account is
+    /// this device's key there, over Relay. `host` is the host's server
+    /// address or key; empty uses the current account's server.
+    public func joinRoom(host: String, code: String, displayName: String) async throws {
+        guard let core else { throw ChatError.ShutDown }
+        let account = try await core.joinRoom(host: host, code: code, displayName: displayName)
         showAccount(account)
     }
 
@@ -654,12 +663,17 @@ public final class ChatModel {
 
     // MARK: Helpers
 
-    /// Whether Rust refused a message by its rules (too long, too many
-    /// files, a reply to a message that is gone) before keeping it. Any
-    /// other failure leaves a bubble that says "Not Sent" and can be retried.
+    /// Whether Rust refused a message before keeping it: by its rules (too
+    /// long, too many files, a reply to a message that is gone), or because
+    /// there is no account or the app is closing. Rust promises that every
+    /// other failure leaves a bubble that says "Not Sent" and can be
+    /// retried (a file that went missing after the message was kept is
+    /// `NotSent`, not `InvalidInput`).
     nonisolated static func refusedBeforeKeeping(_ error: Error) -> Bool {
-        if case .InvalidInput? = error as? ChatError { return true }
-        return false
+        switch error as? ChatError {
+        case .InvalidInput?, .NotSignedIn?, .ShutDown?: return true
+        default: return false
+        }
     }
 
     /// Whether this launch uses throwaway test data (`-ForgeUITestData`, or
@@ -700,6 +714,7 @@ public final class ChatModel {
         case .NotFound: return "That conversation no longer exists."
         case .UnsupportedOnHost: return "This isn't available on this iPhone."
         case .InvalidInput(let reason): return "Check your input: \(reason)"
+        case .NotSent(let reason): return "It wasn't sent: \(reason). It's kept here as not sent."
         case .NotSignedIn: return "Sign up first."
         case .Unauthorized:
             return "The server no longer knows this account. Sign out and sign up again."

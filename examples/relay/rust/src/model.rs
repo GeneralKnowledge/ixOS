@@ -42,6 +42,10 @@ pub enum TransferStatus {
     /// Queued for a trusted device that hasn't been reached yet: it goes
     /// when the device is seen again, while Relay is open.
     Waiting,
+    /// Left sealed in the recipient's mailbox, collected the next time it
+    /// opens Relay. It can no longer be cancelled: it is out of this
+    /// device's hands.
+    InMailbox,
     /// Bytes so far, out of the item's size.
     InProgress {
         done: u64,
