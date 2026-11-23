@@ -195,6 +195,9 @@ fn the_queue_saves_as_a_playlist_adding_catalogue_songs_once() {
     let mut tracks = core.queue_tracks(vec![track_id("one")]);
     tracks.append(&mut queued);
     tracks.push(tracks[0].clone());
+    // A name it would refuse leaves the library as it was.
+    assert!(block(core.save_queue_as_playlist("  ".into(), tracks.clone())).is_err());
+    assert!(!core.in_library("jamendo:7".into()));
     let list = block(core.save_queue_as_playlist("Radio Find".into(), tracks)).unwrap();
     let got: Vec<String> = list.entries.iter().map(|e| e.track.id.clone()).collect();
     assert_eq!(got, [track_id("one"), "jamendo:7".to_string()]);
@@ -203,6 +206,21 @@ fn the_queue_saves_as_a_playlist_adding_catalogue_songs_once() {
     let found = core.catalogue_queue_tracks(vec![jamendo(8)]);
     block(core.add_queued_to_library(found)).unwrap();
     assert!(core.in_library("jamendo:8".into()));
+}
+
+#[test]
+fn a_playlist_lists_every_song_it_keeps_for_undo() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    let tracks = core.queue_tracks(vec![track_id("one")]);
+    let list = block(core.save_queue_as_playlist("Kept".into(), tracks)).unwrap();
+    let id = list.playlist.id;
+    let kept = vec![track_id("one"), "gone:1".to_string()];
+    block(core.set_playlist_tracks(id, kept.clone())).unwrap();
+    // The detail shows only library songs; the stored list has both.
+    assert_eq!(core.playlist(id).unwrap().entries.len(), 1);
+    assert_eq!(core.playlist_track_ids(id).unwrap(), kept);
+    assert!(core.playlist_track_ids(id + 1).is_err());
 }
 
 #[test]

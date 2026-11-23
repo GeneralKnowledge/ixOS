@@ -2434,6 +2434,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func playlistSnapshotJson()  -> String
     
     /**
+     * Every song a playlist keeps, in order, including those the library
+     * no longer has (which `playlist` leaves out), so Undo can put back
+     * exactly what was there.
+     */
+    func playlistTrackIds(id: UInt64) throws  -> [String]
+    
+    /**
      * One recording of a track, to play instead of the preferred one.
      */
     func queueRecording(trackId: String, recordingId: String) throws  -> QueueTrack
@@ -3609,6 +3616,21 @@ open func playlistSnapshotJson() -> String  {
         uniffiCallStatus in
     uniffi_soundscape_core_fn_method_soundscapecore_playlist_snapshot_json(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Every song a playlist keeps, in order, including those the library
+     * no longer has (which `playlist` leaves out), so Undo can put back
+     * exactly what was there.
+     */
+open func playlistTrackIds(id: UInt64)throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeSoundscapeError_lift) {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_playlist_track_ids(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
     )
 })
 }
@@ -12555,6 +12577,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_playlist_snapshot_json() != 61084) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_playlist_track_ids() != 65090) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_queue_recording() != 23683) {

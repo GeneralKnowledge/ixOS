@@ -51,7 +51,7 @@ struct FavouritesView: View {
                 Section("Songs") {
                     ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                         TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
-                            player.play(model.queue(tracks), from: index)
+                            player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                         }
                     }
                 }
@@ -285,7 +285,7 @@ struct PlaylistView: View {
                     TrackRow(model: model, player: player, track: entry.track,
                              remove: { removeEntry(at: index, of: detail) },
                              showDetails: { details = entry.track.id }) {
-                        player.play(model.queue(tracks), from: index)
+                        player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                     }
                 }
                 .onMove { from, to in
@@ -455,7 +455,7 @@ struct RecentlyPlayedView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     TrackRow(model: model, player: player, track: play.track,
                              showDetails: { details = play.track.id }) {
-                        player.play(model.queue(tracks), from: index)
+                        player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                     }
                     Text(Self.when(play.playedMs))
                         .font(.caption2)
@@ -519,7 +519,7 @@ struct DuplicatesView: View {
                     ForEach(Array(group.tracks.enumerated()), id: \.element.id) { index, track in
                         TrackRow(model: model, player: player, track: track,
                                  showDetails: { details = track.id }) {
-                            player.play(model.queue(group.tracks), from: index)
+                            player.play(model.queue(group.tracks), from: model.queueIndex(index, in: group.tracks))
                         }
                     }
                     if let keep = group.tracks.first {

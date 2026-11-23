@@ -508,6 +508,12 @@ impl SoundscapeCore {
                 if ids.is_empty() {
                     return Err(SoundscapeError::NotInLibrary { id: "queue".into() });
                 }
+                // What `create_playlist` would refuse is refused before any
+                // catalogue song joins the library.
+                model::clean_name(&name)?;
+                if state.collection.value().playlists.len() >= collection::MAX_PLAYLISTS {
+                    return Err(SoundscapeError::range("playlists"));
+                }
                 if !adding.is_empty() {
                     let now = now_ms();
                     state.change_library(|lib| {
@@ -564,6 +570,19 @@ impl SoundscapeCore {
             })
             .await?;
         self.playlist(id)
+    }
+
+    /// Every song a playlist keeps, in order, including those the library
+    /// no longer has (which `playlist` leaves out), so Undo can put back
+    /// exactly what was there.
+    pub fn playlist_track_ids(&self, id: u64) -> Result<Vec<String>, SoundscapeError> {
+        self.collection
+            .get()
+            .playlists
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.track_ids.clone())
+            .ok_or_else(|| collection::no_playlist(id))
     }
 
     pub fn playlist(&self, id: u64) -> Result<PlaylistDetail, SoundscapeError> {

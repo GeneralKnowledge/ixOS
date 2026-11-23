@@ -77,7 +77,7 @@ struct DiscoverHome: View {
                       identifier: "discover.recent") { track in
                     Button {
                         let index = discovered.firstIndex { $0.id == track.id } ?? 0
-                        player.play(model.queue(discovered), from: index)
+                        player.play(model.queue(discovered), from: model.queueIndex(index, in: discovered))
                     } label: {
                         ArtworkTile(title: track.title, subtitle: track.artist, url: track.artworkUrl,
                                     download: DownloadBadge(model: model, track: track).state)
@@ -117,7 +117,7 @@ struct DiscoverHome: View {
     private func catalogueTile(_ track: CatalogueTrack, in tracks: [CatalogueTrack], identifier: String) -> some View {
         Button {
             let index = tracks.firstIndex { $0.id == track.id } ?? 0
-            player.play(model.queue(tracks), from: index)
+            player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
         } label: {
             ArtworkTile(title: track.title, subtitle: track.artist, url: track.artworkUrl)
         }
