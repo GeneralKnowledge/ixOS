@@ -76,7 +76,10 @@ class RelayApplication : Application() {
             withContext(Dispatchers.Main.immediate) {
                 // Opens here (a no-op while an open is already under way, which is waited for).
                 if (host.core == null) host.start()
-                host.status.first { it is ForgeHost.Status.Ready || it is ForgeHost.Status.Failed } is ForgeHost.Status.Ready
+                val opened = host.status.first { it is ForgeHost.Status.Ready || it is ForgeHost.Status.Failed }
+                // Rust's handler is Chats': Relay can open with Chats closed (chatProblem), and
+                // a reply handed over then would wait in memory and be lost with the process.
+                opened is ForgeHost.Status.Ready && host.core?.chat != null
             }
         }
         // Relay's errors in its own words, wherever the kit shows a failure (the open too).

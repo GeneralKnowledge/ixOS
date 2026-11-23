@@ -372,11 +372,13 @@ class NotificationReceiver : BroadcastReceiver() {
                     try {
                         val open = onResponse
                         val ready = open == null || withTimeoutOrNull(RECEIVER_TIME_MS) { open() } == true
-                        deliverNotificationResponse(response)
-                        // Answered: the notification goes (a reply's text field would spin
-                        // otherwise). Kept if Relay couldn't open in time, so it can be answered
-                        // again.
+                        // Handed over only when something takes it: kept back otherwise, so the
+                        // notification stays to be answered again and the answer can't go twice
+                        // (once now, once later when a handler appears).
                         if (ready) {
+                            deliverNotificationResponse(response)
+                            // Answered: the notification goes (a reply's text field would spin
+                            // otherwise).
                             NotificationManagerCompat.from(context).cancel(response.notificationId, 0)
                         }
                     } finally {
@@ -389,8 +391,8 @@ class NotificationReceiver : BroadcastReceiver() {
 
     companion object {
         /**
-         * Set by the app: opens its Rust cores if they aren't, returning true once they are
-         * open to take a response (false if they couldn't open).
+         * Set by the app: opens its Rust cores if they aren't, returning true once a handler is
+         * set to take the response (false if none could be, and the notification stays).
          */
         @Volatile
         var onResponse: (suspend () -> Boolean)? = null
