@@ -58,6 +58,23 @@ struct BonsaiHarnessView: View {
                         position: $replayPosition
                     )
                 }
+                if let snapshot = model.snapshot, let plan = snapshot.plan {
+                    BonsaiPlanSection(
+                        plan: plan,
+                        draft: snapshot.task == nil ? snapshot.draft : "",
+                        running: snapshot.running,
+                        answer: $model.planAnswer,
+                        approve: {
+                            handOff(snapshot.project ?? model.project)
+                            model.continuePlan()
+                        },
+                        discard: model.discardPlan,
+                        send: {
+                            handOff(snapshot.project ?? model.project)
+                            model.answerPlan()
+                        }
+                    )
+                }
                 if let snapshot = model.snapshot, let task = snapshot.task {
                     statusSection(snapshot, task)
                 }
@@ -123,6 +140,14 @@ struct BonsaiHarnessView: View {
                         Text(task.request).font(.footnote).foregroundStyle(.secondary)
                         Text("Done when \(task.acceptance.joined(separator: "; ")).")
                             .font(.caption).foregroundStyle(.secondary)
+                        if task.planned {
+                            Label("Bonsai plans it as several tasks first", systemImage: "list.number")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if task.endsBlocked {
+                            Label("It can't succeed here: it should stop and ask you", systemImage: "questionmark.bubble")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .accessibilityIdentifier("harness.task.\(task.id)")
@@ -140,20 +165,23 @@ struct BonsaiHarnessView: View {
                 .lineLimit(2...5)
                 .accessibilityIdentifier("harness.request")
             Button("Run My Task", systemImage: "play.fill") {
-                // Python Lab's last second of typing is saved before Bonsai
-                // reads the project. A save that fails shows in Python Lab and
-                // the task still starts; the unsaved text stays on screen
-                // there and isn't written over Bonsai's work until edited again.
-                pythonLab?.flush()
-                pythonLab?.bonsaiStarting(in: model.project)
+                handOff(model.project)
                 model.runRequest()
             }
                 .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.runRequest")
+            Button("Plan My Task", systemImage: "list.number") {
+                handOff(model.project)
+                model.runPlan()
+            }
+                .disabled(model.isScripted || model.request.isEmpty)
+                .accessibilityIdentifier("harness.planRequest")
+            Toggle("Show Plans Before They Run", isOn: $model.approvePlans)
+                .accessibilityIdentifier("harness.approvePlans")
         } header: {
             Text("Tasks")
         } footer: {
-            Text("Each ladder task starts from a fresh project. Your own tasks work in the Python Lab project you choose, on its files, and Python Lab shows that project read-only while Bonsai works.")
+            Text("Each ladder task starts from a fresh project. Your own tasks work in the Python Lab project you choose, on its files, and Python Lab shows that project read-only while Bonsai works. A planned task is split into small tasks, each checked before the next starts.")
         }
     }
 
@@ -270,6 +298,16 @@ struct BonsaiHarnessView: View {
             Text("Project \(snapshot.project ?? "")")
         }
         .onAppear { model.loadFiles() }
+    }
+
+    /// Python Lab's last second of typing is saved before Bonsai reads or
+    /// restores `project`, for every start, approval, Resume and answer. A
+    /// save that fails shows in Python Lab and the work still starts; the
+    /// unsaved text stays on screen there and isn't written over Bonsai's
+    /// work until edited again.
+    private func handOff(_ project: String) {
+        pythonLab?.flush()
+        pythonLab?.bonsaiStarting(in: project)
     }
 
     private func phase(_ phase: HarnessPhase) -> String {

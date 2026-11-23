@@ -119,6 +119,9 @@ impl PythonLab {
         fs::create_dir_all(&self.root)?;
         for file in seed {
             let path = self.root.join(file.path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
             fs::write(path, file.content)?;
         }
         Ok(())
@@ -229,6 +232,78 @@ impl PythonLab {
             )),
             Err(err) => ToolOutcome::failed(format!("Could not read {path}: {err}")),
         }
+    }
+
+    /// `read_symbol`: one definition, found by Python's own `ast` (H6), so
+    /// the model reads a function instead of a whole file.
+    fn read_symbol(&self, path: &str, name: &str) -> ToolOutcome {
+        let full = match self.full(path) {
+            Ok(full) => full,
+            Err(err) => return ToolOutcome::failed(err),
+        };
+        let Ok(text) = fs::read_to_string(&full) else {
+            return ToolOutcome::failed(format!(
+                "{path} does not exist. Use list_files to see the files."
+            ));
+        };
+        if !path.ends_with(".py") {
+            return ToolOutcome::failed(format!(
+                "read_symbol reads Python files; use read_file for {path}."
+            ));
+        }
+        // The lookup reads these bytes, so they count as read: a later
+        // change on disk is refused until Bonsai reads the file again.
+        self.remember(path, text.as_bytes());
+        // Python parses the text read above, so its line numbers fit the
+        // lines shown.
+        let script = SYMBOLS_SCRIPT.replace("__SOURCE__", &py_str(&text));
+        let (outcome, _) = self.run_script(script);
+        let output = self.clean(&outcome.output);
+        let symbols: Option<BTreeMap<String, (usize, usize)>> = output
+            .lines()
+            .find_map(|line| line.strip_prefix(SYMBOLS_MARK))
+            .and_then(|json| serde_json::from_str(json).ok());
+        let Some(symbols) = symbols.filter(|_| outcome.ok) else {
+            return ToolOutcome::failed(format!(
+                "Python can't read the definitions in {path}: {}",
+                output.trim().lines().last().unwrap_or("it didn't parse")
+            ));
+        };
+        let name = name.trim();
+        // A method may be asked for without its class, when only one fits.
+        let found = symbols.get(name).copied().or_else(|| {
+            let matches: Vec<(usize, usize)> = symbols
+                .iter()
+                .filter(|(key, _)| key.rsplit('.').next() == Some(name) && key.contains('.'))
+                .map(|(_, range)| *range)
+                .collect();
+            match matches[..] {
+                [one] => Some(one),
+                _ => None,
+            }
+        });
+        let Some((start, end)) = found else {
+            let known: Vec<&str> = symbols.keys().map(String::as_str).collect();
+            return ToolOutcome::failed(if known.is_empty() {
+                format!("{path} defines no functions or classes. Use read_file.")
+            } else {
+                format!(
+                    "{path} has no function or class {name:?}. It has: {}.",
+                    known.join(", ")
+                )
+            });
+        };
+        let lines: Vec<String> = text
+            .lines()
+            .enumerate()
+            .skip(start.saturating_sub(1))
+            .take(end + 1 - start.max(1))
+            .map(|(i, line)| format!("{:>3}| {line}", i + 1))
+            .collect();
+        ToolOutcome::ok(format!(
+            "{path}, lines {start} to {end}:\n{}",
+            lines.join("\n")
+        ))
     }
 
     fn write(&self, path: &str, content: &str) -> ToolOutcome {
@@ -575,6 +650,11 @@ impl Environment for PythonLab {
                 "a file, with line numbers",
             ),
             ToolSpec::new(
+                "read_symbol",
+                &[("path", ArgKind::Path), ("name", ArgKind::Text)],
+                "one function or class of a Python file (or Class.method), with line numbers: less to read than the whole file",
+            ),
+            ToolSpec::new(
                 "write_file",
                 &[("path", ArgKind::Path), ("content", ArgKind::Text)],
                 "create or replace a file; always send the whole file",
@@ -636,6 +716,7 @@ impl Environment for PythonLab {
         match call.tool.as_str() {
             "list_files" => self.list(),
             "read_file" => self.read(call.arg("path")),
+            "read_symbol" => self.read_symbol(call.arg("path"), call.arg("name")),
             "write_file" => self.write(call.arg("path"), call.arg("content")),
             "edit_file" => self.edit(call.arg("path"), call.arg("old"), call.arg("new")),
             "run_python" => {
@@ -665,19 +746,140 @@ impl Environment for PythonLab {
     }
 
     fn checkpoint(&self, name: &str) -> std::io::Result<()> {
-        let target = self.root.join(".harness/checkpoints").join(name);
-        if target.exists() {
-            fs::remove_dir_all(&target)?;
+        let folder = self.root.join(".harness/checkpoints");
+        let target = folder.join(name);
+        // Copied aside first and published whole, so a checkpoint is never
+        // half there. Even an empty project gets its folder.
+        // Listed so a folder that can't be read fails the checkpoint
+        // instead of leaving it out.
+        let mut files = Vec::new();
+        list_files(&self.root, &self.root, &mut files)?;
+        let partial = folder.join(format!(".{name}.partial"));
+        if partial.exists() {
+            fs::remove_dir_all(&partial)?;
         }
-        for (path, _) in self.files() {
-            let to = target.join(&path);
+        fs::create_dir_all(&partial)?;
+        for path in files {
+            let to = partial.join(&path);
             if let Some(parent) = to.parent() {
                 fs::create_dir_all(parent)?;
             }
             fs::copy(self.root.join(&path), to)?;
         }
+        if target.exists() {
+            fs::remove_dir_all(&target)?;
+        }
+        fs::rename(&partial, &target)
+    }
+
+    fn restore(&self, name: &str) -> std::io::Result<()> {
+        let source = self.root.join(".harness/checkpoints").join(name);
+        if !source.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("there is no checkpoint {name}"),
+            ));
+        }
+        // Copy the whole checkpoint aside first, one file at a time, so one
+        // that can't be read leaves the files as they are, and a large
+        // project is never held in memory at once.
+        let mut listed = Vec::new();
+        list_files(&source, &source, &mut listed)?;
+        let staging = self.root.join(".harness/restore.partial");
+        if staging.exists() {
+            fs::remove_dir_all(&staging)?;
+        }
+        let mut sums = BTreeMap::new();
+        let staged = (|| {
+            for path in &listed {
+                let bytes = fs::read(source.join(path))?;
+                let to = staging.join(path);
+                if let Some(parent) = to.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(to, &bytes)?;
+                sums.insert(path.clone(), digest_bytes(&bytes));
+            }
+            Ok(())
+        })();
+        if let Err(err) = staged {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(err);
+        }
+        // The files a checkpoint keeps go (never hidden ones, such as the
+        // harness's records, at any depth), then the checkpoint's come back.
+        let mut live = Vec::new();
+        list_files(&self.root, &self.root, &mut live)?;
+        for path in live {
+            fs::remove_file(self.root.join(&path))?;
+        }
+        prune_empty(&self.root, true)?;
+        for path in &listed {
+            let to = self.root.join(path);
+            if let Some(parent) = to.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::rename(staging.join(path), to)?;
+        }
+        let _ = fs::remove_dir_all(&staging);
+        // Bonsai put these bytes back itself, so they are what it knows of
+        // each file: the digests come from the copied bytes, never from a
+        // later look at the disk. A known file the checkpoint lacks is gone.
+        let mut seen = lock_seen(&self.seen);
+        let known: Vec<String> = seen.keys().cloned().collect();
+        for path in known {
+            let key = path.trim_start_matches("./");
+            match sums.get(key) {
+                Some(sum) => {
+                    seen.insert(path, sum.clone());
+                }
+                None => {
+                    seen.remove(&path);
+                }
+            }
+        }
         Ok(())
     }
+}
+
+/// Whether the harness leaves a file or folder alone: hidden ones and
+/// Python's caches.
+fn skipped(name: &str) -> bool {
+    name.starts_with('.') || name == "__pycache__"
+}
+
+/// The files `walk` finds, but failing when a folder can't be read.
+fn list_files(root: &Path, dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if skipped(&entry.file_name().to_string_lossy()) {
+            continue;
+        }
+        let path = entry.path();
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            list_files(root, &path, out)?;
+        } else if kind.is_file() {
+            let relative = path.strip_prefix(root).unwrap_or(&path);
+            out.push(relative.to_string_lossy().to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Removes the folders under `dir` left empty, skipping hidden ones and
+/// Python's caches; `dir` itself stays when `top`.
+fn prune_empty(dir: &Path, top: bool) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() && !skipped(&entry.file_name().to_string_lossy()) {
+            prune_empty(&entry.path(), false)?;
+        }
+    }
+    if !top && fs::read_dir(dir)?.next().is_none() {
+        fs::remove_dir(dir)?;
+    }
+    Ok(())
 }
 
 fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) {
@@ -685,8 +887,7 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) {
         return;
     };
     for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') || name == "__pycache__" {
+        if skipped(&entry.file_name().to_string_lossy()) {
             continue;
         }
         let path = entry.path();
@@ -735,9 +936,111 @@ fn replace_lines_loosely(text: &str, old: &str, new: &str) -> Option<String> {
 }
 
 /// A line as a small model might copy it: no indent or trailing space,
-/// and one kind of quote.
+/// and each string written with single quotes. Only the delimiters change:
+/// a string with a quote or backslash inside keeps its own, so `"Bob's"`
+/// never matches `'Bob"s'`.
 fn forgiving(line: &str) -> String {
-    line.trim().replace('"', "'")
+    let chars: Vec<char> = line.trim().chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let quote = chars[i];
+        if quote != '"' && quote != '\'' {
+            out.push(quote);
+            i += 1;
+            continue;
+        }
+        // The string's end: the next unescaped quote of the same kind.
+        let mut j = i + 1;
+        while j < chars.len() && chars[j] != quote {
+            j += if chars[j] == '\\' { 2 } else { 1 };
+        }
+        let end = j.min(chars.len());
+        let inner: String = chars[i + 1..end].iter().collect();
+        let plain = !inner.contains(['"', '\'', '\\']);
+        let shown = if plain { '\'' } else { quote };
+        out.push(shown);
+        out.push_str(&inner);
+        if j < chars.len() {
+            out.push(shown);
+        }
+        i = j + 1;
+    }
+    out
+}
+
+/// Each line as `forgiving` shows it, except lines in or around a
+/// triple-quoted string, whose quotes are data: those only lose their
+/// indent and trailing space.
+fn keys(lines: &[&str]) -> Vec<String> {
+    let mut open: Option<&str> = None;
+    lines
+        .iter()
+        .map(|line| {
+            if in_triple_string(line, &mut open) {
+                line.trim().to_string()
+            } else {
+                forgiving(line)
+            }
+        })
+        .collect()
+}
+
+/// Whether `line` is in or touches a string that spans lines, given the one
+/// open before it (`open`, updated for the next line). A small tokenizer:
+/// a `#` outside a string ends the line, and short strings that close on
+/// their line are skipped, so quotes in a comment or a short string don't
+/// count. Strings that span lines are triple-quoted ones and short ones
+/// continued with a backslash. It compares bytes, so non-ASCII text can't
+/// split a cut.
+fn in_triple_string(line: &str, open: &mut Option<&'static str>) -> bool {
+    let bytes = line.as_bytes();
+    let mut touched = open.is_some();
+    let mut i = 0;
+    loop {
+        if let Some(quote) = *open {
+            // Inside a string: a backslash escapes the next character (in
+            // raw strings too), so `\"""` doesn't close it.
+            while i < bytes.len() && open.is_some() {
+                if bytes[i] == b'\\' {
+                    i += 2;
+                } else if bytes[i..].starts_with(quote.as_bytes()) {
+                    i += quote.len();
+                    *open = None;
+                } else {
+                    i += 1;
+                }
+            }
+            if open.is_some() {
+                // A short string goes on to the next line only after a
+                // backslash at the end of this one (`i` then steps past it).
+                if quote.len() == 1 && i != bytes.len() + 1 {
+                    *open = None;
+                } else {
+                    touched = true;
+                }
+                return touched;
+            }
+        }
+        if i >= bytes.len() || bytes[i] == b'#' {
+            return touched;
+        }
+        let quote = match bytes[i] {
+            b'"' if bytes[i..].starts_with(b"\"\"\"") => "\"\"\"",
+            b'\'' if bytes[i..].starts_with(b"'''") => "'''",
+            b'"' => "\"",
+            b'\'' => "'",
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        if quote.len() == 3 {
+            touched = true;
+        }
+        *open = Some(quote);
+        i += quote.len();
+    }
 }
 
 /// `old` matched against `text` ignoring indentation and quote style. When
@@ -746,23 +1049,40 @@ fn forgiving(line: &str) -> String {
 /// text and the (1-based) first line replaced.
 fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String, usize)> {
     let lines: Vec<&str> = text.lines().collect();
-    let want: Vec<String> = old.lines().map(forgiving).collect();
+    let olds: Vec<&str> = old.lines().collect();
+    let want = keys(&olds);
     if want.is_empty() || want.len() > lines.len() || want.iter().all(String::is_empty) {
         return None;
     }
+    let have = keys(&lines);
     let found: Vec<usize> = (0..=lines.len() - want.len())
-        .filter(|&i| {
-            lines[i..i + want.len()]
-                .iter()
-                .zip(&want)
-                .all(|(a, b)| forgiving(a) == *b)
-        })
+        .filter(|&i| have[i..i + want.len()] == want[..])
         .collect();
     let [at] = found[..] else { return None };
     // Indents are runs of ASCII spaces and tabs, so every cut below falls on
-    // a character boundary, and the file's own indent (tabs included) is
-    // what the new lines get.
+    // a character boundary. Depths compare in columns (a tab to the next
+    // multiple of 8, as Python counts), and the file's own indent (tabs
+    // included) is what the new lines get.
     let indent = |line: &str| line.len() - line.trim_start_matches([' ', '\t']).len();
+    // Tab-indented code is only re-indented when the edit uses tabs too:
+    // mixing tabs and spaces makes Python refuse the file.
+    let tabbed = |line: &str| line[..indent(line)].contains('\t');
+    let file_tabs = lines[at..at + want.len()].iter().any(|l| tabbed(l));
+    if file_tabs != new.lines().any(tabbed) && new.lines().count() > 1 {
+        return None;
+    }
+    let column = |ws: &str| {
+        ws.chars().fold(
+            0usize,
+            |col, c| {
+                if c == '\t' {
+                    col / 8 * 8 + 8
+                } else {
+                    col + 1
+                }
+            },
+        )
+    };
     let first_old = old.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     let first_file = lines[at..at + want.len()]
         .iter()
@@ -770,23 +1090,41 @@ fn replace_lines_forgivingly(text: &str, old: &str, new: &str) -> Option<(String
         .copied()
         .unwrap_or("");
     let prefix = &first_file[..indent(first_file)];
-    let old_indent = indent(first_old);
-    let shifted = new.lines().map(|line| {
-        let own = indent(line);
-        if line.trim().is_empty() {
-            String::new()
-        } else if own >= old_indent {
-            // As deep as the first old line or deeper: the file's indent,
-            // then the rest.
-            format!("{prefix}{}", &line[old_indent..])
-        } else {
-            // Shallower: that much less of the file's indent.
-            let keep = prefix.len().saturating_sub(old_indent - own);
-            format!("{}{}", &prefix[..keep], &line[own..])
-        }
-    });
+    let old_width = column(&first_old[..indent(first_old)]);
+    let shifted: Option<Vec<String>> = new
+        .lines()
+        .map(|line| {
+            let own = &line[..indent(line)];
+            let rest = &line[own.len()..];
+            if rest.is_empty() {
+                return Some(String::new());
+            }
+            if column(own) >= old_width {
+                // As deep as the first old line or deeper: the file's indent,
+                // then whatever this line has beyond the old line's depth.
+                let skip = (0..=own.len())
+                    .find(|&n| column(&own[..n]) >= old_width)
+                    .unwrap_or(own.len());
+                let deeper = &own[skip..];
+                // A tab after a file indent that stops between tab stops lands
+                // on the next stop, not the columns the edit asked for: no guess.
+                if deeper.contains('\t') && column(prefix) % 8 != 0 {
+                    return None;
+                }
+                Some(format!("{prefix}{deeper}{rest}"))
+            } else {
+                // Shallower: that many columns less of the file's indent.
+                let want = column(prefix).saturating_sub(old_width - column(own));
+                let keep = (0..=prefix.len())
+                    .rev()
+                    .find(|&n| column(&prefix[..n]) <= want)
+                    .unwrap_or(0);
+                Some(format!("{}{rest}", &prefix[..keep]))
+            }
+        })
+        .collect();
     let mut out: Vec<String> = lines[..at].iter().map(|l| l.to_string()).collect();
-    out.extend(shifted);
+    out.extend(shifted?);
     out.extend(lines[at + want.len()..].iter().map(|l| l.to_string()));
     let mut joined = out.join("\n");
     if text.ends_with('\n') {
@@ -880,6 +1218,31 @@ fn syntax_script(path: &Path) -> String {
 
 /// The project map's longest length, in characters.
 const MAP_MAX_CHARS: usize = 1_500;
+
+/// What starts the line `SYMBOLS_SCRIPT` prints its JSON on.
+const SYMBOLS_MARK: &str = "__harness_symbols__";
+
+/// Each top-level function and class of a file, and each method as
+/// Class.method, with its first line (decorators included) and last line.
+const SYMBOLS_SCRIPT: &str = r#"
+import ast, json
+def _harness_symbols(source):
+    tree = ast.parse(source)
+    defs = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    def span(node):
+        return [min([d.lineno for d in node.decorator_list] + [node.lineno]), node.end_lineno]
+    out = {}
+    for node in tree.body:
+        if isinstance(node, defs):
+            out[node.name] = span(node)
+            if isinstance(node, ast.ClassDef):
+                for inner in node.body:
+                    if isinstance(inner, defs):
+                        out[node.name + '.' + inner.name] = span(inner)
+    print('__harness_symbols__' + json.dumps(out))
+_harness_symbols(__SOURCE__)
+del _harness_symbols
+"#;
 
 /// Prints one line per file: `path (bytes)` and its definitions.
 const MAP_SCRIPT: &str = r#"

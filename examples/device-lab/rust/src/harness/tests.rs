@@ -9,6 +9,7 @@ use forge_services::ai::{AiError, ChatRequest, LanguageModel, ModelInfo, Scripte
 use super::calls::{self, check_path, grammar, parse, with_finish};
 use super::evidence::{ladder, Criterion, Evidence};
 use super::journal::{Entry, Journal, TaskStatus};
+use super::plan::{self, PlanState};
 use super::python_lab::testing::{has_python, LocalPython};
 use super::python_lab::PythonLab;
 use super::*;
@@ -317,26 +318,74 @@ fn a_forgiving_edit_keeps_the_files_tabs_and_never_cuts_inside_a_character() {
         "def f():\n\tvalue = \"x\"\n\treturn value\n",
     )
     .unwrap();
-    // Copied with spaces and single quotes; the new lines go one deeper,
-    // then one shallower.
-    let out = lab.execute(&call(
-        r#"{"tool": "edit_file", "path": "f.txt", "old": "    value = 'x'", "new": "    if True:\n        value = 'y'\nvalue2 = 1"}"#,
-    ));
+    let edit = |path: &str, file: &str, old: &str, new: &str| {
+        std::fs::write(dir.path().join(path), file).unwrap();
+        // Read first: a file changed outside Bonsai must be read again.
+        let read = serde_json::json!({"tool": "read_file", "path": path});
+        assert!(lab.execute(&call(&read.to_string())).ok);
+        let args = serde_json::json!({"tool": "edit_file", "path": path, "old": old, "new": new});
+        let out = lab.execute(&call(&args.to_string()));
+        (out, std::fs::read_to_string(dir.path().join(path)).unwrap())
+    };
+    let tabbed = "def f():\n\tvalue = \"x\"\n\treturn value\n";
+    // Copied with spaces and single quotes: the file's tab is kept.
+    let (out, text) = edit("f.txt", tabbed, "    value = 'x'", "    value = 'y'");
+    assert!(out.ok, "{}", out.text);
+    assert_eq!(text, "def f():\n\tvalue = 'y'\n\treturn value\n");
+    // Several new lines indented with spaces into tab-indented code would
+    // mix the two, which Python refuses: no guess.
+    let (out, text) = edit(
+        "f.txt",
+        tabbed,
+        "    value = 'x'",
+        "    if True:\n        value = 'y'",
+    );
+    assert!(!out.ok, "{}", out.text);
+    assert_eq!(text, tabbed);
+    // With tabs, they go in at the right depths, deeper and shallower.
+    let (out, text) = edit(
+        "f.txt",
+        tabbed,
+        "\tvalue = 'x'",
+        "\tif True:\n\t\tvalue = 'y'\nz = 1",
+    );
     assert!(out.ok, "{}", out.text);
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("f.txt")).unwrap(),
-        "def f():\n\tif True:\n\t    value = 'y'\nvalue2 = 1\n\treturn value\n"
+        text,
+        "def f():\n\tif True:\n\t\tvalue = 'y'\nz = 1\n\treturn value\n"
     );
+    // Depths compare in columns: a tab in old is the file's eight spaces.
+    let (out, text) = edit(
+        "g.txt",
+        "def f():\n        value = \"x\"\n        return value\n",
+        "\tvalue = 'x'",
+        "        value = 'y'",
+    );
+    assert!(out.ok, "{}", out.text);
+    assert_eq!(
+        text,
+        "def f():\n        value = 'y'\n        return value\n"
+    );
+    // Only delimiters are forgiven: a quote inside a string must match.
+    let (out, _) = edit(
+        "h.txt",
+        "label = \"Bob's\"\n",
+        "label = 'Bob\"s'",
+        "label = 'x'",
+    );
+    assert!(!out.ok, "{}", out.text);
+    let (out, text) = edit(
+        "h.txt",
+        "print(\"a: \" + b)\n",
+        "print('a: ' + b)",
+        "print('a: ' + str(b))",
+    );
+    assert!(out.ok, "{}", out.text);
+    assert_eq!(text, "print('a: ' + str(b))\n");
     // A wide space where an indent would be: no panic, an answer.
-    std::fs::write(dir.path().join("g.txt"), "x = \"a\"\n").unwrap();
-    let out = lab.execute(&call(
-        r#"{"tool": "edit_file", "path": "g.txt", "old": " x = 'a'", "new": "\u2003x = 'b'"}"#,
-    ));
+    let (out, text) = edit("g.txt", "x = \"a\"\n", " x = 'a'", "\u{2003}x = 'b'");
     assert!(out.ok, "{}", out.text);
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join("g.txt")).unwrap(),
-        "\u{2003}x = 'b'\n"
-    );
+    assert_eq!(text, "\u{2003}x = 'b'\n");
 }
 
 #[test]
@@ -690,6 +739,8 @@ fn the_journal_replays_and_a_task_the_app_closed_during_is_stopped() {
                 criteria: vec![Criterion::WorkRuns],
                 model: "m".into(),
                 at_ms: 1,
+                plan: None,
+                plan_task: None,
             },
             Entry::Status {
                 task: "task-1".into(),
@@ -790,6 +841,7 @@ fn the_history_shrinks_to_fit_the_budget_oldest_first() {
         "Task",
         &[Criterion::WorkRuns],
         "",
+        "",
         &history,
         100_000,
     );
@@ -802,11 +854,20 @@ fn the_history_shrinks_to_fit_the_budget_oldest_first() {
         "Task",
         &[Criterion::WorkRuns],
         "",
+        "",
         &history[..14],
         100_000,
     );
     assert_eq!(&full[..earlier.len()], &earlier[..]);
-    let tight = prompt::messages(system, "Task", &[Criterion::WorkRuns], "", &history, 1_000);
+    let tight = prompt::messages(
+        system,
+        "Task",
+        &[Criterion::WorkRuns],
+        "",
+        "",
+        &history,
+        1_000,
+    );
     let total: usize = tight
         .iter()
         .map(|m| m.content.chars().count() / 3 + 4)
@@ -816,7 +877,15 @@ fn the_history_shrinks_to_fit_the_budget_oldest_first() {
     assert!(tight.last().unwrap().content.contains("detail detail"));
     assert!(tight[1].content.contains("earlier steps are left out"));
     // In between, older calls and results are shortened before any step goes.
-    let middle = prompt::messages(system, "Task", &[Criterion::WorkRuns], "", &history, 1_400);
+    let middle = prompt::messages(
+        system,
+        "Task",
+        &[Criterion::WorkRuns],
+        "",
+        "",
+        &history,
+        1_400,
+    );
     assert_eq!(middle.len(), 2 + 16);
     assert!(middle[2].content.contains("…(") && middle[2].content.contains("characters)"));
     assert!(middle[3].content.contains("(rest left out)"));
@@ -852,8 +921,29 @@ fn the_scripted_model_completes_every_ladder_task() {
         // Outside the temporary folder, which the guard allows writes to.
         let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
         let h = harness(&dir);
+        h.set_approve_plans(false);
         h.start_ladder_scripted(task.id.into()).unwrap();
         let snapshot = wait(&h);
+        if task.ends_blocked {
+            let plan = snapshot.plan.clone().unwrap();
+            assert_eq!(plan.status, PlanState::Blocked, "{}: {plan:?}", task.id);
+            assert!(plan.question.is_some());
+            h.answer_plan_scripted("Yes, print a sample.".into())
+                .unwrap();
+        }
+        let snapshot = if task.ends_blocked {
+            wait(&h)
+        } else {
+            snapshot
+        };
+        if task.planned {
+            let plan = snapshot.plan.clone().unwrap();
+            assert_eq!(plan.status, PlanState::Completed, "{}: {plan:?}", task.id);
+            assert_eq!(plan.passed as usize, plan.tasks.len());
+            assert!(plan.reason.unwrap().starts_with("All "));
+        } else {
+            assert!(snapshot.plan.is_none());
+        }
         let record = snapshot.task.unwrap();
         assert_eq!(
             record.status,
@@ -905,10 +995,15 @@ fn the_scripted_model_completes_every_ladder_task() {
             assert!(h.transcript().contains("self.assertEqual(add(2, 3), 5)"));
         }
     }
-    // Every scripted answer parses against the tools it will meet.
+    // Every scripted answer parses against the tools (or the planner) it
+    // will meet.
     for task in ladder() {
         for text in super::evidence::script(task.id) {
-            parse(&text, &lab_tools()).unwrap_or_else(|e| panic!("{text}: {e:?}"));
+            let fits = parse(&text, &lab_tools()).is_ok()
+                || (task.planned
+                    && (plan::parse(&text, &[]).is_ok()
+                        || plan::parse_recovery(&text, "x").is_ok()));
+            assert!(fits, "{}: {text}", task.id);
         }
     }
 }
@@ -1455,6 +1550,901 @@ fn the_live_view_reads_a_half_written_answer() {
     assert!(!live.writing);
 }
 
+// MARK: Plans (H4)
+
+#[test]
+fn the_plan_grammar_has_tasks_ids_and_the_checks_to_choose_from() {
+    let g = plan::grammar();
+    assert!(g.starts_with("root ::= \"{\\\"thought\\\": \" thought \", \\\"tasks\\\": [\" task (\", \" task){0,5} \"]}\""), "{g}");
+    for check in ["tests_pass", "work_runs", "run_prints", "makes_image"] {
+        assert!(
+            g.contains(&format!("\\\"check\\\": \\\"{check}\\\"")),
+            "{check}:\n{g}"
+        );
+    }
+    assert!(g.contains("id ::= \"\\\"\" [a-z] [a-z0-9-]{0,15} \"\\\"\""));
+    assert!(g.contains("char ::="));
+    // The instructions' example is a plan the parser takes.
+    let (thought, tasks) = plan::parse(&plan::example(), &[]).unwrap();
+    assert!(!thought.is_empty());
+    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks[1].after, vec!["area".to_string()]);
+    assert_eq!(
+        tasks[1].criteria,
+        vec![Criterion::RunPrints {
+            path: "main.py".into(),
+            text: "15".into()
+        }]
+    );
+    assert!(plan::instructions().contains(&plan::example()));
+}
+
+#[test]
+fn a_plan_that_cant_run_in_order_is_refused_with_a_reason() {
+    let task = |id: &str, after: &str, check: &str| {
+        format!(r#"{{"id": "{id}", "do": "Do {id}.", "after": [{after}], "checks": [{check}]}}"#)
+    };
+    let tests = r#"{"check": "tests_pass"}"#;
+    let plan_of =
+        |tasks: Vec<String>| format!(r#"{{"thought": "t", "tasks": [{}]}}"#, tasks.join(", "));
+    for (text, expected) in [
+        (plan_of(vec![]), "no tasks"),
+        (
+            plan_of(vec![task("a", "", tests), task("a", "", tests)]),
+            "Two tasks are called",
+        ),
+        (
+            plan_of(vec![task("a", r#""b""#, tests), task("b", "", tests)]),
+            "not an earlier task",
+        ),
+        (plan_of(vec![task("a", r#""a""#, tests)]), "after itself"),
+        (plan_of(vec![task("a", "", "")]), "at least one check"),
+        (
+            plan_of(vec![task("a", "", r#"{"check": "looks_nice"}"#)]),
+            "no check called",
+        ),
+        (
+            plan_of(vec![task(
+                "a",
+                "",
+                r#"{"check": "run_prints", "path": "../x.py", "text": "1"}"#,
+            )]),
+            "inside the project",
+        ),
+        (
+            plan_of(vec![task(
+                "a",
+                "",
+                r#"{"check": "run_prints", "path": "x.py", "text": " "}"#,
+            )]),
+            "needs the text",
+        ),
+        (plan_of(vec![task("Big", "", tests)]), "not a task id"),
+        (
+            plan_of((0..7).map(|i| task(&format!("t{i}"), "", tests)).collect()),
+            "at most 6",
+        ),
+        ("{\"thought\": \"t\"}".to_string(), "no \"tasks\""),
+    ] {
+        let err = plan::parse(&text, &[]).unwrap_err();
+        assert!(err.contains(expected), "{text}: {err}");
+    }
+    // A replan shares the six slots with the tasks already done.
+    let six = plan_of((0..6).map(|i| task(&format!("t{i}"), "", tests)).collect());
+    assert!(plan::parse(&six, &[]).is_ok());
+    let err = plan::parse(&six, &["done".to_string()]).unwrap_err();
+    assert!(err.contains("at most 5"), "{err}");
+}
+
+#[test]
+fn a_plan_waits_for_approval_then_runs_or_is_discarded() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    assert!(h.snapshot().approve_plans);
+    h.start_ladder_scripted("t6-two-functions".into()).unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::AwaitingApproval);
+    assert!(plan.can_continue);
+    assert_eq!(plan.tasks.len(), 2);
+    assert_eq!(plan.tasks[1].after, vec!["shout".to_string()]);
+    assert!(plan.tasks.iter().all(|t| t.status == TaskStatus::Ready));
+    // Nothing ran: no task, no files.
+    assert!(snapshot.task.is_none());
+    assert!(h.files().is_empty());
+
+    h.continue_plan_scripted().unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
+    assert_eq!(plan.passed, 2);
+    assert!(!plan.can_continue);
+    assert!(matches!(
+        h.continue_plan_scripted(),
+        Err(HarnessError::NoPlan)
+    ));
+    let transcript = h.transcript();
+    assert!(transcript.contains("## Plan"), "{transcript}");
+    assert!(
+        transcript.contains("- whisper (after shout)"),
+        "{transcript}"
+    );
+    assert!(
+        transcript.contains("return text.lower() + \\\"...\\\""),
+        "{transcript}"
+    );
+
+    // A plan the person doesn't approve never runs.
+    h.start_ladder_scripted("t6-two-functions".into()).unwrap();
+    wait(&h);
+    h.discard_plan().unwrap();
+    let plan = h.snapshot().plan.unwrap();
+    assert_eq!(plan.status, PlanState::Discarded);
+    assert!(matches!(
+        h.continue_plan_scripted(),
+        Err(HarnessError::NoPlan)
+    ));
+    assert!(matches!(h.discard_plan(), Err(HarnessError::NoPlan)));
+    assert!(h.files().is_empty());
+}
+
+/// Answers like the Scripted model, then fails: the phone losing the
+/// model halfway through a plan.
+struct FailAfter(ScriptedModel, std::sync::atomic::AtomicUsize);
+
+impl Brain for FailAfter {
+    fn describe(&self) -> ModelInfo {
+        self.0.describe()
+    }
+
+    fn generate(
+        &self,
+        request: ChatRequest,
+        _grammar: Option<&str>,
+        out: Arc<dyn TextOut>,
+    ) -> Result<(), AiError> {
+        use std::sync::atomic::Ordering;
+        if self.1.fetch_sub(1, Ordering::SeqCst) == 0 {
+            return Err(AiError::Unavailable {
+                reason: "the model was unloaded".into(),
+            });
+        }
+        self.0.generate(request, out)
+    }
+}
+
+#[test]
+fn a_failed_plan_resumes_from_its_last_verified_task() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    h.set_approve_plans(false);
+    let script = evidence::script("t7-plan-with-dependency");
+    // The plan, task letter's three answers, then task tests writes its
+    // file and the model goes.
+    let brain = Arc::new(FailAfter(
+        ScriptedModel::new(script.clone()),
+        std::sync::atomic::AtomicUsize::new(5),
+    ));
+    h.start(brain, task("t7-plan-with-dependency")).unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Failed, "{plan:?}");
+    assert!(plan
+        .reason
+        .as_deref()
+        .unwrap()
+        .starts_with("Task tests: The model failed"));
+    assert_eq!(plan.passed, 1);
+    assert_eq!(plan.tasks[0].status, TaskStatus::Completed);
+    assert_eq!(plan.tasks[1].status, TaskStatus::Failed);
+    assert_eq!(plan.tasks[2].status, TaskStatus::Ready);
+    assert!(plan.can_continue);
+    let root = dir
+        .path()
+        .join(LADDER_FOLDER)
+        .join("t7-plan-with-dependency");
+    assert!(root.join("test_grades.py").exists());
+
+    h.continue_plan_scripted().unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
+    assert_eq!(plan.passed, 3);
+    // letter ran once; tests ran twice (the failed try, then the resumed one).
+    let entries = Journal::replay(&root);
+    let runs_of = |id: &str| {
+        entries
+            .iter()
+            .filter(|e| matches!(e, Entry::Task { plan_task: Some(p), .. } if p == id))
+            .count()
+    };
+    assert_eq!(
+        (runs_of("letter"), runs_of("tests"), runs_of("report")),
+        (1, 2, 1)
+    );
+    // The report's task saw a line on each task done before it, with fresh
+    // steps of its own.
+    assert_eq!(snapshot.steps.len(), 3);
+    assert_eq!(snapshot.steps[0].index, 1);
+}
+
+#[test]
+fn the_executor_sees_its_task_and_one_line_per_task_done() {
+    let entries = vec![
+        Entry::PlanRequest {
+            plan: "plan-1".into(),
+            request: "Grades and a report.".into(),
+            criteria: vec![],
+            model: "m".into(),
+            at_ms: 1,
+        },
+        Entry::Plan {
+            plan: "plan-1".into(),
+            thought: "t".into(),
+            tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+                .unwrap()
+                .1,
+            model_ms: 1,
+        },
+        Entry::Task {
+            task: "task-1".into(),
+            description: "letter".into(),
+            criteria: vec![Criterion::WorkRuns],
+            model: "m".into(),
+            at_ms: 2,
+            plan: Some("plan-1".into()),
+            plan_task: Some("letter".into()),
+        },
+        Entry::Status {
+            task: "task-1".into(),
+            status: TaskStatus::Completed,
+            reason: Some("Verified: grades.py ran without an error.".into()),
+            at_ms: 3,
+        },
+    ];
+    let view = plan::PlanView::read(&entries).unwrap();
+    let next = view.next().unwrap();
+    assert_eq!(next.id, "tests");
+    assert_eq!(view.restart_point(), "task-1");
+    let request = view.executor_request(next);
+    assert!(request.starts_with("Write test_grades.py"), "{request}");
+    assert!(
+        request.contains("plan for: Grades and a report."),
+        "{request}"
+    );
+    assert!(
+        request.contains("Done already:\n- letter: Write grades.py"),
+        "{request}"
+    );
+    assert!(request.contains("Verified: grades.py ran"), "{request}");
+    // Nothing done yet: the plan's own checkpoint.
+    let view = plan::PlanView::read(&entries[..2]).unwrap();
+    assert_eq!(view.restart_point(), "plan-1");
+    assert!(!view
+        .executor_request(view.next().unwrap())
+        .contains("Done already"));
+}
+
+#[test]
+fn a_plan_the_app_closed_during_stops_and_can_resume() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("scratch");
+    std::fs::create_dir_all(&root).unwrap();
+    {
+        let mut journal = Journal::open(&root).unwrap();
+        for entry in [
+            Entry::PlanRequest {
+                plan: "plan-1".into(),
+                request: "Grades.".into(),
+                criteria: vec![],
+                model: "m".into(),
+                at_ms: 1,
+            },
+            Entry::Plan {
+                plan: "plan-1".into(),
+                thought: "t".into(),
+                tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+                    .unwrap()
+                    .1,
+                model_ms: 1,
+            },
+            Entry::PlanStatus {
+                plan: "plan-1".into(),
+                status: PlanState::Running,
+                reason: None,
+                at_ms: 2,
+            },
+            Entry::Task {
+                task: "task-1".into(),
+                description: "letter".into(),
+                criteria: vec![Criterion::WorkRuns],
+                model: "m".into(),
+                at_ms: 3,
+                plan: Some("plan-1".into()),
+                plan_task: Some("letter".into()),
+            },
+            Entry::Status {
+                task: "task-1".into(),
+                status: TaskStatus::Running,
+                reason: None,
+                at_ms: 4,
+            },
+            Entry::StepStarted {
+                task: "task-1".into(),
+                step: 1,
+                at_ms: 5,
+            },
+        ] {
+            journal.append(&entry).unwrap();
+        }
+    }
+    let h = harness(&dir);
+    h.open_project("scratch".into()).unwrap();
+    let snapshot = h.snapshot();
+    assert_eq!(snapshot.task.unwrap().status, TaskStatus::Stopped);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Stopped);
+    assert_eq!(
+        plan.reason.as_deref(),
+        Some("The app closed during task letter.")
+    );
+    assert!(plan.can_continue);
+    assert_eq!(plan.passed, 0);
+    // Written back: opening it again changes nothing.
+    h.open_project("scratch".into()).unwrap();
+    assert_eq!(Journal::replay(&root).len(), 8);
+}
+
+#[test]
+fn restore_puts_the_project_back_as_the_checkpoint_kept_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    std::fs::write(dir.path().join("a.py"), "a = 1\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("pkg")).unwrap();
+    std::fs::write(dir.path().join("pkg/m.py"), "m = 1\n").unwrap();
+    lab.checkpoint("one").unwrap();
+    std::fs::write(dir.path().join("a.py"), "a = 2\n").unwrap();
+    std::fs::write(dir.path().join("b.py"), "b = 1\n").unwrap();
+    std::fs::remove_dir_all(dir.path().join("pkg")).unwrap();
+    std::fs::create_dir_all(dir.path().join(".harness")).unwrap();
+    std::fs::write(dir.path().join(".harness/journal.jsonl"), "{}\n").unwrap();
+    lab.restore("one").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.py")).unwrap(),
+        "a = 1\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("pkg/m.py")).unwrap(),
+        "m = 1\n"
+    );
+    assert!(!dir.path().join("b.py").exists());
+    // The harness's own records stay.
+    assert!(dir.path().join(".harness/journal.jsonl").exists());
+    assert!(lab.restore("missing").is_err());
+
+    // Hidden files stay at any depth; folders it emptied go.
+    std::fs::create_dir_all(dir.path().join("keep")).unwrap();
+    std::fs::write(dir.path().join("keep/.env"), "x\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("gone/deep")).unwrap();
+    std::fs::write(dir.path().join("gone/deep/g.py"), "g = 1\n").unwrap();
+    lab.restore("one").unwrap();
+    assert!(dir.path().join("keep/.env").exists());
+    assert!(!dir.path().join("gone").exists());
+    // A checkpoint is published whole: no partial copy is left behind.
+    lab.checkpoint("two").unwrap();
+    let names: Vec<String> = std::fs::read_dir(dir.path().join(".harness/checkpoints"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
+    assert!(!names.iter().any(|n| n.contains("partial")), "{names:?}");
+}
+
+#[test]
+fn an_answer_saved_before_the_app_closed_lets_the_plan_go_on() {
+    let tasks = plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+        .unwrap()
+        .1;
+    let first = tasks[0].id.clone();
+    let mut entries = vec![
+        Entry::PlanRequest {
+            plan: "plan-1".into(),
+            request: "Grades.".into(),
+            criteria: vec![],
+            model: "m".into(),
+            at_ms: 1,
+        },
+        Entry::Plan {
+            plan: "plan-1".into(),
+            thought: "t".into(),
+            tasks,
+            model_ms: 1,
+        },
+        Entry::PlanStatus {
+            plan: "plan-1".into(),
+            status: PlanState::Running,
+            reason: None,
+            at_ms: 2,
+        },
+        Entry::Recovery {
+            plan: "plan-1".into(),
+            plan_task: first.clone(),
+            thought: "t".into(),
+            decision: plan::Decision::Blocked {
+                question: "Which file?".into(),
+            },
+            model_ms: 1,
+        },
+        Entry::PlanStatus {
+            plan: "plan-1".into(),
+            status: PlanState::Blocked,
+            reason: Some("Which file?".into()),
+            at_ms: 3,
+        },
+    ];
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert!(view.started);
+    assert!(!view.can_continue());
+    // Without the Blocked status (its write failed) it still asks.
+    let decided = &entries[..entries.len() - 1];
+    let view = plan::PlanView::read(decided).unwrap();
+    assert_eq!(view.state, PlanState::Blocked);
+    assert!(view.state.needs_answer() && view.blocked.is_some());
+    assert!(!view.can_continue());
+    // When that write failed, the plan is marked Failed in memory only:
+    // the question still stands, and Resume must not run the task.
+    let mut failed = decided.to_vec();
+    failed.push(Entry::PlanStatus {
+        plan: "plan-1".into(),
+        status: PlanState::Failed,
+        reason: Some("Could not save the plan status".into()),
+        at_ms: 3,
+    });
+    let view = plan::PlanView::read(&failed).unwrap();
+    assert_eq!(view.state, PlanState::Failed);
+    assert_eq!(
+        view.blocked.as_ref().map(|(_, q)| q.as_str()),
+        Some("Which file?")
+    );
+    assert!(!view.can_continue());
+    entries.push(Entry::PersonAnswer {
+        plan: "plan-1".into(),
+        plan_task: first,
+        text: "data.csv".into(),
+        at_ms: 4,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert_eq!(view.state, PlanState::Blocked);
+    assert!(view.can_continue());
+}
+
+#[test]
+fn a_draft_that_never_ran_waits_for_approval_when_resumed() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("scratch");
+    std::fs::create_dir_all(&root).unwrap();
+    {
+        let mut journal = Journal::open(&root).unwrap();
+        for entry in [
+            Entry::PlanRequest {
+                plan: "plan-1".into(),
+                request: "Grades.".into(),
+                criteria: vec![],
+                model: "m".into(),
+                at_ms: 1,
+            },
+            Entry::PlanStatus {
+                plan: "plan-1".into(),
+                status: PlanState::Planning,
+                reason: None,
+                at_ms: 2,
+            },
+            Entry::Plan {
+                plan: "plan-1".into(),
+                thought: "t".into(),
+                tasks: plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+                    .unwrap()
+                    .1,
+                model_ms: 1,
+            },
+        ] {
+            journal.append(&entry).unwrap();
+        }
+    }
+    let h = harness(&dir);
+    h.open_project("scratch".into()).unwrap();
+    assert_eq!(h.snapshot().plan.unwrap().status, PlanState::Stopped);
+    // No checkpoint was ever taken, and approval is on: it asks first.
+    h.continue_plan_scripted().unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::AwaitingApproval, "{plan:?}");
+}
+
+#[test]
+fn a_forgiving_edit_leaves_quotes_inside_a_docstring_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    let text = "def f():\n    \"\"\"\n    say \"hi\"\n    \"\"\"\n    return 1\n";
+    std::fs::write(dir.path().join("d.py"), text).unwrap();
+    let outcome = edit(&lab, "d.py", "say 'hi'", "say 'bye'");
+    assert!(!outcome.ok, "{}", outcome.text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("d.py")).unwrap(),
+        text
+    );
+    // Triple quotes in a comment or a short string don't fool it.
+    let text = "# \"\"\"\nmark = '\"\"\"'\ntext = \"\"\"\nstatus = \"on\"\n\"\"\"\n";
+    std::fs::write(dir.path().join("e.py"), text).unwrap();
+    let outcome = edit(&lab, "e.py", "status = 'on'", "status = 'off'");
+    assert!(!outcome.ok, "{}", outcome.text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("e.py")).unwrap(),
+        text
+    );
+    // An escaped triple quote doesn't close the string.
+    let text = "text = \"\"\"\nescaped: \\\"\"\"\nstatus = \"on\"\n\"\"\"\n";
+    std::fs::write(dir.path().join("g.py"), text).unwrap();
+    let outcome = edit(&lab, "g.py", "status = 'on'", "status = 'off'");
+    assert!(!outcome.ok, "{}", outcome.text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("g.py")).unwrap(),
+        text
+    );
+    // A short string continued with a backslash is still a string.
+    let text = "text = 'prefix \\\nstatus = \"on\" \\\n'\n";
+    std::fs::write(dir.path().join("h.py"), text).unwrap();
+    let outcome = edit(&lab, "h.py", "status = 'on' \\", "status = 'off' \\");
+    assert!(!outcome.ok, "{}", outcome.text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("h.py")).unwrap(),
+        text
+    );
+    // Non-ASCII text in a docstring doesn't trip it up.
+    let text = "def f():\n    \"\"\"café ☕\"\"\"\n    return \"x\"\n";
+    std::fs::write(dir.path().join("i.py"), text).unwrap();
+    let outcome = edit(&lab, "i.py", "return 'x'", "return 'y'");
+    assert!(outcome.ok, "{}", outcome.text);
+    // Code after a docstring still gets the forgiving match.
+    let text = "def f():\n    \"\"\"Doc.\"\"\"\n    return \"x\"\n";
+    std::fs::write(dir.path().join("f.py"), text).unwrap();
+    let outcome = edit(&lab, "f.py", "return 'x'", "return 'y'");
+    assert!(outcome.ok, "{}", outcome.text);
+}
+
+// MARK: Recovery (H5)
+
+#[test]
+fn recovery_decisions_follow_their_grammar_and_are_checked() {
+    let g = plan::recovery_grammar();
+    for decision in ["retry", "revise", "replan", "blocked"] {
+        assert!(
+            g.contains(&format!("\\\"{decision}\\\"")),
+            "{decision}:\n{g}"
+        );
+    }
+    assert!(g.contains("checks ::="));
+    let (thought, decision) = plan::parse_recovery(
+        r#"{"thought": "t", "decision": "revise", "do": "Write a.py.", "checks": [{"check": "work_runs"}]}"#,
+        "a",
+    )
+    .unwrap();
+    assert_eq!(thought, "t");
+    assert_eq!(
+        decision,
+        plan::Decision::Revise {
+            description: "Write a.py.".into(),
+            criteria: vec![Criterion::WorkRuns]
+        }
+    );
+    for (text, expected) in [
+        (
+            r#"{"thought": "t", "decision": "retry"}"#,
+            "needs \"diagnosis\"",
+        ),
+        (
+            r#"{"thought": "t", "decision": "blocked", "question": " "}"#,
+            "needs \"question\"",
+        ),
+        (
+            r#"{"thought": "t", "decision": "shrug"}"#,
+            "no decision called",
+        ),
+        (
+            r#"{"thought": "t", "decision": "revise", "do": "x", "checks": []}"#,
+            "at least one check",
+        ),
+        (r#"{"thought": "t"}"#, "no \"decision\""),
+    ] {
+        let err = plan::parse_recovery(text, "a").unwrap_err();
+        assert!(err.contains(expected), "{text}: {err}");
+    }
+    // Every example in the instructions is a decision the parser takes.
+    for line in plan::recovery_instructions()
+        .lines()
+        .filter(|l| l.starts_with('{'))
+    {
+        plan::parse_recovery(line, "a").unwrap_or_else(|e| panic!("{line}: {e}"));
+    }
+    // A replan may come after tasks done, never reuse their ids.
+    let done = vec!["stats".to_string()];
+    let replan = r#"{"thought": "t", "tasks": [{"id": "report", "do": "Run it.", "after": ["stats"], "checks": [{"check": "work_runs"}]}]}"#;
+    assert!(plan::parse(replan, &done).is_ok());
+    assert!(plan::parse(replan, &[])
+        .unwrap_err()
+        .contains("not an earlier task"));
+    let reuse = replan.replace("\"id\": \"report\"", "\"id\": \"stats\"");
+    assert!(plan::parse(&reuse, &done)
+        .unwrap_err()
+        .contains("already done"));
+}
+
+#[test]
+fn a_missing_dependency_is_replanned_and_the_plan_completes() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    h.set_approve_plans(false);
+    h.start_ladder_scripted("t8-replan".into()).unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
+    let ids: Vec<&str> = plan.tasks.iter().map(|t| t.id.as_str()).collect();
+    assert_eq!(ids, ["stats", "report"]);
+    let entries = Journal::replay(&dir.path().join(LADDER_FOLDER).join("t8-replan"));
+    assert!(entries.iter().any(|e| matches!(
+        e,
+        Entry::Recovery { plan_task, decision: plan::Decision::Replan { .. }, .. } if plan_task == "run-report"
+    )));
+    assert!(entries.iter().any(|e| matches!(
+        e,
+        Entry::Result { tool, text, .. } if tool == "give_up" && text.starts_with("Gave up: report.py imports stats")
+    )));
+    assert!(h.transcript().contains("give_up"));
+}
+
+#[test]
+fn a_task_that_cant_succeed_ends_blocked_and_the_answer_reaches_it() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    h.set_approve_plans(false);
+    h.start_ladder_scripted("t9-blocked".into()).unwrap();
+    let snapshot = wait(&h);
+    let plan = snapshot.plan.unwrap();
+    assert_eq!(plan.status, PlanState::Blocked, "{plan:?}");
+    assert!(plan.question.as_deref().unwrap().contains("internet"));
+    assert!(!plan.can_continue);
+    assert_eq!(plan.tasks[0].recoveries, 1);
+    // Rolled back to before the task: the download program is gone.
+    let root = dir.path().join(LADDER_FOLDER).join("t9-blocked");
+    assert!(!root.join("weather.py").exists());
+    assert!(matches!(
+        h.continue_plan_scripted(),
+        Err(HarnessError::NoPlan)
+    ));
+    assert!(matches!(
+        h.answer_plan_scripted("  ".into()),
+        Err(HarnessError::EmptyTask)
+    ));
+
+    h.answer_plan_scripted("Yes, print a sample.".into())
+        .unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
+    assert!(plan.question.is_none());
+    let entries = Journal::replay(&root);
+    let told = entries.iter().any(|e| {
+        matches!(
+            e,
+            Entry::PersonAnswer { text, .. } if text == "Yes, print a sample."
+        )
+    });
+    assert!(told);
+    // The rerun saw the question and the answer.
+    let view = plan::PlanView::read(plan::current(&entries).unwrap()).unwrap();
+    let request = view.executor_request(&view.tasks[0]);
+    assert!(
+        request.contains("They answered: Yes, print a sample."),
+        "{request}"
+    );
+    assert!(std::fs::read_to_string(root.join("weather.py"))
+        .unwrap()
+        .contains("sample"));
+}
+
+#[test]
+fn a_task_that_keeps_failing_ends_the_plan_after_two_recoveries() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    h.set_approve_plans(false);
+    let plan_text = r#"{"thought": "t", "tasks": [{"id": "a", "do": "Do it.", "after": [], "checks": [{"check": "work_runs"}]}]}"#;
+    let give_up = r#"{"thought": "t", "tool": "give_up", "reason": "can't"}"#;
+    let retry = r#"{"thought": "t", "decision": "retry", "diagnosis": "try harder"}"#;
+    h.start_request(
+        scripted(&[plan_text, give_up, retry, give_up, retry, give_up]),
+        "Do it.".into(),
+        SCRATCH_PROJECT,
+        true,
+    )
+    .unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::Failed, "{plan:?}");
+    assert_eq!(
+        plan.reason.as_deref(),
+        Some("Task a: Bonsai gave up: can't (after 2 recoveries)")
+    );
+    assert_eq!(plan.tasks[0].recoveries, 2);
+    assert!(plan.can_continue);
+}
+
+// MARK: Context (H6)
+
+#[test]
+fn read_symbol_shows_one_definition_with_its_line_numbers() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    std::fs::write(
+        dir.path().join("m.py"),
+        "import math\n\n\ndef area(r):\n    return math.pi * r ** 2\n\n\nclass Box:\n    @property\n    def size(self):\n        return 1\n",
+    )
+    .unwrap();
+    let read = |name: &str| {
+        lab.execute(&call(&format!(
+            r#"{{"tool": "read_symbol", "path": "m.py", "name": "{name}"}}"#
+        )))
+    };
+    let out = read("area");
+    assert!(out.ok, "{}", out.text);
+    assert_eq!(
+        out.text,
+        "m.py, lines 4 to 5:\n  4| def area(r):\n  5|     return math.pi * r ** 2"
+    );
+    // A method, with its decorator, by its own name or as Class.method.
+    let out = read("size");
+    assert!(
+        out.ok
+            && out
+                .text
+                .starts_with("m.py, lines 9 to 11:\n  9|     @property"),
+        "{}",
+        out.text
+    );
+    assert_eq!(read("Box.size").text, out.text);
+    let out = read("volume");
+    assert!(
+        !out.ok && out.text.contains("It has: Box, Box.size, area."),
+        "{}",
+        out.text
+    );
+    std::fs::write(dir.path().join("bad.py"), "def broken(:\n").unwrap();
+    let out = lab.execute(&call(
+        r#"{"tool": "read_symbol", "path": "bad.py", "name": "broken"}"#,
+    ));
+    assert!(
+        !out.ok
+            && out
+                .text
+                .starts_with("Python can't read the definitions in bad.py"),
+        "{}",
+        out.text
+    );
+}
+
+#[test]
+fn earlier_work_is_one_line_per_finished_task_or_plan() {
+    let task = |id: &str, description: &str, plan: Option<&str>| Entry::Task {
+        task: id.into(),
+        description: description.into(),
+        criteria: vec![],
+        model: "m".into(),
+        at_ms: 1,
+        plan: plan.map(str::to_string),
+        plan_task: plan.map(|_| "x".to_string()),
+    };
+    let status = |id: &str, status: TaskStatus, reason: &str| Entry::Status {
+        task: id.into(),
+        status,
+        reason: Some(reason.into()),
+        at_ms: 2,
+    };
+    let entries = vec![
+        task("task-1", "Write hello.py", None),
+        status(
+            "task-1",
+            TaskStatus::Completed,
+            "Verified: hello.py printed Hello.",
+        ),
+        Entry::PlanRequest {
+            plan: "plan-1".into(),
+            request: "Grades and a report".into(),
+            criteria: vec![],
+            model: "m".into(),
+            at_ms: 3,
+        },
+        task("task-2", "letter", Some("plan-1")),
+        status("task-2", TaskStatus::Completed, "Verified."),
+        Entry::PlanStatus {
+            plan: "plan-1".into(),
+            status: PlanState::Failed,
+            reason: Some("Task tests: stuck.".into()),
+            at_ms: 4,
+        },
+        task("task-3", "Now add a chart", None),
+        status("task-3", TaskStatus::Running, ""),
+    ];
+    let earlier = prompt::earlier_work(&entries, &["task-3"]);
+    assert_eq!(
+        earlier,
+        "- Write hello.py (completed: Verified: hello.py printed Hello.)\n- Grades and a report (failed: Task tests: stuck.)"
+    );
+    // The task running now is never its own earlier work.
+    assert_eq!(prompt::earlier_work(&entries[..2], &["task-1"]), "");
+}
+
+#[test]
+fn a_second_request_is_told_the_earlier_work() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    let brain = scripted(
+        &evidence::script("t11-second-request")
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+    );
+    h.start(
+        Arc::clone(&brain) as Arc<dyn Brain>,
+        task("t11-second-request"),
+    )
+    .unwrap();
+    let snapshot = wait(&h);
+    assert_eq!(
+        snapshot.task.unwrap().status,
+        TaskStatus::Completed,
+        "{:?}",
+        snapshot.steps
+    );
+    let first = &brain.0.requests()[0];
+    let task_message = &first.messages[1].content;
+    assert!(
+        task_message
+            .contains("Earlier work in this project:\n- Write shapes.py with rectangle_area"),
+        "{task_message}"
+    );
+    assert!(snapshot.steps[0]
+        .result
+        .contains("def circle_area(radius):"));
+    assert!(!snapshot.steps[0].result.contains("rectangle_area"));
+}
+
 // MARK: PL1e, Bonsai in the person's projects
 
 #[test]
@@ -1593,20 +2583,20 @@ fn a_request_runs_in_the_chosen_project() {
     let h = harness(&dir);
     // A project that doesn't exist is refused, not made.
     assert!(matches!(
-        h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), "My Work"),
+        h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), "My Work", false),
         Err(HarnessError::Storage { .. })
     ));
     assert!(!dir.path().join("My Work").exists());
     // Hidden names and ladder names aren't a person's projects.
     for bad in [".ladder", "t1-hello", "../x"] {
         assert!(
-            h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), bad)
+            h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), bad, false)
                 .is_err(),
             "{bad}"
         );
     }
     std::fs::create_dir(dir.path().join("My Work")).unwrap();
-    h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), "My Work")
+    h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), "My Work", false)
         .unwrap();
     let snapshot = wait(&h);
     assert_eq!(snapshot.project.as_deref(), Some("My Work"));
@@ -1615,8 +2605,13 @@ fn a_request_runs_in_the_chosen_project() {
     assert!(!dir.path().join("scratch").exists());
     // A name with spaces around it is the same project, and the screen
     // is told its saved name.
-    h.start_request(scripted(&[FINISH_CALL]), "Say hi".into(), "  My Work ")
-        .unwrap();
+    h.start_request(
+        scripted(&[FINISH_CALL]),
+        "Say hi".into(),
+        "  My Work ",
+        false,
+    )
+    .unwrap();
     assert_eq!(wait(&h).project.as_deref(), Some("My Work"));
 }
 
@@ -1952,4 +2947,187 @@ fn a_debug_session_forgets_the_last_ones_breakpoints() {
     assert!(ok, "{out}{err}");
     assert_eq!(pauses(&out).len(), 1, "{out}");
     assert_eq!(out.matches("3\n").count(), 2, "{out}");
+}
+
+// MARK: Review fixes after the Python Lab merge
+
+fn plan_entries() -> (Vec<Entry>, Vec<String>) {
+    let tasks = plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+        .unwrap()
+        .1;
+    let ids = tasks.iter().map(|t| t.id.clone()).collect();
+    let entries = vec![
+        Entry::PlanRequest {
+            plan: "plan-1".into(),
+            request: "Grades.".into(),
+            criteria: vec![],
+            model: "m".into(),
+            at_ms: 1,
+        },
+        Entry::Plan {
+            plan: "plan-1".into(),
+            thought: "t".into(),
+            tasks,
+            model_ms: 1,
+        },
+        Entry::PlanStatus {
+            plan: "plan-1".into(),
+            status: PlanState::Running,
+            reason: None,
+            at_ms: 2,
+        },
+    ];
+    (entries, ids)
+}
+
+fn ran(entries: &mut Vec<Entry>, plan_task: &str, status: TaskStatus) {
+    let task = format!("run-{plan_task}-{}", entries.len());
+    entries.push(Entry::Task {
+        task: task.clone(),
+        description: "d".into(),
+        criteria: vec![],
+        model: "m".into(),
+        at_ms: 3,
+        plan: Some("plan-1".into()),
+        plan_task: Some(plan_task.into()),
+    });
+    entries.push(Entry::Status {
+        task,
+        status,
+        reason: Some("the check failed".into()),
+        at_ms: 4,
+    });
+}
+
+#[test]
+fn a_plan_that_failed_its_final_check_is_not_offered_resume() {
+    let (mut entries, ids) = plan_entries();
+    for id in &ids {
+        ran(&mut entries, id, TaskStatus::Completed);
+    }
+    entries.push(Entry::PlanStatus {
+        plan: "plan-1".into(),
+        status: PlanState::Failed,
+        reason: Some("The request's checks failed.".into()),
+        at_ms: 5,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert!(view.next().is_none());
+    assert!(!view.can_continue());
+    // A plan that failed with a task still to do can go on.
+    let (mut entries, ids) = plan_entries();
+    ran(&mut entries, &ids[0], TaskStatus::Failed);
+    entries.push(Entry::PlanStatus {
+        plan: "plan-1".into(),
+        status: PlanState::Failed,
+        reason: Some("Task failed.".into()),
+        at_ms: 5,
+    });
+    assert!(plan::PlanView::read(&entries).unwrap().can_continue());
+}
+
+#[test]
+fn a_replan_whose_tasks_were_never_written_stays_pending() {
+    let (mut entries, ids) = plan_entries();
+    ran(&mut entries, &ids[0], TaskStatus::Failed);
+    entries.push(Entry::Recovery {
+        plan: "plan-1".into(),
+        plan_task: ids[0].clone(),
+        thought: "t".into(),
+        decision: plan::Decision::Replan {
+            diagnosis: "The data needs cleaning first.".into(),
+        },
+        model_ms: 1,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert_eq!(
+        view.replan,
+        Some((ids[0].clone(), "The data needs cleaning first.".into()))
+    );
+    // The new tasks end it.
+    let tasks = plan::parse(&evidence::script("t7-plan-with-dependency")[0], &[])
+        .unwrap()
+        .1;
+    entries.push(Entry::Plan {
+        plan: "plan-1".into(),
+        thought: "again".into(),
+        tasks,
+        model_ms: 1,
+    });
+    assert_eq!(plan::PlanView::read(&entries).unwrap().replan, None);
+}
+
+#[test]
+fn restoring_a_checkpoint_resets_what_bonsai_knows_of_each_file() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    let write = |path: &str, content: &str| {
+        let args = serde_json::json!({"tool": "write_file", "path": path, "content": content});
+        lab.execute(&call(&args.to_string()))
+    };
+    assert!(write("notes.txt", "one\n").ok);
+    lab.checkpoint("p0").unwrap();
+    assert!(write("notes.txt", "two\n").ok);
+    assert!(write("extra.txt", "x\n").ok);
+    lab.restore("p0").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("notes.txt")).unwrap(),
+        "one\n"
+    );
+    assert!(!dir.path().join("extra.txt").exists());
+    assert!(!dir.path().join(".harness/restore.partial").exists());
+    // Bonsai put the file back itself, so it may edit it without a reread.
+    let args =
+        serde_json::json!({"tool": "edit_file", "path": "notes.txt", "old": "one", "new": "three"});
+    let out = lab.execute(&call(&args.to_string()));
+    assert!(out.ok, "{}", out.text);
+}
+
+#[test]
+fn read_symbol_counts_as_reading_the_file() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    std::fs::write(dir.path().join("main.py"), "def f():\n    return 1\n").unwrap();
+    let read = serde_json::json!({"tool": "read_symbol", "path": "main.py", "name": "f"});
+    assert!(lab.execute(&call(&read.to_string())).ok);
+    // The person saves another version: Bonsai must read it again.
+    std::fs::write(dir.path().join("main.py"), "def f():\n    return 2\n").unwrap();
+    let write = serde_json::json!({"tool": "write_file", "path": "main.py", "content": "x = 1\n"});
+    let out = lab.execute(&call(&write.to_string()));
+    assert!(!out.ok, "{}", out.text);
+}
+
+#[test]
+fn a_forgiving_edit_refuses_a_tab_after_an_indent_between_tab_stops() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let lab = PythonLab::new(
+        dir.path().into(),
+        Arc::new(LocalPython),
+        Duration::from_secs(5),
+    );
+    let text = "if x:\n\t  value = 'a'\n";
+    std::fs::write(dir.path().join("t.py"), text).unwrap();
+    let outcome = edit(&lab, "t.py", "\tvalue = 'a'", "\tif y:\n\t\tvalue = 'b'");
+    assert!(!outcome.ok, "{}", outcome.text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("t.py")).unwrap(),
+        text
+    );
 }
