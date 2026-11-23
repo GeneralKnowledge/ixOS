@@ -187,7 +187,7 @@ Each component gets a short spec in `docs/forgeui.md` when it lands, in this sha
 | Input | tap a star sets it; tap the current star clears it (only with `allowsClearing`) |
 | VoiceOver | one element: label (the caller's, default "Rating"), value "3 of 5 stars" or "Not rated", adjustable up and down; read-only drops the adjustable action |
 | Dynamic Type | stars scale with the surrounding text style; at accessibility sizes the hit area stays at least 44 pt per star |
-| Identifiers | `<id>` on the one element; UI tests read its value and use the adjustable action (per-star identifiers dropped in review: the stars aren't separate accessibility elements) |
+| Identifiers | `<id>` on the one element; UI tests read its value; `forge ui` has no adjust action, so they can't set it (per-star identifiers dropped in review: the stars aren't separate accessibility elements) |
 | Colour | the rating tone (a fixed warm tone checked by `contrastIssues()`), never the accent |
 | Model | the value is an `Int?` the view model owns; no rating rules in Swift |
 
