@@ -915,6 +915,10 @@ impl ChatCore {
             return;
         };
         let Ok(client) = self.client() else { return };
+        // Finishing work until the reply is in the outbox (or the room marked read), so
+        // `background_work_pending` says so: the host holds background time, and Android's
+        // receiver keeps the process until then.
+        let finishing = self.rt.finishing(None);
         let work = match response.action_id.as_str() {
             "reply" => {
                 let Some(text) = response.text.filter(|t| !t.trim().is_empty()) else {
@@ -928,6 +932,7 @@ impl ChatCore {
                         if let Err(e) = client.send_reply(&room, &text, reply_to.as_deref()) {
                             forge_runtime::logging::warn!("reply from a notification failed: {e}");
                         }
+                        drop(finishing);
                     })
             }
             "read" => std::thread::Builder::new()
@@ -936,6 +941,7 @@ impl ChatCore {
                     if let Err(e) = client.mark_read(&room) {
                         forge_runtime::logging::warn!("mark read from a notification failed: {e}");
                     }
+                    drop(finishing);
                 }),
             _ => return,
         };

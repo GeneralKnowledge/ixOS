@@ -11,15 +11,22 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.forgemobile.ffi.ForgeAndroid
 import org.forgemobile.relay.host.ForgeEnvironment
+import org.forgemobile.relay.host.AndroidNotifier
 import org.forgemobile.relay.host.ForgeHost
+import org.forgemobile.relay.host.ForgeServices
+import org.forgemobile.relay.host.NotificationReceiver
 import org.forgemobile.relay.kit.ForgeFailure
 import uniffi.forge_app.AppPhase
+import uniffi.relay_core.deliverNotificationResponse
 
 /**
  * Owns the host, the model and the network for the life of the process, as ForgeKit does on
@@ -57,6 +64,29 @@ class RelayApplication : Application() {
         super.onCreate()
         // Android's trust store for Rust's HTTPS (Relay's servers), as on every Forge app.
         ForgeAndroid.init(this)
+        // The Keystore, notifications and permissions, before any Rust core opens.
+        try {
+            ForgeServices.install(this)
+        } catch (e: Exception) {
+            // Without them Relay still opens: its key stays in `device.key`, and Chats keeps a
+            // chat server account only until it closes.
+            android.util.Log.w("Relay", "platform services not installed: ${e.javaClass.simpleName}")
+        }
+        // A Reply or Mark as Read with Relay closed opens its cores in the background first.
+        NotificationReceiver.onResponse = {
+            withContext(Dispatchers.Main.immediate) {
+                // Opens here (a no-op while an open is already under way, which is waited for).
+                if (host.core == null) host.start()
+                val opened = host.status.first { it is ForgeHost.Status.Ready || it is ForgeHost.Status.Failed }
+                // Rust's handler is Chats': Relay can open with Chats closed (chatProblem), and
+                // a reply handed over then would wait in memory and be lost with the process.
+                opened is ForgeHost.Status.Ready && host.core?.chat != null
+            }
+        }
+        // The reply in the outbox (or the room marked read): Rust holds it as finishing work.
+        NotificationReceiver.settled = {
+            while (host.core?.chat?.backgroundWorkPending() == true) delay(50)
+        }
         // Relay's errors in its own words, wherever the kit shows a failure (the open too).
         ForgeFailure.describer = RelayErrors
         network = RelayNetwork(this)
@@ -117,16 +147,18 @@ class RelayApplication : Application() {
         })
     }
 
-    /**
-     * Opens Relay for a newly launched activity. With [ForgeEnvironment.TEMPORARY_DATA_EXTRA]
-     * (UI tests), each launch starts again on a fresh throwaway identity with no servers, as
-     * `-ForgeTemporaryData` does on iOS; the person's own data is never opened.
-     */
     /** Whether [launch] ran in this process. */
     var launched = false
         private set
 
-    fun launch(intent: Intent) {
+    /**
+     * Opens Relay for a newly launched activity. With [ForgeEnvironment.TEMPORARY_DATA_EXTRA]
+     * (UI tests), each launch starts again on a fresh throwaway identity with no servers, as
+     * `-ForgeTemporaryData` does on iOS; the person's own data is never opened. [restored] is
+     * an activity Android brought back after ending the process: its intent was handled
+     * before, so a notification it carries isn't opened again over the restored screens.
+     */
+    fun launch(intent: Intent, restored: Boolean = false) {
         launched = true
         // Tests only: any app can start the activity, so a release build never lets an extra
         // swap the person's Relay for throwaway data.
@@ -136,8 +168,33 @@ class RelayApplication : Application() {
             if (host.core != null) host.close()
             network.close()
             temporary = true
+            // A fresh identity each time, never the person's key or account.
+            if (ForgeServices.isInstalled) ForgeServices.secureStore.throwaway = java.util.concurrent.ConcurrentHashMap()
         }
+        if (!restored) open(intent)
         scope.launch { host.start() }
+    }
+
+    private val _link = MutableStateFlow<ChatLink?>(null)
+
+    /** A conversation a notification asked to open, until the screens take it. */
+    val link: StateFlow<ChatLink?> = _link.asStateFlow()
+
+    fun takeLink() {
+        _link.value = null
+    }
+
+    /**
+     * Handles an intent that opened the activity: a tap on a message notification opens its
+     * conversation, and Rust hears about the tap.
+     */
+    fun open(intent: Intent) {
+        val response = AndroidNotifier.response(intent) ?: return
+        // Any app can start the activity: only a tap (or an action that opens the app) comes
+        // this way. Reply and Mark as Read come only through the receiver.
+        if (!ForgeServices.isInstalled || !ForgeServices.notifier.opensApp(response)) return
+        deliverNotificationResponse(response)
+        intent.data?.toString()?.let(ChatLink::parse)?.let { _link.value = it }
     }
 
     /** Starts again after a failed open (Try Again). */

@@ -149,7 +149,7 @@ struct SongsView: View {
             Section("\(tracks.count) \(tracks.count == 1 ? "Song" : "Songs")") {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
-                        player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
+                        player.play(model.queue(tracks, from: index))
                     }
                 }
             }

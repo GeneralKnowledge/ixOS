@@ -31,7 +31,7 @@ What each platform does itself:
 | Concern | iPhone | Android |
 |---|---|---|
 | Finding code senders and trusted devices on the network | Bonjour, `NWBrowser`/`NetService` (`RelayNetwork.swift`) | `NsdManager`, the same `_forgerelay._udp` service and TXT keys (`v`, `n`, `id`, `d`) |
-| Where the device key lives | Keychain (`SecureStore`), never a file | Stage 1: `device.key` in the app's private files, with backups off. Stage 4: Android Keystore |
+| Where the device key lives | Keychain (`SecureStore`), never a file | From stage 3, the Android Keystore (`SecureStore` in `host/ForgeServices.kt`); stage 1 kept `device.key` in the app's private files, which Rust moves in on the first launch. Backups are off |
 | Picking what to send | `fileImporter`, `PhotosPicker` | Storage Access Framework and the photo picker, copied into the cache first |
 | Opening what arrived | Quick Look, the Files app | An `ACTION_VIEW` intent through a `FileProvider` |
 | The app's lifecycle | ForgeKit `ForgeHost` | The Android `ForgeHost` (copied from Pocket Library, see below) |
@@ -45,12 +45,12 @@ value first; each starts when the one before has merged.
 |---|---|---|
 | Send | Send files with a word code; the code shown with Copy Code | **1** |
 | Send | Send photos | **1** (Android's photo picker) |
-| Send | Send a whole folder | 3 (a tree picked with SAF has to be copied file by file) |
+| Send | Send a whole folder | **3** (the tree picked with SAF is copied in file by file) |
 | Send | Code shown as a QR code | 4 (needs a QR library: a dependency decision) |
 | Send | Advertising the code on the network, avoiding numbers other senders use | **1** |
 | Receive | Type a code, find the sender, receive with progress, resume | **1** |
 | Receive | Scan the sender's QR code | 4 (camera plus a QR library) |
-| Receive | Received files in the Files app | **1**: opened from the history; "Save to Downloads" in 3 |
+| Receive | Received files in the Files app | **1**: opened from the history; Save to Device (a file where the person picks, a folder into a picked folder) in **3** |
 | Devices | Trust offer after a code transfer (Ask to Trust), introduced devices | **1** |
 | Devices | Trusted and revoked lists, presence ("Reachable, seen 2 min ago") | **1** |
 | Devices | Device page: send files, where it is, platform, offers, Ask Again | **1** |
@@ -66,11 +66,11 @@ value first; each starts when the one before has merged.
 | Chats | Replies, search, drafts, unread counts, mute, Try Again and deleting a message that failed to send | **2** |
 | Chats | Reactions, edits and unsending a delivered message (Rust has them for chat-server rooms only, not devices yet) | 3, with rooms |
 | Chats | Voice messages | 5 (the `audio` service adapter) |
-| Chats | A chat server account, rooms, Join a Room by code | 3 |
-| Chats | Notifications for new messages, tapping one opens the conversation | 3 (`LocalNotifier` adapter, `POST_NOTIFICATIONS`) |
-| Chats | Catching up in the background | 3 (`BackgroundScheduler` on WorkManager) |
+| Chats | A chat server account (kept in the Keystore), rooms, New Conversation, sign out | **3** |
+| Chats | Notifications for new messages, with Reply and Mark as Read; tapping one opens the conversation | **3** (`LocalNotifier` adapter, `POST_NOTIFICATIONS`) |
+| Chats | Catching up in the background | 4 (`BackgroundScheduler` on WorkManager) |
 | Away from home | Relay's relay and lookup servers, the mailbox for devices that are off | **1** for the servers (Rust). The mailbox needs nothing on Android beyond them |
-| Security | Device key in the platform's secure store | 4 (Android Keystore `SecureStore` adapter; the key moves in unchanged, as on iOS) |
+| Security | Device key in the platform's secure store | **3** (Android Keystore `SecureStore` adapter; Rust moves the key in unchanged, as on iOS) |
 | Security | App lock with Face ID | 4 (`BiometricPrompt` adapter) |
 | Sites | Can Open My Site (the grant) | **1** |
 | Sites | Open a trusted device's site in the app | 5 (`WebView` with `shouldInterceptRequest` calling `fetch_site`) |
@@ -104,13 +104,36 @@ A device conversation carries messages over Relay's outbox, which can't yet
 edit, react to or delete a delivered message: chat-core answers those with an
 error (for a delete, the misleading "Sign up first.", since the message is
 routed as if to a chat server). Android leaves those actions out of a device
-conversation's menu; the iPhone still offers them and shows the error, a fix
-for its next Relay PR.
+conversation's menu, and so does the iPhone (#417).
 
-Not yet: a chat server account and rooms (stage 3, which also needs the
-account kept in a secure store: Chats opens with `with_memory_credentials`
-until then), notifications and background catch-up (stage 3), voice messages
-(stage 5), and the Assistant tab (the Android AI stage).
+## Platform services on Android (stage 3)
+
+`host/ForgeServices.kt` is the Android form of ForgeKit's
+`ForgeServices.install()`. It installs the services Rust asks for through
+`forge_services::native_services!`, before any core opens:
+
+- **SecureStore:** an AES-GCM key that never leaves the Android Keystore
+  seals each value, kept in private preferences that backups never copy.
+  Relay's Rust core moves this device's key in from `device.key` on the first
+  launch: it reads the key back before removing the file, and a store it
+  can't read is an error, never a new identity. Chats keeps the chat server
+  account there too (`ChatCore(dir)` instead of `with_memory_credentials`).
+  Throwaway launches (UI tests) get a store in memory, so they never touch the
+  person's key or account.
+- **LocalNotifier:** a "Messages" channel, with the actions Rust names: Reply
+  as a text field, and Mark as Read. A tap or an action goes back to Rust as a
+  `NotificationResponse`, and a tap opens the conversation at that message
+  (`forgechat://conversation/<id>?message=<id>`, parsed by `ChatLink`).
+- **PermissionProvider:** notifications only. On Android 13 and later it asks
+  through the activity on screen when Chats first opens, as on the iPhone.
+
+Notifications come from a chat server's rooms, the way Rust announces them;
+device conversations have none on either platform. There is no push service,
+so they arrive while Relay is running. Catching up in the background
+(WorkManager) is stage 4.
+
+Not yet: voice messages (stage 5), and the Assistant tab (the Android AI
+stage).
 
 ## Framework code on Android
 

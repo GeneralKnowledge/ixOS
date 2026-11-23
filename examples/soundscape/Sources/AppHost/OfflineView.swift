@@ -121,7 +121,7 @@ struct DownloadsView: View {
                              showDetails: { details = item.track.id }) {
                         let index = playable.firstIndex { $0.id == item.track.id }
                         if let index {
-                            player.play(model.queue(playable), from: model.queueIndex(index, in: playable))
+                            player.play(model.queue(playable, from: index))
                         } else {
                             player.play(model.queue([item.track]))
                         }

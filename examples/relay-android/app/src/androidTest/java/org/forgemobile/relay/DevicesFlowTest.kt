@@ -6,6 +6,8 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasAnyAncestor
@@ -23,6 +25,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.forgemobile.relay.host.ForgeEnvironment
+import org.forgemobile.relay.host.ForgeServices
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -83,12 +86,31 @@ class DevicesFlowTest {
     }
 
     @Test
+    fun chatsOfferToJoinAChatServer() {
+        launch()
+        compose.onNodeWithTag("tab.chats").performClick()
+        compose.onNodeWithTag("chats.server").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("signUp.create"), 5_000)
+        compose.onNodeWithTag("signUp.create").assertIsNotEnabled()
+        compose.onNodeWithTag("signUp.name").performTextInput("Test Phone")
+        compose.onNodeWithTag("signUp.server").performTextInput("http://127.0.0.1:9")
+        compose.onNodeWithTag("signUp.create").assertIsEnabled()
+        // Nothing listens there: the form says so and stays, with what was typed.
+        compose.onNodeWithTag("signUp.create").performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Can't Create the Account"), 15_000)
+        compose.onNodeWithTag("alert.ok").performClick()
+        compose.onNodeWithTag("signUp.name").assert(hasText("Test Phone"))
+        compose.onNodeWithTag("chatServer.back").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("chats.empty"), 5_000)
+    }
+
+    @Test
     fun aNewDeviceOffersToSendWithACode() {
         launch()
         compose.onNodeWithTag("devices.empty").assertIsDisplayed()
         compose.onNodeWithTag("devices.sendFirst").performClick()
         compose.onNodeWithTag("sendCode.status").assertIsDisplayed()
-        compose.onNodeWithText("Choose files or photos, and Relay shows a code for the receiver.").assertIsDisplayed()
+        compose.onNodeWithText("Choose files, photos or a folder, and Relay shows a code for the receiver.").assertIsDisplayed()
         compose.onNodeWithTag("sendCode.close").performClick()
         compose.onNodeWithTag("devices.empty").assertIsDisplayed()
     }
@@ -135,14 +157,24 @@ class DevicesFlowTest {
             deleteRecursively()
             mkdirs()
         }
+        // One process holds one device key (the secure store's), so the laptop gets a store of
+        // its own while its node starts, once the app's own key is in place.
+        val store = ForgeServices.secureStore
+        val appKeys = store.throwaway!!
+        compose.waitUntil(20_000) { appKeys.containsKey("relay.device-key") }
+        store.throwaway = java.util.concurrent.ConcurrentHashMap()
         val other = RelayCore.withoutDefaultServers(File(dir, "data").absolutePath, "Test Laptop")
         laptop = other
         val file = File(dir, "hello.txt").apply { writeText("hello from the laptop") }
-        other.sendPathsWithCode(listOf(file.absolutePath))
         var waiting: CodeSend.Waiting? = null
-        compose.waitUntil(20_000) {
-            waiting = other.codeSendStatus() as? CodeSend.Waiting
-            waiting != null
+        try {
+            other.sendPathsWithCode(listOf(file.absolutePath))
+            compose.waitUntil(20_000) {
+                waiting = other.codeSendStatus() as? CodeSend.Waiting
+                waiting != null
+            }
+        } finally {
+            store.throwaway = appKeys
         }
         val code = waiting!!
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

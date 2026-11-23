@@ -31,6 +31,8 @@ final class Radio {
     private(set) var title: String?
     private(set) var status: Status = .playing
     private(set) var isTuning = false
+    /// The latest `start`: an older one finishing must not clear `isTuning`.
+    private var startNumber = 0
 
     /// Songs given so far, so a batch never repeats them.
     private var played: [String] = []
@@ -72,8 +74,10 @@ final class Radio {
         status = .playing
         played = []
         artists = []
+        startNumber += 1
+        let number = startNumber
         isTuning = true
-        defer { isTuning = false }
+        defer { if number == startNumber { isTuning = false } }
         switch await model.stationBatch(seed, played: [], recentArtists: []) {
         case .success(let tracks):
             guard self.seed == seed else { return }

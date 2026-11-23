@@ -138,7 +138,7 @@ struct AlbumView: View {
                         number: track.number ?? UInt32(index + 1),
                         showDetails: { details = track.id }
                     ) {
-                        player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
+                        player.play(model.queue(tracks, from: index))
                     }
                 }
             } footer: {
@@ -284,7 +284,7 @@ struct ArtistView: View {
             Section {
                 ForEach(Array(shown.enumerated()), id: \.element.id) { index, track in
                     TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
-                        player.play(model.queue(shown), from: model.queueIndex(index, in: shown))
+                        player.play(model.queue(shown, from: index))
                     }
                 }
                 if tracks.count > top.count {

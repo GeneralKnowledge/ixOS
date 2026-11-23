@@ -468,6 +468,7 @@ private fun TransferRow(transfer: Transfer, model: RelayModel) {
     var menu by remember { mutableStateOf(false) }
     val item = transfer.item
     val pending = transfer.status is TransferStatus.Waiting || transfer.status is TransferStatus.InProgress
+    val save = rememberSaveToDevice { failure -> failure?.let(model::report) }
     Box {
         Row(
             modifier = Modifier
@@ -536,6 +537,17 @@ private fun TransferRow(transfer: Transfer, model: RelayModel) {
                         model.cancel(transfer)
                     },
                     modifier = Modifier.testTag("history.cancel"),
+                )
+            }
+            val path = (item as? Item.File)?.path
+            if (transfer.direction == Direction.RECEIVED && transfer.status is TransferStatus.Done && path != null) {
+                DropdownMenuItem(
+                    text = { Text("Save to Device…") },
+                    onClick = {
+                        menu = false
+                        save(path, null, null)
+                    },
+                    modifier = Modifier.testTag("history.save"),
                 )
             }
             DropdownMenuItem(

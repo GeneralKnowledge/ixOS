@@ -289,4 +289,26 @@ class ChatModelTest {
             uniffi.relay_core.ChatConversation("c", "Laptop", 0, 0u, false, message("1", 0, mine = true), null, false, false),
         ))
     }
+
+    @Test
+    fun aNotificationLinkOpensItsConversation() {
+        val device = deviceConversationId("ab12")
+        val link = uniffi.relay_core.chatMessageLink(device, "m-1")
+        assertEquals(ChatLink(device, "m-1"), ChatLink.parse(link))
+        assertEquals(ChatLink("room 7", null), ChatLink.parse("forgechat://conversation/room%207"))
+        assertEquals(null, ChatLink.parse("https://example.com/conversation/x"))
+        assertEquals(null, ChatLink.parse("forgechat://settings"))
+    }
+
+    @Test
+    fun aServerThatCantBeReachedLeavesTheFormOpen() = runBlocking {
+        val phone = device("Pixel")
+        val refused = runCatching { phone.chat.signUp("http://127.0.0.1:9", "Reuben") }.exceptionOrNull()
+        assertNotNull(refused)
+        assertEquals("Can't reach the chat server. Check your connection and try again.", ChatModel.describe(refused!!))
+        assertEquals(null, phone.chat.state.value.account)
+        // A room needs an account first.
+        val room = runCatching { phone.chat.createConversation("Plans") }.exceptionOrNull()
+        assertEquals("Sign up first.", ChatModel.describe(room!!))
+    }
 }

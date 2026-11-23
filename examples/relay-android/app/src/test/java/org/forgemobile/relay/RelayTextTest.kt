@@ -157,4 +157,14 @@ class RelayTextTest {
         assertEquals("env", PickedFiles.safeName(".env"))
         assertEquals("item", PickedFiles.safeName(" "))
     }
+
+    @Test
+    fun twoChildrenWithOneSafeNameBothKeepTheirFile() {
+        val taken = mutableSetOf<String>()
+        assertEquals("env", PickedFiles.distinctName(PickedFiles.safeName(".env"), taken))
+        assertEquals("env 2", PickedFiles.distinctName(PickedFiles.safeName("env"), taken))
+        assertEquals("a.txt", PickedFiles.distinctName("a.txt", taken))
+        assertEquals("a 2.txt", PickedFiles.distinctName("a.txt", taken))
+        assertEquals("a 3.txt", PickedFiles.distinctName("a.txt", taken))
+    }
 }
