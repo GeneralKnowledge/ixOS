@@ -25,6 +25,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.forgemobile.relay.host.ForgeEnvironment
+import org.forgemobile.relay.host.ForgeServices
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -156,14 +157,24 @@ class DevicesFlowTest {
             deleteRecursively()
             mkdirs()
         }
+        // One process holds one device key (the secure store's), so the laptop gets a store of
+        // its own while its node starts, once the app's own key is in place.
+        val store = ForgeServices.secureStore
+        val appKeys = store.throwaway!!
+        compose.waitUntil(20_000) { appKeys.containsKey("relay.device-key") }
+        store.throwaway = java.util.concurrent.ConcurrentHashMap()
         val other = RelayCore.withoutDefaultServers(File(dir, "data").absolutePath, "Test Laptop")
         laptop = other
         val file = File(dir, "hello.txt").apply { writeText("hello from the laptop") }
-        other.sendPathsWithCode(listOf(file.absolutePath))
         var waiting: CodeSend.Waiting? = null
-        compose.waitUntil(20_000) {
-            waiting = other.codeSendStatus() as? CodeSend.Waiting
-            waiting != null
+        try {
+            other.sendPathsWithCode(listOf(file.absolutePath))
+            compose.waitUntil(20_000) {
+                waiting = other.codeSendStatus() as? CodeSend.Waiting
+                waiting != null
+            }
+        } finally {
+            store.throwaway = appKeys
         }
         val code = waiting!!
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
