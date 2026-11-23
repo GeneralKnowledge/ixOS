@@ -28,7 +28,8 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun <A> ForgeAlertDialog(alert: ForgeAlert<A>?, onDismiss: () -> Unit, onAction: (A) -> Unit = {}) {
-    if (alert == null) return
+    // An alert can arrive while the app lock is up: it waits for the unlock.
+    if (alert == null || LocalForgeLocked.current) return
     val confirm = alert.buttons.firstOrNull { it.role != ForgeAlertButton.Role.CANCEL } ?: alert.buttons.first()
     val dismiss = alert.buttons.firstOrNull { it !== confirm }
     @Composable

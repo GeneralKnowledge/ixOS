@@ -60,6 +60,7 @@ import org.forgemobile.relay.kit.ForgeFailure
 import org.forgemobile.relay.kit.ForgeLoad
 import org.forgemobile.relay.kit.ForgeLoadView
 import org.forgemobile.relay.ui.theme.ForgeTheme
+import uniffi.relay_core.AuthenticationResult
 import kotlinx.coroutines.flow.StateFlow
 import uniffi.relay_core.deviceConversationId
 
@@ -119,14 +120,23 @@ fun RelayApp(app: RelayApplication) {
                     val chat by app.chat.collectAsState()
                     val link by app.link.collectAsState()
                     val chatState = chat?.state?.collectAsState()
-                    // The app lock is a Chats setting, as on the iPhone (Rust keeps it there).
+                    val chatProblem = app.host.core?.chatProblem
+                    // The app lock is a Chats setting, as on the iPhone (Rust keeps it there). If
+                    // Chats couldn't open, the setting can't be read, so the lock stays on: a phone
+                    // with no screen lock opens at once anyway.
                     ForgeAppLock(
                         state = app.appLock,
-                        enabled = chatState?.value?.appLock == true,
-                        canLock = { ForgeServices.biometrics.canLock },
-                        authenticate = { ForgeServices.biometrics.authenticate("Unlock Relay") },
+                        enabled = chatState?.value?.appLock ?: (chatProblem != null),
+                        canLock = { ForgeServices.isInstalled && ForgeServices.biometrics.canLock },
+                        authenticate = {
+                            if (ForgeServices.isInstalled) {
+                                ForgeServices.biometrics.authenticate("Unlock Relay")
+                            } else {
+                                AuthenticationResult.UNAVAILABLE
+                            }
+                        },
                     ) {
-                        RelayScreens(current, chat, app.host.core?.chatProblem, app.network, app.onScreen, link, app::takeLink, app.appLock::settingChanged)
+                        RelayScreens(current, chat, chatProblem, app.network, app.onScreen, link, app::takeLink, app.appLock::settingChanged)
                     }
                 }
                 status is ForgeHost.Status.Failed -> {

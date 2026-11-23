@@ -161,16 +161,20 @@ The lock itself (`kit/ForgeAppLock.kt`) is the Android form of
 at launch and after more than a minute away; the prompt's own trip off screen
 doesn't count. While the setting is on, the window has `FLAG_SECURE`, so the
 recent apps screen and screenshots show nothing, as the iPhone covers its
-snapshot. While locked, the content leaves the composition, so a dialog or
-menu it had open (each in its own window, which an overlay can't cover) closes
-too; what it keeps with `rememberSaveable` comes back on unlock. Back leaves the
-app. A prompt that answers "unavailable" opens the app only when the phone has
+snapshot. The lock screen is a window of its own, above the content and any
+dialog or menu it had open, so none of them can be touched; the content stays
+composed underneath, so a waiting code send, a draft or staged files survive.
+A dialog that can open by itself (an alert, a trust offer, a failed sign-up)
+checks `LocalForgeLocked` and waits for the unlock, since a window opened later
+would sit above the lock. If Chats couldn't open, the setting can't be read, so
+Relay stays locked. Back leaves the app. A prompt that answers "unavailable" opens the app only when the phone has
 no screen lock at all: a busy sensor on a locked phone stays locked. `ForgeAppLockState` is plain Kotlin, so JVM tests drive it
 with their own clock.
 
-Two lessons for the iPhone's `.forgeAppLock`, not changed here: it unlocks on
-any `.unavailable`, and its overlay doesn't cover a sheet or alert the content
-presented.
+Lessons for the iPhone's `.forgeAppLock`, not changed here: it unlocks on any
+`.unavailable`; its overlay doesn't cover a sheet or alert the content
+presented; and Relay turns the lock off when Chats isn't ready
+(`chat.phase == .ready && chat.appLock`).
 
 Not checked on a phone: the emulator in CI has no screen lock, so the switch
 stays off there, and WorkManager's real timing needs a device.

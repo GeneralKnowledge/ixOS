@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 import org.forgemobile.relay.ChatModel
 import org.forgemobile.relay.host.ForgeServices
 import org.forgemobile.relay.kit.ForgeFailure
+import org.forgemobile.relay.kit.LocalForgeLocked
 
 /** The servers the form suggests: one on the computer next to you (`make chat-server`). */
 object ChatServers {
@@ -212,7 +213,8 @@ fun ChatServerScreen(model: ChatModel, lockChanged: () -> Unit, back: () -> Unit
         }
     }
 
-    failure?.let { shown ->
+    // Sign-up can fail after the app has locked: the failure waits for the unlock.
+    failure?.takeUnless { LocalForgeLocked.current }?.let { shown ->
         AlertDialog(
             onDismissRequest = { failure = null },
             title = { Text(shown.title) },
