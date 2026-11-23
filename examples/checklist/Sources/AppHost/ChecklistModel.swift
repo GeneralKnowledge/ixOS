@@ -36,8 +36,33 @@ public enum Checklist {
         case .EmptyTitle?: return "Type something to add."
         case .TitleTooLong(let max)?: return "Keep it under \(max) characters."
         case .InUse?: return "The checklist is open somewhere else. Close the other copy and try again."
+        case .InvalidDay?: return "That isn't a day the checklist can use. Pick another."
         default: return ForgeErrors.describe(error)
         }
+    }
+}
+
+/// Due days as Rust keeps them: `YYYY-MM-DD` on the Gregorian calendar, in
+/// the phone's time zone. Always Gregorian, whatever calendar the person
+/// uses, so a Buddhist-calendar phone doesn't save the year 2569.
+public enum ChecklistDay {
+    static func calendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar
+    }
+
+    /// The local day `date` falls on.
+    public static func string(from date: Date) -> String {
+        let parts = calendar().dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    /// The start of a saved day, or nil if it isn't one.
+    public static func date(from day: String) -> Date? {
+        let parts = day.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar().date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 }
 
@@ -48,6 +73,12 @@ public enum Checklist {
 public final class ChecklistModel {
     public private(set) var items: [Item] = []
     public private(set) var summary = Summary(total: 0, done: 0)
+    /// What is overdue, due today and coming up, on today's local day.
+    public private(set) var agenda = Agenda(overdue: [], today: [], upcoming: [])
+    /// Today, as Rust compares due days. Read again with every reload, so
+    /// the agenda moves on after midnight once anything changes or the app
+    /// comes back.
+    public private(set) var today = ChecklistDay.string(from: Date())
     /// Set when a command fails; the view shows it and clears it.
     public var errorMessage: String?
 
@@ -63,6 +94,8 @@ public final class ChecklistModel {
     public func reload() {
         items = core.items()
         summary = core.summary()
+        today = ChecklistDay.string(from: Date())
+        agenda = core.agenda(today: today)
     }
 
     /// Adds an item; false (with `errorMessage` set) if it was refused.
@@ -78,6 +111,13 @@ public final class ChecklistModel {
     @discardableResult
     public func rename(_ item: Item, to title: String) async -> Bool {
         await perform { try await self.core.rename(id: item.id, title: title) }
+    }
+
+    /// Sets the day an item is due, or clears it with nil. Throws, so the
+    /// Due Date sheet can show a refusal itself.
+    public func setDue(_ item: Item, to date: Date?) async throws {
+        try await core.setDue(id: item.id, due: date.map(ChecklistDay.string(from:)))
+        reload()
     }
 
     public func remove(_ item: Item) async {

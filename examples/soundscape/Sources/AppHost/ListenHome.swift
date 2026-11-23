@@ -111,7 +111,7 @@ struct ListenHome: View {
                       identifier: "listen.popular") { track in
                     Button {
                         let index = popular.firstIndex { $0.id == track.id } ?? 0
-                        player.play(model.queue(popular), from: index)
+                        player.play(model.queue(popular), from: model.queueIndex(index, in: popular))
                     } label: {
                         ArtworkTile(title: track.title, subtitle: track.artist, url: track.artworkUrl)
                     }
@@ -174,7 +174,7 @@ struct ListenHome: View {
     private func trackTile(_ track: LibraryTrack, in tracks: [LibraryTrack], identifier: String) -> some View {
         Button {
             let index = tracks.firstIndex { $0.id == track.id } ?? 0
-            player.play(model.queue(tracks), from: index)
+            player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
         } label: {
             ArtworkTile(title: track.title, subtitle: track.artist, url: track.artworkUrl,
                         download: DownloadBadge(model: model, track: track).state)

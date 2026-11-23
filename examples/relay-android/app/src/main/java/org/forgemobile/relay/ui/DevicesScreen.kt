@@ -43,7 +43,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,12 +60,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.forgemobile.relay.RelayErrors
 import org.forgemobile.relay.RelayFormat
 import org.forgemobile.relay.RelayModel
-import org.forgemobile.relay.RelayNetwork
 import org.forgemobile.relay.ServerChoice
 import org.forgemobile.relay.ui.theme.Forge
 import org.forgemobile.relay.ui.theme.ForgeTextRole
@@ -85,12 +82,9 @@ import uniffi.relay_core.TransferStatus
 @Composable
 fun DevicesScreen(
     model: RelayModel,
-    network: RelayNetwork,
-    onScreen: StateFlow<Boolean>,
     open: (Route) -> Unit,
 ) {
     val state by model.state.collectAsState()
-    val visible by onScreen.collectAsState()
     val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     var renaming by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
@@ -126,24 +120,6 @@ fun DevicesScreen(
             model.refreshServerHealth()
         }
     }
-    // Open to trusted devices while on screen: advertise, and look for them. Android stops
-    // neither in the background by itself, so leaving the screen withdraws both.
-    DisposableEffect(model, visible) {
-        val job = if (visible) {
-            scope.launch {
-                network.watchDevices(model::devicesNearby)
-                network.advertiseDevice(model.deviceService())
-            }
-        } else {
-            null
-        }
-        onDispose {
-            job?.cancel()
-            network.advertiseDevice(null)
-            network.stopWatchingDevices()
-        }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(

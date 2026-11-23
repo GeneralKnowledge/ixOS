@@ -439,7 +439,7 @@ impl CollectionFile {
     }
 }
 
-fn no_playlist(id: u64) -> SoundscapeError {
+pub(crate) fn no_playlist(id: u64) -> SoundscapeError {
     SoundscapeError::NotInLibrary {
         id: format!("playlist:{id}"),
     }

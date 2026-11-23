@@ -2711,6 +2711,16 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func fetchAttachment(attachmentId: String) async throws  -> String
     
     /**
+     * Joins a room host's rooms with a word code from `chat-server
+     * invite` (N4). `host` is the host's address: its server URL
+     * (`http://…`, asked where its rooms are) or its key (64 hex
+     * characters); empty uses the current account's server. The account
+     * is this device's key there; a different account on this device is
+     * signed out first. Needs Relay (`use_relay`). Emits `AccountChanged`.
+     */
+    func joinRoom(host: String, code: String, displayName: String) async throws  -> ChatAccount
+    
+    /**
      * What the runtime found at open (unfinished background work).
      */
     func launchReport()  -> LaunchReport
@@ -3209,6 +3219,30 @@ open func fetchAttachment(attachmentId: String)async throws  -> String  {
             completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Joins a room host's rooms with a word code from `chat-server
+     * invite` (N4). `host` is the host's address: its server URL
+     * (`http://…`, asked where its rooms are) or its key (64 hex
+     * characters); empty uses the current account's server. The account
+     * is this device's key there; a different account on this device is
+     * signed out first. Needs Relay (`use_relay`). Emits `AccountChanged`.
+     */
+open func joinRoom(host: String, code: String, displayName: String)async throws  -> ChatAccount  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_join_room(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(host),FfiConverterString.lower(code),FfiConverterString.lower(displayName)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatAccount_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
 }
@@ -5043,7 +5077,9 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */
     func cancelTransfer(id: UInt64) 
     
@@ -5510,7 +5546,9 @@ open func cancelCodeSend()  {try! rustCall() {
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */
 open func cancelTransfer(id: UInt64)  {try! rustCall() {
         uniffiCallStatus in
@@ -7680,16 +7718,26 @@ public struct ChatAccount: Equatable, Hashable {
      * The chat server this account lives on.
      */
     public var serverUrl: String
+    /**
+     * Its rooms come over Relay's encrypted connection, and the account
+     * is this device's key there (N4); false on the old HTTP API.
+     */
+    public var onRelay: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(userId: String, displayName: String, 
         /**
          * The chat server this account lives on.
-         */serverUrl: String) {
+         */serverUrl: String, 
+        /**
+         * Its rooms come over Relay's encrypted connection, and the account
+         * is this device's key there (N4); false on the old HTTP API.
+         */onRelay: Bool = false) {
         self.userId = userId
         self.displayName = displayName
         self.serverUrl = serverUrl
+        self.onRelay = onRelay
     }
 
     
@@ -7710,7 +7758,8 @@ public struct FfiConverterTypeChatAccount: FfiConverterRustBuffer {
             try ChatAccount(
                 userId: FfiConverterString.read(from: &buf), 
                 displayName: FfiConverterString.read(from: &buf), 
-                serverUrl: FfiConverterString.read(from: &buf)
+                serverUrl: FfiConverterString.read(from: &buf), 
+                onRelay: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -7718,6 +7767,7 @@ public struct FfiConverterTypeChatAccount: FfiConverterRustBuffer {
         FfiConverterString.write(value.userId, into: &buf)
         FfiConverterString.write(value.displayName, into: &buf)
         FfiConverterString.write(value.serverUrl, into: &buf)
+        FfiConverterBool.write(value.onRelay, into: &buf)
     }
 }
 
@@ -9888,6 +9938,74 @@ public func FfiConverterTypeRelayServers_lower(_ value: RelayServers) -> RustBuf
 
 
 /**
+ * Where a room host is: its key, and how to reach it. With no relay
+ * named, this device's own relay is used (as for the mailbox).
+ */
+public struct RoomHost: Equatable, Hashable {
+    public var endpointId: String
+    public var relayUrl: String?
+    /**
+     * Direct addresses (`ip:port`) to try as well, e.g. on the same Wi-Fi.
+     */
+    public var addresses: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(endpointId: String, relayUrl: String?, 
+        /**
+         * Direct addresses (`ip:port`) to try as well, e.g. on the same Wi-Fi.
+         */addresses: [String]) {
+        self.endpointId = endpointId
+        self.relayUrl = relayUrl
+        self.addresses = addresses
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RoomHost: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRoomHost: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RoomHost {
+        return
+            try RoomHost(
+                endpointId: FfiConverterString.read(from: &buf), 
+                relayUrl: FfiConverterOptionString.read(from: &buf), 
+                addresses: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RoomHost, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.endpointId, into: &buf)
+        FfiConverterOptionString.write(value.relayUrl, into: &buf)
+        FfiConverterSequenceString.write(value.addresses, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoomHost_lift(_ buf: RustBuffer) throws -> RoomHost {
+    return try FfiConverterTypeRoomHost.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoomHost_lower(_ value: RoomHost) -> RustBuffer {
+    return FfiConverterTypeRoomHost.lower(value)
+}
+
+
+/**
  * Saved data Relay couldn't read when it opened: what happened, in words,
  * and where it is kept on this device.
  */
@@ -11358,7 +11476,16 @@ enum ChatError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case UnsupportedOnHost(detail: String
     )
+    /**
+     * Refused before anything was kept: the composer gives the text back.
+     */
     case InvalidInput(reason: String
+    )
+    /**
+     * Kept on this device and shown as not sent, but it couldn't go for a
+     * reason a retry won't fix by itself (one of its files is gone).
+     */
+    case NotSent(reason: String
     )
     /**
      * No account yet: call `sign_up` first.
@@ -11434,18 +11561,21 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
         case 8: return .InvalidInput(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 9: return .NotSignedIn
-        case 10: return .Unauthorized(
+        case 9: return .NotSent(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 11: return .Storage(
+        case 10: return .NotSignedIn
+        case 11: return .Unauthorized(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 12: return .InUse(
+        case 12: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 13: return .ShutDown
-        case 14: return .Internal(
+        case 13: return .InUse(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 14: return .ShutDown
+        case 15: return .Internal(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -11500,31 +11630,36 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .NotSignedIn:
+        case let .NotSent(reason):
             writeInt(&buf, Int32(9))
-        
-        
-        case let .Unauthorized(reason):
-            writeInt(&buf, Int32(10))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Storage(reason):
+        case .NotSignedIn:
+            writeInt(&buf, Int32(10))
+        
+        
+        case let .Unauthorized(reason):
             writeInt(&buf, Int32(11))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .InUse(reason):
+        case let .Storage(reason):
             writeInt(&buf, Int32(12))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .ShutDown:
+        case let .InUse(reason):
             writeInt(&buf, Int32(13))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(14))
         
         
         case let .Internal(reason):
-            writeInt(&buf, Int32(14))
+            writeInt(&buf, Int32(15))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -13757,6 +13892,12 @@ public enum TransferStatus: Equatable, Hashable {
      */
     case waiting
     /**
+     * Left sealed in the recipient's mailbox, collected the next time it
+     * opens Relay. It can no longer be cancelled: it is out of this
+     * device's hands.
+     */
+    case inMailbox
+    /**
      * Bytes so far, out of the item's size.
      */
     case inProgress(done: UInt64
@@ -13787,12 +13928,14 @@ public struct FfiConverterTypeTransferStatus: FfiConverterRustBuffer {
         
         case 1: return .waiting
         
-        case 2: return .inProgress(done: try FfiConverterUInt64.read(from: &buf)
+        case 2: return .inMailbox
+        
+        case 3: return .inProgress(done: try FfiConverterUInt64.read(from: &buf)
         )
         
-        case 3: return .done
+        case 4: return .done
         
-        case 4: return .failed(reason: try FfiConverterString.read(from: &buf)
+        case 5: return .failed(reason: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -13807,17 +13950,21 @@ public struct FfiConverterTypeTransferStatus: FfiConverterRustBuffer {
             writeInt(&buf, Int32(1))
         
         
-        case let .inProgress(done):
+        case .inMailbox:
             writeInt(&buf, Int32(2))
+        
+        
+        case let .inProgress(done):
+            writeInt(&buf, Int32(3))
             FfiConverterUInt64.write(done, into: &buf)
             
         
         case .done:
-            writeInt(&buf, Int32(3))
+            writeInt(&buf, Int32(4))
         
         
         case let .failed(reason):
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -14958,6 +15105,27 @@ public func appLockMethod() -> String?  {
 })
 }
 /**
+ * The most files one message may carry.
+ */
+public func chatMaxAttachmentsPerMessage() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_chat_max_attachments_per_message(uniffiCallStatus
+    )
+})
+}
+/**
+ * The longest message text, in characters (Unicode scalars), so the
+ * composer can say so before Rust refuses it.
+ */
+public func chatMaxMessageChars() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_chat_max_message_chars(uniffiCallStatus
+    )
+})
+}
+/**
  * The deep link on a message's notification
  * (`forgechat://conversation/<room>?message=<id>`).
  */
@@ -15199,6 +15367,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_func_app_lock_method() != 35032) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_func_chat_max_attachments_per_message() != 15158) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_chat_max_message_chars() != 35942) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_func_chat_message_link() != 46272) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -15271,7 +15445,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_cancel_code_send() != 14930) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_cancel_transfer() != 49543) {
+    if (uniffi_relay_core_checksum_method_relaycore_cancel_transfer() != 50284) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_code_receive_size() != 28847) {
@@ -15470,6 +15644,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_fetch_attachment() != 4397) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_join_room() != 55862) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_launch_report() != 49427) {

@@ -550,8 +550,9 @@ struct ChatView: View {
     }
 }
 
-/// Most files one message may carry (Rust's `MAX_ATTACHMENTS_PER_MESSAGE`).
-let MAX_ATTACHMENTS_PER_MESSAGE_SWIFT = 10
+/// Most files one message may carry, from Rust
+/// (`MAX_ATTACHMENTS_PER_MESSAGE`).
+let MAX_ATTACHMENTS_PER_MESSAGE_SWIFT = Int(chatMaxAttachmentsPerMessage())
 
 /// The reactions offered at the top of a bubble's menu.
 let quickReactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
@@ -1102,7 +1103,11 @@ private struct MessageBubble: View {
         for reaction in message.reactions {
             text += ", \(reaction.emoji) \(reaction.count)"
         }
-        if let delivery { text += ", \(DeliveryLabel.text(delivery))" }
+        if model.deleting.contains(message.id) {
+            text += ", deleting"
+        } else if let delivery {
+            text += ", \(DeliveryLabel.text(delivery))"
+        }
         return text
     }
 }

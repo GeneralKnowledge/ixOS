@@ -6,13 +6,13 @@
 # no identifier (gap `searchable-identifier`), so a person checks it.
 
 name = "Settings: hide read articles"
-app = "org.forgemobile.agentlab"
+app = "org.forgemobile.devicelab"
 
 [[step]]
 terminate = {}
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData"] }
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "commonplace"] }
 
 [[step]]
 tap = { id = "feeds.add" }

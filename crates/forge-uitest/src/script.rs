@@ -2805,7 +2805,8 @@ mod example_files {
         assert_eq!(m0.steps.len(), 12);
     }
 
-    /// Good Dog's journey (GD1) and guided session (GD-7) tests.
+    /// Good Dog's journey (GD1) and guided session (GD-7) tests, run in
+    /// Device Lab like every hosted app's.
     #[test]
     fn good_dog_tests_parse() {
         for (file, steps) in [("journey.toml", 29), ("guided.toml", 36)] {
@@ -2813,7 +2814,7 @@ mod example_files {
                 .join("../../examples/good-dog/uitests")
                 .join(file);
             let script = super::Script::load(&path).unwrap();
-            assert_eq!(script.app, "org.forgemobile.gooddog", "{file}");
+            assert_eq!(script.app, "org.forgemobile.devicelab", "{file}");
             assert_eq!(script.steps.len(), steps, "{file}");
         }
     }
@@ -2830,7 +2831,7 @@ mod example_files {
             "mark-all-read.toml",
         ] {
             let script = super::Script::load(&dir.join(file)).unwrap();
-            assert_eq!(script.app, "org.forgemobile.agentlab", "{file}");
+            assert_eq!(script.app, "org.forgemobile.devicelab", "{file}");
         }
         let flow = std::fs::read_to_string(dir.join("subscribe-and-read.toml")).unwrap();
         let relaunch = flow.rfind("-ForgeKeepTestData").unwrap();

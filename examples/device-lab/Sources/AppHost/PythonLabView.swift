@@ -1,6 +1,7 @@
 @preconcurrency import ForgeFFI
 import SwiftUI
 import ForgeUI
+import UniformTypeIdentifiers
 
 /// Python Lab: a project of Python files, the open one in the editor (saved
 /// as you type), and Run running it on the phone with the embedded CPython
@@ -15,14 +16,26 @@ struct PythonLabView: View {
 
     var body: some View {
         List {
+            if model.isLockedByBonsai {
+                BonsaiLockBanner()
+            }
             if model.hasWorkspace {
                 projectSection
             }
             Section {
+                if model.openFiles.count > 1 {
+                    PythonFileTabs(model: model)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
+                }
                 PythonCodeEditor(
                     text: $model.code,
-                    isEditable: !(model.hasWorkspace && model.openFile == nil),
-                    accessibilityLabel: model.openFile.map { "Python file \($0)" } ?? "Python script")
+                    isEditable: !(model.hasWorkspace && model.openFile == nil) && !model.isLockedByBonsai,
+                    accessibilityLabel: model.openFile.map { "Python file \($0)" } ?? "Python script",
+                    goTo: model.lineRequest,
+                    breakpoints: model.breakpointLines,
+                    pausedLine: model.pausedLine,
+                    onToggleBreakpoint: model.hasWorkspace && model.openFile != nil
+                        ? { model.toggleBreakpoint(line: $0) } : nil)
                     .frame(minHeight: 320)
                     .listRowInsets(EdgeInsets())
                 Menu {
@@ -41,15 +54,22 @@ struct PythonLabView: View {
                     ForgeButton(LocalizedStringKey(runTitle), systemImage: "play.fill") {
                         await model.run()
                     }
-                    .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil))
+                    .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil) || model.isLockedByBonsai)
                     .accessibilityIdentifier("pythonLab.run")
+                    if model.hasWorkspace {
+                        ForgeButton(LocalizedStringKey(debugTitle), systemImage: "ladybug") {
+                            await model.run(debugging: true)
+                        }
+                        .disabled(!model.hasPython || model.fileToRun == nil || model.isLockedByBonsai)
+                        .accessibilityIdentifier("pythonLab.debug")
+                    }
                 }
             } header: {
                 Text(model.openFile ?? "Script")
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     saveLine
-                    Text("Runs on this iPhone with CPython. If the last line is an expression, its value is shown. A script is stopped after \(model.timeLimit.components.seconds) s of running; time spent waiting for your answer to input() doesn't count.")
+                    Text("Runs on this iPhone with CPython. If the last line is an expression, its value is shown. A script is stopped after \(model.timeLimit.components.seconds) s of running; time spent waiting for your answer to input() doesn't count." + (model.hasWorkspace ? " Tap a line number to set a breakpoint, then Debug to pause there." : ""))
                 }
             }
             if let error = model.error ?? model.listError {
@@ -57,6 +77,9 @@ struct PythonLabView: View {
                     Text(error).font(.footnote).forgeForeground(.danger)
                         .accessibilityIdentifier("pythonLab.error")
                 }
+            }
+            if model.isDebugging {
+                PythonDebugSection(model: model)
             }
             consoleSection
             if model.hasWorkspace {
@@ -71,6 +94,14 @@ struct PythonLabView: View {
                     Text(unavailable).font(.footnote).forgeForeground(.danger)
                         .accessibilityIdentifier("pythonLab.unavailable")
                 }
+                if let packages = model.packages {
+                    NavigationLink {
+                        PythonPackagesView(model: packages)
+                    } label: {
+                        LabeledContent("Packages", value: "\(packages.installed.count)")
+                    }
+                    .accessibilityIdentifier("pythonLab.packages")
+                }
             } header: {
                 Text("Interpreter")
             }
@@ -81,9 +112,16 @@ struct PythonLabView: View {
         .task {
             model.reloadProjects()
             model.loadArtifacts()
+            // Bonsai may have changed the open file while this screen was
+            // closed; edits not yet saved are kept.
+            model.reloadFromDisk()
             await model.prepare()
         }
         .onDisappear { model.flush() }
+        .onChange(of: model.isLockedByBonsai) { _, locked in
+            // Save before Bonsai reads the files; read its work after.
+            if locked { model.flush() } else { model.reloadFromDisk() }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { model.flush() }
         }
@@ -113,6 +151,19 @@ struct PythonLabView: View {
                 Text("Tap Run to see the output here.")
                     .foregroundStyle(.secondary)
             }
+            // Where the error happened, to open: the last line is where it
+            // was raised.
+            ForEach(Array(model.errorFrames.reversed().enumerated()), id: \.offset) { index, frame in
+                Button {
+                    model.show(frame)
+                } label: {
+                    Label(
+                        "\(frame.file), line \(frame.line)\(frame.function == "<module>" || frame.function.isEmpty ? "" : " in \(frame.function)")",
+                        systemImage: index == 0 ? "exclamationmark.triangle" : "arrow.turn.down.right")
+                }
+                .accessibilityHint("Opens the file at this line")
+                .accessibilityIdentifier("pythonLab.frame.\(index)")
+            }
             if model.waitingForInput {
                 HStack {
                     TextField("Your answer", text: $answer)
@@ -139,10 +190,21 @@ struct PythonLabView: View {
                     ForgeButton("Rerun", systemImage: "arrow.clockwise") {
                         await model.run()
                     }
-                    .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil))
+                    .disabled(!model.hasPython || (model.hasWorkspace && model.fileToRun == nil) || model.isLockedByBonsai)
                     .accessibilityIdentifier("pythonLab.rerun")
                 }
                 Spacer()
+                if model.hasWorkspace {
+                    NavigationLink {
+                        PythonRunHistoryView(model: model)
+                    } label: {
+                        Label("History", systemImage: "clock")
+                    }
+                    .fixedSize()
+                    .accessibilityLabel("Run history, \(model.runs.count) runs")
+                    .accessibilityIdentifier("pythonLab.history")
+                    Spacer()
+                }
                 Button("Clear", systemImage: "trash") { model.clearConsole() }
                     .disabled(model.console.isEmpty)
                     .accessibilityIdentifier("pythonLab.clear")
@@ -190,6 +252,15 @@ struct PythonLabView: View {
     private func sendAnswer() {
         if model.sendInput(answer) {
             answer = ""
+        }
+    }
+
+    /// "Debug", or how many breakpoints it stops at.
+    private var debugTitle: String {
+        switch model.breakpoints.count {
+        case 0: "Debug"
+        case 1: "Debug (1 breakpoint)"
+        case let n: "Debug (\(n) breakpoints)"
         }
     }
 
@@ -244,7 +315,7 @@ struct PythonLabView: View {
     @ViewBuilder private var artifactsSection: some View {
         Section {
             if model.madeByLastRun.isEmpty {
-                Text(model.succeeded == nil ? "Images a script saves, like plot.png, show here." : "The last run made no images.")
+                Text(model.succeeded == nil ? "Files a script saves, like plot.png or results.csv, show here." : "The last run made no files.")
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("pythonLab.artifacts.none")
             }
@@ -261,7 +332,7 @@ struct PythonLabView: View {
                     .navigationTitle("Artifacts")
                     .inlineNavigationTitle()
                 } label: {
-                    LabeledContent("All Images", value: "\(model.artifacts.count)")
+                    LabeledContent("All Outputs", value: "\(model.artifacts.count)")
                 }
                 .accessibilityIdentifier("pythonLab.artifacts.all")
             }
@@ -369,9 +440,26 @@ struct PythonFilesView: View {
     @State private var newFolderIn: NameTarget?
     @State private var renaming: NameTarget?
     @State private var deleting: WorkspaceEntry?
+    @State private var importing = false
+    @State private var importRefusal: String?
+    /// The project's .zip, once exported, for the share button.
+    @State private var exported: URL?
 
     var body: some View {
         List {
+            if model.isLockedByBonsai {
+                BonsaiLockBanner()
+            }
+            if let exported {
+                ShareLink(item: exported) {
+                    Label("Share \(exported.lastPathComponent)", systemImage: "square.and.arrow.up")
+                }
+                .accessibilityIdentifier("pythonLab.files.shareExport")
+            }
+            if let importRefusal {
+                Text(importRefusal).font(.footnote).forgeForeground(.danger)
+                    .accessibilityIdentifier("pythonLab.files.importError")
+            }
             // A file that wouldn't open, or a list that couldn't be read,
             // says so here, not on the screen underneath.
             if let error = model.listError ?? model.error {
@@ -384,10 +472,12 @@ struct PythonFilesView: View {
                 row(entry)
                     .forgeRowActions {
                         Button("Delete", systemImage: "trash", role: .destructive) { deleting = entry }
+                            .disabled(model.isLockedByBonsai)
                             .accessibilityIdentifier("pythonLab.file.delete")
                         Button("Rename", systemImage: "pencil") {
                             renaming = NameTarget(id: entry.path, name: Self.name(entry.path))
                         }
+                        .disabled(model.isLockedByBonsai)
                         .accessibilityIdentifier("pythonLab.file.rename")
                         if entry.isFolder {
                             Button("New File Here", systemImage: "doc.badge.plus") {
@@ -416,10 +506,28 @@ struct PythonFilesView: View {
                     .accessibilityIdentifier("pythonLab.files.newFile")
                 Button("New Folder", systemImage: "folder.badge.plus") { newFolderIn = NameTarget(id: "", name: "") }
                     .accessibilityIdentifier("pythonLab.files.newFolder")
+                Button("Import from Files", systemImage: "square.and.arrow.down") { importing = true }
+                    .accessibilityIdentifier("pythonLab.files.import")
             } label: {
                 Label("Add", systemImage: "plus")
             }
+            .disabled(model.isLockedByBonsai)
             .accessibilityIdentifier("pythonLab.files.add")
+            Button("Export Project", systemImage: "square.and.arrow.up") {
+                exported = model.exportProject()
+            }
+            .accessibilityLabel("Export \(model.project) as a zip file")
+            .accessibilityIdentifier("pythonLab.files.export")
+        }
+        .fileImporter(
+            isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls):
+                importRefusal = model.importFiles(urls)
+            case .failure(let error):
+                importRefusal = error.localizedDescription
+            }
         }
         .onAppear {
             model.flush()
@@ -483,7 +591,10 @@ struct PythonFilesView: View {
         .padding(.leading, CGFloat(depth) * 16)
         if entry.isFolder {
             label.accessibilityIdentifier("pythonLab.folder.\(entry.path)")
-        } else if let artifact = model.artifacts.first(where: { $0.path == entry.path }) {
+        } else if let artifact = model.artifacts.first(where: { $0.path == entry.path }),
+                  !ArtifactKind.editable.contains(artifact.kind) {
+            // Text, JSON and CSV open in the editor here; previews are under
+            // Artifacts.
             NavigationLink {
                 ArtifactDetailView(artifact: artifact, url: model.url(of: artifact))
             } label: {
@@ -514,5 +625,286 @@ struct PythonFilesView: View {
 
     static func name(_ path: String) -> String {
         path.split(separator: "/").last.map(String.init) ?? path
+    }
+}
+
+/// Says Bonsai Harness is working in the open project, which is read-only
+/// until it finishes (PL1e).
+struct BonsaiLockBanner: View {
+    var body: some View {
+        Label(
+            "Bonsai is working in this project. It's read-only until Bonsai finishes, so you and Bonsai never change a file at once.",
+            systemImage: "hammer"
+        )
+        .font(.footnote)
+        .forgeForeground(.warning)
+        .accessibilityIdentifier("pythonLab.bonsaiWorking")
+    }
+}
+
+/// Pure-Python packages from PyPI (PL2a): install by name, with what it
+/// needs; remove with a swipe.
+struct PythonPackagesView: View {
+    @Bindable var model: PythonPackagesModel
+
+    var body: some View {
+        List {
+            Section {
+                TextField("Package name, like rich or attrs", text: $model.name)
+                    .noAutocapitalization()
+                    .autocorrectionDisabled()
+                    .submitLabel(.go)
+                    .onSubmit { model.startInstalling() }
+                    .disabled(model.isWorking)
+                    .accessibilityIdentifier("pythonLab.packages.name")
+                if model.isWorking {
+                    ProgressView("Installing…")
+                        .accessibilityIdentifier("pythonLab.packages.working")
+                } else {
+                    ForgeButton("Install", systemImage: "arrow.down.circle") {
+                        await model.install()
+                    }
+                    .disabled(model.name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityIdentifier("pythonLab.packages.install")
+                }
+                ForEach(model.log, id: \.self) { line in
+                    Text(line).font(.footnote)
+                }
+                if let error = model.error {
+                    Text(error).font(.footnote).forgeForeground(.danger)
+                        .accessibilityIdentifier("pythonLab.packages.error")
+                }
+            } footer: {
+                Text("Pure-Python packages from PyPI, with the packages they need. Packages with compiled code (numpy, pandas) can't be installed here: iOS runs compiled code only when it's built into the app. A package already imported keeps its old version until Device Lab restarts.")
+            }
+            Section {
+                if model.installed.isEmpty {
+                    Text("None yet.").foregroundStyle(.secondary)
+                }
+                ForEach(model.installed, id: \.name) { package in
+                    row(package)
+                        .forgeRowActions {
+                            Button("Remove", systemImage: "trash", role: .destructive) {
+                                model.remove(package)
+                            }
+                            .disabled(model.isWorking)
+                            .accessibilityIdentifier("pythonLab.packages.remove")
+                        }
+                }
+            } header: {
+                Text("Installed")
+            }
+            if !model.bundled.isEmpty {
+                Section {
+                    ForEach(model.bundled, id: \.name) { row($0) }
+                } header: {
+                    Text("Built into this app")
+                }
+            }
+        }
+        .groupedList()
+        .navigationTitle("Packages")
+        .inlineNavigationTitle()
+        .onAppear { model.reload() }
+    }
+
+    private func row(_ package: InstalledPackage) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledContent(package.name, value: package.version)
+            if !package.summary.isEmpty {
+                Text(package.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("pythonLab.packages.row.\(package.name)")
+    }
+}
+
+/// The open project's last runs (PL2c): which file, when, how it ended and
+/// what it printed.
+struct PythonRunHistoryView: View {
+    @Bindable var model: PythonLabModel
+
+    var body: some View {
+        List {
+            if model.runs.isEmpty {
+                Text("No runs in \(model.project) yet.").foregroundStyle(.secondary)
+            }
+            ForEach(Array(model.runs.enumerated()), id: \.offset) { index, run in
+                NavigationLink {
+                    ScrollView {
+                        Text(run.output.isEmpty ? "(no output)" : run.output)
+                            .font(.system(.footnote, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .navigationTitle(run.file)
+                    .inlineNavigationTitle()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: run.ok ? "checkmark.circle" : "xmark.octagon")
+                            .forgeForeground(run.ok ? .success : .danger)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(run.file)
+                            Text(Self.summary(run)).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityValue(run.ok ? "Finished" : "Ended with an error")
+                }
+                .accessibilityIdentifier("pythonLab.history.\(index)")
+            }
+        }
+        .groupedList()
+        .navigationTitle("History")
+        .inlineNavigationTitle()
+        .toolbar {
+            Button("Clear History", systemImage: "trash", role: .destructive) { model.clearRuns() }
+                .disabled(model.runs.isEmpty)
+                .accessibilityIdentifier("pythonLab.history.clear")
+        }
+        .onAppear { model.loadRuns() }
+    }
+
+    static func summary(_ run: RunRecord) -> String {
+        let date = Date(timeIntervalSince1970: Double(run.startedMs) / 1000)
+        let when = date.formatted(date: .abbreviated, time: .shortened)
+        let how = run.timedOut ? "stopped at the time limit" : run.ok ? "finished" : "error"
+        return "\(when), \(Format.number(run.seconds, digits: 2)) s, \(how)"
+    }
+}
+
+/// The open files as tabs above the editor (PL2): tap one to switch, its
+/// cross to close it. Shown once more than one file is open.
+struct PythonFileTabs: View {
+    @Bindable var model: PythonLabModel
+    @Environment(\.forgeTheme) private var theme
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(model.openFiles, id: \.self) { path in
+                        tab(path)
+                    }
+                }
+            }
+            .onChange(of: model.openFile, initial: true) { _, current in
+                if let current {
+                    withAnimation { proxy.scrollTo(current) }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Open files")
+        .accessibilityIdentifier("pythonLab.tabs")
+    }
+
+    private func tab(_ path: String) -> some View {
+        let current = path == model.openFile
+        let name = path.split(separator: "/").last.map(String.init) ?? path
+        return HStack(spacing: 2) {
+            Button(name) { model.open(file: path) }
+                .font(.footnote.monospaced())
+                .lineLimit(1)
+                .accessibilityLabel(current ? "\(path), open" : path)
+                .accessibilityIdentifier("pythonLab.tab.\(path)")
+            Button("Close \(path)", systemImage: "xmark") { model.close(file: path) }
+                .labelStyle(.iconOnly)
+                .font(.caption2)
+                .accessibilityIdentifier("pythonLab.tab.close.\(path)")
+        }
+        // ForgeUI's choice chip: the open file is the chosen one.
+        .forgeChoiceLook(isSelected: current)
+        .controlSize(.small)
+        .buttonStyle(.borderless)
+        .id(path)
+    }
+}
+
+/// While Debug runs (PL2f): where it paused, the controls, the paused
+/// frame's variables and the call stack. Tapping a frame opens its line.
+struct PythonDebugSection: View {
+    @Bindable var model: PythonLabModel
+
+    var body: some View {
+        Section {
+            if let pause = model.debugPause, let top = pause.stack.last {
+                Button {
+                    model.show(top)
+                } label: {
+                    LabeledContent("Paused at", value: "\(top.file), line \(top.line) in \(top.function)")
+                }
+                .accessibilityIdentifier("pythonLab.debug.location")
+                controls
+                if pause.variables.isEmpty {
+                    Text("No variables here yet.").foregroundStyle(.secondary)
+                        .accessibilityIdentifier("pythonLab.debug.noVariables")
+                }
+                ForEach(pause.variables, id: \.name) { variable in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(variable.name).font(.body.monospaced())
+                            Spacer()
+                            Text(variable.kind).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Text(variable.value)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(4)
+                            .textSelection(.enabled)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("pythonLab.debug.variable.\(variable.name)")
+                }
+                if pause.moreVariables {
+                    Text("Only the first 100 variables are shown.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if pause.stack.count > 1 {
+                    DisclosureGroup("Call Stack (\(pause.stack.count))") {
+                        ForEach(Array(pause.stack.reversed().enumerated()), id: \.offset) { index, frame in
+                            Button("\(frame.function), \(frame.file) line \(frame.line)") {
+                                model.show(frame)
+                            }
+                            .font(.footnote.monospaced())
+                            .accessibilityIdentifier("pythonLab.debug.frame.\(index)")
+                        }
+                    }
+                    .accessibilityIdentifier("pythonLab.debug.stack")
+                }
+            } else {
+                Label("Running until a breakpoint…", systemImage: "ladybug")
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("pythonLab.debug.running")
+            }
+        } header: {
+            Text("Debug")
+        } footer: {
+            Text("Step Over runs this line; Step Into goes into a function it calls; Step Out runs to the caller. Only your project's files pause. Breakpoints stay on their line numbers as you edit.")
+        }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 8) {
+            control("Continue", "play.fill", .continue, id: "continue")
+            control("Step Over", "arrow.turn.down.right", .next, id: "next")
+            control("Step Into", "arrow.down.to.line", .step, id: "step")
+            control("Step Out", "arrow.up.to.line", .out, id: "out")
+        }
+        .buttonStyle(.bordered)
+        .labelStyle(.iconOnly)
+        .disabled(!model.awaitingDebugCommand)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func control(
+        _ title: String, _ symbol: String, _ command: PythonLabModel.DebugCommand, id: String
+    ) -> some View {
+        Button(title, systemImage: symbol) { model.debug(command) }
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("pythonLab.debug.\(id)")
     }
 }

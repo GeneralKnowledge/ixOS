@@ -7,19 +7,45 @@ import org.forgemobile.relay.host.ForgeEnvironment
 import uniffi.forge_app.AppPhase
 import uniffi.forge_app.LaunchReport
 import uniffi.forge_app.RuntimeEvents
+import java.io.File
+import uniffi.relay_core.ChatCore
+import uniffi.relay_core.ChatException
 import uniffi.relay_core.RelayCore
 import uniffi.relay_core.RelayException
 
-/** Relay's Rust core, as the host sees it. */
-class RelayHostCore(val core: RelayCore) : ForgeCore {
-    override fun setPhase(phase: AppPhase) = core.setPhase(phase)
+/**
+ * Relay's Rust cores, as the host sees them: Relay's own, and the conversations (chat-core,
+ * which lists each trusted device as a conversation). The iPhone app gives each a ForgeHost;
+ * here they open and close together, so the Chats tab never outlives the devices it talks to.
+ * Relay's runtime events drive the host; Chats has its own event stream (`chatEvents`).
+ */
+class RelayHostCore(
+    val core: RelayCore,
+    /** Null when the conversations couldn't open ([chatProblem] says why); Devices still work. */
+    val chat: ChatCore?,
+    val chatProblem: String? = null,
+) : ForgeCore {
+    override fun setPhase(phase: AppPhase) {
+        core.setPhase(phase)
+        chat?.setPhase(phase)
+    }
     override fun events(): RuntimeEvents? = core.events()
     override fun revision(): ULong = core.revision()
-    override fun backgroundWorkPending(): Boolean = core.backgroundWorkPending()
-    override fun backgroundTimeExpired() = core.backgroundTimeExpired()
+    override fun backgroundWorkPending(): Boolean =
+        core.backgroundWorkPending() || chat?.backgroundWorkPending() == true
+    override fun backgroundTimeExpired() {
+        chat?.backgroundTimeExpired()
+        core.backgroundTimeExpired()
+    }
     override fun launchReport(): LaunchReport = core.launchReport()
-    override fun shutdown() = core.shutdown()
-    override fun close() = core.destroy()
+    override fun shutdown() {
+        chat?.shutdown()
+        core.shutdown()
+    }
+    override fun close() {
+        chat?.destroy()
+        core.destroy()
+    }
 }
 
 /**
@@ -34,7 +60,28 @@ class RelayHostCore(val core: RelayCore) : ForgeCore {
 class RelayOpener(private val deviceName: () -> String) {
     fun open(env: ForgeEnvironment, offline: Boolean): RelayHostCore {
         // Received files stay in Relay's own folder (`codes/received`); the history opens them.
-        return RelayHostCore(openWaitingForClose(env.dataDirectory, deviceName(), offline))
+        val relay = openWaitingForClose(env.dataDirectory, deviceName(), offline)
+        // The conversations beside it (`<app>/chat`), inside the folder the FileProvider shares,
+        // so attachments open in other apps. The chat server account stays in memory until
+        // Android has a secure store for it (stage 3); device conversations need none.
+        val chatDirectory = File(File(env.dataDirectory).parentFile, "chat").apply { mkdirs() }
+        return try {
+            RelayHostCore(relay, openChatWaitingForClose(chatDirectory.absolutePath))
+        } catch (e: ChatException) {
+            RelayHostCore(relay, null, RelayErrors.describeChat(e))
+        }
+    }
+
+    private fun openChatWaitingForClose(directory: String): ChatCore {
+        val deadline = System.nanoTime() + CLOSE_WAIT_MS * 1_000_000
+        while (true) {
+            try {
+                return ChatCore.withMemoryCredentials(directory)
+            } catch (e: ChatException.InUse) {
+                if (System.nanoTime() >= deadline) throw e
+                Thread.sleep(50)
+            }
+        }
     }
 
     /**

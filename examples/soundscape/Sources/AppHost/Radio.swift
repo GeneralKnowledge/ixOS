@@ -95,7 +95,9 @@ final class Radio {
     /// while one is under way leaves it alone.
     func follow(model: ListenModel, player: TakePlayer) async {
         guard let seed, !isTuning else { return }
-        if let current = player.current?.trackId, !played.contains(current) {
+        // Stopped (nothing playing) or something else playing ends the
+        // radio: a top-up would otherwise start the music again.
+        guard let current = player.current?.trackId, played.contains(current) else {
             stop()
             return
         }

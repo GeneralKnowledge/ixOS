@@ -9,7 +9,7 @@ struct NoteDetailView: View {
     let model: NotesModel
     let noteID: Int64
 
-    @State private var text = ""
+    @State private var editor = NoteEditorText(saved: "", retained: nil)
     @State private var isConfirmingDelete = false
     @State private var isDeleting = false
     @FocusState private var isEditing: Bool
@@ -34,12 +34,12 @@ struct NoteDetailView: View {
                     systemImage: "exclamationmark.triangle",
                     action: ForgeStateAction("Use Saved Version", identifier: "note.discardUnsaved") {
                         model.discardUnsaved(note.id)
-                        text = (model.note(id: note.id) ?? note).text
+                        editor.useSaved((model.note(id: note.id) ?? note).text)
                     }
                 )
                 .padding([.horizontal, .top])
             }
-            TextEditor(text: $text)
+            TextEditor(text: $editor.text)
                 .focused($isEditing)
                 .accessibilityIdentifier("note.text")
                 .padding(.horizontal)
@@ -61,7 +61,7 @@ struct NoteDetailView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu("More", systemImage: "ellipsis.circle") {
-                        ShareLink(item: text)
+                        ShareLink(item: editor.text)
                             .accessibilityIdentifier("note.share")
                         Button("Delete", systemImage: "trash", role: .destructive) {
                             isConfirmingDelete = true
@@ -83,7 +83,14 @@ struct NoteDetailView: View {
             } message: {
                 Text("This can't be undone.")
             }
-            .onAppear { text = model.unsavedText[note.id] ?? note.text }
+            .onAppear {
+                editor = NoteEditorText(saved: note.text, retained: model.unsavedText[note.id])
+            }
+            // An earlier save that fails after this editor opened: shown if
+            // the person hasn't changed the text, so leaving tries it again.
+            .onChange(of: model.unsavedText[note.id]) { _, draft in
+                editor.retainedChanged(draft, saved: (model.note(id: note.id) ?? note).text)
+            }
             // Saves when the screen closes and when the app leaves the
             // screen (iOS may end it later without warning).
             .forgeSaveOnLeave {
@@ -94,17 +101,19 @@ struct NoteDetailView: View {
     /// Saves if the text changed. Blank text is not a valid note (Rust
     /// refuses it), so clearing a note keeps its last saved text.
     private func save(_ note: Note) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Compare with what Rust holds now: an earlier save (leaving the
         // app) may already have stored this text.
         let saved = model.note(id: note.id) ?? note
-        guard !trimmed.isEmpty, trimmed != saved.text else {
+        switch editor.leaving(saved: saved.text, retained: model.unsavedText[note.id]) {
+        case .nothing:
+            break
+        case .discardDraft:
             // Back to the saved text: nothing is left unsaved.
-            if trimmed == saved.text { model.discardUnsaved(note.id) }
-            return
+            model.discardUnsaved(note.id)
+        case .save(let text):
+            // A failure shows in the list's alert, and the model keeps the
+            // text (`unsavedText`) so it isn't lost with this screen.
+            Task { _ = await model.update(saved, text: text) }
         }
-        // A failure shows in the list's alert, and the model keeps the text
-        // (`unsavedText`) so it isn't lost with this screen.
-        Task { _ = await model.update(saved, text: trimmed) }
     }
 }

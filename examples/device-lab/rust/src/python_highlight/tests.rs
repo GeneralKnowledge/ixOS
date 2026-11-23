@@ -287,3 +287,44 @@ fn python(args: &[&str], stdin: &str) -> Option<String> {
     assert!(out.status.success(), "python3 failed");
     Some(String::from_utf8(out.stdout).unwrap())
 }
+
+/// The bracket match at the `|` in `marked`, as (at, partner) in UTF-16 units.
+fn bracket(marked: &str) -> Option<(u32, Option<u32>)> {
+    let cursor = marked.find('|').expect("a cursor");
+    let source = marked.replacen('|', "", 1);
+    let cursor = source[..cursor].encode_utf16().count() as u32;
+    python_matching_bracket(source, cursor).map(|m| (m.at, m.partner))
+}
+
+#[test]
+fn brackets_pair_across_nesting_and_lines() {
+    // After the opening one, and before the closing one.
+    assert_eq!(bracket("f(|a, [1, 2])"), Some((1, Some(11))));
+    assert_eq!(bracket("f(a, [1, 2]|)"), Some((10, Some(5))));
+    assert_eq!(bracket("f(a, [1, 2])|"), Some((11, Some(1))));
+    assert_eq!(bracket("d = {\n  'k': (1,\n 2),\n}|"), Some((22, Some(4))));
+    assert_eq!(bracket("x = |1"), None);
+    assert_eq!(bracket("|"), None);
+}
+
+#[test]
+fn brackets_in_strings_and_comments_dont_count() {
+    assert_eq!(bracket("print(|\")\")  # )"), Some((5, Some(9))));
+    assert_eq!(bracket("f\"{x}(\" |"), None);
+    // The cursor beside a bracket in a string finds nothing.
+    assert_eq!(bracket("s = \"(|\""), None);
+}
+
+#[test]
+fn unmatched_and_mismatched_brackets_have_no_partner() {
+    assert_eq!(bracket("print(|1"), Some((5, None)));
+    assert_eq!(bracket("(1]|"), Some((2, None)));
+    assert_eq!(bracket("(|1]"), Some((0, None)));
+    // A wrong pair inside isn't skipped over; right nesting still pairs.
+    assert_eq!(bracket("(|[})"), Some((0, None)));
+    assert_eq!(bracket("([})|"), Some((3, None)));
+    assert_eq!(bracket("(|[])"), Some((0, Some(3))));
+    assert_eq!(bracket("([])|"), Some((3, Some(0))));
+    // UTF-16 offsets after characters outside the BMP.
+    assert_eq!(bracket("s = '😀'; f(|)"), Some((11, Some(12))));
+}

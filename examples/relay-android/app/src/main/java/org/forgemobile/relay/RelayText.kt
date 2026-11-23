@@ -7,6 +7,7 @@ import java.util.Date
 import java.util.Locale
 import org.forgemobile.relay.kit.ForgeErrorDescriber
 import org.forgemobile.relay.kit.ForgeFailure
+import uniffi.relay_core.ChatException
 import uniffi.relay_core.CodeReceipt
 import uniffi.relay_core.ConnectionMode
 import uniffi.relay_core.Device
@@ -24,6 +25,10 @@ import uniffi.relay_core.ownRelayServers
 /** Gives Relay's Rust errors their words, wherever the kit shows a failure. */
 object RelayErrors : ForgeErrorDescriber {
     override fun failure(error: Throwable): ForgeFailure? {
+        if (error is ChatException) {
+            val retryable = error is ChatException.Network || error is ChatException.Http
+            return ForgeFailure(chatTitle(error), describeChat(error), retryable)
+        }
         if (error !is RelayException) return null
         val retryable = error is RelayException.Unreachable ||
             error is RelayException.Connection ||
@@ -31,7 +36,39 @@ object RelayErrors : ForgeErrorDescriber {
         return ForgeFailure(title(error), describe(error), retryable)
     }
 
-    override fun isCancellation(error: Throwable): Boolean = error is RelayException.Stopped
+    override fun isCancellation(error: Throwable): Boolean =
+        error is RelayException.Stopped || error is ChatException.Cancelled
+
+    /**
+     * Chats' errors in words, as the iPhone app's ChatModel.describe says them. Most reasons
+     * are diagnostics; only InvalidInput's is written for people.
+     */
+    fun describeChat(error: ChatException): String = when (error) {
+        is ChatException.Network -> "Can't reach the chat server. Check your connection and try again."
+        is ChatException.Certificate -> "The chat server's identity couldn't be checked, so Relay didn't connect."
+        is ChatException.Http -> "The chat server had a problem (error ${error.status}). Try again later."
+        is ChatException.BadResponse -> "The chat server sent something Relay doesn't understand. Try again later."
+        is ChatException.Cancelled -> "Cancelled."
+        is ChatException.NotFound -> "That conversation no longer exists."
+        is ChatException.UnsupportedOnHost -> "This isn't available on this device."
+        is ChatException.InvalidInput -> "Check your input: ${error.reason}"
+        is ChatException.NotSent -> "It wasn't sent: ${error.reason}. It's kept here as not sent."
+        is ChatException.NotSignedIn -> "Sign up first."
+        is ChatException.Unauthorized -> "The server no longer knows this account. Sign out and sign up again."
+        is ChatException.Storage -> "Your chats couldn't be read or saved on this device."
+        is ChatException.InUse -> "Relay's chats are open in another copy of the app."
+        is ChatException.ShutDown -> "The app is closing."
+        is ChatException.Internal -> "Something went wrong in Chats. Try again."
+    }
+
+    private fun chatTitle(error: ChatException): String = when (error) {
+        is ChatException.InvalidInput -> "Check the Details"
+        is ChatException.NotFound -> "Not Found"
+        is ChatException.NotSent -> "Not Sent"
+        is ChatException.Network, is ChatException.Http, is ChatException.Certificate,
+        is ChatException.BadResponse -> "Can't Reach the Server"
+        else -> "Something Went Wrong"
+    }
 
     fun describe(error: RelayException): String = when (error) {
         is RelayException.EmptyName -> "Give this device a name."
@@ -113,6 +150,7 @@ object RelayFormat {
     /** "Waiting for MacBook", "Sending 40%", "Sent", "Received", "Failed: …". */
     fun status(transfer: Transfer): String = when (val status = transfer.status) {
         is TransferStatus.Waiting -> "Waiting for ${transfer.peerName}"
+        is TransferStatus.InMailbox -> "In the Mailbox"
         is TransferStatus.InProgress -> {
             val verb = if (transfer.direction == Direction.SENT) "Sending" else "Receiving"
             val item = transfer.item

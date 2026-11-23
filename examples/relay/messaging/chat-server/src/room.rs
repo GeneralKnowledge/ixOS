@@ -241,6 +241,35 @@ fn identity(user: &User) -> Json<WireIdentity> {
     })
 }
 
+/// Where this server's rooms are, for a device moving its account here
+/// from the old HTTP API, or one that was told only this server's URL.
+#[derive(Serialize)]
+struct WireHost {
+    endpoint_id: String,
+    relay_url: Option<String>,
+    /// Its direct addresses (`ip:port`), for a device on the same network.
+    addresses: Vec<String>,
+}
+
+/// `GET /host` (over HTTP and `relay/room/1`):
+/// `{"endpoint_id","relay_url","addresses"}`
+/// of the endpoint rooms are served from; `404` when they aren't.
+/// Public: anyone who can reach the server could dial it anyway.
+pub(crate) async fn host(State(state): State<AppState>) -> Response {
+    let Some(endpoint) = state.lock().room_endpoint.clone() else {
+        return (StatusCode::NOT_FOUND, "rooms aren't served on relay/room/1").into_response();
+    };
+    let addr = endpoint.addr();
+    let relay_url = addr.relay_urls().next().map(|u| u.to_string());
+    let addresses = addr.ip_addrs().map(|a| a.to_string()).collect();
+    Json(WireHost {
+        endpoint_id: endpoint.id().to_string(),
+        relay_url,
+        addresses,
+    })
+    .into_response()
+}
+
 /// `POST /join` over `relay/room/1`: `{"code","display_name"}` → `201`
 /// `{"user_id","display_name"}`, an account for the caller's key. A key
 /// that already has one gets it back (`200`), and the code isn't used up.
@@ -474,6 +503,7 @@ impl ProtocolHandler for RoomHandler {
 /// Serves `state`'s rooms on `relay/room/1` from `endpoint`, until the
 /// returned router is dropped or shut down.
 pub fn serve(state: AppState, endpoint: Endpoint) -> iroh::protocol::Router {
+    state.lock().room_endpoint = Some(endpoint.clone());
     iroh::protocol::Router::builder(endpoint)
         .accept(ROOM_ALPN, RoomHandler::new(state))
         .spawn()

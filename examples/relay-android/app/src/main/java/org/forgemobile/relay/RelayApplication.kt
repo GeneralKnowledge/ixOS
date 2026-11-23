@@ -41,6 +41,14 @@ class RelayApplication : Application() {
     /** The screens' model, once the core is open; a new one each time it opens. */
     val model: StateFlow<RelayModel?> = _model.asStateFlow()
 
+    /** The trusted devices Chats last listed, by id and name. */
+    private var listedDevices: Set<Pair<String, String>>? = null
+
+    private val _chat = MutableStateFlow<ChatModel?>(null)
+
+    /** The Chats tab's model, beside [model]; null while closed or when Chats couldn't open. */
+    val chat: StateFlow<ChatModel?> = _chat.asStateFlow()
+
     /** Whether the app is on screen: the Devices screen advertises and looks only then. */
     private val _onScreen = MutableStateFlow(false)
     val onScreen: StateFlow<Boolean> = _onScreen.asStateFlow()
@@ -75,9 +83,25 @@ class RelayApplication : Application() {
                     _model.value?.core === core.core -> _model.value
                     else -> RelayModel(core.core)
                 }
+                val chat = core?.chat?.takeIf { status == ForgeHost.Status.Ready }
+                if (_chat.value?.core !== chat) {
+                    _chat.value?.close()
+                    _chat.value = chat?.let { ChatModel(it, core.core) }
+                }
             }
         }
-        scope.launch { host.changes.collect { _model.value?.reload() } }
+        scope.launch {
+            host.changes.collect {
+                val model = _model.value ?: return@collect
+                model.reload()
+                // A device trusted, renamed or revoked: its conversation joins or leaves Chats.
+                val now = model.state.value.trustedDevices.map { it.endpointId to it.name }.toSet()
+                if (now != listedDevices) {
+                    listedDevices = now
+                    _chat.value?.let { chat -> launch { chat.refresh() } }
+                }
+            }
+        }
         // The process's lifecycle is the app's.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {

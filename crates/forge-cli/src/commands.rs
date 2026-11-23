@@ -72,10 +72,12 @@ const MINIMAL_REMOVES: &[&str] = &[
     "Sources/AppHost/ComposeNoteView.swift",
     "Sources/AppHost/Note+Display.swift",
     "Sources/AppHost/NoteDetailView.swift",
+    "Sources/AppHost/NoteEditorText.swift",
     "Sources/AppHost/NoteListView.swift",
     "Sources/AppHost/NotesModel.swift",
     "Sources/AppHost/SettingsView.swift",
     "Tests/AppHostTests/NativeServicesTests.swift",
+    "Tests/AppHostTests/NoteEditorTextTests.swift",
     "Tests/AppHostTests/NotesModelTests.swift",
 ];
 

@@ -373,11 +373,13 @@ struct TransferRow: View {
         }
     }
 
-    /// Waiting in the outbox, or on its way.
+    /// Waiting in the outbox, or on its way. One left in the recipient's
+    /// mailbox isn't: it arrives whatever this device does, so it can't be
+    /// cancelled.
     private var isPending: Bool {
         switch transfer.status {
         case .waiting, .inProgress: true
-        case .done, .failed: false
+        case .inMailbox, .done, .failed: false
         }
     }
 

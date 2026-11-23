@@ -165,6 +165,29 @@ def rule_connectivity(app):
     return False, f"own network monitor ({own[0].name}), not the `connectivity` service"
 
 
+# An app's own state saved as JSON goes through forge-app's Document (change
+# a copy, save, then keep it; never replace an unreadable file; set it aside
+# only when the person asks), not a JsonFile the app holds with its own save
+# logic (half-baked work audit H10). Reading an old JsonFile once to migrate
+# it is fine; holding one as the app's store is not. Any JsonFile<..> in a
+# type (a field, a wrapper such as Option<JsonFile<..>>, a type alias) counts
+# as held; a one-time read spells it JsonFile::<..>::new(..).load(). A held
+# JsonFile fails even when the app also uses Document. Apps saving no JSON
+# state (SQLite only, or nothing) are n/a.
+def rule_document(app):
+    held, uses_document = [], False
+    for path in rust_sources(app):
+        # Joined so a type split across lines (JsonFile\n<State>) still matches.
+        code = "\n".join(line.split("//", 1)[0] for line in read(path).splitlines())
+        for m in re.finditer(r"\bJsonFile\s*<", code):
+            held.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+        if re.search(r"\bDocument\s*(<|::)", code):
+            uses_document = True
+    if held:
+        return False, "keeps its state in its own JsonFile; use forge_app::Document: " + ", ".join(held)
+    return (True, "") if uses_document else None
+
+
 # Rust work cancelled from Swift goes through ForgeKit's withRustCancellation,
 # not a Cancellation wired to withTaskCancellationHandler by hand (framework
 # candidates PR A, 2026-11-17). withTaskCancellationHandler on its own (an
@@ -245,6 +268,65 @@ def rule_device_lab(app):
         return None
     ok = app.name in hosted
     return ok, "" if ok else "not on Device Lab's Apps screen"
+
+
+# The phone has Device Lab, not each app (it hosts them all; a free team
+# allows only 3 installed apps), so a hosted app's phone scenarios drive
+# Device Lab and open the app with -launchApp. Fifteen scenarios still
+# launched the old agentlab or gooddog installs, which aren't on the phone
+# (found 2026-11-22).
+DEVICE_LAB_ID = "org.forgemobile.devicelab"
+# Each hosted app's key on Device Lab's Apps screen (`EmbeddedApp` in
+# examples/device-lab/Sources/AppHost/AppsView.swift), which -launchApp takes.
+LAB_KEYS = {
+    "weather": "weather", "checklist": "checklist", "pocket-library": "library",
+    "good-dog": "goodDog", "commonplace": "commonplace", "fieldkit": "fieldKit",
+    "sketchbook": "sketchbook", "soundscape": "soundscape", "relay": "relay",
+    "sums": "sums", "urdu-naturally": "urdu", "forgeui-showcase": "forgeUI",
+}
+
+
+def lab_cases():
+    text = read(examples / HOST / "Sources" / "AppHost" / "AppsView.swift")
+    m = re.search(r"enum EmbeddedApp\b[^{]*\{\s*case ([^\n]+)", text)
+    return {c.strip() for c in m.group(1).split(",")} if m else set()
+
+
+LAB_CASES = lab_cases()
+
+
+def launched_app(args):
+    """The key after -launchApp, or None if there is none, a -launchApp has
+    no key, or two -launchApp arguments name different keys."""
+    args = list(args or [])
+    keys = {args[i + 1] if i + 1 < len(args) else None for i, a in enumerate(args) if a == "-launchApp"}
+    return keys.pop() if len(keys) == 1 else None
+
+
+def rule_lab_scenarios(app):
+    if app.name == HOST or app.name not in hosted:
+        return None
+    paths = sorted((app / "uitests").glob("*.toml"))
+    if not paths:
+        return None
+    bad = []
+    for path in paths:
+        try:
+            data = tomllib.loads(read(path))
+        except tomllib.TOMLDecodeError:
+            bad.append(f"{path.name} (not TOML)")
+            continue
+        key = LAB_KEYS.get(app.name)
+        if key is None or key not in LAB_CASES:
+            bad.append(f"{path.name} (no Device Lab key for {app.name}; add it to LAB_KEYS)")
+            continue
+        launches = [s["launch"] for s in data.get("step", []) if "launch" in s]
+        opens = all(launched_app(l.get("args")) == key for l in launches)
+        if data.get("app") != DEVICE_LAB_ID or not launches or not opens:
+            bad.append(path.name)
+    if bad:
+        return False, "scenarios that don't open this app in Device Lab (-launchApp <key>): " + ", ".join(bad)
+    return True, ""
 
 
 def rule_device_family(app):
@@ -990,14 +1072,14 @@ def rule_stat(app):
 # A button that waits must show it (ForgeUI 0.2 item 9, "silent waits"):
 # a slow load that shows nothing looks broken. A `Button` or `onSubmit`
 # whose action starts a `Task` that awaits passes only if the same closure
-# sets a working flag the view shows (`flag ?` or `if flag` elsewhere in the
+# sets a working flag the view shows (`flag ?`, `if flag` or `if !flag` elsewhere in the
 # file; a flag that only blocks a second tap doesn't count). Otherwise use
 # an async `ForgeButton` (disabled at once, a spinner after 0.4 s), put it
 # in `forgeFormToolbar`, or, for alerts, dialogs, swipes and menus that
 # close at once, give the model a command that marks the row pending
 # ("Trusting…") and runs the work itself. The rule can't time anything, so
 # fast local writes count too: the pattern makes showing work free.
-SILENT_START = re.compile(r"\b(?:Button\b[^{\n]*\{|\.onSubmit\s*(?:\([^)]*\))?\s*\{)")
+SILENT_START = re.compile(r"(?:\bButton\b[^{\n]*\{|\.onSubmit\s*(?:\([^)]*\))?\s*\{)")
 STARTS_TASK = re.compile(r"\bTask\s*(?:\([^)]*\))?\s*\{")
 SETS_FLAG = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*true\b")
 
@@ -1023,12 +1105,16 @@ def rule_silent_wait(app):
             brace = m.end() - 1
             end = closing_brace(code, brace)
             body = code[brace:end]
-            if not STARTS_TASK.search(body) or not re.search(r"\bawait\b", body):
+            awaiting = re.search(r"\bawait\b", body)
+            if not STARTS_TASK.search(body) or not awaiting:
                 continue
+            first_await = awaiting.start()
             rest = code[:brace] + code[end:]
             shown = any(
-                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+{re.escape(flag)}\b|\b{re.escape(flag)}\s*&&", rest)
-                for flag in SETS_FLAG.findall(body)
+                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+(?:!\s*)?{re.escape(flag)}\b", rest)
+                # Only a flag set before the wait shows it; one set after
+                # (`saved = true`) is a result, not a pending state.
+                for flag in (f.group(1) for f in SETS_FLAG.finditer(body) if f.start() < first_await)
             )
             # A running-work banner set before the task shows it too.
             if shown or re.search(r"=\s*\.working\(", body):
@@ -1044,7 +1130,7 @@ def rule_silent_wait(app):
 
 # Stars for a rating come from ForgeUI's ForgeRating: one adjustable
 # VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
-# app, and `<id>.star.<n>` identifiers. Soundscape and Pocket Library each
+# app, and one `<id>` identifier. Soundscape and Pocket Library each
 # drew their own, with different colours, sizes and VoiceOver (ForgeUI 0.2,
 # item 4). This finds a `star` symbol that switches with `star.fill`, the
 # shape of a hand-drawn rating.
@@ -1220,6 +1306,76 @@ def rule_no_silent_cut(app):
     return True, ""
 
 
+
+SWIFT_LIMIT = re.compile(
+    r"\b(?:let|var)\s+\w*(?:max|Max|MAX|limit|Limit|LIMIT)\w*\s*(?::\s*(?:U?Int\d*|Double|Float|CGFloat)\s*)?=\s*[\d_]+(?:\.[\d_]+)?\s*$"
+)
+
+
+def rule_limits_from_rust(app):
+    """A limit Rust enforces is read from Rust, never copied into Swift as a
+    number (the copies drift). A limit only Swift has says so with
+    `// swift-only:` on the line or just above it."""
+    if app.name in NO_RUST:
+        return None
+    bad = []
+    for path in swift_sources(app):
+        lines = read(path).splitlines()
+        for i, line in enumerate(lines):
+            if not SWIFT_LIMIT.search(line.split("//", 1)[0]):
+                continue
+            if any("// swift-only:" in l for l in lines[max(0, i - 3) : i + 1]):
+                continue
+            bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "copies a limit into Swift as a number; export it from Rust, or mark a Swift-only one `// swift-only:`: " + ", ".join(bad)
+    return True, ""
+
+
+XCT_CALL = re.compile(r"\bXCT\w+\(")
+CLOSURE_DEFAULT = re.compile(r"\bstatic\s+(?:let|var)\s+defaultValue\s*:\s*\(.*->")
+
+
+def xct_await_lines(text):
+    """Lines where an XCTest assertion's arguments, however many lines they
+    span, contain `await`. Comments and string text are left out;
+    code inside a string interpolation still counts."""
+    code = swift_code_mask(text)
+    found = []
+    for m in XCT_CALL.finditer(code):
+        depth, j = 1, m.end()
+        while j < len(code) and depth:
+            if code[j] == "(":
+                depth += 1
+            elif code[j] == ")":
+                depth -= 1
+            j += 1
+        # The mask turns `\(` into `xx`, so `\(await f())` reads `xxawait`.
+        if re.search(r"(?:\b|(?<=xx))await\b", code[m.end() : j]):
+            found.append(code.count("\n", 0, m.start()) + 1)
+    return found
+
+
+def rule_swift6_traps(app):
+    """Two Swift 6.2 errors that only the iOS build showed (friction log
+    A43), caught here on Linux: `await` inside an XCTest assertion (its
+    autoclosure can't suspend), and an environment key whose default is a
+    closure, which Swift 6 can't prove is safe to share unless it is
+    `nonisolated(unsafe)` or `@Sendable`."""
+    bad = []
+    files = swift_sources(app) + sorted((app / "Tests").rglob("*.swift"))
+    for path in files:
+        text = read(path)
+        for line in xct_await_lines(text):
+            bad.append(f"{path.name}:{line} (await inside an XCTest assertion; await into a local first)")
+        for i, line in enumerate(text.splitlines()):
+            code = line.split("//", 1)[0]
+            if CLOSURE_DEFAULT.search(code) and "nonisolated(unsafe)" not in code and "@Sendable" not in code:
+                bad.append(f"{path.name}:{i + 1} (closure default value; mark it nonisolated(unsafe) or @Sendable)")
+    if bad:
+        return False, "Swift 6.2 refuses this in the iOS build: " + ", ".join(bad)
+    return True, ""
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -1248,18 +1404,22 @@ RULES = [
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
     ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),
+    ("limits-from-rust", "Limits Rust enforces are read from Rust, never copied into Swift as numbers (`// swift-only:` for Swift's own)", rule_limits_from_rust),
     ("row-actions", "Row actions through ForgeUI's `forgeRowActions`: a swipe and a long-press menu, never swipe-only", rule_row_actions),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
     ("location", "Location through the `location` service", rule_location),
     ("rust-cancellation", "Rust work cancelled from Swift through ForgeKit's `withRustCancellation`", rule_rust_cancellation),
+    ("swift6-traps", "No Swift 6.2 errors only the iOS build shows: no `await` inside an XCTest assertion, no shared closure default in an environment key", rule_swift6_traps),
     ("swift-logging", "Swift logs through `ForgeLog`, never `print` or `NSLog`", rule_swift_logging),
     ("connectivity", "Network changes through the `connectivity` service, no own `NWPathMonitor`", rule_connectivity),
+    ("document", "App state saved as JSON through forge-app's `Document`, never a `JsonFile` the app holds itself", rule_document),
     ("requirements", "requirements.toml, every requirement with a test", rule_requirements),
     ("device-checks", "Every requirement has a device scenario", rule_device_checks),
     ("ui-test", "At least one `uitests/*.toml` scenario for `forge ui run`", rule_ui_test),
     ("device-lab", "Reachable from Device Lab's Apps screen", rule_device_lab),
+    ("lab-scenarios", "Phone scenarios drive Device Lab and open the app with `-launchApp`, never a separate install", rule_lab_scenarios),
     ("device-family", "Says which devices it runs on (`[ios] devices`)", rule_device_family),
 ]
 RULE_IDS = {r[0] for r in RULES}

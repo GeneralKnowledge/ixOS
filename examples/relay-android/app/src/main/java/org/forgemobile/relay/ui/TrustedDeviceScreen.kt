@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardActions
@@ -67,7 +69,14 @@ import uniffi.relay_core.ownRelayServers
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrustedDeviceScreen(model: RelayModel, endpointId: String, picked: PickedFiles, back: () -> Unit) {
+fun TrustedDeviceScreen(
+    model: RelayModel,
+    endpointId: String,
+    picked: PickedFiles,
+    back: () -> Unit,
+    /** Opens this device's conversation in Chats. */
+    message: () -> Unit,
+) {
     val state by model.state.collectAsState()
     val device = state.device(endpointId)?.takeIf { it.trusted }
     var menu by remember { mutableStateOf(false) }
@@ -115,13 +124,13 @@ fun TrustedDeviceScreen(model: RelayModel, endpointId: String, picked: PickedFil
                 Text("No Longer Trusted", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("trusted.gone"))
             }
         } else {
-            DeviceDetails(model, device, picked, Modifier.padding(padding))
+            DeviceDetails(model, device, picked, message, Modifier.padding(padding))
         }
     }
 }
 
 @Composable
-private fun DeviceDetails(model: RelayModel, device: Device, picked: PickedFiles, modifier: Modifier) {
+private fun DeviceDetails(model: RelayModel, device: Device, picked: PickedFiles, message: () -> Unit, modifier: Modifier) {
     val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     var sending by remember { mutableStateOf(false) }
     var asking by remember { mutableStateOf(false) }
@@ -154,7 +163,11 @@ private fun DeviceDetails(model: RelayModel, device: Device, picked: PickedFiles
         }
         item(key = "send") {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Button(
+                Button(onClick = message, modifier = Modifier.testTag("trusted.message")) {
+                    Text("Message")
+                }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(
                     onClick = { files.launch(arrayOf("*/*")) },
                     enabled = !sending,
                     modifier = Modifier.testTag("trusted.sendFiles"),

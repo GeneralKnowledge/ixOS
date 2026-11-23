@@ -188,10 +188,46 @@ fn through_the_mailbox(meet: impl Fn(&RelayCore, &RelayCore, &str) -> Vec<String
     close(laptop);
     let away =
         block_on(phone.send_note_as_older_build(laptop_id.clone(), "while away".into())).unwrap();
-    assert_eq!(away.status, TransferStatus::Waiting);
+    assert!(
+        matches!(
+            away.status,
+            TransferStatus::Waiting | TransferStatus::InMailbox
+        ),
+        "{:?}",
+        away.status
+    );
     eventually("the note in the mailbox", || {
         mailbox_has(&mailbox, &laptop_id)
     });
+    let status = |phone: &RelayCore, id: u64| {
+        phone
+            .transfers()
+            .into_iter()
+            .find(|t| t.id == id)
+            .map(|t| t.status)
+    };
+    eventually("its row says In the Mailbox", || {
+        status(&phone, away.id) == Some(TransferStatus::InMailbox)
+    });
+    // Sealed in the mailbox, it is out of the phone's hands: the mailbox
+    // has no withdraw, so Cancel Sending must not call it Cancelled.
+    phone.cancel_transfer(away.id);
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(
+        status(&phone, away.id),
+        Some(TransferStatus::InMailbox),
+        "a note in the mailbox can't be cancelled"
+    );
+    // Removing its row only takes the row away; it still arrives.
+    let removed = block_on(
+        phone.send_note_as_older_build(laptop_id.clone(), "removed but still sent".into()),
+    )
+    .unwrap();
+    eventually("the second note in the mailbox", || {
+        status(&phone, removed.id) == Some(TransferStatus::InMailbox)
+    });
+    block_on(phone.remove_transfer(removed.id)).unwrap();
+    assert_eq!(status(&phone, removed.id), None);
     // A message too: its bubble says it is in the mailbox.
     let message =
         block_on(phone.send_device_message(&laptop_id, "a message while away".into())).unwrap();
@@ -218,17 +254,28 @@ fn through_the_mailbox(meet: impl Fn(&RelayCore, &RelayCore, &str) -> Vec<String
             phone.send_to_device(laptop_id.clone(), vec![path.to_string_lossy().into_owned()]),
         )
         .unwrap();
-        assert_eq!(sent.status, TransferStatus::Waiting);
+        // Waiting, or already In the Mailbox if the outbox left it there
+        // before the send returned.
+        assert!(
+            matches!(
+                sent.status,
+                TransferStatus::Waiting | TransferStatus::InMailbox
+            ),
+            "{:?}",
+            sent.status
+        );
         files.push(sent.id);
     }
+    // Two notes, the message, the photo and the folder.
     eventually("the files in the mailbox", || {
-        mailbox.store.waiting_for(&id_bytes(&laptop_id)) == 4
+        mailbox.store.waiting_for(&id_bytes(&laptop_id)) == 5
     });
 
     // The laptop opens again and collects it: once, with a receipt.
     let laptop = device(dir.path(), "laptop");
     block_on(laptop.device_service()).unwrap();
     expected.push("while away".into());
+    expected.push("removed but still sent".into());
     expected.push("a message while away".into());
     eventually("the note from the mailbox", || {
         notes_from(&laptop, "phone") == expected

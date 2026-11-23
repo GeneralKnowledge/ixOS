@@ -93,7 +93,7 @@ Reuben's questions, answered from the code:
 1. **Make the records true** (H1, H2, H3). A records-only PR from Reuben's reported sittings, plus the ledger state for "tried, doesn't work". No code, no phone. After it, `status.md` shows the real gap.
 2. **Prove the foundation through the apps** (H4). Map what is still unproven after step 1 to steps in apps already in Device Lab, and fold review checks 1 and 3 into the next sitting. No new apps.
 3. **Finish what #322 starts** (H5, H19). After #322 merges: Relay's chat core onto `rt.command` as part of Relay's baseline, then ForgeKit 0.7 and the release-drift check.
-4. **One hygiene PR** (H16, H17, H23, H24, and the `document` parity rule with its two listed lags from H10). Small, mechanical, Linux-only.
+4. **One hygiene PR** (H16, H17, H23, H24, and the `document` parity rule with its two listed lags from H10). Small, mechanical, Linux-only. **Done 2026-11-22:** H16 had already been fixed (no `print` left in the adapters); H17, H23 and H24 reworded, and the `document` rule added with Good Dog, Pocket Library and Sums listed.
 5. **Leave alone until their trigger** (H7, H8, H12, H13, H14, H20): each row says what changes that.
 
 ## What this pass did not cover

@@ -8254,6 +8254,17 @@ public func urduErrorKind(error: UrduError) -> ErrorKind  {
 })
 }
 /**
+ * The longest name `set_name` keeps, in characters (Unicode scalars), so
+ * the field can stop there.
+ */
+public func urduMaxNameChars() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_urdu_naturally_core_fn_func_urdu_max_name_chars(uniffiCallStatus
+    )
+})
+}
+/**
  * Called by the host when the person responds to a
  * notification. Kept until the app sets a handler with
  * [`on_notification_response`].
@@ -8341,6 +8352,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.contractVersionMismatch
     }
     if (uniffi_urdu_naturally_core_checksum_func_urdu_error_kind() != 49853) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_urdu_naturally_core_checksum_func_urdu_max_name_chars() != 58371) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_urdu_naturally_core_checksum_func_deliver_notification_response() != 37114) {

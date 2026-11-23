@@ -24,6 +24,7 @@ mod model;
 pub mod musicbrainz;
 pub mod offline;
 pub mod playback;
+pub mod playlist_plan;
 pub mod queue;
 pub mod search;
 pub mod smart;
@@ -184,6 +185,13 @@ pub struct SoundscapeCore {
     /// True while `sync_downloads` runs, so a second one returns at once.
     syncing: Arc<AtomicBool>,
     http: Arc<dyn HttpClient>,
+}
+
+/// The longest title, artist, album or genre a song keeps, in characters,
+/// so Edit Song can name the limit.
+#[uniffi::export]
+pub fn song_field_max_chars() -> u32 {
+    library::MAX_FIELD_CHARS as u32
 }
 
 #[uniffi::export]
@@ -359,6 +367,54 @@ impl SoundscapeCore {
         self.playlist(id)
     }
 
+    /// "Make me a playlist": the library's songs a playlist plan may use, as
+    /// JSON ([`playlist_plan::PlaylistSnapshot`]). JSON because it travels
+    /// through Swift to Device Lab's A2UI Lab, which reads it with these
+    /// same Rust types.
+    pub fn playlist_snapshot_json(&self) -> String {
+        serde_json::to_string(&playlist_plan::snapshot(&self.library())).unwrap_or_default()
+    }
+
+    /// Makes the playlist a confirmed plan ([`playlist_plan::PlaylistPlan`]
+    /// as JSON) describes, after checking it again against the library as
+    /// it is now. Searches, downloads and plays nothing.
+    pub async fn apply_playlist_plan_json(
+        &self,
+        plan_json: String,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        // The plan was checked in full before it was shown; failing here
+        // means the library changed since, or the plan was tampered with.
+        let refused = || SoundscapeError::OutOfRange {
+            setting: "the playlist plan".into(),
+        };
+        let plan: playlist_plan::PlaylistPlan =
+            serde_json::from_str(&plan_json).map_err(|_| refused())?;
+        let artwork = self.artwork_url();
+        let music = self.imported_url();
+        let test = self.test_url();
+        // The check and the write run in one command, so the songs checked
+        // are the songs the playlist gets: nothing removes one in between.
+        let id = self
+            .rt
+            .command("playlist-create", move |state| {
+                let library = library::build_library(
+                    state.library.value(),
+                    &library::Locate {
+                        artwork: &artwork,
+                        music: &music,
+                        test: &test,
+                    },
+                );
+                let snapshot = playlist_plan::snapshot(&library);
+                let (name, tracks) =
+                    playlist_plan::check(&snapshot, &plan).map_err(|_| refused())?;
+                let ids = tracks.iter().map(|t| t.id.clone()).collect();
+                state.change_collection(|c| c.create_playlist(&name, ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
     pub async fn rename_playlist(
         &self,
         id: u64,
@@ -457,6 +513,12 @@ impl SoundscapeCore {
                 if ids.is_empty() {
                     return Err(SoundscapeError::NotInLibrary { id: "queue".into() });
                 }
+                // What `create_playlist` would refuse is refused before any
+                // catalogue song joins the library.
+                model::clean_name(&name)?;
+                if state.collection.value().playlists.len() >= collection::MAX_PLAYLISTS {
+                    return Err(SoundscapeError::range("playlists"));
+                }
                 if !adding.is_empty() {
                     let now = now_ms();
                     state.change_library(|lib| {
@@ -513,6 +575,19 @@ impl SoundscapeCore {
             })
             .await?;
         self.playlist(id)
+    }
+
+    /// Every song a playlist keeps, in order, including those the library
+    /// no longer has (which `playlist` leaves out), so Undo can put back
+    /// exactly what was there.
+    pub fn playlist_track_ids(&self, id: u64) -> Result<Vec<String>, SoundscapeError> {
+        self.collection
+            .get()
+            .playlists
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.track_ids.clone())
+            .ok_or_else(|| collection::no_playlist(id))
     }
 
     pub fn playlist(&self, id: u64) -> Result<PlaylistDetail, SoundscapeError> {

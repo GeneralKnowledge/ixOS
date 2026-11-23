@@ -150,7 +150,7 @@ struct DiscoverView: View {
         Section {
             ForEach(Array(results.enumerated()), id: \.element.id) { index, track in
                 CatalogueRow(model: model, player: player, track: track) {
-                    player.play(model.queue(results), from: index)
+                    player.play(model.queue(results), from: model.queueIndex(index, in: results))
                 }
             }
         } header: {
@@ -271,7 +271,7 @@ struct ArchiveItemView: View {
                 Section {
                     ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                         CatalogueRow(model: model, player: player, track: track) {
-                            player.play(model.queue(tracks), from: index)
+                            player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                         }
                     }
                 } footer: {
@@ -514,7 +514,7 @@ struct TestCatalogueView: View {
                 ForEach(Array(tests.enumerated()), id: \.element.track.id) { index, test in
                     Section {
                         CatalogueRow(model: model, player: player, track: test.track) {
-                            player.play(model.queue(tracks), from: index)
+                            player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                         }
                     } footer: {
                         Text(test.checks)
@@ -606,7 +606,7 @@ struct JamendoTracksView: View {
                 Section {
                     ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                         CatalogueRow(model: model, player: player, track: track) {
-                            player.play(model.queue(tracks), from: index)
+                            player.play(model.queue(tracks), from: model.queueIndex(index, in: tracks))
                         }
                     }
                 } header: {

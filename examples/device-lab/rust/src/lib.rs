@@ -18,6 +18,7 @@ pub mod ai_lab;
 pub mod crash_test;
 pub mod harness;
 pub mod logs;
+pub mod packages;
 pub mod power;
 pub mod python_highlight;
 pub mod stats;

@@ -292,7 +292,7 @@ ForgeRating(value: review.stars, identifier: "review.rating")   // read-only
 | Input | tap a star to set it; tap the current star to clear it (`allowsClearing`, default on). `onChange` is called only when the value changes |
 | VoiceOver | one element: the label (default "Rating") and "3 of 5 stars" or "Not rated"; swipe up and down to change it. Read-only drops the adjustable action |
 | Dynamic Type | stars scale with the surrounding font (`.font(.title3)` where the rating is the point); each star is at least 44 pt to tap |
-| Identifiers | `<identifier>` on the element, `<identifier>.star.<n>` on each star |
+| Identifiers | `<identifier>` on the one element; UI tests read its value ("3 of 5 stars"). The stars are not separate elements, and `forge ui` has no adjust action yet, so a UI test can't set a rating |
 | Colour | the warning tone's solid colour, checked as a shape by `contrastIssues()`, never the accent |
 | Model | the value is an `Int?` the view model owns (0 or out of range draws as unrated); no rating rules in Swift |
 

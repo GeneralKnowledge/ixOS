@@ -363,6 +363,17 @@ public final class ListenModel {
         core.queueTracks(trackIds: tracks.map(\.id))
     }
 
+    /// Where the song at `index` lands in `queue(tracks)`: songs that can't
+    /// be played are left out of the queue, so the ones before it count
+    /// only when they are in it.
+    public func queueIndex(_ index: Int, in tracks: [LibraryTrack]) -> Int {
+        queue(Array(tracks.prefix(index))).count
+    }
+
+    public func queueIndex(_ index: Int, in tracks: [CatalogueTrack]) -> Int {
+        queue(Array(tracks.prefix(index))).count
+    }
+
     /// One recording of a track, to play instead of the preferred one.
     public func queue(_ recording: Recording, of track: LibraryTrack) -> QueueTrack? {
         try? core.queueRecording(trackId: track.id, recordingId: recording.id)
@@ -669,7 +680,8 @@ public final class ListenModel {
     /// Removes songs from a playlist, keeping the order left (by place),
     /// with Undo on the banner.
     public func removeFromPlaylist(_ detail: PlaylistDetail, keeping places: [UInt32]) async -> PlaylistDetail? {
-        let before = detail.entries.map(\.track.id)
+        // Every song it keeps, also those the library no longer has.
+        let before = (try? core.playlistTrackIds(id: detail.playlist.id)) ?? detail.entries.map(\.track.id)
         let gone = detail.entries.count - places.count
         guard let changed = await arrangePlaylist(detail.playlist.id, places: places) else { return nil }
         if gone > 0 {
@@ -787,7 +799,7 @@ public final class ListenModel {
     public func downloadState(of tracks: [LibraryTrack]) -> DownloadState {
         let states = downloadable(tracks).map { downloadState($0.id) }
         if states.isEmpty { return .notDownloaded }
-        if states.contains(.failed) { return .failed }
+        for state in states { if case .failed = state { return state } }
         if states.contains(where: { $0 == .downloading || $0 == .waiting }) { return .downloading }
         return states.allSatisfy { $0 == .downloaded } ? .downloaded : .notDownloaded
     }

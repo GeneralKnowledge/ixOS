@@ -71,6 +71,89 @@ pub fn python_highlight(source: String) -> Vec<HighlightSpan> {
         .collect()
 }
 
+/// A bracket beside the cursor and the one that pairs with it (PL2), in
+/// UTF-16 code units.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct BracketMatch {
+    /// The bracket just before the cursor, or else the one just after it.
+    pub at: u32,
+    /// Its partner, or nil when it has none or the nearest one is the
+    /// wrong kind (`(]`): the editor marks it as unmatched.
+    pub partner: Option<u32>,
+}
+
+/// The bracket beside UTF-16 offset `cursor` and its partner. Brackets in
+/// strings and comments don't count (an f-string's `{}` included), so
+/// `print(")")` pairs the outer two.
+#[uniffi::export]
+pub fn python_matching_bracket(source: String, cursor: u32) -> Option<BracketMatch> {
+    if source.len() > HIGHLIGHT_MAX_BYTES {
+        return None;
+    }
+    let chars: Vec<char> = source.chars().collect();
+    let mut utf16 = Vec::with_capacity(chars.len() + 1);
+    let mut at = 0u32;
+    for c in &chars {
+        utf16.push(at);
+        at += c.len_utf16() as u32;
+    }
+    utf16.push(at);
+    // Brackets in code only.
+    let mut code = vec![true; chars.len()];
+    for token in tokens(&chars) {
+        if matches!(token.kind, HighlightKind::String | HighlightKind::Comment) {
+            code[token.start..token.end].fill(false);
+        }
+    }
+    let caret = utf16.partition_point(|&u| u < cursor);
+    let is_bracket = |i: usize| code[i] && "()[]{}".contains(chars[i]);
+    let here = [caret.checked_sub(1), Some(caret)]
+        .into_iter()
+        .flatten()
+        .find(|&i| i < chars.len() && is_bracket(i))?;
+    let open = |c: char| matches!(c, '(' | '[' | '{');
+    let pair = |c: char| match c {
+        '(' => ')',
+        '[' => ']',
+        '{' => '}',
+        ')' => '(',
+        ']' => '[',
+        _ => '{',
+    };
+    let forward = open(chars[here]);
+    // The brackets still waiting for their partner, innermost last; `here`
+    // is the first. A partner of the wrong kind (`([})`) ends the search.
+    let mut waiting = vec![chars[here]];
+    let mut i = here;
+    let partner = loop {
+        i = match (forward, i) {
+            (true, i) if i + 1 < chars.len() => i + 1,
+            (false, i) if i > 0 => i - 1,
+            _ => break None,
+        };
+        if !is_bracket(i) {
+            continue;
+        }
+        if open(chars[i]) == forward {
+            waiting.push(chars[i]);
+            continue;
+        }
+        let Some(last) = waiting.pop() else {
+            break None;
+        };
+        if pair(last) != chars[i] {
+            break None;
+        }
+        if waiting.is_empty() {
+            break Some(i);
+        }
+    };
+    Some(BracketMatch {
+        at: utf16[here],
+        partner: partner.map(|i| utf16[i]),
+    })
+}
+
 /// A coloured range in char indexes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Token {
