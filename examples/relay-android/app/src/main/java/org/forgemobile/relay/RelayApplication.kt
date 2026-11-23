@@ -11,6 +11,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -81,6 +82,10 @@ class RelayApplication : Application() {
                 // a reply handed over then would wait in memory and be lost with the process.
                 opened is ForgeHost.Status.Ready && host.core?.chat != null
             }
+        }
+        // The reply in the outbox (or the room marked read): Rust holds it as finishing work.
+        NotificationReceiver.settled = {
+            while (host.core?.chat?.backgroundWorkPending() == true) delay(50)
         }
         // Relay's errors in its own words, wherever the kit shows a failure (the open too).
         ForgeFailure.describer = RelayErrors

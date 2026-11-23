@@ -385,13 +385,13 @@ class NotificationReceiver : BroadcastReceiver() {
             AndroidNotifier.ACTION_POST -> if (ForgeServices.isInstalled) ForgeServices.notifier.post(context, intent)
             AndroidNotifier.ACTION_RESPOND -> {
                 val response = AndroidNotifier.response(intent) ?: return
-                // Kept alive until Rust has the answer: a reply that started Relay waits for its
-                // core to open, since Android may end a receiver's process once this returns.
-                // Rust's handler then hands the send to finishing work, which holds background
-                // time of its own.
+                // Kept alive until Rust has saved the answer: a reply that started Relay waits for
+                // its core to open, then for the reply to reach the outbox, since Android may end a
+                // receiver's process once this returns.
                 val pending = goAsync()
                 responses.launch {
                     try {
+                        val started = SystemClock.elapsedRealtime()
                         val open = onResponse
                         val ready = open == null || withTimeoutOrNull(RECEIVER_TIME_MS) { open() } == true
                         // Handed over only when something takes it: kept back otherwise, so the
@@ -399,6 +399,10 @@ class NotificationReceiver : BroadcastReceiver() {
                         // (once now, once later when a handler appears).
                         if (ready) {
                             deliverNotificationResponse(response)
+                            // Rust's handler saves it as finishing work; waited for in what is
+                            // left of the receiver's time.
+                            val left = RECEIVER_TIME_MS - (SystemClock.elapsedRealtime() - started)
+                            settled?.let { settle -> withTimeoutOrNull(left.coerceAtLeast(1)) { settle() } }
                             // Answered: the notification goes (a reply's text field would spin
                             // otherwise).
                             NotificationManagerCompat.from(context).cancel(response.notificationId, 0)
@@ -420,6 +424,10 @@ class NotificationReceiver : BroadcastReceiver() {
          */
         @Volatile
         var onResponse: (suspend () -> Boolean)? = null
+
+        /** Set by the app: returns once the work a response started is saved. */
+        @Volatile
+        var settled: (suspend () -> Unit)? = null
 
         private val responses = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
