@@ -972,6 +972,10 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_relay_core_checksum_func_app_lock_method(
     ): Int
+    external fun uniffi_relay_core_checksum_func_chat_max_attachments_per_message(
+    ): Int
+    external fun uniffi_relay_core_checksum_func_chat_max_message_chars(
+    ): Int
     external fun uniffi_relay_core_checksum_func_chat_message_link(
     ): Int
     external fun uniffi_relay_core_checksum_func_device_conversation_id(
@@ -1730,6 +1734,10 @@ internal object UniffiLib {
     ): Int
     external fun uniffi_relay_core_fn_func_app_lock_method(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_relay_core_fn_func_chat_max_attachments_per_message(uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
+    external fun uniffi_relay_core_fn_func_chat_max_message_chars(uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
     external fun uniffi_relay_core_fn_func_chat_message_link(`conversationId`: RustBuffer.ByValue,`messageId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_relay_core_fn_func_device_conversation_id(`endpointId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1897,6 +1905,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_func_app_lock_method() and 0xFFFF) != 35032) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_func_chat_max_attachments_per_message() and 0xFFFF) != 15158) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_func_chat_max_message_chars() and 0xFFFF) != 35942) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_func_chat_message_link() and 0xFFFF) != 46272) {
@@ -15324,7 +15338,22 @@ sealed class ChatException: kotlin.Exception() {
             get() = "detail=${ `detail` }"
     }
     
+    /**
+     * Refused before anything was kept: the composer gives the text back.
+     */
     class InvalidInput(
+        
+        val `reason`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * Kept on this device and shown as not sent, but it couldn't go for a
+     * reason a retry won't fix by itself (one of its files is gone).
+     */
+    class NotSent(
         
         val `reason`: kotlin.String
         ) : ChatException() {
@@ -15430,18 +15459,21 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
             8 -> ChatException.InvalidInput(
                 FfiConverterString.read(buf),
                 )
-            9 -> ChatException.NotSignedIn()
-            10 -> ChatException.Unauthorized(
+            9 -> ChatException.NotSent(
                 FfiConverterString.read(buf),
                 )
-            11 -> ChatException.Storage(
+            10 -> ChatException.NotSignedIn()
+            11 -> ChatException.Unauthorized(
                 FfiConverterString.read(buf),
                 )
-            12 -> ChatException.InUse(
+            12 -> ChatException.Storage(
                 FfiConverterString.read(buf),
                 )
-            13 -> ChatException.ShutDown()
-            14 -> ChatException.Internal(
+            13 -> ChatException.InUse(
+                FfiConverterString.read(buf),
+                )
+            14 -> ChatException.ShutDown()
+            15 -> ChatException.Internal(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -15486,6 +15518,11 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
                 + FfiConverterString.allocationSize(value.`detail`)
             )
             is ChatException.InvalidInput -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is ChatException.NotSent -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterString.allocationSize(value.`reason`)
@@ -15563,31 +15600,36 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.NotSignedIn -> {
+            is ChatException.NotSent -> {
                 buf.putInt(9)
-                Unit
-            }
-            is ChatException.Unauthorized -> {
-                buf.putInt(10)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.Storage -> {
+            is ChatException.NotSignedIn -> {
+                buf.putInt(10)
+                Unit
+            }
+            is ChatException.Unauthorized -> {
                 buf.putInt(11)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.InUse -> {
+            is ChatException.Storage -> {
                 buf.putInt(12)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.ShutDown -> {
+            is ChatException.InUse -> {
                 buf.putInt(13)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ChatException.ShutDown -> {
+                buf.putInt(14)
                 Unit
             }
             is ChatException.Internal -> {
-                buf.putInt(14)
+                buf.putInt(15)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
@@ -19298,6 +19340,33 @@ public object FfiConverterSequenceTypeCapability: FfiConverterRustBuffer<List<Ca
             return FfiConverterOptionalString.lift(
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_relay_core_fn_func_app_lock_method(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * The most files one message may carry.
+         */ fun `chatMaxAttachmentsPerMessage`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_relay_core_fn_func_chat_max_attachments_per_message(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * The longest message text, in characters (Unicode scalars), so the
+         * composer can say so before Rust refuses it.
+         */ fun `chatMaxMessageChars`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_relay_core_fn_func_chat_max_message_chars(
     
         _status)
 }

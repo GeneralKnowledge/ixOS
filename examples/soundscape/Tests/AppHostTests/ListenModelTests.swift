@@ -132,7 +132,8 @@ final class ListenModelTests: XCTestCase {
             return MusicFile(path: url.path, fileName: name, title: nil, artist: "Me", album: nil, number: nil,
                              genre: nil, durationSeconds: 90, artworkPath: nil)
         }
-        let result = try XCTUnwrap(await model.importMusic([try file("Demo_one.mp3", "a"), try file("x.txt", "b")]))
+        let resultResult = await model.importMusic([try file("Demo_one.mp3", "a"), try file("x.txt", "b")])
+        let result = try XCTUnwrap(resultResult)
         XCTAssertEqual(result.added.count, 1)
         XCTAssertEqual(TakeFormat.importSummary(result),
                        "Added 1 song. 1 couldn't be imported: x.txt: not a music file.")

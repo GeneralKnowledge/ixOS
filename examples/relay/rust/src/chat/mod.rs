@@ -683,6 +683,19 @@ pub fn chat_message_link(conversation_id: String, message_id: String) -> String 
     alerts::message_link(&conversation_id, &message_id)
 }
 
+/// The longest message text, in characters (Unicode scalars), so the
+/// composer can say so before Rust refuses it.
+#[uniffi::export]
+pub fn chat_max_message_chars() -> u32 {
+    chat_core::MAX_BODY_CHARS as u32
+}
+
+/// The most files one message may carry.
+#[uniffi::export]
+pub fn chat_max_attachments_per_message() -> u32 {
+    chat_core::MAX_ATTACHMENTS_PER_MESSAGE as u32
+}
+
 /// The conversation in Chats of the trusted device `endpoint_id` (its
 /// device screen's Message button opens it).
 #[uniffi::export]

@@ -11131,6 +11131,17 @@ public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
 })
 }
 /**
+ * The longest title, artist, album or genre a song keeps, in characters,
+ * so Edit Song can name the limit.
+ */
+public func songFieldMaxChars() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_song_field_max_chars(uniffiCallStatus
+    )
+})
+}
+/**
  * Whether `listened` seconds of a song `length` seconds long count as a
  * play: 30 seconds, or half of a shorter song.
  */
@@ -11449,6 +11460,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_func_forge_log_enabled() != 19347) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_song_field_max_chars() != 52764) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_func_counts_as_played() != 36228) {

@@ -1458,6 +1458,18 @@ RustBuffer uniffi_relay_core_fn_func_app_lock_method(RustCallStatus *_Nonnull ou
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_MAX_ATTACHMENTS_PER_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_MAX_ATTACHMENTS_PER_MESSAGE
+uint32_t uniffi_relay_core_fn_func_chat_max_attachments_per_message(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_MAX_MESSAGE_CHARS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_MAX_MESSAGE_CHARS
+uint32_t uniffi_relay_core_fn_func_chat_max_message_chars(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_MESSAGE_LINK
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_CHAT_MESSAGE_LINK
 RustBuffer uniffi_relay_core_fn_func_chat_message_link(RustBuffer conversation_id, RustBuffer message_id, RustCallStatus *_Nonnull out_status
@@ -1838,6 +1850,18 @@ uint16_t uniffi_relay_core_checksum_func_word_code_number(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_APP_LOCK_METHOD
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_APP_LOCK_METHOD
 uint16_t uniffi_relay_core_checksum_func_app_lock_method(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_MAX_ATTACHMENTS_PER_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_MAX_ATTACHMENTS_PER_MESSAGE
+uint16_t uniffi_relay_core_checksum_func_chat_max_attachments_per_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_MAX_MESSAGE_CHARS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_CHAT_MAX_MESSAGE_CHARS
+uint16_t uniffi_relay_core_checksum_func_chat_max_message_chars(void
     
 );
 #endif

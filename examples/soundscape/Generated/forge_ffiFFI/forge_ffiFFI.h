@@ -897,6 +897,12 @@ void uniffi_soundscape_core_fn_func_forge_log(RustBuffer level, RustBuffer categ
 int8_t uniffi_soundscape_core_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_SONG_FIELD_MAX_CHARS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_SONG_FIELD_MAX_CHARS
+uint32_t uniffi_soundscape_core_fn_func_song_field_max_chars(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_COUNTS_AS_PLAYED
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_FN_FUNC_COUNTS_AS_PLAYED
 int8_t uniffi_soundscape_core_fn_func_counts_as_played(double listened, RustBuffer length, RustCallStatus *_Nonnull out_status
@@ -1288,6 +1294,12 @@ uint16_t uniffi_soundscape_core_checksum_func_forge_log(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 uint16_t uniffi_soundscape_core_checksum_func_forge_log_enabled(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_SONG_FIELD_MAX_CHARS
+#define UNIFFI_FFIDEF_UNIFFI_SOUNDSCAPE_CORE_CHECKSUM_FUNC_SONG_FIELD_MAX_CHARS
+uint16_t uniffi_soundscape_core_checksum_func_song_field_max_chars(void
     
 );
 #endif

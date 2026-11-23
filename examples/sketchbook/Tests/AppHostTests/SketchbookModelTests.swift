@@ -13,28 +13,33 @@ final class SketchbookModelTests: XCTestCase {
         let model = SketchbookModel(core: core)
         XCTAssertTrue(model.sketches.isEmpty)
 
-        let sketch = try XCTUnwrap(await model.create(paper: .grid))
+        let sketchResult = await model.create(paper: .grid)
+        let sketch = try XCTUnwrap(sketchResult)
         let id = sketch.summary.id
         XCTAssertEqual(model.sketches.count, 1)
         XCTAssertEqual(sketch.layers.count, 1)
 
         let layer = try XCTUnwrap(sketch.layers.first).id
-        let drawn = try XCTUnwrap(await model.draw(id, layer: layer, drawing: Data([1, 2, 3])))
+        let drawnResult = await model.draw(id, layer: layer, drawing: Data([1, 2, 3]))
+        let drawn = try XCTUnwrap(drawnResult)
         XCTAssertEqual(model.drawing(at: drawn.layers.first?.drawingPath), Data([1, 2, 3]))
 
         // Each stroke is a new file; only the current one stays in memory.
-        let redrawn = try XCTUnwrap(await model.draw(id, layer: layer, drawing: Data([4, 5])))
+        let redrawnResult = await model.draw(id, layer: layer, drawing: Data([4, 5]))
+        let redrawn = try XCTUnwrap(redrawnResult)
         XCTAssertEqual(model.drawing(at: redrawn.layers.first?.drawingPath), Data([4, 5]))
         XCTAssertEqual(model.cachedDrawings, 2)
         model.keepDrawings(of: redrawn)
         XCTAssertEqual(model.cachedDrawings, 1)
         XCTAssertEqual(model.drawing(at: redrawn.layers.first?.drawingPath), Data([4, 5]))
 
-        let twoLayers = try XCTUnwrap(await model.addLayer(to: id))
+        let twoLayersResult = await model.addLayer(to: id)
+        let twoLayers = try XCTUnwrap(twoLayersResult)
         XCTAssertEqual(twoLayers.layers.count, 2)
         XCTAssertNotNil(twoLayers.undoName)
 
-        let undone = try XCTUnwrap(await model.undo(id))
+        let undoneResult = await model.undo(id)
+        let undone = try XCTUnwrap(undoneResult)
         XCTAssertEqual(undone.layers.count, 1)
         XCTAssertNotNil(undone.redoName)
 

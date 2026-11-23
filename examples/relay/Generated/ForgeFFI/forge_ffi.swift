@@ -11358,7 +11358,16 @@ enum ChatError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case UnsupportedOnHost(detail: String
     )
+    /**
+     * Refused before anything was kept: the composer gives the text back.
+     */
     case InvalidInput(reason: String
+    )
+    /**
+     * Kept on this device and shown as not sent, but it couldn't go for a
+     * reason a retry won't fix by itself (one of its files is gone).
+     */
+    case NotSent(reason: String
     )
     /**
      * No account yet: call `sign_up` first.
@@ -11434,18 +11443,21 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
         case 8: return .InvalidInput(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 9: return .NotSignedIn
-        case 10: return .Unauthorized(
+        case 9: return .NotSent(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 11: return .Storage(
+        case 10: return .NotSignedIn
+        case 11: return .Unauthorized(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 12: return .InUse(
+        case 12: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 13: return .ShutDown
-        case 14: return .Internal(
+        case 13: return .InUse(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 14: return .ShutDown
+        case 15: return .Internal(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -11500,31 +11512,36 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .NotSignedIn:
+        case let .NotSent(reason):
             writeInt(&buf, Int32(9))
-        
-        
-        case let .Unauthorized(reason):
-            writeInt(&buf, Int32(10))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Storage(reason):
+        case .NotSignedIn:
+            writeInt(&buf, Int32(10))
+        
+        
+        case let .Unauthorized(reason):
             writeInt(&buf, Int32(11))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .InUse(reason):
+        case let .Storage(reason):
             writeInt(&buf, Int32(12))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .ShutDown:
+        case let .InUse(reason):
             writeInt(&buf, Int32(13))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(14))
         
         
         case let .Internal(reason):
-            writeInt(&buf, Int32(14))
+            writeInt(&buf, Int32(15))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -14958,6 +14975,27 @@ public func appLockMethod() -> String?  {
 })
 }
 /**
+ * The most files one message may carry.
+ */
+public func chatMaxAttachmentsPerMessage() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_chat_max_attachments_per_message(uniffiCallStatus
+    )
+})
+}
+/**
+ * The longest message text, in characters (Unicode scalars), so the
+ * composer can say so before Rust refuses it.
+ */
+public func chatMaxMessageChars() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_chat_max_message_chars(uniffiCallStatus
+    )
+})
+}
+/**
  * The deep link on a message's notification
  * (`forgechat://conversation/<room>?message=<id>`).
  */
@@ -15197,6 +15235,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_app_lock_method() != 35032) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_chat_max_attachments_per_message() != 15158) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_chat_max_message_chars() != 35942) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_chat_message_link() != 46272) {
