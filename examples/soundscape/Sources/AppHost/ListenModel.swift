@@ -768,6 +768,39 @@ public final class ListenModel {
         return detail
     }
 
+    // MARK: Smart playlists
+
+    public func smartPlaylist(_ id: String) -> SmartPlaylistDetail? { try? core.smartPlaylist(id: id) }
+
+    /// How many songs `rules` let in now, or nil when Rust refuses them.
+    public func smartPlaylistCount(_ rules: SmartRules) -> UInt32? { try? core.smartPlaylistCount(rules: rules) }
+
+    /// Throws when Rust refuses the name or the rules, so the editor can say why.
+    @discardableResult
+    public func createSmartPlaylist(_ name: String, rules: SmartRules) async throws -> SmartPlaylistDetail {
+        let detail = try await core.createSmartPlaylist(name: name, rules: rules)
+        collection = core.collection()
+        feedback.play(.success)
+        return detail
+    }
+
+    /// Throws when Rust refuses the name or the rules, so the editor can say why.
+    @discardableResult
+    public func editSmartPlaylist(_ id: String, name: String, rules: SmartRules) async throws -> SmartPlaylistDetail {
+        let detail = try await core.editSmartPlaylist(id: id, name: name, rules: rules)
+        collection = core.collection()
+        feedback.play(.success)
+        return detail
+    }
+
+    public func deleteSmartPlaylist(_ id: String) async {
+        do {
+            collection = try await core.deleteSmartPlaylist(id: id)
+        } catch {
+            report(error)
+        }
+    }
+
     // MARK: On the phone
 
     /// Several songs (an album) as one sign: failed if any failed, on its
@@ -1082,6 +1115,76 @@ public enum TakeFormat {
             text += " · \(list.missingCount) not in your library"
         }
         return text
+    }
+
+    /// "12 songs, 48 minutes" for a smart playlist.
+    public static func smartSummary(_ list: SmartPlaylist) -> String {
+        var text = "\(list.trackCount) \(list.trackCount == 1 ? "song" : "songs")"
+        let minutes = Int((list.durationSeconds / 60).rounded())
+        if minutes > 0 { text += ", \(minutes) \(minutes == 1 ? "minute" : "minutes")" }
+        return text
+    }
+
+    /// A rule as a sentence: "Artist contains “Hours”", "Plays at least 5",
+    /// "Last played not in the last 60 days", "Is a favourite".
+    public static func smartRule(_ rule: SmartRule) -> String {
+        switch rule {
+        case .text(let field, let test, let value):
+            let name = smartField(field)
+            if value.trimmingCharacters(in: .whitespaces).isEmpty {
+                return test == .doesNotEqual ? "\(name) is set" : "\(name) is empty"
+            }
+            return "\(name) \(smartTest(test)) “\(value)”"
+        case .number(let field, let test, let value):
+            let amount: String
+            switch field {
+            case .playCount: amount = "\(Int(value))"
+            case .lengthSeconds: amount = time(value)
+            }
+            let name = field == .playCount ? "Plays" : "Length"
+            switch test {
+            case .equals: return "\(name) \(amount)"
+            case .atLeast: return "\(name) at least \(amount)"
+            case .atMost: return "\(name) at most \(amount)"
+            }
+        case .date(let field, let test, let days):
+            let name = field == .added ? "Added" : "Last played"
+            let span = days == 1 ? "day" : "\(days) days"
+            return test == .inLast ? "\(name) in the last \(span)" : "\(name) not in the last \(span)"
+        case .favourite(let favourite):
+            return favourite ? "Is a favourite" : "Isn’t a favourite"
+        }
+    }
+
+    public static func smartField(_ field: SmartTextField) -> String {
+        switch field {
+        case .title: "Title"
+        case .artist: "Artist"
+        case .album: "Album"
+        case .genre: "Genre"
+        }
+    }
+
+    public static func smartTest(_ test: SmartTextTest) -> String {
+        switch test {
+        case .equals: "is"
+        case .doesNotEqual: "is not"
+        case .contains: "contains"
+        case .doesNotContain: "does not contain"
+        case .beginsWith: "begins with"
+        }
+    }
+
+    public static func smartSort(_ sort: SmartSort) -> String {
+        switch sort {
+        case .title: "Title"
+        case .artist: "Artist"
+        case .album: "Album"
+        case .recentlyAdded: "Recently Added"
+        case .mostPlayed: "Most Played"
+        case .recentlyPlayed: "Recently Played"
+        case .leastRecentlyPlayed: "Least Recently Played"
+        }
     }
 
     /// "2 albums · 12 songs".

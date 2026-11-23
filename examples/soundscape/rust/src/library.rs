@@ -403,6 +403,10 @@ pub struct LibraryTrack {
     /// The take server's slug, for the takes and comparison screen.
     pub slug: Option<String>,
     pub updated_ms: i64,
+    /// When it came into the library: an imported file's or a catalogue
+    /// song's time of adding, a take server song's oldest take. A merged
+    /// song has the earliest of its sources.
+    pub added_ms: i64,
     /// True when the person changed its details.
     pub edited: bool,
     /// True when its preferred recording plays from the phone (downloaded
@@ -672,6 +676,8 @@ struct Source {
     picked: bool,
     slug: Option<String>,
     updated_ms: i64,
+    /// When it came into the library.
+    added_ms: i64,
 }
 
 /// A track as its source has it, with where it came from.
@@ -778,6 +784,7 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
             picked: source.picked,
             slug: source.slug,
             updated_ms: source.updated_ms,
+            added_ms: source.added_ms,
             edited: !edit.is_empty(),
             downloaded,
             musicbrainz_id: link.map(|l| l.recording_id.clone()),
@@ -814,6 +821,7 @@ fn build(file: &LibraryFile, locate: &Locate<'_>) -> Built {
                 });
             }
             source.recording_count += theirs.recording_count;
+            source.added_ms = source.added_ms.min(theirs.added_ms);
             // Your own file plays when the merged song has one.
             let local = matches!(their_origin, Origin::Imported(_));
             let kept_chosen = chosen == Some(&source.id);
@@ -889,6 +897,12 @@ fn sources(file: &LibraryFile, locate: &Locate<'_>) -> Vec<(Source, Origin)> {
                         .is_some_and(|p| snap.takes.iter().any(|t| &t.id == p)),
                     slug: Some(snap.slug.clone()),
                     updated_ms: snap.updated_ms,
+                    added_ms: snap
+                        .takes
+                        .iter()
+                        .map(|t| t.made_ms)
+                        .min()
+                        .unwrap_or(snap.updated_ms),
                 },
                 Origin::Server(snap.clone()),
             ));
@@ -916,6 +930,7 @@ fn sources(file: &LibraryFile, locate: &Locate<'_>) -> Vec<(Source, Origin)> {
                 picked: false,
                 slug: None,
                 updated_ms: imported.added_ms,
+                added_ms: imported.added_ms,
             },
             Origin::Imported(None),
         ));
@@ -951,6 +966,7 @@ fn sources(file: &LibraryFile, locate: &Locate<'_>) -> Vec<(Source, Origin)> {
                 picked: false,
                 slug: None,
                 updated_ms: saved.added_ms,
+                added_ms: saved.added_ms,
             },
             Origin::Catalogue(None),
         ));
@@ -1024,7 +1040,7 @@ pub fn catalogue_recording(track: &CatalogueTrack) -> Recording {
 }
 
 /// "The Lowbridge" sorts under L, case ignored.
-fn sort_key(text: &str) -> String {
+pub(crate) fn sort_key(text: &str) -> String {
     let lower = text.trim().to_lowercase();
     lower
         .strip_prefix("the ")

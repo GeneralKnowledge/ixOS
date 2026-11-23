@@ -97,33 +97,42 @@ struct PlaylistsView: View {
     let player: TakePlayer
     @State private var naming = false
     @State private var deleting: Playlist?
+    @State private var makingSmart = false
 
     var body: some View {
         List {
-            ForEach(model.collection.playlists) { list in
-                NavigationLink(value: ListenRoute.playlist(list.id)) { PlaylistRow(list: list) }
-                    .accessibilityIdentifier("playlists.playlist")
-                    .forgeRowActions {
-                        Button("Delete", systemImage: "trash", role: .destructive) { deleting = list }
-                            .accessibilityIdentifier("playlists.delete")
-                    }
+            SmartPlaylistsSection(model: model)
+            Section("Playlists") {
+                ForEach(model.collection.playlists) { list in
+                    NavigationLink(value: ListenRoute.playlist(list.id)) { PlaylistRow(list: list) }
+                        .accessibilityIdentifier("playlists.playlist")
+                        .forgeRowActions {
+                            Button("Delete", systemImage: "trash", role: .destructive) { deleting = list }
+                                .accessibilityIdentifier("playlists.delete")
+                        }
+                }
+                if model.collection.playlists.isEmpty {
+                    Text("Make one with +, or add a song from its menu.")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("playlists.none")
+                }
             }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Playlists")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("New Playlist", systemImage: "plus") { naming = true }
-                    .accessibilityIdentifier("playlists.new")
+                Menu("New", systemImage: "plus") {
+                    Button("New Playlist", systemImage: "music.note.list") { naming = true }
+                        .accessibilityIdentifier("playlists.new")
+                    Button("New Smart Playlist", systemImage: "gearshape") { makingSmart = true }
+                        .accessibilityIdentifier("playlists.newSmart")
+                }
+                .accessibilityIdentifier("playlists.add")
             }
         }
-        .overlay {
-            if model.collection.playlists.isEmpty {
-                ForgeStateView.empty(
-                    "No Playlists Yet", systemImage: "music.note.list",
-                    description: "Make one with +, or add a song from its menu."
-                )
-            }
+        .sheet(isPresented: $makingSmart) {
+            SmartPlaylistEditor(model: model, editing: nil, start: .new)
         }
         .forgeRename("New Playlist", isPresented: $naming, name: "", id: "playlistName", confirmTitle: "Create") { name in
             _ = try await model.createPlaylist(name)

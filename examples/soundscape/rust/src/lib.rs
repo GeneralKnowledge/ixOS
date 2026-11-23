@@ -27,6 +27,7 @@ pub mod playback;
 pub mod playlist_plan;
 pub mod queue;
 pub mod search;
+pub mod smart;
 pub mod station;
 pub mod test_catalogue;
 
@@ -66,6 +67,10 @@ use playback::PlaybackFile;
 pub use playback::SavedPlayback;
 pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
 pub use search::CatalogueSearch;
+pub use smart::{
+    SmartDateField, SmartDateTest, SmartEntry, SmartNumberField, SmartNumberTest, SmartPlaylist,
+    SmartPlaylistDetail, SmartRule, SmartRules, SmartSort, SmartTextField, SmartTextTest,
+};
 pub use station::{Feeling, Station, StationSeed};
 pub use test_catalogue::TestTrack;
 
@@ -326,7 +331,7 @@ impl SoundscapeCore {
     /// Favourites, playlists and recently played, as the library has them
     /// now. Never waits for a command.
     pub fn collection(&self) -> MusicCollection {
-        collection::build_collection(&self.collection.get(), &self.library())
+        collection::build_collection(&self.collection.get(), &self.library(), now_ms())
     }
 
     pub fn is_favourite(&self, id: String) -> bool {
@@ -589,6 +594,63 @@ impl SoundscapeCore {
         collection::playlist_detail(&self.collection.get(), &self.library(), id)
     }
 
+    // MARK: Smart playlists
+
+    /// A smart playlist (built in or yours) with the songs its rules let in
+    /// now.
+    pub fn smart_playlist(&self, id: String) -> Result<SmartPlaylistDetail, SoundscapeError> {
+        smart::detail(&self.collection.get(), &self.library(), &id, now_ms())
+    }
+
+    /// How many songs `rules` would let in now, for the editor.
+    pub fn smart_playlist_count(&self, rules: SmartRules) -> Result<u32, SoundscapeError> {
+        smart::check(&rules)?;
+        Ok(smart::songs(&rules, &self.collection.get(), &self.library(), now_ms()).len() as u32)
+    }
+
+    pub async fn create_smart_playlist(
+        &self,
+        name: String,
+        rules: SmartRules,
+    ) -> Result<SmartPlaylistDetail, SoundscapeError> {
+        let id = self
+            .rt
+            .command("smart-playlist-create", move |state| {
+                state.change_collection(|c| c.create_smart_playlist(&name, rules, now_ms()))
+            })
+            .await?;
+        self.smart_playlist(smart::stored_id(id))
+    }
+
+    /// Renames one of your smart playlists and replaces its rules.
+    pub async fn edit_smart_playlist(
+        &self,
+        id: String,
+        name: String,
+        rules: SmartRules,
+    ) -> Result<SmartPlaylistDetail, SoundscapeError> {
+        let number = smart::stored_number(&id).ok_or_else(|| smart::no_smart_playlist(&id))?;
+        self.rt
+            .command("smart-playlist-edit", move |state| {
+                state.change_collection(|c| c.edit_smart_playlist(number, &name, rules, now_ms()))
+            })
+            .await?;
+        self.smart_playlist(id)
+    }
+
+    pub async fn delete_smart_playlist(
+        &self,
+        id: String,
+    ) -> Result<MusicCollection, SoundscapeError> {
+        let number = smart::stored_number(&id).ok_or_else(|| smart::no_smart_playlist(&id))?;
+        self.rt
+            .command("smart-playlist-delete", move |state| {
+                state.change_collection(|c| c.delete_smart_playlist(number))
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
     /// Notes that a song was played (see `counts_as_played`).
     pub async fn record_play(
         &self,
@@ -605,11 +667,12 @@ impl SoundscapeCore {
             .await
     }
 
+    /// Forgets the history and the play counts.
     pub async fn clear_history(&self) -> Result<MusicCollection, SoundscapeError> {
         self.rt
             .command("collection-clear-history", move |state| {
                 state.change_collection(|c| {
-                    c.history.clear();
+                    c.clear_history();
                     Ok(())
                 })
             })
@@ -2105,9 +2168,12 @@ impl SoundscapeCore {
         }
         let mut collection_doc = collection_doc;
         let mut repaired = collection_doc.value().clone();
-        if merge::repair_collection(library_doc.value(), &mut repaired) {
+        let moved = merge::repair_collection(library_doc.value(), &mut repaired);
+        // Counts plays from before counts were kept.
+        let counted = repaired.fill_tally();
+        if moved || counted {
             if let Err(err) = collection_doc.replace(repaired) {
-                forge_runtime::logging::warn!("merged songs' favourites not moved: {err}");
+                forge_runtime::logging::warn!("collection not repaired: {err}");
             }
         }
         let collection_published = Arc::new(Published::new(collection_doc.value().clone()));

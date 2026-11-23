@@ -14,6 +14,8 @@ enum ListenRoute: Hashable {
     case favourites
     case playlists
     case playlist(UInt64)
+    /// A smart playlist, built in or yours, by its id.
+    case smartPlaylist(String)
     case recent
     /// What is kept on the phone.
     case downloads
@@ -52,6 +54,7 @@ extension ListenRoute {
         case .favourites: "favourites"
         case .playlists: "playlists"
         case .playlist(let id): "playlist:\(id)"
+        case .smartPlaylist(let id): "smartPlaylist:\(id)"
         case .recent: "recent"
         case .downloads: "downloads"
         case .toPick: "toPick"
@@ -73,7 +76,7 @@ extension ListenRoute {
     /// tile they were opened from. Lists and areas are ordinary pushes.
     var style: SurfaceStyle {
         switch self {
-        case .artist, .album, .playlist, .archiveItem: .stacked
+        case .artist, .album, .playlist, .smartPlaylist, .archiveItem: .stacked
         default: .fullScreen
         }
     }
@@ -265,6 +268,7 @@ struct ListenDestination: View {
         case .favourites: FavouritesView(model: model, player: player)
         case .playlists: PlaylistsView(model: model, player: player)
         case .playlist(let id): PlaylistView(model: model, player: player, id: id)
+        case .smartPlaylist(let id): SmartPlaylistView(model: model, player: player, id: id)
         case .recent: RecentlyPlayedView(model: model, player: player)
         case .downloads: DownloadsView(model: model, player: player)
         case .toPick: ToPickView(model: model, player: player)
