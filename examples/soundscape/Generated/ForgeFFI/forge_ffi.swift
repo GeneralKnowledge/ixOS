@@ -2543,6 +2543,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func takeQueueTrack(song: SongDetail, take: Take)  -> QueueTrack
     
     /**
+     * The fixed test catalogue (`test_catalogue`): its files are written
+     * the first time (about 18 MB, a second or two), then reused.
+     * On-screen work.
+     */
+    func testCatalogue(cancellation: Cancellation?) async throws  -> [TestTrack]
+    
+    /**
      * Songs waiting for a pick: two or more takes and none picked, most
      * recently changed first.
      */
@@ -3808,6 +3815,27 @@ open func takeQueueTrack(song: SongDetail, take: Take) -> QueueTrack  {
         FfiConverterTypeTake_lower(take),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * The fixed test catalogue (`test_catalogue`): its files are written
+     * the first time (about 18 MB, a second or two), then reused.
+     * On-screen work.
+     */
+open func testCatalogue(cancellation: Cancellation?)async throws  -> [TestTrack]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_test_catalogue(
+                        self.uniffiCloneHandle(),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeTestTrack.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -7937,6 +7965,69 @@ public func FfiConverterTypeTakeMark_lower(_ value: TakeMark) -> RustBuffer {
 
 
 /**
+ * One test track and what it is there to check.
+ */
+public struct TestTrack: Equatable, Hashable {
+    public var track: CatalogueTrack
+    /**
+     * What to look for when playing it, in a sentence.
+     */
+    public var checks: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(track: CatalogueTrack, 
+        /**
+         * What to look for when playing it, in a sentence.
+         */checks: String) {
+        self.track = track
+        self.checks = checks
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TestTrack: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTestTrack: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TestTrack {
+        return
+            try TestTrack(
+                track: FfiConverterTypeCatalogueTrack.read(from: &buf), 
+                checks: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TestTrack, into buf: inout [UInt8]) {
+        FfiConverterTypeCatalogueTrack.write(value.track, into: &buf)
+        FfiConverterString.write(value.checks, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTestTrack_lift(_ buf: RustBuffer) throws -> TestTrack {
+    return try FfiConverterTypeTestTrack.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTestTrack_lower(_ value: TestTrack) -> RustBuffer {
+    return FfiConverterTypeTestTrack.lower(value)
+}
+
+
+/**
  * A track with all its recordings, newest last, and the words that went
  * into generating it.
  */
@@ -10967,6 +11058,31 @@ fileprivate struct FfiConverterSequenceTypeTake: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTestTrack: FfiConverterRustBuffer {
+    typealias SwiftType = [TestTrack]
+
+    public static func write(_ value: [TestTrack], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTestTrack.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TestTrack] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TestTrack]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTestTrack.read(from: &buf))
+        }
+        return seq
+    }
+}
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
 
@@ -11127,6 +11243,17 @@ public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
         uniffiCallStatus in
     uniffi_soundscape_core_fn_func_forge_log_enabled(
         FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
+    )
+})
+}
+/**
+ * The longest title, artist, album or genre a song keeps, in characters,
+ * so Edit Song can name the limit.
+ */
+public func songFieldMaxChars() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_song_field_max_chars(uniffiCallStatus
     )
 })
 }
@@ -11451,6 +11578,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_func_forge_log_enabled() != 19347) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_func_song_field_max_chars() != 52764) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_func_counts_as_played() != 36228) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11728,6 +11858,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_take_queue_track() != 39737) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_test_catalogue() != 5802) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_tracks_to_pick() != 21309) {

@@ -71,6 +71,9 @@ pub struct ChatCore {
     /// Conversations with trusted devices (`crate::device_chat`), one
     /// client each, beside the server account's.
     devices: Mutex<DeviceChats>,
+    /// Relay's core, for an account on a room host (N4): rooms go over
+    /// its node. Set by `use_relay`, which may come after the session.
+    room_relay: crate::rooms::RelaySlot,
     /// Held by the lifecycle thread while it applies a phase change, and
     /// set to true by shutdown (`end`). Once shutdown returns, that thread
     /// never takes the core again, so dropping the owner's last reference
@@ -167,6 +170,7 @@ impl ChatCore {
             user_id: registered.user_id,
             display_name: registered.display_name,
             token: registered.token,
+            room: None,
         };
         self.ensure_running()?;
         self.sign_out_locked(&mut self.lock(), false)?;
@@ -190,11 +194,9 @@ impl ChatCore {
         self.ensure_running()?;
         let stored = self.credentials.load()?.ok_or(ChatError::NotSignedIn)?;
         let account = stored.public();
+        let repo = self.account_repo(&stored);
         let checked = background("chat-check-account", move || {
-            server_repo(&stored.server_url)
-                .with_token(&stored.token)
-                .identity()
-                .map_err(ChatError::from)
+            repo.identity().map_err(ChatError::from)
         })
         .await;
         match checked {
@@ -231,6 +233,85 @@ impl ChatCore {
             }
         })));
         self.devices_lock().relay = Some(Arc::downgrade(&relay));
+        *forge_runtime::lock(&self.room_relay) = Arc::downgrade(&relay);
+        // An account on the old HTTP API moves to this device's key on
+        // its server's room host, once, in the background (N4).
+        let me = Arc::downgrade(&self);
+        std::thread::Builder::new()
+            .name("chat-move-account".into())
+            .spawn(move || match ChatCore::move_to_room(&me) {
+                Ok(true) => forge_runtime::logging::info!(target: "chat", "the account moved onto Relay"),
+                Ok(false) => {}
+                Err(e) => forge_runtime::logging::info!(target: "chat", "the account stays on HTTP for now: {e}"),
+            })
+            .ok();
+    }
+
+    /// Joins a room host's rooms with a word code from `chat-server
+    /// invite` (N4). `host` is the host's address: its server URL
+    /// (`http://…`, asked where its rooms are) or its key (64 hex
+    /// characters); empty uses the current account's server. The account
+    /// is this device's key there; a different account on this device is
+    /// signed out first. Needs Relay (`use_relay`). Emits `AccountChanged`.
+    pub async fn join_room(
+        &self,
+        host: String,
+        code: String,
+        display_name: String,
+    ) -> Result<ChatAccount, ChatError> {
+        self.ensure_running()?;
+        if !self.has_relay() {
+            return Err(ChatError::UnsupportedOnHost {
+                detail: "joining a room needs Relay".into(),
+            });
+        }
+        let current = self.credentials.load()?;
+        let host = match host.trim() {
+            "" => current
+                .as_ref()
+                .map(|a| a.server_url.clone())
+                .filter(|url| url.starts_with("http"))
+                .ok_or(ChatError::InvalidInput {
+                    reason: "enter the room host's address".into(),
+                })?,
+            typed => typed.to_string(),
+        };
+        let slot = Arc::clone(&self.room_relay);
+        let (found, joined, server_url) = background("chat-join-room", move || {
+            let (found, server_url) = find_room_host(&host)?;
+            let transport = crate::rooms::RoomTransport::with_slot(slot, found.clone());
+            let joined = crate::rooms::join_with(&transport, &code, &display_name)?;
+            Ok::<_, ChatError>((found, joined, server_url))
+        })
+        .await?;
+        let stored = StoredAccount {
+            server_url,
+            user_id: joined.user_id,
+            display_name: joined.display_name,
+            token: String::new(),
+            room: Some(found),
+        };
+        let same = current
+            .as_ref()
+            .is_some_and(|c| c.user_id == stored.user_id);
+        let mut session = self.lock();
+        self.ensure_running()?;
+        if same {
+            if let Some(old) = session.take() {
+                old.client.shutdown();
+            }
+        } else {
+            self.sign_out_locked(&mut session, false)?;
+        }
+        self.credentials.save(&stored)?;
+        let opened = self.open_session(&stored)?;
+        let account = opened.account.clone();
+        *session = Some(opened);
+        drop(session);
+        self.events.publish(ChatEvent::AccountChanged {
+            account: Some(account.clone()),
+        });
+        Ok(account)
     }
 
     /// The on-device assistant. Works without an account, and keeps its
@@ -683,6 +764,19 @@ pub fn chat_message_link(conversation_id: String, message_id: String) -> String 
     alerts::message_link(&conversation_id, &message_id)
 }
 
+/// The longest message text, in characters (Unicode scalars), so the
+/// composer can say so before Rust refuses it.
+#[uniffi::export]
+pub fn chat_max_message_chars() -> u32 {
+    chat_core::MAX_BODY_CHARS as u32
+}
+
+/// The most files one message may carry.
+#[uniffi::export]
+pub fn chat_max_attachments_per_message() -> u32 {
+    chat_core::MAX_ATTACHMENTS_PER_MESSAGE as u32
+}
+
 /// The conversation in Chats of the trusted device `endpoint_id` (its
 /// device screen's Message button opens it).
 #[uniffi::export]
@@ -891,6 +985,7 @@ impl ChatCore {
             _on_shutdown: Mutex::new(None),
             services,
             devices: Mutex::new(DeviceChats::default()),
+            room_relay: Arc::default(),
             lifecycle_gate: Arc::new(Mutex::new(false)),
         };
         if let Some(stored) = core.credentials.load()? {
@@ -1158,6 +1253,94 @@ impl ChatCore {
             .ok_or(ChatError::NotSignedIn)
     }
 
+    /// The repo of an account: over `relay/room/1` on its room host, or
+    /// the old HTTP API with its token.
+    fn account_repo(&self, stored: &StoredAccount) -> HttpRepo {
+        match &stored.room {
+            Some(host) => HttpRepo::new(
+                Arc::new(crate::rooms::RoomTransport::with_slot(
+                    Arc::clone(&self.room_relay),
+                    host.clone(),
+                )),
+                crate::rooms::ROOM_BASE_URL,
+            ),
+            None => server_repo(&stored.server_url).with_token(&stored.token),
+        }
+    }
+
+    /// Moves a token account to this device's key on its server's room
+    /// host, keeping its rooms and history (here and on the server). False
+    /// when there is nothing to move, or the core closed meanwhile. Blocks:
+    /// call it off the main thread. The core is held only to read and to
+    /// commit, never across the network, so closing it isn't held up.
+    fn move_to_room(me: &std::sync::Weak<ChatCore>) -> Result<bool, ChatError> {
+        let (stored, slot) = {
+            let Some(core) = me.upgrade() else {
+                return Ok(false);
+            };
+            (core.credentials.load()?, Arc::clone(&core.room_relay))
+        };
+        let Some(stored) = stored else {
+            return Ok(false);
+        };
+        if stored.room.is_some() || stored.token.is_empty() {
+            return Ok(false);
+        }
+        // The host is asked the same way, and over the same connection
+        // security, as the server the token already goes to on every
+        // request: a lookup over plain HTTP is no weaker than the token's
+        // own use there.
+        let (host, _) = find_room_host(&stored.server_url)?;
+        let transport = crate::rooms::RoomTransport::with_slot(slot, host.clone());
+        let moved = match crate::rooms::claim_with(&transport, &stored.token) {
+            // Moved already (the answer was lost, or saving it failed):
+            // the host knows this device's key, and no token is needed.
+            Err(chat_core::ChatError::Http { status: 401, .. }) => {
+                crate::rooms::claim_with(&transport, "")?
+            }
+            other => other?,
+        };
+        if moved.user_id != stored.user_id {
+            return Err(ChatError::BadResponse {
+                reason: "the room host moved a different account".into(),
+            });
+        }
+        let moved = StoredAccount {
+            token: String::new(),
+            room: Some(host),
+            ..stored
+        };
+        let Some(core) = me.upgrade() else {
+            return Ok(false);
+        };
+        core.commit_move(moved)
+    }
+
+    /// Changes the signed-in account over to its moved form, if it is
+    /// still the account that was moved.
+    fn commit_move(&self, moved: StoredAccount) -> Result<bool, ChatError> {
+        let mut session = self.lock();
+        // Checked under the lock: a shutdown that got there first wins.
+        self.ensure_running()?;
+        // Still the account that was moved: then it changes over, its
+        // chats staying where they are.
+        if self.credentials.load()?.as_ref().map(|a| &a.user_id) != Some(&moved.user_id) {
+            return Ok(false);
+        }
+        self.credentials.save(&moved)?;
+        if let Some(old) = session.take() {
+            old.client.shutdown();
+        }
+        let opened = self.open_session(&moved)?;
+        let account = opened.account.clone();
+        *session = Some(opened);
+        drop(session);
+        self.events.publish(ChatEvent::AccountChanged {
+            account: Some(account),
+        });
+        Ok(true)
+    }
+
     /// Where an account's chats are kept.
     fn account_directory(&self, user_id: &str) -> PathBuf {
         let safe: String = user_id
@@ -1178,7 +1361,7 @@ impl ChatCore {
         std::fs::create_dir_all(&directory).map_err(|err| ChatError::Storage {
             reason: format!("create {}: {err}", directory.display()),
         })?;
-        let repo = server_repo(&stored.server_url).with_token(&stored.token);
+        let repo = self.account_repo(stored);
         let config = ChatConfig {
             user: stored.display_name.clone(),
             user_id: stored.user_id.clone(),
@@ -1266,6 +1449,10 @@ fn watch_all(client: &ChatClient, alerts: &alerts::Alerts) {
 /// The chat server's API, through URLSession once the host has installed
 /// the `http` service (on iOS), and through ureq before that and in tests.
 fn server_repo(server_url: impl Into<String>) -> HttpRepo {
+    HttpRepo::new(http_client(), server_url)
+}
+
+fn http_client() -> Arc<dyn forge_net::HttpClient> {
     static CLIENT: std::sync::OnceLock<Arc<native::http::PreferInstalled>> =
         std::sync::OnceLock::new();
     let client = CLIENT.get_or_init(|| {
@@ -1277,10 +1464,49 @@ fn server_repo(server_url: impl Into<String>) -> HttpRepo {
             |client| client,
         ))
     });
-    HttpRepo::new(
-        Arc::clone(client) as Arc<dyn forge_net::HttpClient>,
-        server_url,
-    )
+    Arc::clone(client) as Arc<dyn forge_net::HttpClient>
+}
+
+/// The room host at `address`, and how the account shows it: a key (64
+/// hex characters), or a server URL, which is asked where its rooms are
+/// (`GET /host`). Blocks.
+fn find_room_host(address: &str) -> Result<(crate::rooms::RoomHost, String), ChatError> {
+    let address = address.trim().trim_end_matches('/');
+    if address.len() == 64 && address.bytes().all(|b| b.is_ascii_hexdigit()) {
+        let host = crate::rooms::RoomHost {
+            endpoint_id: address.to_ascii_lowercase(),
+            relay_url: None,
+            addresses: Vec::new(),
+        };
+        return Ok((host, format!("relay:{}", &address[..8])));
+    }
+    let url = normalise_server_url(address)?;
+    let request = forge_net::Request::get(format!("{url}/host"))
+        .header("Accept", "application/json")
+        .timeout(std::time::Duration::from_secs(15));
+    let response = http_client()
+        .send(&request)
+        .map_err(|e| ChatError::from(chat_core::ChatError::from(e)))?;
+    if response.status == 404 {
+        return Err(ChatError::UnsupportedOnHost {
+            detail: "that server doesn't serve rooms over Relay yet; update it".into(),
+        });
+    }
+    if !(200..300).contains(&response.status) {
+        return Err(ChatError::Http {
+            status: response.status,
+            // cut: a server's error body, shown only as an error's reason
+            reason: String::from_utf8_lossy(&response.body)
+                .chars()
+                .take(200)
+                .collect(),
+        });
+    }
+    let host: crate::rooms::RoomHost =
+        serde_json::from_slice(&response.body).map_err(|e| ChatError::BadResponse {
+            reason: e.to_string(),
+        })?;
+    Ok((host, url))
 }
 
 /// Checks the server URL the user typed: http(s), no trailing slash.

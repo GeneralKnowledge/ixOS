@@ -399,7 +399,26 @@ pub struct LadderTask {
     pub request: &'static str,
     pub seed: Vec<SeedFile>,
     pub criteria: Vec<Criterion>,
+    /// Bonsai plans it as several tasks first (H4); `criteria` are then
+    /// checked once every task is verified.
+    pub planned: bool,
+    /// It can't succeed: it passes by ending Blocked with a clear question
+    /// instead of looping (H5).
+    pub ends_blocked: bool,
 }
+
+/// T4's finished project, T11's seed.
+const SHAPES_PY: &str = "import math\n\n\ndef rectangle_area(width, height):\n    return width * height\n\n\ndef circle_area(radius):\n    return math.pi * radius ** 2\n";
+
+const SHAPES_MAIN_PY: &str = "import shapes\n\nprint(\"Rectangle:\", round(shapes.rectangle_area(3, 5), 2))\nprint(\"Circle:\", round(shapes.circle_area(2), 2))\n";
+
+/// T11's seed journal: the earlier task that made the project, so the
+/// harness can tell the model what was done before.
+const SHAPES_JOURNAL: &str = "{\"event\":\"task\",\"task\":\"task-1\",\"description\":\"Write shapes.py with rectangle_area(width, height) and circle_area(radius), and main.py that prints the area of a 3 by 5 rectangle and of a circle of radius 2.\",\"criteria\":[],\"model\":\"earlier\",\"at_ms\":1}\n{\"event\":\"status\",\"task\":\"task-1\",\"status\":\"completed\",\"reason\":\"Verified: main.py printed 15; main.py printed 12.57.\",\"at_ms\":2}\n";
+
+/// T8's seed: it needs a module nobody has written.
+const STATS_REPORT_PY: &str =
+    "from stats import mean\n\nnumbers = [2, 4, 6]\nprint(\"Average:\", mean(numbers))\n";
 
 const AVERAGE_PY: &str = "def average(numbers):\n    \"\"\"The mean of a list of numbers.\"\"\"\n    return sum(numbers) / (len(numbers) + 1)\n";
 
@@ -408,7 +427,8 @@ const TEST_AVERAGE_PY: &str = "import unittest\n\nfrom average import average\n\
 const INVENTORY_PY: &str = "stock = {\"apples\": 3, \"pears\": 0, \"plums\": 5}\n\n\ndef report(stock):\n    lines = []\n    for name, count in stock.items():\n        lines.append(name + \": \" + count)\n    return lines\n\n\nfor line in report(stock):\n    print(line)\n";
 
 /// The ladder (docs/bonsai-harness-plan.md): T1 to T3 are H1's, T4 and
-/// T5 are H2's.
+/// T5 are H2's, T6 and T7 (planned) are H4's, T8 and T9 are H5's, T11 is
+/// H6's (T10, killing the app mid-plan, is a phone step).
 pub fn ladder() -> Vec<LadderTask> {
     vec![
         LadderTask {
@@ -420,6 +440,8 @@ pub fn ladder() -> Vec<LadderTask> {
                 path: "hello.py".into(),
                 text: "Hello from Bonsai".into(),
             }],
+            planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t2-one-test",
@@ -428,6 +450,8 @@ pub fn ladder() -> Vec<LadderTask> {
                       test_mathutil.py with a unittest test for it. Then run the tests.",
             seed: vec![],
             criteria: vec![Criterion::TestsPass],
+            planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t3-one-fix",
@@ -451,6 +475,8 @@ pub fn ladder() -> Vec<LadderTask> {
                     content: TEST_AVERAGE_PY.into(),
                 },
             ],
+            planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t4-two-modules",
@@ -469,6 +495,8 @@ pub fn ladder() -> Vec<LadderTask> {
                     text: "12.57".into(),
                 },
             ],
+            planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "tp1-svg-chart",
@@ -488,6 +516,8 @@ pub fn ladder() -> Vec<LadderTask> {
                     values: vec!["3".into(), "7".into(), "5".into()],
                 },
             ],
+            planned: false,
+            ends_blocked: false,
         },
         LadderTask {
             id: "t5-fix-from-traceback",
@@ -509,6 +539,107 @@ pub fn ladder() -> Vec<LadderTask> {
                     text: "plums: 5".into(),
                 },
             ],
+            planned: false,
+            ends_blocked: false,
+        },
+        LadderTask {
+            id: "t6-two-functions",
+            title: "T6 Two functions, two tests (a plan)",
+            request: "Write textutil.py with two functions: shout(text) returns the text in capitals \
+                      followed by \"!\", and whisper(text) returns it in lower case followed by \"...\". \
+                      Give each its own unittest file, test_shout.py and test_whisper.py. Plan it as two \
+                      tasks, one per function with its test.",
+            seed: vec![],
+            criteria: vec![Criterion::TestsPass],
+            planned: true,
+            ends_blocked: false,
+        },
+        LadderTask {
+            id: "t7-plan-with-dependency",
+            title: "T7 Three tasks with a dependency (a plan)",
+            request: "Write grades.py with letter(score): A for 90 and up, B for 80 and up, C for 70 and \
+                      up, otherwise F. Test it in test_grades.py. Then write report.py that uses \
+                      grades.letter to print each student of {\"Ana\": 93, \"Ben\": 78, \"Cy\": 85} like \
+                      \"Ana: A\", and run it. Plan it as three tasks: the function, its tests, the report.",
+            seed: vec![],
+            criteria: vec![
+                Criterion::RunPrints {
+                    path: "report.py".into(),
+                    text: "Ana: A".into(),
+                },
+                Criterion::RunPrints {
+                    path: "report.py".into(),
+                    text: "Ben: C".into(),
+                },
+                Criterion::RunPrints {
+                    path: "report.py".into(),
+                    text: "Cy: B".into(),
+                },
+            ],
+            planned: true,
+            ends_blocked: false,
+        },
+        LadderTask {
+            id: "t8-replan",
+            title: "T8 A plan that must change (recovery)",
+            request: "Run report.py, which prints the average of some numbers, and make it work: it \
+                      should print \"Average: 4\". Plan it as small tasks.",
+            seed: vec![SeedFile {
+                path: "report.py",
+                content: STATS_REPORT_PY,
+            }],
+            criteria: vec![Criterion::RunPrints {
+                path: "report.py".into(),
+                text: "Average: 4".into(),
+            }],
+            planned: true,
+            ends_blocked: false,
+        },
+        LadderTask {
+            id: "t9-blocked",
+            title: "T9 A task that can't succeed (blocked)",
+            request: "Write weather.py that downloads today's weather for Edinburgh from \
+                      https://wttr.in/Edinburgh?format=3 and prints it, then run it.",
+            seed: vec![],
+            criteria: vec![],
+            planned: true,
+            ends_blocked: true,
+        },
+        LadderTask {
+            id: "t11-second-request",
+            title: "T11 A second request on an earlier project",
+            request: "Now add square_area(side) to shapes.py, and make main.py also print the area of a \
+                      4 by 4 square. Keep what main.py prints already.",
+            seed: vec![
+                SeedFile {
+                    path: "shapes.py",
+                    content: SHAPES_PY,
+                },
+                SeedFile {
+                    path: "main.py",
+                    content: SHAPES_MAIN_PY,
+                },
+                SeedFile {
+                    path: ".harness/journal.jsonl",
+                    content: SHAPES_JOURNAL,
+                },
+            ],
+            criteria: vec![
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "16".into(),
+                },
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "15".into(),
+                },
+                Criterion::RunPrints {
+                    path: "main.py".into(),
+                    text: "12.57".into(),
+                },
+            ],
+            planned: false,
+            ends_blocked: false,
         },
     ]
 }
@@ -610,10 +741,7 @@ pub fn script(task_id: &str) -> Vec<String> {
                 "write_file",
                 &[
                     ("path", "shapes.py"),
-                    (
-                        "content",
-                        "import math\n\n\ndef rectangle_area(width, height):\n    return width * height\n\n\ndef circle_area(radius):\n    return math.pi * radius ** 2\n",
-                    ),
+                    ("content", SHAPES_PY),
                 ],
             ),
             answer(
@@ -621,10 +749,7 @@ pub fn script(task_id: &str) -> Vec<String> {
                 "write_file",
                 &[
                     ("path", "main.py"),
-                    (
-                        "content",
-                        "import shapes\n\nprint(\"Rectangle:\", round(shapes.rectangle_area(3, 5), 2))\nprint(\"Circle:\", round(shapes.circle_area(2), 2))\n",
-                    ),
+                    ("content", SHAPES_MAIN_PY),
                 ],
             ),
             answer("Run it.", "run_python", &[("path", "main.py")]),
@@ -667,6 +792,243 @@ pub fn script(task_id: &str) -> Vec<String> {
             answer("Run it again.", "run_python", &[("path", "inventory.py")]),
             finish("count is converted with str(); every item prints."),
         ],
+        // A plan, then each task with a fresh context.
+        "t6-two-functions" => vec![
+            plan_answer(
+                "One function and its test at a time.",
+                &[
+                    ("shout", "Write textutil.py with shout(text) returning text.upper() + '!', and test_shout.py testing it with unittest. Run the tests.", &[], "tests_pass"),
+                    ("whisper", "Add whisper(text) to textutil.py returning text.lower() + '...', keeping shout, and write test_whisper.py testing it. Run the tests.", &["shout"], "tests_pass"),
+                ],
+            ),
+            answer(
+                "Write shout.",
+                "write_file",
+                &[
+                    ("path", "textutil.py"),
+                    ("content", "def shout(text):\n    return text.upper() + \"!\"\n"),
+                ],
+            ),
+            answer(
+                "Test it.",
+                "write_file",
+                &[("path", "test_shout.py"), ("content", TEST_SHOUT_PY)],
+            ),
+            answer("Run the tests.", "run_tests", &[]),
+            finish("shout and its test pass."),
+            answer(
+                "Add whisper after shout.",
+                "edit_file",
+                &[
+                    ("path", "textutil.py"),
+                    ("old", "    return text.upper() + \"!\"\n"),
+                    (
+                        "new",
+                        "    return text.upper() + \"!\"\n\n\ndef whisper(text):\n    return text.lower() + \"...\"\n",
+                    ),
+                ],
+            ),
+            answer(
+                "Test whisper.",
+                "write_file",
+                &[("path", "test_whisper.py"), ("content", TEST_WHISPER_PY)],
+            ),
+            answer("Run all the tests.", "run_tests", &[]),
+            finish("Both functions and their tests pass."),
+        ],
+        "t7-plan-with-dependency" => vec![
+            plan_answer(
+                "The function first; its tests and the report both need it.",
+                &[
+                    ("letter", "Write grades.py with letter(score): 'A' for 90 and up, 'B' for 80 and up, 'C' for 70 and up, otherwise 'F'. Run grades.py.", &[], "work_runs"),
+                    ("tests", "Write test_grades.py testing grades.letter at 95, 85, 75 and 50 with unittest. Run the tests.", &["letter"], "tests_pass"),
+                    ("report", "Write report.py that prints each student of {'Ana': 93, 'Ben': 78, 'Cy': 85} as 'Ana: A' using grades.letter. Run report.py.", &["letter"], "report"),
+                ],
+            ),
+            answer(
+                "Write letter.",
+                "write_file",
+                &[("path", "grades.py"), ("content", GRADES_PY)],
+            ),
+            answer("Check it runs.", "run_python", &[("path", "grades.py")]),
+            finish("grades.py runs."),
+            answer(
+                "Test each band.",
+                "write_file",
+                &[("path", "test_grades.py"), ("content", TEST_GRADES_PY)],
+            ),
+            answer("Run the tests.", "run_tests", &[]),
+            finish("letter's tests pass."),
+            answer(
+                "Write the report.",
+                "write_file",
+                &[("path", "report.py"), ("content", REPORT_PY)],
+            ),
+            answer("Run it.", "run_python", &[("path", "report.py")]),
+            finish("report.py prints every student."),
+        ],
+        // Reads one function instead of the file, then adds beside it.
+        "t11-second-request" => vec![
+            answer(
+                "See how the areas are written.",
+                "read_symbol",
+                &[("path", "shapes.py"), ("name", "circle_area")],
+            ),
+            answer(
+                "Add square_area after circle_area.",
+                "edit_file",
+                &[
+                    ("path", "shapes.py"),
+                    ("old", "    return math.pi * radius ** 2\n"),
+                    (
+                        "new",
+                        "    return math.pi * radius ** 2\n\n\ndef square_area(side):\n    return side * side\n",
+                    ),
+                ],
+            ),
+            answer(
+                "Print the square too.",
+                "edit_file",
+                &[
+                    ("path", "main.py"),
+                    ("old", "print(\"Circle:\", round(shapes.circle_area(2), 2))\n"),
+                    (
+                        "new",
+                        "print(\"Circle:\", round(shapes.circle_area(2), 2))\nprint(\"Square:\", shapes.square_area(4))\n",
+                    ),
+                ],
+            ),
+            answer("Run it.", "run_python", &[("path", "main.py")]),
+            finish("main.py prints all three areas."),
+        ],
+        // The plan misses a module; the executor gives up, Recovery replans.
+        "t8-replan" => vec![
+            plan_answer(
+                "Run it first and see.",
+                &[("run-report", "Run report.py and make sure it prints Average: 4.", &[], "average")],
+            ),
+            answer("Run it.", "run_python", &[("path", "report.py")]),
+            answer(
+                "Missing module.",
+                super::calls::GIVE_UP,
+                &[("reason", "report.py imports stats, but there is no stats.py in the project.")],
+            ),
+            recovery_answer(
+                "No task makes the stats module report.py needs.",
+                "replan",
+                "stats.py with mean(numbers) is missing.",
+            ),
+            plan_answer(
+                "Write the missing module and its test, then run the report.",
+                &[
+                    ("stats", "Write stats.py with mean(numbers) returning sum(numbers) / len(numbers), and test_stats.py testing it with unittest. Run the tests.", &[], "tests_pass"),
+                    ("report", "Run report.py; it should print Average: 4.", &["stats"], "average"),
+                ],
+            ),
+            answer(
+                "Write mean.",
+                "write_file",
+                &[
+                    ("path", "stats.py"),
+                    ("content", "def mean(numbers):\n    return sum(numbers) / len(numbers)\n"),
+                ],
+            ),
+            answer(
+                "Test it.",
+                "write_file",
+                &[("path", "test_stats.py"), ("content", TEST_STATS_PY)],
+            ),
+            answer("Run the tests.", "run_tests", &[]),
+            finish("mean and its test pass."),
+            answer("Run the report.", "run_python", &[("path", "report.py")]),
+            finish("report.py prints Average: 4.0."),
+        ],
+        // The network is off: it ends Blocked with a question; answered,
+        // it goes on with a sample.
+        "t9-blocked" => vec![
+            plan_answer(
+                "One small program.",
+                &[("weather", "Write weather.py that downloads https://wttr.in/Edinburgh?format=3 with urllib and prints it. Run it.", &[], "work_runs")],
+            ),
+            answer(
+                "Download and print.",
+                "write_file",
+                &[("path", "weather.py"), ("content", WEATHER_PY)],
+            ),
+            answer("Run it.", "run_python", &[("path", "weather.py")]),
+            answer(
+                "The network is blocked.",
+                super::calls::GIVE_UP,
+                &[("reason", "Python's network is blocked here, so wttr.in can't be reached.")],
+            ),
+            recovery_answer(
+                "Only the person can say what to do without the network.",
+                "blocked",
+                "Python can't reach the internet on this phone. Should I print a sample forecast instead?",
+            ),
+            answer(
+                "Print a sample, as the person said.",
+                "write_file",
+                &[
+                    ("path", "weather.py"),
+                    ("content", "print(\"Edinburgh: (sample) cloudy, 9°C\")\n"),
+                ],
+            ),
+            answer("Run it.", "run_python", &[("path", "weather.py")]),
+            finish("weather.py prints a sample forecast."),
+        ],
         _ => vec![],
     }
 }
+
+/// A recovery answer in Recovery mode's grammar: `decision` is retry,
+/// replan or blocked, and `text` its diagnosis or question.
+fn recovery_answer(thought: &str, decision: &str, text: &str) -> String {
+    let field = if decision == "blocked" {
+        "question"
+    } else {
+        "diagnosis"
+    };
+    format!(
+        "{{\"thought\": {}, \"decision\": {}, \"{field}\": {}}}",
+        serde_json::to_string(thought).unwrap_or_default(),
+        serde_json::to_string(decision).unwrap_or_default(),
+        serde_json::to_string(text).unwrap_or_default()
+    )
+}
+
+const TEST_STATS_PY: &str = "import unittest\n\nfrom stats import mean\n\n\nclass MeanTest(unittest.TestCase):\n    def test_mean(self):\n        self.assertEqual(mean([2, 4, 6]), 4)\n";
+
+const WEATHER_PY: &str = "import urllib.request\n\nwith urllib.request.urlopen(\"https://wttr.in/Edinburgh?format=3\", timeout=5) as reply:\n    print(reply.read().decode())\n";
+
+/// A plan answer in the planner grammar's shape: tasks as (id, what to do,
+/// after, check), where check is "tests_pass", "work_runs", "report"
+/// (report.py prints "Ana: A") or "average" (report.py prints "Average: 4").
+fn plan_answer(thought: &str, tasks: &[(&str, &str, &[&str], &str)]) -> String {
+    let tasks: Vec<serde_json::Value> = tasks
+        .iter()
+        .map(|(id, what, after, check)| {
+            let check = match *check {
+                "report" => serde_json::json!({"check": "run_prints", "path": "report.py", "text": "Ana: A"}),
+                "average" => serde_json::json!({"check": "run_prints", "path": "report.py", "text": "Average: 4"}),
+                other => serde_json::json!({ "check": other }),
+            };
+            serde_json::json!({"id": id, "do": what, "after": after, "checks": [check]})
+        })
+        .collect();
+    format!(
+        "{{\"thought\": {}, \"tasks\": {}}}",
+        serde_json::to_string(thought).unwrap_or_default(),
+        serde_json::to_string(&tasks).unwrap_or_default()
+    )
+}
+
+const TEST_SHOUT_PY: &str = "import unittest\n\nfrom textutil import shout\n\n\nclass ShoutTest(unittest.TestCase):\n    def test_shout(self):\n        self.assertEqual(shout(\"hi\"), \"HI!\")\n";
+
+const TEST_WHISPER_PY: &str = "import unittest\n\nfrom textutil import whisper\n\n\nclass WhisperTest(unittest.TestCase):\n    def test_whisper(self):\n        self.assertEqual(whisper(\"HI\"), \"hi...\")\n";
+
+const GRADES_PY: &str = "def letter(score):\n    if score >= 90:\n        return \"A\"\n    if score >= 80:\n        return \"B\"\n    if score >= 70:\n        return \"C\"\n    return \"F\"\n";
+
+const TEST_GRADES_PY: &str = "import unittest\n\nfrom grades import letter\n\n\nclass LetterTest(unittest.TestCase):\n    def test_bands(self):\n        self.assertEqual(letter(95), \"A\")\n        self.assertEqual(letter(85), \"B\")\n        self.assertEqual(letter(75), \"C\")\n        self.assertEqual(letter(50), \"F\")\n";
+
+const REPORT_PY: &str = "from grades import letter\n\nscores = {\"Ana\": 93, \"Ben\": 78, \"Cy\": 85}\nfor name, score in scores.items():\n    print(name + \": \" + letter(score))\n";

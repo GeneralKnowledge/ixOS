@@ -1557,6 +1557,28 @@ fn files_sent_offline_wait_in_the_outbox_with_their_own_copy() {
 }
 
 #[test]
+fn a_file_gone_after_keeping_is_not_sent_not_invalid() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    h.repo.set_offline(true);
+    let doc = file(dir.path(), "notes.txt", b"kept notes", "text/plain");
+    let queued = h
+        .client
+        .send_with_files("general", "", None, std::slice::from_ref(&doc))
+        .unwrap();
+    // The store's own copy goes too (cleared by hand, or a damaged disk).
+    let kept = h.client.attachment_file(&queued.attachments[0].id).unwrap();
+    std::fs::remove_file(kept).unwrap();
+    h.repo.set_offline(false);
+    // `InvalidInput` would tell the composer nothing was kept and have it
+    // give the text back beside the Not Sent bubble.
+    let err = h.client.retry_message(&queued.id).unwrap_err();
+    assert!(matches!(err, ChatError::NotSent { .. }), "{err:?}");
+    assert_eq!(failed_in(&h.client, "general").id, queued.id);
+}
+
+#[test]
 fn bad_files_are_refused_before_the_network() {
     let dir = tempfile::tempdir().unwrap();
     let h = harness();

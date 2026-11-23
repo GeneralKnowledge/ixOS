@@ -30,12 +30,14 @@ When the framework gains a better way to do something, every app moves to it, or
 | `rename` | Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused |
 | `share-file` | A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile` |
 | `no-silent-cut` | Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`) |
+| `limits-from-rust` | Limits Rust enforces are read from Rust, never copied into Swift as numbers (`// swift-only:` for Swift's own) |
 | `row-actions` | Row actions through ForgeUI's `forgeRowActions`: a swipe and a long-press menu, never swipe-only |
 | `feedback` | Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback` |
 | `forgeui-appearance` | Launch appearance from ForgeUI, no own LaunchAppearance.swift |
 | `urlsession` | iOS requests through the URLSession `http` service |
 | `location` | Location through the `location` service |
 | `rust-cancellation` | Rust work cancelled from Swift through ForgeKit's `withRustCancellation` |
+| `swift6-traps` | No Swift 6.2 errors only the iOS build shows: no `await` inside an XCTest assertion, no shared closure default in an environment key |
 | `swift-logging` | Swift logs through `ForgeLog`, never `print` or `NSLog` |
 | `connectivity` | Network changes through the `connectivity` service, no own `NWPathMonitor` |
 | `requirements` | requirements.toml, every requirement with a test |
@@ -48,21 +50,21 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 ## Apps
 
-| App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `web-images` | `swipe-guard` | `forge-theme` | `state-views` | `root-loading` | `toned-text` | `resume` | `now-playing` | `floating-bars` | `notices` | `form-toolbar` | `icon-tile` | `rename` | `share-file` | `no-silent-cut` | `row-actions` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `rust-cancellation` | `swift-logging` | `connectivity` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Not applicable | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | n/a | n/a | Yes |
-| fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | n/a | n/a | Yes | Yes | Yes |
-| good-dog | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| sums | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| urdu-naturally | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | n/a | Yes | No (wave 5) | Yes | Yes | Yes |
-| weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (decision) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| App | `forgekit` | `forge-host` | `appkit-alerts` | `errors-shown` | `alerts-on-top` | `alerts-over-sheets` | `picked-files` | `web-images` | `swipe-guard` | `forge-theme` | `state-views` | `root-loading` | `toned-text` | `resume` | `now-playing` | `floating-bars` | `notices` | `form-toolbar` | `icon-tile` | `rename` | `share-file` | `no-silent-cut` | `limits-from-rust` | `row-actions` | `feedback` | `forgeui-appearance` | `urlsession` | `location` | `rust-cancellation` | `swift6-traps` | `swift-logging` | `connectivity` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| checklist | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| commonplace | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| device-lab | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Not applicable | Not applicable | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | n/a | n/a | n/a | n/a | n/a | Yes |
+| fieldkit | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| forgeui-showcase | Yes | n/a | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | n/a | n/a | n/a | Yes | Yes | Yes |
+| good-dog | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| pocket-library | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| relay | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| sketchbook | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Not applicable | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| soundscape | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| sums | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| urdu-naturally | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | n/a | Yes | No (wave 5) | Yes | Yes | Yes |
+| weather | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Deferred (decision) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 
 ## Known lag
 

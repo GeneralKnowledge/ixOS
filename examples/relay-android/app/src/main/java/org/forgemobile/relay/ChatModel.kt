@@ -530,12 +530,13 @@ class ChatModel(
 
         /**
          * Whether Rust refused a message before keeping it: by its rules (too long, too many
-         * files, a reply to a message that is gone), with no account or Relay to send it, or
-         * because a picked file couldn't be copied in. Any other failure leaves a bubble that
-         * says "Not Sent" and can be retried.
+         * files, a reply to a message that is gone), with no account or Relay to send it, with
+         * the app closing, or because a picked file couldn't be copied in. Any other failure
+         * leaves a bubble that says "Not Sent" and can be retried, as the iPhone app's does.
          */
         fun refusedBeforeKeeping(error: Throwable): Boolean =
-            error is ChatException.InvalidInput || error is ChatException.NotSignedIn || error is ChatException.Storage
+            error is ChatException.InvalidInput || error is ChatException.NotSignedIn ||
+                error is ChatException.Storage || error is ChatException.ShutDown
 
         /** The text where only a line fits (a list row, a quote): the body, or "Photo" / a name. */
         fun summary(message: ChatMessage): String {

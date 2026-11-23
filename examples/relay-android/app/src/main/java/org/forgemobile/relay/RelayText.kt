@@ -52,6 +52,7 @@ object RelayErrors : ForgeErrorDescriber {
         is ChatException.NotFound -> "That conversation no longer exists."
         is ChatException.UnsupportedOnHost -> "This isn't available on this device."
         is ChatException.InvalidInput -> "Check your input: ${error.reason}"
+        is ChatException.NotSent -> "It wasn't sent: ${error.reason}. It's kept here as not sent."
         is ChatException.NotSignedIn -> "Sign up first."
         is ChatException.Unauthorized -> "The server no longer knows this account. Sign out and sign up again."
         is ChatException.Storage -> "Your chats couldn't be read or saved on this device."
@@ -63,6 +64,7 @@ object RelayErrors : ForgeErrorDescriber {
     private fun chatTitle(error: ChatException): String = when (error) {
         is ChatException.InvalidInput -> "Check the Details"
         is ChatException.NotFound -> "Not Found"
+        is ChatException.NotSent -> "Not Sent"
         is ChatException.Network, is ChatException.Http, is ChatException.Certificate,
         is ChatException.BadResponse -> "Can't Reach the Server"
         else -> "Something Went Wrong"
@@ -148,6 +150,7 @@ object RelayFormat {
     /** "Waiting for MacBook", "Sending 40%", "Sent", "Received", "Failed: …". */
     fun status(transfer: Transfer): String = when (val status = transfer.status) {
         is TransferStatus.Waiting -> "Waiting for ${transfer.peerName}"
+        is TransferStatus.InMailbox -> "In the Mailbox"
         is TransferStatus.InProgress -> {
             val verb = if (transfer.direction == Direction.SENT) "Sending" else "Receiving"
             val item = transfer.item

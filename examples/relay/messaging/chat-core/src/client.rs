@@ -1490,7 +1490,13 @@ impl Inner {
                 });
                 self.refresh_conversation(&mut state, &message.conversation_id, 0, false);
                 self.persist(&mut state);
-                Err(err)
+                // The message is kept now, so `InvalidInput` (which promises
+                // nothing was kept) would have the composer give the text
+                // back beside a Not Sent bubble.
+                Err(match err {
+                    ChatError::InvalidInput { reason } => ChatError::NotSent { reason },
+                    other => other,
+                })
             }
         }
     }
