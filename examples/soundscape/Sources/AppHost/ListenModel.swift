@@ -238,6 +238,19 @@ public final class ListenModel {
         }
     }
 
+    /// The fixed test catalogue, its files made the first time.
+    public func testCatalogue() async -> Result<[TestTrack], ListenFailure> {
+        do {
+            let found = try await withRustCancellation { cancellation in
+                try await core.testCatalogue(cancellation: cancellation)
+            }
+            return .success(found)
+        } catch {
+            if !Self.isStop(error) { log.warn("test catalogue failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
     /// The genres to browse Jamendo by, in the order shown.
     public var jamendoGenres: [JamendoGenre] { core.jamendoGenres() }
 

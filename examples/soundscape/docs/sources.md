@@ -195,6 +195,30 @@ each opening that genre's popular tracks. `tags=jazz` was checked live on
 genre names are unchanged (`newage` stays "Newage" there), so songs already
 added don't move genre.
 
+## Test catalogue, as built
+
+`rust/src/test_catalogue.rs` holds eight tracks that Soundscape writes itself the first time Discover's
+**Test Catalogue** is opened (menu at the top right), into `test-catalogue/` in the app's data folder (about
+18 MB). The same files come out on every phone and in every test, and nothing needs the network or a client ID.
+
+| Track | Checks |
+|---|---|
+| Short Chime (4 s, WAV) | The next song starts on its own; the time never runs past the end |
+| Long Drone (10 min, WAV at 8 kHz) | Scrubbing, locking the phone, the sleep timer |
+| No Artwork (45 s, AIFF) | The stand-in artwork everywhere, the lock screen too |
+| Untagged (30 s, CAF) | No artist, album or genre: Unknown Artist, and lists still sort |
+| Theme in C, slow (60 s, WAV) and fast (40 s, AIFF) | Two recordings of one work stay two songs (lengths differ) |
+| Theme in C, copy (60 s, CAF) | The slow recording again: Your Music offers to merge the two |
+| Stream Only (20 s, WAV) | Download isn't offered; Downloads never lists it |
+
+The audio is tones written as 16-bit mono PCM: WAV, AIFF and CAF are the formats iOS plays that need no
+encoder, so MP3 and AAC are not covered here (Jamendo and the Archive already serve MP3). Artwork is a PNG drawn
+by the same module. Ids are `test:<slug>`, the provider is "Test Catalogue" and the licence CC0. A test track
+saved in the library keeps a `file://` URL; the app's data folder moves when it is reinstalled, so building the
+library follows the file name into the folder as it is now (`test_catalogue::relocate`, only for the
+catalogue's own names). Downloading one copies the file, and only a test track's recording may be copied from
+the phone this way.
+
 ## Order of work
 
 1. ~~The track resolver~~ (the library is the lookup; above) and Jamendo: built.
@@ -202,8 +226,7 @@ added don't move genre.
    are not used yet; download verification comes with reconciliation.
 3. MusicBrainz, to recognise the same recording from different sources: built (above). Merging linked songs
    into one comes with reconciliation ([architecture.md](architecture.md)).
-4. A small fixed test catalogue: short and long tracks, with and without artwork or tags, two recordings of one
-   work, several formats, and one track that may not be downloaded.
+4. A small fixed test catalogue: built ([below](#test-catalogue-as-built)).
 5. Mixed playlists, and playback across all sources, tested together.
 
 Not now: more providers, recommendations, or extra infrastructure.

@@ -130,7 +130,7 @@ catalogues comes first, so Soundscape can be tested with full-length tracks. Jam
 timed lyrics) waits, and the question of where "your own server" lives waits with it.
 
 1. **Jamendo**, **Internet Archive** and **MusicBrainz** matching (all built; phone checks next), then a fixed test
-   catalogue ([sources.md](sources.md#order-of-work)).
+   catalogue (built: [sources.md](sources.md#test-catalogue-as-built)).
 2. **P0, finish what's written.** Recheck #328 and #334 on the phone. The other P0 items are already done.
 3. **Remove Studio** (old PR 6). Done: `project.rs`, `dsp.rs`, the Studio screens and the microphone permission are
    gone, and Soundscape opens straight on the library (one stack, no tab bar: Discover and Your Music are rows at
