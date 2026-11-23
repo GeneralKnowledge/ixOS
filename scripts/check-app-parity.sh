@@ -997,7 +997,7 @@ def rule_stat(app):
 # close at once, give the model a command that marks the row pending
 # ("Trusting…") and runs the work itself. The rule can't time anything, so
 # fast local writes count too: the pattern makes showing work free.
-SILENT_START = re.compile(r"\b(?:Button\b[^{\n]*\{|\.onSubmit\s*(?:\([^)]*\))?\s*\{)")
+SILENT_START = re.compile(r"(?:\bButton\b[^{\n]*\{|\.onSubmit\s*(?:\([^)]*\))?\s*\{)")
 STARTS_TASK = re.compile(r"\bTask\s*(?:\([^)]*\))?\s*\{")
 SETS_FLAG = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*true\b")
 
@@ -1023,12 +1023,16 @@ def rule_silent_wait(app):
             brace = m.end() - 1
             end = closing_brace(code, brace)
             body = code[brace:end]
-            if not STARTS_TASK.search(body) or not re.search(r"\bawait\b", body):
+            awaiting = re.search(r"\bawait\b", body)
+            if not STARTS_TASK.search(body) or not awaiting:
                 continue
+            first_await = awaiting.start()
             rest = code[:brace] + code[end:]
             shown = any(
                 re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+(?:!\s*)?{re.escape(flag)}\b", rest)
-                for flag in SETS_FLAG.findall(body)
+                # Only a flag set before the wait shows it; one set after
+                # (`saved = true`) is a result, not a pending state.
+                for flag in (f.group(1) for f in SETS_FLAG.finditer(body) if f.start() < first_await)
             )
             # A running-work banner set before the task shows it too.
             if shown or re.search(r"=\s*\.working\(", body):

@@ -177,7 +177,10 @@ public final class RelayModel {
         case .forgetDevice(let id):
             await perform { try await $0.forgetDevice(endpointId: id) }
         case .trust(let id, let name):
+            // As the first attempt: no Trust prompt for it while it runs.
+            trustOffer = nil
             await trust(endpointID: id, name: name)
+            refreshTrustOffer()
         }
     }
 

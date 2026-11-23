@@ -654,7 +654,7 @@ struct PythonPackagesView: View {
                     .noAutocapitalization()
                     .autocorrectionDisabled()
                     .submitLabel(.go)
-                    .onSubmit { Task { await model.install() } }
+                    .onSubmit { model.startInstalling() }
                     .disabled(model.isWorking)
                     .accessibilityIdentifier("pythonLab.packages.name")
                 if model.isWorking {
