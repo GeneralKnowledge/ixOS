@@ -177,12 +177,12 @@ def rule_connectivity(app):
 def rule_document(app):
     held, uses_document = [], False
     for path in rust_sources(app):
-        for i, line in enumerate(read(path).splitlines()):
-            code = line.split("//", 1)[0]
-            if re.search(r"\bJsonFile\s*<", code):
-                held.append(f"{path.name}:{i + 1}")
-            if re.search(r"\bDocument\s*(<|::)", code):
-                uses_document = True
+        # Joined so a type split across lines (JsonFile\n<State>) still matches.
+        code = "\n".join(line.split("//", 1)[0] for line in read(path).splitlines())
+        for m in re.finditer(r"\bJsonFile\s*<", code):
+            held.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+        if re.search(r"\bDocument\s*(<|::)", code):
+            uses_document = True
     if held:
         return False, "keeps its state in its own JsonFile; use forge_app::Document: " + ", ".join(held)
     return (True, "") if uses_document else None
