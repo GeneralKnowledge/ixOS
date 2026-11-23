@@ -88,7 +88,7 @@ public final class RelayModel {
         connectionMode = core.connectionMode()
         servers = core.servers()
         serverHealth = core.serverHealth()
-        trustOffer = core.trustOffer()
+        refreshTrustOffer()
         savedDataNotice = core.savedDataNotice()
         awayNotice = core.awayFromHomeNotice()
     }
@@ -363,7 +363,7 @@ public final class RelayModel {
     /// device waiting to be trusted, if any, is offered.
     public func dismissTrustOffer() {
         core.dismissTrustOffer()
-        trustOffer = core.trustOffer()
+        refreshTrustOffer()
     }
 
     /// Trust Again, for a revoked device: the only way it is trusted again.

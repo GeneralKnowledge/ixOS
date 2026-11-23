@@ -990,7 +990,7 @@ def rule_stat(app):
 # A button that waits must show it (ForgeUI 0.2 item 9, "silent waits"):
 # a slow load that shows nothing looks broken. A `Button` or `onSubmit`
 # whose action starts a `Task` that awaits passes only if the same closure
-# sets a working flag the view shows (`flag ?` or `if flag` elsewhere in the
+# sets a working flag the view shows (`flag ?`, `if flag` or `if !flag` elsewhere in the
 # file; a flag that only blocks a second tap doesn't count). Otherwise use
 # an async `ForgeButton` (disabled at once, a spinner after 0.4 s), put it
 # in `forgeFormToolbar`, or, for alerts, dialogs, swipes and menus that
@@ -1027,7 +1027,7 @@ def rule_silent_wait(app):
                 continue
             rest = code[:brace] + code[end:]
             shown = any(
-                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+{re.escape(flag)}\b", rest)
+                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+(?:!\s*)?{re.escape(flag)}\b", rest)
                 for flag in SETS_FLAG.findall(body)
             )
             # A running-work banner set before the task shows it too.

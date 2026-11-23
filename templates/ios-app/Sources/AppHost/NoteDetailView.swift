@@ -96,9 +96,9 @@ struct NoteDetailView: View {
             // person hasn't changed the text yet, show the draft so leaving
             // tries it again. Newer edits are kept and saved instead.
             .onChange(of: model.unsavedText[note.id]) { _, draft in
-                guard let draft, draft != loadedDraft,
-                    text == (model.note(id: note.id) ?? note).text
-                else { return }
+                // Untouched: still the saved text, or the draft it loaded.
+                let untouched = text == (model.note(id: note.id) ?? note).text || text == loadedDraft
+                guard let draft, draft != loadedDraft, untouched else { return }
                 text = draft
                 loadedDraft = draft
             }
