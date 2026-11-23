@@ -2,17 +2,30 @@
 // shares. Material 3 with ForgeUI's tokens. Test tags use the iPhone app's accessibility
 // identifiers (`screen.element`) and are exposed as resource ids, so UI Automator finds them too.
 //
-// Stage 1 of docs/relay-android.md is the Devices experience; Chats joins it as a second tab in
-// stage 2.
+// Two tabs, as on the iPhone: Chats (stage 2 of docs/relay-android.md) and Devices (stage 1).
+// Each keeps its own stack of screens; the tab bar shows on each tab's first screen.
 package org.forgemobile.relay.ui
 
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.forgemobile.relay.ChatModel
 import org.forgemobile.relay.Feedback
 import org.forgemobile.relay.PickedFiles
 import org.forgemobile.relay.RelayApplication
@@ -44,9 +58,13 @@ import org.forgemobile.relay.kit.ForgeLoad
 import org.forgemobile.relay.kit.ForgeLoadView
 import org.forgemobile.relay.ui.theme.ForgeTheme
 import kotlinx.coroutines.flow.StateFlow
+import uniffi.relay_core.deviceConversationId
 
 /** Where the person is. Kept as text, so it survives rotation. */
 sealed interface Route {
+    data object Chats : Route
+    /** A conversation, at [messageId] when opened from a search result. */
+    data class Chat(val conversationId: String, val messageId: String? = null) : Route
     data object Devices : Route
     data class Device(val endpointId: String) : Route
     data object Servers : Route
@@ -55,6 +73,8 @@ sealed interface Route {
 
     val key: String
         get() = when (this) {
+            Chats -> "chats"
+            is Chat -> listOfNotNull("chat", conversationId, messageId).joinToString("\n")
             Devices -> "devices"
             is Device -> "device:$endpointId"
             Servers -> "servers"
@@ -64,6 +84,8 @@ sealed interface Route {
 
     companion object {
         fun of(key: String): Route = when {
+            key == "chats" -> Chats
+            key.startsWith("chat\n") -> key.split("\n").let { Chat(it[1], it.getOrNull(2)) }
             key.startsWith("device:") -> Device(key.removePrefix("device:"))
             key == "servers" -> Servers
             key == "send" -> Send
@@ -87,7 +109,10 @@ fun RelayApp(app: RelayApplication) {
             val model by app.model.collectAsState()
             val current = model
             when {
-                current != null -> RelayScreens(current, app.network, app.onScreen)
+                current != null -> {
+                    val chat by app.chat.collectAsState()
+                    RelayScreens(current, chat, app.host.core?.chatProblem, app.network, app.onScreen)
+                }
                 status is ForgeHost.Status.Failed -> {
                     val failure = ForgeFailure(
                         "Can't Open Relay",
@@ -110,36 +135,113 @@ fun RelayApp(app: RelayApplication) {
     }
 }
 
+/** The two tabs. */
+private enum class Tab(val root: Route, val tag: String) {
+    CHATS(Route.Chats, "tab.chats"),
+    DEVICES(Route.Devices, "tab.devices"),
+}
+
 @Composable
-private fun RelayScreens(model: RelayModel, network: RelayNetwork, onScreen: StateFlow<Boolean>) {
+private fun RelayScreens(
+    model: RelayModel,
+    chat: ChatModel?,
+    chatProblem: String?,
+    network: RelayNetwork,
+    onScreen: StateFlow<Boolean>,
+) {
     val context = LocalContext.current
     val view = LocalView.current
     val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     // Apart, so finishing a send to a device never removes a code send's copies.
     val codeFiles = remember(model) { PickedFiles(context, "relay-code-send") }
     val deviceFiles = remember(model) { PickedFiles(context, "relay-device-send") }
-    var stack by rememberSaveable { mutableStateOf(listOf(Route.Devices.key)) }
+    val chatFiles = remember(model) { PickedFiles(context, "relay-chat-send") }
+    // Devices first while there are none to talk to, as the iPhone app opens on Chats.
+    var tab by rememberSaveable { mutableStateOf(Tab.CHATS) }
+    var chatsStack by rememberSaveable { mutableStateOf(listOf(Route.Chats.key)) }
+    var devicesStack by rememberSaveable { mutableStateOf(listOf(Route.Devices.key)) }
+    val stack = if (tab == Tab.CHATS) chatsStack else devicesStack
+    val setStack: (List<String>) -> Unit = { if (tab == Tab.CHATS) chatsStack = it else devicesStack = it }
     val route = Route.of(stack.last())
-    val open: (Route) -> Unit = { stack = stack + it.key }
-    val back: () -> Unit = { if (stack.size > 1) stack = stack.dropLast(1) }
+    val open: (Route) -> Unit = { setStack(stack + it.key) }
+    val back: () -> Unit = { if (stack.size > 1) setStack(stack.dropLast(1)) }
 
     BackHandler(enabled = stack.size > 1, onBack = back)
 
-    // Haptics, whichever screen is showing.
-    LaunchedEffect(model) {
-        model.feedback.collect { kind ->
-            view.performHapticFeedback(
-                if (kind == Feedback.SUCCESS) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.REJECT,
-            )
+    // Open to trusted devices while Relay is on screen, whichever tab: advertise, and look for
+    // them. Chats needs it as much as Devices, since a trusted device's local address comes
+    // from here. Android stops neither in the background by itself, so leaving withdraws both.
+    val visible by onScreen.collectAsState()
+    DisposableEffect(model, visible) {
+        val job = if (visible) {
+            scope.launch {
+                network.watchDevices(model::devicesNearby)
+                network.advertiseDevice(model.deviceService())
+            }
+        } else {
+            null
+        }
+        onDispose {
+            job?.cancel()
+            network.advertiseDevice(null)
+            network.stopWatchingDevices()
         }
     }
 
-    when (route) {
-        Route.Devices -> DevicesScreen(model, network, onScreen, open)
-        is Route.Device -> TrustedDeviceScreen(model, route.endpointId, deviceFiles, back)
-        Route.Servers -> ServersScreen(model, back)
-        Route.Send -> SendCodeScreen(model, network, onScreen, codeFiles, back)
-        Route.Receive -> ReceiveCodeScreen(model, network, back)
+    // Haptics, whichever screen is showing.
+    LaunchedEffect(model) {
+        model.feedback.collect { kind -> view.haptic(kind) }
+    }
+    LaunchedEffect(chat) {
+        chat?.feedback?.collect { kind -> view.haptic(kind) }
+    }
+
+    val unread = chat?.state?.collectAsState()?.value?.unreadConversationCount ?: 0
+    Scaffold(
+        bottomBar = {
+            if (stack.size == 1) {
+                NavigationBar {
+                    Tab.entries.forEach { each ->
+                        NavigationBarItem(
+                            selected = tab == each,
+                            onClick = { tab = each },
+                            icon = {
+                                if (each == Tab.CHATS) {
+                                    BadgedBox(badge = { if (unread > 0) Badge { Text("$unread") } }) {
+                                        Icon(Icons.Filled.Email, contentDescription = null)
+                                    }
+                                } else {
+                                    Icon(Icons.Filled.Share, contentDescription = null)
+                                }
+                            },
+                            label = { Text(if (each == Tab.CHATS) "Chats" else "Devices") },
+                            modifier = Modifier.testTag(each.tag),
+                        )
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+            when (route) {
+                Route.Chats -> ChatsScreen(chat, chatProblem, open)
+                is Route.Chat -> if (chat != null) {
+                    ChatScreen(chat, route.conversationId, route.messageId, chatFiles, back)
+                } else {
+                    // Chats couldn't open: its list says why.
+                    LaunchedEffect(Unit) { chatsStack = listOf(Route.Chats.key) }
+                }
+                Route.Devices -> DevicesScreen(model, open)
+                is Route.Device -> TrustedDeviceScreen(model, route.endpointId, deviceFiles, back) {
+                    // A device's Message button opens its conversation in Chats.
+                    chatsStack = listOf(Route.Chats.key, Route.Chat(deviceConversationId(route.endpointId)).key)
+                    tab = Tab.CHATS
+                }
+                Route.Servers -> ServersScreen(model, back)
+                Route.Send -> SendCodeScreen(model, network, onScreen, codeFiles, back)
+                Route.Receive -> ReceiveCodeScreen(model, network, back)
+            }
+        }
     }
 
     // Confirmations and failures from any screen.
@@ -147,4 +249,16 @@ private fun RelayScreens(model: RelayModel, network: RelayNetwork, onScreen: Sta
     ForgeAlertDialog(alert, onDismiss = model::dismissAlert) { action ->
         scope.launch { model.handle(action) }
     }
+    if (chat != null) {
+        val chatAlert by chat.alert.collectAsState()
+        ForgeAlertDialog(chatAlert, onDismiss = chat::dismissAlert) { action ->
+            scope.launch { chat.handle(action) }
+        }
+    }
+}
+
+private fun android.view.View.haptic(kind: Feedback) {
+    performHapticFeedback(
+        if (kind == Feedback.SUCCESS) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.REJECT,
+    )
 }

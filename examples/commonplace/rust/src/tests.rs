@@ -1886,3 +1886,39 @@ fn a_home_feed_reaches_only_its_own_origin_and_never_this_device() {
     assert!(fetch_page(&http, "http://nas.local/posts/1", Some(nas)).is_err());
     assert_eq!(http.received().len(), 1);
 }
+
+#[test]
+fn a_folder_plan_is_checked_again_and_applied_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, feed) = subscribed(dir.path());
+    let snapshot: crate::organise::OrganiseSnapshot =
+        serde_json::from_str(&core.organise_snapshot_json()).unwrap();
+    assert_eq!(snapshot.feeds.len(), 1);
+    let plan = crate::organise::FolderPlan {
+        moves: vec![crate::organise::FeedMove {
+            feed_id: feed.id,
+            from: None,
+            to: crate::organise::Target::NewFolder {
+                name: "Reading".into(),
+            },
+        }],
+    };
+    let json = serde_json::to_string(&plan).unwrap();
+    assert_eq!(
+        block_on(core.apply_folder_plan_json(json.clone())).unwrap(),
+        1
+    );
+    let reading = folder_named(&core, "Reading");
+    assert_eq!(core.feeds()[0].folder_id, Some(reading.id));
+    // The same plan again: the feed is no longer where it says, so nothing
+    // happens.
+    assert!(matches!(
+        block_on(core.apply_folder_plan_json(json)),
+        Err(AppError::InvalidInput { .. })
+    ));
+    assert_eq!(core.folders().len(), 1);
+    assert!(matches!(
+        block_on(core.apply_folder_plan_json("{\"moves\": 3}".into())),
+        Err(AppError::InvalidInput { .. })
+    ));
+}

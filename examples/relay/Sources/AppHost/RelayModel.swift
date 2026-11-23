@@ -88,7 +88,7 @@ public final class RelayModel {
         connectionMode = core.connectionMode()
         servers = core.servers()
         serverHealth = core.serverHealth()
-        trustOffer = core.trustOffer()
+        refreshTrustOffer()
         savedDataNotice = core.savedDataNotice()
         awayNotice = core.awayFromHomeNotice()
     }
@@ -177,7 +177,10 @@ public final class RelayModel {
         case .forgetDevice(let id):
             await perform { try await $0.forgetDevice(endpointId: id) }
         case .trust(let id, let name):
+            // As the first attempt: no Trust prompt for it while it runs.
+            trustOffer = nil
             await trust(endpointID: id, name: name)
+            refreshTrustOffer()
         }
     }
 
@@ -318,7 +321,9 @@ public final class RelayModel {
     /// Re-reads the trust offer: the sending side learns the other's name
     /// a moment after its code send ends.
     public func refreshTrustOffer() {
-        trustOffer = core.trustOffer()
+        // An offer stays in Rust until its trust is saved; don't ask again
+        // while it is being trusted.
+        trustOffer = core.trustOffer().flatMap { trusting[$0.endpointId] == nil ? $0 : nil }
     }
 
     /// The person answered Trust.
@@ -361,7 +366,7 @@ public final class RelayModel {
     /// device waiting to be trusted, if any, is offered.
     public func dismissTrustOffer() {
         core.dismissTrustOffer()
-        trustOffer = core.trustOffer()
+        refreshTrustOffer()
     }
 
     /// Trust Again, for a revoked device: the only way it is trusted again.

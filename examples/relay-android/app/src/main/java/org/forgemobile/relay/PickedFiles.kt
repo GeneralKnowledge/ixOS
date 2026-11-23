@@ -10,24 +10,32 @@ import android.provider.OpenableColumns
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 class PickedFiles(private val context: Context, private val folder: String) {
     private val root: File get() = File(context.cacheDir, folder)
 
-    /** Copies [uris] in, off the main thread. Throws when one can't be read. */
-    suspend fun copy(uris: List<Uri>): List<String> = withContext(Dispatchers.IO) {
+    /**
+     * Copies [uris] in, off the main thread. Throws when one can't be read. A failure or a
+     * cancellation (the screen closing, even as the copies come back) removes the whole batch.
+     */
+    suspend fun copy(uris: List<Uri>): List<String> {
         val batch = File(root, UUID.randomUUID().toString())
-        try {
-            copyInto(batch, uris)
+        return try {
+            withContext(Dispatchers.IO) { copyInto(batch, uris) }
         } catch (e: Exception) {
-            batch.deleteRecursively()
+            withContext(NonCancellable + Dispatchers.IO) { batch.deleteRecursively() }
             throw e
         }
     }
 
-    private fun copyInto(batch: File, uris: List<Uri>): List<String> =
+    private suspend fun copyInto(batch: File, uris: List<Uri>): List<String> =
         uris.mapIndexed { index, uri ->
+            // A closed screen stops before the next file, not after the last.
+            currentCoroutineContext().ensureActive()
             // Each in its own folder, so two picks with one name both keep it.
             val dir = File(batch, index.toString()).apply { mkdirs() }
             val target = File(dir, safeName(displayName(uri) ?: "item-${index + 1}"))
@@ -42,12 +50,19 @@ class PickedFiles(private val context: Context, private val folder: String) {
         root.deleteRecursively()
     }
 
-    /** Removes only the copies one [copy] made, given the paths it returned. */
+    /**
+     * Removes only these copies, given paths [copy] returned, and a pick's folder once none of
+     * its copies is left: removing one of a pick's files keeps the others.
+     */
     fun release(paths: List<String>) {
-        paths.mapNotNull { File(it).parentFile?.parentFile }
-            .distinct()
-            .filter { it.parentFile == root }
-            .forEach { it.deleteRecursively() }
+        val batches = paths.mapNotNull { path ->
+            val item = File(path).parentFile ?: return@mapNotNull null
+            val batch = item.parentFile ?: return@mapNotNull null
+            if (batch.parentFile != root) return@mapNotNull null
+            item.deleteRecursively()
+            batch
+        }
+        batches.distinct().filter { it.list()?.isEmpty() == true }.forEach { it.delete() }
     }
 
     private fun displayName(uri: Uri): String? =

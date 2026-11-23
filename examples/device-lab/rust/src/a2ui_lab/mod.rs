@@ -19,9 +19,13 @@
 //! Nothing here touches another app's data: the library is a stand-in.
 //! Logs carry codes and counts only, never the plan or a payload.
 
+pub mod feeds;
 pub mod gate;
 pub mod plan;
+pub mod playlist;
+pub mod review;
 pub mod surface;
+pub mod task_card;
 
 #[cfg(test)]
 mod tests;
@@ -172,8 +176,8 @@ impl LabState {
     /// Passes `messages` through the gate; on success the surface's state
     /// moves to a new revision and any reviewed change set is dropped.
     fn accept(&mut self, messages: &str) -> Result<A2uiPayload, A2uiLabError> {
-        let accepted = gate::check(messages, &mut self.gate)?;
-        if let Some(books) = accepted.books {
+        let accepted = surface::check(messages, &mut self.gate)?;
+        if let Some(books) = accepted.data {
             self.books = books;
         }
         self.revision += 1;

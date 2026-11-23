@@ -60,8 +60,9 @@ import SwiftUI
 /// - VoiceOver hears one adjustable element: the label ("Rating" unless
 ///   you give one) and "3 of 5 stars" or "Not rated"; swipe up and down to
 ///   change it. Read-only ratings drop the adjustable action.
-/// - Identifiers: `<identifier>` on the element and
-///   `<identifier>.star.<n>` on each star, for UI tests.
+/// - Identifier: `<identifier>` on the one element. A UI test reads its
+///   value ("3 of 5 stars") and changes it with the adjustable action
+///   (increment, decrement); the stars inside are not separate elements.
 /// - Stars take the warning tone's solid colour (a fixed warm colour that
 ///   `contrastIssues()` checks as a shape), never the accent, so ratings
 ///   look the same in every app. They scale with the surrounding font
@@ -124,10 +125,8 @@ public struct ForgeRating: View {
                         symbol.frame(minWidth: 44, minHeight: 44)
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityIdentifier("\(identifier).star.\(star)")
                 } else {
                     symbol
-                        .accessibilityIdentifier("\(identifier).star.\(star)")
                 }
             }
         }

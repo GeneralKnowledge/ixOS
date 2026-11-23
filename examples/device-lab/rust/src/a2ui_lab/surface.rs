@@ -2,52 +2,21 @@
 //! writes interface, and it writes the same tree every time: the model's
 //! proposal changes data, never components or actions.
 
+use std::collections::BTreeSet;
+
 use serde_json::{json, Value};
 
-use super::plan::Entry;
+use super::gate::{self, Accepted, EventRule, GateState, Refusal, Registration};
+use super::plan::{self, EditedBook, Entry};
 
 /// The one surface the lab shows.
 pub const SURFACE_ID: &str = "readingPlan";
-/// The ixOS catalog the surface uses (registered in Swift by
-/// `A2uiLabSurface`, `A2uiLabCatalog.id`).
-pub const CATALOG_ID: &str = "org.forgemobile.devicelab:a2ui-reading-plan:1";
+/// The ixOS catalog the surface uses: the lab's one catalog.
+pub use super::gate::CATALOG_ID;
 /// The only event a surface may send: asks Rust to propose a change set.
 pub const REVIEW_EVENT: &str = "proposeReadingPlan";
 /// The only component allowed to send it.
 pub const REVIEW_COMPONENT: &str = "review";
-
-/// The eight components of the ixOS catalog. Anything else is refused,
-/// including Image, Video and AudioPlayer (their URLs could carry data out)
-/// and Modal.
-pub const COMPONENTS: [&str; 8] = [
-    "Text",
-    "Column",
-    "Row",
-    "Card",
-    "Divider",
-    "Button",
-    "DateTimeInput",
-    "ChoicePicker",
-];
-
-/// The properties every component may carry.
-pub const COMMON_PROPERTIES: &[&str] = &["id", "component", "@accessibility"];
-
-/// The properties the ForgeUI adapter (`A2uiForgeCatalog.swift`) draws for
-/// each component. The gate refuses any other, so an agent can't ask for a
-/// look or behaviour the adapter doesn't have (a time picker, a filter
-/// field, A2UI's own styles).
-pub fn properties(component: &str) -> &'static [&'static str] {
-    match component {
-        "Text" => &["text", "variant"],
-        "Column" | "Row" => &["children"],
-        "Card" => &["child"],
-        "Button" => &["child", "variant", "action"],
-        "DateTimeInput" => &["label", "enableDate", "value"],
-        "ChoicePicker" => &["label", "variant", "displayStyle", "options", "value"],
-        _ => &[],
-    }
-}
 
 /// The context the review event must carry, exactly.
 pub fn review_context() -> Value {
@@ -156,4 +125,88 @@ pub fn update(entries: &[Entry]) -> Value {
             }
         }
     ])
+}
+
+/// The reading plan's registration with the gate: one surface, one review
+/// event from the review button, only the intro redrawn by updates, data
+/// that holds only known books with their own titles and authors.
+pub struct ReadingPlan;
+
+impl Registration for ReadingPlan {
+    type Data = BTreeSet<&'static str>;
+
+    fn surface_id(&self) -> &'static str {
+        SURFACE_ID
+    }
+
+    fn events(&self) -> Vec<EventRule> {
+        vec![EventRule {
+            name: REVIEW_EVENT,
+            component: REVIEW_COMPONENT,
+            context: review_context(),
+        }]
+    }
+
+    fn updatable(&self) -> &'static [&'static str] {
+        UPDATABLE
+    }
+
+    fn check_data(&self, path: Option<&str>, value: &Value) -> Result<Self::Data, Refusal> {
+        data_model(path, value)
+    }
+}
+
+/// Checks `payload` for the reading-plan surface.
+pub fn check(
+    payload: &str,
+    state: &mut GateState,
+) -> Result<Accepted<BTreeSet<&'static str>>, Refusal> {
+    gate::check(payload, &ReadingPlan, state)
+}
+
+/// Checks data for the surface: `{"books": [...]}` at the root, or the
+/// list at `/books`. Returns the book ids it holds.
+fn data_model(path: Option<&str>, value: &Value) -> Result<BTreeSet<&'static str>, Refusal> {
+    let books = match path {
+        None | Some("/") => {
+            let object = value
+                .as_object()
+                .filter(|o| o.len() == 1)
+                .ok_or_else(|| gate::refuse("data", "The data model holds only the books."))?;
+            object
+                .get("books")
+                .ok_or_else(|| gate::refuse("data", "The data model holds only the books."))?
+        }
+        Some("/books") => value,
+        Some(_) => return Err(gate::refuse("data", "Updates may only replace the books.")),
+    };
+    let edited: Vec<EditedBook> = serde_json::from_value(books.clone())
+        .map_err(|_| gate::refuse("data", "The books aren't in the expected form."))?;
+    let entries = edited
+        .iter()
+        .map(|b| match b.priority.as_slice() {
+            [priority] => plan::entry(&b.id, priority, &b.start, &b.finish),
+            _ => Err(plan::PlanError("Each book needs one priority.".into())),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| gate::refuse("data", e.0))?;
+    // The surface shows these, so they must be the book's own.
+    for (b, e) in edited.iter().zip(&entries) {
+        let title = b.title.as_ref().and_then(Value::as_str);
+        let author = b.author.as_ref().and_then(Value::as_str);
+        if title != Some(e.book.title) || author != Some(e.book.author) {
+            return Err(gate::refuse(
+                "data",
+                "A book's title or author isn't the app's.",
+            ));
+        }
+    }
+    let ids: BTreeSet<&'static str> = entries.iter().map(|e| e.book.id).collect();
+    if ids.len() != entries.len() || ids.is_empty() || ids.len() > plan::MAX_BOOKS {
+        return Err(gate::refuse(
+            "data",
+            "The books must be distinct, one to twelve of them.",
+        ));
+    }
+    Ok(ids)
 }

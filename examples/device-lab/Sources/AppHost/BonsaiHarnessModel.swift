@@ -39,7 +39,7 @@ public final class BonsaiHarnessModel {
     public static let scriptedID = "scripted"
     public var isScripted: Bool { modelID == Self.scriptedID }
 
-    @ObservationIgnored private let harness: BonsaiHarness?
+    @ObservationIgnored let harness: BonsaiHarness?
     @ObservationIgnored private let workspace: Workspace?
     @ObservationIgnored private let activity: PythonActivity
     /// A watch is running for a task that outlived its screen.

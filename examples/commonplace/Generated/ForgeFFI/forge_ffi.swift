@@ -670,6 +670,14 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func addFeed(url: String, cancellation: Cancellation?) async throws  -> Feed
     
     /**
+     * Applies a confirmed folder plan ([`organise::FolderPlan`] as JSON):
+     * checks it again against the library as it is now, makes its new
+     * folders and moves its feeds. Refused whole if anything moved since
+     * the plan was made. Returns how many feeds moved.
+     */
+    func applyFolderPlanJson(planJson: String) async throws  -> UInt32
+    
+    /**
      * One article's row, or nil once its feed is gone.
      */
     func article(id: Int64)  -> ArticleSummary?
@@ -773,6 +781,14 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * Opens an article for reading: marks it read and returns its text.
      */
     func openArticle(articleId: Int64) async throws  -> ArticleText
+    
+    /**
+     * "Organise my feeds": the feeds and folders a folder plan may use,
+     * as JSON ([`organise::OrganiseSnapshot`]). JSON because it travels
+     * through Swift to Device Lab's A2UI Lab, which reads it with these
+     * same Rust types.
+     */
+    func organiseSnapshotJson()  -> String
     
     /**
      * The phase last reported.
@@ -980,6 +996,28 @@ open func addFeed(url: String, cancellation: Cancellation?)async throws  -> Feed
             completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeFeed_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Applies a confirmed folder plan ([`organise::FolderPlan`] as JSON):
+     * checks it again against the library as it is now, makes its new
+     * folders and moves its feeds. Refused whole if anything moved since
+     * the plan was made. Returns how many feeds moved.
+     */
+open func applyFolderPlanJson(planJson: String)async throws  -> UInt32  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_apply_folder_plan_json(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(planJson)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_u32,
+            completeFunc: ffi_commonplace_core_rust_future_complete_u32,
+            freeFunc: ffi_commonplace_core_rust_future_free_u32,
+            liftFunc: FfiConverterUInt32.lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
 }
@@ -1277,6 +1315,21 @@ open func openArticle(articleId: Int64)async throws  -> ArticleText  {
             liftFunc: FfiConverterTypeArticleText_lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
+}
+    
+    /**
+     * "Organise my feeds": the feeds and folders a folder plan may use,
+     * as JSON ([`organise::OrganiseSnapshot`]). JSON because it travels
+     * through Swift to Device Lab's A2UI Lab, which reads it with these
+     * same Rust types.
+     */
+open func organiseSnapshotJson() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_appcore_organise_snapshot_json(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -9411,6 +9464,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_add_feed() != 1709) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_apply_folder_plan_json() != 14747) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_article() != 56582) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9463,6 +9519,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_open_article() != 58821) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_organise_snapshot_json() != 11096) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_phase() != 17381) {

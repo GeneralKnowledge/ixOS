@@ -990,14 +990,14 @@ def rule_stat(app):
 # A button that waits must show it (ForgeUI 0.2 item 9, "silent waits"):
 # a slow load that shows nothing looks broken. A `Button` or `onSubmit`
 # whose action starts a `Task` that awaits passes only if the same closure
-# sets a working flag the view shows (`flag ?` or `if flag` elsewhere in the
+# sets a working flag the view shows (`flag ?`, `if flag` or `if !flag` elsewhere in the
 # file; a flag that only blocks a second tap doesn't count). Otherwise use
 # an async `ForgeButton` (disabled at once, a spinner after 0.4 s), put it
 # in `forgeFormToolbar`, or, for alerts, dialogs, swipes and menus that
 # close at once, give the model a command that marks the row pending
 # ("Trusting…") and runs the work itself. The rule can't time anything, so
 # fast local writes count too: the pattern makes showing work free.
-SILENT_START = re.compile(r"\b(?:Button\b[^{\n]*\{|\.onSubmit\s*(?:\([^)]*\))?\s*\{)")
+SILENT_START = re.compile(r"(?:\bButton\b[^{\n]*\{|\.onSubmit\s*(?:\([^)]*\))?\s*\{)")
 STARTS_TASK = re.compile(r"\bTask\s*(?:\([^)]*\))?\s*\{")
 SETS_FLAG = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*true\b")
 
@@ -1023,12 +1023,16 @@ def rule_silent_wait(app):
             brace = m.end() - 1
             end = closing_brace(code, brace)
             body = code[brace:end]
-            if not STARTS_TASK.search(body) or not re.search(r"\bawait\b", body):
+            awaiting = re.search(r"\bawait\b", body)
+            if not STARTS_TASK.search(body) or not awaiting:
                 continue
+            first_await = awaiting.start()
             rest = code[:brace] + code[end:]
             shown = any(
-                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+{re.escape(flag)}\b|\b{re.escape(flag)}\s*&&", rest)
-                for flag in SETS_FLAG.findall(body)
+                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+(?:!\s*)?{re.escape(flag)}\b", rest)
+                # Only a flag set before the wait shows it; one set after
+                # (`saved = true`) is a result, not a pending state.
+                for flag in (f.group(1) for f in SETS_FLAG.finditer(body) if f.start() < first_await)
             )
             # A running-work banner set before the task shows it too.
             if shown or re.search(r"=\s*\.working\(", body):
@@ -1044,7 +1048,7 @@ def rule_silent_wait(app):
 
 # Stars for a rating come from ForgeUI's ForgeRating: one adjustable
 # VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
-# app, and `<id>.star.<n>` identifiers. Soundscape and Pocket Library each
+# app, and one `<id>` identifier. Soundscape and Pocket Library each
 # drew their own, with different colours, sizes and VoiceOver (ForgeUI 0.2,
 # item 4). This finds a `star` symbol that switches with `star.fill`, the
 # shape of a hand-drawn rating.
