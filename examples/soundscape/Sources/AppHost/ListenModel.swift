@@ -754,7 +754,7 @@ public final class ListenModel {
     public func downloadState(of tracks: [LibraryTrack]) -> DownloadState {
         let states = downloadable(tracks).map { downloadState($0.id) }
         if states.isEmpty { return .notDownloaded }
-        if states.contains(.failed) { return .failed }
+        for state in states { if case .failed = state { return state } }
         if states.contains(where: { $0 == .downloading || $0 == .waiting }) { return .downloading }
         return states.allSatisfy { $0 == .downloaded } ? .downloaded : .notDownloaded
     }

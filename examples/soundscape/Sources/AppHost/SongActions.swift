@@ -10,13 +10,14 @@ import SwiftUI
 /// What a song's menu needs from the app around it: the radio, moving to
 /// a screen, and the Add to Playlist sheet. `ListenView` provides them.
 struct SongActions {
-    var startRadio: (StationSeed, String) -> Void = { _, _ in }
-    var go: (ListenRoute) -> Void = { _ in }
-    var addToPlaylist: ([String]) -> Void = { _ in }
+    var startRadio: @MainActor (StationSeed, String) -> Void = { _, _ in }
+    var go: @MainActor (ListenRoute) -> Void = { _ in }
+    var addToPlaylist: @MainActor ([String]) -> Void = { _ in }
 }
 
 private struct SongActionsKey: EnvironmentKey {
-    static let defaultValue = SongActions()
+    // Computed, so there is no shared value to isolate.
+    static var defaultValue: SongActions { SongActions() }
 }
 
 extension EnvironmentValues {
@@ -27,6 +28,7 @@ extension EnvironmentValues {
 }
 
 /// One song as a menu sees it, from the library or a catalogue.
+@MainActor
 struct SongRef {
     let id: String
     let title: String
