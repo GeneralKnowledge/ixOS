@@ -5,10 +5,10 @@
 #   forge ui run examples/good-dog/uitests/journey.toml
 
 name = "GD1: onboard, practise, record, learn, relaunch"
-app = "org.forgemobile.gooddog"
+app = "org.forgemobile.devicelab"
 
 [[step]]
-launch = { args = ["-ForgeUITestData"] }
+launch = { args = ["-ForgeUITestData", "-launchApp", "goodDog"] }
 
 [[step]]
 screenshot = "1-onboarding"

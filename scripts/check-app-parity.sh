@@ -165,6 +165,29 @@ def rule_connectivity(app):
     return False, f"own network monitor ({own[0].name}), not the `connectivity` service"
 
 
+# An app's own state saved as JSON goes through forge-app's Document (change
+# a copy, save, then keep it; never replace an unreadable file; set it aside
+# only when the person asks), not a JsonFile the app holds with its own save
+# logic (half-baked work audit H10). Reading an old JsonFile once to migrate
+# it is fine; holding one as the app's store is not. Any JsonFile<..> in a
+# type (a field, a wrapper such as Option<JsonFile<..>>, a type alias) counts
+# as held; a one-time read spells it JsonFile::<..>::new(..).load(). A held
+# JsonFile fails even when the app also uses Document. Apps saving no JSON
+# state (SQLite only, or nothing) are n/a.
+def rule_document(app):
+    held, uses_document = [], False
+    for path in rust_sources(app):
+        # Joined so a type split across lines (JsonFile\n<State>) still matches.
+        code = "\n".join(line.split("//", 1)[0] for line in read(path).splitlines())
+        for m in re.finditer(r"\bJsonFile\s*<", code):
+            held.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+        if re.search(r"\bDocument\s*(<|::)", code):
+            uses_document = True
+    if held:
+        return False, "keeps its state in its own JsonFile; use forge_app::Document: " + ", ".join(held)
+    return (True, "") if uses_document else None
+
+
 # Rust work cancelled from Swift goes through ForgeKit's withRustCancellation,
 # not a Cancellation wired to withTaskCancellationHandler by hand (framework
 # candidates PR A, 2026-11-17). withTaskCancellationHandler on its own (an
@@ -245,6 +268,65 @@ def rule_device_lab(app):
         return None
     ok = app.name in hosted
     return ok, "" if ok else "not on Device Lab's Apps screen"
+
+
+# The phone has Device Lab, not each app (it hosts them all; a free team
+# allows only 3 installed apps), so a hosted app's phone scenarios drive
+# Device Lab and open the app with -launchApp. Fifteen scenarios still
+# launched the old agentlab or gooddog installs, which aren't on the phone
+# (found 2026-11-22).
+DEVICE_LAB_ID = "org.forgemobile.devicelab"
+# Each hosted app's key on Device Lab's Apps screen (`EmbeddedApp` in
+# examples/device-lab/Sources/AppHost/AppsView.swift), which -launchApp takes.
+LAB_KEYS = {
+    "weather": "weather", "checklist": "checklist", "pocket-library": "library",
+    "good-dog": "goodDog", "commonplace": "commonplace", "fieldkit": "fieldKit",
+    "sketchbook": "sketchbook", "soundscape": "soundscape", "relay": "relay",
+    "sums": "sums", "urdu-naturally": "urdu", "forgeui-showcase": "forgeUI",
+}
+
+
+def lab_cases():
+    text = read(examples / HOST / "Sources" / "AppHost" / "AppsView.swift")
+    m = re.search(r"enum EmbeddedApp\b[^{]*\{\s*case ([^\n]+)", text)
+    return {c.strip() for c in m.group(1).split(",")} if m else set()
+
+
+LAB_CASES = lab_cases()
+
+
+def launched_app(args):
+    """The key after -launchApp, or None if there is none, a -launchApp has
+    no key, or two -launchApp arguments name different keys."""
+    args = list(args or [])
+    keys = {args[i + 1] if i + 1 < len(args) else None for i, a in enumerate(args) if a == "-launchApp"}
+    return keys.pop() if len(keys) == 1 else None
+
+
+def rule_lab_scenarios(app):
+    if app.name == HOST or app.name not in hosted:
+        return None
+    paths = sorted((app / "uitests").glob("*.toml"))
+    if not paths:
+        return None
+    bad = []
+    for path in paths:
+        try:
+            data = tomllib.loads(read(path))
+        except tomllib.TOMLDecodeError:
+            bad.append(f"{path.name} (not TOML)")
+            continue
+        key = LAB_KEYS.get(app.name)
+        if key is None or key not in LAB_CASES:
+            bad.append(f"{path.name} (no Device Lab key for {app.name}; add it to LAB_KEYS)")
+            continue
+        launches = [s["launch"] for s in data.get("step", []) if "launch" in s]
+        opens = all(launched_app(l.get("args")) == key for l in launches)
+        if data.get("app") != DEVICE_LAB_ID or not launches or not opens:
+            bad.append(path.name)
+    if bad:
+        return False, "scenarios that don't open this app in Device Lab (-launchApp <key>): " + ", ".join(bad)
+    return True, ""
 
 
 def rule_device_family(app):
@@ -1332,10 +1414,12 @@ RULES = [
     ("swift6-traps", "No Swift 6.2 errors only the iOS build shows: no `await` inside an XCTest assertion, no shared closure default in an environment key", rule_swift6_traps),
     ("swift-logging", "Swift logs through `ForgeLog`, never `print` or `NSLog`", rule_swift_logging),
     ("connectivity", "Network changes through the `connectivity` service, no own `NWPathMonitor`", rule_connectivity),
+    ("document", "App state saved as JSON through forge-app's `Document`, never a `JsonFile` the app holds itself", rule_document),
     ("requirements", "requirements.toml, every requirement with a test", rule_requirements),
     ("device-checks", "Every requirement has a device scenario", rule_device_checks),
     ("ui-test", "At least one `uitests/*.toml` scenario for `forge ui run`", rule_ui_test),
     ("device-lab", "Reachable from Device Lab's Apps screen", rule_device_lab),
+    ("lab-scenarios", "Phone scenarios drive Device Lab and open the app with `-launchApp`, never a separate install", rule_lab_scenarios),
     ("device-family", "Says which devices it runs on (`[ios] devices`)", rule_device_family),
 ]
 RULE_IDS = {r[0] for r in RULES}

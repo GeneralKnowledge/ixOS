@@ -11,10 +11,10 @@ showcase.
 | Milestone | What | State |
 |---|---|---|
 | F1 | Rust core: trips, track filtering and totals, notes with photo and voice files, SQLite | This folder's `rust/`; tested on Linux |
-| F2a | The app: trips list, Record, live map and totals, text notes, trip screen with Share as GPX or GeoJSON; the core follows the location service | Written; Swift checked by the laptop build and macOS CI only |
-| F2b | Hosted in Device Lab (Apps, FieldKit) | Done; not run on an iPhone yet |
-| F2c | Photo and voice notes, with Chat's photo picker moved into the framework | Next |
-| F3 | GPX and GeoJSON export (Rust done early), charts, background recording | Export written and tested on Linux; the rest not started |
+| F2a | The app: trips list, Record, live map and totals, text notes, trip screen with Share as GPX or GeoJSON; the core follows the location service | Passed on the iPhone in Device Lab, 2026-11-16 ([device-validation.md](../../docs/device-validation.md)) |
+| F2b | Hosted in Device Lab (Apps, FieldKit) | Done; that is how it runs on the phone |
+| F2c | Photo and voice notes in the app (the Rust core already stores them) | Next ([app plan](../../docs/app-plan.md#fieldkit)) |
+| F3 | GPX and GeoJSON export, elevation and pace charts, recording with the phone locked | Export and charts passed on the iPhone (2026-11-16, FK-2); background recording built (`background_modes = ["location"]`), not yet checked with the phone locked |
 
 ## The app
 
@@ -25,7 +25,7 @@ showcase.
 - **A trip**: its map with notes as pins, its totals and notes, and Share as
   GPX or GeoJSON, Rename and Delete.
 
-Recording happens while FieldKit is on screen; background recording is F3.
+Recording keeps going with the screen off or another app in front (the location background mode); iOS shows the blue location indicator meanwhile. That has not been checked on the phone yet.
 
 ## The Rust core
 
