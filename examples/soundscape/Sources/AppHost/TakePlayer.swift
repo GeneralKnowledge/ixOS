@@ -193,6 +193,11 @@ final class TakePlayer {
 
     /// Plays `tracks` from `start`, one after another. Repeat carries over
     /// from what played before.
+    /// Plays a list from the song it was started on.
+    func play(_ queued: QueueStart) {
+        play(queued.tracks, from: queued.start)
+    }
+
     func play(_ tracks: [QueueTrack], from start: Int = 0, shuffle: Bool = false) {
         guard !tracks.isEmpty else { return }
         queue = queueStart(
