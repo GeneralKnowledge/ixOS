@@ -12,9 +12,8 @@ struct NoteDetailView: View {
     @State private var text = ""
     @State private var isConfirmingDelete = false
     @State private var isDeleting = false
-    /// Whether this editor opened on text an earlier save failed to keep.
-    /// Only then may matching the saved text drop that draft: a draft from
-    /// a save that failed after this editor opened is kept for next time.
+    /// Whether this editor shows text an earlier save failed to keep. Only
+    /// then may matching the saved text drop that draft.
     @State private var loadedDraft = false
     @FocusState private var isEditing: Bool
     @Environment(\.dismiss) private var dismiss
@@ -90,6 +89,16 @@ struct NoteDetailView: View {
             .onAppear {
                 loadedDraft = model.unsavedText[note.id] != nil
                 text = model.unsavedText[note.id] ?? note.text
+            }
+            // An earlier save that fails after this editor opened: if the
+            // person hasn't changed the text yet, show the draft so leaving
+            // tries it again. Newer edits are kept and saved instead.
+            .onChange(of: model.unsavedText[note.id]) { _, draft in
+                guard let draft, !loadedDraft,
+                    text == (model.note(id: note.id) ?? note).text
+                else { return }
+                text = draft
+                loadedDraft = true
             }
             // Saves when the screen closes and when the app leaves the
             // screen (iOS may end it later without warning).
