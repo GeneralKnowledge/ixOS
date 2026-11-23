@@ -6,6 +6,7 @@ package org.forgemobile.relay
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import java.io.File
 import java.util.UUID
@@ -45,6 +46,54 @@ class PickedFiles(private val context: Context, private val folder: String) {
             target.absolutePath
         }
 
+    /**
+     * Copies the folder picked with the Storage Access Framework ([tree]) in, with everything
+     * in it, and returns where the copy is. Throws when any of it can't be read.
+     */
+    suspend fun copyTree(tree: Uri): String = withContext(Dispatchers.IO) {
+        val batch = File(root, UUID.randomUUID().toString())
+        try {
+            val id = DocumentsContract.getTreeDocumentId(tree)
+            val name = displayName(DocumentsContract.buildDocumentUriUsingTree(tree, id)) ?: "Folder"
+            // Under an index folder like [copy]'s, so [release] finds the batch.
+            val target = File(File(batch, "0"), safeName(name))
+            copyChildren(tree, id, target)
+            target.absolutePath
+        } catch (e: Exception) {
+            batch.deleteRecursively()
+            throw e
+        }
+    }
+
+    private fun copyChildren(tree: Uri, parentId: String, into: File) {
+        into.mkdirs()
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        val columns = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+        )
+        val cursor = context.contentResolver.query(children, columns, null, null, null)
+            ?: throw java.io.IOException("the folder can't be listed")
+        // Names taken in this folder: two children can share one safe name (".env" and "env"),
+        // and the second must never overwrite the first.
+        val taken = mutableSetOf<String>()
+        cursor.use {
+            while (it.moveToNext()) {
+                val id = it.getString(0)
+                val name = distinctName(safeName(it.getString(1) ?: "item"), taken)
+                if (it.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
+                    copyChildren(tree, id, File(into, name))
+                } else {
+                    val uri = DocumentsContract.buildDocumentUriUsingTree(tree, id)
+                    val input = context.contentResolver.openInputStream(uri)
+                        ?: throw java.io.IOException("$name can't be opened")
+                    input.use { source -> File(into, name).outputStream().use { source.copyTo(it) } }
+                }
+            }
+        }
+    }
+
     /** Removes every copy. */
     fun release() {
         root.deleteRecursively()
@@ -75,6 +124,18 @@ class PickedFiles(private val context: Context, private val folder: String) {
         fun safeName(name: String): String {
             val base = name.substringAfterLast('/').trim().trimStart('.')
             return base.ifEmpty { "item" }
+        }
+
+        /** [name], or "name 2.ext" and so on when [taken] already has it; adds it to [taken]. */
+        fun distinctName(name: String, taken: MutableSet<String>): String {
+            var candidate = name
+            var n = 2
+            while (!taken.add(candidate)) {
+                val dot = name.lastIndexOf('.').takeIf { it > 0 } ?: name.length
+                candidate = "${name.substring(0, dot)} $n${name.substring(dot)}"
+                n++
+            }
+            return candidate
         }
 
         /** "photo.jpg" or "3 items". */

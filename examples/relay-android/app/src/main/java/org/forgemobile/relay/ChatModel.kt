@@ -91,6 +91,9 @@ data class ChatState(
             .sortedWith(compareByDescending<IndexedValue<ChatConversation>> { activity(it.value) }.thenBy { it.index })
             .map { it.value }
 
+    /** Conversations muted on this device, for the Chat Server screen. */
+    val mutedConversations: List<ChatConversation> get() = conversations.filter { it.muted }
+
     /** Conversations with the unread dot, for the tab's badge. */
     val unreadConversationCount: Int get() = conversations.count { it.showsUnread }
 
@@ -148,6 +151,33 @@ class ChatModel(
     fun close() {
         events.cancel()
         listening.cancel()
+    }
+
+    // The chat server account
+
+    /**
+     * Creates an account named [displayName] on the chat server at [serverUrl] and signs this
+     * device in with it; its rooms join the list. Throws, so the form stays open with what was
+     * typed.
+     */
+    suspend fun signUp(serverUrl: String, displayName: String) {
+        val account = withContext(rust) { core.signUp(serverUrl.trim(), displayName.trim()) }
+        showAccount(account)
+    }
+
+    /** Forgets the account and its rooms on this device. Device conversations stay. */
+    fun signOut() = perform {
+        core.signOut()
+        showAccount(null)
+    }
+
+    /** Creates a room on the chat server and returns its id, ready to open. Throws for the form. */
+    suspend fun createConversation(title: String): String {
+        val created = withContext(rust) { core.createConversation(title.trim()) }
+        _state.update { s ->
+            if (s.conversation(created.id) != null) s else s.copy(conversations = s.conversations + created)
+        }
+        return created.id
     }
 
     // Conversations
