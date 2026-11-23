@@ -16,8 +16,10 @@ protocol A2uiRendering: AnyObject {
 /// What an A2UI surface's screen gives the renderer host: which surface and
 /// catalog to register, and where the surface's events, edits and errors
 /// go. The reading plan, the app surfaces and the Bonsai card all conform.
+/// Sendable so the renderer's listener can hold it weakly; every owner is
+/// a main-actor class, which already is.
 @MainActor
-protocol A2uiSurfaceOwner: AnyObject {
+protocol A2uiSurfaceOwner: AnyObject, Sendable {
     var surfaceId: String { get }
     var catalogId: String { get }
     var renderer: (any A2uiRendering)? { get set }
