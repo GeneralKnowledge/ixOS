@@ -254,11 +254,21 @@ fn through_the_mailbox(meet: impl Fn(&RelayCore, &RelayCore, &str) -> Vec<String
             phone.send_to_device(laptop_id.clone(), vec![path.to_string_lossy().into_owned()]),
         )
         .unwrap();
-        assert_eq!(sent.status, TransferStatus::Waiting);
+        // Waiting, or already In the Mailbox if the outbox left it there
+        // before the send returned.
+        assert!(
+            matches!(
+                sent.status,
+                TransferStatus::Waiting | TransferStatus::InMailbox
+            ),
+            "{:?}",
+            sent.status
+        );
         files.push(sent.id);
     }
+    // Two notes, the message, the photo and the folder.
     eventually("the files in the mailbox", || {
-        mailbox.store.waiting_for(&id_bytes(&laptop_id)) == 4
+        mailbox.store.waiting_for(&id_bytes(&laptop_id)) == 5
     });
 
     // The laptop opens again and collects it: once, with a receipt.
