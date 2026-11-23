@@ -62,8 +62,13 @@ Build and install on its own (it uses the free team's sandbox id):
 
 ```bash
 forge run ios --project examples/sketchbook
-forge ui run examples/sketchbook/uitests/smoke.toml   # phone plugged in
 ```
 
-In Device Lab it is one more entry on the Apps screen; see
-[Device Lab's README](../device-lab/README.md).
+On the test phone it runs inside Device Lab, one more entry on the Apps
+screen, and its phone scenario drives Device Lab ([Device Lab's
+README](../device-lab/README.md)):
+
+```bash
+forge run ios --project examples/device-lab
+forge ui run examples/sketchbook/uitests/smoke.toml   # phone plugged in
+```

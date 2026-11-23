@@ -273,6 +273,32 @@ def rule_device_lab(app):
 # launched the old agentlab or gooddog installs, which aren't on the phone
 # (found 2026-11-22).
 DEVICE_LAB_ID = "org.forgemobile.devicelab"
+# Each hosted app's key on Device Lab's Apps screen (`EmbeddedApp` in
+# examples/device-lab/Sources/AppHost/AppsView.swift), which -launchApp takes.
+LAB_KEYS = {
+    "weather": "weather", "checklist": "checklist", "pocket-library": "library",
+    "good-dog": "goodDog", "commonplace": "commonplace", "fieldkit": "fieldKit",
+    "sketchbook": "sketchbook", "soundscape": "soundscape", "relay": "relay",
+    "sums": "sums", "urdu-naturally": "urdu", "forgeui-showcase": "forgeUI",
+}
+
+
+def lab_cases():
+    text = read(examples / HOST / "Sources" / "AppHost" / "AppsView.swift")
+    m = re.search(r"enum EmbeddedApp\b[^{]*\{\s*case ([^\n]+)", text)
+    return {c.strip() for c in m.group(1).split(",")} if m else set()
+
+
+LAB_CASES = lab_cases()
+
+
+def launched_app(args):
+    """The key after -launchApp, or None if there is no -launchApp or no key."""
+    args = list(args or [])
+    if "-launchApp" not in args:
+        return None
+    i = args.index("-launchApp")
+    return args[i + 1] if i + 1 < len(args) else None
 
 
 def rule_lab_scenarios(app):
@@ -288,12 +314,16 @@ def rule_lab_scenarios(app):
         except tomllib.TOMLDecodeError:
             bad.append(f"{path.name} (not TOML)")
             continue
+        key = LAB_KEYS.get(app.name)
+        if key is None or key not in LAB_CASES:
+            bad.append(f"{path.name} (no Device Lab key for {app.name}; add it to LAB_KEYS)")
+            continue
         launches = [s["launch"] for s in data.get("step", []) if "launch" in s]
-        opens = all("-launchApp" in (l.get("args") or []) for l in launches)
+        opens = all(launched_app(l.get("args")) == key for l in launches)
         if data.get("app") != DEVICE_LAB_ID or not launches or not opens:
             bad.append(path.name)
     if bad:
-        return False, "scenarios that don't open the app in Device Lab (-launchApp): " + ", ".join(bad)
+        return False, "scenarios that don't open this app in Device Lab (-launchApp <key>): " + ", ".join(bad)
     return True, ""
 
 
