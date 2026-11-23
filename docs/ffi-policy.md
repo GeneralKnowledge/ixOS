@@ -14,7 +14,7 @@ Logic lives in Rust; UniFFI is an adapter around it. These rules keep it that wa
 1. **Framework crates never depend on UniFFI, with one exception.** `forge-runtime`, `forge-storage` and `forge-net` are plain Rust. `forge-app` is the one UniFFI framework crate: it exports the application contract (phases, error kinds, runtime events, cancellation, the contract version) as UniFFI component `forge_app`, whose Swift lives in ForgeKit's `ForgeApp` module and which app crates use as external types ([app-model-review.md](app-model-review.md)). Otherwise only app crates and the adapter macros (`forge_runtime::app_shell!`, `forge_services::native_services!`, `forge_app::export_runtime!`) produce UniFFI code, and the macros emit it in the app's crate.
 2. **No internal Rust types cross the boundary.** Each app exports its own records, enums and errors and converts to and from its domain types. A framework type never appears in generated bindings.
 3. **Large data crosses as file paths or handles**, never as byte arrays in a call: attachments, audio, images, exports.
-4. **High-frequency data does not go through generated bindings or event streams.** Sensor samples, audio frames and frame timing use a narrow C ABI or shared memory, decided per capability (the planned real-time audio path is the first case).
+4. **Real-time data does not go through generated bindings or event streams.** Audio frames and frame timing need a narrow C ABI or shared memory, decided per capability (the planned real-time audio path is the first case). Sensor samples are the measured exception: motion arrives through the `motion` foreign trait at up to 100 Hz (`MIN_MOTION_INTERVAL_MS = 10` in `forge-services`), which generated bindings carry; whether that rate holds on the phone is the foundation review's check 4 ([foundation-review.md](foundation-review.md#checks-that-need-the-iphone)).
 5. **Communication between machines is a separate, versioned protocol**, never an extension of the FFI. Forge Device talks to the app over its own wire protocol; logs reach a developer through the platform log or a device-protocol sink (`forge_runtime::logging`), not through UniFFI calls.
 
 ### The foreign-trait exception: native services
@@ -139,7 +139,7 @@ The design and the reasons are in [chat-demo.md](../examples/relay/docs/chat-dem
 - `shutdown()`: refuses new commands (`ShutDown`), stops running work, finishes the commands already accepted, and ends every event stream. Idempotent. Queries keep answering with the last published state.
 - App suspension and termination need no special handling: a command reports success only after its save, so everything reported is on disk.
 - The host reports the OS lifecycle with one synchronous call, `set_phase(phase)` (`Launching`, `Active`, `Inactive`, `Background`, `Terminated`). Rust owns the response: foreground work is stopped in the background, and `PhaseChanged { resumed: true }` arrives on the way back ([app-crate.md](app-crate.md#lifecycle)). The call does no I/O, because it runs on the UI thread.
-- No process-global mutable state: everything belongs to an instance.
+- App state belongs to an instance, never to a process global. Two things are process-wide on purpose, because the platform has one of each per process: the native services the host installs (`native_services!`'s `INSTALLED` slot, set once at launch) and the log pipeline (`forge_runtime::logging`). Neither holds app data.
 
 ## Panics
 

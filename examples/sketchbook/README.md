@@ -10,7 +10,7 @@ Device Lab (Apps, then Sketchbook) and on its own.
 | Step | What | State |
 |---|---|---|
 | S1 | Rust core (`rust/`): sketches, layers, one undo history per sketch, export plans | Done, tested on Linux |
-| S2 | SwiftUI app: sketch grid, PencilKit canvas per layer, layer panel, PNG/PDF export with Save to Photos, Share and Quick Look, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
+| S2 | SwiftUI app: sketch grid, PencilKit canvas per layer, layer panel, PNG/PDF export with Save to Photos, Share and Quick Look, hosted in Device Lab | Compiled for the iPhone in every combined Device Lab build; never yet tried on the phone (SK-1, `uitests/smoke.toml`) |
 
 ## How the work is split
 
@@ -62,8 +62,13 @@ Build and install on its own (it uses the free team's sandbox id):
 
 ```bash
 forge run ios --project examples/sketchbook
-forge ui run examples/sketchbook/uitests/smoke.toml   # phone plugged in
 ```
 
-In Device Lab it is one more entry on the Apps screen; see
-[Device Lab's README](../device-lab/README.md).
+On the test phone it runs inside Device Lab, one more entry on the Apps
+screen, and its phone scenario drives Device Lab ([Device Lab's
+README](../device-lab/README.md)):
+
+```bash
+forge run ios --project examples/device-lab
+forge ui run examples/sketchbook/uitests/smoke.toml   # phone plugged in
+```
