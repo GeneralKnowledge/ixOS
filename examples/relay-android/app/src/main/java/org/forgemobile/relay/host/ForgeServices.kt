@@ -16,6 +16,7 @@ package org.forgemobile.relay.host
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -310,6 +311,27 @@ class AndroidNotifier(private val context: Context) : LocalNotifier {
     companion object {
         const val CHANNEL = "messages"
         private const val OPENS_APP = "forge.opens-app-actions"
+
+        /**
+         * Posts the notification [id] again as it is, saying the answer didn't go: a reply's text
+         * field spins until its notification is updated, and this makes it answerable again.
+         * Rebuilt from the one showing, since the actions it was posted with may not be registered
+         * in this process. Nothing if it is no longer showing.
+         */
+        fun notAnswered(context: Context, id: String) {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            val showing = manager.activeNotifications.firstOrNull { it.tag == id && it.id == 0 } ?: return
+            val again = Notification.Builder.recoverBuilder(context, showing.notification)
+                .setSubText("Not sent. Open Relay, or try again.")
+                .setOnlyAlertOnce(true)
+                .build()
+            // Showing means it was allowed; a permission taken back since leaves it as it is.
+            try {
+                manager.notify(id, 0, again)
+            } catch (_: SecurityException) {
+            }
+        }
+
         const val ACTION_POST = "org.forgemobile.forge.POST_NOTIFICATION"
         const val ACTION_RESPOND = "org.forgemobile.forge.NOTIFICATION_RESPONSE"
         const val EXTRA_ID = "forge.notification.id"
@@ -380,6 +402,8 @@ class NotificationReceiver : BroadcastReceiver() {
                             // Answered: the notification goes (a reply's text field would spin
                             // otherwise).
                             NotificationManagerCompat.from(context).cancel(response.notificationId, 0)
+                        } else {
+                            AndroidNotifier.notAnswered(context, response.notificationId)
                         }
                     } finally {
                         pending.finish()
