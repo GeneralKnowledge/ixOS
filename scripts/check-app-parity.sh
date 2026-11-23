@@ -169,14 +169,17 @@ def rule_connectivity(app):
 # a copy, save, then keep it; never replace an unreadable file; set it aside
 # only when the person asks), not a JsonFile the app holds with its own save
 # logic (half-baked work audit H10). Reading an old JsonFile once to migrate
-# it is fine; holding one as the app's store is not. Apps saving no JSON
+# it is fine; holding one as the app's store is not. Any JsonFile<..> in a
+# type (a field, a wrapper such as Option<JsonFile<..>>, a type alias) counts
+# as held; a one-time read spells it JsonFile::<..>::new(..).load(). A held
+# JsonFile fails even when the app also uses Document. Apps saving no JSON
 # state (SQLite only, or nothing) are n/a.
 def rule_document(app):
     held, uses_document = [], False
     for path in rust_sources(app):
         for i, line in enumerate(read(path).splitlines()):
             code = line.split("//", 1)[0]
-            if re.search(r":\s*JsonFile<", code):
+            if re.search(r"\bJsonFile\s*<", code):
                 held.append(f"{path.name}:{i + 1}")
             if re.search(r"\bDocument\s*(<|::)", code):
                 uses_document = True
@@ -293,12 +296,11 @@ LAB_CASES = lab_cases()
 
 
 def launched_app(args):
-    """The key after -launchApp, or None if there is no -launchApp or no key."""
+    """The key after -launchApp, or None if there is none, a -launchApp has
+    no key, or two -launchApp arguments name different keys."""
     args = list(args or [])
-    if "-launchApp" not in args:
-        return None
-    i = args.index("-launchApp")
-    return args[i + 1] if i + 1 < len(args) else None
+    keys = {args[i + 1] if i + 1 < len(args) else None for i, a in enumerate(args) if a == "-launchApp"}
+    return keys.pop() if len(keys) == 1 else None
 
 
 def rule_lab_scenarios(app):
