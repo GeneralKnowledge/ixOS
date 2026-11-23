@@ -43,10 +43,15 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import uniffi.relay_core.AppDirectories
 import uniffi.relay_core.LocalNotification
 import uniffi.relay_core.LocalNotifier
@@ -206,10 +211,28 @@ class AndroidNotifier(private val context: Context) : LocalNotifier {
         NotificationManagerCompat.from(context).cancel(id, 0)
     }
 
-    override suspend fun pending(): List<String> = scheduled.all.keys.toList()
+    override suspend fun pending(): List<String> = scheduled.all.keys.filter { it != OPENS_APP }
 
     override fun setCategories(categories: List<NotificationCategory>) {
         this.categories.set(categories.associateBy { it.id })
+        // Kept across launches: a tap can start the process before Rust registers them again.
+        val opening = categories.flatMap { c ->
+            c.actions.filter { it.kind is NotificationActionKind.OpensApp }.map { "${c.id}/${it.id}" }
+        }.toSet()
+        scheduled.edit().putStringSet(OPENS_APP, opening).apply()
+    }
+
+    /**
+     * Whether [response] is one that opens the app: a tap, or an action registered as opening
+     * it. Only those may come through the activity, which any app can start; Reply and Mark as
+     * Read come only through [NotificationReceiver], which no other app can reach.
+     */
+    fun opensApp(response: NotificationResponse): Boolean {
+        if (response.actionId == ForgeServices.OPENED) return true
+        val category = response.category ?: return false
+        val registered = categories.get()[category]?.actions?.firstOrNull { it.id == response.actionId }
+        if (registered != null) return registered.kind is NotificationActionKind.OpensApp
+        return scheduled.getStringSet(OPENS_APP, emptySet())!!.contains("$category/${response.actionId}")
     }
 
     private fun alarm(id: String, intent: Intent): PendingIntent =
@@ -286,6 +309,7 @@ class AndroidNotifier(private val context: Context) : LocalNotifier {
 
     companion object {
         const val CHANNEL = "messages"
+        private const val OPENS_APP = "forge.opens-app-actions"
         const val ACTION_POST = "org.forgemobile.forge.POST_NOTIFICATION"
         const val ACTION_RESPOND = "org.forgemobile.forge.NOTIFICATION_RESPONSE"
         const val EXTRA_ID = "forge.notification.id"
@@ -339,18 +363,42 @@ class NotificationReceiver : BroadcastReceiver() {
             AndroidNotifier.ACTION_POST -> if (ForgeServices.isInstalled) ForgeServices.notifier.post(context, intent)
             AndroidNotifier.ACTION_RESPOND -> {
                 val response = AndroidNotifier.response(intent) ?: return
-                onResponse?.invoke()
-                deliverNotificationResponse(response)
-                // Answered: the notification goes (a reply's text field would spin otherwise).
-                NotificationManagerCompat.from(context).cancel(response.notificationId, 0)
+                // Kept alive until Rust has the answer: a reply that started Relay waits for its
+                // core to open, since Android may end a receiver's process once this returns.
+                // Rust's handler then hands the send to finishing work, which holds background
+                // time of its own.
+                val pending = goAsync()
+                responses.launch {
+                    try {
+                        val open = onResponse
+                        val ready = open == null || withTimeoutOrNull(RECEIVER_TIME_MS) { open() } == true
+                        deliverNotificationResponse(response)
+                        // Answered: the notification goes (a reply's text field would spin
+                        // otherwise). Kept if Relay couldn't open in time, so it can be answered
+                        // again.
+                        if (ready) {
+                            NotificationManagerCompat.from(context).cancel(response.notificationId, 0)
+                        }
+                    } finally {
+                        pending.finish()
+                    }
+                }
             }
         }
     }
 
     companion object {
-        /** Set by the app: makes sure its Rust cores are open to take a response. */
+        /**
+         * Set by the app: opens its Rust cores if they aren't, returning true once they are
+         * open to take a response (false if they couldn't open).
+         */
         @Volatile
-        var onResponse: (() -> Unit)? = null
+        var onResponse: (suspend () -> Boolean)? = null
+
+        private val responses = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+        /** Under the ten seconds a receiver gets. */
+        private const val RECEIVER_TIME_MS = 8_000L
     }
 }
 

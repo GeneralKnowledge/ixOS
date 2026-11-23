@@ -571,7 +571,7 @@ private fun MessageBubble(
                                 if (path == null) {
                                     model.show(ForgeFailure("Can't Save This", "The file is no longer on this device."))
                                 } else {
-                                    save(path)
+                                    save(path, attachment.name, attachment.mime)
                                 }
                             }
                         },

@@ -14,7 +14,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.forgemobile.ffi.ForgeAndroid
 import org.forgemobile.relay.host.ForgeEnvironment
 import org.forgemobile.relay.host.AndroidNotifier
@@ -70,7 +72,13 @@ class RelayApplication : Application() {
             android.util.Log.w("Relay", "platform services not installed: ${e.javaClass.simpleName}")
         }
         // A Reply or Mark as Read with Relay closed opens its cores in the background first.
-        NotificationReceiver.onResponse = { if (host.core == null) retry() }
+        NotificationReceiver.onResponse = {
+            withContext(Dispatchers.Main.immediate) {
+                // Opens here (a no-op while an open is already under way, which is waited for).
+                if (host.core == null) host.start()
+                host.status.first { it is ForgeHost.Status.Ready || it is ForgeHost.Status.Failed } is ForgeHost.Status.Ready
+            }
+        }
         // Relay's errors in its own words, wherever the kit shows a failure (the open too).
         ForgeFailure.describer = RelayErrors
         network = RelayNetwork(this)
@@ -131,16 +139,18 @@ class RelayApplication : Application() {
         })
     }
 
-    /**
-     * Opens Relay for a newly launched activity. With [ForgeEnvironment.TEMPORARY_DATA_EXTRA]
-     * (UI tests), each launch starts again on a fresh throwaway identity with no servers, as
-     * `-ForgeTemporaryData` does on iOS; the person's own data is never opened.
-     */
     /** Whether [launch] ran in this process. */
     var launched = false
         private set
 
-    fun launch(intent: Intent) {
+    /**
+     * Opens Relay for a newly launched activity. With [ForgeEnvironment.TEMPORARY_DATA_EXTRA]
+     * (UI tests), each launch starts again on a fresh throwaway identity with no servers, as
+     * `-ForgeTemporaryData` does on iOS; the person's own data is never opened. [restored] is
+     * an activity Android brought back after ending the process: its intent was handled
+     * before, so a notification it carries isn't opened again over the restored screens.
+     */
+    fun launch(intent: Intent, restored: Boolean = false) {
         launched = true
         // Tests only: any app can start the activity, so a release build never lets an extra
         // swap the person's Relay for throwaway data.
@@ -153,7 +163,7 @@ class RelayApplication : Application() {
             // A fresh identity each time, never the person's key or account.
             if (ForgeServices.isInstalled) ForgeServices.secureStore.throwaway = java.util.concurrent.ConcurrentHashMap()
         }
-        open(intent)
+        if (!restored) open(intent)
         scope.launch { host.start() }
     }
 
@@ -172,6 +182,9 @@ class RelayApplication : Application() {
      */
     fun open(intent: Intent) {
         val response = AndroidNotifier.response(intent) ?: return
+        // Any app can start the activity: only a tap (or an action that opens the app) comes
+        // this way. Reply and Mark as Read come only through the receiver.
+        if (!ForgeServices.isInstalled || !ForgeServices.notifier.opensApp(response)) return
         deliverNotificationResponse(response)
         intent.data?.toString()?.let(ChatLink::parse)?.let { _link.value = it }
     }

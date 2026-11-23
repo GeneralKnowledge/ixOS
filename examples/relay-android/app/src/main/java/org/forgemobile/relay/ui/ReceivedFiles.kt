@@ -16,7 +16,7 @@ object ReceivedFiles {
     fun open(context: Context, path: String, fail: (ForgeFailure) -> Unit, mime: String? = null) {
         val file = File(path)
         if (file.isDirectory) {
-            fail(ForgeFailure("A Folder", "Several items arrived together in this folder. To open them, long-press it and choose Save to Device…, then open it in the Files app."))
+            fail(ForgeFailure("A Folder", "Several items arrived together in this folder. To open them, long-press it in History or in its conversation, choose Save to Device…, then open it in the Files app."))
             return
         }
         if (!file.exists()) {

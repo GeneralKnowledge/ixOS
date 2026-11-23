@@ -20,8 +20,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val app = application as RelayApplication
         // A fresh launch, or a restore after Android ended the process (nothing open yet); not
-        // a rotation, where the process kept Relay open.
-        if (savedInstanceState == null || !app.launched) app.launch(intent)
+        // a rotation, where the process kept Relay open. A restore doesn't open the
+        // notification that launched the activity again: a new tap comes to onNewIntent.
+        if (savedInstanceState == null) {
+            app.launch(intent)
+        } else if (!app.launched) {
+            app.launch(intent, restored = true)
+        }
         if (ForgeServices.isInstalled) {
             ForgeServices.permissions.attach { name, done ->
                 answer = done

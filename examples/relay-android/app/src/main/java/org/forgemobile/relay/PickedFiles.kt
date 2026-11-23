@@ -75,10 +75,13 @@ class PickedFiles(private val context: Context, private val folder: String) {
         )
         val cursor = context.contentResolver.query(children, columns, null, null, null)
             ?: throw java.io.IOException("the folder can't be listed")
+        // Names taken in this folder: two children can share one safe name (".env" and "env"),
+        // and the second must never overwrite the first.
+        val taken = mutableSetOf<String>()
         cursor.use {
             while (it.moveToNext()) {
                 val id = it.getString(0)
-                val name = safeName(it.getString(1) ?: "item")
+                val name = distinctName(safeName(it.getString(1) ?: "item"), taken)
                 if (it.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
                     copyChildren(tree, id, File(into, name))
                 } else {
@@ -121,6 +124,18 @@ class PickedFiles(private val context: Context, private val folder: String) {
         fun safeName(name: String): String {
             val base = name.substringAfterLast('/').trim().trimStart('.')
             return base.ifEmpty { "item" }
+        }
+
+        /** [name], or "name 2.ext" and so on when [taken] already has it; adds it to [taken]. */
+        fun distinctName(name: String, taken: MutableSet<String>): String {
+            var candidate = name
+            var n = 2
+            while (!taken.add(candidate)) {
+                val dot = name.lastIndexOf('.').takeIf { it > 0 } ?: name.length
+                candidate = "${name.substring(0, dot)} $n${name.substring(dot)}"
+                n++
+            }
+            return candidate
         }
 
         /** "photo.jpg" or "3 items". */

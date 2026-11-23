@@ -545,7 +545,7 @@ private fun TransferRow(transfer: Transfer, model: RelayModel) {
                     text = { Text("Save to Device…") },
                     onClick = {
                         menu = false
-                        save(path)
+                        save(path, null, null)
                     },
                     modifier = Modifier.testTag("history.save"),
                 )
