@@ -36,6 +36,7 @@ mod outbox;
 mod presence;
 mod record;
 mod resolver;
+pub mod rooms;
 mod store;
 pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind, ServerHealth};
 mod hex;

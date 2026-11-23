@@ -202,6 +202,15 @@ public final class ChatModel {
         showAccount(account)
     }
 
+    /// Joins a room host's rooms with a word code (N4): the account is
+    /// this device's key there, over Relay. `host` is the host's server
+    /// address or key; empty uses the current account's server.
+    public func joinRoom(host: String, code: String, displayName: String) async throws {
+        guard let core else { throw ChatError.ShutDown }
+        let account = try await core.joinRoom(host: host, code: code, displayName: displayName)
+        showAccount(account)
+    }
+
     /// Forgets the account and its chats on this device.
     public func signOut() {
         guard let core else { return }
