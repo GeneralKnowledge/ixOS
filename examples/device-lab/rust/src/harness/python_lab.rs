@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use super::artifacts;
@@ -66,6 +66,32 @@ pub struct PythonLab {
     run_limit: Duration,
     network: bool,
     running: AtomicBool,
+    /// The SHA-256 of each file as Bonsai last read or wrote it in this
+    /// task, so a write over a file someone changed since (in Python Lab,
+    /// or through the Files app) is refused (python-lab-workspace-plan.md,
+    /// PL1e). Its own runs' changes are Bonsai's, so they update it.
+    seen: Mutex<BTreeMap<String, String>>,
+}
+
+fn lock_seen(
+    seen: &Mutex<BTreeMap<String, String>>,
+) -> std::sync::MutexGuard<'_, BTreeMap<String, String>> {
+    seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// The SHA-256 of the file at `path`, or None when it can't be read.
+fn digest(path: &Path) -> Option<String> {
+    forge_storage::files::sha256_file(path).ok()
+}
+
+/// The digest of bytes Bonsai read or wrote, never a later look at the
+/// file (which another writer may have changed in between).
+fn digest_bytes(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 impl PythonLab {
@@ -76,6 +102,7 @@ impl PythonLab {
             run_limit,
             network: false,
             running: AtomicBool::new(false),
+            seen: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -193,7 +220,10 @@ impl PythonLab {
             Err(err) => return ToolOutcome::failed(err),
         };
         match fs::read_to_string(&full) {
-            Ok(text) => ToolOutcome::ok(numbered(&text)),
+            Ok(text) => {
+                self.remember(path, text.as_bytes());
+                ToolOutcome::ok(numbered(&text))
+            }
             Err(_) if !full.exists() => ToolOutcome::failed(format!(
                 "{path} does not exist. Use list_files to see the files."
             )),
@@ -214,6 +244,9 @@ impl PythonLab {
             Ok(full) => full,
             Err(err) => return ToolOutcome::failed(err),
         };
+        if let Some(refusal) = self.changed_outside(path, &full) {
+            return refusal;
+        }
         let Ok(text) = fs::read_to_string(&full) else {
             return ToolOutcome::failed(format!(
                 "{path} does not exist. Use write_file to create it."
@@ -269,6 +302,9 @@ impl PythonLab {
             Ok(full) => full,
             Err(err) => return ToolOutcome::failed(err),
         };
+        if let Some(refusal) = self.changed_outside(path, &full) {
+            return refusal;
+        }
         if content.len() > FILE_MAX_BYTES {
             return ToolOutcome::failed(format!(
                 "That file is {} bytes; the limit is {FILE_MAX_BYTES}. Split it into smaller modules.",
@@ -283,9 +319,17 @@ impl PythonLab {
                 return ToolOutcome::failed(format!("Could not create the folder: {err}"));
             }
         }
-        if let Err(err) = fs::write(&full, content) {
+        // Checked again just before the write: an outside change since the
+        // first check is caught unless it lands in the moment between this
+        // check and the rename (files have no compare-and-swap rename).
+        if let Some(refusal) = self.changed_outside(path, &full) {
+            return refusal;
+        }
+        // Atomic, so the person (or the Files app) never sees half a file.
+        if let Err(err) = forge_storage::write_atomic(&full, content.as_bytes()) {
             return ToolOutcome::failed(format!("Could not write {path}: {err}"));
         }
+        self.remember(path, content.as_bytes());
         let lines = content.lines().count();
         if !path.ends_with(".py") {
             return ToolOutcome {
@@ -317,6 +361,59 @@ impl PythonLab {
                 path: path.into(),
                 syntax_ok,
             }],
+        }
+    }
+
+    /// Records `path`'s contents as Bonsai read or wrote them.
+    fn remember(&self, path: &str, bytes: &[u8]) {
+        lock_seen(&self.seen).insert(path.to_string(), digest_bytes(bytes));
+    }
+
+    /// A refusal when `path` changed since Bonsai last read or wrote it (a
+    /// file it never read can be written; one deleted since can be
+    /// written again).
+    fn changed_outside(&self, path: &str, full: &Path) -> Option<ToolOutcome> {
+        let known = lock_seen(&self.seen).get(path).cloned()?;
+        let now = digest(full)?;
+        (now != known).then(|| {
+            ToolOutcome::failed(format!(
+                "{path} changed outside Bonsai since you read it; read it again with read_file before changing it."
+            ))
+        })
+    }
+
+    /// The digest now of each file Bonsai knows, before a run. A file
+    /// that already changed outside is left out, so the run can't make
+    /// that change known.
+    fn snapshot_seen(&self) -> BTreeMap<String, Option<String>> {
+        let known: Vec<(String, String)> = lock_seen(&self.seen)
+            .iter()
+            .map(|(path, sum)| (path.clone(), sum.clone()))
+            .collect();
+        known
+            .into_iter()
+            .filter_map(|(path, seen)| {
+                let sum = self.full(&path).ok().and_then(|full| digest(&full));
+                (sum.as_deref() == Some(seen.as_str())).then_some((path, sum))
+            })
+            .collect()
+    }
+
+    /// After a run: what changed during it is Bonsai's own script's work,
+    /// so it becomes known. A file that changed outside before the run
+    /// stays as it was known, whatever the run did to it, so a later
+    /// write is still refused until Bonsai reads it again.
+    fn refresh_seen(&self, before: BTreeMap<String, Option<String>>) {
+        for (path, was) in before {
+            let now = self.full(&path).ok().and_then(|full| digest(&full));
+            if now == was {
+                continue;
+            }
+            let mut seen = lock_seen(&self.seen);
+            match now {
+                Some(sum) => seen.insert(path, sum),
+                None => seen.remove(&path),
+            };
         }
     }
 
@@ -541,8 +638,18 @@ impl Environment for PythonLab {
             "read_file" => self.read(call.arg("path")),
             "write_file" => self.write(call.arg("path"), call.arg("content")),
             "edit_file" => self.edit(call.arg("path"), call.arg("old"), call.arg("new")),
-            "run_python" => self.run_python(call.arg("path")),
-            "run_tests" => self.run_tests(),
+            "run_python" => {
+                let before = self.snapshot_seen();
+                let outcome = self.run_python(call.arg("path"));
+                self.refresh_seen(before);
+                outcome
+            }
+            "run_tests" => {
+                let before = self.snapshot_seen();
+                let outcome = self.run_tests();
+                self.refresh_seen(before);
+                outcome
+            }
             other => ToolOutcome::failed(format!("There is no tool called {other:?}.")),
         }
     }
@@ -926,7 +1033,7 @@ pub fn python_lab_script(project: String, code: String) -> String {
 /// path is, but may contain spaces and any letters (the person named it).
 #[uniffi::export]
 pub fn python_lab_file_script(project: String, path: String) -> String {
-    file_script(&project, &path, false)
+    file_script(&project, &path, false, None)
 }
 
 /// [`python_lab_file_script`] for Python Lab's live console (PL1d): run it
@@ -935,12 +1042,126 @@ pub fn python_lab_file_script(project: String, path: String) -> String {
 /// name `main.py, line 3`, on stderr, so it needs no `python_lab_output`.
 #[uniffi::export]
 pub fn python_lab_console_script(project: String, path: String) -> String {
-    file_script(&project, &path, true)
+    file_script(&project, &path, true, None)
 }
 
-fn file_script(project: &str, path: &str, console: bool) -> String {
+/// Python Lab's Debug (PL2f): `python_lab_console_script` run under a
+/// debugger (`bdb`) that pauses on `breakpoints`. Each pause writes the
+/// stack and variables as JSON to the console stream with kind 6
+/// (`python_debug_pause` reads it), then waits on the console's input for
+/// a command: `continue`, `step` (into a call), `next` (over it) or `out`
+/// (to the caller). Only the project's own files pause; stepping goes
+/// over the standard library and packages.
+#[uniffi::export]
+pub fn python_lab_debug_script(
+    project: String,
+    path: String,
+    breakpoints: Vec<crate::workspace::DebugBreakpoint>,
+) -> String {
+    file_script(&project, &path, true, Some(&breakpoints))
+}
+
+/// The debugger `python_lab_debug_script` runs a file under, indented to
+/// sit in the wrapper's `try`. `_lab_debugger(root, [(file, line)])`.
+const DEBUGGER: &str = r#"import bdb, json, reprlib, _devicelab_io
+class _LabDebugger(bdb.Bdb):
+    def __init__(self, root, breakpoints):
+        # The interpreter is shared: forget breakpoints an earlier
+        # session left behind, which Bdb.__init__ would otherwise load.
+        bdb.Breakpoint.next = 1
+        bdb.Breakpoint.bplist = {}
+        bdb.Breakpoint.bpbynumber = [None]
+        bdb.Bdb.__init__(self)
+        self._lab_root = root
+        self._lab_first = True
+        self._lab_repr = reprlib.Repr()
+        self._lab_repr.maxstring = 160
+        self._lab_repr.maxother = 160
+        for _kind in ('maxlist', 'maxtuple', 'maxdict', 'maxset', 'maxfrozenset', 'maxdeque'):
+            setattr(self._lab_repr, _kind, 20)
+        for _file, _line in breakpoints:
+            self.set_break(os.path.join(root, _file), _line)
+    def reset(self):
+        # Each run (the file, then its last expression) starts by running
+        # on to the first breakpoint.
+        bdb.Bdb.reset(self)
+        self._lab_first = True
+    def _lab_mine(self, frame):
+        return self.canonic(frame.f_code.co_filename).startswith(self._lab_root + os.sep)
+    def stop_here(self, frame):
+        return self._lab_mine(frame) and bdb.Bdb.stop_here(self, frame)
+    def user_call(self, frame, args):
+        pass
+    def user_return(self, frame, value):
+        pass
+    def user_exception(self, frame, info):
+        pass
+    def user_line(self, frame):
+        if self._lab_first:
+            # bdb stops on the first line; run on unless it has a breakpoint.
+            self._lab_first = False
+            if not self.get_breaks(self.canonic(frame.f_code.co_filename), frame.f_lineno):
+                self.set_continue()
+                return
+        self._lab_pause(frame)
+    def _lab_pause(self, frame):
+        stack = []
+        f = frame
+        while f is not None:
+            if self._lab_mine(f):
+                stack.append({'file': os.path.relpath(self.canonic(f.f_code.co_filename), self._lab_root), 'line': f.f_lineno, 'function': f.f_code.co_name})
+            f = f.f_back
+        stack.reverse()
+        names = [n for n in frame.f_locals if not (n.startswith('__') and n.endswith('__'))]
+        variables = []
+        for n in names:
+            v = frame.f_locals[n]
+            if isinstance(v, (types.ModuleType, types.FunctionType, type)):
+                continue
+            if len(variables) == 100:
+                break
+            try:
+                text = self._lab_repr.repr(v)
+            except Exception:
+                text = "(can't be shown)"
+            variables.append({'name': n, 'kind': type(v).__name__, 'value': text})
+        _devicelab_io.write(6, json.dumps({'stack': stack, 'variables': variables, 'more': len(variables) == 100}))
+        command = _devicelab_io.readline().strip()
+        if command == 'step':
+            self.set_step()
+        elif command == 'next':
+            self.set_next(frame)
+        elif command == 'out':
+            self.set_return(frame)
+        else:
+            self.set_continue()
+"#;
+
+fn file_script(
+    project: &str,
+    path: &str,
+    console: bool,
+    debug: Option<&[crate::workspace::DebugBreakpoint]>,
+) -> String {
+    let (debugger, exec) = match debug {
+        Some(breakpoints) => {
+            let list = breakpoints
+                .iter()
+                .map(|b| format!("({}, {})", py_str(&b.file), b.line))
+                .collect::<Vec<_>>()
+                .join(", ");
+            (
+                DEBUGGER.replace('\n', "\n    "),
+                format!("_lab = _LabDebugger(_root, [{list}])\n        try:\n            _lab.run(compile(_tree, _name, 'exec'), _main.__dict__)\n            _value = _lab.runeval(compile(_last, _name, 'eval'), _main.__dict__) if _last is not None else None\n        finally:\n            _lab.clear_all_breaks()"),
+            )
+        }
+        None => (
+            String::new(),
+            "exec(compile(_tree, _name, 'exec'), _main.__dict__)\n        _value = eval(compile(_last, _name, 'eval'), _main.__dict__) if _last is not None else None".to_string(),
+        ),
+    };
     let action = format!(
-        "import ast, types\n    _name = os.path.join(_root, {path})\n    if not os.path.realpath(_name).startswith(_root + os.sep):\n        raise PermissionError('That file is outside the project.')\n    with open(_name, encoding='utf-8') as _f:\n        _source = _f.read()\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _main = types.ModuleType('__main__')\n    _main.__file__ = _name\n    _main.__builtins__ = __builtins__\n    sys.path[0] = os.path.dirname(_name)\n    if sys.path[0] != _root:\n        sys.path.insert(1, _root)\n    _host_main = sys.modules.get('__main__')\n    sys.modules['__main__'] = _main\n    try:\n        exec(compile(_tree, _name, 'exec'), _main.__dict__)\n        if _last is not None:\n            _value = eval(compile(_last, _name, 'eval'), _main.__dict__)\n            if _value is not None:\n                print(repr(_value))\n    finally:\n        if _host_main is None:\n            sys.modules.pop('__main__', None)\n        else:\n            sys.modules['__main__'] = _host_main\n",
+        "{debugger}import ast, types\n    _name = os.path.join(_root, {path})\n    if not os.path.realpath(_name).startswith(_root + os.sep):\n        raise PermissionError('That file is outside the project.')\n    with open(_name, encoding='utf-8') as _f:\n        _source = _f.read()\n    _tree = ast.parse(_source, _name)\n    _last = ast.Expression(_tree.body.pop().value) if _tree.body and isinstance(_tree.body[-1], ast.Expr) else None\n    _main = types.ModuleType('__main__')\n    _main.__file__ = _name\n    _main.__builtins__ = __builtins__\n    sys.path[0] = os.path.dirname(_name)\n    if sys.path[0] != _root:\n        sys.path.insert(1, _root)\n    _host_main = sys.modules.get('__main__')\n    sys.modules['__main__'] = _main\n    try:\n        {exec}\n        if _value is not None:\n            print(repr(_value))\n    finally:\n        if _host_main is None:\n            sys.modules.pop('__main__', None)\n        else:\n            sys.modules['__main__'] = _host_main\n",
         path = py_str(path)
     );
     wrapper(Path::new(project), true, &action, console)
@@ -1026,4 +1247,120 @@ pub(crate) mod testing {
     pub fn has_python() -> bool {
         Command::new("python3").arg("--version").output().is_ok()
     }
+}
+
+/// Where Debug paused and what it sees (PL2f), from the JSON line
+/// `python_lab_debug_script` writes.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DebugPause {
+    /// The project's frames, outermost first; the last is where it paused.
+    pub stack: Vec<TracebackFrame>,
+    /// The paused frame's variables (not modules, functions or classes),
+    /// each shown as `repr` cut short.
+    pub variables: Vec<DebugVariable>,
+    /// There were more than the 100 shown.
+    pub more_variables: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DebugVariable {
+    pub name: String,
+    /// Its type's name, like `int` or `list`.
+    pub kind: String,
+    pub value: String,
+}
+
+/// Reads a pause the debugger wrote; none if it isn't one.
+#[uniffi::export]
+pub fn python_debug_pause(json: String) -> Option<DebugPause> {
+    #[derive(serde::Deserialize)]
+    struct Frame {
+        file: String,
+        line: u32,
+        function: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct Variable {
+        name: String,
+        kind: String,
+        value: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct Pause {
+        stack: Vec<Frame>,
+        variables: Vec<Variable>,
+        #[serde(default)]
+        more: bool,
+    }
+    let pause: Pause = serde_json::from_str(&json).ok()?;
+    if pause.stack.is_empty() {
+        return None;
+    }
+    Some(DebugPause {
+        stack: pause
+            .stack
+            .into_iter()
+            .map(|f| TracebackFrame {
+                file: f.file,
+                line: f.line,
+                function: f.function,
+            })
+            .collect(),
+        variables: pause
+            .variables
+            .into_iter()
+            .map(|v| DebugVariable {
+                name: v.name,
+                kind: v.kind,
+                value: v.value,
+            })
+            .collect(),
+        more_variables: pause.more,
+    })
+}
+
+/// A line of a traceback that names a file of the project, for Python Lab
+/// to open there (PL2b).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TracebackFrame {
+    /// Relative to the project, like `lib/helper.py`.
+    pub file: String,
+    pub line: u32,
+    /// The function, or `<module>`.
+    pub function: String,
+}
+
+/// The project's frames in the last traceback of a console run's output,
+/// outermost first, so the last is where the error happened. Frames of
+/// other files (the standard library, a package) are left out: only the
+/// project's files can be opened. A console traceback already names them
+/// relative to the project (`python_lab_console_script`).
+#[uniffi::export]
+pub fn python_traceback_frames(output: String) -> Vec<TracebackFrame> {
+    let Some(start) = output.rfind("Traceback (most recent call last):") else {
+        return Vec::new();
+    };
+    output[start..]
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim_start().strip_prefix("File \"")?;
+            let (file, rest) = rest.split_once('"')?;
+            let rest = rest.strip_prefix(", line ")?;
+            let (number, function) = match rest.split_once(", in ") {
+                Some((number, function)) => (number, function.trim()),
+                None => (rest, ""),
+            };
+            let line: u32 = number.trim().parse().ok()?;
+            // Only a project file: relative, not `<string>` or a full path.
+            if file.starts_with('/') || file.starts_with('<') || file.split('/').any(|p| p == "..")
+            {
+                return None;
+            }
+            Some(TracebackFrame {
+                file: file.to_string(),
+                line,
+                function: function.to_string(),
+            })
+        })
+        .collect()
 }

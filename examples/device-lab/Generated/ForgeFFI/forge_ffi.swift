@@ -1982,10 +1982,12 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
     func snapshot()  -> HarnessSnapshot
     
     /**
-     * Starts a task in the person's own words, in the scratch project
-     * (kept between tasks).
+     * Starts a task in the person's own words, in their Python Lab
+     * project `project` (`scratch` by default; kept between tasks), so
+     * Bonsai works on the person's files and they open its work in Python
+     * Lab (python-lab-workspace-plan.md, PL1e).
      */
-    func startCustom(model: HarnessModel, request: String) throws 
+    func startCustom(model: HarnessModel, request: String, project: String) throws 
     
     /**
      * Starts a ladder task in a fresh project of its own (the last run's
@@ -2155,15 +2157,18 @@ open func snapshot() -> HarnessSnapshot  {
 }
     
     /**
-     * Starts a task in the person's own words, in the scratch project
-     * (kept between tasks).
+     * Starts a task in the person's own words, in their Python Lab
+     * project `project` (`scratch` by default; kept between tasks), so
+     * Bonsai works on the person's files and they open its work in Python
+     * Lab (python-lab-workspace-plan.md, PL1e).
      */
-open func startCustom(model: HarnessModel, request: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+open func startCustom(model: HarnessModel, request: String, project: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(
             self.uniffiCloneHandle(),
         FfiConverterTypeHarnessModel_lower(model),
-        FfiConverterString.lower(request),uniffiCallStatus
+        FfiConverterString.lower(request),
+        FfiConverterString.lower(project),uniffiCallStatus
     )
 }
 }
@@ -6513,6 +6518,11 @@ public func FfiConverterTypeTransferSink_lower(_ value: TransferSink) -> UInt64 
 public protocol WorkspaceProtocol: AnyObject, Sendable {
     
     /**
+     * Forgets the project's runs.
+     */
+    func clearRuns(project: String) throws 
+    
+    /**
      * Creates an empty file; its folder must exist.
      * Creates a file holding `text`. It never replaces a file that is
      * already there, even one whose name differs only in case or that
@@ -6542,6 +6552,23 @@ public protocol WorkspaceProtocol: AnyObject, Sendable {
     func entries(project: String) throws  -> [WorkspaceEntry]
     
     /**
+     * Writes the whole project as `<out_folder>/<project>.zip` (forge-storage's
+     * backup archive: its files plus a small manifest; hidden folders such
+     * as Bonsai's journal and the editor state are left out) and returns
+     * the archive's path, for the share sheet.
+     */
+    func exportProject(project: String, outFolder: String) throws  -> String
+    
+    /**
+     * Copies the file at `source` (one the person picked in the Files app)
+     * into `folder` of the project ("" for its top), under its own name, or
+     * "name 2.py" and so on when that is taken. Text files keep the 1 MB
+     * limit; other files (images, data) may be up to 20 MB. Returns the new
+     * file's path in the project.
+     */
+    func importFile(project: String, folder: String, source: String) throws  -> String
+    
+    /**
      * The folder of a project, for running its files and showing images.
      */
     func projectFolder(project: String) throws  -> String
@@ -6557,11 +6584,22 @@ public protocol WorkspaceProtocol: AnyObject, Sendable {
     func readText(project: String, path: String) throws  -> String
     
     /**
+     * Adds a run to the project's history, keeping the newest
+     * [`RUNS_MAX`], each with the end of its output.
+     */
+    func recordRun(project: String, run: RunRecord) throws 
+    
+    /**
      * Renames or moves a file or folder inside the project.
      */
     func renameEntry(project: String, from: String, to: String) throws 
     
     func renameProject(from: String, to: String) throws 
+    
+    /**
+     * The project's runs, newest first.
+     */
+    func runs(project: String) throws  -> [RunRecord]
     
     func saveState(project: String, state: WorkspaceState) throws 
     
@@ -6649,6 +6687,18 @@ public convenience init(projectsFolder: String)throws  {
 
     
     /**
+     * Forgets the project's runs.
+     */
+open func clearRuns(project: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_clear_runs(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Creates an empty file; its folder must exist.
      * Creates a file holding `text`. It never replaces a file that is
      * already there, even one whose name differs only in case or that
@@ -6725,6 +6775,42 @@ open func entries(project: String)throws  -> [WorkspaceEntry]  {
 }
     
     /**
+     * Writes the whole project as `<out_folder>/<project>.zip` (forge-storage's
+     * backup archive: its files plus a small manifest; hidden folders such
+     * as Bonsai's journal and the editor state are left out) and returns
+     * the archive's path, for the share sheet.
+     */
+open func exportProject(project: String, outFolder: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_export_project(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(outFolder),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Copies the file at `source` (one the person picked in the Files app)
+     * into `folder` of the project ("" for its top), under its own name, or
+     * "name 2.py" and so on when that is taken. Text files keep the 1 MB
+     * limit; other files (images, data) may be up to 20 MB. Returns the new
+     * file's path in the project.
+     */
+open func importFile(project: String, folder: String, source: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_import_file(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(folder),
+        FfiConverterString.lower(source),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * The folder of a project, for running its files and showing images.
      */
 open func projectFolder(project: String)throws  -> String  {
@@ -6764,6 +6850,20 @@ open func readText(project: String, path: String)throws  -> String  {
 }
     
     /**
+     * Adds a run to the project's history, keeping the newest
+     * [`RUNS_MAX`], each with the end of its output.
+     */
+open func recordRun(project: String, run: RunRecord)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_record_run(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),
+        FfiConverterTypeRunRecord_lower(run),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Renames or moves a file or folder inside the project.
      */
 open func renameEntry(project: String, from: String, to: String)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
@@ -6785,6 +6885,19 @@ open func renameProject(from: String, to: String)throws   {try rustCallWithError
         FfiConverterString.lower(to),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * The project's runs, newest first.
+     */
+open func runs(project: String)throws  -> [RunRecord]  {
+    return try  FfiConverterSequenceTypeRunRecord.lift(try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_workspace_runs(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(project),uniffiCallStatus
+    )
+})
 }
     
 open func saveState(project: String, state: WorkspaceState)throws   {try rustCallWithError(FfiConverterTypeWorkspaceError_lift) {
@@ -7857,6 +7970,148 @@ public func FfiConverterTypeAppDirectories_lower(_ value: AppDirectories) -> Rus
 
 
 /**
+ * A CSV or TSV file's first rows, the first being its header.
+ */
+public struct ArtifactTable: Equatable, Hashable {
+    public var rows: [[String]]
+    /**
+     * Rows in the part of the file read, header included; more than
+     * `rows.len()` when the preview stops early.
+     */
+    public var totalRows: UInt64
+    /**
+     * Some rows had more columns, or cells more characters, than shown.
+     */
+    public var cut: Bool
+    /**
+     * The file is longer than the part read.
+     */
+    public var partial: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(rows: [[String]], 
+        /**
+         * Rows in the part of the file read, header included; more than
+         * `rows.len()` when the preview stops early.
+         */totalRows: UInt64, 
+        /**
+         * Some rows had more columns, or cells more characters, than shown.
+         */cut: Bool, 
+        /**
+         * The file is longer than the part read.
+         */partial: Bool) {
+        self.rows = rows
+        self.totalRows = totalRows
+        self.cut = cut
+        self.partial = partial
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ArtifactTable: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeArtifactTable: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArtifactTable {
+        return
+            try ArtifactTable(
+                rows: FfiConverterSequenceSequenceString.read(from: &buf), 
+                totalRows: FfiConverterUInt64.read(from: &buf), 
+                cut: FfiConverterBool.read(from: &buf), 
+                partial: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ArtifactTable, into buf: inout [UInt8]) {
+        FfiConverterSequenceSequenceString.write(value.rows, into: &buf)
+        FfiConverterUInt64.write(value.totalRows, into: &buf)
+        FfiConverterBool.write(value.cut, into: &buf)
+        FfiConverterBool.write(value.partial, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactTable_lift(_ buf: RustBuffer) throws -> ArtifactTable {
+    return try FfiConverterTypeArtifactTable.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactTable_lower(_ value: ArtifactTable) -> RustBuffer {
+    return FfiConverterTypeArtifactTable.lower(value)
+}
+
+
+/**
+ * A text or JSON file to show; JSON is indented when it parses.
+ */
+public struct ArtifactText: Equatable, Hashable {
+    public var text: String
+    public var truncated: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, truncated: Bool) {
+        self.text = text
+        self.truncated = truncated
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ArtifactText: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeArtifactText: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArtifactText {
+        return
+            try ArtifactText(
+                text: FfiConverterString.read(from: &buf), 
+                truncated: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ArtifactText, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterBool.write(value.truncated, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactText_lift(_ buf: RustBuffer) throws -> ArtifactText {
+    return try FfiConverterTypeArtifactText.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactText_lower(_ value: ArtifactText) -> RustBuffer {
+    return FfiConverterTypeArtifactText.lower(value)
+}
+
+
+/**
  * The device's orientation, in radians.
  */
 public struct Attitude: Equatable, Hashable {
@@ -8274,6 +8529,78 @@ public func FfiConverterTypeBluetoothStats_lower(_ value: BluetoothStats) -> Rus
 }
 
 
+/**
+ * A bracket beside the cursor and the one that pairs with it (PL2), in
+ * UTF-16 code units.
+ */
+public struct BracketMatch: Equatable, Hashable {
+    /**
+     * The bracket just before the cursor, or else the one just after it.
+     */
+    public var at: UInt32
+    /**
+     * Its partner, or nil when it has none or the nearest one is the
+     * wrong kind (`(]`): the editor marks it as unmatched.
+     */
+    public var partner: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The bracket just before the cursor, or else the one just after it.
+         */at: UInt32, 
+        /**
+         * Its partner, or nil when it has none or the nearest one is the
+         * wrong kind (`(]`): the editor marks it as unmatched.
+         */partner: UInt32?) {
+        self.at = at
+        self.partner = partner
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BracketMatch: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBracketMatch: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BracketMatch {
+        return
+            try BracketMatch(
+                at: FfiConverterUInt32.read(from: &buf), 
+                partner: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BracketMatch, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.at, into: &buf)
+        FfiConverterOptionUInt32.write(value.partner, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBracketMatch_lift(_ buf: RustBuffer) throws -> BracketMatch {
+    return try FfiConverterTypeBracketMatch.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBracketMatch_lower(_ value: BracketMatch) -> RustBuffer {
+    return FfiConverterTypeBracketMatch.lower(value)
+}
+
+
 public struct ConnectivityChange: Equatable, Hashable {
     public var atMs: Int64
     public var status: ConnectivityStatus
@@ -8431,6 +8758,221 @@ public func FfiConverterTypeConnectivityStatus_lift(_ buf: RustBuffer) throws ->
 #endif
 public func FfiConverterTypeConnectivityStatus_lower(_ value: ConnectivityStatus) -> RustBuffer {
     return FfiConverterTypeConnectivityStatus.lower(value)
+}
+
+
+/**
+ * A line Debug pauses on, in a file of the project.
+ */
+public struct DebugBreakpoint: Equatable, Hashable {
+    /**
+     * Relative to the project.
+     */
+    public var file: String
+    /**
+     * 1 is the first line.
+     */
+    public var line: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Relative to the project.
+         */file: String, 
+        /**
+         * 1 is the first line.
+         */line: UInt32) {
+        self.file = file
+        self.line = line
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DebugBreakpoint: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDebugBreakpoint: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DebugBreakpoint {
+        return
+            try DebugBreakpoint(
+                file: FfiConverterString.read(from: &buf), 
+                line: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DebugBreakpoint, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.file, into: &buf)
+        FfiConverterUInt32.write(value.line, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugBreakpoint_lift(_ buf: RustBuffer) throws -> DebugBreakpoint {
+    return try FfiConverterTypeDebugBreakpoint.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugBreakpoint_lower(_ value: DebugBreakpoint) -> RustBuffer {
+    return FfiConverterTypeDebugBreakpoint.lower(value)
+}
+
+
+/**
+ * Where Debug paused and what it sees (PL2f), from the JSON line
+ * `python_lab_debug_script` writes.
+ */
+public struct DebugPause: Equatable, Hashable {
+    /**
+     * The project's frames, outermost first; the last is where it paused.
+     */
+    public var stack: [TracebackFrame]
+    /**
+     * The paused frame's variables (not modules, functions or classes),
+     * each shown as `repr` cut short.
+     */
+    public var variables: [DebugVariable]
+    /**
+     * There were more than the 100 shown.
+     */
+    public var moreVariables: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The project's frames, outermost first; the last is where it paused.
+         */stack: [TracebackFrame], 
+        /**
+         * The paused frame's variables (not modules, functions or classes),
+         * each shown as `repr` cut short.
+         */variables: [DebugVariable], 
+        /**
+         * There were more than the 100 shown.
+         */moreVariables: Bool) {
+        self.stack = stack
+        self.variables = variables
+        self.moreVariables = moreVariables
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DebugPause: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDebugPause: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DebugPause {
+        return
+            try DebugPause(
+                stack: FfiConverterSequenceTypeTracebackFrame.read(from: &buf), 
+                variables: FfiConverterSequenceTypeDebugVariable.read(from: &buf), 
+                moreVariables: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DebugPause, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeTracebackFrame.write(value.stack, into: &buf)
+        FfiConverterSequenceTypeDebugVariable.write(value.variables, into: &buf)
+        FfiConverterBool.write(value.moreVariables, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugPause_lift(_ buf: RustBuffer) throws -> DebugPause {
+    return try FfiConverterTypeDebugPause.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugPause_lower(_ value: DebugPause) -> RustBuffer {
+    return FfiConverterTypeDebugPause.lower(value)
+}
+
+
+public struct DebugVariable: Equatable, Hashable {
+    public var name: String
+    /**
+     * Its type's name, like `int` or `list`.
+     */
+    public var kind: String
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, 
+        /**
+         * Its type's name, like `int` or `list`.
+         */kind: String, value: String) {
+        self.name = name
+        self.kind = kind
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DebugVariable: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDebugVariable: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DebugVariable {
+        return
+            try DebugVariable(
+                name: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DebugVariable, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugVariable_lift(_ buf: RustBuffer) throws -> DebugVariable {
+    return try FfiConverterTypeDebugVariable.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDebugVariable_lower(_ value: DebugVariable) -> RustBuffer {
+    return FfiConverterTypeDebugVariable.lower(value)
 }
 
 
@@ -9751,6 +10293,79 @@ public func FfiConverterTypeHighlightSpan_lower(_ value: HighlightSpan) -> RustB
 
 
 /**
+ * A package in a `site-packages` folder.
+ */
+public struct InstalledPackage: Equatable, Hashable {
+    public var name: String
+    public var version: String
+    public var summary: String
+    /**
+     * The packages it needs on this phone (markers evaluated, extras left
+     * out), by name.
+     */
+    public var requires: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, version: String, summary: String, 
+        /**
+         * The packages it needs on this phone (markers evaluated, extras left
+         * out), by name.
+         */requires: [String]) {
+        self.name = name
+        self.version = version
+        self.summary = summary
+        self.requires = requires
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension InstalledPackage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstalledPackage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstalledPackage {
+        return
+            try InstalledPackage(
+                name: FfiConverterString.read(from: &buf), 
+                version: FfiConverterString.read(from: &buf), 
+                summary: FfiConverterString.read(from: &buf), 
+                requires: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InstalledPackage, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.version, into: &buf)
+        FfiConverterString.write(value.summary, into: &buf)
+        FfiConverterSequenceString.write(value.requires, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstalledPackage_lift(_ buf: RustBuffer) throws -> InstalledPackage {
+    return try FfiConverterTypeInstalledPackage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstalledPackage_lower(_ value: InstalledPackage) -> RustBuffer {
+    return FfiConverterTypeInstalledPackage.lower(value)
+}
+
+
+/**
  * Everything on the dashboard.
  */
 public struct LabSnapshot: Equatable, Hashable {
@@ -10865,7 +11480,7 @@ public func FfiConverterTypePowerStats_lower(_ value: PowerStats) -> RustBuffer 
 
 
 /**
- * An image file in a project.
+ * An output file in a project (an image, for `project_artifacts`).
  */
 public struct ProjectArtifact: Equatable, Hashable {
     /**
@@ -10873,7 +11488,8 @@ public struct ProjectArtifact: Equatable, Hashable {
      */
     public var path: String
     /**
-     * "png", "jpeg", "gif" or "svg".
+     * "png", "jpeg", "gif" or "svg"; with `project_outputs` also "table"
+     * (CSV, TSV), "json", "text", "html", "pdf" or "file".
      */
     public var kind: String
     public var bytes: UInt64
@@ -10891,7 +11507,8 @@ public struct ProjectArtifact: Equatable, Hashable {
          * Relative to the project, like "charts/sales.png".
          */path: String, 
         /**
-         * "png", "jpeg", "gif" or "svg".
+         * "png", "jpeg", "gif" or "svg"; with `project_outputs` also "table"
+         * (CSV, TSV), "json", "text", "html", "pdf" or "file".
          */kind: String, bytes: UInt64, modifiedMs: Int64, 
         /**
          * From the PNG header; none for other kinds.
@@ -11251,6 +11868,93 @@ public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
 
 
 /**
+ * One run of a project's file, for its history (PL2c).
+ */
+public struct RunRecord: Equatable, Hashable {
+    public var file: String
+    /**
+     * When it started, in milliseconds since 1970.
+     */
+    public var startedMs: Int64
+    public var seconds: Double
+    public var ok: Bool
+    public var timedOut: Bool
+    /**
+     * What it printed (stdout and stderr in order), its last
+     * [`RUN_OUTPUT_MAX_BYTES`] at most.
+     */
+    public var output: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(file: String, 
+        /**
+         * When it started, in milliseconds since 1970.
+         */startedMs: Int64, seconds: Double, ok: Bool, timedOut: Bool, 
+        /**
+         * What it printed (stdout and stderr in order), its last
+         * [`RUN_OUTPUT_MAX_BYTES`] at most.
+         */output: String) {
+        self.file = file
+        self.startedMs = startedMs
+        self.seconds = seconds
+        self.ok = ok
+        self.timedOut = timedOut
+        self.output = output
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RunRecord: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRunRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RunRecord {
+        return
+            try RunRecord(
+                file: FfiConverterString.read(from: &buf), 
+                startedMs: FfiConverterInt64.read(from: &buf), 
+                seconds: FfiConverterDouble.read(from: &buf), 
+                ok: FfiConverterBool.read(from: &buf), 
+                timedOut: FfiConverterBool.read(from: &buf), 
+                output: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RunRecord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.file, into: &buf)
+        FfiConverterInt64.write(value.startedMs, into: &buf)
+        FfiConverterDouble.write(value.seconds, into: &buf)
+        FfiConverterBool.write(value.ok, into: &buf)
+        FfiConverterBool.write(value.timedOut, into: &buf)
+        FfiConverterString.write(value.output, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRunRecord_lift(_ buf: RustBuffer) throws -> RunRecord {
+    return try FfiConverterTypeRunRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRunRecord_lower(_ value: RunRecord) -> RustBuffer {
+    return FfiConverterTypeRunRecord.lower(value)
+}
+
+
+/**
  * A task the host's session still has after a launch.
  */
 public struct SessionTaskInfo: Equatable, Hashable {
@@ -11377,6 +12081,80 @@ public func FfiConverterTypeThermalChange_lift(_ buf: RustBuffer) throws -> Ther
 #endif
 public func FfiConverterTypeThermalChange_lower(_ value: ThermalChange) -> RustBuffer {
     return FfiConverterTypeThermalChange.lower(value)
+}
+
+
+/**
+ * A line of a traceback that names a file of the project, for Python Lab
+ * to open there (PL2b).
+ */
+public struct TracebackFrame: Equatable, Hashable {
+    /**
+     * Relative to the project, like `lib/helper.py`.
+     */
+    public var file: String
+    public var line: UInt32
+    /**
+     * The function, or `<module>`.
+     */
+    public var function: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Relative to the project, like `lib/helper.py`.
+         */file: String, line: UInt32, 
+        /**
+         * The function, or `<module>`.
+         */function: String) {
+        self.file = file
+        self.line = line
+        self.function = function
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TracebackFrame: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTracebackFrame: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TracebackFrame {
+        return
+            try TracebackFrame(
+                file: FfiConverterString.read(from: &buf), 
+                line: FfiConverterUInt32.read(from: &buf), 
+                function: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TracebackFrame, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.file, into: &buf)
+        FfiConverterUInt32.write(value.line, into: &buf)
+        FfiConverterString.write(value.function, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTracebackFrame_lift(_ buf: RustBuffer) throws -> TracebackFrame {
+    return try FfiConverterTypeTracebackFrame.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTracebackFrame_lower(_ value: TracebackFrame) -> RustBuffer {
+    return FfiConverterTypeTracebackFrame.lower(value)
 }
 
 
@@ -11672,6 +12450,79 @@ public func FfiConverterTypeVector3_lower(_ value: Vector3) -> RustBuffer {
 
 
 /**
+ * The wheel to download for a package.
+ */
+public struct WheelChoice: Equatable, Hashable {
+    public var name: String
+    public var version: String
+    public var filename: String
+    public var url: String
+    public var sha256: String
+    public var bytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, version: String, filename: String, url: String, sha256: String, bytes: UInt64) {
+        self.name = name
+        self.version = version
+        self.filename = filename
+        self.url = url
+        self.sha256 = sha256
+        self.bytes = bytes
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelChoice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelChoice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelChoice {
+        return
+            try WheelChoice(
+                name: FfiConverterString.read(from: &buf), 
+                version: FfiConverterString.read(from: &buf), 
+                filename: FfiConverterString.read(from: &buf), 
+                url: FfiConverterString.read(from: &buf), 
+                sha256: FfiConverterString.read(from: &buf), 
+                bytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelChoice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.version, into: &buf)
+        FfiConverterString.write(value.filename, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterString.write(value.sha256, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelChoice_lift(_ buf: RustBuffer) throws -> WheelChoice {
+    return try FfiConverterTypeWheelChoice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelChoice_lower(_ value: WheelChoice) -> RustBuffer {
+    return FfiConverterTypeWheelChoice.lower(value)
+}
+
+
+/**
  * A file or folder in a project.
  */
 public struct WorkspaceEntry: Equatable, Hashable {
@@ -11841,6 +12692,10 @@ public struct WorkspaceState: Equatable, Hashable {
      * Files open, in order.
      */
     public var openFiles: [String]
+    /**
+     * Where Debug pauses (PL2f).
+     */
+    public var breakpoints: [DebugBreakpoint]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -11853,10 +12708,14 @@ public struct WorkspaceState: Equatable, Hashable {
          */currentFile: String?, 
         /**
          * Files open, in order.
-         */openFiles: [String]) {
+         */openFiles: [String], 
+        /**
+         * Where Debug pauses (PL2f).
+         */breakpoints: [DebugBreakpoint]) {
         self.runFile = runFile
         self.currentFile = currentFile
         self.openFiles = openFiles
+        self.breakpoints = breakpoints
     }
 
     
@@ -11877,7 +12736,8 @@ public struct FfiConverterTypeWorkspaceState: FfiConverterRustBuffer {
             try WorkspaceState(
                 runFile: FfiConverterOptionString.read(from: &buf), 
                 currentFile: FfiConverterOptionString.read(from: &buf), 
-                openFiles: FfiConverterSequenceString.read(from: &buf)
+                openFiles: FfiConverterSequenceString.read(from: &buf), 
+                breakpoints: FfiConverterSequenceTypeDebugBreakpoint.read(from: &buf)
         )
     }
 
@@ -11885,6 +12745,7 @@ public struct FfiConverterTypeWorkspaceState: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.runFile, into: &buf)
         FfiConverterOptionString.write(value.currentFile, into: &buf)
         FfiConverterSequenceString.write(value.openFiles, into: &buf)
+        FfiConverterSequenceTypeDebugBreakpoint.write(value.breakpoints, into: &buf)
     }
 }
 
@@ -12516,6 +13377,81 @@ public func FfiConverterTypeAiRunState_lower(_ value: AiRunState) -> RustBuffer 
     return FfiConverterTypeAiRunState.lower(value)
 }
 
+
+
+public 
+enum ArtifactError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case Unreadable(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension ArtifactError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeArtifactError: FfiConverterRustBuffer {
+    typealias SwiftType = ArtifactError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArtifactError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Unreadable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ArtifactError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Unreadable(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactError_lift(_ buf: RustBuffer) throws -> ArtifactError {
+    return try FfiConverterTypeArtifactError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArtifactError_lower(_ value: ArtifactError) -> RustBuffer {
+    return FfiConverterTypeArtifactError.lower(value)
+}
 
 
 
@@ -14287,6 +15223,114 @@ public func FfiConverterTypeOfflineReason_lower(_ value: OfflineReason) -> RustB
 
 
 
+public 
+enum PackageError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case NotFound(name: String
+    )
+    /**
+     * It needs compiled code, which iOS only runs when built into the app.
+     */
+    case NotPure(reason: String
+    )
+    case Invalid(reason: String
+    )
+    case Storage(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension PackageError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePackageError: FfiConverterRustBuffer {
+    typealias SwiftType = PackageError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PackageError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .NotFound(
+            name: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .NotPure(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Invalid(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .Storage(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PackageError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .NotFound(name):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(name, into: &buf)
+            
+        
+        case let .NotPure(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Invalid(reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Storage(reason):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePackageError_lift(_ buf: RustBuffer) throws -> PackageError {
+    return try FfiConverterTypePackageError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePackageError_lower(_ value: PackageError) -> RustBuffer {
+    return FfiConverterTypePackageError.lower(value)
+}
+
+
 /**
  * The same states on every platform.
  */
@@ -15272,6 +16316,30 @@ fileprivate struct FfiConverterOptionTypeAiRun: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeBracketMatch: FfiConverterRustBuffer {
+    typealias SwiftType = BracketMatch?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeBracketMatch.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeBracketMatch.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeConnectivityStatus: FfiConverterRustBuffer {
     typealias SwiftType = ConnectivityStatus?
 
@@ -15288,6 +16356,30 @@ fileprivate struct FfiConverterOptionTypeConnectivityStatus: FfiConverterRustBuf
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeConnectivityStatus.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeDebugPause: FfiConverterRustBuffer {
+    typealias SwiftType = DebugPause?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDebugPause.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDebugPause.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -15809,6 +16901,56 @@ fileprivate struct FfiConverterSequenceTypeConnectivityChange: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeDebugBreakpoint: FfiConverterRustBuffer {
+    typealias SwiftType = [DebugBreakpoint]
+
+    public static func write(_ value: [DebugBreakpoint], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDebugBreakpoint.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DebugBreakpoint] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DebugBreakpoint]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDebugBreakpoint.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeDebugVariable: FfiConverterRustBuffer {
+    typealias SwiftType = [DebugVariable]
+
+    public static func write(_ value: [DebugVariable], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDebugVariable.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DebugVariable] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DebugVariable]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDebugVariable.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHarnessStep: FfiConverterRustBuffer {
     typealias SwiftType = [HarnessStep]
 
@@ -15876,6 +17018,31 @@ fileprivate struct FfiConverterSequenceTypeHighlightSpan: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeHighlightSpan.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeInstalledPackage: FfiConverterRustBuffer {
+    typealias SwiftType = [InstalledPackage]
+
+    public static func write(_ value: [InstalledPackage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeInstalledPackage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [InstalledPackage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [InstalledPackage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeInstalledPackage.read(from: &buf))
         }
         return seq
     }
@@ -16059,6 +17226,31 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeRunRecord: FfiConverterRustBuffer {
+    typealias SwiftType = [RunRecord]
+
+    public static func write(_ value: [RunRecord], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRunRecord.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RunRecord] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RunRecord]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRunRecord.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeSessionTaskInfo: FfiConverterRustBuffer {
     typealias SwiftType = [SessionTaskInfo]
 
@@ -16101,6 +17293,31 @@ fileprivate struct FfiConverterSequenceTypeThermalChange: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeThermalChange.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTracebackFrame: FfiConverterRustBuffer {
+    typealias SwiftType = [TracebackFrame]
+
+    public static func write(_ value: [TracebackFrame], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTracebackFrame.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TracebackFrame] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TracebackFrame]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTracebackFrame.read(from: &buf))
         }
         return seq
     }
@@ -16226,6 +17443,31 @@ fileprivate struct FfiConverterSequenceTypeNetworkInterface: FfiConverterRustBuf
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeNetworkInterface.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [[String]]
+
+    public static func write(_ value: [[String]], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterSequenceString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [[String]] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [[String]]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterSequenceString.read(from: &buf))
         }
         return seq
     }
@@ -16393,6 +17635,30 @@ public func crashTestRustPanic()  {try! rustCall() {
 }
 }
 /**
+ * The first rows of the CSV (or, for `.tsv`, tab-separated) file at
+ * `file`. Quoted cells may hold the separator, quotes (doubled) and
+ * newlines, as Python's `csv` module writes them.
+ */
+public func artifactTable(file: String)throws  -> ArtifactTable  {
+    return try  FfiConverterTypeArtifactTable_lift(try rustCallWithError(FfiConverterTypeArtifactError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_artifact_table(
+        FfiConverterString.lower(file),uniffiCallStatus
+    )
+})
+}
+/**
+ * The text of the file at `file` (the first 256 KB), JSON indented.
+ */
+public func artifactText(file: String)throws  -> ArtifactText  {
+    return try  FfiConverterTypeArtifactText_lift(try rustCallWithError(FfiConverterTypeArtifactError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_artifact_text(
+        FfiConverterString.lower(file),uniffiCallStatus
+    )
+})
+}
+/**
  * The images in the project folder `project`, newest first, for Python
  * Lab's Artifacts section and Bonsai Harness's project files.
  */
@@ -16401,6 +17667,29 @@ public func projectArtifacts(project: String) -> [ProjectArtifact]  {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_func_project_artifacts(
         FfiConverterString.lower(project),uniffiCallStatus
+    )
+})
+}
+/**
+ * Every output file in the project folder `project` (PL2e): images,
+ * tables, text and the rest, newest first. Python files aren't outputs.
+ */
+public func projectOutputs(project: String) -> [ProjectArtifact]  {
+    return try!  FfiConverterSequenceTypeProjectArtifact.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_project_outputs(
+        FfiConverterString.lower(project),uniffiCallStatus
+    )
+})
+}
+/**
+ * Reads a pause the debugger wrote; none if it isn't one.
+ */
+public func pythonDebugPause(json: String) -> DebugPause?  {
+    return try!  FfiConverterOptionTypeDebugPause.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_debug_pause(
+        FfiConverterString.lower(json),uniffiCallStatus
     )
 })
 }
@@ -16416,6 +17705,25 @@ public func pythonLabConsoleScript(project: String, path: String) -> String  {
     uniffi_forge_ffi_fn_func_python_lab_console_script(
         FfiConverterString.lower(project),
         FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
+/**
+ * Python Lab's Debug (PL2f): `python_lab_console_script` run under a
+ * debugger (`bdb`) that pauses on `breakpoints`. Each pause writes the
+ * stack and variables as JSON to the console stream with kind 6
+ * (`python_debug_pause` reads it), then waits on the console's input for
+ * a command: `continue`, `step` (into a call), `next` (over it) or `out`
+ * (to the caller). Only the project's own files pause; stepping goes
+ * over the standard library and packages.
+ */
+public func pythonLabDebugScript(project: String, path: String, breakpoints: [DebugBreakpoint]) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_lab_debug_script(
+        FfiConverterString.lower(project),
+        FfiConverterString.lower(path),
+        FfiConverterSequenceTypeDebugBreakpoint.lower(breakpoints),uniffiCallStatus
     )
 })
 }
@@ -16461,6 +17769,21 @@ public func pythonLabScript(project: String, code: String) -> String  {
     uniffi_forge_ffi_fn_func_python_lab_script(
         FfiConverterString.lower(project),
         FfiConverterString.lower(code),uniffiCallStatus
+    )
+})
+}
+/**
+ * The project's frames in the last traceback of a console run's output,
+ * outermost first, so the last is where the error happened. Frames of
+ * other files (the standard library, a package) are left out: only the
+ * project's files can be opened. A console traceback already names them
+ * relative to the project (`python_lab_console_script`).
+ */
+public func pythonTracebackFrames(output: String) -> [TracebackFrame]  {
+    return try!  FfiConverterSequenceTypeTracebackFrame.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_traceback_frames(
+        FfiConverterString.lower(output),uniffiCallStatus
     )
 })
 }
@@ -16617,6 +17940,80 @@ public func installNativeTransfers(session: TransferSession)throws   {try rustCa
 }
 }
 /**
+ * Chooses the pure-Python wheel of the newest release from PyPI's JSON
+ * for a package (`https://pypi.org/pypi/<name>/json`).
+ */
+public func packageChooseWheel(name: String, pypiJson: String)throws  -> WheelChoice  {
+    return try  FfiConverterTypeWheelChoice_lift(try rustCallWithError(FfiConverterTypePackageError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_package_choose_wheel(
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(pypiJson),uniffiCallStatus
+    )
+})
+}
+/**
+ * Installs the wheel at `wheel` into `site_packages` once its SHA-256 is
+ * `sha256` (PyPI's), and returns what it installed. An older version of
+ * the same package is replaced; another package's files never are.
+ */
+public func packageInstallWheel(wheel: String, sha256: String, sitePackages: String)throws  -> InstalledPackage  {
+    return try  FfiConverterTypeInstalledPackage_lift(try rustCallWithError(FfiConverterTypePackageError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_package_install_wheel(
+        FfiConverterString.lower(wheel),
+        FfiConverterString.lower(sha256),
+        FfiConverterString.lower(sitePackages),uniffiCallStatus
+    )
+})
+}
+/**
+ * Whether `name` could be a PyPI name, so nothing odd goes into a URL.
+ */
+public func packageNameValid(name: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_package_name_valid(
+        FfiConverterString.lower(name),uniffiCallStatus
+    )
+})
+}
+/**
+ * A package name as PyPI compares them (PEP 503): lowercase, with runs of
+ * `-`, `_` and `.` as one `-`.
+ */
+public func packageNormalizedName(name: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_package_normalized_name(
+        FfiConverterString.lower(name),uniffiCallStatus
+    )
+})
+}
+/**
+ * Removes a package's files (as its RECORD lists them) and its
+ * `.dist-info`.
+ */
+public func packageUninstall(sitePackages: String, name: String)throws   {try rustCallWithError(FfiConverterTypePackageError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_package_uninstall(
+        FfiConverterString.lower(sitePackages),
+        FfiConverterString.lower(name),uniffiCallStatus
+    )
+}
+}
+/**
+ * The packages in `site_packages`, by name.
+ */
+public func packagesInstalled(sitePackages: String) -> [InstalledPackage]  {
+    return try!  FfiConverterSequenceTypeInstalledPackage.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_packages_installed(
+        FfiConverterString.lower(sitePackages),uniffiCallStatus
+    )
+})
+}
+/**
  * The coloured ranges in `source`, in order and never overlapping.
  */
 public func pythonHighlight(source: String) -> [HighlightSpan]  {
@@ -16624,6 +18021,20 @@ public func pythonHighlight(source: String) -> [HighlightSpan]  {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_func_python_highlight(
         FfiConverterString.lower(source),uniffiCallStatus
+    )
+})
+}
+/**
+ * The bracket beside UTF-16 offset `cursor` and its partner. Brackets in
+ * strings and comments don't count (an f-string's `{}` included), so
+ * `print(")")` pairs the outer two.
+ */
+public func pythonMatchingBracket(source: String, cursor: UInt32) -> BracketMatch?  {
+    return try!  FfiConverterOptionTypeBracketMatch.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_python_matching_bracket(
+        FfiConverterString.lower(source),
+        FfiConverterUInt32.lower(cursor),uniffiCallStatus
     )
 })
 }
@@ -16721,10 +18132,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_crash_test_rust_panic() != 23512) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_artifact_table() != 65088) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_artifact_text() != 49125) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_project_artifacts() != 21958) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_project_outputs() != 5403) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_debug_pause() != 20708) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_python_lab_console_script() != 54637) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_lab_debug_script() != 41092) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_python_lab_file_script() != 14378) {
@@ -16734,6 +18160,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_python_lab_script() != 46242) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_traceback_frames() != 48041) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_python_lab_graphics_samples() != 19001) {
@@ -16781,7 +18210,28 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_install_native_transfers() != 47281) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_package_choose_wheel() != 33677) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_package_install_wheel() != 47894) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_package_name_valid() != 27148) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_package_normalized_name() != 52885) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_package_uninstall() != 48933) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_packages_installed() != 7232) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_python_highlight() != 46371) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_python_matching_bracket() != 13468) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_transfer_test_cancel() != 22994) {
@@ -16898,7 +18348,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_snapshot() != 53706) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom() != 36010) {
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom() != 9195) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder() != 34402) {
@@ -17060,6 +18510,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_transfersink_reconcile() != 23410) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_workspace_clear_runs() != 44125) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_workspace_create_file() != 53635) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -17078,6 +18531,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_workspace_entries() != 18400) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_workspace_export_project() != 10143) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_import_file() != 61881) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_workspace_project_folder() != 42712) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -17087,10 +18546,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_workspace_read_text() != 38077) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_workspace_record_run() != 56631) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_workspace_rename_entry() != 3527) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_workspace_rename_project() != 8154) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_workspace_runs() != 57100) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_workspace_save_state() != 44357) {

@@ -432,14 +432,17 @@ impl BonsaiHarness {
         self.start(Arc::new(ScriptBrain::new(evidence::script(task.id))), task)
     }
 
-    /// Starts a task in the person's own words, in the scratch project
-    /// (kept between tasks).
+    /// Starts a task in the person's own words, in their Python Lab
+    /// project `project` (`scratch` by default; kept between tasks), so
+    /// Bonsai works on the person's files and they open its work in Python
+    /// Lab (python-lab-workspace-plan.md, PL1e).
     pub fn start_custom(
         &self,
         model: Arc<dyn HarnessModel>,
         request: String,
+        project: String,
     ) -> Result<(), HarnessError> {
-        self.start_request(Arc::new(HostBrain(model)), request)
+        self.start_request(Arc::new(HostBrain(model)), request, &project)
     }
 
     /// Opens a project's journal for the screen (the last task and its
@@ -449,7 +452,7 @@ impl BonsaiHarness {
         if state.running {
             return Err(HarnessError::Busy);
         }
-        let root = self.project_root(&name)?;
+        let (name, root) = self.project_root(&name)?;
         let entries = Journal::replay(&root);
         state.entries = entries;
         state.project = Some(name);
@@ -574,9 +577,16 @@ impl BonsaiHarness {
         }
     }
 
-    fn project_root(&self, name: &str) -> Result<PathBuf, HarnessError> {
-        calls::check_path(name).map_err(|reason| HarnessError::Storage { reason })?;
-        Ok(self.projects.join(name))
+    /// A person's project: named as Python Lab names them (any letters,
+    /// spaces; never hidden, never a ladder task's name).
+    /// A project's checked name (trimmed, as Python Lab saves it) and its
+    /// folder. Everything after uses that name, never the one passed in.
+    fn project_root(&self, name: &str) -> Result<(String, PathBuf), HarnessError> {
+        let name = crate::workspace::project_name(name).map_err(|err| HarnessError::Storage {
+            reason: err.to_string(),
+        })?;
+        let root = self.projects.join(&name);
+        Ok((name, root))
     }
 
     /// A ladder task's project, under [`LADDER_FOLDER`].
@@ -614,12 +624,22 @@ impl BonsaiHarness {
         &self,
         brain: Arc<dyn Brain>,
         request: String,
+        project: &str,
     ) -> Result<(), HarnessError> {
         let request = request.trim().to_string();
         if request.is_empty() {
             return Err(HarnessError::EmptyTask);
         }
-        let root = self.project_root(SCRATCH_PROJECT)?;
+        let (project, root) = self.project_root(project)?;
+        let project = project.as_str();
+        // Only scratch is made when missing: any other project is one the
+        // person made in Python Lab, and a missing one was renamed or
+        // deleted there.
+        if project != SCRATCH_PROJECT && !root.is_dir() {
+            return Err(HarnessError::Storage {
+                reason: format!("There is no project called {project} any more. Choose another."),
+            });
+        }
         let lab = PythonLab::new(
             root.clone(),
             Arc::clone(&self.python),
@@ -635,7 +655,7 @@ impl BonsaiHarness {
         self.launch(
             brain,
             Arc::new(lab),
-            SCRATCH_PROJECT,
+            project,
             request,
             vec![Criterion::WorkRuns],
         )

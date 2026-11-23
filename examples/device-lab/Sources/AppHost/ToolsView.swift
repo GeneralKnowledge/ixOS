@@ -88,7 +88,7 @@ struct ToolsView: View {
             }
             Section {
                 NavigationLink {
-                    BonsaiHarnessView(model: harness)
+                    BonsaiHarnessView(model: harness, pythonLab: pythonLab)
                 } label: {
                     Label("Bonsai Harness", systemImage: "hammer")
                 }

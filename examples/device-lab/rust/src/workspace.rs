@@ -30,6 +30,10 @@ pub const PATH_MAX: usize = 255;
 pub const TEXT_MAX_BYTES: usize = 1024 * 1024;
 /// Most files and folders a project may hold.
 pub const ENTRIES_MAX: usize = 500;
+/// The largest file imported from the Files app that isn't text (an image,
+/// a data file); text files keep [`TEXT_MAX_BYTES`], since the editor opens
+/// them.
+pub const IMPORT_MAX_BYTES: u64 = 20 * 1024 * 1024;
 
 /// The hidden folder in each project where Python Lab keeps its state.
 const STATE_FOLDER: &str = ".workspace";
@@ -80,6 +84,27 @@ pub struct WorkspaceEntry {
     pub modified_ms: i64,
 }
 
+/// One run of a project's file, for its history (PL2c).
+#[derive(uniffi::Record, Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RunRecord {
+    pub file: String,
+    /// When it started, in milliseconds since 1970.
+    pub started_ms: i64,
+    pub seconds: f64,
+    pub ok: bool,
+    #[serde(default)]
+    pub timed_out: bool,
+    /// What it printed (stdout and stderr in order), its last
+    /// [`RUN_OUTPUT_MAX_BYTES`] at most.
+    pub output: String,
+}
+
+/// Runs kept per project, newest first.
+pub const RUNS_MAX: usize = 30;
+/// The most of a run's output its history keeps.
+pub const RUN_OUTPUT_MAX_BYTES: usize = 16 * 1024;
+const RUNS_FILE: &str = "runs.json";
+
 /// What Python Lab had open in a project, to reopen it.
 #[derive(uniffi::Record, Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkspaceState {
@@ -92,6 +117,18 @@ pub struct WorkspaceState {
     /// Files open, in order.
     #[serde(default)]
     pub open_files: Vec<String>,
+    /// Where Debug pauses (PL2f).
+    #[serde(default)]
+    pub breakpoints: Vec<DebugBreakpoint>,
+}
+
+/// A line Debug pauses on, in a file of the project.
+#[derive(uniffi::Record, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DebugBreakpoint {
+    /// Relative to the project.
+    pub file: String,
+    /// 1 is the first line.
+    pub line: u32,
 }
 
 /// The person's projects. Thread-safe: every call goes to the disk.
@@ -339,6 +376,7 @@ impl Workspace {
         state.open_files.retain(present);
         state.current_file = state.current_file.filter(present);
         state.run_file = state.run_file.filter(present);
+        state.breakpoints.retain(|b| b.line > 0 && present(&b.file));
         Ok(state)
     }
 
@@ -350,6 +388,146 @@ impl Workspace {
             reason: err.to_string(),
         })?;
         write_atomic(&folder.join(STATE_FILE), &json).map_err(storage)
+    }
+
+    /// The project's runs, newest first.
+    pub fn runs(&self, project: String) -> Result<Vec<RunRecord>, WorkspaceError> {
+        let root = self.project(&project)?;
+        Ok(fs::read(root.join(STATE_FOLDER).join(RUNS_FILE))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default())
+    }
+
+    /// Adds a run to the project's history, keeping the newest
+    /// [`RUNS_MAX`], each with the end of its output.
+    pub fn record_run(&self, project: String, run: RunRecord) -> Result<(), WorkspaceError> {
+        let mut run = run;
+        if run.output.len() > RUN_OUTPUT_MAX_BYTES {
+            let mut cut = run.output.len() - RUN_OUTPUT_MAX_BYTES;
+            while !run.output.is_char_boundary(cut) {
+                cut += 1;
+            }
+            run.output = format!("(earlier output not kept)\n{}", &run.output[cut..]);
+        }
+        let mut runs = self.runs(project.clone())?;
+        runs.insert(0, run);
+        runs.truncate(RUNS_MAX);
+        let root = self.project(&project)?;
+        let folder = root.join(STATE_FOLDER);
+        fs::create_dir_all(&folder).map_err(storage)?;
+        let json = serde_json::to_vec(&runs).map_err(|err| WorkspaceError::Storage {
+            reason: err.to_string(),
+        })?;
+        write_atomic(&folder.join(RUNS_FILE), &json).map_err(storage)
+    }
+
+    /// Forgets the project's runs.
+    pub fn clear_runs(&self, project: String) -> Result<(), WorkspaceError> {
+        let root = self.project(&project)?;
+        match fs::remove_file(root.join(STATE_FOLDER).join(RUNS_FILE)) {
+            Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(storage(err)),
+            _ => Ok(()),
+        }
+    }
+
+    /// Copies the file at `source` (one the person picked in the Files app)
+    /// into `folder` of the project ("" for its top), under its own name, or
+    /// "name 2.py" and so on when that is taken. Text files keep the 1 MB
+    /// limit; other files (images, data) may be up to 20 MB. Returns the new
+    /// file's path in the project.
+    pub fn import_file(
+        &self,
+        project: String,
+        folder: String,
+        source: String,
+    ) -> Result<String, WorkspaceError> {
+        let source = Path::new(&source);
+        let meta = fs::metadata(source).map_err(storage)?;
+        if !meta.is_file() {
+            return Err(WorkspaceError::Invalid {
+                reason: "Only files can be imported, not folders.".into(),
+            });
+        }
+        let original = source
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        // A hidden name (".env") is imported visibly, so the person sees it.
+        let name = original.trim_start_matches('.').trim().to_string();
+        name_part(&name, "A file name")?;
+        if meta.len() > IMPORT_MAX_BYTES {
+            return Err(WorkspaceError::TooLarge {
+                reason: format!(
+                    "{name} is {} MB; an imported file can be at most {} MB.",
+                    meta.len() / (1024 * 1024),
+                    IMPORT_MAX_BYTES / (1024 * 1024)
+                ),
+            });
+        }
+        let bytes = fs::read(source).map_err(storage)?;
+        if let Ok(text) = std::str::from_utf8(&bytes) {
+            check_text_size(&name, text)?;
+        }
+        let (stem, extension) = match name.rsplit_once('.') {
+            Some((stem, ext)) if !stem.is_empty() => (stem.to_string(), format!(".{ext}")),
+            _ => (name.clone(), String::new()),
+        };
+        for n in 1..=99 {
+            let candidate = if n == 1 {
+                name.clone()
+            } else {
+                format!("{stem} {n}{extension}")
+            };
+            let path = if folder.is_empty() {
+                candidate
+            } else {
+                format!("{folder}/{candidate}")
+            };
+            let full = match self.new_path(&project, &path) {
+                Ok(full) => full,
+                Err(WorkspaceError::Exists { .. }) => continue,
+                Err(err) => return Err(err),
+            };
+            let temp = unique_temp(&full);
+            let result = write_new(&temp, &bytes).and_then(|_| {
+                let linked = fs::hard_link(&temp, &full);
+                let _ = fs::remove_file(&temp);
+                linked
+            });
+            match result {
+                Ok(()) => return Ok(path),
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(err) => return Err(storage(err)),
+            }
+        }
+        Err(WorkspaceError::Exists { name })
+    }
+
+    /// Writes the whole project as `<out_folder>/<project>.zip` (forge-storage's
+    /// backup archive: its files plus a small manifest; hidden folders such
+    /// as Bonsai's journal and the editor state are left out) and returns
+    /// the archive's path, for the share sheet.
+    pub fn export_project(
+        &self,
+        project: String,
+        out_folder: String,
+    ) -> Result<String, WorkspaceError> {
+        let root = self.project(&project)?;
+        let out = Path::new(&out_folder).join(format!("{project}.zip"));
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let archive = forge_storage::backup::Backup::new("python-lab", 1, now)
+            .directory(&project, &root)
+            .map_err(|err| WorkspaceError::Storage {
+                reason: err.to_string(),
+            })?;
+        archive.write(&out).map_err(|err| WorkspaceError::Storage {
+            reason: err.to_string(),
+        })?;
+        Ok(out.display().to_string())
     }
 }
 
@@ -510,7 +688,7 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
 
 /// A project name: no slashes, not hidden, no control characters, at most
 /// [`PROJECT_NAME_MAX`] characters. Returned trimmed.
-fn project_name(name: &str) -> Result<String, WorkspaceError> {
+pub(crate) fn project_name(name: &str) -> Result<String, WorkspaceError> {
     let trimmed = name.trim();
     let count = trimmed.chars().count();
     if trimmed.is_empty() {
@@ -1060,11 +1238,28 @@ mod tests {
             run_file: Some(s("main.py")),
             current_file: Some(s("gone.py")),
             open_files: vec![s("main.py"), s("gone.py")],
+            breakpoints: vec![
+                DebugBreakpoint {
+                    file: s("main.py"),
+                    line: 3,
+                },
+                DebugBreakpoint {
+                    file: s("gone.py"),
+                    line: 1,
+                },
+            ],
         };
         ws.save_state(p.clone(), state).unwrap();
         ws.delete_entry(p.clone(), s("gone.py")).unwrap();
         let back = ws.state(p.clone()).unwrap();
         assert_eq!(back.run_file.as_deref(), Some("main.py"));
+        assert_eq!(
+            back.breakpoints,
+            [DebugBreakpoint {
+                file: s("main.py"),
+                line: 3
+            }]
+        );
         assert_eq!(back.current_file, None);
         assert_eq!(back.open_files, [s("main.py")]);
         // The state folder isn't a file of the project.
@@ -1125,5 +1320,115 @@ mod tests {
             order,
             ["A", "A/sub", "A/sub/x.py", "A/z.py", "a.py", "b.py"]
         );
+    }
+
+    #[test]
+    fn imported_files_keep_their_names_and_never_replace_one() {
+        let (dir, ws) = workspace();
+        ws.create_project(s("Data")).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let csv = outside.path().join("prices.csv");
+        std::fs::write(&csv, "a,b\n1,2\n").unwrap();
+        let png = outside.path().join("plot.png");
+        std::fs::write(&png, [0x89, b'P', b'N', b'G', 0xff, 0x00]).unwrap();
+        let csv = csv.display().to_string();
+        assert_eq!(
+            ws.import_file(s("Data"), s(""), csv.clone()).unwrap(),
+            "prices.csv"
+        );
+        assert_eq!(
+            ws.import_file(s("Data"), s(""), csv.clone()).unwrap(),
+            "prices 2.csv"
+        );
+        ws.create_folder(s("Data"), s("in")).unwrap();
+        assert_eq!(
+            ws.import_file(s("Data"), s("in"), csv).unwrap(),
+            "in/prices.csv"
+        );
+        assert_eq!(
+            ws.import_file(s("Data"), s(""), png.display().to_string())
+                .unwrap(),
+            "plot.png"
+        );
+        let root = dir.path().join("Data");
+        assert_eq!(
+            std::fs::read(root.join("plot.png")).unwrap(),
+            [0x89, b'P', b'N', b'G', 0xff, 0x00]
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("prices 2.csv")).unwrap(),
+            "a,b\n1,2\n"
+        );
+
+        // Text over 1 MB is refused; a folder can't be imported.
+        let big = outside.path().join("big.txt");
+        std::fs::write(&big, "x".repeat(TEXT_MAX_BYTES + 1)).unwrap();
+        assert!(matches!(
+            ws.import_file(s("Data"), s(""), big.display().to_string()),
+            Err(WorkspaceError::TooLarge { .. })
+        ));
+        assert!(matches!(
+            ws.import_file(s("Data"), s(""), outside.path().display().to_string()),
+            Err(WorkspaceError::Invalid { .. })
+        ));
+        assert!(!root.join("big.txt").exists());
+    }
+
+    #[test]
+    fn a_project_exports_as_a_zip_without_its_hidden_folders() {
+        let (dir, ws) = workspace();
+        ws.create_project(s("Expenses")).unwrap();
+        ws.create_file(s("Expenses"), s("main.py"), s("print(1)\n"))
+            .unwrap();
+        ws.create_folder(s("Expenses"), s("lib")).unwrap();
+        ws.create_file(s("Expenses"), s("lib/util.py"), s("X = 1\n"))
+            .unwrap();
+        std::fs::create_dir_all(dir.path().join("Expenses/.harness")).unwrap();
+        std::fs::write(dir.path().join("Expenses/.harness/journal.jsonl"), "{}").unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let zip = ws
+            .export_project(s("Expenses"), out.path().display().to_string())
+            .unwrap();
+        assert!(zip.ends_with("Expenses.zip"));
+        let manifest = forge_storage::backup::read_manifest(Path::new(&zip)).unwrap();
+        let mut names: Vec<_> = manifest.files.iter().map(|f| f.path.clone()).collect();
+        names.sort();
+        assert_eq!(names, ["Expenses/lib/util.py", "Expenses/main.py"]);
+    }
+
+    #[test]
+    fn runs_are_kept_newest_first_and_trimmed() {
+        let (_dir, ws) = workspace();
+        let run = |n: i64, output: String| RunRecord {
+            file: s("main.py"),
+            started_ms: n,
+            seconds: 0.5,
+            ok: n % 2 == 0,
+            timed_out: false,
+            output,
+        };
+        assert!(ws.runs(s("scratch")).unwrap().is_empty());
+        for n in 0..(RUNS_MAX as i64 + 5) {
+            ws.record_run(s("scratch"), run(n, format!("run {n}\n")))
+                .unwrap();
+        }
+        let runs = ws.runs(s("scratch")).unwrap();
+        assert_eq!(runs.len(), RUNS_MAX);
+        assert_eq!(runs[0].started_ms, RUNS_MAX as i64 + 4);
+        assert_eq!(runs[0].output, format!("run {}\n", RUNS_MAX + 4));
+
+        // A long output keeps its end, cut at a character.
+        let long = "é".repeat(RUN_OUTPUT_MAX_BYTES) + "END";
+        ws.record_run(s("scratch"), run(100, long)).unwrap();
+        let kept = &ws.runs(s("scratch")).unwrap()[0].output;
+        assert!(kept.starts_with("(earlier output not kept)\n"));
+        assert!(kept.ends_with("END"));
+        assert!(kept.len() <= RUN_OUTPUT_MAX_BYTES + 30);
+
+        ws.clear_runs(s("scratch")).unwrap();
+        ws.clear_runs(s("scratch")).unwrap();
+        assert!(ws.runs(s("scratch")).unwrap().is_empty());
+        // The history is hidden, like the editor state.
+        assert!(ws.entries(s("scratch")).unwrap().is_empty());
     }
 }
