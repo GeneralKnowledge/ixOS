@@ -349,13 +349,26 @@ struct ArtistView: View {
 
     /// A Jamendo song of this artist's in the library, to find them on
     /// Jamendo by; nil when none came from there.
+    /// A song merged into another counts too (its id is in `merged`).
     private func jamendoTrack(in tracks: [LibraryTrack]) -> String? {
-        tracks.first { $0.id.hasPrefix("jamendo:") }?.id
+        tracks.lazy.flatMap { [$0.id] + $0.merged.map(\.id) }.first { $0.hasPrefix("jamendo:") }
     }
 
     /// Everything on Jamendo by the artist, or why it isn't here yet.
     @ViewBuilder
     private var onJamendo: some View {
+        // A refresh that fails says so above what is still shown.
+        if let jamendoProblem {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Can't Ask Jamendo").font(.headline)
+                    Text(jamendoProblem).font(.subheadline).foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                Button("Try Again", systemImage: "arrow.clockwise") { jamendoAttempt += 1 }
+                    .accessibilityIdentifier("artist.jamendoRetry")
+            }
+        }
         if let jamendo {
             JamendoReleases(model: model, player: player, page: jamendo,
                             identifier: "artist.jamendo", onJamendo: true)
@@ -368,17 +381,7 @@ struct ArtistView: View {
             } footer: {
                 Text("Music from Jamendo, each track under its artist's Creative Commons licence.")
             }
-        } else if let jamendoProblem {
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Can't Ask Jamendo").font(.headline)
-                    Text(jamendoProblem).font(.subheadline).foregroundStyle(.secondary)
-                }
-                .accessibilityElement(children: .combine)
-                Button("Try Again", systemImage: "arrow.clockwise") { jamendoAttempt += 1 }
-                    .accessibilityIdentifier("artist.jamendoRetry")
-            }
-        } else {
+        } else if jamendoProblem == nil {
             Section {
                 HStack(spacing: 10) {
                     ProgressView()
