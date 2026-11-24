@@ -20,7 +20,11 @@ listening room. Artwork-led, atmospheric, editorial, emotionally engaging. Not S
 
 ## What must not change
 
-The Rust library, collection, history, queue, station mixer, Smart Playlists and offline store;
+Existing behaviour and data compatibility of the Rust library, collection (an existing `collection.json`
+must keep loading unchanged), history, queue, station mixer, Smart Playlists and offline store. Additions
+the design needs (a stored shelf order, an artist ranking) are allowed only as their own feature PRs, with a
+compatible, defaulted field and tests, merged before the visual PR (see the
+[programme rule](README.md#visual-work-and-feature-work-stay-apart)). Also unchanged:
 `TakePlayer` and AVPlayer (gapless, crossfade, sleep timer, lock screen, interruptions, saved queue); the
 Layered Navigation rules (surface identity, reuse an open surface); downloads and licence checks; every
 accessibility identifier used by `uitests/`.
@@ -58,6 +62,10 @@ Full screen, dark, over the artwork palette. Layout as design.md S3. Additions:
   behind it (`presentationBackgroundInteraction` up through medium); full height on drag.
 - **Swipe artwork:** optional, to lyrics; a visualisation only later, only if it stops off screen, in the
   background and under Reduce Motion.
+- **Known defect, found in review of this plan:** the artist line uses white at 60%, but `ArtworkPalette`
+  only darkens the top stop until opaque white reaches 4.5:1, so the artist line can fall to about 3:1.
+  Fixed in its own small Soundscape PR (clamp against the composited 60% colour or make the line opaque,
+  with a palette test for it), independent of the redesign milestones.
 - **Controls:** white glyphs without circles for transport; small round controls on clear glass with a dim
   layer when the artwork is bright (HIG); grouped in one glass container.
 

@@ -194,9 +194,11 @@ are from public descriptions and are marked so.
 
 - **Licence:** GPL-2.0 (per its README: "publish your code too in order to comply with the licences").
   Ideas only.
-- **Observed:** separate modules for the attachment UI (`AttachmentUI`, `AttachmentTextInputPanelNode`)
-  and the reaction selector (`ReactionSelectionNode`): the attachment picker is its own surface with a
-  caption field, and reactions are a bar over the message's context menu.
+- **Observed (source tree only):** separate modules for the attachment UI (`AttachmentUI`,
+  `AttachmentTextInputPanelNode`) and a reaction selector (`ReactionSelectionNode`).
+- **Unverified (general knowledge, not read in the code or captured):** that the attachment picker carries
+  a caption field and that reactions appear as a bar above the message's context menu. The Telegram capture
+  in the checklist confirms or corrects this.
 - **Take for Relay.** Attachment staging with a caption before sending; reactions offered at the top of the
   message's menu; search that reaches into conversation content.
 - **Don't take.** Feature density; its custom rendering stack.

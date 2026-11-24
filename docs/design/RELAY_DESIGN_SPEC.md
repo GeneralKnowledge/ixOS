@@ -48,7 +48,7 @@ States: **no conversations** (first-run: pair a device or join a room, one clear
 | Bubbles | Outgoing accent, incoming surface; inner corners tightened by position in a run (first / middle / last) | Same 18 pt corners on every bubble | V4.2 |
 | Spacing | 2 pt within a run, 8 pt between runs, day headers centred | 0 and 6 | V4.2 |
 | Timestamps | One per run (exists); every message's time on demand (swipe or tap) | Per run | V4.2 |
-| Delivery | Under the last outgoing message of a run: Sending (animated), In the Mailbox, Delivered, Read as a quiet caption with a small symbol; Not Delivered in red with Try Again | Text label under each message | V4.2: same states, quieter form; In the Mailbox and Not Delivered stay explicit |
+| Delivery | Under the last outgoing message of a run: Sending (animated), In the Mailbox, Delivered, Read as a quiet caption with a small symbol. A failed message always keeps its own Not Delivered caption in red with Try Again directly under it, wherever it sits in the run, even when later messages were delivered (a failure also ends the run visually) | Text label under each message | V4.2: same states, quieter form; In the Mailbox and Not Delivered stay explicit |
 | Unread divider | A thin accent line with "N New Messages" | Two system dividers | V4.2 |
 | New message arrival | Inserted with a short rise only when at the bottom; otherwise the New Messages button counts up and the reading position doesn't move | Bottom tracking exists | V4.2 |
 | Reply | Quote card above the composer with Cancel | Bar in the composer | V4.2 |

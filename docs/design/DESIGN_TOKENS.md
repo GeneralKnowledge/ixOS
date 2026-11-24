@@ -58,7 +58,7 @@ One implementation replacing today's three private copies (`soundscapeGlass`, `r
 | API | iOS 26 (SDK 26 binary) | iOS 17 to 25, or Xcode 16 | Reduce Transparency |
 |---|---|---|---|
 | `forgeGlass(.regular, in: shape)` | `glassEffect(.regular, in:)` | `.regularMaterial` + the fallback shadow | Solid (system on 26; `.background(.background)` fallback) |
-| `forgeGlass(.clear, in: shape)` over media | `glassEffect(.clear, in:)` + optional 35% dim | white at 14% | Solid dark |
+| `forgeGlass(.clear, in: shape)` over media | `glassEffect(.clear, in:)`, plus a black 35% dim behind it whenever the media under it can be bright (always for Soundscape's artwork) | black 35% dim plus white at 14%, so white glyphs keep contrast over white artwork | Solid dark |
 | `interactive: true` | `.interactive()` | none | — |
 | `forgeGlassProminentButton()` | `.buttonStyle(.glassProminent)` | `.borderedProminent` | system |
 | `ForgeGlassGroup { }` | `GlassEffectContainer` | plain container | — |
