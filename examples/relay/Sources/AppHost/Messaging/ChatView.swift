@@ -81,7 +81,7 @@ struct ChatView: View {
                         Button(newMessagesLabel, systemImage: "arrow.down") {
                             withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .relayProminentButton()
                         .buttonBorderShape(.capsule)
                         .controlSize(.small)
                         .padding(.bottom, 8)
@@ -735,7 +735,7 @@ private struct ConnectionBanner: View {
         notice
             .padding(.horizontal)
             .padding(.vertical, 6)
-            .background(.bar)
+            .relayFloatingBar(cornerRadius: 18)
     }
 }
 
@@ -799,7 +799,7 @@ private struct Composer: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .relayFloatingBar()
     }
 
     /// Nothing to send yet: the send button becomes the microphone.
