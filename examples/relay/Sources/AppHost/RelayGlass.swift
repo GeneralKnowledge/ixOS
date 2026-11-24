@@ -37,6 +37,14 @@ extension View {
         forgeGlass(.regular, interactive: true, in: Capsule())
     }
 
+    /// A passive notice (can't reach the server, reconnecting): one card on
+    /// the standard material, never glass, and without ForgeNotice's tinted
+    /// fill, so it isn't a coloured block on a grey card. The Chats list and
+    /// a conversation's connection notice use the same one.
+    func relayPassiveNotice() -> some View {
+        modifier(RelayPassiveNotice())
+    }
+
     /// The tab bar steps aside while a long list or a chat scrolls down,
     /// and comes back on the way up (iOS 26); nothing before.
     @ViewBuilder func relayTabBarMinimizes() -> some View {
@@ -49,5 +57,15 @@ extension View {
         #else
         self
         #endif
+    }
+}
+
+private struct RelayPassiveNotice: ViewModifier {
+    @Environment(\.forgeTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content
+            .forgeNoticeBackground(.hidden)
+            .forgeMaterial(in: RoundedRectangle(cornerRadius: theme.radius.l, style: .continuous))
     }
 }

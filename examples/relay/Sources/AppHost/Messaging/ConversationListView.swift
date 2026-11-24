@@ -82,6 +82,7 @@ struct ConversationListView: View {
                     query: query)
             }
         }
+        .listStyle(.plain)
         .overlay {
             if results.isEmpty {
                 if resultsFor == query {
@@ -93,10 +94,13 @@ struct ConversationListView: View {
         }
     }
 
-    /// A notice as a row of its own, drawn on the list's background.
+    /// A notice as a row of its own: passive, so on the standard material
+    /// like a conversation's connection notice, lined up with the search
+    /// field and the rows.
     private func notice(_ notice: ForgeNotice) -> some View {
         notice
-            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+            .relayPassiveNotice()
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
     }
@@ -121,6 +125,9 @@ struct ConversationListView: View {
                 NavigationLink(value: ChatRoute(conversationId: conversation.id)) {
                     ConversationRow(conversation: conversation)
                 }
+                // The unread dot hangs in the margin, so names line up with
+                // the search field instead of sitting behind an empty gap.
+                .listRowInsets(EdgeInsets(top: 10, leading: 4, bottom: 10, trailing: 16))
                 .accessibilityIdentifier("chats.conversation.\(conversation.id)")
                 .swipeActions(edge: .leading) { readAction(conversation) }
                 .swipeActions(edge: .trailing) { muteAction(conversation) }
@@ -130,6 +137,8 @@ struct ConversationListView: View {
                 }
             }
         }
+        // Full width like Messages, not an inset card.
+        .listStyle(.plain)
         .overlay {
             if model.conversations.isEmpty && model.listError == nil {
                 if model.hasListed {
@@ -174,7 +183,7 @@ private struct ConversationRow: View {
     let conversation: ChatConversation
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 6) {
             Circle()
                 .fill(.tint)
                 .frame(width: 10, height: 10)
@@ -203,6 +212,8 @@ private struct ConversationRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            // Separators start under the name, not under the dot.
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)

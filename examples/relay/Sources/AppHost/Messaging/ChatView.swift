@@ -712,7 +712,6 @@ private struct ConnectionBanner: View {
     /// Why opening the room failed, if it did.
     let problem: String?
     let reconnect: () -> Void
-    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         switch state {
@@ -735,10 +734,7 @@ private struct ConnectionBanner: View {
 
     private func bar(_ notice: ForgeNotice) -> some View {
         notice
-            .padding(.horizontal)
-            .padding(.vertical, 6)
-            // Passive, so the standard material, never glass.
-            .forgeMaterial(in: RoundedRectangle(cornerRadius: theme.radius.l, style: .continuous))
+            .relayPassiveNotice()
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
     }
@@ -1200,6 +1196,7 @@ private struct MessageSearchSheet: View {
                 }
                 .buttonStyle(.plain)
             }
+            .listStyle(.plain)
             .overlay {
                 if !query.isEmpty && results.isEmpty {
                     if resultsFor == query {
