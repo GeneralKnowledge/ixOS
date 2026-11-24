@@ -327,7 +327,7 @@ final class TakePlayer {
     /// switch replaces this one.
     private func switchTo(_ next: Loaded, item: AVPlayerItem, from before: PlayQueue?) {
         // A switch replacing a switch goes back, on failure, to what is heard.
-        let heardQueue = switchQueues?.before ?? before
+        let heardQueue = switchQueues.map { $0.before } ?? before
         cancelSwitch()
         endHandover()
         cancelPrepared()
