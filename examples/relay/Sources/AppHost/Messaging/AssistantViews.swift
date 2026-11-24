@@ -221,7 +221,7 @@ struct AssistantChatView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .relayFloatingBar()
     }
 
     private func send() {

@@ -89,6 +89,7 @@ public struct RelayRoot: View {
                 .tag(Tab.settings)
             }
         }
+        .relayTabBarMinimizes()
     }
 
     /// Sign-up, the conversations, a spinner, or a recovery screen.
