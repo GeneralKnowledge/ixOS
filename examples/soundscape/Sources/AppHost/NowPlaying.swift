@@ -426,7 +426,9 @@ private struct NowPlayingBackground: View {
                     Artwork(title: current.song, url: current.artworkUrl, size: max(proxy.size.height, 1))
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .blur(radius: 80)
-                        .opacity(0.45)
+                        // Fainter over a bright cover, so text keeps 4.5:1
+                        // over the composite (ArtworkPalette.fitted).
+                        .opacity(palette.artworkOpacity)
                 }
                 .id(current.id)
                 .transition(.opacity)

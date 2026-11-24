@@ -57,6 +57,16 @@ public struct PaletteColor: Equatable, Sendable {
         return color
     }
 
+    /// This colour seen through `overlay` drawn at `opacity` on top of it,
+    /// blended channel by channel as the screen composites it.
+    public func under(_ overlay: PaletteColor, atOpacity opacity: Double) -> PaletteColor {
+        PaletteColor(
+            red: (1 - opacity) * red + opacity * overlay.red,
+            green: (1 - opacity) * green + opacity * overlay.green,
+            blue: (1 - opacity) * blue + opacity * overlay.blue
+        )
+    }
+
     /// A colour from hue, saturation and brightness, each 0 to 1.
     public static func hsb(_ hue: Double, _ saturation: Double, _ brightness: Double) -> PaletteColor {
         let h = (hue - hue.rounded(.down)) * 6
@@ -77,11 +87,36 @@ public struct PaletteColor: Equatable, Sendable {
 }
 
 /// Now Playing's background: a lighter colour at the top and a darker one
-/// at the bottom, both dark enough for white text, including the secondary
-/// text drawn at `secondaryTextOpacity`.
+/// at the bottom, with the artwork blurred over them at `artworkOpacity`.
+/// What the text sits on is that composite, so it is what has to stay dark
+/// enough for white text, including the secondary text drawn at
+/// `secondaryTextOpacity`.
 public struct ArtworkPalette: Equatable, Sendable {
     public var top: PaletteColor
     public var bottom: PaletteColor
+    /// How strongly the blurred artwork is drawn over the stops: at most
+    /// `maximumArtworkOpacity`, less for a bright cover that would otherwise
+    /// wash the text out.
+    public var artworkOpacity: Double
+    /// The artwork's average colour: what it looks like blurred very large.
+    public var artworkAverage: PaletteColor?
+
+    public init(top: PaletteColor, bottom: PaletteColor, artworkOpacity: Double = 0, artworkAverage: PaletteColor? = nil) {
+        self.top = top
+        self.bottom = bottom
+        self.artworkOpacity = artworkOpacity
+        self.artworkAverage = artworkAverage
+    }
+
+    /// The blurred artwork's strength over a cover that isn't bright.
+    public static let maximumArtworkOpacity = 0.45
+
+    /// The colours the text actually sits on at the top and bottom: each
+    /// stop with the blurred artwork over it.
+    public var composited: [PaletteColor] {
+        guard let artworkAverage else { return [top, bottom] }
+        return [top, bottom].map { $0.under(artworkAverage, atOpacity: artworkOpacity) }
+    }
 
     /// White text needs at least this contrast over the lighter stop.
     public static let minimumContrast = 4.5
@@ -146,9 +181,46 @@ public struct ArtworkPalette: Equatable, Sendable {
         let average = PaletteColor(red: sum.r / count, green: sum.g / count, blue: sum.b / count)
         // A grey picture has no colour to lead with: use its average.
         let lead = (vivid?.saturation ?? 0) > 0.25 ? vivid! : average
+        return fitted(
+            top: lead,
+            bottom: PaletteColor(red: average.red * 0.35, green: average.green * 0.35, blue: average.blue * 0.35),
+            average: average
+        )
+    }
+
+    /// The palette for these stops under artwork of this average colour:
+    /// keeps the artwork as strong as it can (down from
+    /// `maximumArtworkOpacity` in steps of 0.05), darkening the stops until
+    /// secondary text over the composite reads. A cover too bright for any
+    /// darkening gets a fainter artwork layer, down to none.
+    static func fitted(top: PaletteColor, bottom: PaletteColor, average: PaletteColor) -> ArtworkPalette {
+        func reads(_ color: PaletteColor) -> Bool {
+            color.whiteContrast(atOpacity: secondaryTextOpacity) >= minimumContrast
+        }
+        func darkened(_ stop: PaletteColor, opacity: Double) -> PaletteColor {
+            var color = stop
+            var steps = 0
+            while !reads(color.under(average, atOpacity: opacity)) && steps < 60 {
+                color = PaletteColor(red: color.red * 0.92, green: color.green * 0.92, blue: color.blue * 0.92)
+                steps += 1
+            }
+            return color
+        }
+        var step = Int((maximumArtworkOpacity * 20).rounded())
+        while step > 0 {
+            let opacity = Double(step) / 20
+            let t = darkened(top, opacity: opacity)
+            let b = darkened(bottom, opacity: opacity)
+            if reads(t.under(average, atOpacity: opacity)) && reads(b.under(average, atOpacity: opacity)) {
+                return ArtworkPalette(top: t, bottom: b, artworkOpacity: opacity, artworkAverage: average)
+            }
+            step -= 1
+        }
         return ArtworkPalette(
-            top: lead.darkened(toWhiteContrast: minimumContrast, atOpacity: secondaryTextOpacity),
-            bottom: PaletteColor(red: average.red * 0.35, green: average.green * 0.35, blue: average.blue * 0.35)
+            top: top.darkened(toWhiteContrast: minimumContrast, atOpacity: secondaryTextOpacity),
+            bottom: bottom.darkened(toWhiteContrast: minimumContrast, atOpacity: secondaryTextOpacity),
+            artworkOpacity: 0,
+            artworkAverage: average
         )
     }
 }

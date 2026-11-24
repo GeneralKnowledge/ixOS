@@ -36,6 +36,31 @@ final class ArtworkPaletteTests: XCTestCase {
         }
     }
 
+    func testTextReadsOverTheBlurredArtworkToo() throws {
+        // Now Playing draws the artwork blurred over the stops; the text
+        // sits on that composite, so the composite must read, bright covers
+        // included (a white cover can't keep the full-strength layer).
+        let opacity = ArtworkPalette.secondaryTextOpacity
+        let covers: [[(UInt8, UInt8, UInt8)]] = [
+            Array(repeating: (250, 250, 250), count: 16),
+            Array(repeating: (255, 230, 0), count: 16),
+            Array(repeating: (250, 250, 250), count: 12) + Array(repeating: (200, 20, 20), count: 4),
+            Array(repeating: (40, 40, 60), count: 16),
+        ]
+        for cover in covers {
+            let palette = try XCTUnwrap(ArtworkPalette.from(rgba: pixels(cover)))
+            XCTAssertLessThanOrEqual(palette.artworkOpacity, ArtworkPalette.maximumArtworkOpacity)
+            for color in palette.composited {
+                XCTAssertGreaterThanOrEqual(color.whiteContrast(atOpacity: opacity), ArtworkPalette.minimumContrast)
+            }
+        }
+    }
+
+    func testADarkCoverKeepsTheFullArtworkLayer() throws {
+        let dark = try XCTUnwrap(ArtworkPalette.from(rgba: pixels(Array(repeating: (40, 40, 60), count: 16))))
+        XCTAssertEqual(dark.artworkOpacity, ArtworkPalette.maximumArtworkOpacity, accuracy: 1e-9)
+    }
+
     func testOpaqueWhiteContrastIsUnchanged() {
         let grey = PaletteColor(red: 0.5, green: 0.5, blue: 0.5)
         XCTAssertEqual(grey.whiteContrast, grey.whiteContrast(atOpacity: 1), accuracy: 1e-12)
