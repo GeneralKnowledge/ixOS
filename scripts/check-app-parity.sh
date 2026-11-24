@@ -1521,7 +1521,7 @@ def rule_one_tap_one_page(app):
                         break
                 while i < len(code) and code[i] in " \t\n":
                     i += 1
-            if i < len(code) and code[i] == "{" and re.search(r"\bNavigationLink\s*\(", braced(code, i)):
+            if i < len(code) and code[i] == "{" and re.search(r"\bNavigationLink\s*[({]", braced(code, i)):
                 bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
     if bad:
         return False, "links side by side (grid, shelf, HStack) use ForgeSurfaceLink, not NavigationLink (a List row opens every link in it on one tap): " + ", ".join(bad)
