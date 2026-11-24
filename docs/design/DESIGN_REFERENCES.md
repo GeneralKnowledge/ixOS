@@ -24,7 +24,7 @@ Being explicit about evidence, because a description of an app is not the app:
 | Apple Music, Messages | Apple's own HIG and guides; general platform knowledge | Owed |
 | Apple HIG | [Materials](https://developer.apple.com/design/human-interface-guidelines/materials), [Adopting Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass) (read in full) | — |
 
-**"Owed" means the screenshots and recorded interactions this programme requires have not been made.** No
+**"Owed" means the screenshots and recorded interactions this programme requires have not been made.** The Apple Music, Messages and Signal captures are required before any major visual implementation (V2.3); Marvis Pro and Doppler are optional. No
 agent here can install or operate an App Store app. The [capture checklist](#hands-on-capture-checklist) at
 the end lists exactly what a person needs to record on the iPhone; until then, observations about closed apps
 are from public descriptions and are marked so.
@@ -218,12 +218,12 @@ From [Materials](https://developer.apple.com/design/human-interface-guidelines/m
 - Match a context menu's top actions to the item's swipe actions.
 - Test with Reduce Transparency, Increase Contrast and the person's chosen Liquid Glass look.
 
-## Comparison with ixOS today (main b8b6fb7e plus #437 and #438)
+## Comparison with ixOS today (main 5b31a175, with #437 and #438 merged)
 
 | Topic | References | ixOS today | Gap |
 |---|---|---|---|
-| Glass in the content layer | Never (HIG) | None: #437 and #438 keep glass on controls only | None |
-| Custom glass count | Sparingly (HIG); Luma uses it on transport buttons only | Soundscape: mini-player, Now Playing circles, banner. Relay: composer, connection notice, New Messages, Send | Relay's connection notice as a custom glass card is questionable: it is status, not a control. Re-check on the phone; it may belong in the navigation bar's subtitle or a `safeAreaBar` |
+| Glass in the content layer | Never (HIG) | None in content. But two passive notices got glass: ForgeAppKit's Undo banner (#437) and Relay's connection notice (#438) | Both move to standard material in V2.1 ([material table](DESIGN_PHILOSOPHY.md#material-by-component)) |
+| Custom glass count | Sparingly (HIG); Luma uses it on transport buttons only | Soundscape: mini-player, Now Playing circles, banner. Relay: composer, connection notice, New Messages, Send | Decided: the banner and the connection notice are status, not controls, so they lose glass; the rest keeps it |
 | Custom bars vs system bars | System bars and scroll edge effect (HIG) | Relay's composer is a custom glass card | Try iOS 26's `safeAreaBar` so the system's scroll edge effect keeps text legible; keep the card only if it looks better on the phone |
 | Grouping glass | `GlassEffectContainer` (HIG) | Not used | Use it where two glass controls sit together (Now Playing's circle buttons) |
 | Three copies of the glass helper | One design system (Compound) | `soundscapeGlass`, `relayFloatingBar`, `BannerSurface` | V2.1 |

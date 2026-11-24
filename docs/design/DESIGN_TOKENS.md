@@ -29,8 +29,8 @@ Scaled spacing: padding and frames around text use `@ScaledMetric` so they grow 
 | `ForgeRadius.xl` | 28 | Overlays, large floating panels | proposed (V2.1) |
 | Concentric | follows the device | Floating controls near the screen edge (mini-player, composer) on iOS 26 | proposed (V2.1, `ConcentricRectangle`) |
 
-Reuben's brief suggests 12 / 16 / 20 / 28. Rescaling 7 / 12 / 18 changes every app at once, so it is a
-**decision**, not part of V2.
+Reuben's brief suggested 12 / 16 / 20 / 28. **Decided 2026-11-24: no global rescale.** 28 is added where
+needed; existing apps keep 7 / 12 / 18.
 
 Today's strays to remove: Soundscape mini-player 16, Relay composer 24, Relay bubbles 18 (bubbles are content
 and keep an app-owned value; see Relay tokens).
@@ -63,6 +63,11 @@ One implementation replacing today's three private copies (`soundscapeGlass`, `r
 | `forgeGlassProminentButton()` | `.buttonStyle(.glassProminent)` | `.borderedProminent` | system |
 | `ForgeGlassGroup { }` | `GlassEffectContainer` | plain container | — |
 
+Which surface gets which material is decided by the
+[material table](DESIGN_PHILOSOPHY.md#material-by-component), not by convenience: passive notices
+(the Undo banner, Relay's connection notice) use `forgeMaterial(.regular)` (the standard material, solid
+under Reduce Transparency), never `forgeGlass`. V2.1 adds that helper beside `forgeGlass`.
+
 Fallback shadow token: black 12%, radius 12, y 4. Shadows exist only in fallbacks and under large artwork.
 
 ### Motion (proposed, V2.1: `ForgeMotion.swift`)
@@ -90,7 +95,7 @@ need a calm "not connected" state that is not an error.
 
 ## 2. Soundscape tokens (app-local, `SoundscapeColors`, `SoundscapeMetrics`, `SoundscapeMotion`)
 
-### Colour (decision: adopt the brief's palette)
+### Colour (adopted 2026-11-24, subject to visual review on the phone)
 
 The brief's palette is for dark appearance. Each value gets a light partner so the app follows the system
 appearance; contrast ratios computed with the WCAG formula.
@@ -137,7 +142,7 @@ under Reduce Motion.
 
 ## 3. Relay tokens (app-local, proposed `RelayColors`, `RelayMetrics`)
 
-### Colour (decision: adopt the brief's palette)
+### Colour (adopted 2026-11-24, subject to visual review on the phone)
 
 | Token | Dark | Light | Use | Contrast |
 |---|---|---|---|---|

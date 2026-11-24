@@ -71,6 +71,26 @@ From Apple's Materials guidance, made concrete for ixOS:
 8. **Accessibility settings win.** Reduce Transparency and Increase Contrast must leave every control
    readable; our pre-iOS 26 fallbacks follow the same settings.
 
+## Material by component
+
+Glass marks things a person operates. A notice that only informs is not a control, even when it floats.
+
+| Component | Material |
+|---|---|
+| Soundscape mini-player | Liquid Glass |
+| Now Playing's small controls over artwork | Liquid Glass (clear, with dimming over bright artwork) |
+| Relay composer (chat and Assistant) | Liquid Glass |
+| New Messages button | Liquid Glass (prominent) |
+| Floating toolbar controls (Devices' Send) | Liquid Glass, from the system's toolbar and button styles |
+| Tab bars, navigation bars, sheets, menus | The system's own (glass on iOS 26) |
+| Relay's connection notice (Connecting, Reconnecting, Not connected) | Standard material or solid |
+| Notification banners (ForgeAppKit's Undo banner) | Standard material or solid |
+| Soundscape overlays (Up Next, Add to Playlist) | Standard thin material; solid under Reduce Transparency |
+| Message bubbles, cards, rows, tiles, lyrics | Solid |
+
+#437 and #438 put glass on the Undo banner and on Relay's connection notice. Both move to standard material in
+V2.1; anything not in this table defaults to solid until this table says otherwise.
+
 ## Shared themes, from the references
 
 | Theme | Soundscape | Relay |
@@ -93,16 +113,22 @@ From Apple's Materials guidance, made concrete for ixOS:
   checks show behaviour.
 - Beautiful filled screens without designed loading, empty, error, offline and accessibility states.
 - Shared components that exist to maximise reuse rather than because both apps need them.
-- Features slipping in as "design". Anything that needs new Rust API is named in the PR and agreed first.
+- **A visual redesign PR quietly becoming a feature PR.** If a design needs a new API, a persistence
+  mechanism, a Rust model change or a behaviour change, that part is split into its own separately reviewed
+  PR first; the visual PR presents only data that already exists. Known cases are listed in the
+  [programme](README.md#visual-work-and-feature-work-stay-apart).
 
 ## How a design change reaches the product
 
 1. **Reference audit**: what the references do, from their source where open and from hands-on capture
-   where not ([DESIGN_REFERENCES.md](DESIGN_REFERENCES.md)).
+   where not ([DESIGN_REFERENCES.md](DESIGN_REFERENCES.md)). The Apple Music, Messages and Signal captures
+   are required before any major visual implementation.
 2. **Principle extraction**: why it works, where it falls short, what applies to ixOS (same page).
 3. **Design system**: tokens and conventions ([DESIGN_TOKENS.md](DESIGN_TOKENS.md)).
 4. **Screen specification**: every important screen with all its states
-   ([SOUNDSCAPE_DESIGN_SPEC.md](SOUNDSCAPE_DESIGN_SPEC.md), [RELAY_DESIGN_SPEC.md](RELAY_DESIGN_SPEC.md)).
+   ([SOUNDSCAPE_DESIGN_SPEC.md](SOUNDSCAPE_DESIGN_SPEC.md), [RELAY_DESIGN_SPEC.md](RELAY_DESIGN_SPEC.md)),
+   then an **approved screen composition** (a wireframe or mock-up Reuben has approved) for each screen
+   before it is built. Written descriptions alone are not enough to build from.
 5. **Implementation and comparison**: small PRs, screenshots compared against the spec, real interactions
    tested on the phone.
 6. **Release-quality review**: consistency, performance, accessibility, navigation, persistence and

@@ -53,11 +53,11 @@ States: **no conversations** (first-run: pair a device or join a room, one clear
 | New message arrival | Inserted with a short rise only when at the bottom; otherwise the New Messages button counts up and the reading position doesn't move | Bottom tracking exists | V4.2 |
 | Reply | Quote card above the composer with Cancel | Bar in the composer | V4.2 |
 | Reactions | At the top of the message's menu; shown as a small row under the bubble | Exists | Restyle only |
-| Trust rows | "Tablet was removed from your devices by Laptop", centred system text with View | Not in the conversation | V4.3 (presentation of events Relay already records; confirm the data is there) |
+| Trust rows | "Tablet was removed from your devices by Laptop", centred system text with View | Not in the conversation | Needs a separate Relay feature PR first if the events (who revoked or introduced, when) are not already recorded; V4.3 then only draws them |
 | Composer | Floating glass card (#438) or iOS 26 `safeAreaBar` (decide on the phone), grows to 6 lines then scrolls | Glass card | V4.2 |
 
 States: **empty conversation** (who it is with and how it is protected, one line); **connecting /
-reconnecting / not connected** (the calm notice from #438); **message failed** (red caption with Try
+reconnecting / not connected** (the calm notice from #438, moving from glass to standard material in V2.1); **message failed** (red caption with Try
 Again, nothing else turns red); **peer revoked** (composer replaced by an explanation and no send);
 **very long message**, **only emoji**, **deleted message** (placeholder).
 
@@ -110,7 +110,7 @@ Account. Plain grouped list; no glass.
 | Reply | Quote card above the composer | No slide |
 | Attach file | Thumbnail staging in the composer | No move |
 | Voice message | Live waveform while recording, progress while playing | No pulse |
-| Connection loss | Calm notice under the title | Same |
+| Connection loss | Calm notice under the title, standard material (not glass) | Same |
 | Device connection | Pairing card resolves into the device card | Cross-fade |
 | Unread messages | Floating return-to-bottom with count | Same |
 

@@ -94,6 +94,9 @@ first. Screenshots a person takes are attached to the PR and labelled as such.
 
 ## 8. PR checklist
 
+Before a screen is built: its required reference captures exist and its composition (wireframe or mock-up)
+is approved.
+
 Each design PR description has:
 
 - The principles it serves (one line each) and a short design rationale.
@@ -101,4 +104,5 @@ Each design PR description has:
 - Build and test evidence (commands and results), or "not compiled" said plainly.
 - Before and after screenshots per section 6, or "owed" with the reason.
 - The manual phone checks, numbered, each with what it proves.
-- Any new Rust API, with why the visual feature needs it.
+- A statement that it presents only existing data. Any new API, persistence or behaviour belongs in a separate PR merged first, linked here.
+- The material each new or changed surface uses, matching the [material table](DESIGN_PHILOSOPHY.md#material-by-component).

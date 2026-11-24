@@ -38,10 +38,10 @@ shelves say so calmly and offer what is available offline.
 | Hear Nonstop Music | Station tiles: saved stations first | Exists | Keep |
 | Made for You | Smart Playlists' built-ins (Recently Added, Most Played, Never Played, Forgotten Favourites) as artwork tiles | Built-ins exist in Library only | Surface on Listen (V3.1); no new Rust |
 | Recently Played | Shelf | Exists | Keep |
-| Favourite Artists | Circular artist tiles from play counts | Play counts exist; no shelf | V3.1; ranking helper in Rust if not already exposed (to confirm) |
+| Favourite Artists | Circular artist tiles from play counts | Play counts exist; no shelf | V3.1 if play counts by artist are already exposed; otherwise a separate Rust PR first |
 | Your Playlists, Recently Added, Favourite Songs, Popular on Jamendo | Shelves | Exist | Keep |
 | Contextual order | Shelves the person uses rise; empty ones hide | Fixed order | V3.1: order by use. Time-of-day shelves need new Rust: not planned unless asked |
-| Edit in place | A shelf's menu: Move Up, Move Down, Hide; Show Hidden at the bottom | None | V3.1 (stored in collection.json; small Rust addition, named in the PR) |
+| Edit in place | A shelf's menu: Move Up, Move Down, Hide; Show Hidden at the bottom | None | Needs a stored shelf order: a separate Soundscape feature PR first, then V3.1 draws it |
 
 States: **empty library** (one card: import music or explore Discover; radio from Jamendo if a client ID is
 set); **loading** (shelf skeletons at their final size, no spinners in the middle of the page);
