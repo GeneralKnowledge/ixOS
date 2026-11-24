@@ -13,7 +13,9 @@ list, device rows and the history stay solid.
 |---|---|---|
 | Chat composer (text field, attach, record, reply and edit bars) | a floating glass card over the transcript, inset from the edges | the full-width system bar |
 | Assistant composer | the same floating glass card | the full-width system bar |
-| A conversation's connection notice (Connecting, Reconnecting, Not connected) | a small card in the standard material under the title: it is passive, so not glass (V2.1) | the same card |
+| A conversation's connection notice (Connecting, Reconnecting, Not connected) | a small card in the standard material under the title: it is passive, so not glass (V2.1); no tinted fill inside it (`relayPassiveNotice`) | the same card |
+| Chats list notices (can't reach the chat server, messages waiting, account refused) | the same standard-material card as a row of its own, at the search field's width | the same card |
+| Chats and Assistant lists | full width (plain list) like Messages, unread dot hanging in the margin so names line up with the search field | the same |
 | New Messages jump button | tinted glass capsule | tinted capsule |
 | Devices: Send and Receive | floating over the list just above the tab bar: Send tinted glass, Receive a glass capsule (not a bottom toolbar, which iOS 26 puts behind the floating tab bar) | Send bordered prominent, Receive a material capsule |
 | Tab bar | glass, and it shrinks while a chat or list scrolls down | the opaque tab bar |

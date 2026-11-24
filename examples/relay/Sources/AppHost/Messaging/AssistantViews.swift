@@ -68,6 +68,8 @@ struct AssistantListView: View {
                 }
             }
         }
+        // Full width, like the Chats list.
+        .listStyle(.plain)
         .navigationTitle("Assistant")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
