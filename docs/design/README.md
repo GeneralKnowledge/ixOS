@@ -93,7 +93,7 @@ review; phone checks are listed and never assumed.
 |---|---|---|
 | This PR | The six design documents (docs only) | — |
 | #437, #438 (V1) | Liquid Glass in both apps; phone check on an SDK 26 binary | Both merged; compiled with fork xtool; phone checks owed |
-| V2.1 | ForgeUI `ForgeMaterial` + `ForgeMotion` + radius and scaled metrics; both apps and ForgeBanner move onto them; banner and connection notice to standard material; Relay gains Reduce Motion; parity rule against a fourth private glass helper | Merges only after #437 and #438 pass their phone checks |
+| V2.1 | ForgeUI `ForgeMaterial` + `ForgeMotion` + radius and scaled metrics; both apps and ForgeBanner move onto them; banner and connection notice to standard material; Relay gains Reduce Motion; parity rule against a fourth private glass helper | #437, #438 merged; does not wait for their phone checks (Reuben, 12:24) |
 | V2.2 | App colour tokens with contrast tests (palettes adopted subject to visual review on the phone); offline state; first visual-regression baselines for both apps | V2.1 |
 | V2.3 | Reference captures (Apple Music, Messages, Signal) and approved screen compositions (wireframes) for the first screens of V3 and V4, saved with the specs | Captures need Reuben with the iPhone; no code |
 | V3.1 | Soundscape Listen and Library | V2.2, V2.3 |
@@ -132,7 +132,7 @@ built-ins, grouped search results, bubble shapes, delivery captions.
 
 | Risk | Mitigation |
 |---|---|
-| The fork xtool build fails, or glass doesn't appear | V2.1 can be written meanwhile; it merges only after #437 and #438 pass on the phone |
+| The fork xtool build fails, or glass doesn't appear | V2.1 keeps the iOS 26 code paths unchanged, so a glass problem found on the phone is fixed once, in ForgeUI, for both apps |
 | Shared helpers flatten the two personalities | ForgeUI gets materials, motion and metrics only; colour and content shapes stay in the apps |
 | Radius rescale restyles every app | Separate decision, not part of V2 |
 | Artwork palettes hurt readability | Existing 4.5:1 clamp; contrast tests on palette output |
@@ -158,9 +158,9 @@ built-ins, grouped search results, bubble shapes, delivery captions.
 
 ## The next PR: V2.1, shared glass and motion
 
-Reuben agreed this direction on 2026-11-24, with one condition: the shared glass implementation doesn't merge
-until the passive-notice question is settled (decision 6 settles it) and #437 and #438 have passed their
-phone checks.
+Reuben agreed this direction on 2026-11-24. The passive-notice question is settled (decision 6). At 12:24 he
+decided V2.1 does not wait for #437 and #438 to pass on the phone: their phone checks and V2.1's are done
+together in the next sitting.
 
 **Why this one.** It changes almost nothing a person sees on the happy path (only the two passive notices
 lose their glass), so it respects "no more visual
@@ -179,7 +179,7 @@ Linux tests for tokens, contrast and the material choices (which variant each su
 
 **Not in scope.** Colours, layouts, new components, other apps' looks.
 
-**Depends on.** Can be written now; merges only after #437 and #438 have passed their phone checks.
+**Depends on.** #437 and #438 (merged). No phone gate; its phone checks join the next combined Device Lab sitting.
 
 **Acceptance.** `cargo test --workspace`, ForgeKit's Linux Swift tests and `make validate` pass; the laptop's
 Device Lab build compiles; on the phone the glass on controls from #437 and #438 looks the same before and
