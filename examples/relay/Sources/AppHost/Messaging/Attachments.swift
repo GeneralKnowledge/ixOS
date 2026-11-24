@@ -304,16 +304,13 @@ private struct DocumentRow: View {
                     .lineLimit(2)
                 Text(AttachmentFiles.sizeLabel(attachment.size))
                     .font(.caption)
-                    .opacity(0.8)
+                    // Full strength on our bubble: dimmed it fell below 4.5:1.
+                    .opacity(onMine ? 1 : 0.8)
             }
         }
         .padding(8)
         .frame(minWidth: 180, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                // The bubble's text colour, faint: readable on either bubble.
-                .fill(.foreground.opacity(onMine ? 0.2 : 0.06))
-        )
+        .background { RelayInset(onMine: onMine) }
         .task(id: attachment.id) {
             guard page == nil, let url = model.storedFile(for: attachment) else { return }
             page = await ForgeDocuments.thumbnail(
@@ -447,6 +444,24 @@ struct StagedFilesBar: View {
                     .background(Capsule().fill(Color.secondary.opacity(0.15)))
                 }
             }
+        }
+    }
+}
+
+/// The inset behind a quote or a document inside a bubble. On our bubble it
+/// is an outline in the bubble's text colour, so the text keeps the bubble's
+/// own background (onAccent on the accent, tested in RelayColorsTests); a
+/// fill would lighten the light-mode accent under white text. On others'
+/// bubbles, a faint fill.
+struct RelayInset: View {
+    let onMine: Bool
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        if onMine {
+            shape.strokeBorder(.foreground.opacity(0.5), lineWidth: 1)
+        } else {
+            shape.fill(.primary.opacity(0.06))
         }
     }
 }

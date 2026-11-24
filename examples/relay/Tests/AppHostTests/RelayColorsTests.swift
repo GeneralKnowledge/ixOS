@@ -12,6 +12,11 @@ final class RelayColorsTests: XCTestCase {
     func testOutgoingBubbleTextReadsOnTheAccent() {
         for tone in [RelayColors.accent, RelayColors.accentDark] {
             XCTAssertGreaterThanOrEqual(ForgeContrast.ratio(tone.onSolid, on: tone.solid), ForgeContrast.text)
+            // The voice message's time and a quote's bar, at 80%, sit
+            // straight on the bubble (quotes and documents outline their
+            // inset instead of filling it, so their text does too).
+            XCTAssertGreaterThanOrEqual(
+                ForgeContrast.ratio(tone.onSolid.opacity(0.8), on: tone.solid), ForgeContrast.text)
         }
     }
 

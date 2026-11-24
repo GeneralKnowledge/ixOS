@@ -1136,13 +1136,11 @@ private struct QuoteView: View {
                 Text(author).font(.caption.bold())
                 Text(text).font(.caption).lineLimit(2)
             }
-            .opacity(0.85)
+            // Full strength on our bubble: dimmed it fell below 4.5:1.
+            .opacity(onMine ? 1 : 0.85)
         }
         .padding(6)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(.foreground.opacity(onMine ? 0.2 : 0.06))
-        )
+        .background { RelayInset(onMine: onMine) }
         .accessibilityAddTraits(.isButton)
     }
 
