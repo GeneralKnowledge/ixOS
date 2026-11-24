@@ -174,59 +174,11 @@ enum SoundscapeSurface {
     static let overlayRadius = CGFloat(ForgeRadius.standard.xl)
 }
 
-private struct SurfaceNamespaceKey: EnvironmentKey {
-    static let defaultValue: Namespace.ID? = nil
-}
-
-extension EnvironmentValues {
-    /// The tab's namespace for stacked surfaces growing out of their tiles.
-    var surfaceNamespace: Namespace.ID? {
-        get { self[SurfaceNamespaceKey.self] }
-        set { self[SurfaceNamespaceKey.self] = newValue }
-    }
-}
-
 extension View {
-    /// Marks a tile as where `route` grows from when it opens.
-    func surfaceSource(_ route: ListenRoute) -> some View {
-        modifier(SurfaceSource(route: route))
-    }
-
     /// An overlay that floats over the surface that opened it: translucent,
     /// so that surface shows through, unless Reduce Transparency is on.
     func soundscapeOverlay() -> some View {
         modifier(SoundscapeOverlay())
-    }
-}
-
-private struct SurfaceSource: ViewModifier {
-    let route: ListenRoute
-    @Environment(\.surfaceNamespace) private var namespace
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 18.0, *), route.style == .stacked, let id = route.surfaceID, let namespace {
-            content.matchedTransitionSource(id: id, in: namespace)
-        } else {
-            content
-        }
-    }
-}
-
-/// A stacked surface zooms out of its tile (and back into it when closed,
-/// the surface under it showing as it goes); Reduce Motion keeps the
-/// ordinary push.
-struct SurfaceTransition: ViewModifier {
-    let route: ListenRoute
-    @Environment(\.surfaceNamespace) private var namespace
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 18.0, *), route.style == .stacked, !reduceMotion,
-           let id = route.surfaceID, let namespace {
-            content.navigationTransition(.zoom(sourceID: id, in: namespace))
-        } else {
-            content
-        }
     }
 }
 

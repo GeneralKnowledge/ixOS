@@ -1,9 +1,10 @@
 @preconcurrency import UrduNaturallyFFI
+import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
 /// Where a screen can go. Every tab's stack handles all of them.
-enum Route: Hashable {
+enum Route: ForgeSurfaceRoute {
     case scenario(String)
     /// A free chat with a character.
     case chat(String)
@@ -14,6 +15,24 @@ enum Route: Hashable {
     case listen
     case settings
     case speechCheck
+
+    /// The thing each screen shows, however it was reached: a phrase opened
+    /// from a conversation, then its opposite, then the first phrase again
+    /// goes back to the first one rather than stacking a copy (ForgeAppKit's
+    /// Layered Navigation). A practice set is new each time.
+    var surfaceID: String? {
+        switch self {
+        case let .scenario(id): "scenario:\(id)"
+        case let .chat(id): "chat:\(id)"
+        case let .topic(id): "topic:\(id)"
+        case let .phrase(id): "phrase:\(id)"
+        case .practice: nil
+        case .review: "review"
+        case .listen: "listen"
+        case .settings: "settings"
+        case .speechCheck: "speechCheck"
+        }
+    }
 }
 
 /// A set of items to practise, with a title for the screen.
@@ -38,7 +57,7 @@ extension View {
     /// The destinations of every `Route`.
     @MainActor
     func urduDestinations(_ model: UrduModel) -> some View {
-        navigationDestination(for: Route.self) { route in
+        forgeLayeredDestination(for: Route.self) { route in
             switch route {
             case let .scenario(id): ConversationScreen(model: model, scenarioID: id)
             case let .chat(id): ChatScreen(model: model, characterID: id)

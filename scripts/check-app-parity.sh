@@ -1396,6 +1396,54 @@ def rule_swift6_traps(app):
         return False, "Swift 6.2 refuses this in the iOS build: " + ", ".join(bad)
     return True, ""
 
+# Layered Navigation (ForgeAppKit, docs/forgeappkit.md): a pushed page is a
+# surface for one thing, and opening a thing already open goes back to it.
+# Every stack that pushes by value applies the rule to its path
+# (`NavigationStack(path: $path.forgeLayered())`), its destinations come in
+# through `forgeLayeredDestination(for:)`, and a page opens a route on its
+# stack (`forgeOpenSurface`) rather than pushing beside the path with
+# `navigationDestination(item:)`. The routes' identities themselves are the
+# type checker's job: `forgeLayered()` only takes a `ForgeSurfaceRoute`.
+LAYERED_PUSH = re.compile(r"NavigationLink\s*\(\s*value:|\.navigationDestination\s*\(\s*for:|\bforgeLayered(Destination)?\b")
+LAYERED_PROBLEMS = [
+    (re.compile(r"\.navigationDestination\s*\(\s*for:"), "navigationDestination(for:); use forgeLayeredDestination(for:)"),
+    (re.compile(r"NavigationStack\s*\(\s*path:(?![^)\n]*forgeLayered)"), "a stack path without forgeLayered()"),
+    (re.compile(r"\.navigationDestination\s*\(\s*item:"), "navigationDestination(item:) pushes beside the path; open the route with forgeOpenSurface"),
+]
+BARE_STACK = re.compile(r"\bNavigationStack\s*\{")
+
+
+def braced(code, start):
+    """The text from the `{` at `start` to its matching `}`."""
+    depth = 0
+    for i in range(start, len(code)):
+        if code[i] == "{":
+            depth += 1
+        elif code[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return code[start:i + 1]
+    return code[start:]
+
+
+def rule_layered_navigation(app):
+    codes = [(path, swift_code_mask(read(path))) for path in swift_sources(app)]
+    if not any(LAYERED_PUSH.search(code) for _, code in codes):
+        return None  # pushes nothing by value
+    bad = []
+    for path, code in codes:
+        for pattern, why in LAYERED_PROBLEMS:
+            for m in pattern.finditer(code):
+                bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} ({why})")
+        # Layered destinations under a stack with no path never settle.
+        for m in BARE_STACK.finditer(code):
+            if "forgeLayeredDestination(" in braced(code, m.end() - 1):
+                bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} (a stack with layered destinations and no forgeLayered() path)")
+    if bad:
+        return False, "pushes pages outside Layered Navigation: " + ", ".join(bad)
+    return True, ""
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -1413,6 +1461,7 @@ RULES = [
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
+    ("layered-navigation", "Pushed pages through ForgeAppKit's Layered Navigation: a thing already open is gone back to, never stacked twice", rule_layered_navigation),
     ("glass", "Liquid Glass only through ForgeUI (`forgeGlass`, `forgeGlassProminentButton`), never `glassEffect` or `.glass` button styles by hand", rule_glass),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),

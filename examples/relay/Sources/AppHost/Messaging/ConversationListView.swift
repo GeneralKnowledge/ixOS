@@ -10,9 +10,9 @@ struct ChatsTab: View {
     @Binding var path: [ChatRoute]
 
     var body: some View {
-        NavigationStack(path: $path) {
-            ConversationListView(model: model) { path.append($0) }
-                .navigationDestination(for: ChatRoute.self) { route in
+        NavigationStack(path: $path.forgeLayered()) {
+            ConversationListView(model: model) { path.forgeOpen($0) }
+                .forgeLayeredDestination(for: ChatRoute.self) { route in
                     ChatView(
                         model: model, conversationId: route.conversationId,
                         focusMessage: route.messageId)

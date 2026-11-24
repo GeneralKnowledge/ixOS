@@ -5,7 +5,7 @@ import ForgeUI
 import SwiftUI
 
 /// Where each tab's stack can go.
-enum ListenRoute: Hashable {
+enum ListenRoute: ForgeSurfaceRoute {
     case artist(LibraryArtist)
     case album(LibraryAlbum)
     case track(String)
@@ -51,8 +51,8 @@ enum ListenRoute: Hashable {
 extension ListenRoute {
     /// What the screen is, whichever way it was reached: an album opened
     /// from Search and from its artist is the same surface. A stack goes
-    /// back to an open surface instead of opening it again
-    /// (`LayeredPath.settle`). Nil for a screen that is new each time.
+    /// back to an open surface instead of opening it again (ForgeAppKit's
+    /// Layered Navigation). Nil for a screen that is new each time.
     var surfaceID: String? {
         switch self {
         case .artist(let artist): "artist:\(artist.id)"
@@ -76,6 +76,8 @@ extension ListenRoute {
         case .jamendoShelf(let shelf): "jamendoShelf:\(shelf)"
         case .jamendoArtists(let list): "jamendoArtists:\(list)"
         case .jamendoArtist(.id(let id, _)): "jamendoArtist:\(id)"
+        // Not yet resolved to the artist's id (`ListenModel.canonical`
+        // failed): a page of its own until it is.
         case .jamendoArtist(.ofTrack(let trackId, _)): "jamendoArtistOf:\(trackId)"
         case .jamendoRelease(let release, _): "jamendoRelease:\(release.id)"
         case .songs: "songs"
@@ -87,7 +89,7 @@ extension ListenRoute {
 
     /// Things (an artist, an album, a playlist) stack: they grow out of the
     /// tile they were opened from. Lists and areas are ordinary pushes.
-    var style: SurfaceStyle {
+    var surfaceStyle: ForgeSurfaceStyle {
         switch self {
         case .artist, .album, .playlist, .smartPlaylist, .archiveItem, .jamendoArtist, .jamendoRelease: .stacked
         default: .fullScreen
@@ -117,7 +119,7 @@ struct ListenView: View {
     @State private var discoverPath: [ListenRoute] = []
     @State private var searchPath: [ListenRoute] = []
     @Namespace private var playerZoom
-    /// Where stacked surfaces grow from (`SurfaceSource`).
+    /// Where stacked surfaces grow from (`forgeSurfaceSource`).
     @Namespace private var surfaces
 
     init(core: SoundscapeCore, host: ForgeHost<SoundscapeCore>) {
@@ -217,19 +219,15 @@ struct ListenView: View {
     /// One tab's stack: its first screen, every screen it can push, and
     /// the mini-player floating above the tab bar.
     private func stack<Root: View>(_ path: Binding<[ListenRoute]>, @ViewBuilder root: () -> Root) -> some View {
-        // Layered Navigation: whatever pushes (a link, Now Playing's Go to
-        // Artist), a surface already open is gone back to, not copied.
-        let settled = Binding(
-            get: { path.wrappedValue },
-            set: { path.wrappedValue = LayeredPath.settle($0, identity: \.surfaceID) }
-        )
-        return NavigationStack(path: settled) {
-            root().navigationDestination(for: ListenRoute.self) { route in
+        // Layered Navigation: whatever pushes (a link, a song's details, Now
+        // Playing's Go to Artist), a surface already open is gone back to,
+        // not copied.
+        NavigationStack(path: path.forgeLayered()) {
+            root().forgeLayeredDestination(for: ListenRoute.self) { route in
                 ListenDestination(model: model, player: player, route: route)
-                    .modifier(SurfaceTransition(route: route))
             }
         }
-        .environment(\.surfaceNamespace, surfaces)
+        .forgeSurfaces(surfaces, path: path)
         // The mini-player above the tab bar, and Undo for what was just
         // removed above the mini-player.
         .modifier(MiniPlayerBar(model: model, player: player) {
@@ -255,14 +253,11 @@ struct ListenView: View {
     }
 
     private func show(_ route: ListenRoute) {
-        func push(_ path: inout [ListenRoute]) {
-            path = LayeredPath.settle(path + [route], identity: \.surfaceID)
-        }
         switch tab {
-        case .listen: push(&listenPath)
-        case .library: push(&libraryPath)
-        case .discover: push(&discoverPath)
-        case .search: push(&searchPath)
+        case .listen: listenPath.forgeOpen(route)
+        case .library: libraryPath.forgeOpen(route)
+        case .discover: discoverPath.forgeOpen(route)
+        case .search: searchPath.forgeOpen(route)
         }
     }
 }

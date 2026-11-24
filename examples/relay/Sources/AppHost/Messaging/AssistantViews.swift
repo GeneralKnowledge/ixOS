@@ -7,18 +7,24 @@ import SwiftUI
 /// conversations with a model that runs on this iPhone, no account needed.
 struct AssistantTab: View {
     let model: AssistantModel
-    @State private var path: [String] = []
+    @State private var path: [AssistantRoute] = []
 
     var body: some View {
-        NavigationStack(path: $path) {
-            AssistantListView(model: model) { path.append($0) }
-                .navigationDestination(for: String.self) { id in
-                    AssistantChatView(model: model, conversationId: id)
+        NavigationStack(path: $path.forgeLayered()) {
+            AssistantListView(model: model) { path.forgeOpen(AssistantRoute(conversationId: $0)) }
+                .forgeLayeredDestination(for: AssistantRoute.self) { route in
+                    AssistantChatView(model: model, conversationId: route.conversationId)
                 }
         }
         // One alert for the list and the open conversation.
         .forgeAlert(failure: Bindable(model).actionError)
     }
+}
+
+/// An assistant conversation in the Assistant tab's stack.
+struct AssistantRoute: ForgeSurfaceRoute {
+    let conversationId: String
+    var surfaceID: String? { "assistant:\(conversationId)" }
 }
 
 /// The assistant conversations, most recent first. New starts one with the

@@ -5,10 +5,11 @@ import ForgeUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// A trusted device in the navigation stack, by endpoint id (paired
-/// devices are pushed by their `String` device id).
-struct TrustedRoute: Hashable {
+/// A trusted device in the navigation stack, by endpoint id.
+struct TrustedRoute: ForgeSurfaceRoute {
     let endpointID: String
+    /// One screen per device, however it is reached.
+    var surfaceID: String? { "device:\(endpointID)" }
 }
 
 /// The trust look: a filled shield and the word, so it never rests on
