@@ -745,15 +745,17 @@ def rule_floating_bars(app):
 # and passive notices from `forgeMaterial`: one copy of the iOS 26 and
 # Xcode 16 checks, and the material table decides which surface is glass
 # (docs/forgeui.md, materials; design programme V2.1, November 2026).
-GLASS_BY_HAND = re.compile(r"\.glassEffect\(|\.buttonStyle\(\s*\.glass(Prominent)?\b|\bGlassEffectContainer\b")
+GLASS_BY_HAND = re.compile(r"\.glassEffect\s*\(|\.buttonStyle\s*\(\s*\.glass(Prominent)?\b|\bGlassEffectContainer\b")
 
 
 def rule_glass(app):
+    # On the whole file with comments and strings masked, so a call split
+    # across lines is caught and a comment that mentions one is not.
     bad = []
     for path in swift_sources(app):
-        for i, line in enumerate(read(path).splitlines()):
-            if GLASS_BY_HAND.search(line.split("//", 1)[0]):
-                bad.append(f"{path.name}:{i + 1}")
+        code = swift_code_mask(read(path))
+        for m in GLASS_BY_HAND.finditer(code):
+            bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
     if bad:
         return False, "draws Liquid Glass by hand; use ForgeUI's forgeGlass: " + ", ".join(bad)
     return True, ""
@@ -1411,7 +1413,7 @@ RULES = [
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
-    ("glass", "Liquid Glass through ForgeUI's `forgeGlass`, passive notices on `forgeMaterial`, never `glassEffect` by hand", rule_glass),
+    ("glass", "Liquid Glass only through ForgeUI (`forgeGlass`, `forgeGlassProminentButton`), never `glassEffect` or `.glass` button styles by hand", rule_glass),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
     ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),

@@ -24,7 +24,7 @@ When the framework gains a better way to do something, every app moves to it, or
 | `resume` | Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase` |
 | `now-playing` | Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying` |
 | `floating-bars` | Bars over content (mini-players, banners) through ForgeUI's `forgeBar` |
-| `glass` | Liquid Glass through ForgeUI's `forgeGlass`, passive notices on `forgeMaterial`, never `glassEffect` by hand |
+| `glass` | Liquid Glass only through ForgeUI (`forgeGlass`, `forgeGlassProminentButton`), never `glassEffect` or `.glass` button styles by hand |
 | `notices` | Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice` |
 | `form-toolbar` | Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner |
 | `icon-tile` | Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle |
