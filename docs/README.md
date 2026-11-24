@@ -29,6 +29,7 @@ Each area has one entry page that lists its pages in reading order ([areas.md](a
 | [areas.md](areas.md) | The four areas, what belongs to each, and which way dependencies may run |
 | [audits/half-baked-work-audit.md](audits/half-baked-work-audit.md) | Unfinished and half-baked work in the foundation: what is unproven, duplicated or misleading, and the order to fix it |
 | [audits/structure-audit.md](audits/structure-audit.md) | The `forge` CLI, area boundaries and Device Lab: parallel systems and drift between lists, with the order to fix them |
+| [design/README.md](design/README.md) | The design programme for Soundscape and Relay: philosophy, reference study, tokens, both apps' specs, design QA and the PR roadmap |
 
 ## Background
 
