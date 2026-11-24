@@ -115,9 +115,6 @@ struct ListenView: View {
 
     var body: some View {
         tabs
-            .modifier(MiniPlayerAccessory {
-                MiniPlayer(model: model, player: player, zoom: playerZoom, open: openNowPlaying)
-            })
             .fullScreenCover(isPresented: $showingNowPlaying) {
                 NowPlayingView(model: model, player: player, radio: radio, go: go)
                     .modifier(ZoomedFrom(id: MiniPlayer.zoomID, namespace: playerZoom))
@@ -205,7 +202,7 @@ struct ListenView: View {
     }
 
     /// One tab's stack: its first screen, every screen it can push, and
-    /// (before iOS 26) the mini-player floating above the tab bar.
+    /// the mini-player floating above the tab bar.
     private func stack<Root: View>(_ path: Binding<[ListenRoute]>, @ViewBuilder root: () -> Root) -> some View {
         // Layered Navigation: whatever pushes (a link, Now Playing's Go to
         // Artist), a surface already open is gone back to, not copied.
@@ -220,9 +217,9 @@ struct ListenView: View {
             }
         }
         .environment(\.surfaceNamespace, surfaces)
-        // Undo for what was just removed, above the tab bar.
-        .soundscapeBanner(model: model, player: player)
-        .modifier(MiniPlayerBar {
+        // The mini-player above the tab bar, and Undo for what was just
+        // removed above the mini-player.
+        .modifier(MiniPlayerBar(model: model, player: player) {
             MiniPlayer(model: model, player: player, zoom: playerZoom, open: openNowPlaying)
         })
     }
@@ -316,46 +313,31 @@ struct LibraryGate<Content: View>: View {
     }
 }
 
-/// The mini-player as the tab bar's bottom accessory on iOS 26, where it
-/// shrinks into the tab bar as a list scrolls (the system's own music
-/// pattern). Before iOS 26 `MiniPlayerBar` floats it in each tab instead.
-private struct MiniPlayerAccessory<Bar: View>: ViewModifier {
-    @ViewBuilder let bar: () -> Bar
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-                .tabViewBottomAccessory { AccessoryPlacement { bar() } }
-                .tabBarMinimizeBehavior(.onScrollDown)
-        } else {
-            content
-        }
-    }
-}
-
-/// Tells the mini-player whether the accessory is full width or tucked
-/// into the minimised tab bar.
-@available(iOS 26.0, *)
-private struct AccessoryPlacement<Bar: View>: View {
-    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
-    @ViewBuilder let bar: () -> Bar
-
-    var body: some View {
-        bar().environment(\.miniPlayerInline, placement == .inline)
-    }
-}
-
-/// Before iOS 26: the mini-player floats over each tab's screens, above the
-/// tab bar, through ForgeUI's forgeBar (which gives lists room below).
+/// The mini-player floats over each tab's screens, pushed ones too, above
+/// the tab bar, through ForgeUI's forgeBar (which gives lists room below).
+/// iOS 26's tab bar accessory was tried first, but on the phone (inside
+/// Device Lab) it went missing while browsing, leaving no way back to Now
+/// Playing but Listen's card; this bar is the one that held up.
+///
+/// The Undo banner rides just above it: two separate bars would both sit
+/// at the bottom edge, and the mini-player would cover the banner's button.
 private struct MiniPlayerBar<Bar: View>: ViewModifier {
+    let model: ListenModel
+    let player: TakePlayer
     @ViewBuilder let bar: () -> Bar
+    @State private var height: CGFloat = 0
 
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-        } else {
-            content.forgeBar { bar().miniPlayerCard() }
-        }
+    func body(content: Content) -> some View {
+        content
+            .forgeBar {
+                bar().miniPlayerCard()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            }
+            .overlay(alignment: .bottom) {
+                Color.clear
+                    .soundscapeBanner(model: model, player: player)
+                    .padding(.bottom, height)
+            }
     }
 }
 

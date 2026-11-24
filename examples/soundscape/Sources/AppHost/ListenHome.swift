@@ -35,11 +35,6 @@ struct ListenHome: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: SoundscapeMetrics.sectionGap) {
-                Text(Self.greeting(Date()))
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, SoundscapeMetrics.screenEdge)
-                    .accessibilityIdentifier("listen.greeting")
                 if radio.problem != nil {
                     RadioProblem(radio: radio, model: model, player: player)
                         .padding(12)
@@ -126,6 +121,10 @@ struct ListenHome: View {
             .padding(.vertical, 8)
         }
         .navigationTitle("Listen")
+        // The greeting under the title. A line of its own at the top of the
+        // scroll view slid under the large title after scrolling down and
+        // coming back from another tab (seen on the phone 2026-11-24).
+        .modifier(GreetingSubtitle(text: Self.greeting(Date())))
         .refreshable {
             await model.loadLibrary(fresh: true)
             await loadPopular()
@@ -300,6 +299,18 @@ private struct ContinueCard: View {
         .task(id: "\(title)|\(artworkUrl ?? "")") {
             let found = await ArtworkPaletteLoader.palette(title: title, url: artworkUrl)
             withAnimation(SoundscapeMotion.paletteFade) { palette = found }
+        }
+    }
+}
+/// The greeting as the navigation subtitle on iOS 26, where the bar has one.
+private struct GreetingSubtitle: ViewModifier {
+    let text: String
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.navigationSubtitle(text)
+        } else {
+            content
         }
     }
 }
