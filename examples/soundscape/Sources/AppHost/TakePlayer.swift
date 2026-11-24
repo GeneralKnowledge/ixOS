@@ -84,6 +84,10 @@ final class TakePlayer {
     }
     private(set) var isPlaying = false
     private(set) var isBuffering = false
+    /// The song asked for while another plays, still loading on B. The
+    /// song playing keeps playing until this one can start, so a tap on a
+    /// new song or Next never leaves silence while it loads.
+    private(set) var switching: Loaded?
     private(set) var time: Double = 0
     private(set) var duration: Double = 0
     /// Set when a take couldn't be streamed.
@@ -171,6 +175,14 @@ final class TakePlayer {
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
     /// Watches each player stopping or starting by itself.
     @ObservationIgnored private var statusObservers: [NSKeyValueObservation] = []
+    /// Watches the item `switching` loads until the switch ends, so a
+    /// failure after it is ready is still seen.
+    @ObservationIgnored private var switchObserver: NSKeyValueObservation?
+    /// Watches B, once its item is ready, until it is actually heard.
+    @ObservationIgnored private var playbackObserver: NSKeyValueObservation?
+    /// The queue as it was before the switch, and as the switch set it: a
+    /// failed load goes back to the first unless the queue was edited since.
+    @ObservationIgnored private var switchQueues: (before: PlayQueue?, after: PlayQueue?)?
 
     init() {
         for (index, player) in players.enumerated() {
@@ -200,11 +212,12 @@ final class TakePlayer {
 
     func play(_ tracks: [QueueTrack], from start: Int = 0, shuffle: Bool = false) {
         guard !tracks.isEmpty else { return }
+        let before = queue
         queue = queueStart(
             tracks: tracks, start: UInt32(max(0, start)), shuffle: shuffle,
             repeat: repeatMode, seed: Self.seed()
         )
-        loadQueued(playing: true)
+        loadQueued(playing: true, queueBefore: before)
     }
 
     /// Adds songs right after the one playing (`next`) or at the end; with
@@ -230,6 +243,7 @@ final class TakePlayer {
     }
 
     func stop() {
+        cancelSwitch()
         endHandover()
         cancelPrepared()
         playerA.pause()
@@ -251,6 +265,7 @@ final class TakePlayer {
     }
 
     private func load(a: Loaded, b: Loaded?, match: LoudnessMatch?) {
+        cancelSwitch()
         endHandover()
         cancelPrepared()
         failure = nil
@@ -276,11 +291,114 @@ final class TakePlayer {
         return item
     }
 
-    /// Loads the queue's current song from its start.
-    private func loadQueued(playing: Bool) {
+    /// Loads the queue's current song from its start. While a song is
+    /// heard, the new one loads on B and takes over once it can play
+    /// (`switchTo`); the queue has already moved, so Up Next shows it.
+    private func loadQueued(playing: Bool, queueBefore: PlayQueue? = nil) {
         guard let queue, let track = queueCurrent(queue: queue) else { return }
-        load(a: Loaded(track), b: nil, match: nil)
+        let next = Loaded(track)
+        if playing, isPlaying, !isComparing, a != nil, let item = Self.item(next.audioUrl) {
+            switchTo(next, item: item, from: queueBefore)
+            return
+        }
+        load(a: next, b: nil, match: nil)
         if playing { resume() } else { pause() }
+    }
+
+    // MARK: Switching songs
+
+    /// Starts loading `next` on B, silent, while A plays on. A newer
+    /// switch replaces this one.
+    private func switchTo(_ next: Loaded, item: AVPlayerItem, from before: PlayQueue?) {
+        // A switch replacing a switch goes back, on failure, to what is heard.
+        let heardQueue = switchQueues?.before ?? before
+        cancelSwitch()
+        endHandover()
+        cancelPrepared()
+        switchQueues = (before: heardQueue, after: queue)
+        failure = nil
+        switching = next
+        playerB.volume = 0
+        playerB.replaceCurrentItem(with: item)
+        switchObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.switchStatus(item) }
+            }
+        }
+    }
+
+    private func switchStatus(_ item: AVPlayerItem) {
+        guard let switching, playerB.currentItem === item else { return }
+        switch item.status {
+        case .readyToPlay:
+            guard isPlaying else {
+                finishSwitch()
+                return
+            }
+            // Starts silently; the swap waits until it is really heard, so a
+            // stream still buffering never leaves both quiet.
+            let starting = playerB
+            starting.volume = 0
+            starting.play()
+            playbackObserver = starting.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let self, self.switching != nil, player === self.playerB,
+                              player.timeControlStatus == .playing else { return }
+                        self.finishSwitch()
+                    }
+                }
+            }
+        case .failed:
+            // The song playing carries on; the new one says why it can't,
+            // and the queue goes back to the song heard (unless edited since).
+            failure = Self.describe(item.error, playing: switching)
+            log.warn("stream failed: \(item.error.map { "\($0)" } ?? "")")
+            let queues = switchQueues
+            cancelSwitch()
+            if let queues, let before = queues.before, queue == queues.after { queue = before }
+        default:
+            break
+        }
+    }
+
+    /// The new song can play: it starts on B and the players swap, so it
+    /// is now A, and the song that was playing stops.
+    private func finishSwitch() {
+        guard let next = switching else { return }
+        switchObserver = nil
+        playbackObserver = nil
+        switchQueues = nil
+        switching = nil
+        let ending = playerA
+        let starting = playerB
+        starting.volume = 1
+        if isPlaying, starting.timeControlStatus == .paused { starting.play() }
+        mainIndex = 1 - mainIndex
+        a = next
+        time = 0
+        duration = 0
+        counted = false
+        failure = nil
+        ending.pause()
+        ending.replaceCurrentItem(with: nil)
+        mixVolumes()
+        observeEnds()
+        setUpRemoteCommands()
+        loadArtwork(next.artworkUrl)
+        updateNowPlaying()
+        save()
+    }
+
+    /// Forgets a song still loading on B.
+    private func cancelSwitch() {
+        switchObserver = nil
+        playbackObserver = nil
+        switchQueues = nil
+        guard switching != nil else { return }
+        switching = nil
+        playerB.pause()
+        playerB.replaceCurrentItem(with: nil)
     }
 
     // MARK: The queue
@@ -291,7 +409,7 @@ final class TakePlayer {
         guard let queue, !isComparing else { return }
         if let moved = queueAdvance(queue: queue, byUser: true) {
             self.queue = moved
-            loadQueued(playing: true)
+            loadQueued(playing: true, queueBefore: queue)
         } else {
             self.queue = queueJump(queue: queue, position: 0)
             loadQueued(playing: false)
@@ -301,19 +419,19 @@ final class TakePlayer {
     /// Back to the start of the song, or, near its start, the song before.
     func previous() {
         guard let queue, !isComparing else { return }
-        if time > 3 {
+        if time > 3, switching == nil {
             seek(to: 0)
             return
         }
         self.queue = queueBack(queue: queue)
-        loadQueued(playing: isPlaying)
+        loadQueued(playing: isPlaying, queueBefore: queue)
     }
 
     /// Plays the song at `position` in the play order (from Up Next).
     func jump(to position: UInt32) {
         guard let queue else { return }
         self.queue = queueJump(queue: queue, position: position)
-        loadQueued(playing: true)
+        loadQueued(playing: true, queueBefore: queue)
     }
 
     /// Takes the song at `position` out of the play order; returns its
@@ -378,11 +496,21 @@ final class TakePlayer {
         if isComparing { resync() }
         playerA.play()
         if isComparing { playerB.play() }
+        // A song that was ready to take over when the system paused starts
+        // again too, so the switch can finish.
+        if switching != nil, playerB.currentItem?.status == .readyToPlay { playerB.play() }
         isPlaying = true
         updateNowPlaying()
     }
 
     func pause() {
+        // A song still loading becomes the song, paused: the queue is
+        // already on it.
+        if switching != nil {
+            cancelSwitch()
+            loadQueued(playing: false)
+            return
+        }
         endHandover()
         playerA.pause()
         if isComparing { playerB.pause() }
@@ -436,7 +564,10 @@ final class TakePlayer {
             onSave?(nil)
             return
         }
-        onSave?(SavedPlayback(queue: queue, seconds: time, savedMs: Int64(Date().timeIntervalSince1970 * 1000)))
+        // `time` belongs to the song heard; a queue already on another song
+        // (one loading, or just chosen) starts that song from the top.
+        let heard = switching == nil && queueCurrent(queue: queue)?.recording.id == a?.id
+        onSave?(SavedPlayback(queue: queue, seconds: heard ? time : 0, savedMs: Int64(Date().timeIntervalSince1970 * 1000)))
     }
 
     /// Opens what was playing when the app closed, paused at the same
@@ -596,6 +727,18 @@ final class TakePlayer {
     /// The take you hear came to its end: the queue's next song, the same
     /// song again (repeat One), or back to the start, paused.
     private func ended(_ side: Side) {
+        if switching != nil {
+            // The sleep timer ends with this song: the one loading waits,
+            // paused (the queue is already on it).
+            if sleepAtEndOfSong {
+                sleepAtEndOfSong = false
+                cancelSwitch()
+                loadQueued(playing: false)
+            }
+            // Otherwise the queue is already on the song loading; it starts
+            // once ready.
+            return
+        }
         if side == .b, !isComparing {
             // The song that handed over has finished.
             endHandover()
@@ -643,7 +786,7 @@ final class TakePlayer {
     /// Near the end of a queued song, loads the next on B, quietly, and
     /// marks where A hands over to it.
     private func prepareNext() {
-        guard prepared == nil, handoverStart == nil, isPlaying, !isComparing, !sleepAtEndOfSong,
+        guard prepared == nil, handoverStart == nil, switching == nil, isPlaying, !isComparing, !sleepAtEndOfSong,
               let queue, duration > 0, duration - time < Self.prepareAhead + crossfade,
               let moved = queueAdvance(queue: queue, byUser: false),
               // Repeat One plays the same song again from its start.

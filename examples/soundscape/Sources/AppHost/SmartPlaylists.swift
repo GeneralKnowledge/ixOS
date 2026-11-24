@@ -141,8 +141,7 @@ struct SmartPlaylistView: View {
                             isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete Smart Playlist", role: .destructive) {
                 Task {
-                    await model.deleteSmartPlaylist(id)
-                    dismiss()
+                    if await model.deleteSmartPlaylist(id) { dismiss() }
                 }
             }
             .accessibilityIdentifier("smartPlaylist.confirmDelete")

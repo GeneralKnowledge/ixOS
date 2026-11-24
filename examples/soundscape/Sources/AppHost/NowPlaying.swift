@@ -342,6 +342,20 @@ struct NowPlayingView: View {
             Spacer()
         }
         .padding(.vertical, 18)
+        // The song asked for, loading while this one plays on.
+        .overlay(alignment: .bottom) {
+            if let next = player.switching {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("Loading \(next.song)…").lineLimit(1)
+                }
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.75))
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("nowPlayingSheet.loading")
+                .transition(.opacity)
+            }
+        }
     }
 
     private var abSwitch: some View {
