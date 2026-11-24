@@ -58,20 +58,7 @@ struct JamendoArtistView: View {
                 PageActions(disabled: allTracks.isEmpty, play: { shuffle in
                     player.play(model.queue(allTracks), shuffle: shuffle)
                 }, identifier: "jamendoArtist")
-                ForEach([ReleaseKind.album, .ep], id: \.self) { kind in
-                    let releases = page.releases.filter { $0.kind == kind }
-                    Shelf(title: kind.plural, items: releases, identifier: "jamendoArtist.\(kind.name.lowercased())") { release in
-                        NavigationLink(value: ListenRoute.jamendoRelease(release, artist: page.artist)) {
-                            ArtworkTile(title: release.title, subtitle: release.summary, url: release.artworkUrl)
-                                .forgeSurfaceSource(ListenRoute.jamendoRelease(release, artist: page.artist))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint(release.grouped ? "Singles that share a cover" : "Opens it")
-                        .accessibilityIdentifier("jamendoArtist.release")
-                    }
-                    .shelfRow()
-                }
-                singles(page)
+                JamendoReleases(model: model, player: player, page: page, identifier: "jamendoArtist")
                 Section {
                 } footer: {
                     Text("Music from Jamendo, each track under its artist's Creative Commons licence.")
@@ -86,7 +73,7 @@ struct JamendoArtistView: View {
         .onChange(of: model.resumes) {
             if page == nil && problem == nil { attempt += 1 }
         }
-        .refreshable { attempt += 1 }
+        .refreshable { model.refreshJamendo(); attempt += 1 }
         .overlay {
             if let problem, page == nil {
                 ForgeStateView.failed(
@@ -126,19 +113,53 @@ struct JamendoArtistView: View {
         .listRowSeparator(.hidden)
     }
 
-    /// Singles as songs: a tap plays from there through every single.
-    @ViewBuilder
-    private func singles(_ page: JamendoArtistPage) -> some View {
-        let tracks = page.releases.filter { $0.kind == .single }.flatMap(\.tracks)
-        if !tracks.isEmpty {
+    private func load() async {
+        problem = nil
+        switch await model.jamendoArtist(artist) {
+        case .success(let found): page = found
+        case .failure(let failure): if !failure.stopped { problem = failure.message }
+        }
+    }
+}
+
+// MARK: An artist's releases
+
+/// An artist's albums and EPs as shelves, then their singles as songs
+/// (a tap plays from there through every single): on their Jamendo page,
+/// and on the library's artist page under "on Jamendo".
+struct JamendoReleases: View {
+    let model: ListenModel
+    let player: TakePlayer
+    let page: JamendoArtistPage
+    /// "jamendoArtist" on the Jamendo page, "artist.jamendo" in the library.
+    let identifier: String
+    /// Titles say "on Jamendo" (the library's artist page).
+    var onJamendo = false
+
+    var body: some View {
+        ForEach([ReleaseKind.album, .ep], id: \.self) { kind in
+            let releases = page.releases.filter { $0.kind == kind }
+            Shelf(title: title(kind), items: releases, identifier: "\(identifier).\(kind.name.lowercased())") { release in
+                NavigationLink(value: ListenRoute.jamendoRelease(release, artist: page.artist)) {
+                    ArtworkTile(title: release.title, subtitle: release.summary, url: release.artworkUrl)
+                        .forgeSurfaceSource(ListenRoute.jamendoRelease(release, artist: page.artist))
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(release.grouped ? "Singles that share a cover" : "Opens it")
+                .accessibilityIdentifier("\(identifier).release")
+            }
+            .shelfRow()
+        }
+        let singles = page.releases.filter { $0.kind == .single }.flatMap(\.tracks)
+        if !singles.isEmpty {
             Section {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                ForEach(Array(singles.enumerated()), id: \.element.id) { index, track in
                     CatalogueRow(model: model, player: player, track: track) {
-                        player.play(model.queue(tracks, from: index))
+                        player.play(model.queue(singles, from: index))
                     }
                 }
             } header: {
-                Text("Singles")
+                Text(title(.single))
                     .font(.shelfTitle)
                     .foregroundStyle(.primary)
                     .textCase(nil)
@@ -147,12 +168,8 @@ struct JamendoArtistView: View {
         }
     }
 
-    private func load() async {
-        problem = nil
-        switch await model.jamendoArtist(artist) {
-        case .success(let found): page = found
-        case .failure(let failure): if !failure.stopped { problem = failure.message }
-        }
+    private func title(_ kind: ReleaseKind) -> LocalizedStringKey {
+        onJamendo ? "\(kind.name)s on Jamendo" : kind.plural
     }
 }
 
@@ -307,7 +324,7 @@ struct JamendoArtistsView: View {
         .navigationTitle(list == .popular ? "Artists to Discover" : "New on Jamendo")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: attempt) { await load() }
-        .refreshable { attempt += 1 }
+        .refreshable { model.refreshJamendo(); attempt += 1 }
         .overlay {
             if let problem, artists == nil {
                 ForgeStateView.failed(

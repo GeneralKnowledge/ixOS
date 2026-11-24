@@ -93,7 +93,19 @@ Everything plays through the same player and queue.
 **One change from the plan above:** saved catalogue tracks are kept in `library.json` (its `catalogue`
 section) rather than a store of their own. Every screen already looks tracks up in the library, so playlists,
 favourites, history, downloads and the queue work for Jamendo tracks with no separate resolver. Their rights
-live with the saved track, so they outlast any cache. Search results that are not added stay in memory only.
+live with the saved track, so they outlast any cache. Search results that are not added are not in the
+library; Jamendo's answers themselves are kept for a while (below).
+
+**Jamendo's answers are kept** (`rust/src/jamendo_cache.rs`, 2026-11-24). Every `GET` to Jamendo's API goes
+through one cache in front of the app's HTTP client, so a page, shelf or search opened again doesn't ask Jamendo
+again. An answer is used as it is for 6 hours; after that Jamendo is asked again, and the kept answer is still
+used when Jamendo can't be reached, answers with a server error, or answers with nothing, so a page that opened
+once opens offline. Only answers with something in them are kept (Jamendo's occasional empty answer never is).
+Answers live in memory and one file each in the caches folder (`jamendo/`), keyed by the address without the
+client ID, which is never written to disk; files older than 30 days go when the app opens, and at most 500 are
+kept. Compared cover hashes are kept there too (`covers.json`), so an artist page reopened after a launch
+fetches no covers. Pull to refresh on Listen, Discover and the Jamendo pages asks Jamendo again for
+everything.
 
 Of the resolver tests above, these pass in `rust/tests/catalogue.rs`: adding to a playlist, restarting and
 finding it again, leaving search results without losing the playlist entry, and keeping the licence without
@@ -271,11 +283,15 @@ the same album art go together*. So on an artist's page:
   tiles), New Releases and Rising; after the stations, the other shelves and New on Jamendo. Every shelf has
   See All.
 - **A Jamendo artist** (from an artist tile, **Go to Artist** on a Jamendo song, **More by <artist>** in Now
-  Playing, or a library artist's **<name> on Jamendo**) shows their picture, Play and Shuffle for everything,
+  Playing, or a library artist's **Open Their Jamendo Page**) shows their picture, Play and Shuffle for everything,
   Albums and EPs as shelves and Singles as songs. It is one surface per artist, however it was reached: a
   way in from a song first asks Jamendo for the song's artist id (`jamendo_artist_id_of_track`, remembered for
   the run), so the route is always the artist's id and an artist already open underneath is returned to
   (ForgeAppKit's `ForgeLayeredPath.settle`) instead of opened again.
+- **A library artist** whose songs came from Jamendo shows, under your own songs and albums, everything Jamendo
+  has by them: Albums, EPs and Singles "on Jamendo", the same sections as their Jamendo page (asked by the
+  artist's Jamendo id, found from one of their songs), not only the songs you saved. Your own albums are titled
+  Your Albums once Jamendo's are there.
 - **A release** shows its cover, kind and year, its songs, and Add All to Library; a grouped one says its singles
   share a cover and are separate on Jamendo. Its artist's name leads back to the artist, so Artist, Release,
   Artist returns to the first page.

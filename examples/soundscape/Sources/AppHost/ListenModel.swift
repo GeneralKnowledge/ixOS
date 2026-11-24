@@ -307,6 +307,11 @@ public final class ListenModel {
         }
     }
 
+    /// Pull to refresh: Jamendo is asked again for everything, instead of
+    /// answering from what the phone kept (kept answers are still used
+    /// when Jamendo can't be reached).
+    public func refreshJamendo() { core.refreshJamendo() }
+
     /// Discover's Jamendo shelves beyond this week's popular, in order.
     public var jamendoShelves: [JamendoShelf] { core.jamendoShelves() }
 

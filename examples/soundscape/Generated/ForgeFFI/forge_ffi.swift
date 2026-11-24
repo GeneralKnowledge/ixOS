@@ -2513,6 +2513,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func recordPlay(trackId: String, recordingId: String) async throws 
     
     /**
+     * Makes every Jamendo answer kept so far stale, for pull to refresh:
+     * the next ask of each goes to Jamendo, and the kept answer is used
+     * only if Jamendo can't answer (`jamendo_cache`).
+     */
+    func refreshJamendo() 
+    
+    /**
      * Asks the take server for its catalogue and keeps it. `fresh` makes
      * the server look for new takes now. An older server without a
      * catalogue is asked song by song. On-screen work.
@@ -3936,6 +3943,19 @@ open func recordPlay(trackId: String, recordingId: String)async throws   {
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
+}
+    
+    /**
+     * Makes every Jamendo answer kept so far stale, for pull to refresh:
+     * the next ask of each goes to Jamendo, and the kept answer is used
+     * only if Jamendo can't answer (`jamendo_cache`).
+     */
+open func refreshJamendo()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_refresh_jamendo(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -14659,6 +14679,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_record_play() != 59179) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_refresh_jamendo() != 19316) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_refresh_library() != 63331) {

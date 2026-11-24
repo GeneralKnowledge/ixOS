@@ -126,6 +126,7 @@ struct ListenHome: View {
         // coming back from another tab (seen on the phone 2026-11-24).
         .modifier(GreetingSubtitle(text: Self.greeting(Date())))
         .refreshable {
+            model.refreshJamendo()
             await model.loadLibrary(fresh: true)
             await loadPopular()
         }
