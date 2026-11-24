@@ -54,8 +54,10 @@ struct Shelf<Item: Identifiable, Cell: View>: View {
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
                     if let seeAll {
-                        NavigationLink(value: seeAll) {
-                            Text("See All").font(.subheadline)
+                        // A button, not a NavigationLink: in a List row with
+                        // the shelf's tiles, a link would open them all.
+                        ForgeSurfaceLink(seeAll) {
+                            Text("See All").font(.subheadline).foregroundStyle(.tint)
                         }
                         // "See All Recently Played", not five "See All"s.
                         .accessibilityLabel(Text("See All ") + Text(title))

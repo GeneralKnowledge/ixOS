@@ -61,7 +61,7 @@ struct JamendoArtistView: View {
                 ForEach([ReleaseKind.album, .ep], id: \.self) { kind in
                     let releases = page.releases.filter { $0.kind == kind }
                     Shelf(title: kind.plural, items: releases, identifier: "jamendoArtist.\(kind.name.lowercased())") { release in
-                        NavigationLink(value: ListenRoute.jamendoRelease(release, artist: page.artist)) {
+                        ForgeSurfaceLink(ListenRoute.jamendoRelease(release, artist: page.artist)) {
                             ArtworkTile(title: release.title, subtitle: release.summary, url: release.artworkUrl)
                                 .forgeSurfaceSource(ListenRoute.jamendoRelease(release, artist: page.artist))
                         }
@@ -293,7 +293,7 @@ struct JamendoArtistsView: View {
             if let artists {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 20) {
                     ForEach(artists) { artist in
-                        NavigationLink(value: ListenRoute.jamendoArtist(.id(artist.id, name: artist.name))) {
+                        ForgeSurfaceLink(ListenRoute.jamendoArtist(.id(artist.id, name: artist.name))) {
                             ArtworkTile(title: artist.name, subtitle: nil, url: artist.imageUrl, size: nil, circle: true)
                         }
                         .buttonStyle(.plain)

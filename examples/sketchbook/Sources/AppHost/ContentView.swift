@@ -67,7 +67,7 @@ struct SketchListView: View {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(model.sketches) { sketch in
-                        NavigationLink(value: SketchRoute(id: sketch.id)) {
+                        ForgeSurfaceLink(SketchRoute(id: sketch.id)) {
                             SketchTile(sketch: sketch, version: model.thumbnailsSaved)
                         }
                         .buttonStyle(.plain)

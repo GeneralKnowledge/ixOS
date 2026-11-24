@@ -120,8 +120,8 @@ struct DiscoverHome: View {
                             .font(.shelfTitle)
                             .accessibilityAddTraits(.isHeader)
                         Spacer()
-                        NavigationLink(value: ListenRoute.jamendoGenres) {
-                            Text("See All").font(.subheadline)
+                        ForgeSurfaceLink(ListenRoute.jamendoGenres) {
+                            Text("See All").font(.subheadline).foregroundStyle(.tint)
                         }
                         .accessibilityIdentifier("discover.genres")
                     }

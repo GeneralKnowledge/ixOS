@@ -153,7 +153,7 @@ struct AlbumView: View {
             .listRowBackground(Color.clear)
             if let artist, !others.isEmpty {
                 Shelf(title: "More by \(artist.name)", items: others, identifier: "album.moreByArtist") { other in
-                    NavigationLink(value: ListenRoute.album(other)) {
+                    ForgeSurfaceLink(ListenRoute.album(other)) {
                         ArtworkTile(title: other.title, subtitle: nil, url: other.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: other)))
                             .forgeSurfaceSource(ListenRoute.album(other))
@@ -210,7 +210,7 @@ struct AlbumView: View {
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
             if let artist {
-                NavigationLink(value: ListenRoute.artist(artist)) {
+                ForgeSurfaceLink(ListenRoute.artist(artist)) {
                     Text(artist.name).font(.title3).foregroundStyle(.tint)
                 }
                 .buttonStyle(.plain)
@@ -300,7 +300,7 @@ struct ArtistView: View {
             }
             if !albums.isEmpty {
                 Shelf(title: "Albums", items: albums, identifier: "artist.albums") { album in
-                    NavigationLink(value: ListenRoute.album(album)) {
+                    ForgeSurfaceLink(ListenRoute.album(album)) {
                         ArtworkTile(title: album.title, subtitle: "\(album.trackCount) \(album.trackCount == 1 ? "song" : "songs")",
                                     url: album.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: album)))

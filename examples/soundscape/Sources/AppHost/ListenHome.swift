@@ -70,7 +70,7 @@ struct ListenHome: View {
                 }
                 Shelf(title: "Your Playlists", items: collection.playlists, seeAll: .playlists,
                       identifier: "listen.playlists") { list in
-                    NavigationLink(value: ListenRoute.playlist(list.id)) {
+                    ForgeSurfaceLink(ListenRoute.playlist(list.id)) {
                         VStack(alignment: .leading, spacing: 6) {
                             PlaylistArtwork(list: list, size: SoundscapeMetrics.shelfArtwork)
                             Text(list.name)
@@ -90,7 +90,7 @@ struct ListenHome: View {
                 }
                 Shelf(title: "Recently Added", items: recentAlbums, seeAll: .albums,
                       identifier: "listen.albums") { album in
-                    NavigationLink(value: ListenRoute.album(album)) {
+                    ForgeSurfaceLink(ListenRoute.album(album)) {
                         ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: album)))
                             .forgeSurfaceSource(ListenRoute.album(album))
