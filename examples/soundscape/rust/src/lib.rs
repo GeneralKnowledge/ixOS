@@ -1158,6 +1158,24 @@ impl SoundscapeCore {
             .await
     }
 
+    /// The Jamendo artist id of the Jamendo track `track_id`
+    /// (`jamendo:<id>`), so a page reached from a song opens as the same
+    /// artist page as one reached from the artist. On-screen work.
+    pub async fn jamendo_artist_id_of_track(
+        &self,
+        track_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<String, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-artist-of", work, move |cancel| {
+                jamendo_explore::artist_of(http.as_ref(), &client_id, &track_id, cancel)
+            })
+            .await
+    }
+
     /// Songs like the Jamendo song you play most (favourites count as
     /// plays too), in its genre, by artists not in your library. None when
     /// no Jamendo song is in your library. On-screen work.

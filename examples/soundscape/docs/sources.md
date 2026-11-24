@@ -249,7 +249,7 @@ Rust; the screens come in their own PR (`docs/design/`: data before visuals).
   picture first.
 - **Because You Like** (`jamendo_because`): the Jamendo song in your library you play most (a favourite counts
   as three plays) starts it; songs in its genre by artists not in your library.
-- **Artist pages** (`jamendo_artist`, `jamendo_artist_of_track`): the artist and their releases, newest first,
+- **Artist pages** (`jamendo_artist`, `jamendo_artist_of_track`; `jamendo_artist_id_of_track` finds the artist of a song, so the app opens one page per artist however it was reached): the artist and their releases, newest first,
   as **Albums, EPs and Singles** (one song is a single; up to six songs under 30 minutes an EP; more an album).
 
 ### Functional albums
