@@ -19,15 +19,16 @@ enum SoundscapeMetrics {
     static let nowPlayingEdge: CGFloat = 28
 }
 
-/// The app's motion, each with its Reduce Motion form.
+/// The app's motion, on ForgeUI's vocabulary (ForgeMotion), each with its
+/// Reduce Motion form.
 enum SoundscapeMotion {
     /// Artwork easing between playing and paused, and other springy moves.
-    static var artworkSpring: Animation { .spring(response: 0.45, dampingFraction: 0.8) }
+    static var artworkSpring: Animation { ForgeMotion.emphasised.animation }
     /// The background following a new song's colours.
-    static var paletteFade: Animation { .easeInOut(duration: 0.6) }
+    static var paletteFade: Animation { ForgeMotion.ambient.animation }
 
-    static func spring(reduced: Bool) -> Animation? { reduced ? nil : artworkSpring }
-    static func palette(reduced: Bool) -> Animation? { reduced ? nil : paletteFade }
+    static func spring(reduced: Bool) -> Animation? { ForgeMotion.emphasised.animation(reduceMotion: reduced) }
+    static func palette(reduced: Bool) -> Animation? { ForgeMotion.ambient.animation(reduceMotion: reduced) }
 }
 
 extension Font {
@@ -170,7 +171,7 @@ extension View {
 /// The look of surfaces that stack and float.
 enum SoundscapeSurface {
     /// An overlay's corners (Up Next, Add to Playlist).
-    static let overlayRadius: CGFloat = 28
+    static let overlayRadius = CGFloat(ForgeRadius.standard.xl)
 }
 
 private struct SurfaceNamespaceKey: EnvironmentKey {
@@ -248,39 +249,18 @@ extension PaletteColor {
 
 extension View {
     /// Liquid Glass on iOS 26 for a control that floats over content (the
-    /// mini-player); the frosted material it had before on iOS 17 to 25.
-    /// Glass follows Reduce Transparency by itself. The compiler checks keep
-    /// these building with Xcode 16 (iOS 18 SDK).
-    @ViewBuilder func soundscapeGlass<S: Shape>(in shape: S) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular.interactive(), in: shape)
-        } else {
-            materialCard(in: shape)
-        }
-        #else
-        materialCard(in: shape)
-        #endif
-    }
-
-    private func materialCard<S: Shape>(in shape: S) -> some View {
-        self
-            .background(.regularMaterial, in: shape)
-            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+    /// mini-player); the frosted material it had before on iOS 17 to 25
+    /// (ForgeUI's `forgeGlass`).
+    func soundscapeGlass<S: Shape>(in shape: S) -> some View {
+        forgeGlass(.regular, interactive: true, in: shape)
     }
 
     /// The round backing of Now Playing's small buttons over the artwork's
-    /// colours: clear glass on iOS 26, a faint white disc before.
-    @ViewBuilder func nowPlayingCircle() -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.clear.interactive(), in: Circle())
-        } else {
-            self.background(.white.opacity(0.14), in: Circle())
-        }
-        #else
-        self.background(.white.opacity(0.14), in: Circle())
-        #endif
+    /// colours: clear glass on iOS 26, a faint white disc before. No extra
+    /// dim: the background under them is the artwork palette, already
+    /// darkened so white keeps 4.5:1 (ArtworkPalette).
+    func nowPlayingCircle() -> some View {
+        forgeGlass(.clear, interactive: true, in: Circle())
     }
 }
 

@@ -741,6 +741,24 @@ def rule_floating_bars(app):
     return True, ""
 
 
+# Liquid Glass comes from ForgeUI (`forgeGlass`, `forgeGlassProminentButton`)
+# and passive notices from `forgeMaterial`: one copy of the iOS 26 and
+# Xcode 16 checks, and the material table decides which surface is glass
+# (docs/forgeui.md, materials; design programme V2.1, November 2026).
+GLASS_BY_HAND = re.compile(r"\.glassEffect\(|\.buttonStyle\(\s*\.glass(Prominent)?\b|\bGlassEffectContainer\b")
+
+
+def rule_glass(app):
+    bad = []
+    for path in swift_sources(app):
+        for i, line in enumerate(read(path).splitlines()):
+            if GLASS_BY_HAND.search(line.split("//", 1)[0]):
+                bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "draws Liquid Glass by hand; use ForgeUI's forgeGlass: " + ", ".join(bad)
+    return True, ""
+
+
 # A notice in a screen that still works ("offline", "the map can't update")
 # is ForgeUI's ForgeNotice. Built by hand, it is a Label with a problem
 # symbol, made small and grey or toned: each app picked its own size,
@@ -1393,6 +1411,7 @@ RULES = [
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
+    ("glass", "Liquid Glass through ForgeUI's `forgeGlass`, passive notices on `forgeMaterial`, never `glassEffect` by hand", rule_glass),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
     ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),

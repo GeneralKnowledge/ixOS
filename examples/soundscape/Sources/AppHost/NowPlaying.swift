@@ -131,7 +131,7 @@ struct NowPlayingView: View {
                 .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
                 .scaleEffect(playing || reduceMotion ? 1 : 0.86)
                 .animation(SoundscapeMotion.spring(reduced: reduceMotion), value: playing)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
+                .forgeAnimation(.standard, value: current.id)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(.vertical, 20)

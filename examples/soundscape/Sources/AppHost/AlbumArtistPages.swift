@@ -266,6 +266,7 @@ struct ArtistView: View {
     @State private var details: String?
     @State private var showingAll = false
     @Environment(\.songActions) private var actions
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The artist as the library has it now (artwork may have changed).
     private var current: LibraryArtist { model.library.artists.first { $0.id == artist.id } ?? artist }
@@ -289,7 +290,7 @@ struct ArtistView: View {
                 }
                 if tracks.count > top.count {
                     Button(showingAll ? "Show Top Songs" : "Show All \(tracks.count) Songs") {
-                        withAnimation { showingAll.toggle() }
+                        withForgeAnimation(.standard, reduceMotion: reduceMotion) { showingAll.toggle() }
                     }
                     .accessibilityIdentifier("artist.allSongs")
                 }

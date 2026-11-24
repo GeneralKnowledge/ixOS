@@ -628,6 +628,7 @@ struct LyricsScroll: View {
     /// Space at the left and right.
     var edge: CGFloat = 24
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lines: [LyricLine] = []
     @State private var currentLine: Int?
     @State private var currentWord: Int?
@@ -649,7 +650,7 @@ struct LyricsScroll: View {
             }
             .onChange(of: currentLine) { _, line in
                 guard let line else { return }
-                withAnimation(.easeInOut(duration: 0.35)) { scroller.scrollTo(line, anchor: .center) }
+                withForgeAnimation(.standard, reduceMotion: reduceMotion) { scroller.scrollTo(line, anchor: .center) }
             }
         }
         .onAppear { lines = lyricLines(lyrics: lyrics) }
@@ -672,7 +673,7 @@ struct LyricsScroll: View {
                 .font(timed ? .title2.weight(.bold) : .title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .scaleEffect(isSung ? 1.0 : 0.97, anchor: .leading)
-                .animation(.easeOut(duration: 0.2), value: isSung)
+                .forgeAnimation(.quick, value: isSung)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if timed, let at = line.atSeconds { player?.seek(to: at) }

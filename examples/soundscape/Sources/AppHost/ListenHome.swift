@@ -219,6 +219,7 @@ private struct ContinueCard: View {
     let toggle: () -> Void
     let open: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var palette: ArtworkPalette
 
     /// The song in the player.
@@ -298,7 +299,7 @@ private struct ContinueCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .task(id: "\(title)|\(artworkUrl ?? "")") {
             let found = await ArtworkPaletteLoader.palette(title: title, url: artworkUrl)
-            withAnimation(SoundscapeMotion.paletteFade) { palette = found }
+            withAnimation(SoundscapeMotion.palette(reduced: reduceMotion)) { palette = found }
         }
     }
 }

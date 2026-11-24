@@ -78,9 +78,11 @@ transport, which scale with `@ScaledMetric`.
 - Lists and grids sit on the system background; shelves are plain scroll views, not cards.
 - Liquid Glass is for controls that float over content, never for the content itself (lists, artwork,
   shelves). On iOS 26 the mini-player is regular glass (`soundscapeGlass`), Now Playing's small round
-  buttons are clear glass over the artwork colours (`nowPlayingCircle`), and the Undo banner is glass
-  (ForgeAppKit). The tab bar, navigation bars, menus and sheets get glass from the system. On iOS 17 to 25
-  each falls back to the look it had: `.regularMaterial` cards and a faint white disc.
+  buttons are clear glass over the artwork colours (`nowPlayingCircle`), both on ForgeUI's `forgeGlass`. The
+  Undo banner is passive, so it uses ForgeUI's standard material, not glass (`forgeMaterial`, ForgeAppKit).
+  The tab bar, navigation bars, menus and sheets get glass from the system. On iOS 17 to 25 each falls back
+  to the look it had: `.regularMaterial` cards and a faint white disc. Motion is ForgeUI's ForgeMotion
+  (`emphasised` for the artwork spring, `ambient` for palette fades), all off under Reduce Motion.
 - iOS shows glass only to an app whose binary records the iOS 26 SDK. Linux builds get that from our xtool
   fork (1.24.0-ixos.1); the laptop's upstream 1.24.0 recorded SDK 17.0, so every build before 2026-11-24
   ran in compatibility mode (the old opaque tab bar).
@@ -332,5 +334,5 @@ and light and dark mode.
     is solid.
 12. Liquid Glass (after the xtool fork is installed on the laptop): the tab bar and navigation bars are
     glass; the mini-player is a glass card that responds to a touch; Now Playing's heart, More, pin and
-    thumbs buttons are clear glass; Undo is a glass banner. With Reduce Transparency on, all of them are
-    solid.
+    thumbs buttons are clear glass; Undo is a frosted banner, not glass. With Reduce Transparency on, all
+    of them are solid.
