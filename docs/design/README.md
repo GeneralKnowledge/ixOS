@@ -160,7 +160,11 @@ built-ins, grouped search results, bubble shapes, delivery captions.
 
 Reuben agreed this direction on 2026-11-24. The passive-notice question is settled (decision 6). At 12:24 he
 decided V2.1 does not wait for #437 and #438 to pass on the phone: their phone checks and V2.1's are done
-together in the next sitting.
+together in the next sitting, on one combined Device Lab build that holds both. The "before" for that sitting
+is the build on the phone now (1.29925122, made before #437 and #438 and before the fork xtool, so no glass at
+all): screenshots of Now Playing, the mini-player, a Relay chat and its connection notice are taken from it
+before the new build is installed. There is no build with #437/#438 but without V2.1 on the phone, so the V1
+checks run against the combined build, with the two passive notices expected frosted, not glass.
 
 **Why this one.** It changes almost nothing a person sees on the happy path (only the two passive notices
 lose their glass), so it respects "no more visual
@@ -182,7 +186,8 @@ Linux tests for tokens, contrast and the material choices (which variant each su
 **Depends on.** #437 and #438 (merged). No phone gate; its phone checks join the next combined Device Lab sitting.
 
 **Acceptance.** `cargo test --workspace`, ForgeKit's Linux Swift tests and `make validate` pass; the laptop's
-Device Lab build compiles; on the phone the glass on controls from #437 and #438 looks the same before and
-after, and the Undo banner and Relay's connection notice show standard material; with
+Device Lab build compiles; on the phone (combined build, against the "before" screenshots above) the controls
+from #437 and #438 show glass as their phone checks describe, and the Undo banner and Relay's connection notice
+show standard material; with
 Reduce Motion on, Relay's New Messages button, staging and connection notice don't animate; with Reduce
 Transparency on, every glass surface is solid.

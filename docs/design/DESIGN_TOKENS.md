@@ -58,7 +58,7 @@ One implementation replacing today's three private copies (`soundscapeGlass`, `r
 | API | iOS 26 (SDK 26 binary) | iOS 17 to 25, or Xcode 16 | Reduce Transparency |
 |---|---|---|---|
 | `forgeGlass(.regular, in: shape)` | `glassEffect(.regular, in:)` | `.regularMaterial` + the fallback shadow | Solid (system on 26; `.background(.background)` fallback) |
-| `forgeGlass(.clear, in: shape)` over media | `glassEffect(.clear, in:)`, only over a background already dark enough for white glyphs. Soundscape's Now Playing buttons sit on the artwork palette, which is clamped for white text, so they need no extra dim; over raw media that can be bright, dim it first (about 35%) | white at 14% | Solid dark |
+| `forgeGlass(.clear, in: shape)` over media | `glassEffect(.clear, in:)`, only over a background already dark enough for white glyphs. Soundscape's Now Playing buttons sit on the artwork palette, which is clamped for white text, so they need no extra dim; over raw media that can be bright, dim it first (about 35%) | white at 14%: over a background clamped so white at 75% reads at 4.5:1 (sRGB grey 0.37 at worst), opaque white glyphs on the washed disc still read at 4.6:1, above the 3:1 for controls | Solid dark |
 | `interactive: true` | `.interactive()` | none | — |
 | `forgeGlassProminentButton()` | `.buttonStyle(.glassProminent)` | `.borderedProminent` | system |
 | `ForgeGlassGroup { }` | `GlassEffectContainer` | plain container | — |
