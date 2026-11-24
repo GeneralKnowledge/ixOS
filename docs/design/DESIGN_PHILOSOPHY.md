@@ -62,7 +62,8 @@ From Apple's Materials guidance, made concrete for ixOS:
    Soundscape mini-player, Now Playing's small controls over artwork, Relay's composer. Everything else
    uses system components.
 4. **Regular by default, clear only over rich media.** `.clear` only over artwork or photos, with a dark
-   dimming layer (about 35%) when the media can be bright.
+   dimming layer (about 35%) when the media can be bright. Soundscape's Now Playing controls sit on the
+   artwork palette, already clamped for white glyphs, so they need no extra dim.
 5. **No glass on glass,** and group neighbouring glass controls in one `GlassEffectContainer` so they read
    as one element.
 6. **Let the system keep text legible**: scroll edge effects over custom backgrounds and padding hacks.
@@ -78,7 +79,7 @@ Glass marks things a person operates. A notice that only informs is not a contro
 | Component | Material |
 |---|---|
 | Soundscape mini-player | Liquid Glass |
-| Now Playing's small controls over artwork | Liquid Glass (clear, with dimming over bright artwork) |
+| Now Playing's small controls over artwork | Liquid Glass (clear, over the palette clamped for white glyphs) |
 | Relay composer (chat and Assistant) | Liquid Glass |
 | New Messages button | Liquid Glass (prominent) |
 | Floating toolbar controls (Devices' Send) | Liquid Glass, from the system's toolbar and button styles |

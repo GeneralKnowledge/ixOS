@@ -93,7 +93,7 @@ review; phone checks are listed and never assumed.
 |---|---|---|
 | This PR | The six design documents (docs only) | — |
 | #437, #438 (V1) | Liquid Glass in both apps; phone check on an SDK 26 binary | Both merged; compiled with fork xtool; phone checks owed |
-| V2.1 | ForgeUI `ForgeMaterial` + `ForgeMotion` + radius and scaled metrics; both apps and ForgeBanner move onto them; banner and connection notice to standard material; Relay gains Reduce Motion; parity rule against a fourth private glass helper | #437, #438 merged; does not wait for their phone checks (Reuben, 12:24) |
+| V2.1 | ForgeUI `ForgeMaterial` + `ForgeMotion` + radius and scaled metrics; both apps and ForgeBanner move onto them; banner and connection notice to standard material; Relay gains Reduce Motion; parity rule against a fourth private glass helper | #437, #438 merged; does not wait for their phone checks (Reuben, 12:24). Open as #441 |
 | V2.2 | App colour tokens with contrast tests (palettes adopted subject to visual review on the phone); offline state; first visual-regression baselines for both apps | V2.1 |
 | V2.3 | Reference captures (Apple Music, Messages, Signal) and approved screen compositions (wireframes) for the first screens of V3 and V4, saved with the specs | Captures need Reuben with the iPhone; no code |
 | V3.1 | Soundscape Listen and Library | V2.2, V2.3 |

@@ -64,10 +64,10 @@ Full screen, dark, over the artwork palette. Layout as design.md S3. Additions:
   background and under Reduce Motion.
 - **Known defect, found in review of this plan:** the artist line uses white at 60%, but `ArtworkPalette`
   only darkens the top stop until opaque white reaches 4.5:1, so the artist line can fall to about 3:1.
-  Fixed in its own small Soundscape PR (clamp against the composited 60% colour or make the line opaque,
-  with a palette test for it), independent of the redesign milestones.
-- **Controls:** white glyphs without circles for transport; small round controls on clear glass with a dim
-  layer when the artwork is bright (HIG); grouped in one glass container.
+  Fixed in its own small Soundscape PR, #440: the line is now white at 75% and the palette is clamped
+  against that composited colour, with a palette test; independent of the redesign milestones.
+- **Controls:** white glyphs without circles for transport; small round controls on clear glass over the
+  artwork palette, which is already clamped for white glyphs, so no extra dim layer (HIG's dim is for raw media); grouped in one glass container.
 
 States: **nothing playing** (Now Playing can't open; the mini-player says Not Playing); **buffering**
 (the play button shows a spinner in place, controls stay live); **stream failed** (one line under the

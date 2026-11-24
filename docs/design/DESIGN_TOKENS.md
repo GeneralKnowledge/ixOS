@@ -58,7 +58,7 @@ One implementation replacing today's three private copies (`soundscapeGlass`, `r
 | API | iOS 26 (SDK 26 binary) | iOS 17 to 25, or Xcode 16 | Reduce Transparency |
 |---|---|---|---|
 | `forgeGlass(.regular, in: shape)` | `glassEffect(.regular, in:)` | `.regularMaterial` + the fallback shadow | Solid (system on 26; `.background(.background)` fallback) |
-| `forgeGlass(.clear, in: shape)` over media | `glassEffect(.clear, in:)`, plus a black 35% dim behind it whenever the media under it can be bright (always for Soundscape's artwork) | black 35% dim plus white at 14%, so white glyphs keep contrast over white artwork | Solid dark |
+| `forgeGlass(.clear, in: shape)` over media | `glassEffect(.clear, in:)`, only over a background already dark enough for white glyphs. Soundscape's Now Playing buttons sit on the artwork palette, which is clamped for white text, so they need no extra dim; over raw media that can be bright, dim it first (about 35%) | white at 14% | Solid dark |
 | `interactive: true` | `.interactive()` | none | — |
 | `forgeGlassProminentButton()` | `.buttonStyle(.glassProminent)` | `.borderedProminent` | system |
 | `ForgeGlassGroup { }` | `GlassEffectContainer` | plain container | — |
@@ -126,7 +126,7 @@ constant tint), artwork colour never tints controls.
 |---|---|
 | Display (Listen greeting, album / artist names on their pages) | `.largeTitle` bold, rounded design |
 | Shelf titles | `.title3` bold, rounded |
-| Track title / artist (Now Playing) | `.title3` bold / `.title3` at 60% |
+| Track title / artist (Now Playing) | `.title3` bold / `.title3` at 75% (`ArtworkPalette.secondaryTextOpacity`, #440) |
 | Rows | `.body` / `.subheadline` secondary |
 | Metadata, times | `.footnote` / `.caption` `.monospacedDigit()` |
 
