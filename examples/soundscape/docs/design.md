@@ -24,7 +24,7 @@ boundaries from [architecture.md](architecture.md) are unchanged:
 | Library home | `YourMusicSection` rows, Played Lately, a segmented Songs / Albums / Artists picker over one long list | Reads as a database browser; artwork is 40 pt and secondary | S2: Library tab (categories, then artwork grid); S4: shelves and detail pages |
 | Search | `.searchable` on the library home; Jamendo and the Archive below your music | Good behaviour, hidden: search only exists on the library screen | S2: its own tab, same behaviour |
 | Discover | Segmented Jamendo / Archive switch, Browse by Genre row, a list of tracks | Two API result lists | S2: its own tab; S5: editorial shelves |
-| Mini-player | Full-width bar with a hairline progress bar, `.bar` material | Fine functionally; not attached to anything, and it covers content when there are tabs | S2: the tab bar's bottom accessory (iOS 26), `forgeBar` before iOS 26 |
+| Mini-player | Full-width bar with a hairline progress bar, `.bar` material | Fine functionally; not attached to anything, and it covers content when there are tabs | S2: a `forgeBar` above the tab bar on every screen |
 | Now Playing | A sheet holding a `List`: 260 pt artwork, title, slider, buttons, stars, a Lyrics button, Up Next; nine toolbar buttons | The most important screen looks like a settings page; actions are spread over the toolbar | S3: immersive full-screen player |
 | Lyrics | A separate sheet over Now Playing | Breaks the player apart | S3: shown in place inside Now Playing |
 | Album, artist, playlist, track | `List` screens with a header row | Usable; plain | S4 |
@@ -76,8 +76,8 @@ transport, which scale with `@ScaledMetric`.
 ### Surfaces
 
 - Lists and grids sit on the system background; shelves are plain scroll views, not cards.
-- Floating controls (mini-player, queue sheet) use the system's own materials: the iOS 26 tab bar accessory is
-  Liquid Glass by itself; before iOS 26 the mini-player uses `.regularMaterial`.
+- Floating controls (mini-player, queue sheet) use the system's own materials: the mini-player uses
+  `.regularMaterial`.
 - Now Playing: artwork palette gradient, the artwork itself blurred very large over it at 50%, and a dark scrim
   at the bottom third so controls always read.
 
@@ -110,10 +110,11 @@ Four tabs, each its own `NavigationStack` with the same destinations (albums, ar
 | Discover | `DiscoverView` | Jamendo and the Internet Archive as today (S5 makes it editorial) |
 | Search | `SearchTab` | One search for your music, Jamendo and the Archive (as today), with genres to browse before you type |
 
-The Search tab uses the search role, so iOS 26 shows it as the separate search button. The mini-player is the
-tab bar's bottom accessory on iOS 26 (it shrinks inline when the tab bar minimises on scroll), and a
-`forgeBar` above the tab bar before iOS 26. With nothing playing it says "Not Playing", like the system's own
-music apps, so the accessory never jumps in and out.
+The Search tab uses the search role, so iOS 26 shows it as the separate search button. The mini-player is a
+`forgeBar` above the tab bar on every tab and every screen pushed in it. With nothing playing it says "Not
+Playing", like the system's own music apps, so the bar never jumps in and out. (iOS 26's tab bar bottom
+accessory was used first, but on the phone it went missing while browsing, 2026-11-24, leaving Listen's
+Now Playing card as the only way back to the player.)
 
 ## Now Playing (S3)
 
