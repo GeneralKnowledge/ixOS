@@ -2,8 +2,8 @@ import ForgeUI
 import SwiftUI
 
 // Liquid Glass for the controls that float over Relay's content: the chat
-// and assistant composers, the New Messages button, and Send on the Devices
-// screen. Content (bubbles, lists, rows) stays solid, and a conversation's
+// and assistant composers, the New Messages button, and Send and Receive on
+// the Devices screen. Content (bubbles, lists, rows) stays solid, and a conversation's
 // connection notice is passive, so it gets ForgeUI's standard material, not
 // glass (docs/design/DESIGN_PHILOSOPHY.md, material by component). The glass
 // itself and its iOS 17 to 25 fallbacks are ForgeUI's (`forgeGlass`); these
@@ -30,14 +30,11 @@ extension View {
         forgeGlassProminentButton()
     }
 
-    /// The main action in a toolbar (Send on the Devices screen): tinted
-    /// glass on iOS 26, where the toolbar is glass itself; unchanged before.
-    @ViewBuilder func relayToolbarProminent() -> some View {
-        if ForgeGlassSupport.isAvailable {
-            self.forgeGlassProminentButton()
-        } else {
-            self
-        }
+    /// A secondary action floating over content (Receive on the Devices
+    /// screen): an interactive glass capsule on iOS 26, a material capsule
+    /// before.
+    func relayFloatingButton() -> some View {
+        forgeGlass(.regular, interactive: true, in: Capsule())
     }
 
     /// The tab bar steps aside while a long list or a chat scrolls down,

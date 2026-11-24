@@ -169,19 +169,12 @@ struct DevicesView: View {
         .navigationDestination(for: TrustedRoute.self) { route in
             TrustedDeviceView(model: model, endpointID: route.endpointID, preview: $preview)
         }
+        // Send and Receive work with anyone on this Wi-Fi, by word code;
+        // trusted devices are reached from their own screen. Pinned above
+        // the tab bar as floating buttons, not a bottom toolbar: inside a
+        // TabView on iOS 26 a bottom toolbar sits behind the floating tab bar.
+        .safeAreaInset(edge: .bottom, spacing: 0) { sendReceiveBar }
         .toolbar {
-            // Send and Receive work with anyone on this Wi-Fi, by word
-            // code; trusted devices are reached from their own screen.
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button("Receive", systemImage: "arrow.down.circle") { receivingCode = true }
-                    .labelStyle(.titleAndIcon)
-                    .accessibilityIdentifier("relay.receive")
-                Spacer()
-                Button("Send", systemImage: "arrow.up.circle") { sendingCode = true }
-                    .labelStyle(.titleAndIcon)
-                    .relayToolbarProminent()
-                    .accessibilityIdentifier("relay.send")
-            }
             ToolbarItem(placement: .topBarLeading) {
                 Button("Rename This Device", systemImage: "pencil") { renaming = true }
                 .accessibilityIdentifier("devices.rename")
@@ -199,6 +192,31 @@ struct DevicesView: View {
         ) { name in
             try await model.rename(to: name)
         }
+    }
+
+    /// Receive and Send, floating over the bottom of the list.
+    private var sendReceiveBar: some View {
+        HStack {
+            Button { receivingCode = true } label: {
+                Label("Receive", systemImage: "arrow.down.circle")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .contentShape(Capsule())
+            }
+            .relayFloatingButton()
+            .accessibilityIdentifier("relay.receive")
+            Spacer()
+            Button { sendingCode = true } label: {
+                Label("Send", systemImage: "arrow.up.circle")
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+            }
+            .relayProminentButton()
+            .accessibilityIdentifier("relay.send")
+        }
+        .labelStyle(.titleAndIcon)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
     }
 
     /// What Relay tells the person once the screen is clear.
