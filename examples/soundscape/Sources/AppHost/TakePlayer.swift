@@ -408,14 +408,14 @@ final class TakePlayer {
 
     /// After a switch that can't happen, the queue goes back to the song
     /// heard: as it was (`before`) when nothing changed it since (`after`);
-    /// otherwise the edited queue moves to the heard song where it is in
-    /// it (also with repeat One, where A restarts and the queue would
-    /// otherwise stay on the song that failed).
+    /// otherwise the edited queue moves to the heard song, at the
+    /// occurrence heard (also with repeat One, where A restarts and the
+    /// queue would otherwise stay on the song that failed).
     /// With no `before`, the change came from a song ending: that song is
     /// over, so the queue stays where it is.
     private func backToHeard(before: PlayQueue?, after: PlayQueue?) {
-        guard let queue, let heard = a?.id, before != nil else { return }
-        if let before, queue == after {
+        guard let queue, let heard = a?.id, let before else { return }
+        if queue == after {
             self.queue = before
             return
         }
@@ -423,9 +423,12 @@ final class TakePlayer {
             let index = Int(queue.order[position])
             return queue.tracks.indices.contains(index) && queue.tracks[index].recording.id == heard
         }
-        let current = Int(queue.position)
-        guard let nearest = positions.min(by: { abs($0 - current) < abs($1 - current) }),
-              nearest != current else { return }
+        // The heard occurrence is where it was before the switch (a
+        // duplicated song has several); the nearest to that if an edit
+        // moved it.
+        let heardAt = Int(before.position)
+        guard let nearest = positions.min(by: { abs($0 - heardAt) < abs($1 - heardAt) }),
+              nearest != Int(queue.position) else { return }
         self.queue = queueJump(queue: queue, position: UInt32(nearest))
     }
 
