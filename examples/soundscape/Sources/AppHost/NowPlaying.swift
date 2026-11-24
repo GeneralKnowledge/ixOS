@@ -166,7 +166,7 @@ struct NowPlayingView: View {
                 .lineLimit(1)
             Text(subtitle(current))
                 .font(font == .headline ? .subheadline : .title3)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.white.opacity(ArtworkPalette.secondaryTextOpacity))
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -261,7 +261,7 @@ struct NowPlayingView: View {
             HStack(spacing: 12) {
                 Label(radio.title ?? "Radio", systemImage: "dot.radiowaves.left.and.right")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(ArtworkPalette.secondaryTextOpacity))
                     .lineLimit(1)
                 Spacer()
                 if let seed = radio.seed {
@@ -426,7 +426,9 @@ private struct NowPlayingBackground: View {
                     Artwork(title: current.song, url: current.artworkUrl, size: max(proxy.size.height, 1))
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .blur(radius: 80)
-                        .opacity(0.45)
+                        // Fainter over a bright cover, so text keeps 4.5:1
+                        // over the composite (ArtworkPalette.fitted).
+                        .opacity(palette.artworkOpacity)
                 }
                 .id(current.id)
                 .transition(.opacity)
