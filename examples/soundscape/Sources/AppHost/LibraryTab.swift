@@ -120,7 +120,7 @@ struct AlbumGrid: View {
                 NavigationLink(value: ListenRoute.album(album)) {
                     ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl, size: nil,
                                 download: model.map { $0.downloadState(of: $0.tracks(of: album)) } ?? .notDownloaded)
-                        .surfaceSource(.album(album))
+                        .forgeSurfaceSource(ListenRoute.album(album))
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier(identifier)
@@ -136,7 +136,7 @@ struct AlbumGrid: View {
 struct SongsView: View {
     let model: ListenModel
     let player: TakePlayer
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
 
     var body: some View {
         let tracks = model.library.tracks
@@ -148,16 +148,13 @@ struct SongsView: View {
             }
             Section("\(tracks.count) \(tracks.count == 1 ? "Song" : "Songs")") {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
+                    TrackRow(model: model, player: player, track: track, showDetails: { openSurface(ListenRoute.track(track.id)) }) {
                         player.play(model.queue(tracks, from: index))
                     }
                 }
             }
         }
         .navigationTitle("Songs")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .overlay {
             if tracks.isEmpty {
                 ForgeStateView.empty("No Songs", systemImage: "music.note",

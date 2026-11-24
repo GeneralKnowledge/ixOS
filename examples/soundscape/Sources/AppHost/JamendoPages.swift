@@ -63,7 +63,7 @@ struct JamendoArtistView: View {
                     Shelf(title: kind.plural, items: releases, identifier: "jamendoArtist.\(kind.name.lowercased())") { release in
                         NavigationLink(value: ListenRoute.jamendoRelease(release, artist: page.artist)) {
                             ArtworkTile(title: release.title, subtitle: release.summary, url: release.artworkUrl)
-                                .surfaceSource(.jamendoRelease(release, artist: page.artist))
+                                .forgeSurfaceSource(ListenRoute.jamendoRelease(release, artist: page.artist))
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint(release.grouped ? "Singles that share a cover" : "Opens it")
@@ -271,7 +271,7 @@ struct JamendoArtistTile: View {
         let route = ListenRoute.jamendoArtist(.id(artist.id, name: artist.name))
         NavigationLink(value: route) {
             ArtworkTile(title: artist.name, subtitle: nil, url: artist.imageUrl, circle: true)
-                .surfaceSource(route)
+                .forgeSurfaceSource(route)
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens the artist")

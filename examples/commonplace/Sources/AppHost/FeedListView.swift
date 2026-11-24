@@ -27,7 +27,7 @@ struct FeedListView: View {
     @State private var resultsFor: SearchKey?
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: $path.forgeLayered()) {
             List {
                 if !query.trimmingCharacters(in: .whitespaces).isEmpty {
                     searchResults
@@ -50,7 +50,7 @@ struct FeedListView: View {
             // Fresh articles on launch, without a pull.
             .task { await model.refreshIfStale() }
             .navigationTitle("Commonplace")
-            .navigationDestination(for: Route.self) { route in
+            .forgeLayeredDestination(for: Route.self) { route in
                 switch route {
                 case .timeline(let timeline):
                     TimelineView(model: model, timeline: timeline)
@@ -105,7 +105,7 @@ struct FeedListView: View {
             }
             .sheet(isPresented: $isAdding) {
                 AddFeedView(model: model) { feed in
-                    path.append(.timeline(.feed(feedId: feed.id)))
+                    path.forgeOpen(.timeline(.feed(feedId: feed.id)))
                 }
             }
             .libraryActions($action, model: model)

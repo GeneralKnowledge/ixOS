@@ -240,7 +240,7 @@ A design principle for all of Soundscape, set before more queue UI: **navigation
 bury the person under screens.** Soundscape is connected, layered spaces, not a succession of unrelated
 screens. It is built from SwiftUI's own stack, sheets and transitions, not a custom navigation framework.
 
-**Three treatments.** Every destination declares one (`ListenRoute.style`):
+**Three treatments.** Every destination declares one (`ListenRoute.surfaceStyle`):
 
 | Treatment | Where | How it looks |
 |---|---|---|
@@ -251,7 +251,7 @@ screens. It is built from SwiftUI's own stack, sheets and transitions, not a cus
 
 **The rules.** Each surface has an identity that doesn't depend on how it was reached
 (`ListenRoute.surfaceID`: `artist:<id>`, `album:<id>`, `playlist:<id>` and so on), and every tab's stack
-applies one rule to its path (`LayeredPath.settle`, tested on Linux):
+applies one rule to its path (ForgeAppKit's `ForgeLayeredPath.settle`, tested on Linux):
 
 1. Opening a surface that is already in the stack goes back to that one; nothing is copied. Artist, then
    one of its albums, then the artist again: the artist page comes back as it was left.

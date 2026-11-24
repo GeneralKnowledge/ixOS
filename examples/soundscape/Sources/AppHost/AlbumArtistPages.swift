@@ -114,7 +114,7 @@ struct AlbumView: View {
     let album: LibraryAlbum
 
     @State private var editingArtwork = false
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @Environment(\.songActions) private var actions
 
     private var current: LibraryAlbum { model.library.albums.first { $0.id == album.id } ?? album }
@@ -136,7 +136,7 @@ struct AlbumView: View {
                     TrackRow(
                         model: model, player: player, track: track,
                         number: track.number ?? UInt32(index + 1),
-                        showDetails: { details = track.id }
+                        showDetails: { openSurface(ListenRoute.track(track.id)) }
                     ) {
                         player.play(model.queue(tracks, from: index))
                     }
@@ -156,7 +156,7 @@ struct AlbumView: View {
                     NavigationLink(value: ListenRoute.album(other)) {
                         ArtworkTile(title: other.title, subtitle: nil, url: other.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: other)))
-                            .surfaceSource(.album(other))
+                            .forgeSurfaceSource(ListenRoute.album(other))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("album.otherAlbum")
@@ -168,9 +168,6 @@ struct AlbumView: View {
         .artworkBackdrop(title: current.title, url: current.artworkUrl)
         .navigationTitle(current.title)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 FavouriteButton(model: model, id: current.id, identifier: "album.favourite")
@@ -263,7 +260,7 @@ struct ArtistView: View {
     let artist: LibraryArtist
 
     @State private var editingArtwork = false
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @State private var showingAll = false
     @Environment(\.songActions) private var actions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -284,7 +281,7 @@ struct ArtistView: View {
                identifier: "artist")
             Section {
                 ForEach(Array(shown.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
+                    TrackRow(model: model, player: player, track: track, showDetails: { openSurface(ListenRoute.track(track.id)) }) {
                         player.play(model.queue(shown, from: index))
                     }
                 }
@@ -307,7 +304,7 @@ struct ArtistView: View {
                         ArtworkTile(title: album.title, subtitle: "\(album.trackCount) \(album.trackCount == 1 ? "song" : "songs")",
                                     url: album.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: album)))
-                            .surfaceSource(.album(album))
+                            .forgeSurfaceSource(ListenRoute.album(album))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("artist.album")
@@ -327,9 +324,6 @@ struct ArtistView: View {
         .artworkBackdrop(title: current.name, url: current.artworkUrl)
         .navigationTitle(current.name)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 FavouriteButton(model: model, id: current.id, identifier: "artist.favourite")

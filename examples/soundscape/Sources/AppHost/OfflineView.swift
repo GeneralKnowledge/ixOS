@@ -101,7 +101,7 @@ struct DownloadsView: View {
     let model: ListenModel
     let player: TakePlayer
 
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @State private var confirmingRemoveAll = false
 
     private var offline: OfflineSummary { model.offline }
@@ -118,7 +118,7 @@ struct DownloadsView: View {
             Section {
                 ForEach(offline.tracks, id: \.track.id) { item in
                     TrackRow(model: model, player: player, track: item.track,
-                             showDetails: { details = item.track.id }) {
+                             showDetails: { openSurface(ListenRoute.track(item.track.id)) }) {
                         let index = playable.firstIndex { $0.id == item.track.id }
                         if let index {
                             player.play(model.queue(playable, from: index))
@@ -147,9 +147,6 @@ struct DownloadsView: View {
             }
         }
         .navigationTitle("Downloaded")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             if !offline.tracks.isEmpty {
                 ToolbarItem(placement: .primaryAction) {

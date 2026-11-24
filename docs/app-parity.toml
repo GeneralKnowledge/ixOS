@@ -179,3 +179,9 @@ app = "forgeui-showcase"
 rule = "silent-wait"
 status = "not-applicable"
 reason = "The Simulate menu exists to show the loading and failed states: the screen shows ForgeStateView.loading while the model reloads"
+
+[[lag]]
+app = "forgeui-showcase"
+rule = "layered-navigation"
+status = "not-applicable"
+reason = "A plain SwiftUI app on ForgeUI only, with no ForgeAppKit; its gallery and screen catalogue push one level, never the same thing twice"

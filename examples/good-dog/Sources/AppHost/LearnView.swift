@@ -7,7 +7,7 @@ struct LearnView: View {
     @Bindable var model: GoodDogModel
 
     var body: some View {
-        NavigationStack {
+        DogStack(model: model) {
             List {
                 if let results = model.searchResults {
                     if !results.exercises.isEmpty {
@@ -18,14 +18,14 @@ struct LearnView: View {
                     if !results.terms.isEmpty {
                         Section("Training words") {
                             ForEach(results.terms) { term in
-                                NavigationLink(value: TermRoute(id: term.id)) { TermRow(term: term) }
+                                NavigationLink(value: DogRoute.term(term.id)) { TermRow(term: term) }
                                     .accessibilityIdentifier("learn.term.\(term.id)")
                             }
                         }
                     }
                 } else {
                     Section {
-                        NavigationLink(value: GlossaryRoute()) {
+                        NavigationLink(value: DogRoute.glossary) {
                             Label("Training Words", systemImage: "character.book.closed")
                         }
                         .accessibilityIdentifier("learn.glossary")
@@ -50,21 +50,16 @@ struct LearnView: View {
             }
             .searchable(text: $model.searchText, prompt: "Exercises and words")
             .navigationTitle("Learn")
-            .navigationDestination(for: ExerciseRoute.self) { ExerciseView(model: model, route: $0) }
-            .navigationDestination(for: TermRoute.self) { TermView(model: model, termId: $0.id) }
-            .navigationDestination(for: GlossaryRoute.self) { _ in GlossaryView(model: model) }
         }
     }
 
     private func exerciseLink(_ exercise: ExerciseSummary) -> some View {
-        NavigationLink(value: ExerciseRoute(exerciseId: exercise.id, activityId: nil)) {
+        NavigationLink(value: DogRoute.exercise(ExerciseRoute(exerciseId: exercise.id, activityId: nil))) {
             ExerciseRow(exercise: exercise)
         }
         .accessibilityIdentifier("learn.exercise.\(exercise.id)")
     }
 }
-
-struct GlossaryRoute: Hashable {}
 
 struct GlossaryView: View {
     let model: GoodDogModel
@@ -74,7 +69,7 @@ struct GlossaryView: View {
             ForEach(model.glossary) { section in
                 Section {
                     ForEach(section.terms) { term in
-                        NavigationLink(value: TermRoute(id: term.id)) { TermRow(term: term) }
+                        NavigationLink(value: DogRoute.term(term.id)) { TermRow(term: term) }
                             .accessibilityIdentifier("glossary.term.\(term.id)")
                     }
                 } header: {

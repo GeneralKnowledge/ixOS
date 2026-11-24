@@ -1,5 +1,6 @@
 @preconcurrency import UrduNaturallyFFI
 @preconcurrency import ForgeKit
+import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
@@ -59,8 +60,20 @@ private struct RootTabs: View {
     }
 
     private func tab<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        NavigationStack {
-            content().urduDestinations(model)
+        TabStack(model: model, content: content())
+    }
+}
+
+/// One tab's stack, with its own path: Layered Navigation goes back to a
+/// screen already open instead of stacking a copy.
+private struct TabStack<Content: View>: View {
+    let model: UrduModel
+    let content: Content
+    @State private var path: [Route] = []
+
+    var body: some View {
+        NavigationStack(path: $path.forgeLayered()) {
+            content.urduDestinations(model)
         }
     }
 }

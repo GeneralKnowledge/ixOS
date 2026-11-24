@@ -3,11 +3,6 @@ import ForgeUI
 import ForgeAppKit
 import SwiftUI
 
-/// Which goal to show.
-struct GoalRoute: Hashable {
-    let goalId: UInt64
-}
-
 // MARK: The goal's path
 
 /// One goal as a path of stages, like a level map: badges for passed stages,
@@ -123,7 +118,7 @@ struct GoalPathView: View {
                 }
                 Section("Practise") {
                     ForEach(current.exercises) { exercise in
-                        NavigationLink(value: ExerciseRoute(exerciseId: exercise.id, activityId: nil)) {
+                        NavigationLink(value: DogRoute.exercise(ExerciseRoute(exerciseId: exercise.id, activityId: nil))) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(exercise.title).font(.headline)
                                 Text(exercise.summary)
@@ -175,7 +170,7 @@ private struct LessonsSection: View {
             ForEach(Array(lessons.enumerated()), id: \.element.id) { index, lesson in
                 Group {
                     if lesson.kind == .practise, let exercise = lesson.exercise, lesson.state != .locked, active {
-                        NavigationLink(value: ExerciseRoute(exerciseId: exercise.id, activityId: nil)) {
+                        NavigationLink(value: DogRoute.exercise(ExerciseRoute(exerciseId: exercise.id, activityId: nil))) {
                             LessonRow(lesson: lesson, number: index + 1)
                         }
                     } else {

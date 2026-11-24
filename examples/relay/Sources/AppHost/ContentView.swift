@@ -61,9 +61,10 @@ struct DevicesView: View {
     @State private var sendingCode = false
     @State private var renaming = false
     @State private var preview: URL?
+    @State private var path: [TrustedRoute] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path.forgeLayered()) {
             notices(deviceList)
             .onChange(of: anySheet) { if !anySheet { model.refreshTrustOffer() } }
             .quickLookPreview($preview)
@@ -166,7 +167,7 @@ struct DevicesView: View {
         }
         .overlay { emptyState }
         .navigationTitle("Relay")
-        .navigationDestination(for: TrustedRoute.self) { route in
+        .forgeLayeredDestination(for: TrustedRoute.self) { route in
             TrustedDeviceView(model: model, endpointID: route.endpointID, preview: $preview)
         }
         // Send and Receive work with anyone on this Wi-Fi, by word code;

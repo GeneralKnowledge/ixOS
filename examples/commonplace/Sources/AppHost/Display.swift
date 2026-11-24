@@ -1,4 +1,5 @@
 @preconcurrency import CommonplaceFFI
+import ForgeAppKit
 import Foundation
 
 // Presentation-only additions to the Rust records: identity for SwiftUI
@@ -26,11 +27,22 @@ extension Feed {
 }
 
 /// Where the feed list can lead.
-public enum Route: Hashable {
+public enum Route: ForgeSurfaceRoute {
     case timeline(Timeline)
     case article(Int64)
     /// A folder's screen: its feeds and folders.
     case folder(Int64)
+
+    /// The thing each screen shows, however it was reached: an article opened
+    /// from a feed and again from search is the same screen, gone back to
+    /// rather than stacked twice (ForgeAppKit's Layered Navigation).
+    public var surfaceID: String? {
+        switch self {
+        case .timeline(let timeline): "timeline:\(timeline)"
+        case .article(let id): "article:\(id)"
+        case .folder(let id): "folder:\(id)"
+        }
+    }
 }
 
 extension Timeline {
