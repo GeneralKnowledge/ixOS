@@ -151,13 +151,12 @@ struct MiniPlayer: View {
 }
 
 extension View {
-    /// The mini-player's own card, before iOS 26 gave it the tab bar's
-    /// accessory: a rounded material bar just above the tab bar.
+    /// The mini-player's card just above the tab bar: Liquid Glass on
+    /// iOS 26, a rounded material bar before.
     func miniPlayerCard() -> some View {
         self
             .frame(height: 56)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+            .soundscapeGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .padding(.horizontal, 8)
             .padding(.bottom, 6)
     }

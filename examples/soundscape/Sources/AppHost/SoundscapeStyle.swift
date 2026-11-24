@@ -244,4 +244,44 @@ private struct SoundscapeOverlay: ViewModifier {
 extension PaletteColor {
     var color: Color { Color(red: red, green: green, blue: blue) }
 }
+// MARK: - Glass
+
+extension View {
+    /// Liquid Glass on iOS 26 for a control that floats over content (the
+    /// mini-player); the frosted material it had before on iOS 17 to 25.
+    /// Glass follows Reduce Transparency by itself. The compiler checks keep
+    /// these building with Xcode 16 (iOS 18 SDK).
+    @ViewBuilder func soundscapeGlass<S: Shape>(in shape: S) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            self.glassEffect(.regular.interactive(), in: shape)
+        } else {
+            materialCard(in: shape)
+        }
+        #else
+        materialCard(in: shape)
+        #endif
+    }
+
+    private func materialCard<S: Shape>(in shape: S) -> some View {
+        self
+            .background(.regularMaterial, in: shape)
+            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+    }
+
+    /// The round backing of Now Playing's small buttons over the artwork's
+    /// colours: clear glass on iOS 26, a faint white disc before.
+    @ViewBuilder func nowPlayingCircle() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            self.glassEffect(.clear.interactive(), in: Circle())
+        } else {
+            self.background(.white.opacity(0.14), in: Circle())
+        }
+        #else
+        self.background(.white.opacity(0.14), in: Circle())
+        #endif
+    }
+}
+
 #endif
