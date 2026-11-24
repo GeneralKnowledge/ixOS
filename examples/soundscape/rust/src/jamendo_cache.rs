@@ -39,6 +39,8 @@ pub const KEEP_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 pub const MAX_FILES: usize = 500;
 /// The largest answer kept.
 const MAX_KEPT_BYTES: usize = 2 * 1024 * 1024;
+/// The most answers held in memory; older ones are read from disk again.
+pub const MAX_IN_MEMORY: usize = 100;
 
 /// Milliseconds since 1970, swappable for tests.
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
@@ -48,6 +50,10 @@ struct Kept {
     saved_ms: u64,
     key: String,
     body: String,
+    /// The refresh it was kept under; one read from disk counts as kept
+    /// before any refresh in this run.
+    #[serde(skip, default)]
+    generation: u64,
 }
 
 /// The app's HTTP client with Jamendo's answers kept. See the module
@@ -56,8 +62,8 @@ pub struct JamendoAnswers {
     inner: Arc<dyn HttpClient>,
     dir: Option<PathBuf>,
     memory: Mutex<HashMap<String, Kept>>,
-    /// Answers saved before this are stale, whatever their age.
-    stale_before: AtomicU64,
+    /// Answers kept under an older refresh are stale, whatever their age.
+    generation: AtomicU64,
     now: Clock,
 }
 
@@ -72,7 +78,7 @@ impl JamendoAnswers {
             inner,
             dir,
             memory: Mutex::default(),
-            stale_before: AtomicU64::new(0),
+            generation: AtomicU64::new(0),
             now,
         }
     }
@@ -80,11 +86,11 @@ impl JamendoAnswers {
     /// Makes every answer kept so far stale: the next ask of each goes to
     /// Jamendo, and the old answer is used only if that fails.
     pub fn refresh(&self) {
-        self.stale_before.store((self.now)(), Ordering::SeqCst);
+        self.generation.fetch_add(1, Ordering::SeqCst);
     }
 
     fn fresh(&self, kept: &Kept, now: u64) -> bool {
-        kept.saved_ms >= self.stale_before.load(Ordering::SeqCst)
+        kept.generation == self.generation.load(Ordering::SeqCst)
             && now.saturating_sub(kept.saved_ms) < FRESH_MS
     }
 
@@ -98,11 +104,11 @@ impl JamendoAnswers {
         if kept.key != key || now.saturating_sub(kept.saved_ms) >= KEEP_MS {
             return None;
         }
-        memory.insert(key.to_string(), kept.clone());
+        remember(&mut memory, key.to_string(), kept.clone());
         Some(kept)
     }
 
-    fn keep(&self, key: String, now: u64, body: &[u8]) {
+    fn keep(&self, key: String, now: u64, generation: u64, body: &[u8]) {
         let Ok(body) = String::from_utf8(body.to_vec()) else {
             return;
         };
@@ -110,6 +116,7 @@ impl JamendoAnswers {
             saved_ms: now,
             key: key.clone(),
             body,
+            generation,
         };
         if let Some(dir) = &self.dir {
             let written = serde_json::to_vec(&kept)
@@ -123,10 +130,24 @@ impl JamendoAnswers {
                 forge_runtime::logging::warn!("couldn't keep a Jamendo answer: {err}");
             }
         }
-        self.memory
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .insert(key, kept);
+        let mut memory = self.memory.lock().unwrap_or_else(|p| p.into_inner());
+        remember(&mut memory, key, kept);
+    }
+}
+
+/// Holds `kept` in memory, letting the oldest go past [`MAX_IN_MEMORY`]
+/// (its file stays on disk).
+fn remember(memory: &mut HashMap<String, Kept>, key: String, kept: Kept) {
+    memory.insert(key, kept);
+    while memory.len() > MAX_IN_MEMORY {
+        let Some(oldest) = memory
+            .iter()
+            .min_by_key(|(_, k)| k.saved_ms)
+            .map(|(key, _)| key.clone())
+        else {
+            break;
+        };
+        memory.remove(&oldest);
     }
 }
 
@@ -143,7 +164,13 @@ impl HttpClient for JamendoAnswers {
         let Some(key) = key(request) else {
             return self.inner.send_cancellable(request, cancel);
         };
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
         let now = (self.now)();
+        // Read before asking, so a refresh while Jamendo answers leaves
+        // this answer stale.
+        let generation = self.generation.load(Ordering::SeqCst);
         let kept = self.lookup(&key, now);
         if let Some(kept) = &kept {
             if self.fresh(kept, now) {
@@ -154,7 +181,7 @@ impl HttpClient for JamendoAnswers {
         match self.inner.send_cancellable(request, cancel) {
             Ok(response) if (200..300).contains(&response.status) => {
                 if worth_keeping(&response.body) {
-                    self.keep(key, now, &response.body);
+                    self.keep(key, now, generation, &response.body);
                     Ok(response)
                 } else if answered_nothing(&response.body) {
                     Ok(fallback(kept).unwrap_or(response))

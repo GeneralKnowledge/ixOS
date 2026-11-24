@@ -110,7 +110,7 @@ fn a_stale_answer_is_asked_for_again() {
 fn refreshing_asks_again_but_keeps_the_old_answer_for_when_jamendo_cant_answer() {
     let s = setup(None);
     ask(&s.answers).unwrap();
-    s.time.fetch_add(1, Ordering::SeqCst);
+    // In the same millisecond as the answer was kept.
     s.answers.refresh();
     s.jamendo.goes_offline();
     assert_eq!(body(ask(&s.answers)), FOUND);
@@ -188,4 +188,16 @@ fn only_gets_to_jamendos_api_are_kept() {
         key(&Request::get(URL)).as_deref(),
         Some("https://api.jamendo.com/v3.0/tracks/?format=json&artist_id=42")
     );
+}
+
+#[test]
+fn a_cancelled_ask_is_cancelled_even_with_an_answer_kept() {
+    let s = setup(None);
+    ask(&s.answers).unwrap();
+    let cancel = forge_net::CancelHandle::new();
+    cancel.cancel();
+    assert!(matches!(
+        s.answers.send_cancellable(&Request::get(URL), &cancel),
+        Err(NetError::Cancelled)
+    ));
 }

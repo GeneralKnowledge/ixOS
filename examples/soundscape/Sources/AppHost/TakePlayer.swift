@@ -301,7 +301,10 @@ final class TakePlayer {
             guard let item = Self.item(next.audioUrl) else {
                 // No address to load: the song playing carries on.
                 failure = Self.describe(nil, playing: next)
-                backToHeard(before: queueBefore, after: queue)
+                // A switch still loading goes too: back to what is heard.
+                let queues = switchQueues ?? (before: queueBefore, after: queue)
+                cancelSwitch()
+                backToHeard(before: queues.before, after: queues.after)
                 return
             }
             switchTo(next, item: item, from: queueBefore)
