@@ -204,11 +204,6 @@ struct DiscoverView: View {
             case .success(let found): items = found
             case .failure(let failure): if !failure.stopped { problem = failure.message }
             }
-        case .shelf(let shelf):
-            switch await model.jamendoTracks(on: shelf) {
-            case .success(let found): tracks = found
-            case .failure(let failure): if !failure.stopped { problem = failure.message }
-            }
         }
     }
 }
@@ -662,6 +657,11 @@ struct JamendoTracksView: View {
             case .success(let found):
                 name = found.name
                 tracks = found.tracks
+            case .failure(let failure): if !failure.stopped { problem = failure.message }
+            }
+        case .shelf(let shelf):
+            switch await model.jamendoTracks(on: shelf) {
+            case .success(let found): tracks = found
             case .failure(let failure): if !failure.stopped { problem = failure.message }
             }
         }

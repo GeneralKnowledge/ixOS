@@ -61,9 +61,9 @@ struct JamendoArtistView: View {
                 ForEach([ReleaseKind.album, .ep], id: \.self) { kind in
                     let releases = page.releases.filter { $0.kind == kind }
                     Shelf(title: kind.plural, items: releases, identifier: "jamendoArtist.\(kind.name.lowercased())") { release in
-                        NavigationLink(value: ListenRoute.jamendoRelease(release, artist: page.artist.name)) {
+                        NavigationLink(value: ListenRoute.jamendoRelease(release, artist: page.artist)) {
                             ArtworkTile(title: release.title, subtitle: release.summary, url: release.artworkUrl)
-                                .surfaceSource(.jamendoRelease(release, artist: page.artist.name))
+                                .surfaceSource(.jamendoRelease(release, artist: page.artist))
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint(release.grouped ? "Singles that share a cover" : "Opens it")
@@ -164,7 +164,7 @@ struct JamendoReleaseView: View {
     let model: ListenModel
     let player: TakePlayer
     let release: JamendoRelease
-    let artist: String
+    let artist: JamendoArtist
 
     var body: some View {
         let tracks = release.tracks
@@ -232,7 +232,14 @@ struct JamendoReleaseView: View {
                 .font(.system(.title2, design: .rounded).weight(.bold))
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
-            Text(artist).font(.title3).foregroundStyle(.secondary)
+            // Back to the artist: their page if it is already open
+            // underneath, rather than a second copy of it.
+            NavigationLink(value: ListenRoute.jamendoArtist(.id(artist.id, name: artist.name))) {
+                Text(artist.name).font(.title3).foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens the artist")
+            .accessibilityIdentifier("jamendoRelease.artist")
             Text(release.summary.uppercased())
                 .font(.caption.weight(.semibold))
                 .tracking(0.6)

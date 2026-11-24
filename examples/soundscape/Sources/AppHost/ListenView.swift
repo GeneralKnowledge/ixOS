@@ -39,7 +39,7 @@ enum ListenRoute: Hashable {
     /// A Jamendo artist's page: albums, EPs and singles.
     case jamendoArtist(JamendoArtistRef)
     /// One of a Jamendo artist's releases, with its songs.
-    case jamendoRelease(JamendoRelease, artist: String)
+    case jamendoRelease(JamendoRelease, artist: JamendoArtist)
     /// All of the library's songs, albums (a grid) or artists.
     case songs
     case albums
@@ -245,6 +245,16 @@ struct ListenView: View {
     /// song): close the player and push it on the tab being looked at.
     private func go(_ route: ListenRoute) {
         showingNowPlaying = false
+        // An artist reached from a song opens by the artist's id, so it is
+        // the same surface as the artist reached any other way.
+        if case .jamendoArtist(let artist) = route, case .ofTrack = artist {
+            Task { show(.jamendoArtist(await model.canonical(artist))) }
+        } else {
+            show(route)
+        }
+    }
+
+    private func show(_ route: ListenRoute) {
         func push(_ path: inout [ListenRoute]) {
             path = LayeredPath.settle(path + [route], identity: \.surfaceID)
         }

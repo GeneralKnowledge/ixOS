@@ -272,9 +272,13 @@ the same album art go together*. So on an artist's page:
   See All.
 - **A Jamendo artist** (from an artist tile, **Go to Artist** on a Jamendo song, **More by <artist>** in Now
   Playing, or a library artist's **<name> on Jamendo**) shows their picture, Play and Shuffle for everything,
-  Albums and EPs as shelves and Singles as songs.
+  Albums and EPs as shelves and Singles as songs. It is one surface per artist, however it was reached: a
+  way in from a song first asks Jamendo for the song's artist id (`jamendo_artist_id_of_track`, remembered for
+  the run), so the route is always the artist's id and an artist already open underneath is returned to
+  (`LayeredPath.settle`) instead of opened again.
 - **A release** shows its cover, kind and year, its songs, and Add All to Library; a grouped one says its singles
-  share a cover and are separate on Jamendo.
+  share a cover and are separate on Jamendo. Its artist's name leads back to the artist, so Artist, Release,
+  Artist returns to the first page.
 
 Not checked yet: the live API (the cloud can't reach Jamendo). In particular, whether singles with the same
 picture always have byte-identical cover files; if Jamendo re-encodes them, a perceptual comparison (a small

@@ -46,6 +46,8 @@ public final class ListenModel {
     public private(set) var server: String?
     /// The person's Jamendo client ID, as Rust saved it.
     public private(set) var jamendoClientId: String?
+    /// A Jamendo song's artist id, once asked (see `canonical(_:)`).
+    @ObservationIgnored private var jamendoArtistIds: [String: String] = [:]
     /// Seconds songs overlap as one ends and the next starts; 0 is gapless.
     public private(set) var crossfadeSeconds: UInt32
     /// The library as kept on the phone; refreshed from the take server.
@@ -325,8 +327,23 @@ public final class ListenModel {
         case .id(let id, _):
             return await askJamendo("artist") { try await core.jamendoArtist(artistId: id, cancellation: $0) }
         case .ofTrack(let trackId, _):
-            return await askJamendo("artist") { try await core.jamendoArtistOfTrack(trackId: trackId, cancellation: $0) }
+            let page = await askJamendo("artist") { try await core.jamendoArtistOfTrack(trackId: trackId, cancellation: $0) }
+            if case .success(let found) = page { jamendoArtistIds[trackId] = found.artist.id }
+            return page
         }
+    }
+
+    /// The same artist by their Jamendo id, so a page reached from a song
+    /// is the page reached from the artist (one surface per artist). A
+    /// song's artist is asked once and remembered; when Jamendo can't say,
+    /// the song's reference comes back unchanged.
+    public func canonical(_ artist: JamendoArtistRef) async -> JamendoArtistRef {
+        guard case .ofTrack(let trackId, let name) = artist else { return artist }
+        if let id = jamendoArtistIds[trackId] { return .id(id, name: name) }
+        let found = await askJamendo("artist id") { try await core.jamendoArtistIdOfTrack(trackId: trackId, cancellation: $0) }
+        guard case .success(let id) = found else { return artist }
+        jamendoArtistIds[trackId] = id
+        return .id(id, name: name)
     }
 
     /// Songs like the Jamendo song you play most, by artists you don't have
@@ -1244,7 +1261,7 @@ extension JamendoRelease: Identifiable {}
 /// A Jamendo artist to open: by Jamendo's id (with the name to show while
 /// the page loads), or as the artist of a Jamendo song.
 public enum JamendoArtistRef: Hashable {
-    case id(String, name: String)
+    case id(String, name: String?)
     case ofTrack(String, name: String?)
 
     public var name: String? {

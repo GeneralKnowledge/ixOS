@@ -316,8 +316,8 @@ struct ArtistView: View {
             }
             if let jamendo = tracks.first(where: { $0.id.hasPrefix("jamendo:") }) {
                 Section {
-                    NavigationLink(value: ListenRoute.jamendoArtist(.ofTrack(jamendo.id, name: current.name))) {
-                        Label("More by \(current.name) on Jamendo", systemImage: "sparkles")
+                    Button("More by \(current.name) on Jamendo", systemImage: "sparkles") {
+                        actions.go(.jamendoArtist(.ofTrack(jamendo.id, name: current.name)))
                     }
                     .accessibilityIdentifier("artist.moreOnJamendo")
                 }
