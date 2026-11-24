@@ -235,3 +235,37 @@ Not now: more providers, recommendations, or extra infrastructure.
 
 These catalogues are not Spotify or Apple Music, and they have no mainstream new releases. This is not meant
 to grow into a full streaming service.
+
+## Exploring Jamendo, as built (Rust)
+
+Reuben (2026-11-24): Soundscape focuses on Jamendo for now, and is a *discover* app: nobody knows Jamendo's
+artists beforehand, so exploring has to offer much more than one week's most popular songs. This part is the
+Rust; the screens come in their own PR (`docs/design/`: data before visuals).
+
+- **Shelves** (`jamendo_shelves`, `jamendo_shelf`): Jamendo's Picks (`featured=1`), New Releases
+  (`order=releasedate_desc`), Rising (`order=buzzrate`, songs gaining listeners fastest), Popular This Month,
+  Instrumental (`vocalinstrumental=instrumental`) and All-Time Favourites, each with singles and album tracks.
+- **Artists to discover** (`jamendo_artists`): this week's most popular artists, or the newest; ones with a
+  picture first.
+- **Because You Like** (`jamendo_because`): the Jamendo song in your library you play most (a favourite counts
+  as three plays) starts it; songs in its genre by artists not in your library.
+- **Artist pages** (`jamendo_artist`, `jamendo_artist_of_track`): the artist and their releases, newest first,
+  as **Albums, EPs and Singles** (one song is a single; up to six songs under 30 minutes an EP; more an album).
+
+### Functional albums
+
+Many Jamendo songs are not in a proper album: artists upload one single at a time. Reuben's rule: *singles with
+the same album art go together*. So on an artist's page:
+
+1. Jamendo's own albums with two or more of the artist's songs stay as they are, in Jamendo's track order.
+2. Every other song is grouped by its cover. Jamendo gives each single its own artwork address even when the
+   picture is the same, so the cover files themselves are compared: each is fetched once (at most 80 per page,
+   2 MB each) and compared by SHA-256, and kept for the rest of the run so a page opened again fetches nothing.
+3. Songs sharing a cover make one album (marked `grouped`), in the order they came out, named by the album name
+   they all share or else after the earliest song. A song left alone is a single. A cover that can't be fetched
+   leaves its song a single.
+
+Not checked yet: the live API (the cloud can't reach Jamendo). In particular, whether singles with the same
+picture always have byte-identical cover files; if Jamendo re-encodes them, a perceptual comparison (a small
+hash of the scaled-down picture) is the next step. The order and filter names (`releasedate_desc`, `buzzrate`,
+`featured`, `vocalinstrumental`, `joindate_desc`) are from Jamendo's API documentation.
