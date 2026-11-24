@@ -48,7 +48,7 @@ layer between them for organisation.
 | Layer | What | Material |
 |---|---|---|
 | Content | Artwork, songs, albums, messages, conversations, devices | Solid. Never Liquid Glass |
-| Surface | Shelves, cards, destinations, contextual panels, overlays | Solid app surfaces; standard materials (not glass) for an overlay that must show what is beneath, as Soundscape's Layered Navigation does |
+| Surface | Shelves, cards, destinations, contextual panels, overlays | Solid app surfaces; standard materials (not glass) for an overlay that must show what is beneath, as Layered Navigation does ([the contract](../ios-ui.md#layered-navigation-the-contract)) |
 | Control | Tab bar, toolbars, mini-player, composer, floating buttons | System components first (they get glass on iOS 26 by themselves); custom glass only for the few most important custom controls |
 
 ## Glass rules
