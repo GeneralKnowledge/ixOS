@@ -109,6 +109,7 @@ public struct ArtworkPalette: Equatable, Sendable {
     }
 
     /// The blurred artwork's strength over a cover that isn't bright.
+    // swift-only: a drawing choice; Rust never sees the artwork layer.
     public static let maximumArtworkOpacity = 0.45
 
     /// The colours the text actually sits on at the top and bottom: each
