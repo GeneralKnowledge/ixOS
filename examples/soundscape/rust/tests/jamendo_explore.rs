@@ -282,3 +282,33 @@ fn because_you_like_starts_from_the_jamendo_song_you_play_and_leaves_out_artists
     let titles: Vec<_> = because.tracks.iter().map(|t| t.title.as_str()).collect();
     assert_eq!(titles, ["Elsewhere"]);
 }
+
+#[test]
+fn songs_sharing_an_address_whose_cover_cant_be_fetched_stay_singles() {
+    let two = answer(&[
+        item(8, "One", ("", ""), COVER_B, "2022-01-01"),
+        item(9, "Two", ("", ""), COVER_B, "2022-02-01"),
+    ]);
+    let items: Vec<serde_json::Value> = serde_json::from_str::<serde_json::Value>(&two).unwrap()
+        ["results"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let out = releases(songs(&items), &HashMap::new());
+    assert_eq!(out.len(), 2);
+    assert!(out.iter().all(|r| r.kind == ReleaseKind::Single));
+}
+
+#[test]
+fn a_songs_artist_is_found_by_its_jamendo_id() {
+    let http = client().route(
+        Method::Get,
+        tracks_url(CLIENT, &Ask::Track("3".into())),
+        Ok(Response::new(200, lune())),
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir, Arc::new(http));
+    let id = block(core.jamendo_artist_id_of_track("jamendo:3".into(), None)).unwrap();
+    assert_eq!(id, "42");
+    assert!(block(core.jamendo_artist_id_of_track("archive:x".into(), None)).is_err());
+}

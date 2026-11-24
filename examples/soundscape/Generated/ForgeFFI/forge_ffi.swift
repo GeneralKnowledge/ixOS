@@ -2329,6 +2329,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func jamendoArtist(artistId: String, cancellation: Cancellation?) async throws  -> JamendoArtistPage
     
     /**
+     * The Jamendo artist id of the Jamendo track `track_id`
+     * (`jamendo:<id>`), so a page reached from a song opens as the same
+     * artist page as one reached from the artist. On-screen work.
+     */
+    func jamendoArtistIdOfTrack(trackId: String, cancellation: Cancellation?) async throws  -> String
+    
+    /**
      * The page of the artist of the Jamendo track `track_id`
      * (`jamendo:<id>`), for a song found in search or the library.
      * On-screen work.
@@ -3406,6 +3413,27 @@ open func jamendoArtist(artistId: String, cancellation: Cancellation?)async thro
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeJamendoArtistPage_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * The Jamendo artist id of the Jamendo track `track_id`
+     * (`jamendo:<id>`), so a page reached from a song opens as the same
+     * artist page as one reached from the artist. On-screen work.
+     */
+open func jamendoArtistIdOfTrack(trackId: String, cancellation: Cancellation?)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_jamendo_artist_id_of_track(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(trackId),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -14538,6 +14566,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_artist() != 54944) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_artist_id_of_track() != 7916) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_artist_of_track() != 62037) {

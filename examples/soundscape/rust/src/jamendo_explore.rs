@@ -332,7 +332,7 @@ pub fn loose_covers(songs: &[Song]) -> Vec<String> {
 
 /// `songs` as releases, newest first. Jamendo's albums of two or more
 /// songs stay as they are. The other songs are grouped by cover: songs
-/// whose artwork has the same SHA-256 in `hashes` (or the same address)
+/// whose artwork has the same SHA-256 in `hashes`
 /// make one functional album, named by the name they share or else after
 /// the earliest song; a song left alone is a single.
 pub fn releases(songs: Vec<Song>, hashes: &HashMap<String, String>) -> Vec<JamendoRelease> {
@@ -343,11 +343,9 @@ pub fn releases(songs: Vec<Song>, hashes: &HashMap<String, String>) -> Vec<Jamen
     for s in songs {
         let key = match &s.album_id {
             Some(id) if albums.contains_key(id) => format!("album:{id}"),
-            _ => match s.track.artwork_url.as_ref() {
-                Some(url) => format!(
-                    "cover:{}",
-                    hashes.get(url).cloned().unwrap_or_else(|| url.clone())
-                ),
+            // A cover that couldn't be compared leaves its song a single.
+            _ => match s.track.artwork_url.as_ref().and_then(|url| hashes.get(url)) {
+                Some(hash) => format!("cover:{hash}"),
                 None => format!("single:{}", s.track.id),
             },
         };
