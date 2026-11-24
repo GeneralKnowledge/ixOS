@@ -217,9 +217,9 @@ struct ListenView: View {
             }
         }
         .environment(\.surfaceNamespace, surfaces)
-        // Undo for what was just removed, above the tab bar.
-        .soundscapeBanner(model: model, player: player)
-        .modifier(MiniPlayerBar {
+        // The mini-player above the tab bar, and Undo for what was just
+        // removed above the mini-player.
+        .modifier(MiniPlayerBar(model: model, player: player) {
             MiniPlayer(model: model, player: player, zoom: playerZoom, open: openNowPlaying)
         })
     }
@@ -318,11 +318,26 @@ struct LibraryGate<Content: View>: View {
 /// iOS 26's tab bar accessory was tried first, but on the phone (inside
 /// Device Lab) it went missing while browsing, leaving no way back to Now
 /// Playing but Listen's card; this bar is the one that held up.
+///
+/// The Undo banner rides just above it: two separate bars would both sit
+/// at the bottom edge, and the mini-player would cover the banner's button.
 private struct MiniPlayerBar<Bar: View>: ViewModifier {
+    let model: ListenModel
+    let player: TakePlayer
     @ViewBuilder let bar: () -> Bar
+    @State private var height: CGFloat = 0
 
     func body(content: Content) -> some View {
-        content.forgeBar { bar().miniPlayerCard() }
+        content
+            .forgeBar {
+                bar().miniPlayerCard()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            }
+            .overlay(alignment: .bottom) {
+                Color.clear
+                    .soundscapeBanner(model: model, player: player)
+                    .padding(.bottom, height)
+            }
     }
 }
 
