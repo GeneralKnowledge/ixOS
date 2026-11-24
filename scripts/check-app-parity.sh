@@ -1470,12 +1470,20 @@ def rule_layered_navigation(app):
 # TabView sits behind it (Relay's Send and Receive, #443, 2026-11-24). An app
 # with tabs floats its bottom actions with ForgeUI's `forgeBar` (or a
 # `.safeAreaInset`) instead; a full-screen app with no tabs keeps the toolbar.
-BOTTOM_BAR = re.compile(r"placement\s*:\s*\.bottomBar\b")
+BOTTOM_BAR = re.compile(r"placement\s*:\s*(?:ToolbarItemPlacement\s*)?\.bottomBar\b")
+
+
+def without_previews(code):
+    """`code` without `#Preview { ... }` blocks: a preview's TabView is no
+    app tab bar."""
+    for m in reversed(list(re.finditer(r"#Preview\b[^{]*\{", code))):
+        code = code[: m.start()] + code[m.end() - 1 + len(braced(code, m.end() - 1)):]
+    return code
 
 
 def rule_tab_bar_clear(app):
     codes = [(path, swift_code_mask(read(path))) for path in swift_sources(app)]
-    if not any(re.search(r"\bTabView\b", code) for _, code in codes):
+    if not any(re.search(r"\bTabView\b", without_previews(code)) for _, code in codes):
         return None  # no tab bar to hide behind
     bad = []
     for path, code in codes:
