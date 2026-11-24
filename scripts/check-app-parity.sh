@@ -1474,9 +1474,10 @@ BOTTOM_BAR = re.compile(r"placement\s*:\s*(?:ToolbarItemPlacement\s*)?\.bottomBa
 
 
 def without_previews(code):
-    """`code` without `#Preview { ... }` blocks: a preview's TabView is no
-    app tab bar."""
-    for m in reversed(list(re.finditer(r"#Preview\b[^{]*\{", code))):
+    """`code` without `#Preview { ... }` blocks and `PreviewProvider`
+    structs: a preview's TabView is no app tab bar."""
+    preview = re.compile(r"#Preview\b[^{]*\{|\bstruct\s+\w+\s*:[^{]*\bPreviewProvider\b[^{]*\{")
+    for m in reversed(list(preview.finditer(code))):
         code = code[: m.start()] + code[m.end() - 1 + len(braced(code, m.end() - 1)):]
     return code
 
