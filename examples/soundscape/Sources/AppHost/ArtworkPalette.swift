@@ -5,7 +5,7 @@
 import Foundation
 
 /// A colour as three channels from 0 to 1.
-public struct PaletteColor: Equatable, Sendable {
+public struct PaletteColor: Hashable, Sendable {
     public var red: Double
     public var green: Double
     public var blue: Double
@@ -100,23 +100,36 @@ public struct ArtworkPalette: Equatable, Sendable {
     public var artworkOpacity: Double
     /// The artwork's average colour: what it looks like blurred very large.
     public var artworkAverage: PaletteColor?
+    /// The artwork's regions (the thumbnail's pixels, the ones no other is
+    /// lighter than in every channel). The blur mixes neighbouring regions,
+    /// so the layer is nowhere lighter than its lightest region: text that
+    /// reads over every one of these reads over the whole blurred layer.
+    public var artworkRegions: [PaletteColor]
 
-    public init(top: PaletteColor, bottom: PaletteColor, artworkOpacity: Double = 0, artworkAverage: PaletteColor? = nil) {
+    public init(
+        top: PaletteColor,
+        bottom: PaletteColor,
+        artworkOpacity: Double = 0,
+        artworkAverage: PaletteColor? = nil,
+        artworkRegions: [PaletteColor] = []
+    ) {
         self.top = top
         self.bottom = bottom
         self.artworkOpacity = artworkOpacity
         self.artworkAverage = artworkAverage
+        self.artworkRegions = artworkRegions
     }
 
     /// The blurred artwork's strength over a cover that isn't bright.
     // swift-only: a drawing choice; Rust never sees the artwork layer.
     public static let maximumArtworkOpacity = 0.45
 
-    /// The colours the text actually sits on at the top and bottom: each
-    /// stop with the blurred artwork over it.
+    /// The colours the text can sit on: each stop with the blurred artwork
+    /// over it, as its average and as each of its regions.
     public var composited: [PaletteColor] {
-        guard let artworkAverage else { return [top, bottom] }
-        return [top, bottom].map { $0.under(artworkAverage, atOpacity: artworkOpacity) }
+        let overlays = (artworkAverage.map { [$0] } ?? []) + artworkRegions
+        guard !overlays.isEmpty else { return [top, bottom] }
+        return [top, bottom].flatMap { stop in overlays.map { stop.under($0, atOpacity: artworkOpacity) } }
     }
 
     /// White text needs at least this contrast over the lighter stop.
@@ -155,6 +168,7 @@ public struct ArtworkPalette: Equatable, Sendable {
         var count = 0.0
         var vivid: PaletteColor?
         var vividScore = -1.0
+        var seen = Set<PaletteColor>()
         var index = 0
         while index + 3 < bytes.count {
             let alpha = Double(bytes[index + 3]) / 255
@@ -168,6 +182,7 @@ public struct ArtworkPalette: Equatable, Sendable {
                 sum.b += b
                 count += 1
                 let color = PaletteColor(red: r, green: g, blue: b)
+                seen.insert(color)
                 // Colourful and not too dark or too bright.
                 let value = max(r, g, b)
                 let score = color.saturation * (1 - abs(value - 0.65))
@@ -185,23 +200,47 @@ public struct ArtworkPalette: Equatable, Sendable {
         return fitted(
             top: lead,
             bottom: PaletteColor(red: average.red * 0.35, green: average.green * 0.35, blue: average.blue * 0.35),
-            average: average
+            average: average,
+            regions: lightest(of: Array(seen)).sorted {
+                ($0.red, $0.green, $0.blue) < ($1.red, $1.green, $1.blue)
+            }
         )
     }
 
-    /// The palette for these stops under artwork of this average colour:
+    /// The colours no other colour is lighter than in every channel. Text
+    /// over a colour that is darker in every channel reads at least as well,
+    /// so only these need checking.
+    static func lightest(of colors: [PaletteColor]) -> [PaletteColor] {
+        colors.filter { color in
+            !colors.contains { other in
+                other != color && other.red >= color.red && other.green >= color.green && other.blue >= color.blue
+            }
+        }
+    }
+
+    /// The palette for these stops under artwork of this average colour and
+    /// these regions:
     /// keeps the artwork as strong as it can (down from
     /// `maximumArtworkOpacity` in steps of 0.05), darkening the stops until
     /// secondary text over the composite reads. A cover too bright for any
     /// darkening gets a fainter artwork layer, down to none.
-    static func fitted(top: PaletteColor, bottom: PaletteColor, average: PaletteColor) -> ArtworkPalette {
+    static func fitted(
+        top: PaletteColor,
+        bottom: PaletteColor,
+        average: PaletteColor,
+        regions: [PaletteColor] = []
+    ) -> ArtworkPalette {
+        let overlays = [average] + regions
         func reads(_ color: PaletteColor) -> Bool {
             color.whiteContrast(atOpacity: secondaryTextOpacity) >= minimumContrast
+        }
+        func readsUnder(_ stop: PaletteColor, opacity: Double) -> Bool {
+            overlays.allSatisfy { reads(stop.under($0, atOpacity: opacity)) }
         }
         func darkened(_ stop: PaletteColor, opacity: Double) -> PaletteColor {
             var color = stop
             var steps = 0
-            while !reads(color.under(average, atOpacity: opacity)) && steps < 60 {
+            while !readsUnder(color, opacity: opacity) && steps < 60 {
                 color = PaletteColor(red: color.red * 0.92, green: color.green * 0.92, blue: color.blue * 0.92)
                 steps += 1
             }
@@ -212,8 +251,10 @@ public struct ArtworkPalette: Equatable, Sendable {
             let opacity = Double(step) / 20
             let t = darkened(top, opacity: opacity)
             let b = darkened(bottom, opacity: opacity)
-            if reads(t.under(average, atOpacity: opacity)) && reads(b.under(average, atOpacity: opacity)) {
-                return ArtworkPalette(top: t, bottom: b, artworkOpacity: opacity, artworkAverage: average)
+            if readsUnder(t, opacity: opacity) && readsUnder(b, opacity: opacity) {
+                return ArtworkPalette(
+                    top: t, bottom: b, artworkOpacity: opacity, artworkAverage: average, artworkRegions: regions
+                )
             }
             step -= 1
         }
@@ -221,7 +262,8 @@ public struct ArtworkPalette: Equatable, Sendable {
             top: top.darkened(toWhiteContrast: minimumContrast, atOpacity: secondaryTextOpacity),
             bottom: bottom.darkened(toWhiteContrast: minimumContrast, atOpacity: secondaryTextOpacity),
             artworkOpacity: 0,
-            artworkAverage: average
+            artworkAverage: average,
+            artworkRegions: regions
         )
     }
 }

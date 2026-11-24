@@ -56,6 +56,29 @@ final class ArtworkPaletteTests: XCTestCase {
         }
     }
 
+    func testTextReadsOverTheLightestRegionNotOnlyTheAverage() throws {
+        // A dark cover with one bright corner: its average is dark, but the
+        // blurred layer is light where the corner is, and text can sit there.
+        let opacity = ArtworkPalette.secondaryTextOpacity
+        var cover = Array(repeating: (UInt8(20), UInt8(20), UInt8(30)), count: 60)
+        cover += Array(repeating: (UInt8(255), UInt8(250), UInt8(235)), count: 4)
+        let palette = try XCTUnwrap(ArtworkPalette.from(rgba: pixels(cover)))
+        let corner = PaletteColor(red: 1, green: 250.0 / 255, blue: 235.0 / 255)
+        XCTAssertTrue(palette.artworkRegions.contains(corner))
+        for stop in [palette.top, palette.bottom] {
+            let overCorner = stop.under(corner, atOpacity: palette.artworkOpacity)
+            XCTAssertGreaterThanOrEqual(overCorner.whiteContrast(atOpacity: opacity), ArtworkPalette.minimumContrast)
+        }
+    }
+
+    func testOnlyTheLightestRegionsAreKept() {
+        let dark = PaletteColor(red: 0.1, green: 0.1, blue: 0.1)
+        let red = PaletteColor(red: 0.9, green: 0.1, blue: 0.1)
+        let blue = PaletteColor(red: 0.1, green: 0.1, blue: 0.9)
+        let kept = Set(ArtworkPalette.lightest(of: [dark, red, blue]))
+        XCTAssertEqual(kept, [red, blue])
+    }
+
     func testADarkCoverKeepsTheFullArtworkLayer() throws {
         let dark = try XCTUnwrap(ArtworkPalette.from(rgba: pixels(Array(repeating: (40, 40, 60), count: 16))))
         XCTAssertEqual(dark.artworkOpacity, ArtworkPalette.maximumArtworkOpacity, accuracy: 1e-9)
