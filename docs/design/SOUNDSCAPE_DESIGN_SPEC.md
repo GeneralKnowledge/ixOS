@@ -119,6 +119,55 @@ Mini-player: glass card above the tab bar (#437), artwork, title, heart, play. O
 artwork (exists, iOS 18+). Overlays: translucent standard material (not glass), solid under Reduce
 Transparency.
 
+## Layered Navigation: the contract
+
+Soundscape already applies Layered Navigation (`examples/soundscape/docs/design.md`, `LayeredPath.settle`,
+`ListenRoute.surfaceID`). These are the rules every redesign PR and every new destination must keep, so
+that a deeper catalogue (Jamendo artists and releases, #444 and #445) never turns into a maze of copies.
+
+**Behaviour**
+
+1. **A surface is an entity, not the route that reached it.** An artist page is that artist, whether it
+   was opened from a Discover tile, a song's Go to Artist, Now Playing's More by Artist or a release page.
+2. **Every reusable entity has one canonical identity.** For a Jamendo artist that is its Jamendo artist
+   id (`jamendoArtist:<id>`). An entry point that only knows a track first resolves the artist's id; the
+   track id resolves the artist but never names the surface.
+3. **Navigating to an entity that is already open reveals the open surface.** What was stacked above it
+   closes; no second copy is made.
+4. **Returning to a surface keeps its scroll position and state** (Show All, an expanded section), because
+   it was never closed.
+5. **Presentation is not identity.** The same artist page can arrive stacked (zoom from a tile) or as an
+   ordinary push and is still one surface.
+6. **Overlays belong to the surface that presents them** and dismiss back to it; they are not stack
+   entries.
+7. **Each tab keeps its own history.** Now Playing's links push onto the tab being looked at; another
+   tab's stack is untouched.
+8. **A new destination declares its identity and treatment** (`surfaceID`, `style`) in the PR that adds
+   it, with a Linux test of `settle` for any new identity rule. A screen that should be new every time
+   (a search) declares no identity.
+
+**Visual rules**
+
+- The surface underneath stays perceptible behind a stacked destination while it is pulled back; it never
+  moves or reloads.
+- Overlays use standard material, not Liquid Glass (glass is for controls only); content stays solid and
+  readable.
+- Depth is shown with scale, offset, corner radius, dimming and the transition, not with translucent
+  content.
+- Reduce Transparency makes overlays solid; Reduce Motion turns stacked transitions into the ordinary push.
+  Back, Done and Close stay for every gesture.
+
+**Worked examples (phone checks)**
+
+| Journey | Expected |
+|---|---|
+| Artist A → one of its releases → the release's artist link | Artist A comes back as left (same scroll); the release closes; Back from A goes to where A was opened |
+| Discover tile Artist A, then a song's Go to Artist for A, then Now Playing's More by Artist for A | One Artist A page each time; never A on top of A |
+| Album X → Album Y → Album X | Album X revealed; Album Y closed |
+| Up Next over Now Playing, then dismiss | Back on Now Playing, playback and position unchanged |
+| Library tab deep in Artist A; switch to Discover and open Artist A there | Discover gets its own Artist A; Library's stack is unchanged when switching back |
+| Two searches in a row | Two search screens (no identity), Back steps through both |
+
 ## Signature interactions
 
 | Interaction | Behaviour | Reduce Motion |
