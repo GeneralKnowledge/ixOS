@@ -24,6 +24,7 @@ struct ChatView: View {
     var focusMessage: String? = nil
 
     @State private var draft = ""
+    @Environment(\.forgeTheme) private var theme
     @State private var draftLoaded = false
     @State private var replyingTo: ChatMessage?
     @State private var editing: ChatMessage?
@@ -135,7 +136,7 @@ struct ChatView: View {
                 VStack { Divider() }
                 Text(count == 1 ? "1 new message" : "\(count) new messages")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(theme.colors.accent.text)
                 VStack { Divider() }
             }
             .padding(.vertical, 8)
@@ -916,6 +917,7 @@ private struct MessageBubble: View {
     let quoted: Quote?
     let highlighted: Bool
     let actions: BubbleActions
+    @Environment(\.forgeTheme) private var theme
 
     private var live: Bool { message.status == .sent && !message.deleted }
 
@@ -1014,7 +1016,7 @@ private struct MessageBubble: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .foregroundStyle(message.isMine ? Color.white : Color.primary)
+            .foregroundStyle(ink)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous).fill(fill)
             )
@@ -1078,11 +1080,16 @@ private struct MessageBubble: View {
 
     private var fill: Color {
         guard message.isMine else { return .incomingBubble }
-        switch message.status {
-        case .sending: return .accentColor.opacity(0.6)
-        case .sent: return .accentColor
-        case .failed: return .red
-        }
+        // Sending keeps the full accent: at 60% the text fell to 2.8:1, and
+        // the delivery caption already says Sending.
+        return message.status == .failed ? theme.colors.tone(.danger).solid : theme.colors.accent.solid
+    }
+
+    /// Text on the bubble: onAccent (white in light mode, midnight in dark)
+    /// on ours, the danger tone's on a failed one.
+    private var ink: Color {
+        guard message.isMine else { return .primary }
+        return message.status == .failed ? theme.colors.tone(.danger).onSolid : theme.colors.accent.onSolid
     }
 
     private var accessibilityText: String {
@@ -1118,11 +1125,12 @@ private struct QuoteView: View {
     let quote: Quote
     /// Drawn on our own (tinted) bubble.
     let onMine: Bool
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         HStack(spacing: 6) {
             Rectangle()
-                .fill(onMine ? Color.white.opacity(0.8) : Color.accentColor)
+                .fill(onMine ? AnyShapeStyle(.foreground.opacity(0.8)) : AnyShapeStyle(theme.colors.accent.solid))
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 1) {
                 Text(author).font(.caption.bold())
@@ -1133,7 +1141,7 @@ private struct QuoteView: View {
         .padding(6)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(onMine ? Color.white.opacity(0.2) : Color.primary.opacity(0.06))
+                .fill(.foreground.opacity(onMine ? 0.2 : 0.06))
         )
         .accessibilityAddTraits(.isButton)
     }

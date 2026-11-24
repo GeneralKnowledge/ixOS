@@ -311,7 +311,8 @@ private struct DocumentRow: View {
         .frame(minWidth: 180, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(onMine ? Color.white.opacity(0.2) : Color.primary.opacity(0.06))
+                // The bubble's text colour, faint: readable on either bubble.
+                .fill(.foreground.opacity(onMine ? 0.2 : 0.06))
         )
         .task(id: attachment.id) {
             guard page == nil, let url = model.storedFile(for: attachment) else { return }
@@ -395,6 +396,7 @@ struct WaveformView: View {
     let bars: [Float]
     let progress: Double
     let onMine: Bool
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         GeometryReader { geometry in
@@ -412,8 +414,14 @@ struct WaveformView: View {
         .accessibilityHidden(true)
     }
 
-    private var played: Color { onMine ? .white : .accentColor }
-    private var unplayed: Color { onMine ? .white.opacity(0.4) : .secondary.opacity(0.4) }
+    // On our own bubble, the bubble's text colour (onAccent, or the
+    // failed bubble's); elsewhere Relay's accent.
+    private var played: AnyShapeStyle {
+        onMine ? AnyShapeStyle(.foreground) : AnyShapeStyle(theme.colors.accent.solid)
+    }
+    private var unplayed: AnyShapeStyle {
+        onMine ? AnyShapeStyle(.foreground.opacity(0.4)) : AnyShapeStyle(.secondary.opacity(0.4))
+    }
 }
 
 /// Files picked for the next message, above the text field. Tap × to drop
