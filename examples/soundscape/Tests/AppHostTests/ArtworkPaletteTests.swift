@@ -71,12 +71,18 @@ final class ArtworkPaletteTests: XCTestCase {
         }
     }
 
-    func testOnlyTheLightestRegionsAreKept() {
-        let dark = PaletteColor(red: 0.1, green: 0.1, blue: 0.1)
-        let red = PaletteColor(red: 0.9, green: 0.1, blue: 0.1)
-        let blue = PaletteColor(red: 0.1, green: 0.1, blue: 0.9)
-        let kept = Set(ArtworkPalette.lightest(of: [dark, red, blue]))
-        XCTAssertEqual(kept, [red, blue])
+    func testEveryRegionReadsEvenOneThatLooksDarker() throws {
+        // Pure red beside a slightly yellower red: red is darker in no
+        // channel than its neighbour, yet translucent white reads worse over
+        // it. Every region has to be checked, not only the lightest-looking.
+        let opacity = ArtworkPalette.secondaryTextOpacity
+        let cover = Array(repeating: (UInt8(255), UInt8(0), UInt8(0)), count: 8)
+            + Array(repeating: (UInt8(255), UInt8(20), UInt8(0)), count: 8)
+        let palette = try XCTUnwrap(ArtworkPalette.from(rgba: pixels(cover)))
+        XCTAssertEqual(palette.artworkRegions.count, 2)
+        for color in palette.composited {
+            XCTAssertGreaterThanOrEqual(color.whiteContrast(atOpacity: opacity), ArtworkPalette.minimumContrast)
+        }
     }
 
     func testADarkCoverKeepsTheFullArtworkLayer() throws {

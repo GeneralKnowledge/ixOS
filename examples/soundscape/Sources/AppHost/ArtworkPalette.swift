@@ -100,10 +100,11 @@ public struct ArtworkPalette: Equatable, Sendable {
     public var artworkOpacity: Double
     /// The artwork's average colour: what it looks like blurred very large.
     public var artworkAverage: PaletteColor?
-    /// The artwork's regions (the thumbnail's pixels, the ones no other is
-    /// lighter than in every channel). The blur mixes neighbouring regions,
-    /// so the layer is nowhere lighter than its lightest region: text that
-    /// reads over every one of these reads over the whole blurred layer.
+    /// The artwork's regions: every distinct pixel of its small thumbnail.
+    /// The blur mixes neighbouring regions, so text that reads over each of
+    /// them, not only over the average, holds up where the cover is light.
+    /// None is skipped: with translucent text a lighter background also
+    /// lightens the text, so no region can be ruled out by brightness alone.
     public var artworkRegions: [PaletteColor]
 
     public init(
@@ -201,21 +202,10 @@ public struct ArtworkPalette: Equatable, Sendable {
             top: lead,
             bottom: PaletteColor(red: average.red * 0.35, green: average.green * 0.35, blue: average.blue * 0.35),
             average: average,
-            regions: lightest(of: Array(seen)).sorted {
+            regions: seen.sorted {
                 ($0.red, $0.green, $0.blue) < ($1.red, $1.green, $1.blue)
             }
         )
-    }
-
-    /// The colours no other colour is lighter than in every channel. Text
-    /// over a colour that is darker in every channel reads at least as well,
-    /// so only these need checking.
-    static func lightest(of colors: [PaletteColor]) -> [PaletteColor] {
-        colors.filter { color in
-            !colors.contains { other in
-                other != color && other.red >= color.red && other.green >= color.green && other.blue >= color.blue
-            }
-        }
     }
 
     /// The palette for these stops under artwork of this average colour and

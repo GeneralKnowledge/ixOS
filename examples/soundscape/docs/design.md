@@ -86,7 +86,7 @@ transport, which scale with `@ScaledMetric`.
   fork (1.24.0-ixos.1); the laptop's upstream 1.24.0 recorded SDK 17.0, so every build before 2026-11-24
   ran in compatibility mode (the old opaque tab bar).
 - Now Playing: artwork palette gradient, the artwork itself blurred very large over it at up to 45% (fainter
-  over a bright cover, so secondary text keeps 4.5:1 over the cover's lightest region, not just its average),
+  over a bright cover, so secondary text keeps 4.5:1 over every region of the cover, not just its average),
   and a dark scrim at the bottom third so controls always read.
 
 ### Spacing
