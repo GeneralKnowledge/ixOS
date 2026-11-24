@@ -775,7 +775,9 @@ final class TakePlayer {
                 loadQueued(playing: false)
             }
             // Otherwise the queue is already on the song loading; it starts
-            // once ready.
+            // once ready. The song that ended is nothing to go back to if
+            // the new one fails, so Next moves on past it.
+            if let queues = switchQueues { switchQueues = (before: nil, after: queues.after) }
             return
         }
         if side == .b, !isComparing {
