@@ -126,7 +126,7 @@ constant tint), artwork colour never tints controls.
 |---|---|
 | Display (Listen greeting, album / artist names on their pages) | `.largeTitle` bold, rounded design |
 | Shelf titles | `.title3` bold, rounded |
-| Track title / artist (Now Playing) | `.title3` bold / `.title3` at 75% once #440 merges (60% on main until then; `ArtworkPalette.secondaryTextOpacity`) |
+| Track title / artist (Now Playing) | `.title3` bold / `.title3` at 75% (`ArtworkPalette.secondaryTextOpacity`, #440) |
 | Rows | `.body` / `.subheadline` secondary |
 | Metadata, times | `.footnote` / `.caption` `.monospacedDigit()` |
 
