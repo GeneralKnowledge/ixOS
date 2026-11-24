@@ -72,7 +72,7 @@ let brand = ForgeTheme(
 | Colour roles | `background`, `groupedBackground`, `surface`, `surfaceRaised`, `textPrimary`, `textSecondary`, `textTertiary`, `separator` |
 | Tones | `accent`, `neutral`, `success`, `warning`, `danger`, `info`, each with `solid` (fills), `onSolid` (text on a fill), `soft` (tinted background) and `text` (the tone's readable colour) |
 | Spacing | `xxs 2`, `xs 4`, `s 8`, `m 12`, `l 16`, `xl 24`, `xxl 32` |
-| Radius | `s 7` (icon tiles), `m 12` (buttons, fields), `l 18` (cards); corners are continuous |
+| Radius | `s 7` (icon tiles), `m 12` (buttons, fields), `l 18` (cards), `xl 28` (large floating surfaces, overlays); corners are continuous |
 | Type | text roles (below) on top of the system text styles, so Dynamic Type and Bold Text work with no extra code |
 
 Read tokens in your own views from the environment:
@@ -121,6 +121,31 @@ XCTAssertEqual(brand.contrastIssues(), [])
 ```
 
 `contrastIssues()` checks every pairing ForgeUI's components draw, in light and dark and both again with Increase Contrast, against WCAG AA: 4.5:1 for text, 3:1 for shapes that carry meaning. The standard theme passes; ForgeUI's own tests check it on every change. The default palette is close to Apple's system colours, with text and tone colours darkened (light) or lightened (dark) where Apple's fall short on the backgrounds they are used on.
+
+### Materials and motion
+
+Liquid Glass is a material for **controls that float over content**, never for the content itself. Which surface gets which material is one table, `ForgeMaterial.material(for:)`, checked on Linux:
+
+| `ForgeSurfaceKind` | Material | SwiftUI | Before iOS 26 |
+|---|---|---|---|
+| `floatingControl` (mini-player, composer) | regular glass | `.forgeGlass(.regular, in: shape)` | regular material and a soft shadow |
+| `controlOverMedia` (small buttons over artwork colours) | clear glass | `.forgeGlass(.clear, in: shape)` | a faint white disc |
+| `notice` (Undo banner, a connection notice) | standard material | `.forgeMaterial(in: shape)` | the same |
+| `overlay` (sheets that show what opened them) | thin material | `.presentationBackground(.thinMaterial)` | the same |
+| `content` (lists, cards, bubbles) | solid | the theme's colours | the same |
+
+A passive notice is not a control, so it is never glass. Clear glass needs a background already dark enough for white glyphs (an artwork palette clamped for white text); over raw media that can be bright, dim it first. `interactive: true` makes glass respond to a touch. `.forgeGlassProminentButton()` is tinted glass (`.borderedProminent` before iOS 26), and `ForgeGlassSupport.isAvailable` is for layouts that change around glass (a bar inset from the edges only when it floats). Under Reduce Transparency, glass turns solid by itself; the fallbacks and the standard material turn to the theme's raised surface. All the iOS 26 calls sit behind `#if compiler(>=6.2)` and `#available`, so ForgeUI still builds with Xcode 16 and runs on iOS 17. Apps don't call `glassEffect` themselves (the `glass` rule in [app-parity.md](app-parity.md)).
+
+Motion has four kinds, picked by what moves:
+
+| `ForgeMotion` | Animation | For |
+|---|---|---|
+| `quick` | ease-out 0.2 s | A symbol or badge changing |
+| `standard` | ease-in-out 0.35 s | Insertions, removals, scrolling to a row |
+| `emphasised` | spring, response 0.45, damping 0.8 | Things a finger drives; interruptible |
+| `ambient` | ease-in-out 0.6 s | Background and palette colour |
+
+`.forgeAnimation(.standard, value: x)` and `withForgeAnimation(.standard, reduceMotion: reduceMotion) { … }` (with `@Environment(\.accessibilityReduceMotion)`) give no animation at all under Reduce Motion. Touch feedback is the one exception to the four kinds: a press may be quicker (ForgeUI's own press styles use 0.12 s), and under Reduce Motion it may keep a fade but never moves. `ForgeRadius.xl` (28) is the corner for large floating surfaces.
 
 ## Components
 

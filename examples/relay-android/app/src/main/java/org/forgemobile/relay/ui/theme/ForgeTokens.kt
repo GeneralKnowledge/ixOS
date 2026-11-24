@@ -43,7 +43,7 @@ object ForgeTokens {
     )
 
     val spacing = ForgeSpacing(xxs = 2f, xs = 4f, s = 8f, m = 12f, l = 16f, xl = 24f, xxl = 32f)
-    val radius = ForgeRadius(s = 7f, m = 12f, l = 18f)
+    val radius = ForgeRadius(s = 7f, m = 12f, l = 18f, xl = 28f)
 }
 
 /** The accents an app can choose from, each checked for contrast in light and dark. */

@@ -50,6 +50,7 @@ struct ChatView: View {
     /// The attachment open in Quick Look.
     @State private var previewURL: URL?
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Records voice messages (Forge's audio module).
     @State private var recorder = ForgeAudioRecorder(maxDuration: 300)
     @State private var microphoneDenied = false
@@ -79,7 +80,7 @@ struct ChatView: View {
                 .overlay(alignment: .bottom) {
                     if newBelow {
                         Button(newMessagesLabel, systemImage: "arrow.down") {
-                            withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                            withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
                         }
                         .relayProminentButton()
                         .buttonBorderShape(.capsule)
@@ -118,7 +119,7 @@ struct ChatView: View {
 
     private func reachedBottom(_ reached: Bool) {
         atBottom = reached
-        if reached { withAnimation { newBelow = false } }
+        if reached { withForgeAnimation(.standard, reduceMotion: reduceMotion) { newBelow = false } }
     }
 
     private var newMessagesLabel: String {
@@ -169,15 +170,15 @@ struct ChatView: View {
                     // Stay where you are reading; the pill counts what came
                     // in, and the divider marks where it starts.
                     if !newBelow { firstUnread = messages.last?.id }
-                    withAnimation { newBelow = true }
+                    withForgeAnimation(.standard, reduceMotion: reduceMotion) { newBelow = true }
                     return
                 }
-                withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
             }
             .onChange(of: composing) { _, focused in
                 // The keyboard is coming up: keep the newest message in view.
                 if focused && editing == nil {
-                    withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                    withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
                 }
             }
             .onChange(of: jumpTarget) { _, target in
@@ -187,12 +188,12 @@ struct ChatView: View {
     }
 
     private func jump(to target: String, proxy: ScrollViewProxy) {
-        withAnimation { proxy.scrollTo(target, anchor: .center) }
+        withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(target, anchor: .center) }
         highlighted = target
         jumpTarget = nil
         Task {
             try? await Task.sleep(for: .seconds(1.5))
-            withAnimation { if highlighted == target { highlighted = nil } }
+            withForgeAnimation(.standard, reduceMotion: reduceMotion) { if highlighted == target { highlighted = nil } }
         }
     }
 
@@ -711,6 +712,7 @@ private struct ConnectionBanner: View {
     /// Why opening the room failed, if it did.
     let problem: String?
     let reconnect: () -> Void
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         switch state {
@@ -735,7 +737,10 @@ private struct ConnectionBanner: View {
         notice
             .padding(.horizontal)
             .padding(.vertical, 6)
-            .relayFloatingBar(cornerRadius: 18)
+            // Passive, so the standard material, never glass.
+            .forgeMaterial(in: RoundedRectangle(cornerRadius: theme.radius.l, style: .continuous))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
     }
 }
 
