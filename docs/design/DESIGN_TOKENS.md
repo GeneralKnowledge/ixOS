@@ -149,13 +149,14 @@ under Reduce Motion.
 | `midnight` | #111317 | system grouped background | Backgrounds | — |
 | `surface` | #20242B | #FFFFFF | Incoming bubbles, device cards | — |
 | `text` | #E5E7EB | system label | Primary text | 15.0:1 on midnight |
-| `secondary` | #9CA3AF | #6B7280 | Timestamps, previews | 7.3:1 (dark), 4.8:1 on white |
+| `secondary` | #9CA3AF | #646B78 | Timestamps, previews | 7.3:1 (dark); 4.8:1 on the grouped background (the brief's #6B7280 was 4.3:1 there) |
 | `accent` | #829BCB | #3E5A8E | Outgoing bubbles, links, selected tab | 6.6:1 on midnight; 6.9:1 on white |
 | `onAccent` | #111317 | #FFFFFF | Text in outgoing bubbles | 6.6:1 (dark), 6.9:1 (light) |
 
 As in Soundscape, the brief's accent fails on white (2.8:1) and with white text (2.8:1), hence the darker
 light partner and midnight text in dark-mode outgoing bubbles. Today Relay sets no theme and uses system
-blue; adopting this is a decision.
+blue. The accent is adopted in `RelayColors` (V2.2, checked by `RelayColorsTests`); backgrounds and text
+follow with the redesign (V4).
 
 Delivery and trust colours stay semantic: Not Delivered red, trust badges in their existing system colours,
 never the accent.
