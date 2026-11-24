@@ -25,8 +25,10 @@ Relay's wrappers live in `Sources/AppHost/RelayGlass.swift`; the glass itself, i
 the `#if compiler(>=6.2)` / `#available(iOS 26.0, *)` checks are ForgeUI's (`forgeGlass`,
 `forgeGlassProminentButton`, `forgeMaterial`, [forgeui.md](../../../docs/forgeui.md#materials-and-motion)), so
 the app still builds with Xcode 16 and the deployment target stays iOS 17. Glass follows Reduce Transparency by
-itself; the fallbacks and the standard material turn solid under it. Chat animations go through ForgeMotion
-and stop under Reduce Motion.
+itself; the fallbacks and the standard material turn solid under it. All seven chat animations (scroll to the
+newest message, New Messages appearing and going, jumping to a quoted reply and its highlight fading) are
+ForgeMotion `standard` and stop under Reduce Motion; Relay has no other animations of its own. ForgeUI's
+button press (0.12 s) and the Undo banner (spring 0.35 s) already follow Reduce Motion.
 
 iOS shows glass only to an app whose binary records the iOS 26 SDK. Linux builds get that from our xtool fork
 (1.24.0-ixos.1); builds made with upstream xtool 1.24.0 record SDK 17.0 and run in compatibility mode, with

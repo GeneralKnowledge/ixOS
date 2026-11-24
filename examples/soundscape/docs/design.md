@@ -104,6 +104,12 @@ item gap 12, section gap 24, Now Playing edges 28.
 | Scrubbing | The bar thickens from 6 to 12 pt while dragging; times brighten | Same, no animation |
 | Transport taps | SF Symbol bounce on next / previous | No bounce |
 | Lyrics | Line being sung brightens and scrolls to the centre | Same, no scale |
+| Transport press | Dims, faint disc, shrinks to 90% (0.15 s) | Dims and disc only, no shrink |
+
+Every animation is on ForgeUI's ForgeMotion (`quick`, `standard`, `emphasised`, `ambient`) and off under
+Reduce Motion, with one documented exception: touch feedback (the transport press, the scrubber thickening as
+a finger lands) runs at 0.15 s, faster than any ForgeMotion kind, as ForgeUI's own press styles do (0.12 s).
+Under Reduce Motion the scrubber change is instant and the press keeps only its fade, which isn't movement.
 
 Haptics stay ForgeAppKit's small vocabulary (success / failure); no new kinds.
 

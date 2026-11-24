@@ -467,6 +467,9 @@ private struct NowPlayingScrubber: View {
                         .onChanged { drag in
                             let fraction = min(max(drag.location.x / width, 0), 1)
                             if dragging == nil {
+                                // Touch feedback, faster than ForgeMotion's kinds on
+                                // purpose (as ForgeUI's own press styles); off under
+                                // Reduce Motion.
                                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
                                     dragging = fraction * duration
                                 }
@@ -476,7 +479,7 @@ private struct NowPlayingScrubber: View {
                         }
                         .onEnded { _ in
                             if let to = dragging { player.seek(to: to) }
-                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { dragging = nil }
+                            withForgeAnimation(.quick, reduceMotion: reduceMotion) { dragging = nil }
                         }
                 )
             }
@@ -538,9 +541,21 @@ private struct TransportButton: View {
 
 private struct TransportPress: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
+        TransportPressBody(configuration: configuration)
+    }
+}
+
+/// Touch feedback: dims and shows a faint disc, and shrinks a little unless
+/// Reduce Motion is on (the fade stays: it isn't movement). 0.15 s, faster
+/// than ForgeMotion's kinds on purpose, as ForgeUI's own press styles.
+private struct TransportPressBody: View {
+    let configuration: ButtonStyleConfiguration
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.6 : 1)
-            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.9 : 1)
             .background {
                 Circle()
                     .fill(.white.opacity(configuration.isPressed ? 0.12 : 0))

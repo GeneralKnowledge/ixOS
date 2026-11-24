@@ -145,7 +145,7 @@ Motion has four kinds, picked by what moves:
 | `emphasised` | spring, response 0.45, damping 0.8 | Things a finger drives; interruptible |
 | `ambient` | ease-in-out 0.6 s | Background and palette colour |
 
-`.forgeAnimation(.standard, value: x)` and `withForgeAnimation(.standard, reduceMotion: reduceMotion) { … }` (with `@Environment(\.accessibilityReduceMotion)`) give no animation at all under Reduce Motion. `ForgeRadius.xl` (28) is the corner for large floating surfaces.
+`.forgeAnimation(.standard, value: x)` and `withForgeAnimation(.standard, reduceMotion: reduceMotion) { … }` (with `@Environment(\.accessibilityReduceMotion)`) give no animation at all under Reduce Motion. Touch feedback is the one exception to the four kinds: a press may be quicker (ForgeUI's own press styles use 0.12 s), and under Reduce Motion it may keep a fade but never moves. `ForgeRadius.xl` (28) is the corner for large floating surfaces.
 
 ## Components
 
