@@ -179,6 +179,7 @@ struct DevicesView: View {
                 Spacer()
                 Button("Send", systemImage: "arrow.up.circle") { sendingCode = true }
                     .labelStyle(.titleAndIcon)
+                    .relayToolbarProminent()
                     .accessibilityIdentifier("relay.send")
             }
             ToolbarItem(placement: .topBarLeading) {
