@@ -201,3 +201,20 @@ fn a_cancelled_ask_is_cancelled_even_with_an_answer_kept() {
         Err(NetError::Cancelled)
     ));
 }
+
+#[test]
+fn an_answer_kept_after_a_refresh_stays_fresh_when_read_back_from_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = setup(Some(dir.path().to_path_buf()));
+    s.answers.refresh();
+    ask(&s.answers).unwrap();
+    // Enough other answers to push it out of memory.
+    for n in 0..=soundscape_core::jamendo_cache::MAX_IN_MEMORY {
+        s.time.fetch_add(1, Ordering::SeqCst);
+        let other = format!("{URL}&page={n}");
+        s.answers.send(&Request::get(other)).unwrap();
+    }
+    let asks = s.jamendo.asks();
+    assert_eq!(body(ask(&s.answers)), FOUND);
+    assert_eq!(s.jamendo.asks(), asks, "fresh from disk, not asked again");
+}

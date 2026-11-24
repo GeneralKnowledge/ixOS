@@ -298,19 +298,26 @@ final class TakePlayer {
         guard let queue, let track = queueCurrent(queue: queue) else { return }
         let next = Loaded(track)
         if playing, isPlaying, !isComparing, a != nil {
-            guard let item = Self.item(next.audioUrl) else {
-                // No address to load: the song playing carries on.
+            if let item = Self.item(next.audioUrl) {
+                switchTo(next, item: item, from: queueBefore)
+                return
+            }
+            // No address to load. Moved to by a tap or Next while a song is
+            // heard: that song carries on, and the queue goes back to it
+            // (a switch still loading goes too).
+            let queues = switchQueues ?? (before: queueBefore, after: queue)
+            if queues.before != nil {
                 failure = Self.describe(nil, playing: next)
-                // A switch still loading goes too: back to what is heard.
-                let queues = switchQueues ?? (before: queueBefore, after: queue)
                 cancelSwitch()
                 backToHeard(before: queues.before, after: queues.after)
                 return
             }
-            switchTo(next, item: item, from: queueBefore)
-            return
+            // After a song ended there is nothing to go back to: the queue
+            // stays on the song that can't play, so Next moves past it.
         }
+        cancelSwitch()
         load(a: next, b: nil, match: nil)
+        if Self.item(next.audioUrl) == nil { failure = Self.describe(nil, playing: next) }
         if playing { resume() } else { pause() }
     }
 
@@ -404,8 +411,10 @@ final class TakePlayer {
     /// otherwise the edited queue moves to the heard song where it is in
     /// it (also with repeat One, where A restarts and the queue would
     /// otherwise stay on the song that failed).
+    /// With no `before`, the change came from a song ending: that song is
+    /// over, so the queue stays where it is.
     private func backToHeard(before: PlayQueue?, after: PlayQueue?) {
-        guard let queue, let heard = a?.id else { return }
+        guard let queue, let heard = a?.id, before != nil else { return }
         if let before, queue == after {
             self.queue = before
             return

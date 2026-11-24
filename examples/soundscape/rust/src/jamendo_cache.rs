@@ -50,10 +50,13 @@ struct Kept {
     saved_ms: u64,
     key: String,
     body: String,
-    /// The refresh it was kept under; one read from disk counts as kept
-    /// before any refresh in this run.
-    #[serde(skip, default)]
+    /// The refresh it was kept under, in the run (`JamendoAnswers::run`)
+    /// that kept it. One kept in an earlier run counts as kept before any
+    /// refresh in this one.
+    #[serde(default)]
     generation: u64,
+    #[serde(default)]
+    run: u64,
 }
 
 /// The app's HTTP client with Jamendo's answers kept. See the module
@@ -64,6 +67,9 @@ pub struct JamendoAnswers {
     memory: Mutex<HashMap<String, Kept>>,
     /// Answers kept under an older refresh are stale, whatever their age.
     generation: AtomicU64,
+    /// This run, told apart from earlier ones (whose refreshes don't
+    /// count here).
+    run: u64,
     now: Clock,
 }
 
@@ -79,6 +85,10 @@ impl JamendoAnswers {
             dir,
             memory: Mutex::default(),
             generation: AtomicU64::new(0),
+            run: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_nanos() as u64)
+                .unwrap_or(1),
             now,
         }
     }
@@ -100,7 +110,10 @@ impl JamendoAnswers {
             return Some(kept.clone());
         }
         let path = self.dir.as_ref()?.join(file_name(key));
-        let kept: Kept = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+        let mut kept: Kept = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+        if kept.run != self.run {
+            kept.generation = 0;
+        }
         if kept.key != key || now.saturating_sub(kept.saved_ms) >= KEEP_MS {
             return None;
         }
@@ -117,6 +130,7 @@ impl JamendoAnswers {
             key: key.clone(),
             body,
             generation,
+            run: self.run,
         };
         if let Some(dir) = &self.dir {
             let written = serde_json::to_vec(&kept)
