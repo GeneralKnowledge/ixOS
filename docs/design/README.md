@@ -26,7 +26,7 @@ app you enjoy using because it gets out of your way.**
 
 The apps' own design docs stay the record of what is built: Soundscape
 [design.md](../../examples/soundscape/docs/design.md), Relay
-`examples/relay/docs/relay-design.md` (arrives with #438).
+[relay-design.md](../../examples/relay/docs/relay-design.md) (#438).
 
 ## Where things stand (main at b8b6fb7e, 2026-11-24)
 
@@ -37,7 +37,7 @@ The apps' own design docs stay the record of what is built: Soundscape
 | #428 | Soundscape Smart Playlists | Merged |
 | #436 | Mini-player on every screen, Listen title fix | Merged |
 | #437 | Soundscape Liquid Glass | Open; in the combined build compiling with fork xtool 1.24.0-ixos.1 |
-| #438 | Relay Liquid Glass | Open; same build |
+| #438 | Relay Liquid Glass | Merged 2026-11-24 after this study began; compiled in the combined Device Lab build with fork xtool; phone check owed |
 
 No glass has been seen on the phone yet: earlier builds came from upstream xtool, which stamps SDK 17.0, so
 iOS ran the apps in compatibility mode.

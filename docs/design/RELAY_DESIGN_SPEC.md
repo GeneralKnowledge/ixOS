@@ -1,7 +1,7 @@
 # Relay design specification
 
 The complete Relay experience this programme works towards. Built on
-`examples/relay/docs/relay-design.md` (Liquid Glass, arrives with #438) and the
+[examples/relay/docs/relay-design.md](../../examples/relay/docs/relay-design.md) (Liquid Glass, #438) and the
 behaviour in the [Relay audit](../../examples/relay/docs/relay-audit-2026-11.md). Tokens:
 [DESIGN_TOKENS.md](DESIGN_TOKENS.md#3-relay-tokens-app-local-proposed-relaycolors-relaymetrics). References:
 [DESIGN_REFERENCES.md](DESIGN_REFERENCES.md#relay-references).
