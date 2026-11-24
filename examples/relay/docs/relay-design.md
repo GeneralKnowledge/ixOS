@@ -15,7 +15,7 @@ list, device rows and the history stay solid.
 | Assistant composer | the same floating glass card | the full-width system bar |
 | A conversation's connection notice (Connecting, Reconnecting, Not connected) | a small card in the standard material under the title: it is passive, so not glass (V2.1) | the same card |
 | New Messages jump button | tinted glass capsule | tinted capsule |
-| Devices: Send | tinted glass in the bottom toolbar, beside plain Receive | plain toolbar button |
+| Devices: Send and Receive | floating over the list just above the tab bar: Send tinted glass, Receive a glass capsule (not a bottom toolbar, which iOS 26 puts behind the floating tab bar) | Send bordered prominent, Receive a material capsule |
 | Tab bar | glass, and it shrinks while a chat or list scrolls down | the opaque tab bar |
 
 The tab bar, navigation bars, search field, menus, alerts and sheets get glass from the system; Relay adds
@@ -51,6 +51,6 @@ iOS 26 binary and that nothing became harder to read.
    With Reduce Motion on, New Messages and jumping to a reply move at once instead of scrolling.
 4. Scroll down a chat: the tab bar shrinks; scroll back up and it returns.
 5. Assistant: the composer is the same glass card.
-6. Devices: Send is tinted glass in the bottom bar, Receive plain glass.
+6. Devices: Send (tinted glass) and Receive (glass capsule) sit above the tab bar, fully visible and tappable, including after scrolling the list down and back up.
 7. Settings, Accessibility, Display & Text Size, Reduce Transparency on: all of the above turn solid and
    stay readable. Repeat 1 in dark mode.
