@@ -161,8 +161,8 @@ built-ins, grouped search results, bubble shapes, delivery captions.
 Reuben agreed this direction on 2026-11-24. The passive-notice question is settled (decision 6). At 12:24 he
 decided V2.1 does not wait for #437 and #438 to pass on the phone: their phone checks and V2.1's are done
 together in the next sitting, on one combined Device Lab build that holds both. The "before" for that sitting
-is the build on the phone now (1.29925122, made before #437 and #438 and before the fork xtool, so no glass at
-all): screenshots of Now Playing, the mini-player, a Relay chat and its connection notice are taken from it
+is the build on the phone now (1.29925122, made before #437 and #438, so without their glass changes):
+screenshots of Now Playing, the mini-player, a Relay chat and its connection notice are taken from it
 before the new build is installed. There is no build with #437/#438 but without V2.1 on the phone, so the V1
 checks run against the combined build, with the two passive notices expected frosted, not glass.
 
