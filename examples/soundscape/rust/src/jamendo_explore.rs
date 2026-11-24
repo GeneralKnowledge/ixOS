@@ -197,14 +197,27 @@ pub fn artist_page(
             reason: "Jamendo has no songs by this artist".into(),
         })?;
     let songs = songs(&items);
+    // Covers already known count for free; only new fetches are capped.
     let mut hashes = HashMap::new();
-    for url in loose_covers(&songs).into_iter().take(MAX_COVERS) {
-        if cancel.is_cancelled() {
-            break;
+    let mut fetched = 0;
+    for url in loose_covers(&songs) {
+        if let Some(hash) = covers.get(&url) {
+            hashes.insert(url, hash);
+            continue;
         }
+        if fetched == MAX_COVERS || cancel.is_cancelled() {
+            continue;
+        }
+        fetched += 1;
         if let Some(hash) = cover_hash(http, &url, covers, cancel) {
             hashes.insert(url, hash);
         }
+    }
+    // A stopped page is not a page with its singles left ungrouped.
+    if cancel.is_cancelled() {
+        return Err(SoundscapeError::Stopped {
+            kind: forge_app::ErrorKind::Cancelled,
+        });
     }
     Ok(JamendoArtistPage {
         artist,
