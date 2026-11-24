@@ -98,8 +98,8 @@ struct SongMenu: View {
             Button("Go to Artist", systemImage: "music.mic") { actions.go(.artist(artist)) }
                 .accessibilityIdentifier("\(identifier).goToArtist")
         } else if song.id.hasPrefix("jamendo:") {
-            Button("More by This Artist", systemImage: "music.mic") {
-                actions.go(.jamendoMore(trackId: song.id, by: .artist))
+            Button("Go to Artist", systemImage: "music.mic") {
+                actions.go(.jamendoArtist(.ofTrack(song.id, name: song.catalogue?.artist)))
             }
             .accessibilityIdentifier("\(identifier).goToArtist")
         }

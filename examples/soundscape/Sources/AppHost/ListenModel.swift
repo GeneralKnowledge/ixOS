@@ -46,6 +46,8 @@ public final class ListenModel {
     public private(set) var server: String?
     /// The person's Jamendo client ID, as Rust saved it.
     public private(set) var jamendoClientId: String?
+    /// A Jamendo song's artist id, once asked (see `canonical(_:)`).
+    @ObservationIgnored private var jamendoArtistIds: [String: String] = [:]
     /// Seconds songs overlap as one ends and the next starts; 0 is gapless.
     public private(set) var crossfadeSeconds: UInt32
     /// The library as kept on the phone; refreshed from the take server.
@@ -301,6 +303,63 @@ public final class ListenModel {
             return .success(found)
         } catch {
             if !Self.isStop(error) { log.warn("jamendo genre failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
+    /// Discover's Jamendo shelves beyond this week's popular, in order.
+    public var jamendoShelves: [JamendoShelf] { core.jamendoShelves() }
+
+    /// The tracks on one of Discover's Jamendo shelves.
+    public func jamendoTracks(on shelf: JamendoShelf) async -> Result<[CatalogueTrack], ListenFailure> {
+        await askJamendo("shelf") { try await core.jamendoShelf(shelf: shelf, cancellation: $0) }
+    }
+
+    /// Jamendo artists to discover: this week's most popular, or the newest.
+    public func jamendoArtists(_ list: JamendoArtistList) async -> Result<[JamendoArtist], ListenFailure> {
+        await askJamendo("artists") { try await core.jamendoArtists(list: list, cancellation: $0) }
+    }
+
+    /// A Jamendo artist's page: their albums, EPs and singles (Rust groups
+    /// singles that share a cover into one album).
+    public func jamendoArtist(_ artist: JamendoArtistRef) async -> Result<JamendoArtistPage, ListenFailure> {
+        switch artist {
+        case .id(let id, _):
+            return await askJamendo("artist") { try await core.jamendoArtist(artistId: id, cancellation: $0) }
+        case .ofTrack(let trackId, _):
+            let page = await askJamendo("artist") { try await core.jamendoArtistOfTrack(trackId: trackId, cancellation: $0) }
+            if case .success(let found) = page { jamendoArtistIds[trackId] = found.artist.id }
+            return page
+        }
+    }
+
+    /// The same artist by their Jamendo id, so a page reached from a song
+    /// is the page reached from the artist (one surface per artist). A
+    /// song's artist is asked once and remembered; when Jamendo can't say,
+    /// the song's reference comes back unchanged.
+    public func canonical(_ artist: JamendoArtistRef) async -> JamendoArtistRef {
+        guard case .ofTrack(let trackId, let name) = artist else { return artist }
+        if let id = jamendoArtistIds[trackId] { return .id(id, name: name) }
+        let found = await askJamendo("artist id") { try await core.jamendoArtistIdOfTrack(trackId: trackId, cancellation: $0) }
+        guard case .success(let id) = found else { return artist }
+        jamendoArtistIds[trackId] = id
+        return .id(id, name: name)
+    }
+
+    /// Songs like the Jamendo song you play most, by artists you don't have
+    /// yet; nil when there's no such song.
+    public func jamendoBecause() async -> Result<JamendoBecause?, ListenFailure> {
+        _ = collection
+        return await askJamendo("because") { try await core.jamendoBecause(cancellation: $0) }
+    }
+
+    /// A Jamendo call made cancellable with the task that asks, its failure
+    /// put into words.
+    private func askJamendo<T>(_ what: String, _ work: (Cancellation) async throws -> T) async -> Result<T, ListenFailure> {
+        do {
+            return .success(try await withRustCancellation { try await work($0) })
+        } catch {
+            if !Self.isStop(error) { log.warn("jamendo \(what) failed: \(error)") }
             return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
         }
     }
@@ -1196,3 +1255,19 @@ public enum TakeFormat {
 }
 
 extension CatalogueTrack: Identifiable {}
+extension JamendoArtist: Identifiable {}
+extension JamendoRelease: Identifiable {}
+
+/// A Jamendo artist to open: by Jamendo's id (with the name to show while
+/// the page loads), or as the artist of a Jamendo song.
+public enum JamendoArtistRef: Hashable {
+    case id(String, name: String?)
+    case ofTrack(String, name: String?)
+
+    public var name: String? {
+        switch self {
+        case .id(_, let name): name
+        case .ofTrack(_, let name): name
+        }
+    }
+}

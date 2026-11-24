@@ -569,6 +569,7 @@ struct JamendoTracksView: View {
     enum Ask: Hashable {
         case genre(JamendoGenre)
         case more(trackId: String, by: JamendoMore)
+        case shelf(JamendoShelf)
     }
 
     let model: ListenModel
@@ -585,6 +586,7 @@ struct JamendoTracksView: View {
         case .genre(let genre): return genre.name
         case .more(_, .artist): return name.map { "More by \($0)" } ?? "More by This Artist"
         case .more(_, .genre): return name.map { "More \($0)" } ?? "More in This Genre"
+        case .shelf(let shelf): return jamendoShelfTitle(shelf: shelf)
         }
     }
 
@@ -655,6 +657,11 @@ struct JamendoTracksView: View {
             case .success(let found):
                 name = found.name
                 tracks = found.tracks
+            case .failure(let failure): if !failure.stopped { problem = failure.message }
+            }
+        case .shelf(let shelf):
+            switch await model.jamendoTracks(on: shelf) {
+            case .success(let found): tracks = found
             case .failure(let failure): if !failure.stopped { problem = failure.message }
             }
         }
