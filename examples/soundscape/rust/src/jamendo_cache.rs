@@ -188,6 +188,10 @@ impl HttpClient for JamendoAnswers {
         let kept = self.lookup(&key, now);
         if let Some(kept) = &kept {
             if self.fresh(kept, now) {
+                // Reading it may have waited (the lock, the disk).
+                if cancel.is_cancelled() {
+                    return Err(NetError::Cancelled);
+                }
                 return Ok(Response::new(200, kept.body.clone()));
             }
         }
