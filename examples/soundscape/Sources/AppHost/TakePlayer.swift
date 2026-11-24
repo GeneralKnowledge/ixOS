@@ -297,7 +297,13 @@ final class TakePlayer {
     private func loadQueued(playing: Bool, queueBefore: PlayQueue? = nil) {
         guard let queue, let track = queueCurrent(queue: queue) else { return }
         let next = Loaded(track)
-        if playing, isPlaying, !isComparing, a != nil, let item = Self.item(next.audioUrl) {
+        if playing, isPlaying, !isComparing, a != nil {
+            guard let item = Self.item(next.audioUrl) else {
+                // No address to load: the song playing carries on.
+                failure = Self.describe(nil, playing: next)
+                backToHeard(before: queueBefore, after: queue)
+                return
+            }
             switchTo(next, item: item, from: queueBefore)
             return
         }
@@ -356,7 +362,7 @@ final class TakePlayer {
             log.warn("stream failed: \(item.error.map { "\($0)" } ?? "")")
             let queues = switchQueues
             cancelSwitch()
-            if let queues, let before = queues.before, queue == queues.after { queue = before }
+            backToHeard(before: queues?.before, after: queues?.after)
         default:
             break
         }
@@ -388,6 +394,27 @@ final class TakePlayer {
         loadArtwork(next.artworkUrl)
         updateNowPlaying()
         save()
+    }
+
+    /// After a switch that can't happen, the queue goes back to the song
+    /// heard: as it was (`before`) when nothing changed it since (`after`);
+    /// otherwise the edited queue moves to the heard song where it is in
+    /// it (also with repeat One, where A restarts and the queue would
+    /// otherwise stay on the song that failed).
+    private func backToHeard(before: PlayQueue?, after: PlayQueue?) {
+        guard let queue, let heard = a?.id else { return }
+        if let before, queue == after {
+            self.queue = before
+            return
+        }
+        let positions = queue.order.indices.filter { position in
+            let index = Int(queue.order[position])
+            return queue.tracks.indices.contains(index) && queue.tracks[index].recording.id == heard
+        }
+        let current = Int(queue.position)
+        guard let nearest = positions.min(by: { abs($0 - current) < abs($1 - current) }),
+              nearest != current else { return }
+        self.queue = queueJump(queue: queue, position: UInt32(nearest))
     }
 
     /// Forgets a song still loading on B.
@@ -843,8 +870,10 @@ final class TakePlayer {
         self.prepared = nil
         mainIndex = 1 - mainIndex
         a = prepared.loaded
-        queue = prepared.to
+        // Time first: a queue change saves, and should save the new song
+        // at its start, not the old song's position.
         time = 0
+        queue = prepared.to
         duration = 0
         counted = false
         failure = nil
