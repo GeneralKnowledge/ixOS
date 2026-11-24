@@ -832,7 +832,12 @@ public final class ListenModel {
     public func smartPlaylist(_ id: String) -> SmartPlaylistDetail? { try? core.smartPlaylist(id: id) }
 
     /// How many songs `rules` let in now, or nil when Rust refuses them.
-    public func smartPlaylistCount(_ rules: SmartRules) -> UInt32? { try? core.smartPlaylistCount(rules: rules) }
+    public func smartPlaylistCount(_ rules: SmartRules) -> UInt32? {
+        // Read so the count follows changes to plays, favourites and songs.
+        _ = collection
+        _ = library
+        return try? core.smartPlaylistCount(rules: rules)
+    }
 
     /// Throws when Rust refuses the name or the rules, so the editor can say why.
     @discardableResult
@@ -852,11 +857,15 @@ public final class ListenModel {
         return detail
     }
 
-    public func deleteSmartPlaylist(_ id: String) async {
+    /// False when Rust refused, so the screen stays open to say why.
+    @discardableResult
+    public func deleteSmartPlaylist(_ id: String) async -> Bool {
         do {
             collection = try await core.deleteSmartPlaylist(id: id)
+            return true
         } catch {
             report(error)
+            return false
         }
     }
 

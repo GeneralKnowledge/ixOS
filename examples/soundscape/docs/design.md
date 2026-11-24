@@ -150,6 +150,12 @@ Full screen, dark, over the artwork palette:
 The queue is a sheet with shuffle and repeat at the top and Up Next below (tap to jump, swipe to remove). A/B
 comparison keeps its own A / B switch in place of the transport.
 
+Changing song never leaves silence while the new one loads (Reuben, 2026-11-24). Tapping another song, Next,
+Previous or a song in Up Next while one plays keeps the current song playing; the new one loads silently on
+the second player, the mini-player shows a spinner and "Loading <song>…", Now Playing shows the same under
+the transport, and the moment it can play the players swap. If it fails, the current song plays on and the
+mini-player says why. Pausing while it loads makes it the song, paused. A newer tap replaces an older load.
+
 ## Radio (Reuben, 2026-11-22 20:28 and 20:36)
 
 Radio is nonstop music: a station is an endless playlist generated from a seed (a genre, a song or an artist),
@@ -340,7 +346,9 @@ and light and dark mode.
     the first artist page, scrolled where you left it, with one Back to go. Albums grow out of their tiles
     and pull back into them. Up Next half raised shows the player behind it; with Reduce Transparency on it
     is solid.
-12. Liquid Glass (after the xtool fork is installed on the laptop): the tab bar and navigation bars are
+12. Changing song: while a Jamendo song plays, tap another one and press Next: the song playing carries on
+    with "Loading …" in the mini-player until the new one starts, with no silence in between.
+13. Liquid Glass (after the xtool fork is installed on the laptop): the tab bar and navigation bars are
     glass; the mini-player is a glass card that responds to a touch; Now Playing's heart, More, pin and
     thumbs buttons are clear glass; Undo is a frosted banner, not glass. With Reduce Transparency on, all
     of them are solid.

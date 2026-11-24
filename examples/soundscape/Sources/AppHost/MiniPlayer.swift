@@ -43,7 +43,11 @@ struct MiniPlayer: View {
             .accessibilityLabel(player.current.map { "Now Playing: \($0.song)" } ?? "Not Playing")
             .accessibilityHint(player.current == nil ? "" : "Opens the player")
             .accessibilityIdentifier("nowPlaying.open")
-            if player.isBuffering { ProgressView().controlSize(.small) }
+            if player.isBuffering || player.switching != nil {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(player.switching.map { "Loading \($0.song)" } ?? "Loading")
+            }
             controls
         }
         .padding(.leading, inline ? 6 : 10)
@@ -88,6 +92,7 @@ struct MiniPlayer: View {
 
     private func subtitle(_ current: TakePlayer.Loaded) -> String? {
         if let failure = player.failure { return failure }
+        if let next = player.switching { return "Loading \(next.song)…" }
         if player.isComparing { return current.song }
         return current.artist ?? current.label
     }
