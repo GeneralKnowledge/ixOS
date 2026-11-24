@@ -186,7 +186,7 @@ struct NowPlayingView: View {
                 .tint(.white)
                 .font(.title3)
                 .frame(width: 36, height: 36)
-                .background(.white.opacity(0.14), in: Circle())
+                .nowPlayingCircle()
         }
         moreMenu(current)
     }
@@ -245,7 +245,7 @@ struct NowPlayingView: View {
                 .font(.body.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 36, height: 36)
-                .background(.white.opacity(0.14), in: Circle())
+                .nowPlayingCircle()
                 .contentShape(Circle())
         }
         .accessibilityLabel("More")
@@ -271,7 +271,7 @@ struct NowPlayingView: View {
                     } label: {
                         Image(systemName: saved ? "pin.fill" : "pin")
                             .frame(width: 36, height: 36)
-                            .background(.white.opacity(0.14), in: Circle())
+                            .nowPlayingCircle()
                     }
                     .accessibilityLabel(saved ? "Remove Saved Station" : "Save Station")
                     .accessibilityHint("Keeps it first in Hear Nonstop Music")
@@ -283,7 +283,7 @@ struct NowPlayingView: View {
                 } label: {
                     Image(systemName: feeling == .dislike ? "hand.thumbsdown.fill" : "hand.thumbsdown")
                         .frame(width: 36, height: 36)
-                        .background(.white.opacity(0.14), in: Circle())
+                        .nowPlayingCircle()
                 }
                 .accessibilityLabel("Dislike")
                 .accessibilityValue(feeling == .dislike ? "On" : "Off")
@@ -294,7 +294,7 @@ struct NowPlayingView: View {
                 } label: {
                     Image(systemName: feeling == .like ? "hand.thumbsup.fill" : "hand.thumbsup")
                         .frame(width: 36, height: 36)
-                        .background(.white.opacity(0.14), in: Circle())
+                        .nowPlayingCircle()
                 }
                 .accessibilityLabel("Like")
                 .accessibilityValue(feeling == .like ? "On" : "Off")

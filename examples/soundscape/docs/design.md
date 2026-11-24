@@ -76,8 +76,14 @@ transport, which scale with `@ScaledMetric`.
 ### Surfaces
 
 - Lists and grids sit on the system background; shelves are plain scroll views, not cards.
-- Floating controls (mini-player, queue sheet) use the system's own materials: the mini-player uses
-  `.regularMaterial`.
+- Liquid Glass is for controls that float over content, never for the content itself (lists, artwork,
+  shelves). On iOS 26 the mini-player is regular glass (`soundscapeGlass`), Now Playing's small round
+  buttons are clear glass over the artwork colours (`nowPlayingCircle`), and the Undo banner is glass
+  (ForgeAppKit). The tab bar, navigation bars, menus and sheets get glass from the system. On iOS 17 to 25
+  each falls back to the look it had: `.regularMaterial` cards and a faint white disc.
+- iOS shows glass only to an app whose binary records the iOS 26 SDK. Linux builds get that from our xtool
+  fork (1.24.0-ixos.1); the laptop's upstream 1.24.0 recorded SDK 17.0, so every build before 2026-11-24
+  ran in compatibility mode (the old opaque tab bar).
 - Now Playing: artwork palette gradient, the artwork itself blurred very large over it at 50%, and a dark scrim
   at the bottom third so controls always read.
 
@@ -324,3 +330,7 @@ and light and dark mode.
     the first artist page, scrolled where you left it, with one Back to go. Albums grow out of their tiles
     and pull back into them. Up Next half raised shows the player behind it; with Reduce Transparency on it
     is solid.
+12. Liquid Glass (after the xtool fork is installed on the laptop): the tab bar and navigation bars are
+    glass; the mini-player is a glass card that responds to a touch; Now Playing's heart, More, pin and
+    thumbs buttons are clear glass; Undo is a glass banner. With Reduce Transparency on, all of them are
+    solid.
