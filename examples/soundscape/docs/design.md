@@ -105,7 +105,7 @@ Four tabs, each its own `NavigationStack` with the same destinations (albums, ar
 
 | Tab | Root | What it holds |
 |---|---|---|
-| Listen | `ListenHome` | A greeting, Continue Listening (the saved queue), Hear Nonstop Music (radio), Recently Played shelf, your playlists, recently added albums, Popular on Jamendo when a client ID is set |
+| Listen | `ListenHome` | A greeting (the subtitle under the Listen title on iOS 26), Continue Listening (the saved queue), Hear Nonstop Music (radio), Recently Played shelf, your playlists, recently added albums, Popular on Jamendo when a client ID is set |
 | Library | `LibraryTab` | Category rows (Playlists, Artists, Albums, Songs, Favourites, Downloaded, To Pick, Recently Played), then recently added albums as an artwork grid; import and take server in the toolbar |
 | Discover | `DiscoverView` | Jamendo and the Internet Archive as today (S5 makes it editorial) |
 | Search | `SearchTab` | One search for your music, Jamendo and the Archive (as today), with genres to browse before you type |
