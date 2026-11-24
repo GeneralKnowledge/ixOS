@@ -355,3 +355,5 @@ and light and dark mode.
     glass; the mini-player is a glass card that responds to a touch; Now Playing's heart, More, pin and
     thumbs buttons are clear glass; Undo is a frosted banner, not glass. With Reduce Transparency on, all
     of them are solid.
+15. Similar Artists: on a Jamendo artist's page, a row of round artist tiles under their releases says
+    "Popular in <genre> this week"; tapping one opens just that artist (not every tile in the row).

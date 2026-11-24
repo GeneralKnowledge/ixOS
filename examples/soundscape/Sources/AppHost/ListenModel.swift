@@ -338,6 +338,11 @@ public final class ListenModel {
         }
     }
 
+    /// Artists like a Jamendo artist (others popular in their main genre).
+    public func jamendoSimilarArtists(to artistId: String) async -> Result<JamendoSimilarArtists, ListenFailure> {
+        await askJamendo("similar") { try await core.jamendoSimilarArtists(artistId: artistId, cancellation: $0) }
+    }
+
     /// The same artist by their Jamendo id, so a page reached from a song
     /// is the page reached from the artist (one surface per artist). A
     /// song's artist is asked once and remembered; when Jamendo can't say,

@@ -359,6 +359,7 @@ struct ArtistView: View {
         if let jamendo {
             JamendoReleases(model: model, player: player, page: jamendo,
                             identifier: "artist.jamendo", onJamendo: true)
+            SimilarJamendoArtists(model: model, artistId: jamendo.artist.id, identifier: "artist.jamendo")
             Section {
                 Button("Open Their Jamendo Page", systemImage: "sparkles") {
                     actions.go(.jamendoArtist(.id(jamendo.artist.id, name: jamendo.artist.name)))

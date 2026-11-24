@@ -59,6 +59,7 @@ struct JamendoArtistView: View {
                     player.play(model.queue(allTracks), shuffle: shuffle)
                 }, identifier: "jamendoArtist")
                 JamendoReleases(model: model, player: player, page: page, identifier: "jamendoArtist")
+                SimilarJamendoArtists(model: model, artistId: page.artist.id, identifier: "jamendoArtist")
                 Section {
                 } footer: {
                     Text("Music from Jamendo, each track under its artist's Creative Commons licence.")
@@ -173,6 +174,42 @@ struct JamendoReleases: View {
     }
 }
 
+// MARK: Similar artists
+
+/// "Similar Artists": others popular this week in the artist's main genre,
+/// as round tiles. Quietly absent while loading, when there are none, or
+/// when Jamendo can't be asked: the page is whole without it.
+struct SimilarJamendoArtists: View {
+    let model: ListenModel
+    let artistId: String
+    /// The page's identifier prefix ("jamendoArtist", "artist.jamendo").
+    let identifier: String
+
+    @State private var similar: JamendoSimilarArtists?
+
+    var body: some View {
+        Group {
+            if let similar, !similar.artists.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Shelf(title: "Similar Artists", items: similar.artists,
+                          identifier: "\(identifier).similar") { artist in
+                        JamendoArtistTile(artist: artist, identifier: "\(identifier).similarArtist")
+                    }
+                    Text("Popular in \(similar.genre) this week")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, SoundscapeMetrics.screenEdge)
+                }
+                .shelfRow()
+            }
+        }
+        .task(id: artistId) {
+            similar = nil
+            if case .success(let found) = await model.jamendoSimilarArtists(to: artistId) { similar = found }
+        }
+    }
+}
+
 // MARK: A release
 
 /// One release: its cover large, what it is and when, Play and Shuffle,
@@ -281,18 +318,21 @@ struct JamendoReleaseView: View {
 // MARK: Artists to discover
 
 /// A Jamendo artist as a round tile that opens their page.
+/// A plain-button link (`ForgeSurfaceLink`), since tiles sit side by side
+/// in one row.
 struct JamendoArtistTile: View {
     let artist: JamendoArtist
+    var identifier = "discover.artist"
 
     var body: some View {
         let route = ListenRoute.jamendoArtist(.id(artist.id, name: artist.name))
-        NavigationLink(value: route) {
+        ForgeSurfaceLink(route) {
             ArtworkTile(title: artist.name, subtitle: nil, url: artist.imageUrl, circle: true)
                 .forgeSurfaceSource(route)
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens the artist")
-        .accessibilityIdentifier("discover.artist")
+        .accessibilityIdentifier(identifier)
     }
 }
 

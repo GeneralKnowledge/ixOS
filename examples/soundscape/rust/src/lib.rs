@@ -50,7 +50,8 @@ pub use collection::{
 };
 pub use jamendo::{JamendoGenre, JamendoMore, JamendoMoreTracks, JamendoShelf};
 pub use jamendo_explore::{
-    JamendoArtist, JamendoArtistList, JamendoArtistPage, JamendoRelease, ReleaseKind,
+    JamendoArtist, JamendoArtistList, JamendoArtistPage, JamendoRelease, JamendoSimilarArtists,
+    ReleaseKind,
 };
 use library::LibraryFile;
 pub use library::{
@@ -1184,6 +1185,24 @@ impl SoundscapeCore {
                 );
                 covers.save();
                 page
+            })
+            .await
+    }
+
+    /// Artists like the Jamendo artist `artist_id`: others popular this
+    /// week in the genre most of their songs carry
+    /// ([`jamendo_explore::similar_artists`]). On-screen work.
+    pub async fn jamendo_similar_artists(
+        &self,
+        artist_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<JamendoSimilarArtists, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-similar", work, move |cancel| {
+                jamendo_explore::similar_artists(http.as_ref(), &client_id, &artist_id, cancel)
             })
             .await
     }
