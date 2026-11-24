@@ -145,6 +145,7 @@ NavigationStack(path: $path.forgeLayered()) {
 
 - A `NavigationLink(value:)` goes through the stack's path.
 - A page deeper in the stack opens a route with `@Environment(\.forgeOpenSurface)`: `openSurface(Route.album(id: id))`. Don't push beside the path with `navigationDestination(item:)`: SwiftUI keeps those out of the path, so the rule can't see them.
+- Links side by side (tiles in a grid or shelf, two names in a row) are `ForgeSurfaceLink(route) { tile }`: a `List` row pushes every `NavigationLink` in it on one tap, plain buttons one at a time.
 - Code that owns the path (Now Playing's Go to Artist, a deep link) calls `path.forgeOpen(route)`.
 - `.forgeSurfaceSource(route)` on a tile makes a stacked route zoom out of it and back into it (iOS 18 and later); with Reduce Motion it is an ordinary push.
 - Each tab keeps its own path, so tabs keep their own histories.
