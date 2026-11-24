@@ -19,6 +19,29 @@ final class ArtworkPaletteTests: XCTestCase {
         }
     }
 
+    func testSecondaryTextReadsOverEveryPalette() throws {
+        // The artist line is white at `secondaryTextOpacity`, which reads
+        // less well than opaque white; the palette must allow for it, over
+        // both stops, on the brightest covers there are.
+        let opacity = ArtworkPalette.secondaryTextOpacity
+        let covers: [(UInt8, UInt8, UInt8)] = [(250, 250, 250), (255, 230, 0), (0, 255, 255), (120, 255, 120)]
+        for cover in covers {
+            let palette = try XCTUnwrap(ArtworkPalette.from(rgba: pixels(Array(repeating: cover, count: 16))))
+            XCTAssertGreaterThanOrEqual(palette.top.whiteContrast(atOpacity: opacity), ArtworkPalette.minimumContrast)
+            XCTAssertGreaterThanOrEqual(palette.bottom.whiteContrast(atOpacity: opacity), ArtworkPalette.minimumContrast)
+        }
+        for title in ["Rich Enough to Work", "a", "Ω", ""] {
+            let palette = ArtworkPalette.standIn(title: title)
+            XCTAssertGreaterThanOrEqual(palette.top.whiteContrast(atOpacity: opacity), ArtworkPalette.minimumContrast)
+        }
+    }
+
+    func testOpaqueWhiteContrastIsUnchanged() {
+        let grey = PaletteColor(red: 0.5, green: 0.5, blue: 0.5)
+        XCTAssertEqual(grey.whiteContrast, grey.whiteContrast(atOpacity: 1), accuracy: 1e-12)
+        XCTAssertGreaterThan(grey.whiteContrast, grey.whiteContrast(atOpacity: 0.6))
+    }
+
     func testTheMostColourfulPartLeads() throws {
         // A dark grey cover with a little red in it gives a red player.
         var colours = Array(repeating: (UInt8(30), UInt8(30), UInt8(32)), count: 60)

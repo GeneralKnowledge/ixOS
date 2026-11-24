@@ -25,7 +25,19 @@ public struct PaletteColor: Equatable, Sendable {
     }
 
     /// Contrast ratio of white text over this colour.
-    public var whiteContrast: Double { 1.05 / (luminance + 0.05) }
+    public var whiteContrast: Double { whiteContrast(atOpacity: 1) }
+
+    /// Contrast ratio of white text drawn at `opacity` over this colour:
+    /// the text's colour is white blended with this one, channel by channel,
+    /// as the screen composites it.
+    public func whiteContrast(atOpacity opacity: Double) -> Double {
+        let text = PaletteColor(
+            red: opacity + (1 - opacity) * red,
+            green: opacity + (1 - opacity) * green,
+            blue: opacity + (1 - opacity) * blue
+        )
+        return (text.luminance + 0.05) / (luminance + 0.05)
+    }
 
     /// Saturation and value, HSV style.
     var saturation: Double {
@@ -33,11 +45,12 @@ public struct PaletteColor: Equatable, Sendable {
         return maxC == 0 ? 0 : (maxC - min(red, green, blue)) / maxC
     }
 
-    /// This colour scaled darker until white text over it reaches `ratio`.
-    func darkened(toWhiteContrast ratio: Double) -> PaletteColor {
+    /// This colour scaled darker until white text over it, drawn at
+    /// `opacity`, reaches `ratio`.
+    func darkened(toWhiteContrast ratio: Double, atOpacity opacity: Double = 1) -> PaletteColor {
         var color = self
         var steps = 0
-        while color.whiteContrast < ratio && steps < 40 {
+        while color.whiteContrast(atOpacity: opacity) < ratio && steps < 60 {
             color = PaletteColor(red: color.red * 0.92, green: color.green * 0.92, blue: color.blue * 0.92)
             steps += 1
         }
@@ -64,7 +77,8 @@ public struct PaletteColor: Equatable, Sendable {
 }
 
 /// Now Playing's background: a lighter colour at the top and a darker one
-/// at the bottom, both dark enough for white text.
+/// at the bottom, both dark enough for white text, including the secondary
+/// text drawn at `secondaryTextOpacity`.
 public struct ArtworkPalette: Equatable, Sendable {
     public var top: PaletteColor
     public var bottom: PaletteColor
@@ -72,13 +86,19 @@ public struct ArtworkPalette: Equatable, Sendable {
     /// White text needs at least this contrast over the lighter stop.
     public static let minimumContrast = 4.5
 
+    /// The opacity of Now Playing's secondary text (the artist line, the
+    /// radio row) over the palette. The palette is darkened until text at
+    /// this opacity, not only opaque white, reaches `minimumContrast`.
+    public static let secondaryTextOpacity = 0.75
+
     /// The palette of a song with no artwork: from the hue its stand-in
     /// (the coloured initial) is drawn in, so the player and the stand-in
     /// match.
     public static func standIn(title: String) -> ArtworkPalette {
         let hue = standInHue(title)
         return ArtworkPalette(
-            top: PaletteColor.hsb(hue, 0.6, 0.55).darkened(toWhiteContrast: minimumContrast),
+            top: PaletteColor.hsb(hue, 0.6, 0.55)
+                .darkened(toWhiteContrast: minimumContrast, atOpacity: secondaryTextOpacity),
             bottom: PaletteColor.hsb(hue, 0.75, 0.2)
         )
     }
@@ -127,7 +147,7 @@ public struct ArtworkPalette: Equatable, Sendable {
         // A grey picture has no colour to lead with: use its average.
         let lead = (vivid?.saturation ?? 0) > 0.25 ? vivid! : average
         return ArtworkPalette(
-            top: lead.darkened(toWhiteContrast: minimumContrast),
+            top: lead.darkened(toWhiteContrast: minimumContrast, atOpacity: secondaryTextOpacity),
             bottom: PaletteColor(red: average.red * 0.35, green: average.green * 0.35, blue: average.blue * 0.35)
         )
     }

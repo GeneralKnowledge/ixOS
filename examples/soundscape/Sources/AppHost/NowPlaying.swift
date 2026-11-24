@@ -166,7 +166,7 @@ struct NowPlayingView: View {
                 .lineLimit(1)
             Text(subtitle(current))
                 .font(font == .headline ? .subheadline : .title3)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.white.opacity(ArtworkPalette.secondaryTextOpacity))
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -261,7 +261,7 @@ struct NowPlayingView: View {
             HStack(spacing: 12) {
                 Label(radio.title ?? "Radio", systemImage: "dot.radiowaves.left.and.right")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(ArtworkPalette.secondaryTextOpacity))
                     .lineLimit(1)
                 Spacer()
                 if let seed = radio.seed {

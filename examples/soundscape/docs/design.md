@@ -48,8 +48,9 @@ Chrome stays native: system backgrounds, the tab bar, sheets, menus, materials.
   the playing artwork, the average colour and the most saturated colour, with brightness clamped so white text
   keeps at least 4.5:1 contrast over the darkest stop. A song without artwork uses the hue of its stand-in (the
   coloured initial `Artwork` already draws), so every song has a colour. Changes animate over 0.6 s.
-- **Over artwork colour** (Now Playing, lyrics): always dark appearance, white primary text, white at 60% for
-  secondary, as Weather does over its skies.
+- **Over artwork colour** (Now Playing, lyrics): always dark appearance, white primary text, white at 75% for
+  secondary (`ArtworkPalette.secondaryTextOpacity`; the palette is darkened until that also reads 4.5:1),
+  as Weather does over its skies.
 
 ### Type
 
@@ -57,7 +58,7 @@ Chrome stays native: system backgrounds, the tab bar, sheets, menus, materials.
 |---|---|
 | Screen titles | System large titles (native) |
 | Soundscape's own headings (Listen greeting, shelf titles) | `.title2.bold()` / `.title3.bold()` in the rounded design |
-| Now Playing title / artist | `.title3.bold()` / `.title3` at 60% white, one line each, marquee not used |
+| Now Playing title / artist | `.title3.bold()` / `.title3` at 75% white, one line each, marquee not used |
 | Track rows | `.body` title, `.subheadline` secondary |
 | Times | `.caption.monospacedDigit()` |
 
