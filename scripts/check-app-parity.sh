@@ -1458,10 +1458,40 @@ def rule_layered_navigation(app):
                 bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} ({why})")
         # Layered destinations under a stack with no path never settle.
         for m in BARE_STACK.finditer(code):
-            if "forgeLayeredDestination(" in owned(braced(code, m.end() - 1)):
+            if re.search(r"\bforgeLayeredDestination\s*\(", owned(braced(code, m.end() - 1))):
                 bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} (a stack with layered destinations and no forgeLayered() path)")
     if bad:
         return False, "pushes pages outside Layered Navigation: " + ", ".join(bad)
+    return True, ""
+
+
+# Nothing at the bottom of a screen hides behind the tab bar. On iOS 26 the
+# tab bar floats over the content, and a `.bottomBar` toolbar inside a
+# TabView sits behind it (Relay's Send and Receive, #443, 2026-11-24). An app
+# with tabs floats its bottom actions with ForgeUI's `forgeBar` (or a
+# `.safeAreaInset`) instead; a full-screen app with no tabs keeps the toolbar.
+BOTTOM_BAR = re.compile(r"placement\s*:\s*(?:ToolbarItemPlacement\s*)?\.bottomBar\b")
+
+
+def without_previews(code):
+    """`code` without `#Preview { ... }` blocks and `PreviewProvider`
+    structs: a preview's TabView is no app tab bar."""
+    preview = re.compile(r"#Preview\b[^{]*\{|\bstruct\s+\w+\s*:[^{]*\bPreviewProvider\b[^{]*\{")
+    for m in reversed(list(preview.finditer(code))):
+        code = code[: m.start()] + code[m.end() - 1 + len(braced(code, m.end() - 1)):]
+    return code
+
+
+def rule_tab_bar_clear(app):
+    codes = [(path, swift_code_mask(read(path))) for path in swift_sources(app)]
+    if not any(re.search(r"\bTabView\b", without_previews(code)) for _, code in codes):
+        return None  # no tab bar to hide behind
+    bad = []
+    for path, code in codes:
+        for m in BOTTOM_BAR.finditer(code):
+            bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "a bottom toolbar in an app with tabs sits behind the iOS 26 tab bar; float it with forgeBar: " + ", ".join(bad)
     return True, ""
 
 
@@ -1483,6 +1513,7 @@ RULES = [
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
     ("layered-navigation", "Pushed pages through ForgeAppKit's Layered Navigation: a thing already open is gone back to, never stacked twice", rule_layered_navigation),
+    ("tab-bar-clear", "No bottom toolbar in an app with tabs: on iOS 26 it sits behind the floating tab bar; bottom actions float with `forgeBar`", rule_tab_bar_clear),
     ("glass", "Liquid Glass only through ForgeUI (`forgeGlass`, `forgeGlassProminentButton`), never `glassEffect` or `.glass` button styles by hand", rule_glass),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
