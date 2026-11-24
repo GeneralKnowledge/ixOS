@@ -1404,7 +1404,7 @@ def rule_swift6_traps(app):
 # stack (`forgeOpenSurface`) rather than pushing beside the path with
 # `navigationDestination(item:)`. The routes' identities themselves are the
 # type checker's job: `forgeLayered()` only takes a `ForgeSurfaceRoute`.
-LAYERED_PUSH = re.compile(r"NavigationLink\s*\(\s*value:|\.navigationDestination\s*\(\s*for:|\bforgeLayered(Destination)?\b")
+LAYERED_PUSH = re.compile(r"NavigationLink\s*\(\s*value:|\.navigationDestination\s*\(\s*(for|item):|\bforgeLayered(Destination)?\b")
 LAYERED_PROBLEMS = [
     (re.compile(r"\.navigationDestination\s*\(\s*for:"), "navigationDestination(for:); use forgeLayeredDestination(for:)"),
     (re.compile(r"NavigationStack\s*\(\s*path:(?![^)\n]*forgeLayered)"), "a stack path without forgeLayered()"),
@@ -1426,6 +1426,27 @@ def braced(code, start):
     return code[start:]
 
 
+def owned(block):
+    """`block` (a stack's braces) without the stacks nested in it, such as
+    a sheet's own stack: what is left belongs to this stack."""
+    for m in reversed(list(re.finditer(r"\bNavigationStack\b", block[1:]))):
+        i = m.end() + 1
+        while i < len(block) and block[i] in " \t\n":
+            i += 1
+        if i < len(block) and block[i] == "(":  # NavigationStack(path: ...)
+            depth = 0
+            while i < len(block):
+                depth += {"(": 1, ")": -1}.get(block[i], 0)
+                i += 1
+                if depth == 0:
+                    break
+            while i < len(block) and block[i] in " \t\n":
+                i += 1
+        if i < len(block) and block[i] == "{":
+            block = block[:i] + block[i + len(braced(block, i)):]
+    return block
+
+
 def rule_layered_navigation(app):
     codes = [(path, swift_code_mask(read(path))) for path in swift_sources(app)]
     if not any(LAYERED_PUSH.search(code) for _, code in codes):
@@ -1437,7 +1458,7 @@ def rule_layered_navigation(app):
                 bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} ({why})")
         # Layered destinations under a stack with no path never settle.
         for m in BARE_STACK.finditer(code):
-            if "forgeLayeredDestination(" in braced(code, m.end() - 1):
+            if "forgeLayeredDestination(" in owned(braced(code, m.end() - 1)):
                 bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} (a stack with layered destinations and no forgeLayered() path)")
     if bad:
         return False, "pushes pages outside Layered Navigation: " + ", ".join(bad)
