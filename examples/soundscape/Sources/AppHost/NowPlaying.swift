@@ -219,7 +219,7 @@ struct NowPlayingView: View {
                     Section("On Jamendo") {
                         Button(current.artist.map { "More by \($0)" } ?? "More by This Artist",
                                systemImage: "music.mic") {
-                            go(.jamendoMore(trackId: trackId, by: .artist))
+                            go(.jamendoArtist(.ofTrack(trackId, name: current.artist)))
                         }
                         .accessibilityIdentifier("nowPlayingSheet.moreByArtist")
                         Button("More in This Genre", systemImage: "guitars") {

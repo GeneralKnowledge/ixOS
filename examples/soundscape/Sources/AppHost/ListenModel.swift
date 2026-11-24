@@ -305,6 +305,48 @@ public final class ListenModel {
         }
     }
 
+    /// Discover's Jamendo shelves beyond this week's popular, in order.
+    public var jamendoShelves: [JamendoShelf] { core.jamendoShelves() }
+
+    /// The tracks on one of Discover's Jamendo shelves.
+    public func jamendoTracks(on shelf: JamendoShelf) async -> Result<[CatalogueTrack], ListenFailure> {
+        await askJamendo("shelf") { try await core.jamendoShelf(shelf: shelf, cancellation: $0) }
+    }
+
+    /// Jamendo artists to discover: this week's most popular, or the newest.
+    public func jamendoArtists(_ list: JamendoArtistList) async -> Result<[JamendoArtist], ListenFailure> {
+        await askJamendo("artists") { try await core.jamendoArtists(list: list, cancellation: $0) }
+    }
+
+    /// A Jamendo artist's page: their albums, EPs and singles (Rust groups
+    /// singles that share a cover into one album).
+    public func jamendoArtist(_ artist: JamendoArtistRef) async -> Result<JamendoArtistPage, ListenFailure> {
+        switch artist {
+        case .id(let id, _):
+            return await askJamendo("artist") { try await core.jamendoArtist(artistId: id, cancellation: $0) }
+        case .ofTrack(let trackId, _):
+            return await askJamendo("artist") { try await core.jamendoArtistOfTrack(trackId: trackId, cancellation: $0) }
+        }
+    }
+
+    /// Songs like the Jamendo song you play most, by artists you don't have
+    /// yet; nil when there's no such song.
+    public func jamendoBecause() async -> Result<JamendoBecause?, ListenFailure> {
+        _ = collection
+        return await askJamendo("because") { try await core.jamendoBecause(cancellation: $0) }
+    }
+
+    /// A Jamendo call made cancellable with the task that asks, its failure
+    /// put into words.
+    private func askJamendo<T>(_ what: String, _ work: (Cancellation) async throws -> T) async -> Result<T, ListenFailure> {
+        do {
+            return .success(try await withRustCancellation { try await work($0) })
+        } catch {
+            if !Self.isStop(error) { log.warn("jamendo \(what) failed: \(error)") }
+            return .failure(ListenFailure(message: Self.message(error), stopped: Self.isStop(error)))
+        }
+    }
+
     /// More from Jamendo for the Jamendo track `trackId`: by its artist, or
     /// in its genre.
     public func moreFromJamendo(_ trackId: String, by: JamendoMore) async -> Result<JamendoMoreTracks, ListenFailure> {
@@ -1196,3 +1238,19 @@ public enum TakeFormat {
 }
 
 extension CatalogueTrack: Identifiable {}
+extension JamendoArtist: Identifiable {}
+extension JamendoRelease: Identifiable {}
+
+/// A Jamendo artist to open: by Jamendo's id (with the name to show while
+/// the page loads), or as the artist of a Jamendo song.
+public enum JamendoArtistRef: Hashable {
+    case id(String, name: String)
+    case ofTrack(String, name: String?)
+
+    public var name: String? {
+        switch self {
+        case .id(_, let name): name
+        case .ofTrack(_, let name): name
+        }
+    }
+}

@@ -32,6 +32,14 @@ enum ListenRoute: Hashable {
     case jamendoGenre(JamendoGenre)
     /// More from Jamendo like a song: by its artist or in its genre.
     case jamendoMore(trackId: String, by: JamendoMore)
+    /// One of Discover's Jamendo shelves, all of it.
+    case jamendoShelf(JamendoShelf)
+    /// Jamendo artists to discover, all of them.
+    case jamendoArtists(JamendoArtistList)
+    /// A Jamendo artist's page: albums, EPs and singles.
+    case jamendoArtist(JamendoArtistRef)
+    /// One of a Jamendo artist's releases, with its songs.
+    case jamendoRelease(JamendoRelease, artist: String)
     /// All of the library's songs, albums (a grid) or artists.
     case songs
     case albums
@@ -65,6 +73,11 @@ extension ListenRoute {
         case .jamendoGenres: "jamendoGenres"
         case .jamendoGenre(let genre): "jamendoGenre:\(genre.tag)"
         case .jamendoMore(let trackId, let by): "jamendoMore:\(trackId):\(by)"
+        case .jamendoShelf(let shelf): "jamendoShelf:\(shelf)"
+        case .jamendoArtists(let list): "jamendoArtists:\(list)"
+        case .jamendoArtist(.id(let id, _)): "jamendoArtist:\(id)"
+        case .jamendoArtist(.ofTrack(let trackId, _)): "jamendoArtistOf:\(trackId)"
+        case .jamendoRelease(let release, _): "jamendoRelease:\(release.id)"
         case .songs: "songs"
         case .albums: "albums"
         case .artists: "artists"
@@ -76,7 +89,7 @@ extension ListenRoute {
     /// tile they were opened from. Lists and areas are ordinary pushes.
     var style: SurfaceStyle {
         switch self {
-        case .artist, .album, .playlist, .smartPlaylist, .archiveItem: .stacked
+        case .artist, .album, .playlist, .smartPlaylist, .archiveItem, .jamendoArtist, .jamendoRelease: .stacked
         default: .fullScreen
         }
     }
@@ -275,6 +288,10 @@ struct ListenDestination: View {
         case .jamendoGenres: JamendoGenresView(model: model)
         case .jamendoGenre(let genre): JamendoTracksView(model: model, player: player, ask: .genre(genre))
         case .jamendoMore(let trackId, let by): JamendoTracksView(model: model, player: player, ask: .more(trackId: trackId, by: by))
+        case .jamendoShelf(let shelf): JamendoTracksView(model: model, player: player, ask: .shelf(shelf))
+        case .jamendoArtists(let list): JamendoArtistsView(model: model, list: list)
+        case .jamendoArtist(let artist): JamendoArtistView(model: model, player: player, artist: artist)
+        case .jamendoRelease(let release, let artist): JamendoReleaseView(model: model, player: player, release: release, artist: artist)
         case .songs: SongsView(model: model, player: player)
         case .albums: AlbumsView(model: model)
         case .artists: ArtistsView(model: model)

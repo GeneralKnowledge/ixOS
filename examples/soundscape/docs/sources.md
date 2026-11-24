@@ -265,6 +265,17 @@ the same album art go together*. So on an artist's page:
    they all share or else after the earliest song. A song left alone is a single. A cover that can't be fetched
    leaves its song a single.
 
+### The screens
+
+- **Discover** adds, under Popular This Week: Because You Like, Jamendo's Picks, Artists to Discover (round
+  tiles), New Releases and Rising; after the stations, the other shelves and New on Jamendo. Every shelf has
+  See All.
+- **A Jamendo artist** (from an artist tile, **Go to Artist** on a Jamendo song, **More by <artist>** in Now
+  Playing, or a library artist's **<name> on Jamendo**) shows their picture, Play and Shuffle for everything,
+  Albums and EPs as shelves and Singles as songs.
+- **A release** shows its cover, kind and year, its songs, and Add All to Library; a grouped one says its singles
+  share a cover and are separate on Jamendo.
+
 Not checked yet: the live API (the cloud can't reach Jamendo). In particular, whether singles with the same
 picture always have byte-identical cover files; if Jamendo re-encodes them, a perceptual comparison (a small
 hash of the scaled-down picture) is the next step. The order and filter names (`releasedate_desc`, `buzzrate`,

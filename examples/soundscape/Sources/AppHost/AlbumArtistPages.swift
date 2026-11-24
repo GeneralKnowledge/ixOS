@@ -53,7 +53,7 @@ private struct ArtworkBackdrop: ViewModifier {
 }
 
 /// Play, Shuffle and (when there is one) a station, side by side.
-private struct PageActions: View {
+struct PageActions: View {
     let disabled: Bool
     let play: (_ shuffle: Bool) -> Void
     var station: (() -> Void)? = nil
@@ -96,7 +96,7 @@ private struct PageActions: View {
 
 /// A shelf inside a list: the row reaches both edges so it scrolls under
 /// them.
-private extension View {
+extension View {
     func shelfRow() -> some View {
         listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
             .listRowBackground(Color.clear)
@@ -316,7 +316,7 @@ struct ArtistView: View {
             }
             if let jamendo = tracks.first(where: { $0.id.hasPrefix("jamendo:") }) {
                 Section {
-                    NavigationLink(value: ListenRoute.jamendoMore(trackId: jamendo.id, by: .artist)) {
+                    NavigationLink(value: ListenRoute.jamendoArtist(.ofTrack(jamendo.id, name: current.name))) {
                         Label("More by \(current.name) on Jamendo", systemImage: "sparkles")
                     }
                     .accessibilityIdentifier("artist.moreOnJamendo")
