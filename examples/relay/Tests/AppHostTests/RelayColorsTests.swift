@@ -9,14 +9,16 @@ final class RelayColorsTests: XCTestCase {
         XCTAssertEqual(RelayColors.theme.contrastIssues().map(\.description), [])
     }
 
-    func testOutgoingBubbleTextReadsOnTheAccent() {
-        for tone in [RelayColors.accent, RelayColors.accentDark] {
+    /// Text on our bubbles (body, quotes, document and voice captions) is
+    /// drawn at full strength straight on the bubble: the accent, or the
+    /// danger tone for a message that failed to send. A quote's bar, at 80%,
+    /// is a shape.
+    func testOutgoingBubbleTextReadsOnTheBubble() {
+        let palette = RelayColors.theme.palette
+        for tone in [palette.light.accent, palette.dark.accent, palette.light.danger, palette.dark.danger] {
             XCTAssertGreaterThanOrEqual(ForgeContrast.ratio(tone.onSolid, on: tone.solid), ForgeContrast.text)
-            // The voice message's time and a quote's bar, at 80%, sit
-            // straight on the bubble (quotes and documents outline their
-            // inset instead of filling it, so their text does too).
             XCTAssertGreaterThanOrEqual(
-                ForgeContrast.ratio(tone.onSolid.opacity(0.8), on: tone.solid), ForgeContrast.text)
+                ForgeContrast.ratio(tone.onSolid.opacity(0.8), on: tone.solid), ForgeContrast.largeTextOrShape)
         }
     }
 

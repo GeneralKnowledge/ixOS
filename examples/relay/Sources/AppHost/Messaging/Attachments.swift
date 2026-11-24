@@ -367,7 +367,8 @@ private struct VoiceMessageRow: View {
             }
             Text(AttachmentFiles.timeLabel(playing || progress > 0 ? player.position : duration ?? 0))
                 .font(.caption.monospacedDigit())
-                .opacity(0.8)
+                // Full strength on our bubble, which may be the failed red one.
+                .opacity(onMine ? 1 : 0.8)
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
