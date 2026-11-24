@@ -117,7 +117,7 @@ struct AlbumGrid: View {
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
             ForEach(albums) { album in
-                NavigationLink(value: ListenRoute.album(album)) {
+                ForgeSurfaceLink(ListenRoute.album(album)) {
                     ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl, size: nil,
                                 download: model.map { $0.downloadState(of: $0.tracks(of: album)) } ?? .notDownloaded)
                         .forgeSurfaceSource(ListenRoute.album(album))

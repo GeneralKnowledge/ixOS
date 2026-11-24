@@ -161,7 +161,7 @@ struct GenreGrid: View {
     var body: some View {
         LazyVGrid(columns: columns, spacing: 12) {
             ForEach(genres, id: \.tag) { genre in
-                NavigationLink(value: ListenRoute.jamendoGenre(genre)) {
+                ForgeSurfaceLink(ListenRoute.jamendoGenre(genre)) {
                     GenreTile(name: genre.name)
                 }
                 .buttonStyle(.plain)
@@ -579,14 +579,14 @@ struct TrackView: View {
                     Text(track.title).font(.title2.bold()).multilineTextAlignment(.center)
                     HStack(spacing: 6) {
                         if let artist {
-                            NavigationLink(value: ListenRoute.artist(artist)) { Text(artist.name) }
+                            ForgeSurfaceLink(ListenRoute.artist(artist)) { Text(artist.name) }
                                 .accessibilityIdentifier("track.artist")
                         } else {
                             Text(track.artist)
                         }
                         if let album {
                             Text("·").foregroundStyle(.secondary)
-                            NavigationLink(value: ListenRoute.album(album)) { Text(album.title) }
+                            ForgeSurfaceLink(ListenRoute.album(album)) { Text(album.title) }
                                 .accessibilityIdentifier("track.album")
                         }
                     }

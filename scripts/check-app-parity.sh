@@ -1495,6 +1495,38 @@ def rule_tab_bar_clear(app):
     return True, ""
 
 
+TILE_CONTAINER = re.compile(r"\b(?:LazyVGrid|LazyHGrid|LazyHStack|Grid|HStack)\s*[({]")
+
+
+def rule_one_tap_one_page(app):
+    """Links side by side (a grid, a shelf, "Artist · Album" in an HStack)
+    use ForgeSurfaceLink: in a List row, every NavigationLink in the row
+    opens on one tap (Soundscape's genre grid opened all twenty genres,
+    2026-11-24). Outside a List it makes no difference, so the rule
+    doesn't try to tell."""
+    sources = swift_sources(app)
+    if not sources:
+        return None
+    bad = []
+    for path in sources:
+        code = without_previews(swift_code_mask(read(path)))
+        for m in TILE_CONTAINER.finditer(code):
+            i = m.end() - 1
+            if code[i] == "(":  # LazyVGrid(columns: ...) {
+                depth = 0
+                while i < len(code):
+                    depth += {"(": 1, ")": -1}.get(code[i], 0)
+                    i += 1
+                    if depth == 0:
+                        break
+                while i < len(code) and code[i] in " \t\n":
+                    i += 1
+            if i < len(code) and code[i] == "{" and re.search(r"\bNavigationLink\s*\(", braced(code, i)):
+                bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "links side by side (grid, shelf, HStack) use ForgeSurfaceLink, not NavigationLink (a List row opens every link in it on one tap): " + ", ".join(bad)
+    return True, ""
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -1513,6 +1545,7 @@ RULES = [
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
     ("layered-navigation", "Pushed pages through ForgeAppKit's Layered Navigation: a thing already open is gone back to, never stacked twice", rule_layered_navigation),
+    ("one-tap-one-page", "Links side by side (a grid, a shelf, an HStack) use ForgeAppKit's `ForgeSurfaceLink`: a List row opens every `NavigationLink` in it on one tap", rule_one_tap_one_page),
     ("tab-bar-clear", "No bottom toolbar in an app with tabs: on iOS 26 it sits behind the floating tab bar; bottom actions float with `forgeBar`", rule_tab_bar_clear),
     ("glass", "Liquid Glass only through ForgeUI (`forgeGlass`, `forgeGlassProminentButton`), never `glassEffect` or `.glass` button styles by hand", rule_glass),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),

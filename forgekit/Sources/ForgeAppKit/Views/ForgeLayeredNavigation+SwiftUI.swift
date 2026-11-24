@@ -53,6 +53,45 @@ public struct ForgeOpenSurfaceAction {
     }
 }
 
+/// A tile or a name that opens a surface: a plain button calling
+/// `forgeOpenSurface`. Use it wherever one `List` row holds more than one
+/// link (a grid of tiles, a shelf, "Artist · Album" under a title). A
+/// `List` row with `NavigationLink`s in it pushes every one of them on a
+/// single tap, whatever their button style, so a grid of genres in a row
+/// opened all twenty; plain buttons are tapped one at a time.
+///
+///     ForgeSurfaceLink(Route.genre(genre)) { GenreTile(genre) }
+///         .accessibilityIdentifier("search.genre")
+///
+/// A row that is one link as a whole (a song, an album in a list) keeps
+/// `NavigationLink(value:)`, which draws the row's disclosure.
+public struct ForgeSurfaceLink<Route: ForgeSurfaceRoute, Label: View>: View {
+    private let route: Route
+    private let label: Label
+    @Environment(\.forgeOpenSurface) private var openSurface
+
+    public init(_ route: Route, @ViewBuilder label: () -> Label) {
+        self.route = route
+        self.label = label()
+    }
+
+    public var body: some View {
+        Button { openSurface(route) } label: { label }
+            .buttonStyle(.plain)
+    }
+}
+
+extension ForgeSurfaceLink where Label == Text {
+    public init(_ title: LocalizedStringKey, route: Route) {
+        self.init(route) { Text(title) }
+    }
+
+    @_disfavoredOverload
+    public init<S: StringProtocol>(_ title: S, route: Route) {
+        self.init(route) { Text(title) }
+    }
+}
+
 private struct ForgeOpenSurfaceKey: EnvironmentKey {
     static let defaultValue = ForgeOpenSurfaceAction(open: nil)
 }

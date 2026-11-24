@@ -178,6 +178,7 @@ Every app with pushed pages follows these rules, so a deeper app never turns int
 6. **Overlays belong to the surface that presents them** and dismiss back to it; they are not stack entries.
 7. **Each tab keeps its own history.** A push from a shared place (Now Playing, a notification) goes onto the tab being looked at; another tab's stack is untouched.
 8. **A new destination declares its identity and treatment** (`surfaceID`, `surfaceStyle`) in the PR that adds it. A screen that should be new every time (a search, a practice set) declares no identity.
+9. **One tap opens one page.** A `List` row pushes every `NavigationLink` inside it on a single tap, so links side by side (a grid of tiles, a shelf, "Artist · Album" under a title) are `ForgeSurfaceLink`s, plain buttons that open their route. A row that is one link as a whole keeps `NavigationLink(value:)`. The parity rule `one-tap-one-page` checks grids and stacks of links (Soundscape's genre grid in Search opened all twenty genres, 2026-11-24).
 
 **Visual rules**
 
