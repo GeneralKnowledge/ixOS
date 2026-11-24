@@ -175,9 +175,11 @@ final class TakePlayer {
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
     /// Watches each player stopping or starting by itself.
     @ObservationIgnored private var statusObservers: [NSKeyValueObservation] = []
-    /// Watches the item `switching` loads until it is ready or fails, then
-    /// the player until it is actually heard.
+    /// Watches the item `switching` loads until the switch ends, so a
+    /// failure after it is ready is still seen.
     @ObservationIgnored private var switchObserver: NSKeyValueObservation?
+    /// Watches B, once its item is ready, until it is actually heard.
+    @ObservationIgnored private var playbackObserver: NSKeyValueObservation?
     /// The queue as it was before the switch, and as the switch set it: a
     /// failed load goes back to the first unless the queue was edited since.
     @ObservationIgnored private var switchQueues: (before: PlayQueue?, after: PlayQueue?)?
@@ -338,7 +340,7 @@ final class TakePlayer {
             let starting = playerB
             starting.volume = 0
             starting.play()
-            switchObserver = starting.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
+            playbackObserver = starting.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
                         guard let self, self.switching != nil, player === self.playerB,
@@ -365,6 +367,7 @@ final class TakePlayer {
     private func finishSwitch() {
         guard let next = switching else { return }
         switchObserver = nil
+        playbackObserver = nil
         switchQueues = nil
         switching = nil
         let ending = playerA
@@ -390,6 +393,7 @@ final class TakePlayer {
     /// Forgets a song still loading on B.
     private func cancelSwitch() {
         switchObserver = nil
+        playbackObserver = nil
         switchQueues = nil
         guard switching != nil else { return }
         switching = nil
@@ -492,6 +496,9 @@ final class TakePlayer {
         if isComparing { resync() }
         playerA.play()
         if isComparing { playerB.play() }
+        // A song that was ready to take over when the system paused starts
+        // again too, so the switch can finish.
+        if switching != nil, playerB.currentItem?.status == .readyToPlay { playerB.play() }
         isPlaying = true
         updateNowPlaying()
     }
