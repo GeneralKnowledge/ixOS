@@ -72,6 +72,12 @@ struct BonsaiHarnessView: View {
                         send: {
                             handOff(snapshot.project ?? model.project)
                             model.answerPlan()
+                        },
+                        editTests: pythonLab.map { lab in
+                            {
+                                lab.open(project: snapshot.project ?? model.project)
+                                showPythonLab = true
+                            }
                         }
                     )
                 }
@@ -176,12 +182,18 @@ struct BonsaiHarnessView: View {
             }
                 .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.planRequest")
+            Button("Tests First, Then Code", systemImage: "checklist") {
+                handOff(model.project)
+                model.runTestsFirst()
+            }
+                .disabled(model.isScripted || model.request.isEmpty)
+                .accessibilityIdentifier("harness.testsFirst")
             Toggle("Show Plans Before They Run", isOn: $model.approvePlans)
                 .accessibilityIdentifier("harness.approvePlans")
         } header: {
             Text("Tasks")
         } footer: {
-            Text("Each ladder task starts from a fresh project. Your own tasks work in the Python Lab project you choose, on its files, and Python Lab shows that project read-only while Bonsai works. A planned task is split into small tasks, each checked before the next starts.")
+            Text("Each ladder task starts from a fresh project. Your own tasks work in the Python Lab project you choose, on its files, and Python Lab shows that project read-only while Bonsai works. A planned task is split into small tasks, each checked before the next starts. Tests first has Bonsai write the tests, waits for you to check them, then has it write code that passes them unchanged.")
         }
     }
 

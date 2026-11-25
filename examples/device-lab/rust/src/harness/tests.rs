@@ -3131,3 +3131,133 @@ fn a_forgiving_edit_refuses_a_tab_after_an_indent_between_tab_stops() {
         text
     );
 }
+
+// MARK: Tests first (C0: the person checks the tests before the code)
+
+fn write_call(path: &str, content: &str) -> String {
+    serde_json::json!({"thought": "Write it.", "tool": "write_file", "path": path, "content": content})
+        .to_string()
+}
+
+#[test]
+fn tests_first_waits_for_the_person_then_the_code_must_pass_their_tests_unchanged() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    // Bonsai's test expects the wrong thing (two marks, the request says one).
+    let wrong = "import unittest\nfrom shout import shout\n\n\nclass T(unittest.TestCase):\n    def test_shout(self):\n        self.assertEqual(shout(\"hi\"), \"HI!!\")\n";
+    let fixed = wrong.replace("HI!!", "HI!");
+    let tests = write_call(plan::TESTS_FILE, wrong);
+    h.start_tests_first(
+        scripted(&[&tests, FINISH_CALL]),
+        "Write shout.py with shout(s): s in capitals with one exclamation mark.".into(),
+        SCRATCH_PROJECT,
+    )
+    .unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::AwaitingApproval, "{plan:?}");
+    assert_eq!(plan.thought, plan::TESTS_FIRST_THOUGHT);
+    assert_eq!(plan.tasks[0].status, TaskStatus::Completed, "{plan:?}");
+    assert_eq!(plan.tasks[1].status, TaskStatus::Ready);
+    assert_eq!(plan.tests_file.as_deref(), Some(plan::TESTS_FILE));
+    assert_eq!(plan.tests_to_check.as_deref(), Some(wrong));
+    assert!(plan.can_continue);
+
+    // The person fixes the test in Python Lab; the screen shows the edit.
+    let root = std::path::PathBuf::from(h.project_folder().unwrap());
+    std::fs::write(root.join(plan::TESTS_FILE), &fixed).unwrap();
+    assert_eq!(
+        h.snapshot().plan.unwrap().tests_to_check.as_deref(),
+        Some(fixed.as_str())
+    );
+
+    // Approved: the code must pass the tests as the person left them.
+    let code = write_call("shout.py", "def shout(s):\n    return s.upper() + \"!\"\n");
+    let replies = [code.as_str(), RUN_TESTS, FINISH_CALL];
+    h.continue_brain(|_, _| scripted(&replies)).unwrap();
+    let plan = wait(&h).plan.unwrap();
+    assert_eq!(plan.status, PlanState::Completed, "{plan:?}");
+    assert_eq!(plan.tests_to_check, None);
+    assert!(
+        plan.tasks[1]
+            .acceptance
+            .contains(&format!("{} is left unchanged", plan::TESTS_FILE)),
+        "{:?}",
+        plan.tasks[1].acceptance
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join(plan::TESTS_FILE)).unwrap(),
+        fixed
+    );
+}
+
+#[test]
+fn tests_first_code_that_changes_the_approved_tests_is_not_verified() {
+    if !has_python() {
+        return;
+    }
+    let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let h = harness(&dir);
+    let tests = "import unittest\nfrom shout import shout\n\n\nclass T(unittest.TestCase):\n    def test_shout(self):\n        self.assertEqual(shout(\"hi\"), \"HI!\")\n";
+    let write_tests = write_call(plan::TESTS_FILE, tests);
+    h.start_tests_first(
+        scripted(&[&write_tests, FINISH_CALL]),
+        "Write shout.py with shout(s): s in capitals with one exclamation mark.".into(),
+        SCRATCH_PROJECT,
+    )
+    .unwrap();
+    assert_eq!(wait(&h).plan.unwrap().status, PlanState::AwaitingApproval);
+
+    // Bonsai bends the test to its wrong code instead of fixing the code.
+    let bent = write_call(plan::TESTS_FILE, &tests.replace("HI!", "hi"));
+    let code = write_call("shout.py", "def shout(s):\n    return s\n");
+    let give_up = r#"{"thought": "t", "tool": "give_up", "reason": "can't"}"#;
+    let blocked = r#"{"thought": "t", "decision": "blocked", "question": "Help?"}"#;
+    let replies = [
+        bent.as_str(),
+        code.as_str(),
+        RUN_TESTS,
+        FINISH_CALL,
+        give_up,
+        blocked,
+    ];
+    h.continue_brain(|_, _| scripted(&replies)).unwrap();
+    let snapshot = wait(&h);
+    let task = snapshot.task.unwrap();
+    assert!(
+        task.result
+            .as_deref()
+            .is_some_and(|r| r.contains("give") || r.contains("gave")),
+        "{task:?}"
+    );
+    let steps = snapshot.steps;
+    assert!(
+        steps.iter().any(|s| s
+            .result
+            .contains(&format!("{} was changed", plan::TESTS_FILE))),
+        "{steps:?}"
+    );
+    // The rollback before Recovery keeps the person's approved tests.
+    let root = std::path::PathBuf::from(h.project_folder().unwrap());
+    assert_eq!(
+        std::fs::read_to_string(root.join(plan::TESTS_FILE)).unwrap(),
+        tests
+    );
+}
+
+#[test]
+fn tests_written_needs_a_unittest_test() {
+    let check = Criterion::TestsWritten {
+        path: "test_app.py".into(),
+    };
+    let none = |_: &str| None;
+    assert!(check.check(&[], &none).unwrap_err().contains("missing"));
+    let empty = |_: &str| Some("import unittest\n".to_string());
+    assert!(check.check(&[], &empty).is_err());
+    let two = |_: &str| {
+        Some("import unittest\nclass T(unittest.TestCase):\n    def test_a(self): pass\n    def test_b(self): pass\n".to_string())
+    };
+    assert_eq!(check.check(&[], &two).unwrap(), "test_app.py has 2 tests");
+}

@@ -16,6 +16,13 @@ struct BonsaiPlanSection: View {
     let approve: @MainActor () -> Void
     let discard: @MainActor () -> Void
     let send: @MainActor () -> Void
+    /// Opens the project in Python Lab, to fix a test before approving.
+    var editTests: (@MainActor () -> Void)?
+
+    /// The tests wait for the person to check them.
+    private var reviewingTests: Bool {
+        plan.status == .awaitingApproval && plan.testsToCheck != nil
+    }
 
     var body: some View {
         Section {
@@ -38,6 +45,17 @@ struct BonsaiPlanSection: View {
             ForEach(Array(plan.tasks.enumerated()), id: \.element.id) { index, task in
                 PlanTaskRow(number: index + 1, task: task)
             }
+            if reviewingTests, let tests = plan.testsToCheck {
+                Label(plan.reason ?? "Check the tests before Bonsai writes the code.", systemImage: "checklist")
+                    .font(.subheadline)
+                    .accessibilityIdentifier("harness.plan.checkTests")
+                Text(tests)
+                    .font(.system(.caption2, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel("Tests in \(plan.testsFile ?? "the test file")")
+                    .accessibilityIdentifier("harness.plan.tests")
+            }
             if let question = plan.question {
                 Label(question, systemImage: "questionmark.bubble")
                     .font(.subheadline)
@@ -58,7 +76,16 @@ struct BonsaiPlanSection: View {
                     .accessibilityIdentifier("harness.plan.result")
             }
             if !running {
-                if plan.status == .awaitingApproval {
+                if reviewingTests {
+                    Button("Tests Are Right, Write the Code", systemImage: "play.fill") { approve() }
+                        .accessibilityIdentifier("harness.plan.approveTests")
+                    if let editTests {
+                        Button("Edit Tests in Python Lab", systemImage: "pencil") { editTests() }
+                            .accessibilityIdentifier("harness.plan.editTests")
+                    }
+                    Button("Discard", systemImage: "trash", role: .destructive) { discard() }
+                        .accessibilityIdentifier("harness.plan.discard")
+                } else if plan.status == .awaitingApproval {
                     Button("Approve and Run", systemImage: "play.fill") { approve() }
                         .accessibilityIdentifier("harness.plan.approve")
                     Button("Discard Plan", systemImage: "trash", role: .destructive) { discard() }
