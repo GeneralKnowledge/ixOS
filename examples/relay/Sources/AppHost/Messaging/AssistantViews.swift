@@ -244,6 +244,7 @@ private struct AssistantBubble: View {
     /// The text so far while this answer is being written.
     let liveText: String?
     let character: AssistantCharacter?
+    @Environment(\.forgeTheme) private var theme
 
     private var mine: Bool { message.role == .user }
     private var text: String { liveText ?? message.text }
@@ -255,9 +256,9 @@ private struct AssistantBubble: View {
                 content
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .foregroundStyle(mine ? Color.white : Color.primary)
+                    .foregroundStyle(mine ? theme.colors.accent.onSolid : Color.primary)
                     .background(
-                        mine ? AnyShapeStyle(.tint) : AnyShapeStyle(.fill.tertiary),
+                        mine ? AnyShapeStyle(theme.colors.accent.solid) : AnyShapeStyle(.fill.tertiary),
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
                     .textSelection(.enabled)

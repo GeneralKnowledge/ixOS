@@ -36,7 +36,28 @@ iOS shows glass only to an app whose binary records the iOS 26 SDK. Linux builds
 (1.24.0-ixos.1); builds made with upstream xtool 1.24.0 record SDK 17.0 and run in compatibility mode, with
 none of this.
 
-Relay keeps the system blue accent for now.
+## Colour (2026-11-24, design programme V2.2)
+
+Relay's accent is a muted blue instead of the system blue (`Sources/AppHost/RelayColors.swift`, values in
+`docs/design/DESIGN_TOKENS.md`, Relay tokens), applied with `forgeTheme` at the root so Device Lab's sheet gets
+it too. It is adopted subject to review on the phone.
+
+| Where | Light | Dark |
+|---|---|---|
+| Our bubbles, the assistant's question bubbles | #3E5A8E with white text | #829BCB with midnight (#111317) text |
+| Links, selection, tab bar, unread dot, New Messages, quote and reply bars, voice waveform | #3E5A8E | #829BCB (tinted text #A9BBDD) |
+| A message that failed to send | ForgeUI's danger tone with its own text colour | the same |
+| Trust badges, delivery captions, received transfers | unchanged, semantic, never the accent | the same |
+
+The brief's #829BCB is 2.8:1 on white and with white text on it, hence the darker light partner and dark text in
+dark mode. A sending bubble now keeps the full accent (at 60% its text fell to 2.8:1); the caption under it
+already says Sending. Text and quote bars on our bubbles take the bubble's text colour, so they stay readable
+on the accent and on a failed bubble alike. `RelayColorsTests` checks every pairing ForgeUI draws
+(`contrastIssues()`, light, dark and both with Increase Contrast) and the redesign's own tokens.
+
+Backgrounds and text stay the system's (lists, labels) until the screens are redesigned (V4); the midnight
+background and its surfaces are defined and tested but not used yet. An "Offline" line on Chats is also V4.1:
+the Chats list already says when messages are waiting or the server can't be reached.
 
 Soundscape used the same "glass on iOS 26, material before" helper; both now call ForgeUI's (design programme
 V2.1).
@@ -56,3 +77,6 @@ iOS 26 binary and that nothing became harder to read.
 6. Devices: Send (tinted glass) and Receive (glass capsule) sit above the tab bar, fully visible and tappable, including after scrolling the list down and back up.
 7. Settings, Accessibility, Display & Text Size, Reduce Transparency on: all of the above turn solid and
    stay readable. Repeat 1 in dark mode.
+8. Colour: in light and dark mode, our bubbles are the muted blue (white text in light, dark text in dark), a
+   failed message is red, the selected tab and links are the same blue, and nothing is the old system blue.
+   Send a message with the server stopped: the sending bubble's text stays readable.

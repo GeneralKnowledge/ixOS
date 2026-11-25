@@ -21,7 +21,7 @@ public struct ContentView: View {
         ForgeRoot(host) { core in
             RelayScreen(core: core, host: host, changes: host.changes)
         }
-        .forgeTheme(.standard)
+        .forgeTheme(RelayColors.theme)
     }
 }
 
@@ -335,6 +335,7 @@ struct TransferRow: View {
     let model: RelayModel
     @Binding var preview: URL?
     @Environment(\.openURL) private var openURL
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         Button {
@@ -344,7 +345,7 @@ struct TransferRow: View {
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: icon)
-                    .foregroundStyle(transfer.direction == .sent ? Color.accentColor : .green)
+                    .foregroundStyle(transfer.direction == .sent ? theme.colors.accent.solid : .green)
                     .frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(RelayFormat.title(transfer.item))
