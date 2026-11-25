@@ -254,6 +254,100 @@ public final class ChatModel {
         actionError = ForgeFailure(title: "Something Went Wrong", message: message)
     }
 
+    // MARK: Group chats (N7, docs/relay-groups.md)
+
+    /// What every group chat's conversation id starts with (Rust's
+    /// `group_conversation`).
+    nonisolated public static let groupConversationPrefix =
+        String(groupConversationId(groupId: "x").dropLast())
+
+    /// Whether `conversationId` is a group chat.
+    nonisolated public static func isGroup(_ conversationId: String) -> Bool {
+        conversationId.hasPrefix(groupConversationPrefix)
+    }
+
+    /// The group a conversation id names.
+    nonisolated public static func groupId(_ conversationId: String) -> String? {
+        isGroup(conversationId) ? String(conversationId.dropFirst(groupConversationPrefix.count)) : nil
+    }
+
+    /// Whether group chats can be made here: Relay is open.
+    public var hasGroups: Bool { relay != nil }
+
+    /// The trusted devices a group can include, by name.
+    public func groupCandidates() -> [Device] {
+        (relay?.devices() ?? []).filter(\.trusted).sorted { $0.name < $1.name }
+    }
+
+    /// Makes a group of this device and `members` (endpoint ids) and
+    /// returns its conversation id, ready to open. Throws so the sheet can
+    /// stay open with what was typed.
+    public func createGroup(name: String, members: [String]) async throws -> String {
+        guard let relay else { throw ChatError.ShutDown }
+        let group = try await relay.createGroup(name: name, members: members)
+        await refresh()
+        return group.conversationId
+    }
+
+    /// The group behind `conversationId`, as this device has it now.
+    public func group(_ conversationId: String) async -> RelayGroup? {
+        guard let relay, let id = Self.groupId(conversationId) else { return nil }
+        return try? await relay.group(id: id)
+    }
+
+    /// Adds trusted devices to a group (its admin only).
+    public func addGroupMembers(_ group: RelayGroup, _ members: [String]) async -> RelayGroup? {
+        guard let relay else { return nil }
+        do {
+            return try await relay.addGroupMembers(id: group.id, members: members)
+        } catch {
+            actionError = Self.failure(error)
+            return nil
+        }
+    }
+
+    /// Removes a member from a group (its admin only).
+    public func removeGroupMember(_ group: RelayGroup, _ member: String) async -> RelayGroup? {
+        guard let relay else { return nil }
+        do {
+            return try await relay.removeGroupMember(id: group.id, member: member)
+        } catch {
+            actionError = Self.failure(error)
+            return nil
+        }
+    }
+
+    /// Renames a group (its admin only).
+    public func renameGroup(_ group: RelayGroup, _ name: String) async -> RelayGroup? {
+        guard let relay else { return nil }
+        do {
+            let renamed = try await relay.renameGroup(id: group.id, name: name)
+            await refresh()
+            return renamed
+        } catch {
+            actionError = Self.failure(error)
+            return nil
+        }
+    }
+
+    /// Leaves a group: the conversation stays, read-only.
+    public func leaveGroup(_ group: RelayGroup) async {
+        guard let relay else { return }
+        do {
+            try await relay.leaveGroup(id: group.id)
+        } catch {
+            actionError = Self.failure(error)
+        }
+    }
+
+    /// "Delivered to 2 of 3" for one of our messages in a group, or nil.
+    public func groupDelivery(_ message: ChatMessage) -> String? {
+        guard message.isMine, let relay, let id = Self.groupId(message.conversationId),
+            let d = try? relay.groupDelivery(id: id, messageId: message.id), d.of > 1
+        else { return nil }
+        return String(localized: "Delivered to \(d.delivered) of \(d.of)")
+    }
+
     // MARK: Conversation list
 
     /// Re-lists rooms from the server (pull to refresh, and on resume).

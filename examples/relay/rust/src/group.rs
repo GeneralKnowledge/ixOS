@@ -51,6 +51,12 @@ pub fn group_conversation(id: &str) -> String {
     format!("{PREFIX}{id}")
 }
 
+/// The conversation id of group `group_id`, for the app.
+#[uniffi::export]
+pub fn group_conversation_id(group_id: String) -> String {
+    group_conversation(&group_id)
+}
+
 /// The group a conversation id names, if it names one.
 pub fn conversation_group(conversation_id: &str) -> Option<&str> {
     conversation_id
@@ -297,8 +303,8 @@ pub(crate) fn settle_group_messages(r: &Record, c: &mut Conversations<'_>) {
 }
 
 /// A group, for the app and the `relay` command.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Group {
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct RelayGroup {
     pub id: String,
     /// Its conversation in Chats.
     pub conversation_id: String,
@@ -306,13 +312,13 @@ pub struct Group {
     pub admin: String,
     /// Whether this device is the admin: it may add, remove and rename.
     pub is_admin: bool,
-    pub members: Vec<GroupMemberInfo>,
+    pub members: Vec<RelayGroupMember>,
     /// This device left or was removed: the conversation is read-only.
     pub left: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GroupMemberInfo {
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct RelayGroupMember {
     pub endpoint_id: String,
     pub name: String,
     /// This device.
@@ -323,7 +329,7 @@ pub struct GroupMemberInfo {
 }
 
 /// How far one of our group messages has got.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct GroupDelivery {
     /// Members that have it.
     pub delivered: u32,
@@ -340,9 +346,9 @@ impl RelayCore {
         Ok(self.node().await?.id().to_string())
     }
 
-    fn group_info(&self, g: &SavedGroup, me: &str) -> Group {
+    fn group_info(&self, g: &SavedGroup, me: &str) -> RelayGroup {
         let record = self.record.get();
-        Group {
+        RelayGroup {
             id: g.id.clone(),
             conversation_id: group_conversation(&g.id),
             name: g.name.clone(),
@@ -357,7 +363,7 @@ impl RelayCore {
                         .devices
                         .get(&m.endpoint_id)
                         .filter(|d| d.trust == SavedTrust::Trusted);
-                    GroupMemberInfo {
+                    RelayGroupMember {
                         endpoint_id: m.endpoint_id.clone(),
                         name: if is_me {
                             record.name.clone()
@@ -374,22 +380,26 @@ impl RelayCore {
             left: g.left,
         }
     }
+}
 
+/// Group chats for the app (step 3).
+#[uniffi::export]
+impl RelayCore {
     /// The groups this device is in or was in, in the order made.
-    pub async fn groups(&self) -> Result<Vec<Group>, RelayError> {
+    pub async fn groups(&self) -> Result<Vec<RelayGroup>, RelayError> {
         let me = self.me().await?;
         let groups = self.record.get().groups.clone();
         Ok(groups.iter().map(|g| self.group_info(g, &me)).collect())
     }
 
-    pub async fn group(&self, id: &str) -> Result<Group, RelayError> {
+    pub async fn group(&self, id: String) -> Result<RelayGroup, RelayError> {
         let me = self.me().await?;
         let g = self
             .record
             .get()
-            .group(id)
+            .group(&id)
             .cloned()
-            .ok_or_else(|| no_group(id))?;
+            .ok_or_else(|| no_group(&id))?;
         Ok(self.group_info(&g, &me))
     }
 
@@ -399,7 +409,7 @@ impl RelayCore {
         &self,
         name: String,
         members: Vec<String>,
-    ) -> Result<Group, RelayError> {
+    ) -> Result<RelayGroup, RelayError> {
         let name = crate::model::clean_name(&name)?;
         let me = self.me().await?;
         let mut group = SavedGroup {
@@ -428,7 +438,7 @@ impl RelayCore {
         &self,
         id: String,
         members: Vec<String>,
-    ) -> Result<Group, RelayError> {
+    ) -> Result<RelayGroup, RelayError> {
         let (me, mut group) = self.as_admin(&id).await?;
         self.add_trusted(&mut group, &me, &members)?;
         group.version += 1;
@@ -441,7 +451,7 @@ impl RelayCore {
         &self,
         id: String,
         member: String,
-    ) -> Result<Group, RelayError> {
+    ) -> Result<RelayGroup, RelayError> {
         let (me, mut group) = self.as_admin(&id).await?;
         if member == me {
             return Err(RelayError::Declined {
@@ -460,7 +470,7 @@ impl RelayCore {
     }
 
     /// Renames the group (admin only).
-    pub async fn rename_group(&self, id: String, name: String) -> Result<Group, RelayError> {
+    pub async fn rename_group(&self, id: String, name: String) -> Result<RelayGroup, RelayError> {
         let (me, mut group) = self.as_admin(&id).await?;
         group.name = crate::model::clean_name(&name)?;
         group.version += 1;
@@ -506,24 +516,30 @@ impl RelayCore {
         Ok(())
     }
 
-    /// The group's messages, oldest first.
-    pub fn group_messages(&self, id: &str) -> Result<Vec<Message>, RelayError> {
-        self.peer_logs.get(&group_conversation(id))?.since(None)
-    }
-
     /// How many members have our message `message_id`.
-    pub fn group_delivery(&self, id: &str, message_id: &str) -> Result<GroupDelivery, RelayError> {
+    pub fn group_delivery(
+        &self,
+        id: String,
+        message_id: String,
+    ) -> Result<GroupDelivery, RelayError> {
         let record = self.record.get();
-        let g = record.group(id).ok_or_else(|| no_group(id))?;
-        let conversation = group_conversation(id);
+        let g = record.group(&id).ok_or_else(|| no_group(&id))?;
+        let conversation = group_conversation(&id);
         let delivered = self
             .peer_logs
             .store()
-            .read(|c| crate::store::group_delivered(c, &conversation, message_id))?;
+            .read(|c| crate::store::group_delivered(c, &conversation, &message_id))?;
         Ok(GroupDelivery {
             delivered: delivered.len() as u32,
             of: g.members.len().saturating_sub(1) as u32,
         })
+    }
+}
+
+impl RelayCore {
+    /// The group's messages, oldest first.
+    pub fn group_messages(&self, id: &str) -> Result<Vec<Message>, RelayError> {
+        self.peer_logs.get(&group_conversation(id))?.since(None)
     }
 
     /// Sends `text` to the group and waits for the first attempt at each

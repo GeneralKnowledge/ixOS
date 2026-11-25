@@ -777,6 +777,46 @@ uint64_t uniffi_relay_core_fn_method_relaycore_trust_device(uint64_t ptr, RustBu
 RustBuffer uniffi_relay_core_fn_method_relaycore_trust_offer(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_ADD_GROUP_MEMBERS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_ADD_GROUP_MEMBERS
+uint64_t uniffi_relay_core_fn_method_relaycore_add_group_members(uint64_t ptr, RustBuffer id, RustBuffer members
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CREATE_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CREATE_GROUP
+uint64_t uniffi_relay_core_fn_method_relaycore_create_group(uint64_t ptr, RustBuffer name, RustBuffer members
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_GROUP
+uint64_t uniffi_relay_core_fn_method_relaycore_group(uint64_t ptr, RustBuffer id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_GROUP_DELIVERY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_GROUP_DELIVERY
+RustBuffer uniffi_relay_core_fn_method_relaycore_group_delivery(uint64_t ptr, RustBuffer id, RustBuffer message_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_GROUPS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_GROUPS
+uint64_t uniffi_relay_core_fn_method_relaycore_groups(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_LEAVE_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_LEAVE_GROUP
+uint64_t uniffi_relay_core_fn_method_relaycore_leave_group(uint64_t ptr, RustBuffer id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_REMOVE_GROUP_MEMBER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_REMOVE_GROUP_MEMBER
+uint64_t uniffi_relay_core_fn_method_relaycore_remove_group_member(uint64_t ptr, RustBuffer id, RustBuffer member
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_RENAME_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_RENAME_GROUP
+uint64_t uniffi_relay_core_fn_method_relaycore_rename_group(uint64_t ptr, RustBuffer id, RustBuffer name
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_CHATCORE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_CLONE_CHATCORE
 uint64_t uniffi_relay_core_fn_clone_chatcore(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -1501,6 +1541,11 @@ RustBuffer uniffi_relay_core_fn_func_storage_engine(RustCallStatus *_Nonnull out
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_GROUP_CONVERSATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_GROUP_CONVERSATION_ID
+RustBuffer uniffi_relay_core_fn_func_group_conversation_id(RustBuffer group_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_RELAY_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_RELAY_ERROR_KIND
 RustBuffer uniffi_relay_core_fn_func_relay_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
@@ -1897,6 +1942,12 @@ uint16_t uniffi_relay_core_checksum_func_chat_error_kind(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_STORAGE_ENGINE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_STORAGE_ENGINE
 uint16_t uniffi_relay_core_checksum_func_storage_engine(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_GROUP_CONVERSATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_GROUP_CONVERSATION_ID
+uint16_t uniffi_relay_core_checksum_func_group_conversation_id(void
     
 );
 #endif
@@ -2317,6 +2368,54 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_trust_device(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_TRUST_OFFER
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_TRUST_OFFER
 uint16_t uniffi_relay_core_checksum_method_relaycore_trust_offer(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_ADD_GROUP_MEMBERS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_ADD_GROUP_MEMBERS
+uint16_t uniffi_relay_core_checksum_method_relaycore_add_group_members(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CREATE_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CREATE_GROUP
+uint16_t uniffi_relay_core_checksum_method_relaycore_create_group(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_GROUP
+uint16_t uniffi_relay_core_checksum_method_relaycore_group(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_GROUP_DELIVERY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_GROUP_DELIVERY
+uint16_t uniffi_relay_core_checksum_method_relaycore_group_delivery(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_GROUPS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_GROUPS
+uint16_t uniffi_relay_core_checksum_method_relaycore_groups(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_LEAVE_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_LEAVE_GROUP
+uint16_t uniffi_relay_core_checksum_method_relaycore_leave_group(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_REMOVE_GROUP_MEMBER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_REMOVE_GROUP_MEMBER
+uint16_t uniffi_relay_core_checksum_method_relaycore_remove_group_member(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_RENAME_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_RENAME_GROUP
+uint16_t uniffi_relay_core_checksum_method_relaycore_rename_group(void
     
 );
 #endif

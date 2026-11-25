@@ -137,8 +137,10 @@ Each step is a PR, Linux-tested before the phone sees it.
    Tested with three or four in-process devices: a message reaches every
    member, a removed member gets nothing new, a non-member is refused, an
    update not from the admin is refused, a member away gets it on return.
-3. The iPhone: the FFI, New Group, the group's screen, sender names,
-   delivery counts.
+3. The iPhone: the FFI, New Group, the group's screen (Group Info),
+   sender names, delivery counts. Edits, reactions and taking back a
+   delivered message aren't offered in groups, as in device
+   conversations.
 4. Members introduced by the admin (a group-only right on
    `relay/device/1`, dialled by key, deposit passes for their mailbox),
    and photos and files in groups (one blob, offered to each member).

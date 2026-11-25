@@ -1005,7 +1005,7 @@ fn site_line(site: &relay_core::SiteSource) -> String {
 }
 
 /// A group by its id, the start of its id, or its name.
-fn find_group(core: &RelayCore, which: &str) -> Result<relay_core::group::Group, String> {
+fn find_group(core: &RelayCore, which: &str) -> Result<relay_core::group::RelayGroup, String> {
     let groups = block_on(core.groups()).map_err(|e| e.to_string())?;
     let found: Vec<_> = groups
         .into_iter()
@@ -1018,7 +1018,7 @@ fn find_group(core: &RelayCore, which: &str) -> Result<relay_core::group::Group,
     }
 }
 
-fn group_lines(g: &relay_core::group::Group) -> String {
+fn group_lines(g: &relay_core::group::RelayGroup) -> String {
     let state = if g.left { "  (left)" } else { "" };
     let mut out = format!("{}  {}{state}\n", g.name, g.id);
     for m in &g.members {
@@ -1089,7 +1089,9 @@ fn group_command(core: &RelayCore, rest: &[String]) -> Result<String, String> {
         [verb, which, text @ ..] if verb == "send" && !text.is_empty() => {
             let g = find_group(core, which)?;
             let m = block_on(core.send_group_message(&g.id, text.join(" "))).map_err(err)?;
-            let d = core.group_delivery(&g.id, &m.id).map_err(err)?;
+            let d = core
+                .group_delivery(g.id.clone(), m.id.clone())
+                .map_err(err)?;
             Ok(format!(
                 "Sent to {}: delivered to {} of {}{}\n",
                 g.name,
@@ -1105,7 +1107,9 @@ fn group_command(core: &RelayCore, rest: &[String]) -> Result<String, String> {
                 let mine = m.author_id == relay_core::device_chat::ME;
                 let who = if mine { "me" } else { m.author.as_str() };
                 let status = if mine {
-                    let d = core.group_delivery(&g.id, &m.id).map_err(err)?;
+                    let d = core
+                        .group_delivery(g.id.clone(), m.id.clone())
+                        .map_err(err)?;
                     format!("  (delivered to {} of {})", d.delivered, d.of)
                 } else {
                     String::new()

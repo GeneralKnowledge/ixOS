@@ -138,14 +138,14 @@ fn a_group_message_reaches_every_member_and_only_the_admin_changes_the_group() {
     eventually("the group on the laptop and tablet", || {
         in_group(&laptop, &id) && in_group(&tablet, &id)
     });
-    let on_tablet = block_on(tablet.group(&id)).unwrap();
+    let on_tablet = block_on(tablet.group(id.clone())).unwrap();
     assert_eq!(on_tablet.name, "Family");
     assert!(!on_tablet.is_admin);
 
     // The admin's message reaches both.
     let sent = block_on(phone.send_group_message(&id, "dinner at seven".into())).unwrap();
     assert_eq!(sent.status, MessageStatus::Sent);
-    let d = phone.group_delivery(&id, &sent.id).unwrap();
+    let d = phone.group_delivery(id.clone(), sent.id.clone()).unwrap();
     assert_eq!((d.delivered, d.of), (2, 2));
     assert_eq!(bodies(&laptop, &id), ["dinner at seven"]);
     assert_eq!(bodies(&tablet, &id), ["dinner at seven"]);
@@ -163,7 +163,7 @@ fn a_group_message_reaches_every_member_and_only_the_admin_changes_the_group() {
     assert!(block_on(laptop.rename_group(id.clone(), "Mine".into())).is_err());
     block_on(phone.rename_group(id.clone(), "Family dinners".into())).unwrap();
     eventually("the new name on the tablet", || {
-        block_on(tablet.group(&id)).unwrap().name == "Family dinners"
+        block_on(tablet.group(id.clone())).unwrap().name == "Family dinners"
     });
 
     // Removed: the tablet learns it's out, and gets nothing after.
@@ -171,7 +171,7 @@ fn a_group_message_reaches_every_member_and_only_the_admin_changes_the_group() {
     eventually("the tablet out", || !in_group(&tablet, &id));
     assert!(block_on(tablet.send_group_message(&id, "still here?".into())).is_err());
     let after = block_on(phone.send_group_message(&id, "just us".into())).unwrap();
-    let d = phone.group_delivery(&id, &after.id).unwrap();
+    let d = phone.group_delivery(id.clone(), after.id.clone()).unwrap();
     assert_eq!((d.delivered, d.of), (1, 1));
     eventually("the laptop has it", || bodies(&laptop, &id).len() == 3);
     std::thread::sleep(Duration::from_millis(300));
@@ -197,7 +197,7 @@ fn a_member_that_was_away_gets_the_message_once_and_a_member_can_leave() {
     std::thread::sleep(Duration::from_millis(500));
     let sent = block_on(phone.send_group_message(&id, "meet at the gate".into())).unwrap();
     assert_eq!(sent.status, MessageStatus::Queued, "one copy still waits");
-    let d = phone.group_delivery(&id, &sent.id).unwrap();
+    let d = phone.group_delivery(id.clone(), sent.id.clone()).unwrap();
     assert_eq!((d.delivered, d.of), (1, 2));
 
     // Back: it arrives once, and the message is sent.
@@ -212,7 +212,7 @@ fn a_member_that_was_away_gets_the_message_once_and_a_member_can_leave() {
     eventually("sent to everyone", || {
         phone.group_messages(&id).unwrap()[0].status == MessageStatus::Sent
     });
-    let d = phone.group_delivery(&id, &sent.id).unwrap();
+    let d = phone.group_delivery(id.clone(), sent.id.clone()).unwrap();
     assert_eq!((d.delivered, d.of), (2, 2));
     assert_eq!(
         bodies(&tablet, &id).len(),
@@ -223,13 +223,13 @@ fn a_member_that_was_away_gets_the_message_once_and_a_member_can_leave() {
     // The laptop leaves: the others stop sending to it.
     block_on(laptop.leave_group(id.clone())).unwrap();
     eventually("the laptop gone on the phone", || {
-        block_on(phone.group(&id)).unwrap().members.len() == 2
+        block_on(phone.group(id.clone())).unwrap().members.len() == 2
     });
     eventually("the laptop gone on the tablet", || {
-        block_on(tablet.group(&id)).unwrap().members.len() == 2
+        block_on(tablet.group(id.clone())).unwrap().members.len() == 2
     });
     let last = block_on(tablet.send_group_message(&id, "bye".into())).unwrap();
-    let d = tablet.group_delivery(&id, &last.id).unwrap();
+    let d = tablet.group_delivery(id.clone(), last.id.clone()).unwrap();
     assert_eq!((d.delivered, d.of), (1, 1));
 }
 

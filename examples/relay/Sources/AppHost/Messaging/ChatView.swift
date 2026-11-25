@@ -32,6 +32,7 @@ struct ChatView: View {
     @State private var stashedDraft = ""
     @State private var deleting: ChatMessage?
     @State private var searching = false
+    @State private var showingGroup = false
     @State private var jumpTarget: String?
     @State private var highlighted: String?
     /// Whether the end of the transcript is on screen. A new message
@@ -230,6 +231,12 @@ struct ChatView: View {
                 searching = true
             }
             .accessibilityIdentifier("chat.search")
+            if ChatModel.isGroup(conversationId) {
+                Button("Group Info", systemImage: "person.3") {
+                    showingGroup = true
+                }
+                .accessibilityIdentifier("chat.groupInfo")
+            }
             if muted {
                 Button("Unmute", systemImage: "bell") {
                     model.setMuted(conversationId, false)
@@ -262,6 +269,9 @@ struct ChatView: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .primaryAction) { moreMenu }
+            }
+            .sheet(isPresented: $showingGroup, onDismiss: { Task { await model.refresh() } }) {
+                GroupInfoView(model: model, conversationId: conversationId)
             }
             .sheet(isPresented: $searching) {
                 MessageSearchSheet(model: model, conversationId: conversationId) { found in
@@ -952,7 +962,11 @@ private struct MessageBubble: View {
                                 .font(.caption2)
                                 .accessibilityIdentifier("chat.deleting")
                         } else if let delivery {
-                            DeliveryLabel(delivery: delivery)
+                            DeliveryLabel(
+                                delivery: delivery,
+                                // A group says how many members have it.
+                                groupText: delivery == .sent || delivery == .sending
+                                    ? model.groupDelivery(message) : nil)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -1066,6 +1080,7 @@ private struct MessageBubble: View {
     /// those out there. Android does the same (relay-android.md).
     private var inDeviceConversation: Bool {
         message.conversationId.hasPrefix(deviceConversationPrefix)
+            || ChatModel.isGroup(message.conversationId)
     }
 
     /// Whether Edit and reactions are offered.
@@ -1280,9 +1295,11 @@ struct SearchResultRow: View {
 
 private struct DeliveryLabel: View {
     let delivery: ChatDelivery
+    /// "Delivered to 2 of 3" in a group chat, instead of the plain words.
+    var groupText: String? = nil
 
     var body: some View {
-        Text(Self.text(delivery))
+        Text(groupText ?? Self.text(delivery))
             .font(.caption2)
             .foregroundStyle(delivery == .failed ? Color.red : Color.secondary)
             .padding(.horizontal, 4)
